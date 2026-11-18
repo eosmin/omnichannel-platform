@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import type { ReactElement } from 'react'
+import { type ReactElement, useEffect, useRef } from 'react'
 
 import { AppPaths } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -92,12 +92,25 @@ export function StoreNav(): ReactElement {
       isShown: mayOpenStoreSettings(can)
     }
   ].filter(entry => entry.isShown)
-  // On a phone the links wrap onto a second line instead of scrolling: five of them do not fit one line at
-  // 360 px, and a scrolling row cut a word ("Custome"). From `md` they scroll if they ever overflow.
+  const nav = useRef<HTMLElement>(null)
+  // On a phone the links are one row that scrolls (four rows over the thread left no room to read it, N-BR2-63).
+  // The row opens with the current page in view, and its end has room so that the last link can scroll clear
+  // of the fade that tells the person there is more (a row cut with no sign cut a word: "Custome").
+  const current = entries.find(entry => pathname.startsWith(entry.match ?? entry.href))?.href
+  useEffect(() => {
+    const row = nav.current
+    if (row === null || current === undefined) return
+    const link = Array.from(row.querySelectorAll('a')).find(
+      item => item.getAttribute('aria-current') === 'page'
+    )
+    if (link === undefined || row.scrollWidth <= row.clientWidth) return
+    row.scrollTo({ left: link.offsetLeft - row.clientWidth / 2 + link.clientWidth / 2 })
+  }, [current])
   return (
     <nav
+      ref={nav}
       aria-label={t('label')}
-      className="flex min-w-0 items-center gap-1 max-md:flex-wrap md:overflow-x-auto"
+      className="relative flex min-w-0 items-center gap-1 overflow-x-auto max-md:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)] max-md:pe-8"
     >
       {entries.map(entry => {
         const isCurrent = pathname.startsWith(entry.match ?? entry.href)
@@ -107,7 +120,7 @@ export function StoreNav(): ReactElement {
             href={entry.href}
             aria-current={isCurrent ? 'page' : undefined}
             className={cn(
-              'hover:bg-accent inline-flex shrink-0 items-center rounded-md px-2 py-1 text-sm whitespace-nowrap pointer-coarse:min-h-10',
+              'hover:bg-accent inline-flex shrink-0 items-center rounded-md px-2 py-1 text-sm whitespace-nowrap pointer-coarse:min-h-11',
               isCurrent ? 'font-semibold' : 'text-muted-foreground'
             )}
           >

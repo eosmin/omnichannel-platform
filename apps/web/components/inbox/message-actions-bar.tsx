@@ -145,7 +145,7 @@ export function MessageActionsBar({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-7 pointer-coarse:size-10"
+          className="size-7 pointer-coarse:size-11"
           aria-label={file !== undefined ? t('replyFile', file) : t('reply')}
           onClick={() =>
             startReply({
@@ -169,7 +169,7 @@ export function MessageActionsBar({
               type="button"
               variant="ghost"
               size="icon"
-              className="size-7 pointer-coarse:size-10"
+              className="size-7 pointer-coarse:size-11"
               aria-label={file === undefined ? t('react') : t('reactFile', file)}
             >
               <SmilePlus aria-hidden className="size-4" />
@@ -207,7 +207,7 @@ export function MessageActionsBar({
               type="button"
               variant="ghost"
               size="icon"
-              className="size-7 pointer-coarse:size-10"
+              className="size-7 pointer-coarse:size-11"
               aria-label={t('more')}
             >
               <Ellipsis aria-hidden className="size-4" />

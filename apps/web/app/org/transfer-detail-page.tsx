@@ -53,7 +53,7 @@ function Detail({ access }: { access: TransferAccess }): ReactElement {
     <section className="flex max-w-3xl flex-col gap-4">
       <Link
         href={AppPaths.org.transfers}
-        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1 text-sm pointer-coarse:min-h-10"
+        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1 text-sm pointer-coarse:min-h-11"
       >
         <ArrowLeft aria-hidden className="size-4" />
         {t('back')}
