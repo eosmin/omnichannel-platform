@@ -704,7 +704,7 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
 
           expect(await months('2027-06-01', '2027-06-30')).toEqual([])
           expect(await months('2027-07-01', '2027-07-31')).toEqual([
-            { month: '2027-07', outputTaxCents: 130, inputTaxCents: 0, balanceCents: -130 }
+            { month: '2027-07', outputTaxCents: 130, inputTaxCents: 0, balanceCents: 130 }
           ])
         })
 
@@ -749,7 +749,7 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
           await book(mine.id, '2027-11-05', ctx.orgB.id)
 
           expect(await months('2027-10-01', '2027-11-30')).toEqual([
-            { month: '2027-10', outputTaxCents: 130, inputTaxCents: 0, balanceCents: -130 }
+            { month: '2027-10', outputTaxCents: 130, inputTaxCents: 0, balanceCents: 130 }
           ])
         })
       })
