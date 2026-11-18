@@ -10,6 +10,7 @@ import {
   FinanceTransactionKind,
   JournalEntryType,
   lowercasedUuidSchema,
+  queryIntSchema,
   PaginationLimits,
   SaleRecognition,
   singleLineText,
@@ -30,12 +31,7 @@ const memo = singleLineText(FinanceLimits.MEMO_MAX_LENGTH, 1)
 // Whole cents of one line, like an order total: an Int of the database
 const cents = z.number().int().min(0).max(FinanceLimits.MAX_LINE_CENTS)
 
-const limit = z.coerce
-  .number()
-  .int()
-  .min(1)
-  .max(PaginationLimits.MAX)
-  .default(PaginationLimits.DEFAULT)
+const limit = queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 const flag = z.enum(['true', 'false']).transform(value => value === 'true')
 const nothingToChange = { message: 'nothing to change' }
 
