@@ -595,6 +595,6 @@ export interface VatReportView {
   ordersWithoutTaxSnapshot: number
   // Orders whose snapshot does not add up: counted here, never guessed about
   ordersNotReadable: number
-  // Orders in the range whose status is RETURNED: still in the output side (the tax of returns is posted by Step 4B.6, E8)
+  // Orders in the range whose status is RETURNED: still in the output side of its own month; the tax of its returns (E8) is a `returns` line of the month of the return
   returnedOrdersIncluded: number
 }
