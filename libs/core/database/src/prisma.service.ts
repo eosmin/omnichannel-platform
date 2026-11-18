@@ -175,6 +175,31 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     )
   }
 
+  // A tenant transaction of its own, OUTSIDE the one the caller may be running in (which stays as it is). For a write that must not
+  // depend on the unit of work that triggered it: the audit trail of a request is kept when the request rolls back, and it never
+  // runs on a transaction that has already committed. `fn` must await its queries inside this scope, like any tenant transaction.
+  detachedTenantTransaction<T>(
+    context: TenantContext,
+    fn: () => Promise<T>,
+    options?: TransactionOptions
+  ): Promise<T> {
+    return tenantScope.exit(() => this.tenantTransaction(context, fn, options))
+  }
+
+  // The one transaction that may write the rows of the catalog that belong to the platform (a plugin with no organization): it
+  // sets app.platform_catalog, which the policies of `plugins` ask for, and no tenant context. Only the boot of the api uses it.
+  catalogTransaction<T>(fn: () => Promise<T>, options?: TransactionOptions): Promise<T> {
+    return tenantScope.exit(() =>
+      this.open(
+        async tx => {
+          await tx.$executeRaw`SELECT set_config('app.platform_catalog', 'on', true)`
+          return tenantScope.run({ tx, context: { storeIds: [], organizationIds: [] } }, fn)
+        },
+        { ...TENANT_TRANSACTION, ...options }
+      )
+    )
+  }
+
   async onModuleInit(): Promise<void> {
     await this.base.$connect()
   }

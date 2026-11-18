@@ -78,7 +78,17 @@ export class AuditService implements OnModuleDestroy {
   }
 
   private async write(entry: AuditEntry): Promise<void> {
-    await this.prisma.client.auditLog.create({ data: toRow(entry) })
+    // Its own transaction, outside the one of the request that asked for it, with the store of the entry as its whole context:
+    // the policy of audit_logs lets a row in with no store or with a store of the context, so the trail of a login, of a refused
+    // key or of a request for a store the person does not belong to is never refused. The request may roll back (the trail stays)
+    // and may commit before this runs (it never uses that closed transaction). Without RETURNING (createMany): a returned row
+    // would also have to pass the SELECT policy, which no tenant of the entry's store has for rows of another one.
+    await this.prisma.detachedTenantTransaction(
+      { storeIds: entry.storeId === undefined ? [] : [entry.storeId], organizationIds: [] },
+      async () => {
+        await this.prisma.client.auditLog.createMany({ data: [toRow(entry)] })
+      }
+    )
   }
 
   private fail(reason: string, action: AuditActionType, error?: unknown): void {

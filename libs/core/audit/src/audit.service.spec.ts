@@ -20,11 +20,32 @@ interface Harness {
   inc: jest.Mock
 }
 
+// The write runs in a transaction of its own (detachedTenantTransaction) with the store of the entry as its context, and goes in
+// with createMany (no RETURNING): the double keeps the context it was asked for so the cases can see it
+const contexts: Array<{ storeIds: readonly string[]; organizationIds: readonly string[] }> = []
+function prismaOf(create: Create): PrismaService {
+  return {
+    detachedTenantTransaction: (
+      context: { storeIds: readonly string[]; organizationIds: readonly string[] },
+      fn: () => Promise<unknown>
+    ) => {
+      contexts.push(context)
+      return fn()
+    },
+    client: {
+      auditLog: {
+        createMany: (args: { data: Array<Record<string, unknown>> }) =>
+          create({ data: args.data[0] ?? {} })
+      }
+    }
+  } as unknown as PrismaService
+}
+
 function build(create: Create = createMock(() => Promise.resolve({}))): Harness {
   const error = jest.fn()
   const inc = jest.fn()
   const service = new AuditService(
-    { client: { auditLog: { create } } } as unknown as PrismaService,
+    prismaOf(create),
     { setContext: jest.fn(), error } as unknown as PinoLogger,
     { inc } as unknown as Counter<string>
   )
@@ -121,6 +142,20 @@ describe('toRow', () => {
 })
 
 describe('AuditService', () => {
+  it('writes in its own tenant transaction whose context is the store of the entry, and none for an entry with no store', async () => {
+    contexts.length = 0
+    const { service } = build()
+
+    service.log({ action: AuditAction.USER_LOGOUT, actor: { userId: USER_ID }, storeId: STORE_ID })
+    service.log({ action: AuditAction.USER_LOGOUT, actor: { userId: USER_ID } })
+    await service.onModuleDestroy()
+
+    expect(contexts).toEqual([
+      { storeIds: [STORE_ID], organizationIds: [] },
+      { storeIds: [], organizationIds: [] }
+    ])
+  })
+
   it('writes the entry without making the caller wait for it', async () => {
     const { service, create } = build()
 
@@ -151,12 +186,10 @@ describe('AuditService', () => {
   })
 
   it('works without the counter (a process with no metrics module)', async () => {
-    const service = new AuditService(
-      {
-        client: { auditLog: { create: () => Promise.reject(new Error('x')) } }
-      } as unknown as PrismaService,
-      { setContext: jest.fn(), error: jest.fn() } as unknown as PinoLogger
-    )
+    const service = new AuditService(prismaOf(createMock(() => Promise.reject(new Error('x')))), {
+      setContext: jest.fn(),
+      error: jest.fn()
+    } as unknown as PinoLogger)
 
     service.log({ action: AuditAction.USER_LOGOUT, actor: { system: true } })
 

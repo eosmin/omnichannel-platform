@@ -11,7 +11,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import type { Permission } from '@platform/core/auth'
 import { hashToken } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { contextOf, PrismaService, resolveApiKey } from '@platform/core/database'
 import {
   API_KEY_TOKEN_PREFIX,
   ApiKeyLimits,
@@ -85,17 +85,24 @@ export class ApiKeyGuard implements CanActivate {
     const token = BEARER.exec(request.headers.authorization ?? '')?.[1]
     if (token === undefined || !token.startsWith(API_KEY_TOKEN_PREFIX)) throw invalidKey()
 
-    const key = await this.prisma.client.apiKey.findUnique({
-      where: { keyHash: hashToken(token) },
-      select: {
-        id: true,
-        storeId: true,
-        scopes: true,
-        status: true,
-        expiresAt: true,
-        createdBy: true
-      }
-    })
+    // The key says which store it opens only to the database: the lookup finds the key and its store, and the row is read inside
+    // the context of that store
+    const found = await resolveApiKey(this.prisma.client, hashToken(token))
+    if (found === null) throw invalidKey()
+    const tenant = contextOf(found)
+    const key = await this.prisma.tenantTransaction(tenant, () =>
+      this.prisma.client.apiKey.findFirst({
+        where: { id: found.id, storeId: found.storeId },
+        select: {
+          id: true,
+          storeId: true,
+          scopes: true,
+          status: true,
+          expiresAt: true,
+          createdBy: true
+        }
+      })
+    )
     const now = new Date()
     if (key === null || key.status !== ACTIVE || (key.expiresAt !== null && key.expiresAt <= now)) {
       throw invalidKey()
@@ -142,19 +149,24 @@ export class ApiKeyGuard implements CanActivate {
 
     request.apiKey = { keyId: key.id, storeId: key.storeId, scopes }
     // Written at most once a minute per key, and never waited for: a busy key would otherwise turn every call into a write
-    void this.prisma.client.apiKey
-      .updateMany({
-        where: {
-          id: key.id,
-          OR: [
-            { lastUsedAt: null },
-            {
-              lastUsedAt: { lt: new Date(now.getTime() - ApiKeyLimits.LAST_USED_WRITE_INTERVAL_MS) }
-            }
-          ]
-        },
-        data: { lastUsedAt: now }
-      })
+    void this.prisma
+      .tenantTransaction(tenant, () =>
+        this.prisma.client.apiKey.updateMany({
+          where: {
+            id: key.id,
+            storeId: key.storeId,
+            OR: [
+              { lastUsedAt: null },
+              {
+                lastUsedAt: {
+                  lt: new Date(now.getTime() - ApiKeyLimits.LAST_USED_WRITE_INTERVAL_MS)
+                }
+              }
+            ]
+          },
+          data: { lastUsedAt: now }
+        })
+      )
       .catch((error: unknown) => {
         // Said, not hidden: a write that keeps failing leaves the page with a stale date and nothing else to explain it
         this.logger.warn(

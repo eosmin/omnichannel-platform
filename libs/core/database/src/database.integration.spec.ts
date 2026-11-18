@@ -234,6 +234,44 @@ describe('PrismaService', () => {
     expect(await service.client.organization.count({ where: { slug } })).toBe(0)
   })
 
+  it('runs a detached tenant transaction on its own: it keeps its write when the outer one rolls back, and has its own context', async () => {
+    const slug = `it-${runId}-detached`
+    const read = async (): Promise<string | null> => {
+      const rows = await service.client.$queryRaw<{ value: string | null }[]>`
+        SELECT nullif(current_setting('app.store_ids', true), '') AS value`
+      return rows[0]?.value ?? null
+    }
+    let inner: string | null = null
+    await expect(
+      service.tenantTransaction({ storeIds: ['outer'], organizationIds: [] }, async () => {
+        await service.detachedTenantTransaction(
+          { storeIds: ['inner'], organizationIds: [] },
+          async () => {
+            inner = await read()
+            await service.client.organization.create({ data: { name: 'Detached', slug } })
+          }
+        )
+        // Back in the outer transaction, with its own context
+        expect(await read()).toBe('outer')
+        throw new Error('abort')
+      })
+    ).rejects.toThrow('abort')
+    expect(inner).toBe('inner')
+    expect(await service.client.organization.count({ where: { slug } })).toBe(1)
+  })
+
+  it('sets the catalog flag, and no tenant context, only inside a catalog transaction', async () => {
+    const read = async (): Promise<{ flag: string | null; stores: string | null }> => {
+      const rows = await service.client.$queryRaw<{ flag: string | null; stores: string | null }[]>`
+        SELECT nullif(current_setting('app.platform_catalog', true), '') AS flag,
+               nullif(current_setting('app.store_ids', true), '') AS stores`
+      return rows[0] ?? { flag: null, stores: null }
+    }
+    expect(await read()).toEqual({ flag: null, stores: null })
+    expect(await service.catalogTransaction(read)).toEqual({ flag: 'on', stores: null })
+    expect(await read()).toEqual({ flag: null, stores: null })
+  })
+
   describe('afterCommit', () => {
     const slugOf = (suffix: string): string => `it-${runId}-hook-${suffix}`
 
