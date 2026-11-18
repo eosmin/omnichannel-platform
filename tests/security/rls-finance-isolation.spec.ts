@@ -594,20 +594,16 @@ describe('row-level security, the books of an organization (phase 4)', () => {
       expect(await confirmedOf(groupId)).toBe(0)
     })
 
-    it('refuses at the COMMIT a group of one piece, one with two leads and one with no lead', async () => {
-      for (const [pieces, leads] of [
-        [[1000], [0]],
-        [
-          [600, 400],
-          [0, 1]
-        ],
-        [[600, 400], []]
-      ] as Array<[number[], number[]]>) {
+    it('refuses a group of one piece or with no lead at the COMMIT, and one with two leads at the row (the unique index of the confirmed lead)', async () => {
+      const cases: Array<{ pieces: number[]; leads: number[]; refusal: RegExp }> = [
+        { pieces: [1000], leads: [0], refusal: /RECONCILIATION_GROUP/ },
+        { pieces: [600, 400], leads: [], refusal: /RECONCILIATION_GROUP/ },
+        { pieces: [600, 400], leads: [0, 1], refusal: /uq_reconciliation_confirmed_statement_line/ }
+      ]
+      for (const { pieces, leads, refusal } of cases) {
         const group = await seedGroup(1000, pieces)
         const groupId = randomUUID()
-        await expect(writeGroup(orgA, group, groupId, leads)).rejects.toThrow(
-          /RECONCILIATION_GROUP/
-        )
+        await expect(writeGroup(orgA, group, groupId, leads)).rejects.toThrow(refusal)
         expect(await confirmedOf(groupId)).toBe(0)
       }
     })
