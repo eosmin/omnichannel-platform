@@ -17,8 +17,7 @@ class Routes {
   }
 }
 
-const handlerOf = (name: 'limited' | 'free'): (() => void) =>
-  Reflect.get(Routes.prototype, name)
+const handlerOf = (name: 'limited' | 'free'): (() => void) => Reflect.get(Routes.prototype, name)
 
 const contextOf = (handler: () => void, user: { id: string } | undefined): ExecutionContext =>
   ({
@@ -36,11 +35,7 @@ const record = (isBlocked: boolean, wait = 0) => ({
 
 function build(increment: jest.Mock) {
   const inc = jest.fn()
-  const guard = new UserRateLimitGuard(
-    new Reflector(),
-    { increment },
-    { inc } as never
-  )
+  const guard = new UserRateLimitGuard(new Reflector(), { increment }, { inc } as never)
   return { guard, inc }
 }
 
@@ -86,8 +81,22 @@ describe('UserRateLimitGuard', () => {
     const { guard } = build(increment)
     await guard.canActivate(contextOf(limited, { id: 'u1' }))
     await guard.canActivate(contextOf(limited, { id: 'u2' }))
-    expect(increment).toHaveBeenNthCalledWith(1, 'u1', expect.anything(), expect.anything(), 0, expect.anything())
-    expect(increment).toHaveBeenNthCalledWith(2, 'u2', expect.anything(), expect.anything(), 0, expect.anything())
+    expect(increment).toHaveBeenNthCalledWith(
+      1,
+      'u1',
+      expect.anything(),
+      expect.anything(),
+      0,
+      expect.anything()
+    )
+    expect(increment).toHaveBeenNthCalledWith(
+      2,
+      'u2',
+      expect.anything(),
+      expect.anything(),
+      0,
+      expect.anything()
+    )
   })
 
   it('lets the request through, and logs, when the storage fails', async () => {
