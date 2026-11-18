@@ -25,6 +25,7 @@ import {
   OrderResourceTypes,
   OrderStatus,
   PackingNoteNotice,
+  PaymentStatus,
   PLUGIN_INSTALLATION_RESOURCE_TYPE,
   PickupResourceTypes,
   ProductResourceTypes,
@@ -1083,16 +1084,16 @@ export class NotificationsEventsListener {
 
   // A prepaid order was cancelled after its payment was booked (TDD_18 §4.2 E1, HC-105): the customer's advance is owed and no entry pays it
   // back by itself (the money leaves when a person refunds it). Whoever may move money in the store is told, once per order until read. An
-  // order whose payment was never booked (cancelled first, or paid before the books) has no advance and tells nobody.
-  @OnEvent(Events.ORDER_STATUS_CHANGED)
-  async onPaidOrderCancelled(payload: OrderStatusChangedPayload): Promise<void> {
-    if (payload.to !== OrderStatus.CANCELLED) return
+  // order whose payment was never booked (cancelled first, or paid before the books) has no advance and tells nobody, and neither does one
+  // whose payment already went back. The notice links to nothing: who moves money may not read orders.
+  @OnEvent(Events.ORDER_CANCELLED)
+  async onPaidOrderCancelled(payload: OrderEventPayload): Promise<void> {
     try {
       const order = await this.prisma.client.order.findFirst({
         where: { id: payload.orderId, storeId: payload.storeId },
-        select: { store: { select: { organizationId: true } } }
+        select: { paymentStatus: true, store: { select: { organizationId: true } } }
       })
-      if (order === null) return
+      if (order === null || order.paymentStatus !== (PaymentStatus.COMPLETED as string)) return
       const advance = await this.prisma.client.journalEntry.findUnique({
         where: {
           organizationId_idempotencyKey: {
@@ -1106,15 +1107,15 @@ export class NotificationsEventsListener {
       const members = await this.membersWith(
         payload.storeId,
         [Permissions.FINANCE_MOVE_MONEY, Permissions.FINANCE_POST_MANUAL],
-        null
+        null,
+        Permissions.FINANCE_VIEW
       )
       await this.notifications.sendToUsersOnce(members, {
         storeId: payload.storeId,
         type: NotificationTypes.FINANCE_ADVANCE_OWED,
         params: { orderNumber: payload.orderNumber },
-        resourceType: OrderResourceTypes.ORDER,
-        resourceId: payload.orderId,
-        actionPath: AppPaths.store.order(payload.storeId, payload.orderId)
+        resourceType: FinanceResourceTypes.POSTING,
+        resourceId: `advance:${payload.orderId}`
       })
     } catch (error) {
       this.logger.error(

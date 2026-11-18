@@ -156,7 +156,7 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.WEBHOOK_AUTO_DISABLED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.PLUGIN_ERROR]: { severity: ERROR, channels: [IN_APP] },
   [NotificationTypes.FINANCE_POSTING_FAILED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
-  [NotificationTypes.FINANCE_ADVANCE_OWED]: { severity: WARNING, channels: [IN_APP] },
+  [NotificationTypes.FINANCE_ADVANCE_OWED]: { severity: WARNING, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FINANCE_CHAIN_BROKEN]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FISCAL_DOCUMENT_REJECTED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FISCAL_DOCUMENT_STUCK]: { severity: ERROR, channels: [IN_APP, EMAIL] },

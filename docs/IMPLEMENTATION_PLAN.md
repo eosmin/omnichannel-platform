@@ -2003,8 +2003,8 @@ model of a connection and the prepaid purchase and consumption of guides: an acc
   (i) A refund recorded for a return whose order is `REFUNDED` before delivery leaves E3 as `source_not_ready` (HC-105 point 2) and a prepaid order cancelled after E1
   has no entry (HC-105 point 3): the next PRs of the fix `refund-entry` series, named in this list when they open.
 - [x] **Fix PR `cancelled-advance-notice` (QA 2026-11-16, HC-105 point 3, AUT-R2-012, V07; no step number).** A prepaid order cancelled after its payment was booked (E1) left `CUSTOMER_ADVANCES` owed to the customer
-  with no entry, no failure and no notice. New notification `finance.advance_owed` (in-app, warning), sent once per order until read, on `order.status_changed` to `CANCELLED`, to who holds `finance:move_money` or
-  `finance:post_manual` (and may read orders) in the store, only when `order:<id>:payment` is in the books. Files: `notification-constants.ts`, `notifications-events.listener.ts`, `messages/{es,en}.json`, its spec.
+  with no entry, no failure and no notice. New notification `finance.advance_owed` (in-app and email, warning), sent once per order until read, on `order.cancelled`, to who holds `finance:move_money` or
+  `finance:post_manual` and `finance:view` in the store (it links to nothing: who moves money may not read orders), only when `order:<id>:payment` is in the books and the payment is still `COMPLETED`. Files: `notification-constants.ts`, `notifications-events.listener.ts`, `messages/{es,en}.json`, its spec.
   **Decisions (rule 12):** (1) **A notice, not an entry.** The books are right: the money is owed until it goes back, and a cancellation says nothing about whether it did (a card refunded by the processor, a
   transfer sent, nothing yet), so an automatic refund entry would invent a cash movement (TDD_18 §4.2: the entry follows the money). Rejected: reversing E1 on cancel (Dr advances, Cr the payment account). (2) The person
   refunds and records it as a transfer or manual entry (`finance:move_money`, `finance:post_manual`), the path the TDD gives for money that leaves without a return. **Debts:** (a) **[ACCOUNTANT]** whether a
