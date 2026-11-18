@@ -656,6 +656,32 @@ describe('The books of an organization', () => {
       expect(logged[0]?.metadata).toMatchObject({ role: AccountRole.CASH_DEFAULT, to: target })
     })
 
+    it('keeps the account of a role that holds a balance once the account has entries, and lets the same account go through (HC-119)', async () => {
+      const inventory = accounts['1301'] ?? ''
+      await postEntry(entryBody('1301', CASH, 100))
+      const put = (accountId: string) =>
+        asAdminA()
+          .put(ApiRoutes.finance.accountRoles.byRole(AccountRole.INVENTORY))
+          .send({ accountId })
+
+      const moved = await put(accounts['1401'] ?? '')
+
+      expect(moved.status).toBe(CONFLICT)
+      expect(errorOf(moved).metadata).toMatchObject({
+        conflict: FinanceConflicts.ROLE_HAS_HISTORY,
+        role: AccountRole.INVENTORY,
+        accountId: inventory
+      })
+      const stored = await owner.accountRoleMapping.findUniqueOrThrow({
+        where: {
+          organizationId_role: { organizationId: ctx.orgA.id, role: AccountRole.INVENTORY }
+        }
+      })
+      expect(stored.accountId).toBe(inventory)
+      // The same account is no move
+      expect((await put(inventory)).status).toBe(OK)
+    })
+
     it('refuses a role or a payment method an account of a type that does not fit (LED-154, LED-163)', async () => {
       const expense = accounts['6112'] ?? ''
       const income = accounts['4101'] ?? ''

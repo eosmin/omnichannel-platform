@@ -10,7 +10,8 @@ import {
   type AccountType,
   FinanceConflicts,
   FinanceResourceTypes,
-  type PaymentMethod
+  type PaymentMethod,
+  RolesPinnedByHistory
 } from '@platform/core/domain'
 import { ErrorCodes, resourceConflict, resourceNotFound } from '@platform/core/errors'
 import { financeRefusal } from '@platform/core/finance-ledger'
@@ -155,6 +156,24 @@ export class FinanceSettingsService {
         where: { organizationId_role: { organizationId, role } },
         select: { accountId: true }
       })
+      if (
+        current !== null &&
+        current.accountId !== body.accountId &&
+        (RolesPinnedByHistory as readonly string[]).includes(role)
+      ) {
+        // The balance of the role is on its account: pointing the role elsewhere splits it between two (HC-119)
+        const used = await tx.journalLine.findFirst({
+          where: { organizationId, accountId: current.accountId },
+          select: { id: true }
+        })
+        if (used !== null) {
+          throw resourceConflict('the account of the role has entries', {
+            conflict: FinanceConflicts.ROLE_HAS_HISTORY,
+            role,
+            accountId: current.accountId
+          })
+        }
+      }
       await tx.accountRoleMapping.upsert({
         where: { organizationId_role: { organizationId, role } },
         create: { organizationId, role, accountId: body.accountId },

@@ -122,6 +122,17 @@ export class FinanceTaxRatesService {
           }
         }
         if (data['outputAccountId'] !== undefined || data['inputAccountId'] !== undefined) {
+          // The tax already posted stays where it was: the report of VAT and the account would disagree (HC-119)
+          const posted = await tx.journalLine.findFirst({
+            where: { organizationId, taxRateId: id },
+            select: { id: true }
+          })
+          if (posted !== null) {
+            throw conflict(
+              'the tax rate has posted entries',
+              FinanceConflicts.TAX_RATE_ACCOUNT_HAS_HISTORY
+            )
+          }
           await this.assertAccounts(
             tx,
             organizationId,

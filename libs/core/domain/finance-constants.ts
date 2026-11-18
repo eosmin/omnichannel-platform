@@ -194,6 +194,20 @@ export enum AccountRole {
   UNCATEGORIZED_EXPENSE = 'uncategorized_expense'
 }
 
+// The roles that hold a balance a reader adds up on one account: moving one of them once its account has entries splits the balance
+// (the debt of a supplier on two accounts, the stock on two). A role of the income statement is not here: its past stays in the
+// period it was posted to (HC-119).
+export const RolesPinnedByHistory: readonly AccountRole[] = [
+  AccountRole.INVENTORY,
+  AccountRole.INVENTORY_IN_TRANSIT,
+  AccountRole.RECEIVABLE_CARRIERS,
+  AccountRole.CUSTOMER_ADVANCES,
+  AccountRole.PAYABLE_SUPPLIERS,
+  AccountRole.PAYABLE_CARRIERS,
+  AccountRole.VAT_OUTPUT,
+  AccountRole.VAT_INPUT
+]
+
 // The types of account each role may point at, and the payment methods (LED-154, LED-163). The TDD does not tabulate them, so the
 // table is read off the template of the chart (`templates/sv.ts`): what each role holds there is its type here, widened only where a
 // chart can reasonably book the same thing in a neighbour type (a cost of goods in expenses, a rounding that goes either way). A
@@ -451,6 +465,12 @@ export const FinanceConflicts = {
   TAX_RATE_INACTIVE: 'tax_rate_inactive',
   // The accounts of a rate: the tax owed is a liability, the tax to credit is an asset, and they are not the same account
   TAX_RATE_ACCOUNT_TYPE: 'tax_rate_account_type',
+  // A rate that already has posted entries keeps its accounts: moving them would split the tax between two accounts and take the
+  // posted tax out of the report of VAT (HC-119)
+  TAX_RATE_ACCOUNT_HAS_HISTORY: 'tax_rate_account_has_history',
+  // A role that holds a balance (what is owed, the stock, the tax) keeps its account once the account has entries: the balance would
+  // be split between two accounts. The way out is a reclassifying entry, then the change (HC-119)
+  ROLE_HAS_HISTORY: 'role_has_history',
   // The key of a request that registered another transaction: a retry sends the same content, never another
   TRANSACTION_KEY_REUSED: 'transaction_key_reused',
   // A transaction is voided once; the reversing entry is in the journal
