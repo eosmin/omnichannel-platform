@@ -10,6 +10,7 @@ import {
   CredentialsUnreadableError,
   errorName,
   providerText,
+  storedHealthReason,
   withTimeout
 } from '@platform/channels/connections'
 import { AuditAction } from '@platform/core/audit'
@@ -207,7 +208,8 @@ export class ChannelConnectionsService {
       accountName: row.displayName,
       status: enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status'),
       lastHealthyAt: row.lastHealthyAt,
-      lastError: row.lastError,
+      // Cleaned again on the way out: what an earlier version stored is bounded and free of tags and credentials too
+      lastError: storedHealthReason(row.lastError),
       createdAt: row.createdAt,
       capabilities: this.registry.capabilitiesOf(row.pluginId),
       profile: this.registry.hasCapability(row.pluginId, ChannelCapability.CUSTOMER_PROFILE)

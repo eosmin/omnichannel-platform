@@ -125,6 +125,9 @@ function redactSecrets(text: string): string {
     )
 }
 
+// An HTML or XML tag, opening, closing or a comment/doctype start: no nested angle bracket, so the match is linear
+const MARKUP_TAG = /<[/!?]?[A-Za-z][^<>]*>/g
+
 const HIDDEN = new RegExp(`[\\p{Cc}\\p{Zl}\\p{Zp}${HIDDEN_SOURCE}]+`, 'gu')
 // What `providerErrorText` also removes, because inside the name of a credential they split it: the
 // joiners, the soft hyphen, the other format characters, the fillers and the variation selectors
@@ -132,6 +135,19 @@ const SPLITTING = new RegExp(
   String.raw`(?:\p{Cf}|\p{Variation_Selector}|\u034F|\u115F|\u1160|\u17B4|\u17B5|\u180E|\u2800|\u3164|[${HIDDEN_SOURCE}])+`,
   'gu'
 )
+
+// A tag that was split by another (`<scr<b>ipt>`) is whole once the inner one is gone: the pass repeats until the text
+// stops changing (it only shrinks, and the passes are few), and a bracket that is still left of a nest that deep goes too
+const MAX_MARKUP_PASSES = 8
+function withoutMarkup(text: string): string {
+  let current = text
+  for (let pass = 0; pass < MAX_MARKUP_PASSES; pass += 1) {
+    const next = clean(current.replace(MARKUP_TAG, ' '))
+    if (next === current) return current
+    current = next
+  }
+  return current.replace(MARKUP_TAG, ' ').replace(/[<>]/g, ' ')
+}
 
 function clean(text: string): string {
   return text.replace(HIDDEN, ' ').replace(/\s+/g, ' ').trim()
@@ -150,7 +166,8 @@ export function providerErrorText(text: string, max: number): string {
     .slice(0, window)
     .join('')
     .replace(SPLITTING, '')
-  return Array.from(redactSecrets(clean(raw)))
+  // A reason is plain text: a tag a provider or a plugin put in it is not kept, whatever shows it later
+  return Array.from(redactSecrets(withoutMarkup(clean(raw))))
     .slice(0, max)
     .join('')
 }
