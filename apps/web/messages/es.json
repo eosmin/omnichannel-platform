@@ -6772,7 +6772,13 @@
         "rejected": "Se rechazó la sugerencia.",
         "confirm": "Confirmar",
         "confirmNamed": "Confirmar el asiento {number}",
-        "confirmed": "Se confirmó el par."
+        "confirmed": "Se confirmó el par.",
+        "matchedWithGroup": "Conciliada con un grupo de {count} asientos",
+        "groupPiecesLabel": "Asientos del grupo",
+        "undoGroup": "Deshacer el grupo",
+        "undoGroupTitle": "¿Deshacer este grupo?",
+        "undoGroupDescription": "Los asientos y la línea del extracto quedan como están, pero todo el grupo deja de contar como conciliado.",
+        "group": "Conciliar como grupo"
       },
       "draft": {
         "title": "Cómo se registraría esta línea",
@@ -6792,6 +6798,27 @@
         "memo": "Nota",
         "useAsMemo": "Usar el texto del extracto como nota",
         "dropMemo": "Dejar la nota vacía"
+      },
+      "group": {
+        "title": "Conciliar con varios asientos",
+        "description": "Elige los asientos de los libros que, juntos, son este movimiento del extracto. La suma debe ser exacta al centavo.",
+        "line": "Línea del extracto del {date} por {amount}",
+        "feeHint": "Un depósito que llega neto de comisión: registra antes la comisión como gasto desde la misma cuenta y elige aquí ambos asientos.",
+        "candidatesLabel": "Asientos abiertos de los libros",
+        "entry": "Asiento {number} del {date}",
+        "empty": "Los libros no tienen asientos abiertos en esta cuenta para agrupar.",
+        "hasMore": "Solo se muestran los asientos más recientes.",
+        "statement": "Línea del extracto",
+        "chosen": "{count, plural, =0 {Ningún asiento elegido} one {# asiento elegido} other {# asientos elegidos}}",
+        "difference": "Diferencia",
+        "needTwo": "Elige dos o más asientos.",
+        "missing": "Faltan {amount}: elige más asientos.",
+        "over": "Sobran {amount}: quita un asiento.",
+        "exact": "Los asientos suman exactamente.",
+        "tooMany": "Un grupo tiene como máximo {max} asientos.",
+        "cancel": "Cancelar",
+        "confirm": "Confirmar grupo",
+        "confirmed": "El grupo se confirmó."
       }
     },
     "purchases": {
@@ -6904,6 +6931,55 @@
         "confirmDescription": "No se puede deshacer: el reverso queda en los libros para siempre y la factura vuelve a quedar por pagar.",
         "confirm": "Anular pago",
         "done": "Pago anulado."
+      },
+      "paymentReturn": {
+        "title": "Registrar la devolución de un pago",
+        "description": "El proveedor devolvió todo o parte de este pago: el banco lo rebotó o lo regresó. El pago queda como estaba y lo que se le debe al proveedor vuelve a subir.",
+        "formLabel": "Devolución de un pago",
+        "ofPayment": "Pago de {amount}.",
+        "needsBooks": "Elegir la cuenta a la que volvió el dinero requiere permiso para leer los libros (finance:view). Pídelo a un administrador.",
+        "loading": "Leyendo las cuentas…",
+        "fields": {
+          "account": "El dinero volvió a",
+          "accountHint": "Una cuenta de caja, banco o billetera.",
+          "pickAccount": "Elige una cuenta…",
+          "amount": "Monto (USD)",
+          "amountHint": "Nunca más de lo que queda del pago.",
+          "returnedOn": "Devuelto el",
+          "dateHint": "Año-mes-día, no antes del pago y no en el futuro.",
+          "reference": "Referencia (opcional)"
+        },
+        "problems": {
+          "receivedIntoAccountId": "Elige la cuenta a la que volvió el dinero.",
+          "amount": "Escribe un monto mayor que 0 y no mayor que el pago, con máximo dos decimales.",
+          "returnedOn": "Escribe un día real como año-mes-día, no antes del pago y no en el futuro.",
+          "reference": "La referencia es demasiado larga."
+        },
+        "cancel": "Cancelar",
+        "submit": "Registrar devolución",
+        "done": "Devolución registrada.",
+        "accountsFailed": "No se pudieron leer las cuentas. Cierra esto e inténtalo de nuevo."
+      },
+      "paymentReturns": {
+        "toggle": "Devoluciones",
+        "record": "Registrar una devolución",
+        "loading": "Leyendo las devoluciones…",
+        "none": "No se ha devuelto nada de este pago.",
+        "voided": "Anulada",
+        "void": "Anular",
+        "loadMore": "Cargar más",
+        "voidTitle": "Anular esta devolución",
+        "voidDescription": "La devolución queda en el diario y se registra un asiento de reversa. La deuda con el proveedor vuelve a lo que era.",
+        "voidReason": "Motivo",
+        "voidSubmit": "Anular devolución",
+        "voidConfirmTitle": "¿Anular esta devolución?",
+        "voidConfirmDescription": "Esto no se puede deshacer: la reversa queda en los libros para siempre.",
+        "voidConfirm": "Anular devolución",
+        "voidDone": "Devolución anulada.",
+        "loadMoreFailed": "No se pudieron leer las siguientes devoluciones. Inténtalo de nuevo.",
+        "recordOf": "Registrar una devolución del pago de {amount}",
+        "voidOf": "Anular la devolución de {amount}",
+        "toggleOf": "Devoluciones del pago de {amount}"
       },
       "reason": {
         "required": "Escribe el motivo.",

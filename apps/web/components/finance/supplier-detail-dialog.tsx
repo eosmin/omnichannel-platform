@@ -18,6 +18,7 @@ import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
 
 import type { PaymentTarget } from './payment-dialog'
+import { PaymentReturns } from './payment-returns'
 
 // One supplier: what is owed to it, and the payments made to it, the newest first (TDD_18 §2.7). Paying and voiding are the page's
 // dialogs: this one only asks for them.
@@ -165,6 +166,7 @@ function Detail({
                     {t('void')}
                   </Button>
                 ) : null}
+                <PaymentReturns payment={payment} canMoveMoney={canPay} />
               </li>
             ))}
           </ul>

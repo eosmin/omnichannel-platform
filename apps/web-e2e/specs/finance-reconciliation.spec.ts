@@ -97,6 +97,9 @@ test.describe('Finance → bank reconciliation', () => {
     // The same day and the same reference as the first line of the statement, and a day apart for the third
     await spend(day('03'), 1500, 'Fuel', 'REF-FUEL-77')
     await spend(day('04'), 2500, 'Office supplies')
+    // Two entries that together are the 99.99 of the unknown charge, and that no suggestion offers (their amounts are not its amount)
+    await spend(day('09'), 6000, 'Group part one')
+    await spend(day('10'), 3999, 'Group part two')
   })
 
   test.afterAll(async () => {
@@ -263,6 +266,62 @@ test.describe('Finance → bank reconciliation', () => {
     await expectDialogFitsThePhoneWidth(page, draft)
     await draft.getByRole('button', { name: reconciliation.draft.close, exact: true }).click()
     await expect(draft).toHaveCount(0)
+  })
+
+  test('a person matches one line with two entries that add up to it, and takes the group back whole', async ({
+    page
+  }) => {
+    await signIn(page, ownerEmail)
+    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.goto(AppPaths.finance.reconciliation)
+    await page
+      .getByTestId('bank-account-picker')
+      .getByLabel(reconciliation.account, { exact: true })
+      .selectOption({ label: bankLabel })
+    await page
+      .getByTestId('bank-import-row')
+      .first()
+      .getByRole('button', { name: imports.open, exact: true })
+      .click()
+    const statement = page.getByTestId('bank-statement')
+    // The unknown charge of 99.99: the second line of data
+    const charge = statement.locator('[data-testid="bank-line-row"][data-line-no="3"]')
+    await expect(charge).toHaveAttribute('data-state', 'unmatched')
+    await charge.getByTestId('bank-line-group').click()
+    const dialog = page.getByTestId('bank-group-dialog')
+    await expectDialogFitsThePhoneWidth(page, dialog)
+    const confirm = dialog.getByTestId('bank-group-confirm')
+    const candidates = dialog.getByTestId('bank-group-candidate')
+    // Nothing is chosen: the whole amount is missing and Confirm waits
+    await expect(confirm).toBeDisabled()
+    const partOne = dialog
+      .locator('li', { hasText: 'Group part one' })
+      .getByTestId('bank-group-candidate')
+    const partTwo = dialog
+      .locator('li', { hasText: 'Group part two' })
+      .getByTestId('bank-group-candidate')
+    await partOne.check()
+    await expect(dialog.getByTestId('bank-group-sum')).toHaveAttribute('data-exact', 'false')
+    await expect(confirm).toBeDisabled()
+    await partTwo.check()
+    await expect(dialog.getByTestId('bank-group-sum')).toHaveAttribute('data-exact', 'true')
+    await expect(confirm).toBeEnabled()
+    // Taking one out leaves the sum short again
+    await partTwo.uncheck()
+    await expect(confirm).toBeDisabled()
+    await partTwo.check()
+    expect(await candidates.count()).toBeGreaterThanOrEqual(2)
+    await confirm.click()
+    await expect(dialog).toHaveCount(0)
+    await expect(charge).toHaveAttribute('data-state', 'matched')
+    await expect(charge.getByTestId('bank-line-group-pieces').getByRole('listitem')).toHaveCount(2)
+
+    // One decision takes the whole group back, after asking
+    await charge.getByTestId('bank-line-undo').click()
+    const undoing = page.getByRole('alertdialog')
+    await expect(undoing.getByText(lines.undoGroupDescription)).toBeVisible()
+    await undoing.getByRole('button', { name: lines.undoGroup, exact: true }).click()
+    await expect(charge).toHaveAttribute('data-state', 'unmatched')
   })
 
   test('the exact matches are confirmed in bulk only after the person says yes', async ({
