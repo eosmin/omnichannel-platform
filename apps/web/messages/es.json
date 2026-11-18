@@ -6954,6 +6954,7 @@
         "orderedOn": "Pedida el {date}",
         "expectedOn": "se espera el {date}",
         "markOrdered": "Marcar como pedida",
+        "noCancelHint": "Una orden de la que ya se recibió mercadería no se cancela. Cierra lo que falta por llegar con «Cerrar con faltante»; si hay que devolver mercadería al proveedor, la salida es una devolución o nota de crédito del proveedor.",
         "markedOrdered": "Marcada como pedida.",
         "receive": "Recibir mercadería",
         "close": "Cerrar con faltante",
