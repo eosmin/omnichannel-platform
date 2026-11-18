@@ -83,3 +83,11 @@ export const EmailMetricStatus = {
   COMPLAINED: 'complained'
 } as const
 export type EmailMetricStatusType = (typeof EmailMetricStatus)[keyof typeof EmailMetricStatus]
+
+// The `target` label of MetricNames.WEBHOOK_DELIVERIES: whose webhook was delivered, so the counter
+// does not add a store's own webhooks and the webhooks of a plugin into one number.
+export const WebhookMetricTarget = {
+  TENANT: 'tenant',
+  PLUGIN: 'plugin'
+} as const
+export type WebhookMetricTargetType = (typeof WebhookMetricTarget)[keyof typeof WebhookMetricTarget]
