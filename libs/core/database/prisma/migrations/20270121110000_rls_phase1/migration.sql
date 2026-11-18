@@ -60,8 +60,9 @@ BEGIN
 END
 $$;
 
--- 4. webhook_deliveries has no store_id: it belongs to a webhook or to a plugin installation. The predicate reads the store of the
--- parent itself (not through the policy of the parent), so it holds whether or not the parent is enforced yet.
+-- 4. webhook_deliveries has no store_id: it belongs to a webhook or to a plugin installation. The predicate compares the store_id
+-- of the parent with the context itself, so it holds even while the parent table is not enforced (once it is, the policy of the
+-- parent applies to the sub-select as well, with the same result).
 DO $$
 DECLARE
   owner_role name;

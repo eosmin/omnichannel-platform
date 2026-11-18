@@ -22,9 +22,11 @@ interface Harness {
 
 // The write runs in a transaction of its own (detachedTenantTransaction) with the store of the entry as its context, and goes in
 // with createMany (no RETURNING): the double keeps the context it was asked for so the cases can see it
+let current: { storeIds: readonly string[]; organizationIds: readonly string[] } | undefined
 const contexts: Array<{ storeIds: readonly string[]; organizationIds: readonly string[] }> = []
 function prismaOf(create: Create): PrismaService {
   return {
+    currentTenantContext: () => current,
     detachedTenantTransaction: (
       context: { storeIds: readonly string[]; organizationIds: readonly string[] },
       fn: () => Promise<unknown>
@@ -156,6 +158,36 @@ describe('AuditService', () => {
     ])
   })
 
+  it('writes inside the transaction of the request when its context already holds the store of the entry', async () => {
+    contexts.length = 0
+    current = { storeIds: [STORE_ID], organizationIds: [] }
+    try {
+      const { service, create } = build()
+
+      service.log({
+        action: AuditAction.USER_LOGOUT,
+        actor: { userId: USER_ID },
+        storeId: STORE_ID
+      })
+      service.log({ action: AuditAction.USER_LOGOUT, actor: { userId: USER_ID } })
+      await service.onModuleDestroy()
+
+      expect(create).toHaveBeenCalledTimes(2)
+      expect(contexts).toEqual([])
+      // An entry about another store is not in that context: it goes in a transaction of its own
+      const other = build()
+      other.service.log({
+        action: AuditAction.USER_LOGOUT,
+        actor: { userId: USER_ID },
+        storeId: 'another-store'
+      })
+      await other.service.onModuleDestroy()
+      expect(contexts).toEqual([{ storeIds: ['another-store'], organizationIds: [] }])
+    } finally {
+      current = undefined
+    }
+  })
+
   it('writes the entry without making the caller wait for it', async () => {
     const { service, create } = build()
 
@@ -219,7 +251,7 @@ describe('AuditService', () => {
     expect(stopped).toBe(true)
   })
 
-  it('refuses entries past the limit of writes waiting, counting and logging each one', () => {
+  it('refuses entries past the limit of writes waiting, counting and logging each one, and holds at most four connections', async () => {
     const { service, create, error, inc } = build(
       createMock(() => new Promise<object>(() => undefined))
     )
@@ -229,7 +261,9 @@ describe('AuditService', () => {
     }
     service.log({ action: AuditAction.USER_LOGOUT, actor: { system: true } })
 
-    expect(create).toHaveBeenCalledTimes(1000)
+    // The 1000 writes wait for a turn: only four of them have a connection of their own at a time
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(create).toHaveBeenCalledTimes(4)
     expect(inc).toHaveBeenCalledWith({ reason: 'queue_full' })
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({ reason: 'queue_full' }),

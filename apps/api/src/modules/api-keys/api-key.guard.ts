@@ -72,6 +72,9 @@ function invalidKey(): PlatformException {
 // @RequireApiKeyScopes. The key is found by its hash, must be active and unexpired, and a scope it does not hold is a 403.
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
+  // When this process last tried to write the last use of each key: a busy key opens one transaction a minute, not one per call
+  private readonly lastUsedWrites = new Map<string, number>()
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly reflector: Reflector,
@@ -148,7 +151,16 @@ export class ApiKeyGuard implements CanActivate {
     }
 
     request.apiKey = { keyId: key.id, storeId: key.storeId, scopes }
-    // Written at most once a minute per key, and never waited for: a busy key would otherwise turn every call into a write
+    // Written at most once a minute per key, and never waited for: a busy key would otherwise turn every call into a write (and
+    // a transaction with a connection of its own)
+    const lastTry = this.lastUsedWrites.get(key.id)
+    if (
+      lastTry !== undefined &&
+      now.getTime() - lastTry < ApiKeyLimits.LAST_USED_WRITE_INTERVAL_MS
+    ) {
+      return true
+    }
+    this.lastUsedWrites.set(key.id, now.getTime())
     void this.prisma
       .tenantTransaction(tenant, () =>
         this.prisma.client.apiKey.updateMany({
