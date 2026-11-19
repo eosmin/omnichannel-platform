@@ -290,17 +290,25 @@ describe('Marking unread and acting on many conversations', () => {
 
     it('records what was asked in the audit entry: the params and the filter', async () => {
       const conversation = await mk({ assignedTo: ctx.agentA.id })
+      const where = {
+        action: AuditAction.BULK_ACTION_EXECUTED,
+        userId: ctx.adminA.id,
+        metadata: { path: ['action'], equals: BulkActions.ASSIGN_TO_AGENT }
+      }
+      // Other tests of the file wrote entries of the same kind: wait for the one more this call makes, or the last one read is an older one
+      const before = await owner.auditLog.count({ where })
 
       await bulk(asAdmin, BulkActions.ASSIGN_TO_AGENT, ids(conversation), {
         userId: agent2.id
       }).expect(OK)
 
-      const entries = await waitForAuditEntries(owner, {
-        action: AuditAction.BULK_ACTION_EXECUTED,
-        userId: ctx.adminA.id,
-        metadata: { path: ['action'], equals: BulkActions.ASSIGN_TO_AGENT }
-      })
-      expect(entries.at(-1)?.metadata).toMatchObject({ params: { userId: agent2.id } })
+      // At least one more than before (the poll is not satisfied by an older entry); an entry of another test that lands late may make it
+      // two, so the content is looked for among them and not read from the last
+      const entries = await waitForAuditEntries(owner, where, before + 1)
+      expect(entries.length).toBeGreaterThanOrEqual(before + 1)
+      expect(entries.map(entry => entry.metadata)).toContainEqual(
+        expect.objectContaining({ params: { userId: agent2.id } })
+      )
     })
 
     it('assigns to the caller, to someone, and releases', async () => {
