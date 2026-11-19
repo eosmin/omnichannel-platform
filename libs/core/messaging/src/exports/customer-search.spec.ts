@@ -1,4 +1,4 @@
-import { customerSearchWhere, phoneDigitsOf } from './customer-search'
+import { customerSearchPatterns, customerSearchWhere, phoneDigitsOf } from './customer-search'
 
 const STORE = '11111111-1111-4111-8111-111111111111'
 
@@ -17,44 +17,33 @@ describe('phoneDigitsOf', () => {
   })
 })
 
-describe('the customers a search text finds', () => {
+describe('the customers of a store', () => {
   it('scopes to the store and leaves the absorbed customers out', () => {
-    expect(customerSearchWhere(STORE, undefined, '')).toEqual({
-      storeId: STORE,
-      mergedIntoId: null
-    })
+    expect(customerSearchWhere(STORE)).toEqual({ storeId: STORE, mergedIntoId: null })
   })
+})
 
-  it('compares the name with no accents and in lower case, so "jose" finds "José"', () => {
-    const where = customerSearchWhere(STORE, 'JOSÉ Pérez', 'jose perez')
-    expect(where.OR?.[0]).toEqual({ nameSearch: { contains: 'jose perez' } })
+describe('the patterns a search text is looked for with', () => {
+  it('compares the name folded (no accents, lower case), so "jose" finds "José"', () => {
+    expect(customerSearchPatterns('JOSÉ Pérez', 'jose perez').name).toBe('%jose perez%')
   })
 
   it('asks nothing of the name when the text folds to nothing: an empty LIKE would match everybody', () => {
-    const where = customerSearchWhere(STORE, '\u0301\u0301', '')
-    expect(where.OR?.some(clause => 'nameSearch' in clause)).toBe(false)
+    expect(customerSearchPatterns('\u0301\u0301', '').name).toBeNull()
   })
 
-  it('reads the name in the folded text it is given', () => {
-    expect(customerSearchWhere(STORE, 'Søren', 'soren').OR?.[0]).toEqual({
-      nameSearch: { contains: 'soren' }
-    })
+  it('compares the email as typed', () => {
+    expect(customerSearchPatterns('Søren@X.com', 'soren@x.com').email).toBe('%Søren@X.com%')
   })
 
-  it('escapes the wildcards of LIKE in every clause', () => {
-    const where = customerSearchWhere(STORE, '100%_a', '100%_a')
-    expect(where.OR?.[0]).toEqual({ nameSearch: { contains: '100\\%\\_a' } })
-    expect(where.OR?.[1]).toEqual({ email: { contains: '100\\%\\_a', mode: 'insensitive' } })
+  it('escapes the wildcards of LIKE in the name and in the email', () => {
+    const patterns = customerSearchPatterns('100%_a', '100%_a')
+    expect(patterns.name).toBe('%100\\%\\_a%')
+    expect(patterns.email).toBe('%100\\%\\_a%')
   })
 
   it('looks for the digits in the phones only when the text is a phone', () => {
-    expect(customerSearchWhere(STORE, '7123-4567', '7123-4567').OR).toContainEqual({
-      phoneNormalized: { contains: '71234567' }
-    })
-    expect(
-      customerSearchWhere(STORE, 'Calle 123', 'calle 123').OR?.some(
-        clause => 'phoneNormalized' in clause
-      )
-    ).toBe(false)
+    expect(customerSearchPatterns('7123-4567', '7123-4567').phone).toBe('%71234567%')
+    expect(customerSearchPatterns('Calle 123', 'calle 123').phone).toBeNull()
   })
 })

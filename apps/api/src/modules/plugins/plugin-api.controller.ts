@@ -7,7 +7,7 @@ import { HttpStatusCodes } from '@platform/core/errors'
 import { NoStore, RateLimit, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { CurrentStore } from '../tenancy'
+import { CurrentStore, NoTenantTransaction } from '../tenancy'
 
 import { CurrentPluginInstallation, PluginApi } from './plugin-api.decorators'
 import { PluginSetupExchangeService, type PluginSetupResult } from './plugin-setup-exchange.service'
@@ -31,6 +31,9 @@ export class PluginApiController {
   // limited per address like the other routes whose credential is a secret in the body. The answer carries the key and must not be
   // stored by anything between the plugin and the platform.
   @Public()
+  @NoTenantTransaction(
+    'public: the exchange opens the context of the store of the code (JobContext.forStore)'
+  )
   @RateLimit(ThrottleProfiles.PUBLIC)
   @NoStore()
   @Post(PluginApiRoutes.setupExchange)

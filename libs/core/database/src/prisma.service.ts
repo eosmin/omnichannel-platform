@@ -293,6 +293,26 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.tenantTransaction({ storeIds: [storeId], organizationIds: [], userId }, work)
   }
 
+  // For the work of ONE person that has no store to name (their avatar, which belongs to them and to no store): the context holds the
+  // person alone, which is what the policy of the rows of a person reads (`app.user_id`). The context of the request when the interceptor
+  // opened it, which must then be this person's, or its own. It sees no store row: keep it to the person's own rows.
+  async inUserContext<T>(userId: string, work: () => Promise<T>): Promise<T> {
+    if (userId.trim() === '') throw new Error('inUserContext needs the person')
+    const current = this.currentTenantContext()
+    if (current !== undefined) {
+      // Only a context of the person alone: one with stores would let the work read beyond the person's own rows
+      if (
+        current.userId !== userId ||
+        current.storeIds.length > 0 ||
+        current.organizationIds.length > 0
+      ) {
+        throw new Error('this work runs in the context of another person, or of a store')
+      }
+      return work()
+    }
+    return this.tenantTransaction({ storeIds: [], organizationIds: [], userId }, work)
+  }
+
   // Services never call client.$transaction: they call this, which joins the tenant transaction
   // when there is one (a lint rule forbids the direct call).
   transaction<T>(

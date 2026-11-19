@@ -94,14 +94,18 @@ export class AvatarUploadsService {
 
     // A retry of a confirmation that went through answers with the same media; the scan is queued again
     // (same job id, so never twice): the first attempt may have died between the row and the queue
-    const existing = await this.findOwn(userId, body.mediaId)
+    const existing = await this.prisma.inUserContext(userId, () =>
+      this.findOwn(userId, body.mediaId)
+    )
     if (existing !== null) return this.again(existing, final, upload, userId)
 
     // Rows the person holds: a bound on what one account makes the scan and the worker do while
     // nothing is attached (the cleanup frees the unattached ones after a day)
-    const held = await this.prisma.client.media.count({
-      where: { storeId: null, purpose: MediaPurpose.AVATAR, uploadedBy: userId }
-    })
+    const held = await this.prisma.inUserContext(userId, () =>
+      this.prisma.client.media.count({
+        where: { storeId: null, purpose: MediaPurpose.AVATAR, uploadedBy: userId }
+      })
+    )
     if (held >= AvatarProcessing.MAX_ROWS_PER_USER) {
       throw new PlatformException(
         ErrorCodes.RATE_LIMIT_EXCEEDED,
@@ -130,31 +134,37 @@ export class AvatarUploadsService {
     // there since is refused instead of promoted
     if (!(await this.storage.copy(upload, final, stored.etag))) throw uploadVerificationFailed()
 
-    try {
-      await inSavepoint(() =>
-        this.prisma.client.media.create({
-          data: {
-            id: body.mediaId,
-            // The picture is the person's: no store, so deleting a store never takes it
-            storeId: null,
-            purpose: MediaPurpose.AVATAR,
-            uploadedBy: userId,
-            key: final,
-            filename,
-            contentType: body.contentType,
-            fileSize: body.fileSizeBytes,
-            status: MediaStatus.PENDING
-          },
-          select: ROW_SELECT
-        })
-      )
-    } catch (error) {
-      if (!isUniqueViolation(error)) throw error
-      // Two confirmations at once: the other one won
-      const winner = await this.findOwn(userId, body.mediaId)
-      if (winner === null) throw uploadVerificationFailed()
-      return this.again(winner, final, upload, userId)
-    }
+    // The row and, if another confirmation won, the row it made, in one short context of the person: the storage and the queue stay
+    // outside of it
+    const winner = await this.prisma.inUserContext(userId, async () => {
+      try {
+        await inSavepoint(() =>
+          this.prisma.client.media.create({
+            data: {
+              id: body.mediaId,
+              // The picture is the person's: no store, so deleting a store never takes it
+              storeId: null,
+              purpose: MediaPurpose.AVATAR,
+              uploadedBy: userId,
+              key: final,
+              filename,
+              contentType: body.contentType,
+              fileSize: body.fileSizeBytes,
+              status: MediaStatus.PENDING
+            },
+            select: ROW_SELECT
+          })
+        )
+        return null
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error
+        // Two confirmations at once: the other one won
+        const other = await this.findOwn(userId, body.mediaId)
+        if (other === null) throw uploadVerificationFailed()
+        return other
+      }
+    })
+    if (winner !== null) return this.again(winner, final, upload, userId)
 
     await this.queueScan(userId, body.mediaId)
     await this.dropStaging(upload)

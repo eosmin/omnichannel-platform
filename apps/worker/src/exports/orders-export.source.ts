@@ -1,4 +1,5 @@
-import type { PrismaService } from '@platform/core/database'
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one page or count; the file is written to the bucket outside of it
+import type { JobContext, PrismaService } from '@platform/core/database'
 import { calendarDayToDate, dateToCalendarDay } from '@platform/core/domain'
 import { ExportLimits } from '@platform/core/exports'
 import {
@@ -41,6 +42,7 @@ export const ORDER_COLUMNS = [
 
 export function ordersExportSource(
   prisma: PrismaService,
+  jobContext: JobContext,
   storeId: string,
   filters: OrdersExportFilters
 ): CsvSource {
@@ -77,74 +79,85 @@ export function ordersExportSource(
   })
   let resolved: Promise<ReturnType<typeof filtersOf>> | undefined
   const whereOf = (): Promise<ReturnType<typeof filtersOf>> =>
-    (resolved ??= orderTextCustomerIds(prisma, storeId, filters.q).then(filtersOf))
+    (resolved ??= jobContext
+      .forStore(storeId, () => orderTextCustomerIds(prisma, storeId, filters.q))
+      .then(filtersOf))
   return {
     columns: ORDER_COLUMNS,
-    count: async () => prisma.client.order.count({ where: await whereOf() }),
+    count: async () => {
+      const where = await whereOf()
+      return jobContext.forStore(storeId, () => prisma.client.order.count({ where }))
+    },
     rows: async function* () {
       // Keyset on the list's own order (newest first): a row deleted meanwhile cannot end the file early
       let after: { createdAt: Date; id: string } | undefined
       const where = await whereOf()
       for (;;) {
-        const orders = await prisma.client.order.findMany({
-          where: {
-            ...where,
-            ...(after === undefined
-              ? {}
-              : {
-                  OR: [
-                    { createdAt: { lt: after.createdAt } },
-                    { createdAt: after.createdAt, id: { lt: after.id } }
-                  ]
-                })
-          },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          take: ExportLimits.ROW_PAGE_SIZE,
-          select: {
-            id: true,
-            orderNumber: true,
-            createdAt: true,
-            status: true,
-            paymentStatus: true,
-            paymentMethod: true,
-            customerId: true,
-            customer: { select: { name: true, email: true, phone: true } },
-            subtotalCents: true,
-            shippingCents: true,
-            discountCents: true,
-            totalCents: true,
-            currency: true,
-            freeShipping: true,
-            priceApprovalStatus: true,
-            scheduledDeliveryDate: true,
-            confirmedAt: true,
-            shippedAt: true,
-            deliveredAt: true,
-            cancelledAt: true,
-            _count: { select: { items: true } }
-          }
-        })
+        const orders = await jobContext.forStore(storeId, () =>
+          prisma.client.order.findMany({
+            where: {
+              ...where,
+              ...(after === undefined
+                ? {}
+                : {
+                    OR: [
+                      { createdAt: { lt: after.createdAt } },
+                      { createdAt: after.createdAt, id: { lt: after.id } }
+                    ]
+                  })
+            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: ExportLimits.ROW_PAGE_SIZE,
+            select: {
+              id: true,
+              orderNumber: true,
+              createdAt: true,
+              status: true,
+              paymentStatus: true,
+              paymentMethod: true,
+              customerId: true,
+              customer: { select: { name: true, email: true, phone: true } },
+              subtotalCents: true,
+              shippingCents: true,
+              discountCents: true,
+              totalCents: true,
+              currency: true,
+              freeShipping: true,
+              priceApprovalStatus: true,
+              scheduledDeliveryDate: true,
+              confirmedAt: true,
+              shippedAt: true,
+              deliveredAt: true,
+              cancelledAt: true,
+              _count: { select: { items: true } }
+            }
+          })
+        )
         const last = orders.at(-1)
         if (last === undefined) return
         after = { createdAt: last.createdAt, id: last.id }
 
         const ids = orders.map(order => order.id)
         // The units of the whole page in ONE grouped read, and the lines whose price was changed
-        const units = await prisma.client.orderItem.groupBy({
-          by: ['orderId'],
-          where: { orderId: { in: ids }, order: { storeId } },
-          _sum: { quantity: true }
-        })
+        const units = await jobContext.forStore(storeId, () =>
+          prisma.client.orderItem.groupBy({
+            by: ['orderId'],
+            where: { orderId: { in: ids }, order: { storeId } },
+            _sum: { quantity: true }
+          })
+        )
         const unitsOf = new Map(units.map(row => [row.orderId, row._sum.quantity ?? 0]))
-        const modified = await prisma.client.orderItem.groupBy({
-          by: ['orderId'],
-          where: {
-            orderId: { in: ids },
-            order: { storeId },
-            originalUnitPriceCents: { not: null }
-          },
-          _count: { _all: true }
-        })
+        const modified = await jobContext.forStore(storeId, () =>
+          prisma.client.orderItem.groupBy({
+            by: ['orderId'],
+            where: {
+              orderId: { in: ids },
+              order: { storeId },
+              originalUnitPriceCents: { not: null }
+            },
+            _count: { _all: true }
+          })
+        )
         const modifiedIds = new Set(modified.map(row => row.orderId))
 
         for (const order of orders) {

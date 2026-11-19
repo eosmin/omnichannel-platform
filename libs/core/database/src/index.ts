@@ -1,6 +1,7 @@
 export { slugify } from './bootstrap-owner'
 export * from './context-resolvers'
 export * from './database.module'
+export * from './event-context'
 export * from './job-context'
 export * from './read-all-pages'
 export * from './worker-lists'

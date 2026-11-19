@@ -1,4 +1,6 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the file is written to the bucket outside of it
 import { Injectable } from '@nestjs/common'
+import type { Counter } from '@prometheus-io/client'
 import { UnrecoverableError } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
@@ -9,7 +11,7 @@ import {
   ReportFormatExtensions
 } from '@platform/core/analytics'
 import { AuditService } from '@platform/core/audit-module'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -20,11 +22,14 @@ import {
   mediaZipFiltersSchema,
   ordersExportFiltersSchema
 } from '@platform/core/messaging'
+import { MetricNames } from '@platform/core/metrics'
+import { InjectMetric } from '@platform/core/metrics-module'
 import {
   ExportAuditActions,
   ExportStatus,
   type ExportType,
-  ExportTypes
+  ExportTypes,
+  JobNames
 } from '@platform/core/queues'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -62,15 +67,27 @@ export class ExportGenerator {
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext,
+    @InjectMetric(MetricNames.WORKER_JOB_SUBJECT_MISSING)
+    private readonly subjectMissing: Counter<string>
   ) {
     this.logger.setContext(ExportGenerator.name)
   }
 
-  async generate(exportId: string, lastAttempt: boolean): Promise<void> {
-    const row = await this.prisma.client.export.findUnique({ where: { id: exportId } })
-    // Gone with its store, or already settled: a job that arrives twice makes the file once
-    if (row === null || row.status !== ExportStatus.PENDING) return
+  // The row is read inside the context of the store of the job: with row security on, a row of another store is as good as none
+  async generate(storeId: string, exportId: string, lastAttempt: boolean): Promise<void> {
+    const row = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.export.findFirst({ where: { id: exportId, storeId } })
+    )
+    if (row === null) {
+      // Not a quiet skip: a row that its own store cannot see is a fault to look into (a deleted export is the usual cause)
+      this.subjectMissing.inc({ job: JobNames.GENERATE_EXPORT })
+      this.logger.error({ exportId, storeId }, 'the export of the job was not found for its store')
+      return
+    }
+    // Already settled: a job that arrives twice makes the file once
+    if (row.status !== ExportStatus.PENDING) return
 
     const plan = this.planOf(row)
     if (plan === null) {
@@ -89,22 +106,24 @@ export class ExportGenerator {
         )
         return 0
       })
-      const progress = new ExportProgress(this.prisma, row, total)
+      const progress = new ExportProgress(this.prisma, this.jobContext, row, total)
       // A retry starts over: the bar of the attempt that died must not stay where it was
       progress.start()
       const { rowCount } = await plan.write(key, done => progress.report(done))
-      const settled = await this.prisma.client.export.updateMany({
-        // Not over a row that settled meanwhile
-        where: { id: row.id, storeId: row.storeId, status: ExportStatus.PENDING },
-        data: {
-          status: ExportStatus.READY,
-          key,
-          rowCount,
-          progress: null,
-          completedAt: new Date(),
-          error: null
-        }
-      })
+      const settled = await this.jobContext.forStore(row.storeId, () =>
+        this.prisma.client.export.updateMany({
+          // Not over a row that settled meanwhile
+          where: { id: row.id, storeId: row.storeId, status: ExportStatus.PENDING },
+          data: {
+            status: ExportStatus.READY,
+            key,
+            rowCount,
+            progress: null,
+            completedAt: new Date(),
+            error: null
+          }
+        })
+      )
       if (settled.count === 0) {
         // The row settled meanwhile (given up, failed): nothing will ever point at this file
         await this.discard(key)
@@ -155,7 +174,7 @@ export class ExportGenerator {
     if (type === ExportTypes.CUSTOMERS) {
       const parsed = customersExportFiltersSchema.safeParse(filters ?? {})
       if (!parsed.success) return null
-      const source = customersExportSource(this.prisma, storeId, parsed.data)
+      const source = customersExportSource(this.prisma, this.jobContext, storeId, parsed.data)
       return {
         extension: ExportFileExtensions.CSV,
         count: source.count,
@@ -165,7 +184,7 @@ export class ExportGenerator {
     if (type === ExportTypes.CONVERSATIONS) {
       const parsed = conversationsExportFiltersSchema.safeParse(filters)
       if (!parsed.success) return null
-      const source = conversationsExportSource(this.prisma, storeId, parsed.data)
+      const source = conversationsExportSource(this.prisma, this.jobContext, storeId, parsed.data)
       return {
         extension: ExportFileExtensions.CSV,
         count: source.count,
@@ -175,7 +194,7 @@ export class ExportGenerator {
     if (type === ExportTypes.ORDERS) {
       const parsed = ordersExportFiltersSchema.safeParse(filters ?? {})
       if (!parsed.success) return null
-      const source = ordersExportSource(this.prisma, storeId, parsed.data)
+      const source = ordersExportSource(this.prisma, this.jobContext, storeId, parsed.data)
       return {
         extension: ExportFileExtensions.CSV,
         count: source.count,
@@ -203,7 +222,7 @@ export class ExportGenerator {
     if (type === ExportTypes.MEDIA_ZIP) {
       const parsed = mediaZipFiltersSchema.safeParse(filters)
       if (!parsed.success) return null
-      const source = mediaZipSource(this.prisma, storeId, parsed.data)
+      const source = mediaZipSource(this.prisma, this.jobContext, storeId, parsed.data)
       return {
         extension: ExportFileExtensions.ZIP,
         count: source.count,
@@ -222,15 +241,17 @@ export class ExportGenerator {
 
   // Marks the row failed and tells its owner, only if this call is the one that settled it
   private async fail(row: ExportRow, code: string = ErrorCodes.EXPORT_FAILED): Promise<void> {
-    const settled = await this.prisma.client.export.updateMany({
-      where: { id: row.id, storeId: row.storeId, status: ExportStatus.PENDING },
-      data: {
-        status: ExportStatus.FAILED,
-        progress: null,
-        error: code,
-        completedAt: new Date()
-      }
-    })
+    const settled = await this.jobContext.forStore(row.storeId, () =>
+      this.prisma.client.export.updateMany({
+        where: { id: row.id, storeId: row.storeId, status: ExportStatus.PENDING },
+        data: {
+          status: ExportStatus.FAILED,
+          progress: null,
+          error: code,
+          completedAt: new Date()
+        }
+      })
+    )
     if (settled.count > 0) await this.announce(Events.EXPORT_FAILED, row)
   }
 
@@ -241,7 +262,9 @@ export class ExportGenerator {
     row: ExportRow
   ): Promise<void> {
     try {
-      await publishExportSettled(this.prisma, this.events, event, row)
+      await this.jobContext.forStore(row.storeId, () =>
+        publishExportSettled(this.prisma, this.events, event, row)
+      )
     } catch (error) {
       this.logger.warn(
         { exportId: row.id, errorName: errorName(error) },

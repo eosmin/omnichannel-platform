@@ -1,24 +1,5 @@
 {
-  "apps/worker/src/carriers/carrier-event-applier.service.ts": 5,
-  "apps/worker/src/carriers/carrier-event-replay.service.ts": 2,
-  "apps/worker/src/carriers/carrier-event-resolver.service.ts": 2,
-  "apps/worker/src/exports/analytics/analytics-export.writer.ts": 1,
-  "apps/worker/src/exports/analytics/report-table.ts": 1,
-  "apps/worker/src/exports/analytics/scheduled-report.runner.ts": 9,
-  "apps/worker/src/exports/conversations-export.source.ts": 3,
-  "apps/worker/src/exports/customers-export.source.ts": 5,
-  "apps/worker/src/exports/export-generator.service.ts": 3,
-  "apps/worker/src/exports/export-progress.ts": 1,
-  "apps/worker/src/exports/export-settled.ts": 1,
-  "apps/worker/src/exports/media-zip-export.source.ts": 3,
-  "apps/worker/src/exports/orders-export.source.ts": 4,
   "apps/worker/src/finance/fiscal-reconciler.service.ts": 2,
-  "apps/worker/src/notifications/email-digest.service.ts": 10,
-  "apps/worker/src/notifications/web-push-sender.service.ts": 5,
-  "apps/worker/src/retention/store-retention-enforcer.service.ts": 11,
   "apps/worker/src/shipping/bulk-labels-runner.service.ts": 9,
-  "apps/worker/src/shipping/pickup-evaluator.service.ts": 7,
-  "apps/worker/src/shipping/shipment-poller.service.ts": 2,
-  "apps/worker/src/webhooks/plugin-webhook-deliverer.service.ts": 7,
-  "apps/worker/src/webhooks/tenant-webhook-deliverer.service.ts": 4
+  "apps/worker/src/shipping/pickup-evaluator.service.ts": 7
 }
