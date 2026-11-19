@@ -5,7 +5,7 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { CacheKeys } from '@platform/core/cache'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CarrierId,
@@ -99,15 +99,18 @@ describe('The pickup scheduler (TDD_17 §4.10)', () => {
     queue = app.get<CapturedQueue>(getQueueToken(QueueNames.HEAVY_PROCESSING), { strict: false })
     sync = app.get(PickupSync, { strict: false })
     redis = app.get<Redis>(REDIS_CLIENT, { strict: false })
+    const prisma = app.get(PrismaService, { strict: false })
     evaluator = new PickupEvaluator(
-      app.get(PrismaService, { strict: false }),
+      prisma,
       registry,
       app.get(PickupsService, { strict: false }),
       app.get(ShippingService, { strict: false }),
       app.get(DomainEvents, { strict: false }),
       redis,
       queue as never,
-      quietLogger
+      quietLogger,
+      new JobContext(prisma),
+      new WorkerLists(prisma)
     )
     full = buildFakeCarrier({
       id: CarrierId.FORZA,

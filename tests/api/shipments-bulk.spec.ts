@@ -143,7 +143,8 @@ describe('Bulk labels and "print labels" (TDD_17 §4.6)', () => {
       app.get(MergedLabels, { strict: false }),
       registry,
       domainEvents,
-      quietLogger
+      quietLogger,
+      new JobContext(prisma)
     )
     cleaner = new BulkLabelsCleaner(
       prisma,
@@ -565,7 +566,8 @@ describe('Bulk labels and "print labels" (TDD_17 §4.6)', () => {
         } as unknown as MergedLabels,
         app.get(CarrierRegistry, { strict: false }),
         app.get(DomainEvents, { strict: false }),
-        quietLogger
+        quietLogger,
+        new JobContext(prisma)
       )
       await expect(
         withScan(() =>

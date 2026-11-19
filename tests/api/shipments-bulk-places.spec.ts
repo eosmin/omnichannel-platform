@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   BulkLabelJobStatus,
@@ -108,7 +108,8 @@ describe('Bulk labels with the places of the carrier', () => {
       app.get(MergedLabels, { strict: false }),
       registry,
       app.get(DomainEvents, { strict: false }),
-      quietLogger
+      quietLogger,
+      new JobContext(prisma)
     )
     const installed = await asAdmin()
       .post(ApiRoutes.plugins.install)

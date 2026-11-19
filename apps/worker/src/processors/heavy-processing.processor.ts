@@ -371,14 +371,14 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const bulk = bulkLabelsJobSchema.safeParse(job.data)
       if (!bulk.success) throw new UnrecoverableError('the bulk labels job does not fit its schema')
       // The last attempt that ends on a fault closes the run as failed; an earlier one is repeated and finds what it made
-      await this.bulkLabels.run(bulk.data, isLastAttempt(job))
+      await this.skipIfGone(job, () => this.bulkLabels.run(bulk.data, isLastAttempt(job)))
       return
     }
     if (job.name === JobNames.CANCEL_SHIPMENT) {
       const cancel = cancelShipmentJobSchema.safeParse(job.data)
       if (!cancel.success) throw new UnrecoverableError('the void job does not fit its schema')
       // Rejects while the carrier does not answer (the queue asks again); the last attempt closes the void as failed
-      await this.canceller.run(cancel.data, isLastAttempt(job))
+      await this.skipIfGone(job, () => this.canceller.run(cancel.data, isLastAttempt(job)))
       return
     }
     if (job.name === JobNames.EVALUATE_PICKUPS) {
@@ -393,7 +393,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const sync = syncPickupJobSchema.safeParse(job.data)
       if (!sync.success) throw new UnrecoverableError('the pickup job does not fit its schema')
       // Rejects while the carrier does not answer (the queue asks again); the last attempt ends the pickup as failed
-      await this.pickupSyncer.run(sync.data, isLastAttempt(job))
+      await this.skipIfGone(job, () => this.pickupSyncer.run(sync.data, isLastAttempt(job)))
       return
     }
     if (job.name === JobNames.REPROCESS_CARRIER_EVENTS) {
