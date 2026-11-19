@@ -1,8 +1,14 @@
 import { Injectable } from '@nestjs/common'
+import { z } from 'zod'
 
 import { PrismaService } from '@platform/core/database'
-import { InventoryLevelSorts } from '@platform/core/domain'
-import { resourceNotFound } from '@platform/core/errors'
+import { InventoryLevelSorts, ProductMatchKinds, ProductSearchConfig } from '@platform/core/domain'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceNotFound
+} from '@platform/core/errors'
 import { escapeLike } from '@platform/core/messaging'
 
 import { encodeCursor } from '../customers/list-cursor'
@@ -43,6 +49,7 @@ export class InventoryQueriesService {
     // Read as the characters it is: the wildcards of LIKE are escaped
     const text = query.q === undefined ? undefined : escapeLike(query.q)
     const byName = query.sort === InventoryLevelSorts.NAME
+    const matches = text === undefined ? null : await this.productMatches(storeId, text)
     const lowStockProducts =
       query.lowStock === true ? await this.productsAtTheirThreshold(storeId) : null
     const rows = await this.prisma.client.inventoryLevel.findMany({
@@ -66,32 +73,16 @@ export class InventoryQueriesService {
                 }
               ]),
           // The text is the name or SKU of the product, or of the variant of the level, read as the characters it is: the
-          // wildcards of LIKE are escaped (Prisma's `contains` does not do it)
-          ...(text === undefined
+          // wildcards of LIKE are escaped (Prisma's `contains` does not do it). The products and the variants that match are found by
+          // a function of the database (it keeps the trigram indexes in use under Row-Level Security) and the levels are the ones of
+          // those products or of those variants.
+          ...(matches === null
             ? []
             : [
                 {
                   OR: [
-                    {
-                      product: {
-                        name: { contains: text, mode: 'insensitive' as const }
-                      }
-                    },
-                    {
-                      product: {
-                        sku: { contains: text, mode: 'insensitive' as const }
-                      }
-                    },
-                    {
-                      variant: {
-                        name: { contains: text, mode: 'insensitive' as const }
-                      }
-                    },
-                    {
-                      variant: {
-                        sku: { contains: text, mode: 'insensitive' as const }
-                      }
-                    }
+                    { productId: { in: matches.productIds } },
+                    { variantId: { in: matches.variantIds } }
                   ]
                 }
               ]),
@@ -261,6 +252,45 @@ export class InventoryQueriesService {
       nextCursor: hasMore && last !== undefined ? encodeSeqCursor(last.seq) : null,
       hasMore
     }
+  }
+
+  // The products and the variants of the store whose name or SKU contain the (already escaped) text. A text that matches more than
+  // the list can carry is refused, never answered with a truncated list: the person is asked to type more.
+  private async productMatches(
+    storeId: string,
+    escaped: string
+  ): Promise<{ productIds: string[]; variantIds: string[] }> {
+    const cap = ProductSearchConfig.MAX_FILTER_MATCHES
+    const rows = await this.prisma.inStoreContext(
+      storeId,
+      () =>
+        this.prisma.client.$queryRaw<unknown[]>`
+        SELECT f.kind, f.id FROM public.rls_search_product_matches(
+          ${`%${escaped}%`}::text, ${cap + 1}::integer, ${ProductMatchKinds.PRODUCT}::text, ${ProductMatchKinds.VARIANT}::text
+        ) AS f`
+    )
+    const matches = z
+      .array(
+        z.object({
+          kind: z.enum([ProductMatchKinds.PRODUCT, ProductMatchKinds.VARIANT]),
+          id: z.string()
+        })
+      )
+      .parse(rows)
+    const productIds = matches
+      .filter(row => row.kind === ProductMatchKinds.PRODUCT)
+      .map(row => row.id)
+    const variantIds = matches
+      .filter(row => row.kind === ProductMatchKinds.VARIANT)
+      .map(row => row.id)
+    if (productIds.length > cap || variantIds.length > cap) {
+      throw new PlatformException(
+        ErrorCodes.SEARCH_TOO_BROAD,
+        'the text matches too many products: type more of it',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
+    return { productIds, variantIds }
   }
 
   // The products whose available stock (all items, all warehouses) is at or under their threshold (TDD_16 §4.4)
