@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -101,7 +101,8 @@ describe('Messages that a channel delivers', () => {
       ),
       app.get(DomainEvents, { strict: false }),
       queueOf(app, QueueNames.HEAVY_PROCESSING) as never,
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      app.get(JobContext, { strict: false })
     )
   })
   afterAll(async () => {
