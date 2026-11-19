@@ -4,7 +4,12 @@ import { newCommandSecret, RemoteChannelSync, sealCommandSecret } from '@platfor
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher, generateToken, hashToken } from '@platform/core/crypto'
-import { lockStoreForWrite, PrismaService } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  lockStoreForWrite,
+  PrismaService
+} from '@platform/core/database'
 import {
   PLUGIN_API_KEY_TOKEN_PREFIX,
   PLUGIN_INSTALLATION_RESOURCE_TYPE,
@@ -54,6 +59,7 @@ function invalidCode(): PlatformException {
 export class PluginSetupExchangeService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly codes: PluginSetupCodeStore,
     private readonly audit: AuditService,
     private readonly cipher: CredentialCipher,
@@ -69,60 +75,64 @@ export class PluginSetupExchangeService {
 
     const key = `${PLUGIN_API_KEY_TOKEN_PREFIX}${generateToken(PluginInstallLimits.KEY_SECRET_BYTES)}`
     const webhookSecret = `${WEBHOOK_SECRET_PREFIX}${generateToken(WebhookLimits.SECRET_BYTES)}`
-    const result = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, record.storeId)
-      const installation = await tx.pluginInstallation.findFirst({
-        // The store of the code and the store of the row must be the same one: a code never opens another store's installation
-        where: {
-          id: record.installationId,
-          storeId: record.storeId,
-          status: PluginInstallationStatus.PENDING_SETUP,
-          plugin: { status: PluginStatus.APPROVED }
-        },
-        select: {
-          id: true,
-          pluginId: true,
-          scopes: true,
-          rateLimitPerMinute: true,
-          webhookEndpoint: true,
-          plugin: { select: { type: true } }
-        }
+    // The route is public: nobody is signed in and no interceptor opened a context. The context is the one of the store of the code
+    // (never of the request), short, and carries the organization of the store (a private plugin is read under it)
+    const result = await this.inStoreOfCode(record.storeId, () =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, record.storeId)
+        const installation = await tx.pluginInstallation.findFirst({
+          // The store of the code and the store of the row must be the same one: a code never opens another store's installation
+          where: {
+            id: record.installationId,
+            storeId: record.storeId,
+            status: PluginInstallationStatus.PENDING_SETUP,
+            plugin: { status: PluginStatus.APPROVED }
+          },
+          select: {
+            id: true,
+            pluginId: true,
+            scopes: true,
+            rateLimitPerMinute: true,
+            webhookEndpoint: true,
+            plugin: { select: { type: true } }
+          }
+        })
+        if (installation === null) return null
+        // A remote channel also gets the secret of its commands, in the same write that activates it, so there is no active
+        // channel without one
+        const isChannel = installation.plugin.type === String(PluginCatalogTypes.CHANNEL)
+        const commandSecret = isChannel ? newCommandSecret() : null
+        const activated = await tx.pluginInstallation.updateMany({
+          where: {
+            id: installation.id,
+            storeId: record.storeId,
+            status: PluginInstallationStatus.PENDING_SETUP
+          },
+          data: {
+            status: PluginInstallationStatus.ACTIVE,
+            apiKeyPrefix: key.slice(0, PluginInstallLimits.KEY_DISPLAY_PREFIX_LENGTH),
+            apiKeyHash: hashToken(key),
+            ...(commandSecret === null
+              ? {}
+              : {
+                  commandSecret: sealCommandSecret(this.cipher, commandSecret),
+                  commandSecretPrevious: null,
+                  commandSecretRotatedAt: null
+                }),
+            // A plugin with a webhook endpoint gets the secret that signs what is sent to it, and starts with a clean count of
+            // failures (an installation that was revoked and installed again must not come back turned off)
+            webhookSecret:
+              installation.webhookEndpoint === null
+                ? null
+                : this.cipher.seal({ secret: webhookSecret }),
+            webhookConsecutiveFailures: 0,
+            webhookLastFailureAt: null,
+            webhookDisabledAt: null
+          }
+        })
+        return activated.count === 1 ? { ...installation, commandSecret } : null
       })
-      if (installation === null) return null
-      // A remote channel also gets the secret of its commands, in the same write that activates it, so there is no active
-      // channel without one
-      const isChannel = installation.plugin.type === String(PluginCatalogTypes.CHANNEL)
-      const commandSecret = isChannel ? newCommandSecret() : null
-      const activated = await tx.pluginInstallation.updateMany({
-        where: {
-          id: installation.id,
-          storeId: record.storeId,
-          status: PluginInstallationStatus.PENDING_SETUP
-        },
-        data: {
-          status: PluginInstallationStatus.ACTIVE,
-          apiKeyPrefix: key.slice(0, PluginInstallLimits.KEY_DISPLAY_PREFIX_LENGTH),
-          apiKeyHash: hashToken(key),
-          ...(commandSecret === null
-            ? {}
-            : {
-                commandSecret: sealCommandSecret(this.cipher, commandSecret),
-                commandSecretPrevious: null,
-                commandSecretRotatedAt: null
-              }),
-          // A plugin with a webhook endpoint gets the secret that signs what is sent to it, and starts with a clean count of
-          // failures (an installation that was revoked and installed again must not come back turned off)
-          webhookSecret:
-            installation.webhookEndpoint === null
-              ? null
-              : this.cipher.seal({ secret: webhookSecret }),
-          webhookConsecutiveFailures: 0,
-          webhookLastFailureAt: null,
-          webhookDisabledAt: null
-        }
-      })
-      return activated.count === 1 ? { ...installation, commandSecret } : null
-    })
+    )
     if (result === null) throw invalidCode()
 
     // Neither the key nor the secret is in the entry: only which installation was set up. The actor is the platform: nobody is signed in.
@@ -147,6 +157,19 @@ export class PluginSetupExchangeService {
       scopes: knownScopes(result.scopes),
       rateLimitPerMinute: result.rateLimitPerMinute,
       ...(result.commandSecret === null ? {} : { commandSecret: result.commandSecret })
+    }
+  }
+
+  // A store that is gone has no installation waiting: the same answer as a code that is not valid
+  private async inStoreOfCode<T>(
+    storeId: string,
+    work: () => Promise<T | null>
+  ): Promise<T | null> {
+    try {
+      return await this.jobs.forStore(storeId, work)
+    } catch (error) {
+      if (error instanceof JobContextGoneError) return null
+      throw error
     }
   }
 }
