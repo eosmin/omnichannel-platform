@@ -87,11 +87,17 @@ describe('row-level security, phase 5: the list of remote channel plugins', () =
     await install(ids.revoked, stores[0] ?? '', PluginInstallationStatus.REVOKED)
   })
 
+  // The connections close in a finally: a cleanup that fails must turn the suite RED, never leave a connection open (jest would not
+  // exit and the shard would hang until its timeout). The installations go first (cleanUp deletes the stores and the organization), then
+  // the official plugin, which belongs to no organization and is referenced by an installation
   afterAll(async () => {
-    await owner.plugin.deleteMany({ where: { id: ids.official } })
-    await cleanUp(owner, prefix)
-    await raw.end().catch(() => undefined)
-    await owner.$disconnect()
+    try {
+      await cleanUp(owner, prefix)
+      await owner.plugin.deleteMany({ where: { id: ids.official } })
+    } finally {
+      await raw.end().catch(() => undefined)
+      await owner.$disconnect()
+    }
   })
 
   // One transaction: row security on for the tables of the list, the role, NO context, the work, ROLLBACK
