@@ -6,14 +6,15 @@
 -- the transaction context (app_store_ids(), read ONCE into a variable so that a custom plan sees the value and the condition on the
 -- store is an index condition), never an argument. A call with no store in the context raises SEARCH_CONTEXT_REQUIRED instead of
 -- answering empty. The statements are planned with the real values of each call (force_custom_plan).
--- The patterns come from the code, already folded and escaped, and are ALWAYS bind parameters. A NULL pattern drops its column (the
--- name when the text folds to nothing, the phone when the text is not a phone). The email pattern is required: it is what a search
--- text always has.
+-- The three patterns are contains-patterns, already folded and escaped by the caller, and ALWAYS bind parameters. A NULL name or phone
+-- pattern drops that column (the name when the text folds to nothing, the phone when the text is not a phone); the email pattern is
+-- required, because every search text has one.
 -- The list is a PAGE by key: the rows after the cursor, in the order of the screen (newest first) or of the export (by id), at most
 -- p_limit. A p_limit outside 1..1000 is an error, never a clamp. The caller reads the rows with the ids it got, so what the screen
 -- shows is still decided by Prisma (select, relations); only the choice of WHICH customers is here.
--- The api calls them with the context of its request and the export of the worker with the context of the store of the export, so
--- both roles may call them (the worker is going to lose BYPASSRLS). Every table is qualified and the search_path ends in pg_temp.
+-- EXECUTE goes to platform_app (the list of the api, with the context of its request) AND to platform_worker: the export of customers
+-- runs in the worker, with the context of the store of the export, and the worker is going to lose BYPASSRLS. Nobody else (PUBLIC and
+-- the read-only replica role are revoked/never granted). Every table is qualified and the search_path ends in pg_temp.
 
 CREATE FUNCTION public.rls_search_customer_list(
   p_name text,
@@ -30,11 +31,12 @@ CREATE FUNCTION public.rls_search_customer_list(
   DECLARE
     v_stores text[] := public.app_store_ids();
     -- The cursor of the list (newest first) is a point in (created_at, id); the text is read in UTC, as the column is stored
-    v_after_at public.customers.created_at%TYPE := p_after_created_at::public.customers.created_at%TYPE;
+    v_after_at public.customers.created_at%TYPE;
   BEGIN
     IF cardinality(v_stores) = 0 THEN
       RAISE EXCEPTION 'SEARCH_CONTEXT_REQUIRED' USING ERRCODE = '42501';
     END IF;
+    v_after_at := p_after_created_at::public.customers.created_at%TYPE;
     IF p_limit IS NULL OR p_limit < 1 OR p_limit > 1000 THEN
       RAISE EXCEPTION 'the page of a list is 1 to 1000 rows' USING ERRCODE = '22023';
     END IF;
