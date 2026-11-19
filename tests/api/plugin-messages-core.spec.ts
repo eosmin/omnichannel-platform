@@ -113,14 +113,16 @@ describe('A message written by a plugin', () => {
     mentions
   })
   // The plugin route runs the service inside the context of the store; the suite calls it by hand
-  const inStoreA = <T>(work: () => Promise<T>) =>
+  const inStores = <T>(storeIds: string[], organizationIds: string[], work: () => Promise<T>) =>
     withTenantContext(
       app.get(PrismaService, { strict: false }),
-      { storeIds: [ctx.storeA.id], organizationIds: [ctx.orgA.id] },
+      { storeIds, organizationIds },
       work
     )
+  const orgOf = (storeId: string) => (storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id)
+  const inStoreA = <T>(work: () => Promise<T>) => inStores([ctx.storeA.id], [ctx.orgA.id], work)
   const send = (body: CreateMessageBody, origin: PluginMessageOrigin, storeId = ctx.storeA.id) =>
-    inStoreA(() =>
+    inStores([storeId], [orgOf(storeId)], () =>
       messages.create(
         storeId,
         body,
@@ -513,6 +515,21 @@ describe('A message written by a plugin', () => {
       await expect(send(text(id), system(), ctx.storeB.id)).rejects.toBeInstanceOf(
         PlatformException
       )
+      // Seeing both stores, the service still refuses by its own filter on the store, not only by the row policy
+      await expect(
+        inStores([ctx.storeA.id, ctx.storeB.id], [ctx.orgA.id, ctx.orgB.id], () =>
+          messages.create(
+            ctx.storeB.id,
+            text(id),
+            pluginViewerOf(HELD),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            system()
+          )
+        )
+      ).rejects.toBeInstanceOf(PlatformException)
 
       expect(await owner.message.count({ where: { conversationId: id } })).toBe(0)
     })

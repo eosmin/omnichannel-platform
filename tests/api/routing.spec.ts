@@ -1641,6 +1641,14 @@ describe('The routing rules of a store', () => {
             routing().apply(storeId(), foreign.id, { text: 'hola', receivedAt: new Date() })
           )
         ).rejects.toMatchObject({ code: ErrorCodes.RESOURCE_NOT_FOUND })
+        // Seeing both stores, the service still refuses by its own filter on the store, not only by the row policy
+        await expect(
+          withTenantContext(
+            app.get(PrismaService, { strict: false }),
+            { storeIds: [storeId(), ctx.storeB.id], organizationIds: [ctx.orgA.id, ctx.orgB.id] },
+            () => routing().apply(storeId(), foreign.id, { text: 'hola', receivedAt: new Date() })
+          )
+        ).rejects.toMatchObject({ code: ErrorCodes.RESOURCE_NOT_FOUND })
       })
     })
 
