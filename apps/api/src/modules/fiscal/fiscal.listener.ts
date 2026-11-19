@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { EventContext, PrismaService } from '@platform/core/database'
 import { FiscalIssueOn, OrderStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import {
@@ -21,6 +21,7 @@ import { FiscalSubmissionQueue } from './fiscal-submission.queue'
 export class FiscalListener {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly events: EventContext,
     private readonly logger: PinoLogger,
     private readonly documents: FiscalDocumentsService,
     private readonly queue: FiscalSubmissionQueue
@@ -35,11 +36,11 @@ export class FiscalListener {
     try {
       const organizationId = await this.organizationOf(payload.storeId)
       if (organizationId === null) return
-      const documentId = await this.documents.createCreditNoteForReturn(
-        organizationId,
-        payload.returnId
+      const documentId = await this.events.inOrganizationOfStore(payload.storeId, () =>
+        this.documents.createCreditNoteForReturn(organizationId, payload.returnId)
       )
-      if (documentId !== null) await this.queue.enqueue(organizationId, documentId, 1)
+      if (documentId !== undefined && documentId !== null)
+        await this.queue.enqueue(organizationId, documentId, 1)
     } catch (error) {
       this.logger.error(
         { err: errorName(error), returnId: payload.returnId },
@@ -72,13 +73,12 @@ export class FiscalListener {
         select: { organizationId: true }
       })
       if (store === null) return
-      const documentId = await this.documents.createForOrder(
-        store.organizationId,
-        payload.orderId,
-        moment
+      const documentId = await this.events.inOrganizationOfStore(payload.storeId, () =>
+        this.documents.createForOrder(store.organizationId, payload.orderId, moment)
       )
       // A document that has just been made is the first submission
-      if (documentId !== null) await this.queue.enqueue(store.organizationId, documentId, 1)
+      if (documentId !== undefined && documentId !== null)
+        await this.queue.enqueue(store.organizationId, documentId, 1)
     } catch (error) {
       this.logger.error(
         { err: errorName(error), orderId: payload.orderId },
@@ -93,11 +93,11 @@ export class FiscalListener {
     try {
       const organizationId = await this.organizationOf(payload.storeId)
       if (organizationId === null) return
-      const documentId = await this.documents.createCreditNoteForOrder(
-        organizationId,
-        payload.orderId
+      const documentId = await this.events.inOrganizationOfStore(payload.storeId, () =>
+        this.documents.createCreditNoteForOrder(organizationId, payload.orderId)
       )
-      if (documentId !== null) await this.queue.enqueue(organizationId, documentId, 1)
+      if (documentId !== undefined && documentId !== null)
+        await this.queue.enqueue(organizationId, documentId, 1)
     } catch (error) {
       this.logger.error(
         { err: errorName(error), orderId: payload.orderId },
