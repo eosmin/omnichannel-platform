@@ -27,7 +27,7 @@ export interface PluginDenial {
   missing?: readonly string[]
   // For an installation that was refused as not active: what the platform holds for it, so that a revoked key still in use can be
   // told from a suspended plugin. Values of the platform's own enums, never of the caller.
-  status?: { installation: string; plugin: string }
+  status?: { installation: string; plugin: string | null }
 }
 
 // The call that the guard of the plugin API refused, in the audit log (PLG-198): the platform is the actor (a plugin has no person),
