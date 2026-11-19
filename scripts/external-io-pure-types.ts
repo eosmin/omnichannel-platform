@@ -32,7 +32,11 @@ export const EXTERNAL_IO_PURE_TYPES: readonly ExternalIoPureType[] = [
   { name: 'Reflector', reason: 'reads decorator metadata' },
   { name: 'ModuleRef', reason: 'the container of Nest' },
   { name: 'JwtService', reason: 'signs and verifies a token in memory' },
-  { name: 'HealthCheckService', reason: 'runs the indicators of the platform (database, Redis)' },
+  {
+    name: 'HealthCheckService',
+    reason:
+      'runs the indicators of the platform (database, Redis, bucket); the health route is public and has no transaction'
+  },
   { name: 'HealthIndicatorService', reason: 'builds the answer of an indicator' },
   { name: 'Namespace', reason: 'emits to the realtime server of the platform (Redis adapter)' },
   { name: 'ExtendedClient', reason: 'the database client itself' },
