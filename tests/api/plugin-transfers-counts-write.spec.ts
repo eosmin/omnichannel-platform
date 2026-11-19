@@ -5,6 +5,7 @@ import supertest from 'supertest'
 
 import { API_PREFIX, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CountStatus,
@@ -23,6 +24,7 @@ import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { inStoreContext } from '../helpers/tenant-context'
 
 interface ErrorBody {
   error: { code: string }
@@ -62,12 +64,17 @@ describe('Transfers and counts written with the key of a plugin', () => {
   let key = ''
   let installationId = ''
   let otherWarehouse: { id: string }
+  let prisma: PrismaService
+  // What a fixture of the suite does by hand, in the store of the case and its organization and nothing wider
+  const inStoreA = <T>(work: () => Promise<T>) =>
+    inStoreContext(prisma, { storeId: ctx.storeA.id, organizationId: ctx.orgA.id }, work)
 
   beforeAll(async () => {
     owner = ownerClient()
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     inventory = app.get(InventoryService)
+    prisma = app.get(PrismaService, { strict: false })
     otherWarehouse = await createWarehouse(owner, { organizationId: ctx.orgA.id, name: 'Second' })
     await linkWarehouse(owner, {
       organizationId: ctx.orgA.id,
@@ -103,15 +110,17 @@ describe('Transfers and counts written with the key of a plugin', () => {
 
   async function stocked(quantity: number, warehouseId = ctx.warehouseA.id) {
     const product = await createProduct(owner, { storeId: ctx.storeA.id })
-    await inventory.move({
-      storeId: ctx.storeA.id,
-      productId: product.id,
-      warehouseId,
-      type: Type.RECEIPT,
-      quantity,
-      reason: InventoryAdjustmentReason.OPENING_STOCK,
-      idempotencyKey: randomUUID()
-    })
+    await inStoreA(() =>
+      inventory.move({
+        storeId: ctx.storeA.id,
+        productId: product.id,
+        warehouseId,
+        type: Type.RECEIPT,
+        quantity,
+        reason: InventoryAdjustmentReason.OPENING_STOCK,
+        idempotencyKey: randomUUID()
+      })
+    )
     return product.id
   }
   const onHand = async (productId: string, warehouseId: string): Promise<number> =>
@@ -363,15 +372,17 @@ describe('Transfers and counts written with the key of a plugin', () => {
       })
       await call('post', PluginApiRoutes.counts.submit(id)).send({})
       // The shelf emptied while the sheet was open: the variance (-4) can no longer be written
-      await inventory.move({
-        storeId: ctx.storeA.id,
-        productId,
-        warehouseId: ctx.warehouseA.id,
-        type: Type.ADJUSTMENT_OUT,
-        quantity: 4,
-        reason: InventoryAdjustmentReason.DAMAGED,
-        idempotencyKey: randomUUID()
-      })
+      await inStoreA(() =>
+        inventory.move({
+          storeId: ctx.storeA.id,
+          productId,
+          warehouseId: ctx.warehouseA.id,
+          type: Type.ADJUSTMENT_OUT,
+          quantity: 4,
+          reason: InventoryAdjustmentReason.DAMAGED,
+          idempotencyKey: randomUUID()
+        })
+      )
 
       const applied = await call('post', PluginApiRoutes.counts.apply(id)).send({})
 

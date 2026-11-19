@@ -5,6 +5,7 @@ import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 
 import { Permissions } from '@platform/core/auth'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AppPaths,
@@ -23,6 +24,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { CapturedQueue } from '../helpers/queue'
+import { inStoreContext } from '../helpers/tenant-context'
 
 // The low-stock warning (TDD_16 §4.4, Step 4.2 PR C): the engine raises `inventory.low` once for each downward crossing
 // of a product's threshold, and the api turns it into a notification for the members who may see the stock
@@ -153,13 +155,18 @@ describe('The inventory.low notification', () => {
       warehouseId: ctx.warehouseA.id
     }
     const move = (type: Type, quantity: number, reason?: InventoryAdjustmentReason) =>
-      inventory.move({
-        ...base,
-        type,
-        quantity,
-        ...(reason === undefined ? {} : { reason }),
-        idempotencyKey: `${prefix}-${randomUUID()}`
-      })
+      inStoreContext(
+        app.get(PrismaService, { strict: false }),
+        { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+        () =>
+          inventory.move({
+            ...base,
+            type,
+            quantity,
+            ...(reason === undefined ? {} : { reason }),
+            idempotencyKey: `${prefix}-${randomUUID()}`
+          })
+      )
     const told = async () => (await rowsOf()).filter(row => row.userId === holder.id).length
     const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
     // The listener runs after the commit: wait for the notification that must come, and give a quiet window to the

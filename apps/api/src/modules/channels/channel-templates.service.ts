@@ -11,7 +11,7 @@ import {
   withTimeout
 } from '@platform/channels/connections'
 import { Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
+import { EventContext, PrismaService } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   isInstallationActive,
@@ -80,6 +80,7 @@ type TemplateBody = Extract<CreateMessageBody, { type: MessageType.TEMPLATE }>
 export class ChannelTemplatesService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly context: EventContext,
     private readonly registry: PluginRegistry,
     private readonly contexts: ChannelContextFactory,
     private readonly logger: PinoLogger
@@ -166,19 +167,23 @@ export class ChannelTemplatesService {
     wanted: { name: string; language: string; variables: readonly string[] },
     viewer: Viewer | null
   ): Promise<RenderedTemplate> {
-    const conversation = await this.prisma.client.conversation.findFirst({
-      where: { id: conversationId, storeId },
-      select: {
-        status: true,
-        assignedTo: true,
-        channelConnection: {
-          select: {
-            ...CONNECTION_ROW_SELECT,
-            installation: { select: { status: true, plugin: { select: { status: true } } } }
+    // Only this read is in the context of the store (a listener of the orders calls here with no request); the call to the provider
+    // below is outside it, so no connection of the pool waits for a channel
+    const conversation = await this.context.inStore(storeId, () =>
+      this.prisma.client.conversation.findFirst({
+        where: { id: conversationId, storeId },
+        select: {
+          status: true,
+          assignedTo: true,
+          channelConnection: {
+            select: {
+              ...CONNECTION_ROW_SELECT,
+              installation: { select: { status: true, plugin: { select: { status: true } } } }
+            }
           }
         }
-      }
-    })
+      })
+    )
     if (conversation === null || (viewer !== null && !canSee(viewer, conversation))) {
       throw resourceNotFound('conversation')
     }
