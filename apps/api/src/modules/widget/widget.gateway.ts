@@ -29,6 +29,7 @@ interface VisitorSocketData {
   // What the handshake found of the site, so that a typing signal does not look it up again. A site
   // disconnected after the handshake is heard until the token ends (an hour at most).
   storeId: string
+  organizationId: string
   connectionId: string
   visitorId: string
   expiresAt: number
@@ -112,6 +113,7 @@ export class WidgetGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     socket.data = {
       siteKey: claims.siteKey,
       storeId: site.storeId,
+      organizationId: site.organizationId,
       connectionId: site.connectionId,
       visitorId: claims.visitorId,
       expiresAt: claims.expiresAt
@@ -132,10 +134,10 @@ export class WidgetGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   // the socket. A signal past the limit of the visitor or of the site is dropped before the database.
   @SubscribeMessage(WidgetClientEvents.TYPING)
   async handleTyping(@ConnectedSocket() client: VisitorSocket): Promise<void> {
-    const { siteKey, storeId, connectionId, visitorId } = client.data
+    const { siteKey, storeId, organizationId, connectionId, visitorId } = client.data
     if (!this.typingThrottle.take(siteKey, visitorId)) return
     try {
-      await this.typing.signal({ storeId, connectionId }, visitorId)
+      await this.typing.signal({ storeId, organizationId, connectionId }, visitorId)
     } catch (error) {
       this.logger.warn({ err: error }, 'a visitor typing signal failed')
     }
