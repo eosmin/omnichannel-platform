@@ -20,6 +20,9 @@ import { localClockOf } from '../retention/retention-clock'
 
 import { LeaderLockService } from './leader-lock.service'
 
+// rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
+// every read or write of a table of a store runs inside JobContext.forStore / forOrganization
+
 const LOCK_SECONDS = 300
 
 // Hourly, on one replica (TDD_05 §10.4): a retention job for each store whose own clock reads 03:00 now, so every store

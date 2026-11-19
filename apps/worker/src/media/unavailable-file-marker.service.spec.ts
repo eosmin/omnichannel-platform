@@ -28,7 +28,12 @@ function setup(metadata: unknown, found = true) {
     client: { message: { findFirst: jest.fn().mockResolvedValue(found ? { metadata } : null) } }
   }
   const logger = { setContext: jest.fn(), warn: jest.fn() }
-  const marker = new UnavailableFileMarker(prisma as never, {} as never, logger as never)
+  const marker = new UnavailableFileMarker(
+    prisma as never,
+    {} as never,
+    logger as never,
+    { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
+  )
   return { marker, tx, prisma, logger }
 }
 

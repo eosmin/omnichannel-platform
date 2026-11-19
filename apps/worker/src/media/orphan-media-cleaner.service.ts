@@ -418,7 +418,14 @@ export class OrphanMediaCleaner {
     const pick = (purpose: string | object) =>
       this.prisma.client.media.findMany({
         where: stuckWhere(purpose),
-        select: { id: true, key: true, createdAt: true },
+        select: {
+          id: true,
+          key: true,
+          createdAt: true,
+          storeId: true,
+          uploadedBy: true,
+          purpose: true
+        },
         orderBy: { createdAt: 'asc' },
         take: UploadLimits.ORPHAN_CLEANUP_BATCH
       })
@@ -440,9 +447,24 @@ export class OrphanMediaCleaner {
             // A finished job keeps its id and would swallow a new one: it is removed first
             await existing.remove()
           }
+          // The job names the context of its work: the store of the file, or the person of an avatar (a file with neither has no owner
+          // that could read it, so there is nothing to scan for)
+          const owner =
+            row.storeId !== null
+              ? { storeId: row.storeId }
+              : row.uploadedBy !== null && row.purpose === String(MediaPurpose.AVATAR)
+                ? { userId: row.uploadedBy }
+                : null
+          if (owner === null) {
+            this.logger.warn(
+              { mediaId: row.id },
+              'a pending file with no store and no avatar owner was not queued'
+            )
+            continue
+          }
           await this.heavyQueue.add(
             JobNames.SCAN_FILE,
-            { mediaId: row.id },
+            { mediaId: row.id, ...owner },
             { jobId: `${JobNames.SCAN_FILE}-${row.id}` }
           )
           requeued += 1

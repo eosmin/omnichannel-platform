@@ -3,13 +3,17 @@ import { Cron } from '@nestjs/schedule'
 import { PinoLogger } from 'nestjs-pino'
 
 import { errorName } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { ConversationStatus, ConversationStatusReasons } from '@platform/core/domain'
 import { ConversationsService } from '@platform/core/messaging'
 import { ConversationSweep, LockNames, Schedules } from '@platform/core/queues'
 
 import { LeaderLockService } from './leader-lock.service'
+import { readInEachStore } from './store-sweep'
 import { isNoLongerDue, runBatches, type SweepBatch } from './sweep-errors'
+
+// rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
+// every read or write of a table of a store runs inside JobContext.forStore / forOrganization
 
 // Room for the most a run can do (MAX_BATCHES of BATCH conversations); a replica that dies holds it
 // for this long at most, and the next minutes' runs only wait
@@ -24,7 +28,8 @@ export class SnoozeWakeScheduler {
     private readonly locks: LeaderLockService,
     private readonly prisma: PrismaService,
     private readonly conversations: ConversationsService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(SnoozeWakeScheduler.name)
   }
@@ -49,27 +54,41 @@ export class SnoozeWakeScheduler {
 
   // One batch: how many conversations were due and how many of them woke up
   async wake(now: Date = new Date(), skip: Set<string> = new Set()): Promise<SweepBatch> {
-    const due = await this.prisma.client.conversation.findMany({
-      where: {
-        status: ConversationStatus.SNOOZED,
-        snoozedUntil: { lte: now },
-        id: { notIn: [...skip] }
-      },
-      select: { id: true, storeId: true },
-      orderBy: [{ snoozedUntil: 'asc' }, { id: 'asc' }],
-      take: ConversationSweep.BATCH
-    })
+    const found = await readInEachStore(
+      this.prisma,
+      this.jobContext,
+      storeId =>
+        this.prisma.client.conversation.findMany({
+          where: {
+            storeId,
+            status: ConversationStatus.SNOOZED,
+            snoozedUntil: { lte: now },
+            id: { notIn: [...skip] }
+          },
+          select: { id: true, storeId: true, snoozedUntil: true },
+          orderBy: [{ snoozedUntil: 'asc' }, { id: 'asc' }],
+          take: ConversationSweep.BATCH
+        }),
+      (storeId, error) =>
+        this.logger.error({ storeId, errorName: errorName(error) }, 'a store could not be swept')
+    )
+    // The longest asleep of every store first, as one batch
+    const due = found
+      .sort((a, b) => (a.snoozedUntil?.getTime() ?? 0) - (b.snoozedUntil?.getTime() ?? 0))
+      .slice(0, ConversationSweep.BATCH)
     let woken = 0
     for (const { id, storeId } of due) {
       try {
         // The row is locked and read again inside: one that a person woke, resolved or snoozed again
         // since the query is refused, and the next one goes on
-        await this.prisma.transaction(tx =>
-          this.conversations.applyStatus(tx, storeId, id, ConversationStatus.OPEN, {
-            actor: 'system',
-            reason: ConversationStatusReasons.SNOOZE_EXPIRED,
-            onlyIfDue: { status: ConversationStatus.SNOOZED, by: now }
-          })
+        await this.jobContext.forStore(storeId, () =>
+          this.prisma.transaction(tx =>
+            this.conversations.applyStatus(tx, storeId, id, ConversationStatus.OPEN, {
+              actor: 'system',
+              reason: ConversationStatusReasons.SNOOZE_EXPIRED,
+              onlyIfDue: { status: ConversationStatus.SNOOZED, by: now }
+            })
+          )
         )
         woken += 1
       } catch (error) {

@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
-import { ChannelTokenExpiryService } from '@platform/channels/connections'
+import { type ChannelTokenExpiryService } from '@platform/channels/connections'
 import { MetaGraphClient } from '@platform/channels/meta'
 import { ApiRoutes } from '@platform/core/api'
 import { CredentialCipher } from '@platform/core/crypto'
@@ -25,6 +25,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { workerTokenExpiry } from '../helpers/worker-services'
 
 const OK = 200
 const CREATED = 201
@@ -55,7 +56,7 @@ describe('The expiry of the token of a channel connection', () => {
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     registry = app.get(PluginRegistry, { strict: false })
-    service = app.get(ChannelTokenExpiryService, { strict: false })
+    service = await workerTokenExpiry(app)
     app
       .get(EventEmitter2)
       .on(Events.CHANNEL_TOKEN_EXPIRING, (event: (typeof announced)[number]) =>

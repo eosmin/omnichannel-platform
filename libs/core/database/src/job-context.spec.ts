@@ -3,7 +3,6 @@ import {
   JobContext,
   JobContextError,
   JobContextGoneError,
-  JobContextMismatchError,
   forgetOrganizationsOfStores
 } from './job-context'
 import type { PrismaService } from './prisma.service'
@@ -110,6 +109,31 @@ describe('JobContext', () => {
     expect(jobs.isOpen()).toBe(false)
   })
 
+  it('runs as it is inside the transaction of a request, and opens the context of the store anywhere else', async () => {
+    const inRequest = fakePrisma({ store: { organizationId: ORG } })
+    const requestPrisma = inRequest.prisma as unknown as {
+      hasTenantContext: () => boolean
+      currentTenantContext: () => Context
+    }
+    requestPrisma.hasTenantContext = () => true
+    requestPrisma.currentTenantContext = () => ({ storeIds: [STORE], organizationIds: [ORG] })
+    await expect(
+      new JobContext(inRequest.prisma).forStoreOrJoin(STORE, () => Promise.resolve('joined'))
+    ).resolves.toBe('joined')
+    // The request's own context counts: nothing of ours is opened
+    expect(inRequest.contexts).toEqual([])
+    // A request of another store must not run this store's work under its own context
+    await expect(
+      new JobContext(inRequest.prisma).forStoreOrJoin(OTHER, () => Promise.resolve('wrong'))
+    ).rejects.toBeInstanceOf(JobContextError)
+
+    const inJob = fakePrisma({ store: { organizationId: ORG } })
+    await expect(
+      new JobContext(inJob.prisma).forStoreOrJoin(STORE, () => Promise.resolve('opened'))
+    ).resolves.toBe('opened')
+    expect(inJob.contexts).toEqual([{ storeIds: [STORE], organizationIds: [ORG] }])
+  })
+
   it('opens an organization with every store of it, and fails closed for one that is not there', async () => {
     const found = fakePrisma({ organization: { id: ORG }, stores: [{ id: STORE }, { id: OTHER }] })
     await new JobContext(found.prisma).forOrganization(ORG, () => Promise.resolve(undefined))
@@ -118,6 +142,61 @@ describe('JobContext', () => {
     const missing = fakePrisma({ organization: null })
     await expect(
       new JobContext(missing.prisma).forOrganization(ORG, () => Promise.resolve(undefined))
+    ).rejects.toBeInstanceOf(JobContextError)
+  })
+
+  it('inOrganization opens the context of a job, joins one of the same organization and never nests inside a request', async () => {
+    const job = fakePrisma({ organization: { id: ORG }, stores: [{ id: STORE }] })
+    const jobs = new JobContext(job.prisma)
+    await jobs.inOrganization(ORG, async () => {
+      await jobs.inOrganization(ORG, () => Promise.resolve(undefined))
+      await expect(
+        jobs.inOrganization(OTHER, () => Promise.resolve(undefined))
+      ).rejects.toBeInstanceOf(JobContextError)
+    })
+    expect(job.contexts).toHaveLength(1)
+  })
+
+  it('inOrganization joins a request context only when it is as wide as the organization, and refuses a narrower one', async () => {
+    const stores = [{ id: STORE }, { id: OTHER }]
+    const inRequest = (context: Context): Fakes => {
+      const fakes = fakePrisma({ organization: { id: ORG }, stores })
+      Object.assign(fakes.prisma, {
+        hasTenantContext: () => true,
+        currentTenantContext: () => context
+      })
+      return fakes
+    }
+    const foreign = inRequest({ storeIds: [STORE, OTHER], organizationIds: [OTHER] })
+    const wide = inRequest({ storeIds: [STORE, OTHER], organizationIds: [ORG] })
+    const work = jest.fn().mockResolvedValue('joined')
+    await expect(new JobContext(wide.prisma).inOrganization(ORG, work)).resolves.toBe('joined')
+    expect(wide.contexts).toHaveLength(0)
+
+    // The active store only: the books would see the organization tables and none of the rows of the sibling store
+    const narrow = inRequest({ storeIds: [STORE], organizationIds: [ORG] })
+    const refused = jest.fn()
+    await expect(new JobContext(narrow.prisma).inOrganization(ORG, refused)).rejects.toBeInstanceOf(
+      JobContextError
+    )
+    expect(refused).not.toHaveBeenCalled()
+
+    // The transitional method of the shared services joins the narrow request context as they did before (debt F6-3), and opens in a job
+    const lenient = jest.fn().mockResolvedValue('as-before')
+    await expect(new JobContext(narrow.prisma).inOrganizationOrRequest(ORG, lenient)).resolves.toBe(
+      'as-before'
+    )
+    expect(narrow.contexts).toHaveLength(0)
+    // ... but never the context of another organization: that would read the books as missing
+    await expect(
+      new JobContext(foreign.prisma).inOrganizationOrRequest(ORG, refused)
+    ).rejects.toBeInstanceOf(JobContextError)
+    const job = fakePrisma({ organization: { id: ORG }, stores })
+    await new JobContext(job.prisma).inOrganizationOrRequest(ORG, () => Promise.resolve(1))
+    expect(job.contexts).toEqual([{ storeIds: [STORE, OTHER], organizationIds: [ORG] }])
+
+    await expect(
+      new JobContext(foreign.prisma).inOrganization(ORG, refused)
     ).rejects.toBeInstanceOf(JobContextError)
   })
 
@@ -141,51 +220,6 @@ describe('JobContext', () => {
     await expect(
       new JobContext(missing.prisma).forUser('u', () => Promise.resolve(undefined))
     ).rejects.toBeInstanceOf(JobContextError)
-  })
-})
-
-describe('JobContext.anchor', () => {
-  it('says gone for a row that does not exist, without opening a context', async () => {
-    const { prisma, queryRaw, contexts } = fakePrisma()
-    queryRaw.mockResolvedValueOnce([])
-    await expect(new JobContext(prisma).anchor('export', 'x')).resolves.toBe('gone')
-    expect(contexts).toEqual([])
-  })
-
-  it('says unowned for a row with no store, and visible when its own context reads it', async () => {
-    const unowned = fakePrisma()
-    unowned.queryRaw.mockResolvedValueOnce([{ store_id: null }])
-    await expect(new JobContext(unowned.prisma).anchor('media', 'x')).resolves.toBe('unowned')
-
-    const visible = fakePrisma({ store: { organizationId: ORG } })
-    visible.queryRaw.mockResolvedValueOnce([{ store_id: STORE }]).mockResolvedValueOnce([{}])
-    await expect(new JobContext(visible.prisma).anchor('media', 'x', STORE)).resolves.toBe(
-      'visible'
-    )
-  })
-
-  it('fails closed when the row exists but its own context cannot read it', async () => {
-    const { prisma, queryRaw } = fakePrisma({ store: { organizationId: ORG } })
-    queryRaw.mockResolvedValueOnce([{ store_id: STORE }]).mockResolvedValueOnce([])
-    await expect(new JobContext(prisma).anchor('scheduled_report', 'x')).rejects.toBeInstanceOf(
-      JobContextError
-    )
-  })
-
-  it('refuses a payload that names a store for a row that has none', async () => {
-    const { prisma, queryRaw } = fakePrisma()
-    queryRaw.mockResolvedValueOnce([{ store_id: null }])
-    await expect(new JobContext(prisma).anchor('media', 'x', STORE)).rejects.toBeInstanceOf(
-      JobContextMismatchError
-    )
-  })
-
-  it('refuses a payload whose store is not the store of the row', async () => {
-    const { prisma, queryRaw } = fakePrisma({ store: { organizationId: ORG } })
-    queryRaw.mockResolvedValueOnce([{ store_id: STORE }])
-    await expect(new JobContext(prisma).anchor('export', 'x', OTHER)).rejects.toBeInstanceOf(
-      JobContextError
-    )
   })
 })
 

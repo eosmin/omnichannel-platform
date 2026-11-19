@@ -338,7 +338,7 @@ describe('Importing the settlement file of a carrier (TDD_17 §4.15, Step 4.13 P
       expect(scans.jobs).toEqual([
         {
           name: JobNames.SCAN_FILE,
-          data: { mediaId: media.id },
+          data: { mediaId: media.id, storeId: ctx.storeA.id },
           opts: { jobId: `${JobNames.SCAN_FILE}-${media.id}` }
         }
       ])

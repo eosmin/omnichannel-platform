@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 import { z } from 'zod'
@@ -8,7 +9,7 @@ import {
   errorName,
   withTimeout
 } from '@platform/channels/connections'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
 import {
   CaptionState,
   ChannelConnectionStatus,
@@ -109,7 +110,8 @@ export class OutboundSender {
     private readonly window: MessagingWindowService,
     private readonly events: DomainEvents,
     private readonly storage: StorageService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(OutboundSender.name)
   }
@@ -117,38 +119,40 @@ export class OutboundSender {
   // Throws when the attempt should be repeated; returns when the message is settled, sent or failed
   async send(job: SendOutboundMessageJob, isLastAttempt: boolean): Promise<void> {
     const { storeId, messageId } = job
-    const message = await this.prisma.client.message.findFirst({
-      where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED },
-      select: {
-        type: true,
-        content: true,
-        // The text of the message goes as a message of its own after the files, and where it stands
-        textApart: true,
-        captionState: true,
-        metadata: true,
-        // `false` while queued: an earlier attempt, or an earlier send that was resent, may have reached the provider
-        failureDefinitive: true,
-        resentAt: true,
-        replyToMessageId: true,
-        replyToMediaId: true,
-        createdAt: true,
-        conversation: {
-          select: {
-            id: true,
-            status: true,
-            resolvedAt: true,
-            channelType: true,
-            customerIdentity: { select: { channelIdentity: true } },
-            channelConnection: {
-              select: {
-                ...CONNECTION_ROW_SELECT,
-                installation: { select: { status: true, plugin: { select: { status: true } } } }
+    const message = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.message.findFirst({
+        where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED },
+        select: {
+          type: true,
+          content: true,
+          // The text of the message goes as a message of its own after the files, and where it stands
+          textApart: true,
+          captionState: true,
+          metadata: true,
+          // `false` while queued: an earlier attempt, or an earlier send that was resent, may have reached the provider
+          failureDefinitive: true,
+          resentAt: true,
+          replyToMessageId: true,
+          replyToMediaId: true,
+          createdAt: true,
+          conversation: {
+            select: {
+              id: true,
+              status: true,
+              resolvedAt: true,
+              channelType: true,
+              customerIdentity: { select: { channelIdentity: true } },
+              channelConnection: {
+                select: {
+                  ...CONNECTION_ROW_SELECT,
+                  installation: { select: { status: true, plugin: { select: { status: true } } } }
+                }
               }
             }
           }
         }
-      }
-    })
+      })
+    )
     // Gone, or already sent or failed: a second job for the same message (the sweep) has nothing to do
     if (message === null) return
     // Whatever an earlier attempt left: from here on a failure is definitive only if nothing before it may have gone
@@ -299,8 +303,10 @@ export class OutboundSender {
     await this.recordAccepted(storeId, messageId, connection.id, accepted)
     // Once, and only for a reply the provider took: a failed or retried attempt is no answer
     if (isClosing) {
-      await this.prisma.transaction(tx =>
-        this.conversations.recordReply(tx, storeId, message.conversation.id, message.createdAt)
+      await this.jobContext.forStore(storeId, () =>
+        this.prisma.transaction(tx =>
+          this.conversations.recordReply(tx, storeId, message.conversation.id, message.createdAt)
+        )
       )
     }
   }
@@ -323,33 +329,38 @@ export class OutboundSender {
   ): Promise<boolean> {
     const conversationId = message.conversation.id
     try {
-      return await this.prisma.transaction(async tx => {
-        const conversation = await lockConversationForWrite(tx, storeId, conversationId)
-        // The row of the message under its own lock, after the conversation's (the order of every writer)
-        const rows = await tx.$queryRaw<{ delivery_status: string }[]>`
+      return await this.jobContext.forStore(storeId, () =>
+        this.prisma.transaction(async tx => {
+          const conversation = await lockConversationForWrite(tx, storeId, conversationId)
+          // The row of the message under its own lock, after the conversation's (the order of every writer)
+          const rows = await tx.$queryRaw<{ delivery_status: string }[]>`
           SELECT delivery_status FROM messages
           WHERE id = ${messageId} AND store_id = ${storeId} FOR UPDATE`
-        const stillQueued = rows[0]?.delivery_status === String(DeliveryStatus.QUEUED)
-        // The window was open when the agent resolved; it may have closed during the wait, and free text
-        // sent after it would only come back as a red bubble
-        const stands =
-          stillQueued &&
-          conversation.status === String(ConversationStatus.RESOLVED) &&
-          conversation.resolvedAt !== null &&
-          conversation.resolvedAt <= message.createdAt &&
-          (await this.window.isOpen(tx, storeId, conversationId))
-        if (stands) {
-          // What `markInFlight` writes before the provider is asked, written here with the check so that
-          // nothing sits between them
-          await tx.message.update({ where: { id: messageId }, data: { failureDefinitive: false } })
-          return true
-        }
-        if (stillQueued) {
-          await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, messageId)
-          await tx.message.delete({ where: { id: messageId } })
-        }
-        return false
-      })
+          const stillQueued = rows[0]?.delivery_status === String(DeliveryStatus.QUEUED)
+          // The window was open when the agent resolved; it may have closed during the wait, and free text
+          // sent after it would only come back as a red bubble
+          const stands =
+            stillQueued &&
+            conversation.status === String(ConversationStatus.RESOLVED) &&
+            conversation.resolvedAt !== null &&
+            conversation.resolvedAt <= message.createdAt &&
+            (await this.window.isOpen(tx, storeId, conversationId))
+          if (stands) {
+            // What `markInFlight` writes before the provider is asked, written here with the check so that
+            // nothing sits between them
+            await tx.message.update({
+              where: { id: messageId },
+              data: { failureDefinitive: false }
+            })
+            return true
+          }
+          if (stillQueued) {
+            await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, messageId)
+            await tx.message.delete({ where: { id: messageId } })
+          }
+          return false
+        })
+      )
     } catch (error) {
       // The conversation went (or its store) after the job began: there is nothing to send. Any other
       // error, a lock that timed out among them, repeats the attempt
@@ -375,14 +386,16 @@ export class OutboundSender {
     // and the message is failed with this code
     failedWith?: ErrorCode
   ): Promise<void> {
-    const taken = await this.prisma.client.message.count({
-      where: {
-        storeId,
-        channelMessageId: accepted.externalId,
-        id: { not: messageId },
-        conversation: { channelConnectionId: connectionRowId }
-      }
-    })
+    const taken = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.message.count({
+        where: {
+          storeId,
+          channelMessageId: accepted.externalId,
+          id: { not: messageId },
+          conversation: { channelConnectionId: connectionRowId }
+        }
+      })
+    )
     if (taken > 0) this.logger.warn({ messageId }, 'the provider id of a reply was already used')
     const captionExternalId = accepted.metadata?.[ChannelResultMetadata.CAPTION_EXTERNAL_ID]
     // The id of the caption says it was sent; otherwise the plugin says how it stands
@@ -404,14 +417,16 @@ export class OutboundSender {
       taken > 0 ? withoutId : { ...withoutId, channelMessageId: accepted.externalId }
     for (let attempt = 1; ; attempt += 1) {
       try {
-        const applied = await this.status.apply(change)
+        const applied = await inSavepoint(() => this.status.apply(change))
         // A receipt moved the message past this state first: the id is still a fact about what was sent, and
         // receipts and echoes find the message by it
         if (!applied && change.channelMessageId !== undefined) {
-          await this.prisma.client.message.updateMany({
-            where: { id: messageId, storeId, channelMessageId: null },
-            data: { channelMessageId: change.channelMessageId }
-          })
+          await this.jobContext.forStore(storeId, () =>
+            this.prisma.client.message.updateMany({
+              where: { id: messageId, storeId, channelMessageId: null },
+              data: { channelMessageId: change.channelMessageId }
+            })
+          )
         }
         return
       } catch (error) {
@@ -474,23 +489,25 @@ export class OutboundSender {
   // The files of a media message in the order the agent gave, each with its own state and a way to open its
   // bytes. A message sent before each file had a state has one file with none: it counts as queued.
   private async filesOf(storeId: string, messageId: string): Promise<AttachmentToSend[]> {
-    const rows = await this.prisma.client.media.findMany({
-      where: { storeId, messageId },
-      select: {
-        id: true,
-        key: true,
-        filename: true,
-        contentType: true,
-        status: true,
-        fileSize: true,
-        position: true,
-        deliveryStatus: true,
-        sendErrorCode: true,
-        channelMessageId: true,
-        caption: true
-      },
-      orderBy: [{ position: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }]
-    })
+    const rows = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.media.findMany({
+        where: { storeId, messageId },
+        select: {
+          id: true,
+          key: true,
+          filename: true,
+          contentType: true,
+          status: true,
+          fileSize: true,
+          position: true,
+          deliveryStatus: true,
+          sendErrorCode: true,
+          channelMessageId: true,
+          caption: true
+        },
+        orderBy: [{ position: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }]
+      })
+    )
     return rows.map((file, index) => ({
       id: file.id,
       index,
@@ -513,9 +530,11 @@ export class OutboundSender {
       open: async () => {
         // Checked again at the moment the bytes are read: a file marked infected or deleted since the
         // message was picked up must not be uploaded to anybody
-        const stillClean = await this.prisma.client.media.count({
-          where: { id: file.id, storeId, messageId, status: MediaStatus.CLEAN }
-        })
+        const stillClean = await this.jobContext.forStore(storeId, () =>
+          this.prisma.client.media.count({
+            where: { id: file.id, storeId, messageId, status: MediaStatus.CLEAN }
+          })
+        )
         if (stillClean !== 1) {
           throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
         }
@@ -528,9 +547,11 @@ export class OutboundSender {
       // Made only when a plugin asks for it, and checked as `open` is: a file marked infected or deleted since the message was
       // picked up gets no address. The life of the link is the plugin's ask, never longer than the one the storage allows.
       sign: async (ttlSeconds: number) => {
-        const stillClean = await this.prisma.client.media.count({
-          where: { id: file.id, storeId, messageId, status: MediaStatus.CLEAN }
-        })
+        const stillClean = await this.jobContext.forStore(storeId, () =>
+          this.prisma.client.media.count({
+            where: { id: file.id, storeId, messageId, status: MediaStatus.CLEAN }
+          })
+        )
         if (stillClean !== 1) {
           throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
             retryable: false,
@@ -651,7 +672,9 @@ export class OutboundSender {
       // message sends what went, and the files that follow fail with the code of the window, in their order
       if (
         file.index > 0 &&
-        !(await this.window.isOpen(this.prisma.client, storeId, args.conversationId))
+        !(await this.jobContext.forStore(storeId, () =>
+          this.window.isOpen(this.prisma.client, storeId, args.conversationId)
+        ))
       ) {
         await this.markFile(storeId, messageId, file.id, {
           failedWith: ErrorCodes.CHANNEL_WINDOW_EXPIRED
@@ -802,7 +825,11 @@ export class OutboundSender {
     first: AttachmentToSend
   ): Promise<void> {
     const { storeId, messageId } = args
-    if (!(await this.window.isOpen(this.prisma.client, storeId, args.conversationId))) {
+    if (
+      !(await this.jobContext.forStore(storeId, () =>
+        this.window.isOpen(this.prisma.client, storeId, args.conversationId)
+      ))
+    ) {
       await this.writeFactsSafely(storeId, messageId, first, { state: CaptionState.FAILED })
       return
     }
@@ -895,10 +922,12 @@ export class OutboundSender {
     // The state of the text lives on the message: it is the text of the first file. A file after the first
     // has none to record (the channel carries its text with the file, or the api refused it)
     if (file.index !== 0) return
-    await this.prisma.client.message.updateMany({
-      where: { id: messageId, storeId, ...notSent },
-      data
-    })
+    await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.message.updateMany({
+        where: { id: messageId, storeId, ...notSent },
+        data
+      })
+    )
   }
 
   // The text of a file whose kind has no place for one on the channel (an audio on WhatsApp), sent after the
@@ -974,20 +1003,22 @@ export class OutboundSender {
         : { deliveryStatus: DeliveryStatus.FAILED, sendErrorCode: outcome.failedWith }
     for (let attempt = 1; ; attempt += 1) {
       try {
-        await this.prisma.client.media.updateMany({
-          // A file that is already `sent` is never taken back
-          where: {
-            id: mediaId,
-            storeId,
-            messageId,
-            // A file the provider took, or a receipt moved on, is never taken back
-            OR: [
-              { deliveryStatus: null },
-              { deliveryStatus: { in: [DeliveryStatus.QUEUED, DeliveryStatus.FAILED] } }
-            ]
-          },
-          data
-        })
+        await this.jobContext.forStore(storeId, () =>
+          this.prisma.client.media.updateMany({
+            // A file that is already `sent` is never taken back
+            where: {
+              id: mediaId,
+              storeId,
+              messageId,
+              // A file the provider took, or a receipt moved on, is never taken back
+              OR: [
+                { deliveryStatus: null },
+                { deliveryStatus: { in: [DeliveryStatus.QUEUED, DeliveryStatus.FAILED] } }
+              ]
+            },
+            data
+          })
+        )
         return
       } catch (error) {
         if (attempt >= OutboundLimits.WRITE_ATTEMPTS) throw error
@@ -1005,17 +1036,21 @@ export class OutboundSender {
   ): Promise<string | null> {
     if (messageId === null) return null
     if (mediaId !== null) {
-      const file = await this.prisma.client.media.findFirst({
-        where: { id: mediaId, storeId, messageId },
-        select: { channelMessageId: true }
-      })
+      const file = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.media.findFirst({
+          where: { id: mediaId, storeId, messageId },
+          select: { channelMessageId: true }
+        })
+      )
       // The file has no id at the provider now (a stale row): no quote, and not a quote of another picture
       return file?.channelMessageId ?? null
     }
-    const target = await this.prisma.client.message.findFirst({
-      where: { id: messageId, storeId },
-      select: { channelMessageId: true }
-    })
+    const target = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.message.findFirst({
+        where: { id: messageId, storeId },
+        select: { channelMessageId: true }
+      })
+    )
     return target?.channelMessageId ?? null
   }
 
@@ -1039,17 +1074,21 @@ export class OutboundSender {
   // The provider is about to be asked: the message is marked as one that may have gone (`failureDefinitive`
   // false while it is queued) until an answer says otherwise
   private async markInFlight(storeId: string, messageId: string): Promise<void> {
-    await this.prisma.client.message.updateMany({
-      where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED },
-      data: { failureDefinitive: false }
-    })
+    await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.message.updateMany({
+        where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED },
+        data: { failureDefinitive: false }
+      })
+    )
   }
 
   // The attempt was refused in so many words and nothing before it may have gone: the mark is taken off
   private async clearInFlight(storeId: string, messageId: string): Promise<void> {
-    await this.prisma.client.message.updateMany({
-      where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED },
-      data: { failureDefinitive: null }
-    })
+    await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.message.updateMany({
+        where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED },
+        data: { failureDefinitive: null }
+      })
+    )
   }
 }

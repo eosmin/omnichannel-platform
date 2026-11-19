@@ -33,7 +33,7 @@ DO $$
 DECLARE
   role_name text;
 BEGIN
-  FOREACH role_name IN ARRAY ARRAY['platform_app', 'platform_worker'] LOOP
+  FOREACH role_name IN ARRAY ARRAY['platform_app', 'platform_worker', 'platform_replica_ro'] LOOP
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
       BEGIN
         EXECUTE format('DROP OWNED BY %I', role_name);

@@ -102,6 +102,10 @@ export const FinanceSweepLimits = {
   ORGANIZATIONS_PAGE_SIZE: 200,
   // Accounts-and-periods whose balance one run recomputes in one statement
   BALANCE_PAGE_SIZE: 1000,
+  // The limits of the context of ONE unit of the checks (a page of the sweep, the balances against the lines, a page of the chain walk):
+  // longer than the 15 s of a request, because they read the whole ledger of an organization, and still bounded
+  CONTEXT_MAX_WAIT_MS: 10_000,
+  CONTEXT_TIMEOUT_MS: 120_000,
   // Attempts of the daily check of one organization when the infrastructure fails, and the pause between them
   JOB_ATTEMPTS: 3,
   JOB_BACKOFF_MS: 60_000

@@ -4,7 +4,12 @@ import { Cron } from '@nestjs/schedule'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import {
   CarrierCapability,
   CarrierConnectionStatus,
@@ -27,6 +32,9 @@ import { POLLED_STATUSES } from '../shipping/shipment-poller.service'
 
 import { LeaderLockService } from './leader-lock.service'
 
+// rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
+// every read or write of a table of a store runs inside JobContext.forStore / forOrganization
+
 const LOCK_SECONDS = 300
 const MINUTE_MS = 60_000
 const DAY_LENGTH = 10 // "2026-11-12" in an ISO date
@@ -42,7 +50,9 @@ export class ShipmentPollScheduler {
     private readonly heavyQueue: Queue<PollShipmentStatusJob>,
     private readonly prisma: PrismaService,
     private readonly registry: CarrierRegistry,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext,
+    private readonly lists: WorkerLists
   ) {
     this.logger.setContext(ShipmentPollScheduler.name)
   }
@@ -61,20 +71,41 @@ export class ShipmentPollScheduler {
   }
 
   async enqueueDue(now: Date): Promise<number> {
-    const groups = await this.prisma.client.shipment.groupBy({
-      by: ['storeId', 'connectionId'],
-      where: {
-        kind: ShipmentKind.OUTBOUND,
-        status: { in: [...POLLED_STATUSES] },
-        guideNumber: { not: null },
-        connection: { status: CarrierConnectionStatus.ACTIVE }
-      }
+    // The connections with a package on its way, from the list of the database (read to its end); the settings of each one are then
+    // read in the context of its store
+    const groups = await this.lists.shipmentPollTargets({
+      kind: ShipmentKind.OUTBOUND,
+      statuses: POLLED_STATUSES,
+      connectionStatus: CarrierConnectionStatus.ACTIVE
     })
     if (groups.length === 0) return 0
-    const connections = await this.prisma.client.carrierConnection.findMany({
-      where: { id: { in: groups.map(group => group.connectionId) } },
-      select: { id: true, carrierId: true, pollIntervalMinutes: true, webhookSecret: true }
-    })
+    const connections: {
+      id: string
+      carrierId: string
+      pollIntervalMinutes: number | null
+      webhookSecret: Uint8Array | null
+    }[] = []
+    const byStore = new Map<string, string[]>()
+    for (const group of groups) {
+      const ids = byStore.get(group.storeId) ?? []
+      ids.push(group.connectionId)
+      byStore.set(group.storeId, ids)
+    }
+    for (const [storeId, ids] of byStore) {
+      try {
+        connections.push(
+          ...(await this.jobContext.forStore(storeId, () =>
+            this.prisma.client.carrierConnection.findMany({
+              where: { storeId, id: { in: ids } },
+              select: { id: true, carrierId: true, pollIntervalMinutes: true, webhookSecret: true }
+            })
+          ))
+        )
+      } catch (error) {
+        // A store deleted since the list was read has nothing left to poll
+        if (!(error instanceof JobContextGoneError)) throw error
+      }
+    }
     const minute = Math.floor(now.getTime() / MINUTE_MS)
     // The one run of the day that also asks the packages older than two weeks
     const includeOld =

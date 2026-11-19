@@ -1,6 +1,5 @@
 import type { INestApplication } from '@nestjs/common'
 
-import { ChannelHealthService } from '@platform/channels/connections'
 import { MetaAppConfig } from '@platform/channels/meta'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
@@ -28,6 +27,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { createWorkerPrisma } from '../helpers/worker-db'
+import { workerChannelHealth } from '../helpers/worker-services'
 
 const OK = 200
 const CREATED = 201
@@ -553,11 +553,11 @@ describe('The plugin catalog and the installations of a store', () => {
       const { id } = await strandedConnection()
       const healthCheck = jest.fn(() => Promise.resolve({ healthy: true, checkedAt: '' }))
 
-      await app
-        .get(ChannelHealthService, { strict: false })
-        .checkAll(pluginId =>
-          pluginId === id ? buildChannelPlugin({ id, healthCheck }) : undefined
-        )
+      await (
+        await workerChannelHealth(app)
+      ).checkAll(pluginId =>
+        pluginId === id ? buildChannelPlugin({ id, healthCheck }) : undefined
+      )
 
       expect(healthCheck).not.toHaveBeenCalled()
     })

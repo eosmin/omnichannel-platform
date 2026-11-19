@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import {
+  inSavepoint,
   isUniqueViolation,
   lockStoreForWrite,
   PrismaService,
@@ -90,7 +91,9 @@ export class CustomerIdentityService {
     }
     const profile = cleanProfile(input.profile)
     try {
-      return await this.prisma.transaction(tx => this.resolve(tx, key, parsed, profile))
+      return await inSavepoint(() =>
+        this.prisma.transaction(tx => this.resolve(tx, key, parsed, profile))
+      )
     } catch (error) {
       if (!isUniqueViolation(error)) throw error
       // The handle was created by an event that was faster: run again, now it is found (and the

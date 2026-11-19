@@ -10,16 +10,18 @@ import { parseEncryptionKey } from '@platform/core/crypto'
 import { WebhookSources } from '@platform/core/domain'
 
 import { PrismaClient } from '../generated/client/client'
-import { connectionUrls } from '../testing/connection-urls'
+import { connectionUrls, replicaConnectionUrl } from '../testing/connection-urls'
 
 import { bootstrapOwner, ensureSystemRoles } from './bootstrap-owner'
 import { loadDevFixtures } from './dev-fixtures'
 import {
+  inSavepoint,
   PrismaService,
   RawSqlContextRequiredError,
   TenantContextRequiredError
 } from './prisma.service'
 import { ProcessedWebhookEventsService } from './processed-webhook-events.service'
+import { isUniqueViolation } from './unique-violation'
 
 const urls = connectionUrls()
 const runId = randomUUID().slice(0, 8)
@@ -343,13 +345,18 @@ describe('database roles', () => {
     })
   })
 
-  it('makes neither role a superuser, and only the worker bypasses RLS', async () => {
+  it('makes no role a superuser, and only the worker bypasses RLS', async () => {
     await withClient(urls.owner, async owner => {
       const { rows } = await owner.query(
         "SELECT rolname, rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname LIKE 'platform\\_%' ORDER BY rolname"
       )
-      expect(rows).toEqual([
+      // The read only role of the replica logs in only where DB_REPLICA_PASSWORD is set: its login is not what this case is about
+      const seen = rows.map((row: { rolname: string; rolcanlogin: boolean }) =>
+        row.rolname === 'platform_replica_ro' ? { ...row, rolcanlogin: true } : row
+      )
+      expect(seen).toEqual([
         { rolname: 'platform_app', rolsuper: false, rolbypassrls: false, rolcanlogin: true },
+        { rolname: 'platform_replica_ro', rolsuper: false, rolbypassrls: false, rolcanlogin: true },
         { rolname: 'platform_worker', rolsuper: false, rolbypassrls: true, rolcanlogin: true }
       ])
     })
@@ -413,6 +420,41 @@ describe('PrismaService', () => {
     expect(rows[0]).toEqual({ stores: 's-1,s-2', organizations: 'o-1', person: 'u-1' })
   })
 
+  it('answers replicaTenantRead() as the read only role when DATABASE_REPLICA_URL names it, and refuses a write through the handle', async () => {
+    const withReplica = new PrismaService({
+      databaseUrl: urls.app,
+      replicaUrl: replicaConnectionUrl(),
+      poolSize: 2
+    })
+    await withReplica.onModuleInit()
+    try {
+      const context = { storeIds: ['s-1'], organizationIds: ['o-1'], userId: 'u-1' }
+      const read = await withReplica.replicaTenantRead(
+        context,
+        db => db.$queryRaw<{ who: string; stores: string }[]>`
+          SELECT current_user AS who, current_setting('app.store_ids') AS stores`
+      )
+      expect(read[0]).toEqual({ who: 'platform_replica_ro', stores: 's-1' })
+      // A read of a table the replica readers use (the rollups of the analytics) is allowed ...
+      await expect(
+        withReplica.replicaTenantRead(
+          context,
+          db => db.$queryRaw`SELECT count(*) FROM metrics_hourly WHERE false`
+        )
+      ).resolves.toBeDefined()
+      // ... and a write through the handle is refused by the database, with no standby behind it. Here the session default of the role
+      // (read only) answers first; the missing privilege is proven on a connection of its own in tests/security/rls-replica-role.spec.ts
+      await expect(
+        withReplica.replicaTenantRead(
+          context,
+          db => db.$executeRaw`UPDATE metrics_hourly SET store_id = store_id WHERE false`
+        )
+      ).rejects.toThrow(/read-only transaction/)
+    } finally {
+      await withReplica.onModuleDestroy()
+    }
+  })
+
   it('runs the callback of replicaTenantRead and of tenantTransaction on the one connection and transaction that got the context', async () => {
     type Probe = { stores: string; pid: number; txid: string }
     const context = { storeIds: ['s-77'], organizationIds: ['o-77'], userId: 'u-77' }
@@ -439,6 +481,110 @@ describe('PrismaService', () => {
     expect(tenant[0]?.stores).toBe('s-77')
     expect(tenant[1]).toEqual(tenant[0])
     expect(replica[0]?.txid).not.toBe(tenant[0]?.txid)
+  })
+
+  // A request is ONE transaction under RLS_CONTEXT: a statement that fails aborts it (25P02) even when the code caught the error
+  describe('a unique violation that the code catches', () => {
+    const context = { storeIds: [], organizationIds: [] }
+    const slug = `it-${runId}-sp`
+    const create = (name: string, own: string) =>
+      service.client.organization.create({ data: { name, slug: own } })
+
+    it('aborts the transaction when it is caught with no savepoint (the problem inSavepoint solves)', async () => {
+      await expect(
+        service.tenantTransaction(context, async () => {
+          await create('first', `${slug}-a`)
+          try {
+            await create('second', `${slug}-a`)
+          } catch (error) {
+            expect(isUniqueViolation(error)).toBe(true)
+          }
+          await service.client.$queryRaw`SELECT 1`
+        })
+      ).rejects.toThrow()
+    })
+
+    it('keeps the transaction usable and what it wrote before the attempt, when the attempt is in a savepoint', async () => {
+      const outcome = await service.tenantTransaction(context, async () => {
+        await create('first', `${slug}-b`)
+        let lost = false
+        try {
+          await inSavepoint(() => create('second', `${slug}-b`))
+        } catch (error) {
+          lost = isUniqueViolation(error)
+        }
+        // The transaction still answers, and the next write of the same unit of work lands
+        await create('third', `${slug}-c`)
+        return lost
+      })
+      expect(outcome).toBe(true)
+      const rows = await service.client.organization.findMany({
+        where: { slug: { in: [`${slug}-b`, `${slug}-c`] } },
+        orderBy: { slug: 'asc' }
+      })
+      expect(rows.map(row => [row.slug, row.name])).toEqual([
+        [`${slug}-b`, 'first'],
+        [`${slug}-c`, 'third']
+      ])
+    })
+
+    it('returns the value of an attempt that works, rethrows any other error and still releases the savepoint', async () => {
+      await service.tenantTransaction(context, async () => {
+        await expect(inSavepoint(() => Promise.resolve(7))).resolves.toBe(7)
+        await expect(
+          inSavepoint(async () => {
+            await service.client.$queryRaw`SELECT 1/0`
+          })
+        ).rejects.toThrow()
+        await expect(service.client.$queryRaw`SELECT 2 AS n`).resolves.toEqual([{ n: 2 }])
+      })
+    })
+
+    it('nests: a failed inner attempt leaves the outer one standing', async () => {
+      await service.tenantTransaction(context, async () => {
+        await inSavepoint(async () => {
+          await create('outer', `${slug}-d`)
+          await inSavepoint(() => create('again', `${slug}-d`)).catch(() => undefined)
+          await create('inner', `${slug}-e`)
+        })
+      })
+      const rows = await service.client.organization.count({
+        where: { slug: { in: [`${slug}-d`, `${slug}-e`] } }
+      })
+      expect(rows).toBe(2)
+    })
+
+    it('drops the commit hooks of an attempt it rolls back and keeps the ones before it', async () => {
+      const ran: string[] = []
+      await service.tenantTransaction(context, async () => {
+        service.afterCommit(service.client, () => ran.push('before'))
+        await inSavepoint(async () => {
+          service.afterCommit(service.client, () => ran.push('lost'))
+          await create('hook', `${slug}-g`)
+          await create('hook again', `${slug}-g`)
+        }).catch(() => undefined)
+        service.afterCommit(service.client, () => ran.push('after'))
+      })
+      expect(ran).toEqual(['before', 'after'])
+    })
+
+    it('runs the attempt as it is when there is no transaction to protect', async () => {
+      await expect(inSavepoint(() => Promise.resolve('plain'))).resolves.toBe('plain')
+    })
+
+    it('takes the transaction it is given, for the code that opened its own', async () => {
+      await service.transaction(async tx => {
+        await tx.organization.create({ data: { name: 'own', slug: `${slug}-f` } })
+        await inSavepoint(
+          () => tx.organization.create({ data: { name: 'dup', slug: `${slug}-f` } }),
+          tx
+        ).catch(() => undefined)
+        await tx.$queryRaw`SELECT 1`
+      })
+      await expect(
+        service.client.organization.count({ where: { slug: `${slug}-f` } })
+      ).resolves.toBe(1)
+    })
   })
 
   it('refuses replicaTenantRead inside a tenant transaction (two connections of one pool)', async () => {

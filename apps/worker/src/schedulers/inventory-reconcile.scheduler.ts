@@ -18,10 +18,12 @@ import {
 
 import { LeaderLockService } from './leader-lock.service'
 
+// rls-context: the stores are a global table (no row security); the job of each store opens its own context
+
 const LOCK_SECONDS = 600
 const DAY_LENGTH = 10 // "2026-11-12" in an ISO date
 
-// Daily at 04:00 UTC, on one replica (TDD_16 §4.8): one reconciliation job for each store that has stock or a ledger.
+// Daily at 04:00 UTC, on one replica (TDD_16 §4.8): one reconciliation job for each store (one with no stock or ledger finds nothing and ends).
 // The check itself is the heavy-processing job, so a slow store does not hold the lock of the schedule.
 @Injectable()
 export class InventoryReconcileScheduler {
@@ -59,9 +61,8 @@ export class InventoryReconcileScheduler {
     let cursor: string | undefined
     for (;;) {
       const stores = await this.prisma.client.store.findMany({
-        where: {
-          OR: [{ inventoryLevels: { some: {} } }, { inventoryMovements: { some: {} } }]
-        },
+        // Every store: "has stock or a ledger" is a question about tables behind row security, so it is the job of the store that finds
+        // nothing and ends (a store has no row of the lists the job walks, and the check is cheap)
         select: { id: true },
         orderBy: { id: 'asc' },
         take: pageSize,

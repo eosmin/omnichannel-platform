@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import { PushLimits } from '@platform/core/notifications'
 
 import type { PushSubscriptionBody } from './notifications.schemas'
@@ -17,7 +17,7 @@ export class PushSubscriptionsService {
   // must stop arriving there.
   async register(userId: string, body: PushSubscriptionBody): Promise<void> {
     try {
-      await this.save(userId, body)
+      await inSavepoint(() => this.save(userId, body))
     } catch (error) {
       // Two requests for a new endpoint at once: the second finds the row the first made
       if (!isUniqueViolation(error)) throw error

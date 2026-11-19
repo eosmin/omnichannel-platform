@@ -133,16 +133,7 @@ export class SearchService {
     userId: string | undefined,
     work: () => Promise<T>
   ): Promise<T> {
-    const current = this.prisma.currentTenantContext()
-    if (current) {
-      if (current.storeIds.length !== 1 || current.storeIds[0] !== storeId) {
-        throw new Error(
-          'the search runs in the context of the store of the request, and of that store alone'
-        )
-      }
-      return work()
-    }
-    return this.prisma.tenantTransaction({ storeIds: [storeId], organizationIds: [], userId }, work)
+    return this.prisma.inStoreContext(storeId, work, userId)
   }
 
   // One round trip: whether the text has no word the index can look for (only stop words, or only symbols, so its

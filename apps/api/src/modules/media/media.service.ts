@@ -5,7 +5,7 @@ import type { Redis } from 'ioredis'
 
 import type { Permission } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import { FinanceConflicts, FinanceTransactionKind, MediaStatus } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -198,7 +198,7 @@ export class MediaService {
     // queued again (under the same job id, so never twice): the first attempt may have died between
     // writing the row and queueing it.
     const existing = await this.find(storeId, body.mediaId)
-    if (existing !== null) return this.again(existing, keys, userId, body)
+    if (existing !== null) return this.again(existing, keys, userId, body, storeId)
 
     // The parent is checked again: the request that signed the url was another one. After the retry
     // above, so a retry of a file that was kept is not refused because its product went away since.
@@ -233,21 +233,23 @@ export class MediaService {
 
     let media: MediaRow
     try {
-      media = await this.prisma.client.media.create({
-        data: {
-          id: body.mediaId,
-          storeId,
-          purpose: body.purpose,
-          ...parentColumnsOf(body),
-          uploadedBy: userId,
-          key: keys.final,
-          filename,
-          contentType: body.contentType,
-          fileSize: body.fileSizeBytes,
-          status: MediaStatus.PENDING
-        },
-        select: MEDIA_SELECT
-      })
+      media = await inSavepoint(() =>
+        this.prisma.client.media.create({
+          data: {
+            id: body.mediaId,
+            storeId,
+            purpose: body.purpose,
+            ...parentColumnsOf(body),
+            uploadedBy: userId,
+            key: keys.final,
+            filename,
+            contentType: body.contentType,
+            fileSize: body.fileSizeBytes,
+            status: MediaStatus.PENDING
+          },
+          select: MEDIA_SELECT
+        })
+      )
     } catch (error) {
       // The parent was deleted after it was checked: the same answer as a parent that is not there
       if (isForeignKeyViolation(error)) {
@@ -257,10 +259,10 @@ export class MediaService {
       // Two confirmations at once: the other one won
       const winner = await this.find(storeId, body.mediaId)
       if (winner === null) throw uploadVerificationFailed()
-      return this.again(winner, keys, userId, body)
+      return this.again(winner, keys, userId, body, storeId)
     }
 
-    await this.queueScan(media.id)
+    await this.queueScan(storeId, media.id)
     await this.dropStaging(keys.upload)
     await this.redis.del(CacheKeys.upload.requester(storeId, body.mediaId))
     return view(media)
@@ -369,7 +371,8 @@ export class MediaService {
     media: MediaRow,
     keys: UploadKeys,
     userId: string,
-    body: ConfirmUploadBody
+    body: ConfirmUploadBody,
+    storeId: string
   ): Promise<MediaView> {
     // The same file, member, purpose and parent: a retry never moves a picture to another product or kind
     const parent = parentColumnsOf(body)
@@ -384,7 +387,7 @@ export class MediaService {
       throw uploadVerificationFailed()
     }
     if (media.status === String(MediaStatus.PENDING)) {
-      await this.queueScan(media.id)
+      await this.queueScan(storeId, media.id)
       await this.dropStaging(keys.upload)
     }
     return view(media)
@@ -402,10 +405,10 @@ export class MediaService {
   }
 
   // Scan first; PROCESS_IMAGE is queued by the scan job only after a clean result
-  private async queueScan(mediaId: string): Promise<void> {
+  private async queueScan(storeId: string, mediaId: string): Promise<void> {
     await this.heavyQueue.add(
       JobNames.SCAN_FILE,
-      { mediaId },
+      { mediaId, storeId },
       { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
     )
   }

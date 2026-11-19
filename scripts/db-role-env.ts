@@ -6,7 +6,12 @@ import { z } from 'zod'
 export const dbRoleEnvSchema = z.object({
   DIRECT_DATABASE_URL: z.url(),
   DB_APP_PASSWORD: z.string().min(12),
-  DB_WORKER_PASSWORD: z.string().min(12)
+  DB_WORKER_PASSWORD: z.string().min(12),
+  // The role of the replica (platform_replica_ro, read only): given a login only where a replica is used
+  DB_REPLICA_PASSWORD: z.preprocess(
+    value => (value === '' ? undefined : value),
+    z.string().min(12).optional()
+  )
 })
 // The password of the pgbouncer role (the auth_user of PgBouncer and the monitoring user of SHOW POOLS):
 // docker-compose.yml gives it to Postgres and to PgBouncer, and the pooler suites read it to open the

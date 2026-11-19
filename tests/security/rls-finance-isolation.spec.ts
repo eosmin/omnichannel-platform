@@ -251,7 +251,11 @@ describe('row-level security, the books of an organization (phase 4)', () => {
         const tenant = policies.rows.find(row => row.policyname === `${table}_tenant`)
         expect({ table, found: tenant !== undefined }).toEqual({ table, found: true })
         expect(tenant?.cmd).toBe('ALL')
-        expect([...(tenant?.roles ?? [])].sort()).toEqual(['platform_app', 'platform_worker'])
+        expect([...(tenant?.roles ?? [])].sort()).toEqual([
+          'platform_app',
+          'platform_replica_ro',
+          'platform_worker'
+        ])
         for (const predicate of [tenant?.qual, tenant?.with_check]) {
           expect(predicate).toContain('organization_id = ANY')
           expect(predicate).toContain('app_organization_ids()')

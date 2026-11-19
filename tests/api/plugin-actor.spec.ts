@@ -8,7 +8,7 @@ import { ChannelContextFactory } from '@platform/channels/connections'
 import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -61,7 +61,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const OK = 200
 const CREATED = 201
@@ -153,29 +153,32 @@ describe('A plugin as the actor of a change of a message', () => {
     const events = app.get(DomainEvents, { strict: false })
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
     const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
-    const status = new MessageChangeStatusWriter(prisma, events)
+    const status = new MessageChangeStatusWriter(prisma, events, new JobContext(prisma))
     sender = new MessageChangeSender(
       prisma,
       registry,
       new ChannelContextFactory(cipher),
       status,
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      new JobContext(prisma)
     )
     reactionSender = new ReactionSender(
       prisma,
       registry,
       new ChannelContextFactory(cipher),
-      new ReactionStatusWriter(prisma, events),
-      await app.resolve(PinoLogger)
+      new ReactionStatusWriter(prisma, events, new JobContext(prisma)),
+      await app.resolve(PinoLogger),
+      new JobContext(prisma)
     )
     sweep = new OutboundRequeueScheduler(
       { withLock: (_name: string, _seconds: number, work: () => Promise<void>) => work() } as never, // the lock is not what is tested
-      prisma,
+      createGuardedWorkerPrisma(),
       new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never),
       undefined as never, // the replies are not what is tested
-      new ReactionStatusWriter(prisma, events),
+      new ReactionStatusWriter(prisma, events, new JobContext(prisma)),
       status,
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      new JobContext(createGuardedWorkerPrisma())
     )
     keys.a = await installPlugin(pluginA, FULL_SCOPES)
     keys.b = await installPlugin(pluginB, FULL_SCOPES)

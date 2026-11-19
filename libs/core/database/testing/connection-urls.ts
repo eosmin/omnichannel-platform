@@ -18,8 +18,12 @@ export const TEST_DATABASE_NAME = 'platform_test'
 // The database docker-compose.yml creates and `.env.example` points at: the one a person works in
 export const DEVELOPMENT_DATABASE_NAME = 'platform_dev'
 
-// The roles of the api and of the worker (created by the raw SQL migration)
-export const DatabaseRoles = { APP: 'platform_app', WORKER: 'platform_worker' } as const
+// The roles of the api and of the worker, and the read only one of the replica (created by the raw SQL migrations)
+export const DatabaseRoles = {
+  APP: 'platform_app',
+  WORKER: 'platform_worker',
+  REPLICA: 'platform_replica_ro'
+} as const
 
 function required(name: string): string {
   const value = process.env[name]
@@ -118,4 +122,10 @@ export function connectionUrls(): { owner: string; app: string; worker: string }
     app: throughPooler(asRole(owner, DatabaseRoles.APP, required('DB_APP_PASSWORD'))),
     worker: throughPooler(asRole(owner, DatabaseRoles.WORKER, required('DB_WORKER_PASSWORD')))
   }
+}
+
+// The URL of the read only replica role (DATABASE_REPLICA_URL in a deployment), straight to Postgres. Needs DB_REPLICA_PASSWORD,
+// which only the suites that prove the guarantee of the replica require
+export function replicaConnectionUrl(): string {
+  return asRole(testOwnerUrl(), DatabaseRoles.REPLICA, required('DB_REPLICA_PASSWORD'))
 }

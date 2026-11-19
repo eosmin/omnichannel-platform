@@ -6,7 +6,7 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AppPaths, CarrierResourceTypes, CodStatus, ShipmentStatus } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -22,7 +22,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const OK = 200
@@ -258,8 +258,9 @@ describe('The daily check of overdue remittances', () => {
       const scheduler = new RemittanceCheckScheduler(
         locks,
         queue as never,
-        app.get(PrismaService),
-        logger
+        createGuardedWorkerPrisma(),
+        logger,
+        new JobContext(createGuardedWorkerPrisma())
       )
       const queued = await scheduler.enqueueAll(NOW, { pageSize: 1 })
       const mine = queue.jobs.filter(
