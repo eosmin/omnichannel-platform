@@ -808,6 +808,10 @@ describe('PrismaService', () => {
       // The last queued work arms a timer and finishes: the timer fires while the COMMIT is on the wire, after the final drain. Before
       // the fix this was still "open", the entry went to a queue nobody emptied and was lost with no metric and no log.
       const late: { queued?: boolean; hookRan: boolean } = { hookRan: false }
+      let fired: () => void = () => undefined
+      const timerFired = new Promise<void>(resolve => {
+        fired = resolve
+      })
       await service.tenantTransaction(context, () => {
         service.beforeCommit(service.client, () => {
           setTimeout(() => {
@@ -815,14 +819,28 @@ describe('PrismaService', () => {
             service.afterCommit(service.client, () => {
               late.hookRan = true
             })
+            fired()
           }, 0)
           return Promise.resolve()
         })
         return Promise.resolve()
       })
+      await timerFired
       expect(late.queued).toBe(false)
       // A commit hook added in that window still runs: the transaction does commit
       expect(late.hookRan).toBe(true)
+    })
+
+    it('drains what was queued in a catalog transaction, inside its scope', async () => {
+      const ran: string[] = []
+      await service.catalogTransaction(() => {
+        service.beforeCommit(service.client, async tx => {
+          await tx.$queryRaw`SELECT 1`
+          ran.push('catalog')
+        })
+        return Promise.resolve()
+      })
+      expect(ran).toEqual(['catalog'])
     })
 
     it('runs the attempt as it is when there is no transaction to protect', async () => {
