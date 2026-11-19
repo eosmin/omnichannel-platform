@@ -5,6 +5,7 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AccountRole,
@@ -28,6 +29,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { inStoreContext } from '../helpers/tenant-context'
 
 interface ErrorBody {
   error: { code: string; metadata?: Record<string, unknown> }
@@ -1561,7 +1563,14 @@ describe('The books of an organization', () => {
     })
 
     it('answers the system with the reversal that exists, whoever wrote it, and a person with a conflict when the system wrote it', async () => {
-      const ledger = app.get(LedgerService)
+      const prisma = app.get(PrismaService, { strict: false })
+      // The posting of the books reverses inside the context of its organization (a job or a request opens it): the fixture gives it the same
+      const ledger = {
+        reverse: (input: Parameters<LedgerService['reverse']>[0]) =>
+          inStoreContext(prisma, { storeId: ctx.storeA.id, organizationId: ctx.orgA.id }, () =>
+            app.get(LedgerService).reverse(input)
+          )
+      }
       const reason = FinanceAutoMemo.REMITTANCE_VOID
       // A person reversed it first: the voided remittance finds its entry reversed and settles, it does not fail a posting
       const byPerson = await postEntry(entryBody(RENT, CASH, 84))
