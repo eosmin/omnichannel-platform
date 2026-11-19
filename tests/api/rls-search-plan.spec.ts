@@ -19,6 +19,7 @@ import {
 } from '@platform/core/domain'
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { retryOnDeadlock } from '../helpers/deadlock-retry'
 
 // The search under Row-Level Security (RLS audit, search section): Postgres evaluates the policy of a table before any condition of
 // the query whose operator is not LEAKPROOF, and `@@` of a tsvector, LIKE, ILIKE and the operators of pg_trgm are not. A condition that
@@ -133,7 +134,9 @@ describe('the plan of the searches with row-level security on', () => {
   }, 120_000)
 
   // The plan of a statement as platform_app with the context of store A and the policies on; text of the whole plan
-  async function planOf(
+  const planOf = (statement: string, values: unknown[], policiesOn: boolean): Promise<string> =>
+    retryOnDeadlock(() => planOfOnce(statement, values, policiesOn))
+  async function planOfOnce(
     statement: string,
     values: unknown[],
     policiesOn: boolean
@@ -187,7 +190,8 @@ describe('the plan of the searches with row-level security on', () => {
     'public.rls_search_messages(text, integer, integer, text, boolean, boolean, boolean, boolean, text[], text, text, text, text)'
   const FUNCTION_CALL = `SELECT * FROM public.rls_search_messages($1, 25::integer, $2::integer, NULL::text, true, true, true, true,
     $3::text[], $4, $5, $6, $7)`
-  async function planOfFunction(): Promise<string> {
+  const planOfFunction = (): Promise<string> => retryOnDeadlock(planOfFunctionOnce)
+  async function planOfFunctionOnce(): Promise<string> {
     const plans: string[] = []
     const collect = (notice: { message?: string }) => plans.push(notice.message ?? '')
     raw.on('notice', collect)

@@ -5,6 +5,7 @@ import pg from 'pg'
 import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { retryOnDeadlock } from '../helpers/deadlock-retry'
 
 // The searches of the LISTS (the customers list and its export, the orders list and its export) are Prisma `contains` / `startsWith`
 // filters, so they are LIKE / ILIKE statements on the same columns the search reads. The search of the inbox went through functions
@@ -68,7 +69,13 @@ describe('the plan of the searches of the lists with row-level security on', () 
   }, 120_000)
 
   // The plan of a statement as platform_app with the context of store A, with or without the policies on the tables it reads
-  async function planOf(
+  const planOf = (
+    statement: string,
+    values: unknown[],
+    tables: string[],
+    policiesOn: boolean
+  ): Promise<PlanNode> => retryOnDeadlock(() => planOfOnce(statement, values, tables, policiesOn))
+  async function planOfOnce(
     statement: string,
     values: unknown[],
     tables: string[],
@@ -153,47 +160,49 @@ describe('the plan of the searches of the lists with row-level security on', () 
   // SubPlan) and the store is a CONSTANT of the plan (`v_stores` read once), so nothing next to the LIKE bars a trigram index from the
   // planner, which is the gap of the raw case above. Which index it then picks is its cost decision and is not asserted (plan-notas-76).
   it('customers list through its function: no policy barrier next to the search, the store a constant, owner not a superuser', async () => {
-    const plans: string[] = []
-    const collect = (notice: { message?: string }): void => {
-      plans.push(notice.message ?? '')
-    }
-    raw.on('notice', collect)
-    await raw.query('BEGIN')
-    try {
-      await raw.query("SET LOCAL lock_timeout = '20s'")
-      const role = `plan_owner_${prefix.replaceAll(/[^a-z0-9]/gi, '_')}`.slice(0, 60)
-      await raw.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`)
-      await raw.query(`GRANT USAGE, CREATE ON SCHEMA public TO ${role}`)
-      await raw.query(`GRANT SELECT ON customers TO ${role}`)
-      await raw.query('ALTER TABLE customers ENABLE ROW LEVEL SECURITY')
-      await raw.query('ALTER TABLE customers FORCE ROW LEVEL SECURITY')
-      await raw.query('DROP POLICY IF EXISTS plan_owner ON customers')
-      await raw.query(
-        `CREATE POLICY plan_owner ON customers AS PERMISSIVE FOR ALL TO ${role} USING (true) WITH CHECK (true)`
-      )
-      await raw.query(
-        `ALTER FUNCTION public.rls_search_customer_list(text, text, text, boolean, text, text, integer) OWNER TO ${role}`
-      )
-      await raw.query('SET LOCAL enable_seqscan = off')
-      await raw.query('SET LOCAL enable_indexscan = off')
-      await raw.query('SET LOCAL enable_indexonlyscan = off')
-      await raw.query("LOAD 'auto_explain'")
-      await raw.query('SET LOCAL auto_explain.log_min_duration = 0')
-      await raw.query('SET LOCAL auto_explain.log_nested_statements = on')
-      await raw.query('SET LOCAL client_min_messages = log')
-      await raw.query('SET LOCAL ROLE platform_app')
-      await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
-      const { rows } = await raw.query<{ id: string }>(
-        `SELECT f.id FROM public.rls_search_customer_list($1, $2, $3, false, NULL, NULL, 25) AS f`,
-        ['%zorbalux%', '%zorbalux%', '%5030000%']
-      )
-      // Both stores hold the same three Zorbalux: three rows (not six) says that the other store is never read
-      expect(rows).toHaveLength(3)
-    } finally {
-      await raw.query('ROLLBACK')
-      raw.off('notice', collect)
-    }
-    const plan = plans.join('\n')
+    const plan = await retryOnDeadlock(async () => {
+      const plans: string[] = []
+      const collect = (notice: { message?: string }): void => {
+        plans.push(notice.message ?? '')
+      }
+      raw.on('notice', collect)
+      await raw.query('BEGIN')
+      try {
+        await raw.query("SET LOCAL lock_timeout = '20s'")
+        const role = `plan_owner_${prefix.replaceAll(/[^a-z0-9]/gi, '_')}`.slice(0, 60)
+        await raw.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`)
+        await raw.query(`GRANT USAGE, CREATE ON SCHEMA public TO ${role}`)
+        await raw.query(`GRANT SELECT ON customers TO ${role}`)
+        await raw.query('ALTER TABLE customers ENABLE ROW LEVEL SECURITY')
+        await raw.query('ALTER TABLE customers FORCE ROW LEVEL SECURITY')
+        await raw.query('DROP POLICY IF EXISTS plan_owner ON customers')
+        await raw.query(
+          `CREATE POLICY plan_owner ON customers AS PERMISSIVE FOR ALL TO ${role} USING (true) WITH CHECK (true)`
+        )
+        await raw.query(
+          `ALTER FUNCTION public.rls_search_customer_list(text, text, text, boolean, text, text, integer) OWNER TO ${role}`
+        )
+        await raw.query('SET LOCAL enable_seqscan = off')
+        await raw.query('SET LOCAL enable_indexscan = off')
+        await raw.query('SET LOCAL enable_indexonlyscan = off')
+        await raw.query("LOAD 'auto_explain'")
+        await raw.query('SET LOCAL auto_explain.log_min_duration = 0')
+        await raw.query('SET LOCAL auto_explain.log_nested_statements = on')
+        await raw.query('SET LOCAL client_min_messages = log')
+        await raw.query('SET LOCAL ROLE platform_app')
+        await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
+        const { rows } = await raw.query<{ id: string }>(
+          `SELECT f.id FROM public.rls_search_customer_list($1, $2, $3, false, NULL, NULL, 25) AS f`,
+          ['%zorbalux%', '%zorbalux%', '%5030000%']
+        )
+        // Both stores hold the same three Zorbalux: three rows (not six) says that the other store is never read
+        expect(rows).toHaveLength(3)
+      } finally {
+        await raw.query('ROLLBACK')
+        raw.off('notice', collect)
+      }
+      return plans.join('\n')
+    })
     // The whole plan travels with the failure
     expect(plan).toContain(`store_id = ANY ('{${storeA}}'::text[])`)
     expect(plan).not.toMatch(/app_store_ids|InitPlan|SubPlan/)

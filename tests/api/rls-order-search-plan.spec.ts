@@ -3,6 +3,7 @@ import pg from 'pg'
 import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { retryOnDeadlock } from '../helpers/deadlock-retry'
 
 // The ORDERS list finds an order by its number (a prefix on `orders`) or by who it is for: the name, the e-mail or the phone of the
 // customer, which is a LIKE / ILIKE over `customers`. With row-level security on, those operators are not LEAKPROOF and cannot be index
@@ -82,7 +83,9 @@ describe('the plan of the customers of an orders search with row-level security 
     accessPath(node).filter(path => /_trgm/.test(path))
 
   // The raw statement of the sub-select, as platform_app with the context of store A, with the policy of the table on or off
-  async function rawPlan(policyOn: boolean): Promise<PlanNode> {
+  const rawPlan = (policyOn: boolean): Promise<PlanNode> =>
+    retryOnDeadlock(() => rawPlanOnce(policyOn))
+  async function rawPlanOnce(policyOn: boolean): Promise<PlanNode> {
     await setUpPlanTransaction()
     try {
       if (policyOn) {
@@ -118,43 +121,45 @@ describe('the plan of the customers of an orders search with row-level security 
   })
 
   it('the function reads the customers with no policy barrier, as a non-superuser owner of a FORCED table', async () => {
-    const plans: string[] = []
-    const collect = (notice: { message?: string }): void => {
-      plans.push(notice.message ?? '')
-    }
-    raw.on('notice', collect)
-    await setUpPlanTransaction()
-    try {
-      const role = `plan_owner_${prefix.replaceAll(/[^a-z0-9]/gi, '_')}`.slice(0, 60)
-      await raw.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`)
-      await raw.query(`GRANT USAGE, CREATE ON SCHEMA public TO ${role}`)
-      await raw.query(`GRANT SELECT ON customers TO ${role}`)
-      await raw.query('ALTER TABLE customers ENABLE ROW LEVEL SECURITY')
-      await raw.query('ALTER TABLE customers FORCE ROW LEVEL SECURITY')
-      await raw.query('DROP POLICY IF EXISTS plan_owner ON customers')
-      await raw.query(
-        `CREATE POLICY plan_owner ON customers AS PERMISSIVE FOR ALL TO ${role} USING (true) WITH CHECK (true)`
-      )
-      await raw.query(
-        `ALTER FUNCTION public.rls_search_order_customers(text, text, text, integer) OWNER TO ${role}`
-      )
-      await raw.query("LOAD 'auto_explain'")
-      await raw.query('SET LOCAL auto_explain.log_min_duration = 0')
-      await raw.query('SET LOCAL auto_explain.log_nested_statements = on')
-      await raw.query('SET LOCAL client_min_messages = log')
-      await raw.query('SET LOCAL ROLE platform_app')
-      await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
-      const { rows } = await raw.query<{ id: string }>(
-        `SELECT f.id FROM public.rls_search_order_customers($1, $1, $2, 101) AS f`,
-        [NAME, PHONE]
-      )
-      // Both stores hold the same two Zorbalux: two rows (not four) says that the other store is never read
-      expect(rows).toHaveLength(2)
-    } finally {
-      await raw.query('ROLLBACK')
-      raw.off('notice', collect)
-    }
-    const plan = plans.join('\n')
+    const plan = await retryOnDeadlock(async () => {
+      const plans: string[] = []
+      const collect = (notice: { message?: string }): void => {
+        plans.push(notice.message ?? '')
+      }
+      raw.on('notice', collect)
+      await setUpPlanTransaction()
+      try {
+        const role = `plan_owner_${prefix.replaceAll(/[^a-z0-9]/gi, '_')}`.slice(0, 60)
+        await raw.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`)
+        await raw.query(`GRANT USAGE, CREATE ON SCHEMA public TO ${role}`)
+        await raw.query(`GRANT SELECT ON customers TO ${role}`)
+        await raw.query('ALTER TABLE customers ENABLE ROW LEVEL SECURITY')
+        await raw.query('ALTER TABLE customers FORCE ROW LEVEL SECURITY')
+        await raw.query('DROP POLICY IF EXISTS plan_owner ON customers')
+        await raw.query(
+          `CREATE POLICY plan_owner ON customers AS PERMISSIVE FOR ALL TO ${role} USING (true) WITH CHECK (true)`
+        )
+        await raw.query(
+          `ALTER FUNCTION public.rls_search_order_customers(text, text, text, integer) OWNER TO ${role}`
+        )
+        await raw.query("LOAD 'auto_explain'")
+        await raw.query('SET LOCAL auto_explain.log_min_duration = 0')
+        await raw.query('SET LOCAL auto_explain.log_nested_statements = on')
+        await raw.query('SET LOCAL client_min_messages = log')
+        await raw.query('SET LOCAL ROLE platform_app')
+        await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
+        const { rows } = await raw.query<{ id: string }>(
+          `SELECT f.id FROM public.rls_search_order_customers($1, $1, $2, 101) AS f`,
+          [NAME, PHONE]
+        )
+        // Both stores hold the same two Zorbalux: two rows (not four) says that the other store is never read
+        expect(rows).toHaveLength(2)
+      } finally {
+        await raw.query('ROLLBACK')
+        raw.off('notice', collect)
+      }
+      return plans.join('\n')
+    })
     // What does not depend on the statistics (MEASURED in the CI of the customers list, same shape: the planner read the store index and
     // filtered, by cost): the statement inside the function carries NO policy (no sub-select of app_store_ids(), no InitPlan or SubPlan)
     // and the store is a CONSTANT of the plan, so nothing next to the LIKE bars the trigram indexes from the planner. Which one it picks
