@@ -1,11 +1,18 @@
 import { type Permission, Permissions } from '@platform/core/auth'
-import { SearchEntities, type SearchEntity } from '@platform/core/domain'
+import { PLUGIN_ACTOR_PREFIX, SearchEntities, type SearchEntity } from '@platform/core/domain'
 
 // The messages are searched by who may see conversations AND read messages: the route and the global search read this
 export const MessageSearchPermissions = [
   Permissions.CONVERSATIONS_VIEW,
   Permissions.MESSAGES_VIEW
 ] as const
+
+// The person that a joined context must hold for a search of the viewer: the viewer when it is a person, nobody for a plugin (its id
+// is `plugin:<installation>`, never a person; the context of a plugin request carries no person, and the functions of the database
+// read only a person's id from it)
+export function contextPersonOf(viewerUserId: string): string | undefined {
+  return viewerUserId.startsWith(PLUGIN_ACTOR_PREFIX) ? undefined : viewerUserId
+}
 
 // Which kinds of thing a member may search, from their permissions: the ones the route of each kind asks for. The
 // global search reads this to leave out of its groups what the member could not search on its own route.
