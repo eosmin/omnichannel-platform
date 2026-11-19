@@ -8,28 +8,48 @@ import { join } from 'node:path'
 // handlers each still has: the list can only SHRINK (a new bare handler, or a bigger number, fails; a smaller count fails too until the
 // entry is lowered or removed), so nobody adds a listener with no context and each PR that wraps one closes its line. A handler that
 // opens its context in its body (`this.events.inStore(...)`) is not seen by this check: wrap it with the decorator or keep it listed.
-// NOT covered by this check: a listener registered with `emitter.on(...)` / `onAny(...)` (WebhookDispatcher) and a handler that opens its
-// context in its body: both are tracked in the plan and by their owners (B1), not by this list. Whoever merges second between this and
-// the PR that opens the context in the body (B1) makes this spec recognise a call to `inStore(` / `forStore(` in the body.
+// A handler counts as wrapped with the decorator OR when its own body calls inStore( / inOrganization( / inOrganizationOfStore( /
+// inUser( / forStore( / forOrganization( (it cannot see a context opened by another method it delegates to: list that handler).
+// NOT covered by this check: a listener registered with `emitter.on(...)` / `onAny(...)` (WebhookDispatcher), tracked in the plan.
 // Debt with owners: docs/IMPLEMENTATION_PLAN.md, "Event listeners with no context".
 const ROOT = join(__dirname, '..', '..', '..', '..', '..')
 const WRAPPERS = ['@InEventStore', '@InEventOrganization']
-// Bare handlers per file today. Owner B1 (session 7b): shipment-effects, order-message-triggers. Owner B3: finance-posting, fiscal,
-// widget-delivery, cache-invalidation. Owner C (sockets): realtime-events.
+// Bare handlers per file today (fiscal and widget-delivery open their context in the body, so they are not listed). Owner B1 (session 7b):
+// shipment-effects, order-message-triggers. Owner B3 (74 and 8c): finance-posting, cache-invalidation, realtime-events.
 const PENDING: Readonly<Record<string, number>> = {
   'apps/api/src/modules/cache/cache-invalidation.listener.ts': 7,
-  'apps/api/src/modules/finance/finance-posting.listener.ts': 12,
-  'apps/api/src/modules/fiscal/fiscal.listener.ts': 2,
-  'apps/api/src/modules/order-messages/order-message-triggers.listener.ts': 3,
+  'apps/api/src/modules/finance/finance-posting.listener.ts': 11,
+  'apps/api/src/modules/order-messages/order-message-triggers.listener.ts': 2,
   'apps/api/src/modules/orders/shipment-effects.listener.ts': 1,
-  'apps/api/src/modules/realtime/realtime-events.listener.ts': 33,
-  'apps/api/src/modules/widget/widget-delivery.listener.ts': 1
+  'apps/api/src/modules/realtime/realtime-events.listener.ts': 33
 }
 interface Handler {
   file: string
   line: number
   event: string
   wrapped: boolean
+}
+
+const OPENS_CONTEXT =
+  /\b(?:inStore|inEventStore|inOrganization|inOrganizationOfStore|inUser|forStore|forOrganization)\(/
+
+// The text of the method that starts at `from`: up to the brace that closes its first `{`
+function bodyFrom(lines: readonly string[], from: number): string {
+  let depth = 0
+  let opened = false
+  const body: string[] = []
+  for (let at = from; at < lines.length; at += 1) {
+    const text = lines[at] ?? ''
+    body.push(text)
+    for (const char of text) {
+      if (char === '{') {
+        depth += 1
+        opened = true
+      } else if (char === '}') depth -= 1
+    }
+    if (opened && depth <= 0) break
+  }
+  return body.join('\n')
 }
 
 const isDecoratorOrComment = (line: string): boolean => {
@@ -56,11 +76,15 @@ function handlersIn(file: string, source: string): Handler[] {
       if (depth <= 0) break
     }
     let wrapped = false
-    for (let next = end + 1; next < lines.length; next += 1) {
+    let next = end + 1
+    for (; next < lines.length; next += 1) {
       const text = lines[next] ?? ''
       if (!isDecoratorOrComment(text)) break
       if (WRAPPERS.some(wrapper => text.trim().startsWith(wrapper))) wrapped = true
     }
+    // Or the handler opens its context itself, in its body (so that the call to a carrier, a channel or Redis stays outside the
+    // transaction): the body runs from the first `{` after the decorators to its closing one
+    if (!wrapped) wrapped = OPENS_CONTEXT.test(bodyFrom(lines, next))
     found.push({ file, line: index + 1, event: call.trim(), wrapped })
     index = end
   }
@@ -132,12 +156,26 @@ describe('the listeners of domain events open the context of their event', () =>
       '  @OnEvent(Events.C)',
       '  // a comment between the decorators',
       '  @InEventOrganization()',
-      '  async onC(p: P): Promise<void> {}'
+      '  async onC(p: P): Promise<void> {}',
+      '  @OnEvent(Events.D)',
+      '  async onD(p: P): Promise<void> {',
+      '    await this.events.inOrganization(p.organizationId, async () => {})',
+      '  }',
+      '  @OnEvent(Events.E)',
+      '  async onE(p: P): Promise<void> {',
+      '    await this.other.follow(p)',
+      '  }',
+      '  // inStore( in a later method does not count for E',
+      '  async later(): Promise<void> {',
+      '    await this.events.inStore(id, async () => {})',
+      '  }'
     ].join('\n')
     expect(handlersIn('sample.ts', source).map(handler => handler.wrapped)).toEqual([
       false,
       true,
-      true
+      true,
+      true,
+      false
     ])
   })
 })
