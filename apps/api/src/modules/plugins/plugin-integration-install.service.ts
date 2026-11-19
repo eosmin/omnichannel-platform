@@ -5,6 +5,7 @@ import { AuditService } from '@platform/core/audit-module'
 import {
   isForeignKeyViolation,
   isUniqueViolation,
+  JobContext,
   lockStoreForWrite,
   PrismaService
 } from '@platform/core/database'
@@ -80,6 +81,7 @@ interface IntegrationRow {
 export class PluginIntegrationInstallService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly challenge: PluginChallengeService,
     private readonly codes: PluginSetupCodeStore,
     private readonly audit: AuditService
@@ -135,7 +137,16 @@ export class PluginIntegrationInstallService {
     actor: Actor
   ): Promise<PluginSetupOffer | null> {
     const storeId = store.id
-    const { manifest } = await this.load(store, pluginId)
+    // Three units, none of which holds a connection while the network answers: what is read first (the plugin and the installation),
+    // the HTTPS challenge to the address of the plugin (outside any context), and the write. Each one joins the context of the
+    // request or the job when there is one and opens a short one of the store otherwise (F6-3f; the route is @NoTenantTransaction).
+    const { manifest, existing } = await this.jobs.forStoreOrJoin(storeId, async () => ({
+      ...(await this.load(store, pluginId)),
+      existing: await this.prisma.client.pluginInstallation.findUnique({
+        where: { storeId_pluginId: { storeId, pluginId } },
+        select: { status: true, scopes: true, webhookEndpoint: true, rateLimitPerMinute: true }
+      })
+    }))
     if (
       !sameScopes(authorized, manifest.scopes) ||
       new Set(authorized).size !== authorized.length
@@ -151,10 +162,6 @@ export class PluginIntegrationInstallService {
     const endpoint = manifest.webhooks?.endpoint ?? null
     const rateLimit = rateLimitOf(manifest)
 
-    const existing = await this.prisma.client.pluginInstallation.findUnique({
-      where: { storeId_pluginId: { storeId, pluginId } },
-      select: { status: true, scopes: true, webhookEndpoint: true, rateLimitPerMinute: true }
-    })
     const isActive = existing?.status === String(PluginInstallationStatus.ACTIVE)
     if (
       isActive &&
@@ -171,96 +178,98 @@ export class PluginIntegrationInstallService {
     }
 
     const write = () =>
-      this.prisma.transaction(async tx => {
-        await lockStoreForWrite(tx, storeId)
-        // The plugin row is held while the installation is written, and the archive of the plugin takes it first: the install either
-        // sees the plugin archived (it is gone for the organization) or the archive sees this installation and refuses (N-A7-08)
-        const [held] = await tx.$queryRaw<
-          { status: string }[]
-        >`SELECT status FROM plugins WHERE id = ${pluginId} FOR SHARE`
-        if (held === undefined || held.status !== String(PluginStatus.APPROVED)) {
-          throw resourceNotFound('plugin')
-        }
-        const current = await tx.pluginInstallation.findUnique({
-          where: { storeId_pluginId: { storeId, pluginId } },
-          select: {
-            id: true,
-            status: true,
-            scopes: true,
-            webhookEndpoint: true,
-            rateLimitPerMinute: true
+      this.jobs.forStoreOrJoin(storeId, () =>
+        this.prisma.transaction(async tx => {
+          await lockStoreForWrite(tx, storeId)
+          // The plugin row is held while the installation is written, and the archive of the plugin takes it first: the install either
+          // sees the plugin archived (it is gone for the organization) or the archive sees this installation and refuses (N-A7-08)
+          const [held] = await tx.$queryRaw<
+            { status: string }[]
+          >`SELECT status FROM plugins WHERE id = ${pluginId} FOR SHARE`
+          if (held === undefined || held.status !== String(PluginStatus.APPROVED)) {
+            throw resourceNotFound('plugin')
           }
-        })
-        if (current === null) {
-          const created = await tx.pluginInstallation.create({
-            data: {
-              storeId,
-              pluginId,
-              scopes,
-              webhookEndpoint: endpoint,
-              rateLimitPerMinute: rateLimit,
-              status: PluginInstallationStatus.PENDING_SETUP,
-              installedBy: actor.userId
-            },
-            select: { id: true }
+          const current = await tx.pluginInstallation.findUnique({
+            where: { storeId_pluginId: { storeId, pluginId } },
+            select: {
+              id: true,
+              status: true,
+              scopes: true,
+              webhookEndpoint: true,
+              rateLimitPerMinute: true
+            }
           })
-          return { id: created.id, mode: 'pending' as const, changes: null }
-        }
-        if (current.status === String(PluginInstallationStatus.ACTIVE)) {
-          // Re-read under the lock: another install may have taken these scopes while the challenge ran
-          if (
-            sameScopes(current.scopes, scopes) &&
-            current.webhookEndpoint === endpoint &&
-            current.rateLimitPerMinute === rateLimit
-          ) {
-            throw alreadyInstalled()
+          if (current === null) {
+            const created = await tx.pluginInstallation.create({
+              data: {
+                storeId,
+                pluginId,
+                scopes,
+                webhookEndpoint: endpoint,
+                rateLimitPerMinute: rateLimit,
+                status: PluginInstallationStatus.PENDING_SETUP,
+                installedBy: actor.userId
+              },
+              select: { id: true }
+            })
+            return { id: created.id, mode: 'pending' as const, changes: null }
           }
-          const changes = scopeChanges(current.scopes, scopes)
+          if (current.status === String(PluginInstallationStatus.ACTIVE)) {
+            // Re-read under the lock: another install may have taken these scopes while the challenge ran
+            if (
+              sameScopes(current.scopes, scopes) &&
+              current.webhookEndpoint === endpoint &&
+              current.rateLimitPerMinute === rateLimit
+            ) {
+              throw alreadyInstalled()
+            }
+            const changes = scopeChanges(current.scopes, scopes)
+            await tx.pluginInstallation.update({
+              where: { id: current.id },
+              data: {
+                scopes,
+                webhookEndpoint: endpoint,
+                rateLimitPerMinute: rateLimit,
+                // A new endpoint passed the challenge just now: an installation whose webhooks the failures had turned off starts
+                // delivering again. The same endpoint was not asked anything, so it stays as it was.
+                ...(current.webhookEndpoint === endpoint
+                  ? {}
+                  : {
+                      webhookDisabledAt: null,
+                      webhookConsecutiveFailures: 0,
+                      webhookLastFailureAt: null
+                    })
+              }
+            })
+            return { id: current.id, mode: 'updated' as const, changes }
+          }
+          // Pending (installed again before the plugin set up) or revoked: a new install, with no key until the exchange
           await tx.pluginInstallation.update({
             where: { id: current.id },
             data: {
               scopes,
               webhookEndpoint: endpoint,
               rateLimitPerMinute: rateLimit,
-              // A new endpoint passed the challenge just now: an installation whose webhooks the failures had turned off starts
-              // delivering again. The same endpoint was not asked anything, so it stays as it was.
-              ...(current.webhookEndpoint === endpoint
-                ? {}
-                : {
-                    webhookDisabledAt: null,
-                    webhookConsecutiveFailures: 0,
-                    webhookLastFailureAt: null
-                  })
+              status: PluginInstallationStatus.PENDING_SETUP,
+              apiKeyPrefix: null,
+              apiKeyHash: null,
+              // What the plugin held is void: it gets new ones when it sets itself up
+              commandSecret: null,
+              commandSecretPrevious: null,
+              commandSecretRotatedAt: null,
+              // Nothing of the earlier incarnation is kept: the secret it was given is not this plugin's to sign with, and its
+              // failures are not this install's
+              webhookSecret: null,
+              webhookDisabledAt: null,
+              webhookConsecutiveFailures: 0,
+              webhookLastFailureAt: null,
+              revokedAt: null,
+              installedBy: actor.userId
             }
           })
-          return { id: current.id, mode: 'updated' as const, changes }
-        }
-        // Pending (installed again before the plugin set up) or revoked: a new install, with no key until the exchange
-        await tx.pluginInstallation.update({
-          where: { id: current.id },
-          data: {
-            scopes,
-            webhookEndpoint: endpoint,
-            rateLimitPerMinute: rateLimit,
-            status: PluginInstallationStatus.PENDING_SETUP,
-            apiKeyPrefix: null,
-            apiKeyHash: null,
-            // What the plugin held is void: it gets new ones when it sets itself up
-            commandSecret: null,
-            commandSecretPrevious: null,
-            commandSecretRotatedAt: null,
-            // Nothing of the earlier incarnation is kept: the secret it was given is not this plugin's to sign with, and its
-            // failures are not this install's
-            webhookSecret: null,
-            webhookDisabledAt: null,
-            webhookConsecutiveFailures: 0,
-            webhookLastFailureAt: null,
-            revokedAt: null,
-            installedBy: actor.userId
-          }
+          return { id: current.id, mode: 'pending' as const, changes: null }
         })
-        return { id: current.id, mode: 'pending' as const, changes: null }
-      })
+      )
     let written: Awaited<ReturnType<typeof write>>
     try {
       written = await write()
@@ -270,7 +279,9 @@ export class PluginIntegrationInstallService {
       // (a foreign key can fail for another reason, so the plugin is asked about before it is called gone)
       if (
         isForeignKeyViolation(error) &&
-        (await this.prisma.client.plugin.count({ where: { id: pluginId } })) === 0
+        (await this.jobs.forStoreOrJoin(storeId, () =>
+          this.prisma.client.plugin.count({ where: { id: pluginId } })
+        )) === 0
       ) {
         throw resourceNotFound('plugin')
       }
