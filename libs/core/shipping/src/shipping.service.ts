@@ -4,10 +4,12 @@ import { PinoLogger } from 'nestjs-pino'
 import { CredentialCipher } from '@platform/core/crypto'
 import {
   isUniqueViolation,
+  JobContext,
   lockStoreForWrite,
   lockStoreScope,
   PrismaService,
-  type PrismaTransaction
+  type PrismaTransaction,
+  type TransactionOptions
 } from '@platform/core/database'
 import {
   BulkLabelLimits,
@@ -180,6 +182,7 @@ interface Batchable {
 export class ShippingService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly cipher: CredentialCipher,
     private readonly writes: ShipmentWrites,
     private readonly labels: ShipmentLabels,
@@ -324,28 +327,32 @@ export class ShippingService {
     let shipmentId = ''
     let stored: StoredLabel | null = null
     try {
-      const done = await this.prisma.transaction(async tx => {
-        await lockStoreForWrite(tx, storeId)
-        await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${request.orderId}`)
-        prepared = await prepareGuide(tx, store, request, caller, plugins, connectionId)
-        shipmentId = await this.writes.insertCreating(tx, prepared.row, caller.actor)
-        if (prepared.plugin.shipmentCreation !== ShipmentCreationModes.INTERNAL) return false
-        // The core makes the guide and the label, in the transaction that wrote the row: a failure gives the number back
-        const identity = { ...prepared.identity, shipmentId }
-        const guideNumber = await takeLocalGuideNumber(tx, storeId, connectionId)
-        stored = await this.drawLocalLabel(store, prepared, shipmentId, guideNumber)
-        await this.labels.record(tx, storeId, prepared.identity.orderId, caller.actor.id, stored)
-        await this.writes.move(
-          tx,
-          identity,
-          ShipmentStatus.CREATING,
-          ShipmentStatus.LABEL_CREATED,
-          { guideNumber, labelMediaId: stored.mediaId },
-          { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
-        )
-        await this.copyTrackingNumber(tx, prepared.identity, guideNumber, prepared.row.kind)
-        return true
-      }, LOCAL_GUIDE_TRANSACTION)
+      const done = await this.tx(
+        storeId,
+        async tx => {
+          await lockStoreForWrite(tx, storeId)
+          await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${request.orderId}`)
+          prepared = await prepareGuide(tx, store, request, caller, plugins, connectionId)
+          shipmentId = await this.writes.insertCreating(tx, prepared.row, caller.actor)
+          if (prepared.plugin.shipmentCreation !== ShipmentCreationModes.INTERNAL) return false
+          // The core makes the guide and the label, in the transaction that wrote the row: a failure gives the number back
+          const identity = { ...prepared.identity, shipmentId }
+          const guideNumber = await takeLocalGuideNumber(tx, storeId, connectionId)
+          stored = await this.drawLocalLabel(store, prepared, shipmentId, guideNumber)
+          await this.labels.record(tx, storeId, prepared.identity.orderId, caller.actor.id, stored)
+          await this.writes.move(
+            tx,
+            identity,
+            ShipmentStatus.CREATING,
+            ShipmentStatus.LABEL_CREATED,
+            { guideNumber, labelMediaId: stored.mediaId },
+            { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
+          )
+          await this.copyTrackingNumber(tx, prepared.identity, guideNumber, prepared.row.kind)
+          return true
+        },
+        LOCAL_GUIDE_TRANSACTION
+      )
       if (done)
         return {
           ok: true,
@@ -383,16 +390,18 @@ export class ShippingService {
     plugins: PluginLookup
   ): Promise<ShipmentOutcome> {
     const store = await this.storeFacts(storeId)
-    const owner = await this.prisma.client.orderReturn.findFirst({
-      where: { id: request.returnId, storeId },
-      select: { orderId: true }
-    })
+    const owner = await this.read(storeId, () =>
+      this.prisma.client.orderReturn.findFirst({
+        where: { id: request.returnId, storeId },
+        select: { orderId: true }
+      })
+    )
     if (owner === null) return this.refused('', resourceNotFound('return'))
     const { orderId } = owner
     let prepared: PreparedGuide | undefined
     let shipmentId = ''
     try {
-      await this.prisma.transaction(async tx => {
+      await this.tx(storeId, async tx => {
         await lockStoreForWrite(tx, storeId)
         await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${orderId}`)
         await tx.$queryRaw`SELECT id FROM order_returns WHERE id = ${request.returnId} AND store_id = ${storeId} FOR UPDATE`
@@ -526,7 +535,7 @@ export class ShippingService {
           ? result.providerShipmentId
           : null
       const recorded = stored
-      await this.prisma.transaction(async tx => {
+      await this.tx(storeId, async tx => {
         await lockStoreForWrite(tx, storeId)
         await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${orderId}`)
         if (recorded !== null)
@@ -605,7 +614,7 @@ export class ShippingService {
     const rejected = error instanceof CarrierRejectedError
     const message = rejected ? clampCarrierMessage(error.message) : failureReasonOf(outcome)
     try {
-      await this.prisma.transaction(async tx => {
+      await this.tx(identity.storeId, async tx => {
         await lockStoreForWrite(tx, identity.storeId)
         for (const entry of batch) {
           await this.writes.move(
@@ -690,7 +699,7 @@ export class ShippingService {
     guide?: { guideNumber: string; providerShipmentId?: string | undefined }
   ): Promise<ShipmentOutcome> {
     try {
-      await this.prisma.transaction(async tx => {
+      await this.tx(identity.storeId, async tx => {
         await lockStoreForWrite(tx, identity.storeId)
         for (const entry of batch) {
           await this.writes.move(
@@ -789,10 +798,12 @@ export class ShippingService {
     plugins: PluginLookup
   ): Promise<Map<number, ShipmentOutcome>> {
     const outcomes = new Map<number, ShipmentOutcome>()
-    const rules = await this.prisma.client.carrierConnection.findFirst({
-      where: { id: connectionId, storeId: store.storeId },
-      select: { pickupDays: true, pickupCutoffTime: true }
-    })
+    const rules = await this.read(store.storeId, () =>
+      this.prisma.client.carrierConnection.findFirst({
+        where: { id: connectionId, storeId: store.storeId },
+        select: { pickupDays: true, pickupCutoffTime: true }
+      })
+    )
     const today = nextPickupDate(new Date(), store.timezone, {
       pickupDays: rules?.pickupDays ?? [],
       pickupCutoffTime: rules?.pickupCutoffTime ?? null
@@ -849,68 +860,72 @@ export class ShippingService {
     const written: { index: number; prepared: PreparedGuide; identity: ShipmentIdentity }[] = []
     let pickupId = ''
     try {
-      await this.prisma.transaction(async tx => {
-        await lockStoreForWrite(tx, storeId)
-        // In the same order for every batch, so two batches that share orders cannot wait for each other
-        const ordered = [...chunk].sort((a, b) =>
-          a.request.orderId.localeCompare(b.request.orderId)
-        )
-        for (const item of ordered) {
-          await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${item.request.orderId}`)
-        }
-        // The pickup first, and each shipment written as soon as it is judged: what the next one reads (the guides the order
-        // already has, which decide the amount to collect) must include this one
-        const pickup = await tx.pickupRequest.create({
-          data: {
-            storeId,
-            connectionId,
-            pickupDate: new Date(`${window.date}T00:00:00.000Z`),
-            status: PickupStatus.PENDING,
-            packageCount: chunk.length,
-            windowStart: window.from,
-            windowEnd: window.to,
-            requestedBy: caller.actor.id ?? 'system'
-          },
-          select: { id: true }
-        })
-        pickupId = pickup.id
-        for (const item of chunk) {
-          try {
-            const prepared = await prepareGuide(
-              tx,
-              store,
-              item.request,
-              caller,
-              plugins,
-              connectionId
-            )
-            const shipmentId = await this.writes.insertCreating(
-              tx,
-              { ...prepared.row, pickupId },
-              caller.actor
-            )
-            written.push({
-              index: item.index,
-              prepared,
-              identity: { ...prepared.identity, shipmentId }
-            })
-          } catch (error) {
-            if (!(error instanceof PlatformException)) throw error
-            outcomes.set(item.index, this.refused(item.request.orderId, error))
+      await this.tx(
+        storeId,
+        async tx => {
+          await lockStoreForWrite(tx, storeId)
+          // In the same order for every batch, so two batches that share orders cannot wait for each other
+          const ordered = [...chunk].sort((a, b) =>
+            a.request.orderId.localeCompare(b.request.orderId)
+          )
+          for (const item of ordered) {
+            await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${item.request.orderId}`)
           }
-        }
-        if (written.length === 0) {
-          // Nothing to ask the carrier for: no pickup either
-          await tx.pickupRequest.deleteMany({ where: { id: pickupId, storeId } })
-          return
-        }
-        if (written.length !== chunk.length) {
-          await tx.pickupRequest.updateMany({
-            where: { id: pickupId, storeId },
-            data: { packageCount: written.length }
+          // The pickup first, and each shipment written as soon as it is judged: what the next one reads (the guides the order
+          // already has, which decide the amount to collect) must include this one
+          const pickup = await tx.pickupRequest.create({
+            data: {
+              storeId,
+              connectionId,
+              pickupDate: new Date(`${window.date}T00:00:00.000Z`),
+              status: PickupStatus.PENDING,
+              packageCount: chunk.length,
+              windowStart: window.from,
+              windowEnd: window.to,
+              requestedBy: caller.actor.id ?? 'system'
+            },
+            select: { id: true }
           })
-        }
-      }, BATCH_TRANSACTION)
+          pickupId = pickup.id
+          for (const item of chunk) {
+            try {
+              const prepared = await prepareGuide(
+                tx,
+                store,
+                item.request,
+                caller,
+                plugins,
+                connectionId
+              )
+              const shipmentId = await this.writes.insertCreating(
+                tx,
+                { ...prepared.row, pickupId },
+                caller.actor
+              )
+              written.push({
+                index: item.index,
+                prepared,
+                identity: { ...prepared.identity, shipmentId }
+              })
+            } catch (error) {
+              if (!(error instanceof PlatformException)) throw error
+              outcomes.set(item.index, this.refused(item.request.orderId, error))
+            }
+          }
+          if (written.length === 0) {
+            // Nothing to ask the carrier for: no pickup either
+            await tx.pickupRequest.deleteMany({ where: { id: pickupId, storeId } })
+            return
+          }
+          if (written.length !== chunk.length) {
+            await tx.pickupRequest.updateMany({
+              where: { id: pickupId, storeId },
+              data: { packageCount: written.length }
+            })
+          }
+        },
+        BATCH_TRANSACTION
+      )
     } catch (error) {
       for (const item of chunk) {
         if (!outcomes.has(item.index)) {
@@ -927,7 +942,7 @@ export class ShippingService {
       this.logger.error({ pickupId, err: error }, 'a pickup batch ended in a fault')
       // The pickup waits for a person too, unless the batch already settled it
       try {
-        await this.prisma.transaction(async tx => {
+        await this.tx(store.storeId, async tx => {
           await lockStoreForWrite(tx, store.storeId)
           await this.writes.movePickup(
             tx,
@@ -1065,7 +1080,7 @@ export class ShippingService {
       outcomes.set(entry.index, outcome)
     }
     try {
-      await this.prisma.transaction(async tx => {
+      await this.tx(first.identity.storeId, async tx => {
         await lockStoreForWrite(tx, first.identity.storeId)
         // The carrier's own reference to the pickup is kept whatever became of the guides, so that a pickup that exists can be found
         await this.writes.movePickup(
@@ -1524,10 +1539,12 @@ export class ShippingService {
   }
 
   private async storeFacts(storeId: string): Promise<StoreFacts> {
-    const store = await this.prisma.client.store.findUnique({
-      where: { id: storeId },
-      select: { organizationId: true, timezone: true, defaultLocale: true }
-    })
+    const store = await this.read(storeId, () =>
+      this.prisma.client.store.findUnique({
+        where: { id: storeId },
+        select: { organizationId: true, timezone: true, defaultLocale: true }
+      })
+    )
     if (store === null) throw resourceNotFound('store')
     return {
       storeId,
@@ -1543,8 +1560,15 @@ export class ShippingService {
     storeId: string,
     requests: readonly ShipmentRequest[]
   ): Promise<Map<string, string | null>> {
+    if (requests.length === 0) return new Map<string, string | null>()
+    return this.read(storeId, () => this.connectionsIn(storeId, requests))
+  }
+
+  private async connectionsIn(
+    storeId: string,
+    requests: readonly ShipmentRequest[]
+  ): Promise<Map<string, string | null>> {
     const result = new Map<string, string | null>()
-    if (requests.length === 0) return result
     // The default of the store is read only when some request leaves the carrier to it
     const settings = requests.some(request => request.connectionId === undefined)
       ? await this.prisma.client.storeSettings.findUnique({
@@ -1566,10 +1590,28 @@ export class ShippingService {
   }
 
   private async carrierOf(storeId: string, connectionId: string): Promise<string | null> {
-    const row = await this.prisma.client.carrierConnection.findFirst({
-      where: { id: connectionId, storeId },
-      select: { carrierId: true }
-    })
+    const row = await this.read(storeId, () =>
+      this.prisma.client.carrierConnection.findFirst({
+        where: { id: connectionId, storeId },
+        select: { carrierId: true }
+      })
+    )
     return row?.carrierId ?? null
+  }
+
+  // One unit of database work of one store, as short as the work: it joins the context of the request or of the job when one is
+  // open for this store (the interceptor, the worker) and opens its own otherwise. A guide is made at a carrier and may cost money,
+  // so the call to the carrier never sits inside a unit: the row is written and committed in one, the carrier is called, and what it
+  // answered is written in another (TDD_17 §4.5; the activation of RLS_CONTEXT, F6-3f).
+  private read<T>(storeId: string, work: () => Promise<T>): Promise<T> {
+    return this.jobs.forStoreOrJoin(storeId, work)
+  }
+
+  private tx<T>(
+    storeId: string,
+    work: (tx: PrismaTransaction) => Promise<T>,
+    options?: TransactionOptions
+  ): Promise<T> {
+    return this.jobs.forStoreOrJoin(storeId, () => this.prisma.transaction(work, options), options)
   }
 }

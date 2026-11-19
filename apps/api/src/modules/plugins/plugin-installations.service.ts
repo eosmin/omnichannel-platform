@@ -12,6 +12,7 @@ import { AuditService } from '@platform/core/audit-module'
 import {
   inSavepoint,
   isUniqueViolation,
+  JobContext,
   lockStoreForWrite,
   PrismaService
 } from '@platform/core/database'
@@ -192,6 +193,7 @@ const CATALOG_SELECT = {
 export class PluginInstallationsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly registry: PluginRegistry,
     private readonly carriers: CarrierRegistry,
     private readonly connections: ChannelConnectionsService,
@@ -354,10 +356,14 @@ export class PluginInstallationsService {
     actor: Actor
   ): Promise<PluginInstallResult> {
     const storeId = store.id
-    const plugin = await this.prisma.client.plugin.findUnique({
-      where: { id: pluginId },
-      select: { type: true, status: true, organizationId: true }
-    })
+    // The route is @NoTenantTransaction (the challenge of an integration plugin is a call to its address): each unit of database work
+    // opens a short context of the store, or joins the one that is open (F6-3f)
+    const plugin = await this.jobs.forStoreOrJoin(storeId, () =>
+      this.prisma.client.plugin.findUnique({
+        where: { id: pluginId },
+        select: { type: true, status: true, organizationId: true }
+      })
+    )
     if (
       plugin === null ||
       plugin.status !== String(PluginStatus.APPROVED) ||
@@ -385,8 +391,24 @@ export class PluginInstallationsService {
         )
       }
       const setup = await this.integrations.install(store, pluginId, scopes, actor)
-      return { ...(await this.entryOf(store, pluginId)), setup }
+      const entry = await this.jobs.forStoreOrJoin(storeId, () => this.entryOf(store, pluginId))
+      return { ...entry, setup }
     }
+    // The rest makes no call outside the platform's own database: one context for it
+    return this.jobs.forStoreOrJoin(storeId, () =>
+      this.installBuiltIn(store, pluginId, plugin.type, scopes, actor)
+    )
+  }
+
+  // The plugins that run inside the platform (a channel of the registry, the shipping plugin): installed in one transaction
+  private async installBuiltIn(
+    store: PluginStoreRef,
+    pluginId: string,
+    type: string,
+    scopes: readonly string[] | undefined,
+    actor: Actor
+  ): Promise<PluginInstallResult> {
+    const storeId = store.id
     if (scopes !== undefined) {
       throw new PlatformException(
         ErrorCodes.VALIDATION_FAILED,
@@ -398,8 +420,8 @@ export class PluginInstallationsService {
     // The shipping plugin installs when the platform runs at least one carrier; a channel when the registry holds it
     const installable =
       pluginId === ShippingPlugin.ID
-        ? plugin.type === String(PluginCatalogTypes.CARRIER) && this.carriers.list().length > 0
-        : plugin.type === String(PluginCatalogTypes.CHANNEL) && this.registry.has(pluginId)
+        ? type === String(PluginCatalogTypes.CARRIER) && this.carriers.list().length > 0
+        : type === String(PluginCatalogTypes.CHANNEL) && this.registry.has(pluginId)
     if (!installable) {
       throw new PlatformException(
         ErrorCodes.PLUGIN_INSTALLATION_FAILED,

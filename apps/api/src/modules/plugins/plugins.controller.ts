@@ -98,7 +98,7 @@ export class PluginsController {
   // The answer of an integration plugin carries the one-time setup code: not stored by anything between the owner and the platform
   @NoStore()
   @NoTenantTransaction(
-    'the challenge of an integration plugin is an HTTPS call to its address (pinnedHttpsExchange): short contexts of its own, F6-3f'
+    'the challenge of an integration plugin is an HTTPS call to its address (pinnedHttpsExchange): the reads and the write open short contexts of their own and the call runs between them (F6-3f)'
   )
   @Post(ApiRoutes.plugins.install)
   @HttpCode(HttpStatusCodes.CREATED)

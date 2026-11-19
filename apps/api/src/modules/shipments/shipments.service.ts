@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import {
   type CreateReturnShipmentBody,
   type CreateShipmentBody,
@@ -49,6 +49,7 @@ const ORDER = [{ createdAt: 'desc' }, { id: 'desc' }] as const
 export class ShipmentsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly shipping: ShippingService,
     private readonly cancellation: ShipmentCancellation,
     private readonly voidQueue: ShipmentVoidQueue,
@@ -151,7 +152,7 @@ export class ShipmentsService {
       }
       throw outcome.error
     }
-    const view = shipmentViewOf(await this.rowOf(storeId, outcome.shipmentId))
+    const view = await this.viewAfterGuide(storeId, outcome.shipmentId)
     this.record(storeId, AuditAction.SHIPMENT_CREATED, outcome.shipmentId, actor, {
       orderId,
       status: view.status,
@@ -183,7 +184,7 @@ export class ShipmentsService {
       }
       throw outcome.error
     }
-    const view = shipmentViewOf(await this.rowOf(storeId, outcome.shipmentId))
+    const view = await this.viewAfterGuide(storeId, outcome.shipmentId)
     this.record(storeId, AuditAction.SHIPMENT_CREATED, outcome.shipmentId, actor, {
       returnId,
       orderId: outcome.orderId,
@@ -295,6 +296,14 @@ export class ShipmentsService {
       from: change.from,
       to: change.to
     })
+  }
+
+  // The shipment a guide request made, read in a short context of its own: the routes that make a guide run outside the transaction of
+  // the request (the carrier is called between two units of work), so this read opens the context of the store, or joins the one open
+  private viewAfterGuide(storeId: string, shipmentId: string): Promise<ShipmentView> {
+    return this.jobs.forStoreOrJoin(storeId, async () =>
+      shipmentViewOf(await this.rowOf(storeId, shipmentId))
+    )
   }
 
   private async rowOf(storeId: string, shipmentId: string): Promise<ShipmentRow> {

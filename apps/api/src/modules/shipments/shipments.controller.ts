@@ -78,7 +78,7 @@ export class ShipmentsController {
 
   @RequirePermissions(Permissions.SHIPPING_MANAGE)
   @NoTenantTransaction(
-    'calls the carrier and can fail after writing the guide row: a rollback would erase a guide that exists at the carrier (short contexts, F6-3f)'
+    'calls the carrier and can fail after writing the guide row: a rollback would erase a guide that exists at the carrier: the engine writes the row, calls the carrier and records the answer in short contexts of their own (F6-3f)'
   )
   @Post(ApiRoutes.shipments.forOrder(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
