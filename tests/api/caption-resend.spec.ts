@@ -6,7 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { ChannelContextFactory } from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -43,7 +43,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const OK = 200
 const FORBIDDEN = 403
@@ -82,12 +82,13 @@ describe('Sending only the text under a file again', () => {
     )
     sweep = new OutboundRequeueScheduler(
       { withLock: (_name: string, _seconds: number, work: () => Promise<void>) => work() } as never, // the lock is not what is tested
-      prisma,
+      createGuardedWorkerPrisma(),
       new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never),
       undefined as never, // the replies are not what is tested
       new ReactionStatusWriter(prisma, events),
       status,
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      new JobContext(createGuardedWorkerPrisma())
     )
   })
   afterAll(async () => {

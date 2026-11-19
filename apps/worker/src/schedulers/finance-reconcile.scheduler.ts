@@ -4,7 +4,7 @@ import { Cron } from '@nestjs/schedule'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { FinanceSweepLimits } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import {
@@ -18,6 +18,9 @@ import {
 
 import { LeaderLockService } from './leader-lock.service'
 
+// rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
+// every read or write of a table of a store runs inside JobContext.forStore / forOrganization
+
 const LOCK_SECONDS = 600
 const DAY_LENGTH = 10 // "2026-11-12" in an ISO date
 
@@ -30,7 +33,8 @@ export class FinanceReconcileScheduler {
     @InjectQueue(QueueNames.HEAVY_PROCESSING)
     private readonly heavyQueue: Queue<ReconcileFinanceJob>,
     private readonly prisma: PrismaService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(FinanceReconcileScheduler.name)
   }
@@ -55,12 +59,23 @@ export class FinanceReconcileScheduler {
     let queued = 0
     let cursor: string | undefined
     for (;;) {
-      const settings = await this.prisma.client.financeSettings.findMany({
-        select: { organizationId: true },
-        orderBy: { organizationId: 'asc' },
+      const page = await this.prisma.client.organization.findMany({
+        select: { id: true },
+        orderBy: { id: 'asc' },
         take: pageSize,
-        ...(cursor === undefined ? {} : { cursor: { organizationId: cursor }, skip: 1 })
+        ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
       })
+      // Only an organization that keeps books is queued; the settings are read in the context of each organization
+      const settings: { organizationId: string }[] = []
+      for (const organization of page) {
+        const kept = await this.jobContext.forOrganization(organization.id, () =>
+          this.prisma.client.financeSettings.findUnique({
+            where: { organizationId: organization.id },
+            select: { organizationId: true }
+          })
+        )
+        if (kept !== null) settings.push(kept)
+      }
       if (settings.length > 0) {
         await this.heavyQueue.addBulk(
           settings.map(row => ({
@@ -77,8 +92,8 @@ export class FinanceReconcileScheduler {
         )
         queued += settings.length
       }
-      if (settings.length < pageSize) break
-      cursor = settings.at(-1)?.organizationId
+      if (page.length < pageSize) break
+      cursor = page.at(-1)?.id
     }
     return queued
   }

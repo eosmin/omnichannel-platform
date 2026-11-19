@@ -24,6 +24,23 @@ export function createWorkerPrisma(poolSize = 4): PrismaService {
   return prisma
 }
 
+// The worker as it is once it has lost BYPASSRLS: the guard of PrismaService throws on a model operation or a raw statement on a table with a
+// policy outside a context (a JobContext, tenantTransaction or withoutTenantContext), instead of answering no row. A suite of a scheduler
+// or a service that has adopted a context builds the class with this one, so that an access that escaped its context fails the suite.
+export function createGuardedWorkerPrisma(poolSize = 4): PrismaService {
+  guarded ??= new Map()
+  const known = guarded.get(poolSize)
+  if (known !== undefined) return known
+  const prisma = new PrismaService({
+    databaseUrl: connectionUrls().worker,
+    poolSize,
+    requireContext: true
+  })
+  guarded.set(poolSize, prisma)
+  return prisma
+}
+let guarded: Map<number, PrismaService> | undefined
+
 // A plain client on the connection of the worker, for what must NOT see the tenant context of the request that is running: the
 // transaction of a request is kept in a store that every PrismaService shares, so `.client` of a second service would join it.
 // One per file, closed with the others.
@@ -38,8 +55,9 @@ export function createWorkerClient(): OwnerClient {
 const shared = new Map<number, PrismaService>()
 
 export async function closeWorkerPrisma(): Promise<void> {
-  const all = [...shared.values()]
+  const all = [...shared.values(), ...(guarded?.values() ?? [])]
   shared.clear()
+  guarded = undefined
   const client = workerClient
   workerClient = undefined
   await Promise.all([

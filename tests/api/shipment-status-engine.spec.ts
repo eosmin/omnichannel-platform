@@ -5,7 +5,7 @@ import { Counter, Registry } from '@prometheus-io/client'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CarrierConnectionStatus,
@@ -37,7 +37,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { CapturedQueue } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const { APPLIED, DUPLICATE, STORED, IGNORED } = CarrierEventOutcomes
@@ -326,9 +326,11 @@ describe('The status flow from the carrier: engine, poll and schedule (TDD_17 §
       const instance = new ShipmentPollScheduler(
         {} as never,
         queue as never,
-        prisma,
+        createGuardedWorkerPrisma(),
         app.get(CarrierRegistry, { strict: false }),
-        quietLogger
+        quietLogger,
+        new JobContext(createGuardedWorkerPrisma()),
+        new WorkerLists(createGuardedWorkerPrisma())
       )
       return { queue, instance }
     }

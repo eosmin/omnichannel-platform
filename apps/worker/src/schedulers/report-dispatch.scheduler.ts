@@ -11,7 +11,12 @@ import {
   reportRollupReady,
   type ReportFrequencyType
 } from '@platform/core/analytics'
-import { PrismaService } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import { errorName } from '@platform/core/errors'
 import {
   type GenerateScheduledReportJob,
@@ -23,6 +28,9 @@ import {
 } from '@platform/core/queues'
 
 import { LeaderLockService } from './leader-lock.service'
+
+// rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
+// every read or write of a table of a store runs inside JobContext.forStore / forOrganization
 
 const LOCK_SECONDS = 300
 const PAGE_SIZE = 200
@@ -36,7 +44,9 @@ export class ReportDispatchScheduler {
     private readonly locks: LeaderLockService,
     @InjectQueue(QueueNames.EXPORTS) private readonly queue: Queue<GenerateScheduledReportJob>,
     private readonly prisma: PrismaService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext,
+    private readonly lists: WorkerLists
   ) {
     this.logger.setContext(ReportDispatchScheduler.name)
   }
@@ -56,23 +66,37 @@ export class ReportDispatchScheduler {
 
   async dispatch(now: Date, pageSize: number = PAGE_SIZE): Promise<number> {
     let queued = 0
-    let cursor: string | undefined
-    for (;;) {
-      const reports = await this.prisma.client.scheduledReport.findMany({
-        where: { enabled: true },
-        select: {
-          id: true,
-          storeId: true,
-          frequency: true,
-          timezone: true,
-          sendAtHour: true,
-          lastSentAt: true,
-          createdAt: true
-        },
-        orderBy: { id: 'asc' },
-        take: pageSize,
-        ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
-      })
+    // The reports that are switched on, with their store, from the list of the database (read to its end: a list that stopped
+    // half way would dispatch only part of the reports); each store's rows are then read in the context of that store
+    const refs = await this.lists.enabledScheduledReports()
+    const idsByStore = new Map<string, string[]>()
+    for (const ref of refs)
+      idsByStore.set(ref.storeId, [...(idsByStore.get(ref.storeId) ?? []), ref.id])
+    for (const [storeId, ids] of idsByStore) {
+      for (let from = 0; from < ids.length; from += pageSize) {
+        queued += await this.dispatchChunk(now, storeId, ids.slice(from, from + pageSize))
+      }
+    }
+    return queued
+  }
+
+  private async dispatchChunk(now: Date, storeId: string, ids: readonly string[]): Promise<number> {
+    try {
+      const reports = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.scheduledReport.findMany({
+          where: { enabled: true, storeId, id: { in: [...ids] } },
+          select: {
+            id: true,
+            storeId: true,
+            frequency: true,
+            timezone: true,
+            sendAtHour: true,
+            lastSentAt: true,
+            createdAt: true
+          },
+          orderBy: { id: 'asc' }
+        })
+      )
       const due = reports.flatMap(report => {
         try {
           const frequency = report.frequency as ReportFrequencyType
@@ -101,11 +125,13 @@ export class ReportDispatchScheduler {
             opts: { jobId: scheduledReportJobId(report.id, day) }
           }))
         )
-        queued += due.length
+        return due.length
       }
-      if (reports.length < pageSize) break
-      cursor = reports.at(-1)?.id
+      return 0
+    } catch (error) {
+      // A store deleted since the list was read has no reports left to send
+      if (error instanceof JobContextGoneError) return 0
+      throw error
     }
-    return queued
   }
 }

@@ -110,6 +110,23 @@ describe('JobContext', () => {
     expect(jobs.isOpen()).toBe(false)
   })
 
+  it('runs as it is inside the transaction of a request, and opens the context of the store anywhere else', async () => {
+    const inRequest = fakePrisma({ store: { organizationId: ORG } })
+    ;(inRequest.prisma as unknown as { hasTenantContext: () => boolean }).hasTenantContext = () =>
+      true
+    await expect(
+      new JobContext(inRequest.prisma).forStoreOrJoin(STORE, () => Promise.resolve('joined'))
+    ).resolves.toBe('joined')
+    // The request's own context counts: nothing of ours is opened
+    expect(inRequest.contexts).toEqual([])
+
+    const inJob = fakePrisma({ store: { organizationId: ORG } })
+    await expect(
+      new JobContext(inJob.prisma).forStoreOrJoin(STORE, () => Promise.resolve('opened'))
+    ).resolves.toBe('opened')
+    expect(inJob.contexts).toEqual([{ storeIds: [STORE], organizationIds: [ORG] }])
+  })
+
   it('opens an organization with every store of it, and fails closed for one that is not there', async () => {
     const found = fakePrisma({ organization: { id: ORG }, stores: [{ id: STORE }, { id: OTHER }] })
     await new JobContext(found.prisma).forOrganization(ORG, () => Promise.resolve(undefined))

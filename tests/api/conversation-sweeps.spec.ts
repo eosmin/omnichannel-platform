@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   ConversationStatus,
@@ -20,7 +20,7 @@ import { createConversationOf } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const DAY_MS = 86_400_000
 const HOUR_MS = 3_600_000
@@ -53,7 +53,6 @@ describe('Conversation sweeps', () => {
         update: { autoArchiveAfterDays }
       })
     }
-    const prisma = app.get(PrismaService, { strict: false })
     const conversations = app.get(ConversationsService, { strict: false })
     const locks = {
       withLock: async (_name: string, _seconds: number, work: () => Promise<void>) => {
@@ -61,8 +60,20 @@ describe('Conversation sweeps', () => {
         return true
       }
     } as never // the lock is not what is tested
-    wake = new SnoozeWakeScheduler(locks, prisma, conversations, await app.resolve(PinoLogger))
-    archive = new AutoArchiveScheduler(locks, prisma, conversations, await app.resolve(PinoLogger))
+    wake = new SnoozeWakeScheduler(
+      locks,
+      createGuardedWorkerPrisma(),
+      conversations,
+      await app.resolve(PinoLogger),
+      new JobContext(createGuardedWorkerPrisma())
+    )
+    archive = new AutoArchiveScheduler(
+      locks,
+      createGuardedWorkerPrisma(),
+      conversations,
+      await app.resolve(PinoLogger),
+      new JobContext(createGuardedWorkerPrisma())
+    )
     const emitter = app.get(EventEmitter2)
     emitter.onAny((event, payload) => {
       heard.push({ event: String(event), payload })

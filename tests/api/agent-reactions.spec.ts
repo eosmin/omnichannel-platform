@@ -6,7 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { ChannelContextFactory } from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -39,7 +39,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 // An item the case has just made: a missing one is a broken case, not a value to carry on with
 const at = <T>(list: readonly T[], index: number): T => {
@@ -116,12 +116,13 @@ describe('An agent reacting to a message', () => {
     }
     sweep = new OutboundRequeueScheduler(
       { withLock: (_name: string, _seconds: number, work: () => Promise<void>) => work() } as never, // the lock is not what is tested
-      prisma,
+      createGuardedWorkerPrisma(),
       new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never),
       undefined as never, // the replies are not what is tested
       new ReactionStatusWriter(prisma, events),
       new MessageChangeStatusWriter(prisma, events),
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      new JobContext(createGuardedWorkerPrisma())
     )
   })
   afterAll(async () => {

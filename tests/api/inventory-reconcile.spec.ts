@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import { Counter, Registry } from '@prometheus-io/client'
 import type { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import { InventoryAdjustmentReason, InventoryMovementType as Type } from '@platform/core/domain'
 import { InventoryService } from '@platform/core/inventory'
@@ -18,7 +18,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { CapturedQueue } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 // The daily check of the stock against its ledger (TDD_16 §4.8, Step 4.2 PR C): it reads, it reports, it never fixes.
 // Every case works in a store of its own, so what an earlier case forged is not in the way of the next one.
@@ -376,7 +376,13 @@ describe('The reconciliation of the stock', () => {
     let scheduler: InventoryReconcileScheduler
 
     beforeAll(() => {
-      scheduler = new InventoryReconcileScheduler(locks, heavy as never, prisma, logger)
+      scheduler = new InventoryReconcileScheduler(
+        locks,
+        heavy as never,
+        createGuardedWorkerPrisma(),
+        logger,
+        new JobContext(createGuardedWorkerPrisma())
+      )
     })
     beforeEach(() => {
       heavy.jobs.length = 0
@@ -446,7 +452,13 @@ describe('The reconciliation of the stock', () => {
       const broken = {
         addBulk: () => Promise.reject(new Error('redis is down'))
       }
-      const failing = new InventoryReconcileScheduler(locks, broken as never, prisma, logger)
+      const failing = new InventoryReconcileScheduler(
+        locks,
+        broken as never,
+        createGuardedWorkerPrisma(),
+        logger,
+        new JobContext(createGuardedWorkerPrisma())
+      )
 
       await expect(failing.run()).resolves.toBeUndefined()
     })

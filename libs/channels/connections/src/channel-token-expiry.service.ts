@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { lockStoreForWrite, PrismaService } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  lockStoreForWrite,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   ChannelMetadataKeys,
@@ -43,7 +49,9 @@ export class ChannelTokenExpiryService {
     private readonly prisma: PrismaService,
     private readonly contexts: ChannelContextFactory,
     private readonly events: DomainEvents,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext,
+    private readonly lists: WorkerLists
   ) {
     this.logger.setContext(ChannelTokenExpiryService.name)
   }
@@ -60,15 +68,19 @@ export class ChannelTokenExpiryService {
     let row: ConnectionRow | null = null
     try {
       if (plugin?.inspectToken === undefined) return false
-      row = await this.prisma.client.channelConnection.findFirst({
-        where: {
-          id: connectionRowId,
-          storeId,
-          status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
-          ...OfActiveInstallation
-        },
-        select: CONNECTION_ROW_SELECT
-      })
+      // Each database step is in the context of the store (a job) or in the one of the request that asked (the api); the call to the
+      // provider between them is in none
+      row = await this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.client.channelConnection.findFirst({
+          where: {
+            id: connectionRowId,
+            storeId,
+            status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
+            ...OfActiveInstallation
+          },
+          select: CONNECTION_ROW_SELECT
+        })
+      )
       if (row === null) return false
       let context
       try {
@@ -89,7 +101,10 @@ export class ChannelTokenExpiryService {
         checkedAt: now.toISOString(),
         expiryNotifiedFor: null
       }
-      const written = await this.write(row, info, now)
+      const found = row
+      const written = await this.jobContext.forStoreOrJoin(storeId, () =>
+        this.write(found, info, now)
+      )
       if (written && !info.isValid && row.status === String(ChannelConnectionStatus.ACTIVE)) {
         // Meta says the token does not work and the connection is still up: the health check will take it down
         // on its next round. It must not pass in silence.
@@ -120,13 +135,28 @@ export class ChannelTokenExpiryService {
     budgetMs: number = TokenExpiryLimits.ROUND_BUDGET_MS,
     now: Date = new Date()
   ): Promise<{ asked: number; written: number }> {
-    const rows = await this.prisma.client.channelConnection.findMany({
-      where: {
-        status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
-        ...OfActiveInstallation
-      },
-      select: { id: true, storeId: true, pluginId: true, metadata: true }
+    // The list of the database is read to its end; the metadata of each connection is then read in the context of its store
+    const refs = await this.lists.activeChannelConnections({
+      statuses: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR],
+      installationStatus: OfActiveInstallation.installation.status,
+      pluginStatus: OfActiveInstallation.installation.plugin.status
     })
+    const rows: { id: string; storeId: string; pluginId: string; metadata: unknown }[] = []
+    for (const ref of refs) {
+      if (findPlugin(ref.pluginId)?.inspectToken === undefined) continue
+      try {
+        const found = await this.jobContext.forStore(ref.storeId, () =>
+          this.prisma.client.channelConnection.findFirst({
+            where: { id: ref.id, storeId: ref.storeId },
+            select: { id: true, storeId: true, pluginId: true, metadata: true }
+          })
+        )
+        if (found !== null) rows.push(found)
+      } catch (error) {
+        // A store deleted since the list was read has no connection left to ask about
+        if (!(error instanceof JobContextGoneError)) throw error
+      }
+    }
     const due = rows
       .filter(row => findPlugin(row.pluginId)?.inspectToken !== undefined)
       .map(row => ({
@@ -165,11 +195,14 @@ export class ChannelTokenExpiryService {
     now: Date
   ): Promise<void> {
     try {
-      await this.prisma.client.$executeRaw`
+      await this.jobContext.forStoreOrJoin(
+        row.storeId,
+        () => this.prisma.client.$executeRaw`
         UPDATE channel_connections
         SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), ARRAY[${ChannelMetadataKeys.TOKEN_ATTEMPT_AT}::text], to_jsonb(${now.toISOString()}::text), true)
         WHERE id = ${row.id} AND store_id = ${row.storeId} AND credentials = ${Buffer.from(row.credentials)}
           AND status = ANY(${LIVE_STATUSES}::text[])`
+      )
     } catch (error) {
       this.logger.warn(
         { connection: row.id, errorName: errorName(error) },

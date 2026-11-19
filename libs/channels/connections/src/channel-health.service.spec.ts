@@ -1,6 +1,6 @@
 import type { PinoLogger } from 'nestjs-pino'
 
-import type { PrismaService } from '@platform/core/database'
+import type { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import { ChannelHealthErrors } from '@platform/core/domain'
 import { ChannelConnectFailureReasons, ErrorCodes } from '@platform/core/errors'
 import type { DomainEvents } from '@platform/core/event-bus'
@@ -25,7 +25,9 @@ function serviceWith(contextFor: () => unknown) {
     {} as PrismaService,
     { contextFor } as unknown as ChannelContextFactory,
     {} as DomainEvents,
-    logger as unknown as PinoLogger
+    logger as unknown as PinoLogger,
+    {} as JobContext,
+    {} as WorkerLists
   )
   return { service, logger }
 }

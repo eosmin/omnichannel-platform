@@ -116,6 +116,18 @@ export class JobContext {
     )
   }
 
+  // For a service that a job and a request both call: inside the tenant transaction of a request it runs as it is (the request's own
+  // context is the one that counts), anywhere else it is the work of one store, as forStore. A job that opens it twice for one store
+  // joins the first.
+  forStoreOrJoin<T>(
+    storeId: string,
+    work: () => Promise<T>,
+    options?: TransactionOptions
+  ): Promise<T> {
+    if (active.getStore() === undefined && this.prisma.hasTenantContext()) return work()
+    return this.forStore(storeId, work, options)
+  }
+
   // The work of one organization: the books and the fiscal documents (organization scope), which also read the rows of every store
   // of the organization (orders, returns, shipments, stock). Page long runs: one context per page.
   async forOrganization<T>(

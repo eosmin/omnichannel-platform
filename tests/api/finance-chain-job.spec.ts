@@ -7,7 +7,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import {
   ChainIncidentChange,
@@ -41,6 +41,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue, queueOf } from '../helpers/queue'
+import { createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const CREATED = 201
 const ACCEPTED = 202
@@ -311,7 +312,13 @@ describe('The weekly check of the chain, its incident and the guard of the close
           return true
         }
       } as never
-      const scheduler = new FinanceChainScheduler(locks, heavy as never, workerDb, logger)
+      const scheduler = new FinanceChainScheduler(
+        locks,
+        heavy as never,
+        createGuardedWorkerPrisma(),
+        logger,
+        new JobContext(createGuardedWorkerPrisma())
+      )
       await scheduler.enqueueAll(new Date('2026-11-15T05:00:00.000Z'), { pageSize: 1 })
       const mine = heavy.jobs.filter(
         job => (job.data as { organizationId: string }).organizationId === ctx.orgA.id
@@ -342,8 +349,9 @@ describe('The weekly check of the chain, its incident and the guard of the close
           }
         } as never,
         broken as never,
-        workerDb,
-        logger
+        createGuardedWorkerPrisma(),
+        logger,
+        new JobContext(createGuardedWorkerPrisma())
       )
       await expect(failing.run()).resolves.toBeUndefined()
     })

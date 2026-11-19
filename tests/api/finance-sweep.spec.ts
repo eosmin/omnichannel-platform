@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService } from '@platform/core/database'
+import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   FinanceCountryCodes,
@@ -45,7 +45,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const CREATED = 201
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -775,8 +775,9 @@ describe('The sweep of the books and the guard of the close', () => {
       const scheduler = new FinanceReconcileScheduler(
         locks,
         heavy as never,
-        app.get(PrismaService),
-        logger
+        createGuardedWorkerPrisma(),
+        logger,
+        new JobContext(createGuardedWorkerPrisma())
       )
       await scheduler.enqueueAll(NOW, { pageSize: 1 })
       const mine = heavy.jobs.filter(
@@ -804,8 +805,9 @@ describe('The sweep of the books and the guard of the close', () => {
       const failing = new FinanceReconcileScheduler(
         locks,
         broken as never,
-        app.get(PrismaService),
-        logger
+        createGuardedWorkerPrisma(),
+        logger,
+        new JobContext(createGuardedWorkerPrisma())
       )
       await expect(failing.run()).resolves.toBeUndefined()
     })

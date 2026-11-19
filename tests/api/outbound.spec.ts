@@ -10,7 +10,7 @@ import { WhatsAppLimits } from '@platform/channels/whatsapp'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -68,7 +68,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const CREATED = 201
 const OK = 200
@@ -228,18 +228,26 @@ describe('Replies on their way to a channel', () => {
       prisma,
       new ChannelConnectionResolver(prisma),
       writer,
-      new ChannelHealthService(prisma, contexts, events, logger),
+      new ChannelHealthService(
+        prisma,
+        contexts,
+        events,
+        logger,
+        new JobContext(prisma),
+        new WorkerLists(prisma)
+      ),
       logger
     )
     outboundQueue = new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never)
     sweep = new OutboundRequeueScheduler(
       undefined as never, // the lock is not what is tested
-      prisma,
+      createGuardedWorkerPrisma(),
       outboundQueue,
       writer,
       new ReactionStatusWriter(prisma, events),
       new MessageChangeStatusWriter(prisma, events),
-      logger
+      logger,
+      new JobContext(createGuardedWorkerPrisma())
     )
     app.get(EventEmitter2).onAny((event, payload) => {
       heard.push({ event: String(event), payload: payload as Record<string, unknown> })

@@ -14,6 +14,7 @@ import {
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { JobContext, WorkerLists } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ErrorCodes } from '@platform/core/errors'
 import { ExportStatus, ExportTypes, JobNames, QueueNames } from '@platform/core/queues'
@@ -35,7 +36,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { type CapturedEmails, emailsOf } from '../helpers/email'
 import { api } from '../helpers/http'
 import { type CapturedQueue, queueOf } from '../helpers/queue'
-import { createWorkerPrisma } from '../helpers/worker-db'
+import { createWorkerPrisma, createGuardedWorkerPrisma } from '../helpers/worker-db'
 import { workerServices } from '../helpers/worker-services'
 
 interface ErrorBody {
@@ -400,11 +401,18 @@ describe('Analytics reports and export', () => {
 
   describe('the dispatch', () => {
     function scheduler(queue: CapturedQueue): ReportDispatchScheduler {
-      return new ReportDispatchScheduler({} as never, queue as never, createWorkerPrisma(), {
-        setContext: jest.fn(),
-        info: jest.fn(),
-        error: jest.fn()
-      } as unknown as PinoLogger)
+      return new ReportDispatchScheduler(
+        {} as never,
+        queue as never,
+        createGuardedWorkerPrisma(),
+        {
+          setContext: jest.fn(),
+          info: jest.fn(),
+          error: jest.fn()
+        } as unknown as PinoLogger,
+        new JobContext(createGuardedWorkerPrisma()),
+        new WorkerLists(createGuardedWorkerPrisma())
+      )
     }
 
     async function make(data: Record<string, unknown>) {
@@ -483,11 +491,18 @@ describe('Analytics reports and export', () => {
 
   describe('the dispatch of a day that is not whole yet, or that was missed', () => {
     function scheduler(queue: CapturedQueue): ReportDispatchScheduler {
-      return new ReportDispatchScheduler({} as never, queue as never, createWorkerPrisma(), {
-        setContext: jest.fn(),
-        info: jest.fn(),
-        error: jest.fn()
-      } as unknown as PinoLogger)
+      return new ReportDispatchScheduler(
+        {} as never,
+        queue as never,
+        createGuardedWorkerPrisma(),
+        {
+          setContext: jest.fn(),
+          info: jest.fn(),
+          error: jest.fn()
+        } as unknown as PinoLogger,
+        new JobContext(createGuardedWorkerPrisma()),
+        new WorkerLists(createGuardedWorkerPrisma())
+      )
     }
     const freshQueue = () =>
       new (queueOf(app, QueueNames.EXPORTS).constructor as new () => CapturedQueue)()
