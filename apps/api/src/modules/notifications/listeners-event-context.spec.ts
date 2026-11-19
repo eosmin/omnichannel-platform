@@ -335,12 +335,17 @@ describe('the listeners of domain events open the context of their event', () =>
       "  @EventContextNotNeeded('reads through a helper')",
       '  async onO(p: P): Promise<void> { await this.reader(p) }',
       '  @OnEvent(Events.P)',
-      "  @EventContextNotNeeded('multi-line signature')",
+      "  @EventContextNotNeeded('database name only in the signature')",
       '  async onP(',
+      '    prisma: Db,',
       '    { storeId }: P',
       '  ): Promise<void> {',
-      '    await this.prismaService.conversation.findMany()',
+      '    this.realtime.toStore(storeId)',
       '  }',
+      '  @OnEvent(Events.S)',
+      "  @EventContextNotNeeded('two hops to the read')",
+      '  async onS(p: P): Promise<void> { await this.first(p) }',
+      '  private async first(p: P): Promise<void> { await this.reader(p) }',
       '  @OnEvent(Events.Q)',
       "  @EventContextNotNeeded('a db property')",
       '  async onQ(p: P): Promise<void> { await this.db.message.findMany() }',
@@ -374,8 +379,22 @@ describe('the listeners of domain events open the context of their event', () =>
       'Events.N:false',
       'Events.O:false',
       'Events.P:false',
+      'Events.S:false',
       'Events.Q:false',
       'Events.R:true'
     ])
+  })
+
+  // The two marked handlers of realtime-events that evict sockets (onStatusChanged, onAssigned) read the conversation through
+  // SocketAccessService.visibleAmong, on another object, which the marker check cannot follow. Their reason is only true while that read
+  // opens a context of its own that also works inside an open one (a plain tenantTransaction throws there, and mayStay turns the throw
+  // into "evict the socket").
+  it('keeps the read of the socket eviction in a detached context of its own', () => {
+    const file = 'apps/api/src/modules/realtime/socket-access.service.ts'
+    const source = readFileSync(join(ROOT, file), 'utf8')
+    const visible = source.slice(source.indexOf('async visibleAmong('))
+    const body = visible.slice(0, visible.indexOf('\n  }\n'))
+    expect(body).toContain('this.prisma.detachedTenantTransaction(')
+    expect(body).not.toMatch(/this\.prisma\.tenantTransaction\(/)
   })
 })
