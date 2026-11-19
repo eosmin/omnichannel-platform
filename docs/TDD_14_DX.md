@@ -1163,9 +1163,9 @@ key drop that subscription and ask again the next time they open the app.
 
 ## 16. Rules for writing a spec that does not flake
 
-Each rule below comes from a red that was not a bug of the product. **Enforced by a gate:** rule 1
-(`shared-table-cleanup.spec.ts`, over the fixtures and helpers of the suites) and rule 5 (the two jest configs
-ignore and list the same files). **Advice only, today:** rules 2, 3, 4, 6 and 7 (the task is in Step 7.3).
+Each rule below comes from a red that was not a bug of the product. **Enforced by a gate:** rule 1 only (`shared-table-cleanup.spec.ts`, over the fixtures and helpers of the
+suites). **Advice only, today:** rules 2 to 7, including 5 (nothing compares the lists of `jest.config.cts` and
+`jest.latency.config.cts`); the task is in Step 7.3.
 
 1. **Clean up only what the suite made.** The suites of the api and the worker run at the same time over
    one database. A fixture in SQL never runs `DELETE FROM <table>` without a filter by id, owner, store,
