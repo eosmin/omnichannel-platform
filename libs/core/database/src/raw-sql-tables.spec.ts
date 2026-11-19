@@ -80,5 +80,28 @@ describe('sqlTextOfRawArgs', () => {
     })
     expect(policyTablesOfRawSql(nested, POLICY)).toEqual(['orders'])
     expect(sqlTextOfRawArgs(undefined)).toBe('')
+    // A value that is bound is never SQL: an array of text among the values of a template is a parameter, not a statement
+    const bound = sqlTextOfRawArgs({
+      strings: ['SELECT 1 FROM media WHERE id = ANY(', ')'],
+      values: [['select * from orders']]
+    })
+    expect(tablesOfRawSql(bound)).toEqual(['media'])
+    // The same for an Unsafe call (`sql, ...values`): the statement is the first element, a later array is a parameter
+    expect(
+      policyTablesOfRawSql(
+        sqlTextOfRawArgs(['SELECT 1 FROM media WHERE id = ANY($1)', ['select * from orders']]),
+        POLICY
+      )
+    ).toEqual(['media'])
+    // ... and an array inside a nested fragment
+    expect(
+      policyTablesOfRawSql(
+        sqlTextOfRawArgs({
+          strings: ['SELECT * FROM ', ''],
+          values: [{ strings: ['media WHERE id = ANY(', ')'], values: [['select * from orders']] }]
+        }),
+        POLICY
+      )
+    ).toEqual(['media'])
   })
 })

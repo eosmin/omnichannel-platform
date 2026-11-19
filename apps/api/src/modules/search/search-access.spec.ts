@@ -1,7 +1,7 @@
 import { Permissions } from '@platform/core/auth'
 import { SearchEntities } from '@platform/core/domain'
 
-import { GlobalSearchPermissions, searchableBy } from './search-access'
+import { contextPersonOf, GlobalSearchPermissions, searchableBy } from './search-access'
 
 describe('what a member may search', () => {
   it('needs the permission to see conversations AND the one to read messages for the messages', () => {
@@ -34,5 +34,12 @@ describe('what a member may search', () => {
       const without = searchableBy(every.filter(other => other !== permission)).size
       if (without < all) expect(GlobalSearchPermissions).toContain(permission)
     }
+  })
+})
+
+describe('the person a search context must hold', () => {
+  it('is the viewer for a person and nobody for a plugin', () => {
+    expect(contextPersonOf('user-1')).toBe('user-1')
+    expect(contextPersonOf('plugin:inst-1')).toBeUndefined()
   })
 })
