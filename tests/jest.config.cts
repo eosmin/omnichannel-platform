@@ -13,7 +13,8 @@ module.exports = {
   testPathIgnorePatterns: [
     '/node_modules/',
     '<rootDir>/api/products-search-performance.spec.ts',
-    '<rootDir>/api/rls-search-plan.spec.ts'
+    '<rootDir>/api/rls-search-plan.spec.ts',
+    '<rootDir>/api/rls-list-search-plan.spec.ts'
   ],
   // The env of the app is read when it is imported: this runs before any suite does
   setupFiles: ['<rootDir>/helpers/env.ts'],
