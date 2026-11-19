@@ -2,9 +2,13 @@ import type { PrismaService } from '@platform/core/database'
 import { CustomerFigureOrderStatuses, customerOrderFigures } from '@platform/core/domain'
 import { ExportLimits } from '@platform/core/exports'
 import {
+  countCustomerSearch,
+  customerSearchPatterns,
   customerSearchWhere,
   type CustomersExportFilters,
-  foldInDatabase
+  type CustomerSearchPatterns,
+  foldInDatabase,
+  searchCustomerIds
 } from '@platform/core/messaging'
 
 import type { CsvSource } from './csv-export-writer'
@@ -48,25 +52,50 @@ export function customersExportSource(
   storeId: string,
   filters: CustomersExportFilters
 ): CsvSource {
-  // The text is folded once, by the database, as the names it is compared with are
-  let folded: Promise<string> | undefined
-  const foldedText = (): Promise<string> =>
-    (folded ??=
-      filters.q === undefined ? Promise.resolve('') : foldInDatabase(prisma.client, filters.q))
+  // The patterns of the text are made once: the text is folded by the database, as the names it is compared with are
+  let patterns: Promise<CustomerSearchPatterns | undefined> | undefined
+  const patternsOfText = (): Promise<CustomerSearchPatterns | undefined> =>
+    (patterns ??= (async () => {
+      const { q } = filters
+      return q === undefined
+        ? undefined
+        : customerSearchPatterns(q, await foldInDatabase(prisma.client, q))
+    })())
   return {
     columns: CUSTOMER_COLUMNS,
-    count: async () =>
-      prisma.client.customer.count({
-        where: customerSearchWhere(storeId, filters.q, await foldedText())
-      }),
+    count: async () => {
+      const found = await patternsOfText()
+      // The search runs inside the context of the store of the export: the functions of the database read the store from it
+      const matching =
+        found === undefined
+          ? undefined
+          : await prisma.inStoreContext(storeId, () => countCustomerSearch(prisma.client, found))
+      return matching ?? prisma.client.customer.count({ where: customerSearchWhere(storeId) })
+    },
     rows: async function* () {
       let after: string | undefined
+      const found = await patternsOfText()
       for (;;) {
+        // With a search text, the ids of the page come from the function of the database (one page after the last id: a row
+        // deleted meanwhile cannot end the file early); without one, the keyset is a condition of the read
+        const ids =
+          found === undefined
+            ? undefined
+            : await prisma.inStoreContext(storeId, () =>
+                searchCustomerIds(prisma.client, found, {
+                  order: 'id',
+                  after,
+                  limit: ExportLimits.ROW_PAGE_SIZE
+                })
+              )
         const customers = await prisma.client.customer.findMany({
-          // Keyset: a row deleted meanwhile cannot end the file early, as a cursor on it would
           where: {
-            ...customerSearchWhere(storeId, filters.q, await foldedText()),
-            ...(after === undefined ? {} : { id: { gt: after } })
+            ...customerSearchWhere(storeId),
+            ...(ids === undefined
+              ? after === undefined
+                ? {}
+                : { id: { gt: after } }
+              : { id: { in: ids } })
           },
           orderBy: { id: 'asc' },
           take: ExportLimits.ROW_PAGE_SIZE,

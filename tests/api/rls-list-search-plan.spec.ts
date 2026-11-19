@@ -142,4 +142,80 @@ describe('the plan of the searches of the lists with row-level security on', () 
       plans: { off: JSON.stringify(off), on: JSON.stringify(on) }
     }).toMatchObject({ on: [] })
   })
+  // The customers list through its FUNCTION (migration rls_search_customer_list): the deployment as production has it, the function
+  // owned by a role that is NOT a superuser and does not bypass row security, the table FORCED, and what lets the function read is the
+  // `<table>_owner` policy of that role. Everything is rolled back with the transaction (DDL is transactional). The plan is the one of
+  // the statement INSIDE the function (auto_explain, which the owner of the database, a superuser in CI, loads); the call is made as
+  // platform_app with the context of store A. The scans that are not bitmaps are switched off with SET LOCAL inside the transaction of
+  // the case (it rolls back: nothing leaks to other cases or to the pooler), so the plan shows what the planner CAN read, and
+  // the gap is the other side of the raw case above: with the function, the trigram index IS available next to the policy.
+  it('customers list through its function: the trigram indexes are the way in, with the policy enforced and the owner not a superuser', async () => {
+    const plans: string[] = []
+    const collect = (notice: { message?: string }): void => {
+      plans.push(notice.message ?? '')
+    }
+    raw.on('notice', collect)
+    await raw.query('BEGIN')
+    try {
+      await raw.query("SET LOCAL lock_timeout = '20s'")
+      const role = `plan_owner_${prefix.replaceAll(/[^a-z0-9]/gi, '_')}`.slice(0, 60)
+      await raw.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`)
+      await raw.query(`GRANT USAGE, CREATE ON SCHEMA public TO ${role}`)
+      await raw.query(`GRANT SELECT ON customers TO ${role}`)
+      await raw.query('ALTER TABLE customers ENABLE ROW LEVEL SECURITY')
+      await raw.query('ALTER TABLE customers FORCE ROW LEVEL SECURITY')
+      await raw.query('DROP POLICY IF EXISTS plan_owner ON customers')
+      await raw.query(
+        `CREATE POLICY plan_owner ON customers AS PERMISSIVE FOR ALL TO ${role} USING (true) WITH CHECK (true)`
+      )
+      await raw.query(
+        `ALTER FUNCTION public.rls_search_customer_list(text, text, text, boolean, text, text, integer) OWNER TO ${role}`
+      )
+      await raw.query('SET LOCAL enable_seqscan = off')
+      await raw.query('SET LOCAL enable_indexscan = off')
+      await raw.query('SET LOCAL enable_indexonlyscan = off')
+      await raw.query("LOAD 'auto_explain'")
+      await raw.query('SET LOCAL auto_explain.log_min_duration = 0')
+      await raw.query('SET LOCAL auto_explain.log_nested_statements = on')
+      await raw.query('SET LOCAL client_min_messages = log')
+      await raw.query('SET LOCAL ROLE platform_app')
+      await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
+      const { rows } = await raw.query<{ id: string }>(
+        `SELECT f.id FROM public.rls_search_customer_list($1, $2, $3, false, NULL, NULL, 25) AS f`,
+        ['%zorbalux%', '%zorbalux%', '%5030000%']
+      )
+      // The function answers: the three customers of the store whose name holds the word, and nobody of the other store
+      expect(rows).toHaveLength(3)
+    } finally {
+      await raw.query('ROLLBACK')
+      raw.off('notice', collect)
+    }
+    const plan = plans.join('\n')
+    // The whole plan travels with the failure
+    expect(plan).toMatch(/idx_customers_name_search_trgm/)
+    expect(plan).not.toMatch(/Seq Scan on customers/)
+  }, 60_000)
+  // The ORDERS list: its search is a prefix LIKE on the number OR the orders of the customers whose name, email or phone match (a
+  // sub-select on customers, the same LIKE / ILIKE as above). The first version compared it with and without policy and passed by the
+  // statistics, which proved nothing, so what is measured here is the side that does not depend on them: the scans that are not bitmaps
+  // are switched off (SET LOCAL, inside the transaction that rolls back) and, with the policy ON, no plan can read a trigram index of
+  // the customers for these operators. The baseline without policy is NOT asserted (it travels in the failure). The orders list
+  // reads the customers through the policy of that table, so it has the gap of the customers list: it needs its own plan B before the
+  // policies are enforced (plan of the step 7.3 owner, see the notes of the PR).
+  it('orders list: with the policy on the raw search statement cannot read a trigram index of the customers (plan B pending)', async () => {
+    const statement = `SELECT o.id FROM orders o
+        WHERE o.store_id = $1
+          AND (o.order_number LIKE $2
+            OR o.customer_id IN (SELECT c.id FROM customers c WHERE c.store_id = $1
+              AND (c.name ILIKE $3 OR c.email ILIKE $3 OR c.phone_normalized LIKE $4)))
+        ORDER BY o.created_at DESC, o.id DESC LIMIT 25`
+    const values = [storeA, '00012%', '%zorbalux%', '%5030000%']
+    const off = await planOf(statement, values, ['orders', 'customers'], false)
+    const on = await planOf(statement, values, ['orders', 'customers'], true)
+    expect({
+      on: trigramIndexes(on),
+      baselineTrigram: trigramIndexes(off),
+      plans: { off: JSON.stringify(off), on: JSON.stringify(on) }
+    }).toMatchObject({ on: [] })
+  })
 })
