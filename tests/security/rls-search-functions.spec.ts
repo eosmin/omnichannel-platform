@@ -252,7 +252,13 @@ describe('the search functions of row-level security', () => {
     await owner.customer.update({ where: { id: absorbed.id }, data: { mergedIntoId: mine.id } })
     const alien = await createCustomer(owner, { storeId: ctx.storeB.id, name: `Wanda ${tag}` })
     const pattern = `%wanda ${tag}%`
-    const page = (stores: string[], byId: boolean, afterId: string | null, limit: number) =>
+    const page = (
+      stores: string[],
+      byId: boolean,
+      afterId: string | null,
+      limit: number,
+      afterAt: Date | null = null
+    ) =>
       inContext({ stores }, async () =>
         (
           await appDb.query<{ id: string }>(CUSTOMER_LIST_CALL, [
@@ -260,7 +266,7 @@ describe('the search functions of row-level security', () => {
             pattern,
             null,
             byId,
-            null,
+            afterAt?.toISOString() ?? null,
             afterId,
             limit
           ])
@@ -273,10 +279,22 @@ describe('the search functions of row-level security', () => {
     expect([...byId].sort()).toEqual([mine.id, second.id].sort())
     expect(byId).not.toContain(alien.id)
     expect(byId).not.toContain(absorbed.id)
+    // That order is exactly `ORDER BY id` of the database (the owner reads it, so a reversed or dropped ORDER BY in the function fails)
+    const inDatabaseOrder = await owner.$queryRaw<{ id: string }[]>`
+      SELECT id FROM customers WHERE id IN (${mine.id}, ${second.id}) ORDER BY id`
+    expect(byId).toEqual(inDatabaseOrder.map(row => row.id))
     expect(await page([ctx.storeA.id], true, byId[0] ?? null, 25)).toEqual(byId.slice(1))
     expect(await page([ctx.storeB.id], true, null, 25)).toEqual([alien.id])
     // The list is newest first
     expect(await page([ctx.storeA.id], false, null, 25)).toEqual([second.id, mine.id])
+    // The cursor of the list is a point in (created_at, id): after `second` comes `mine`, and after `mine` nothing; the absorbed one is
+    // the newest row on purpose, so a broken merged filter would show first in the list above
+    expect(
+      await page([ctx.storeA.id], false, second.id, 25, new Date('2026-01-11T10:00:00.000Z'))
+    ).toEqual([mine.id])
+    expect(
+      await page([ctx.storeA.id], false, mine.id, 25, new Date('2026-01-10T10:00:00.000Z'))
+    ).toEqual([])
     const count = await inContext({ stores: [ctx.storeA.id] }, async () =>
       appDb.query<{ n: string }>(CUSTOMER_COUNT_CALL, [pattern, pattern, null])
     )
