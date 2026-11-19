@@ -55,10 +55,17 @@ export function customerSearchWhere(storeId: string): CustomerSearchWhere {
   return { storeId, mergedIntoId: null }
 }
 
+// The orders a page of the customers a search finds can come in: the list (newest first) and the export (by id)
+export const CustomerSearchOrders = { NEWEST: 'newest', ID: 'id' } as const
+
 // A page of the customers a search finds: where it starts (the list is newest first, the export by id) and how many
 export type CustomerSearchPage =
-  | { order: 'newest'; after: { createdAt: Date; id: string } | undefined; limit: number }
-  | { order: 'id'; after: string | undefined; limit: number }
+  | {
+      order: typeof CustomerSearchOrders.NEWEST
+      after: { createdAt: Date; id: string } | undefined
+      limit: number
+    }
+  | { order: typeof CustomerSearchOrders.ID; after: string | undefined; limit: number }
 
 // The ids of one page of the customers a search finds, in the order of the page. Runs inside the context of ONE store (the function
 // reads the store from it and raises without one): the caller opens it with `inStoreContext`.
@@ -67,10 +74,13 @@ export async function searchCustomerIds(
   patterns: CustomerSearchPatterns,
   page: CustomerSearchPage
 ): Promise<string[]> {
-  const byId = page.order === 'id'
+  const byId = page.order === CustomerSearchOrders.ID
   const afterId = byId ? (page.after ?? null) : (page.after?.id ?? null)
   // As ISO text: the function reads it as the (UTC) moment the column holds, whatever the time zone of the session
-  const afterAt = page.order === 'newest' ? (page.after?.createdAt.toISOString() ?? null) : null
+  const afterAt =
+    page.order === CustomerSearchOrders.NEWEST
+      ? (page.after?.createdAt.toISOString() ?? null)
+      : null
   const rows = await db.$queryRaw<{ id: string }[]>`
     SELECT f.id FROM public.rls_search_customer_list(
       ${patterns.name}::text, ${patterns.email}::text, ${patterns.phone}::text, ${byId}::boolean,

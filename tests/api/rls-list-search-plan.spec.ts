@@ -184,7 +184,7 @@ describe('the plan of the searches of the lists with row-level security on', () 
         `SELECT f.id FROM public.rls_search_customer_list($1, $2, $3, false, NULL, NULL, 25) AS f`,
         ['%zorbalux%', '%zorbalux%', '%5030000%']
       )
-      // The function answers: the three customers of the store whose name holds the word, and nobody of the other store
+      // Both stores hold the same three Zorbalux: three rows (not six) says that the other store is never read
       expect(rows).toHaveLength(3)
     } finally {
       await raw.query('ROLLBACK')

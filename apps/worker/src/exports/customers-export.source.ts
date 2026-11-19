@@ -3,6 +3,7 @@ import { CustomerFigureOrderStatuses, customerOrderFigures } from '@platform/cor
 import { ExportLimits } from '@platform/core/exports'
 import {
   countCustomerSearch,
+  CustomerSearchOrders,
   customerSearchPatterns,
   customerSearchWhere,
   type CustomersExportFilters,
@@ -74,8 +75,9 @@ export function customersExportSource(
     },
     rows: async function* () {
       let after: string | undefined
+      let finished = false
       const found = await patternsOfText()
-      for (;;) {
+      while (!finished) {
         // With a search text, the ids of the page come from the function of the database (one page after the last id: a row
         // deleted meanwhile cannot end the file early); without one, the keyset is a condition of the read
         const ids =
@@ -83,7 +85,7 @@ export function customersExportSource(
             ? undefined
             : await prisma.inStoreContext(storeId, () =>
                 searchCustomerIds(prisma.client, found, {
-                  order: 'id',
+                  order: CustomerSearchOrders.ID,
                   after,
                   limit: ExportLimits.ROW_PAGE_SIZE
                 })
@@ -129,9 +131,18 @@ export function customersExportSource(
             _count: { select: { notes: true, conversations: true } }
           }
         })
-        const last = customers.at(-1)
-        if (last === undefined) return
-        after = last.id
+        if (ids === undefined) {
+          const last = customers.at(-1)
+          if (last === undefined) return
+          after = last.id
+        } else {
+          // The keyset is the last id the database chose, not the last row that came back: rows merged or deleted between the two
+          // statements must not end the file while later pages exist. A page shorter than the size is the last one.
+          const lastId = ids.at(-1)
+          if (lastId === undefined) return
+          after = lastId
+          finished = ids.length < ExportLimits.ROW_PAGE_SIZE
+        }
 
         const spans = await prisma.client.conversation.groupBy({
           by: ['customerId'],

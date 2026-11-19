@@ -15,6 +15,7 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import {
   type CustomerSearchPage,
+  CustomerSearchOrders,
   customerSearchPatterns,
   customerSearchWhere,
   foldInDatabase,
@@ -62,7 +63,7 @@ export class CustomersService {
       query.q === undefined
         ? undefined
         : await this.searchIds(storeId, query.q, {
-            order: 'newest',
+            order: CustomerSearchOrders.NEWEST,
             after: cursor,
             limit: query.limit + 1
           })
@@ -87,7 +88,9 @@ export class CustomersService {
       take: query.limit + 1,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
     })
-    const hasMore = rows.length > query.limit
+    // With a search text the page was chosen by the database in a separate statement: a row merged or deleted in between must not
+    // make the last page look like the last of the list, so there is more when the function found more than the page asks for
+    const hasMore = found === undefined ? rows.length > query.limit : found.length > query.limit
     const page = hasMore ? rows.slice(0, query.limit) : rows
     const last = page.at(-1)
     return {
