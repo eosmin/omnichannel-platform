@@ -1,7 +1,7 @@
 import pg from 'pg'
 
 import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
-import { CarrierConnectionStatus } from '@platform/core/domain'
+import { CarrierConnectionStatus, PickupStatus } from '@platform/core/domain'
 
 import { createCarrierConnection } from '../builders'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -17,6 +17,8 @@ const FUNCTIONS = [
   'rls_list_shipment_poll_targets(text, text[], text, text, integer)',
   'rls_list_benefit_close_targets(text, text, integer)',
   'rls_list_pickup_targets(text, text, integer)',
+  'rls_list_pickups_pending_stale(text, timestamp, date, integer)',
+  'rls_list_pickups_count_behind(text[], date, timestamp, integer)',
   'rls_list_active_channel_connections(text[], text, text, text, integer)',
   'rls_list_users_with_pending_email(text, integer)'
 ] as const
@@ -63,7 +65,12 @@ describe('row-level security, phase 5: the lists of the worker', () => {
     await raw.query('BEGIN')
     try {
       await raw.query("SET LOCAL lock_timeout = '20s'")
-      for (const table of ['carrier_connections', 'channel_connections', 'notifications']) {
+      for (const table of [
+        'carrier_connections',
+        'channel_connections',
+        'notifications',
+        'pickup_requests'
+      ]) {
         await raw.query(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`)
       }
       await raw.query(`SET LOCAL ROLE ${role}`)
@@ -118,6 +125,68 @@ describe('row-level security, phase 5: the lists of the worker', () => {
       expect(new Set(seen).size).toBe(seen.length)
       expect(seen).toEqual(expect.arrayContaining(pickups))
       expect([...seen].sort()).toEqual(seen)
+    })
+  })
+
+  it('lists the pickups of the sweep of every store, oldest first, and refuses a missing filter', async () => {
+    const old = new Date('2031-01-06T10:00:00.000Z')
+    const day = new Date('2031-01-06T00:00:00.000Z')
+    const made: { stuck: string[]; behind: string[] } = { stuck: [], behind: [] }
+    for (const [index, storeId] of stores.entries()) {
+      const connectionId = pickups[index] ?? ''
+      const stuck = await owner.pickupRequest.create({
+        data: {
+          storeId,
+          connectionId,
+          pickupDate: day,
+          status: PickupStatus.PENDING,
+          packageCount: 1,
+          requestedBy: 'system',
+          createdAt: old
+        }
+      })
+      const behind = await owner.pickupRequest.create({
+        data: {
+          storeId,
+          connectionId,
+          pickupDate: day,
+          status: PickupStatus.REQUESTED,
+          packageCount: 3,
+          carrierPackageCount: 2,
+          providerPickupId: `${prefix}-p${index}`,
+          requestedBy: 'system'
+        }
+      })
+      await owner.pickupRequest.updateMany({ where: { id: behind.id }, data: { updatedAt: old } })
+      made.stuck.push(stuck.id)
+      made.behind.push(behind.id)
+    }
+    await asWorker(async query => {
+      const pending = await query(
+        'SELECT id, store_id FROM rls_list_pickups_pending_stale($1, $2, $3, 1000)',
+        [PickupStatus.PENDING, new Date('2031-01-06T11:00:00.000Z'), day]
+      )
+      const mine = pending.rows.filter((row: { id: string }) => made.stuck.includes(row.id))
+      expect(mine.map((row: { store_id: string }) => row.store_id).sort()).toEqual(
+        [...stores].sort()
+      )
+      const behind = await query(
+        'SELECT id, store_id FROM rls_list_pickups_count_behind($1::text[], $2, $3, 1000)',
+        [
+          [PickupStatus.REQUESTED, PickupStatus.CONFIRMED],
+          day,
+          new Date('2031-01-06T11:00:00.000Z')
+        ]
+      )
+      const mineBehind = behind.rows.filter((row: { id: string }) => made.behind.includes(row.id))
+      expect(mineBehind.map((row: { store_id: string }) => row.store_id).sort()).toEqual(
+        [...stores].sort()
+      )
+      await raw.query('SAVEPOINT filter')
+      await expect(
+        query('SELECT * FROM rls_list_pickups_pending_stale(NULL, $1, $2, 10)', [old, day])
+      ).rejects.toMatchObject({ code: '22023' })
+      await raw.query('ROLLBACK TO SAVEPOINT filter')
     })
   })
 

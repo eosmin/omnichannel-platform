@@ -20,6 +20,18 @@ export interface PickupTarget {
   id: string
   storeId: string
 }
+export interface PickupSweepFilter {
+  dateFrom: Date
+  limit: number
+}
+export interface PendingPickupFilter extends PickupSweepFilter {
+  status: string
+  createdBefore: Date
+}
+export interface BehindPickupFilter extends PickupSweepFilter {
+  statuses: readonly string[]
+  updatedBefore: Date
+}
 export interface ChannelConnectionRef {
   id: string
   storeId: string
@@ -118,6 +130,19 @@ export class WorkerLists {
       },
       row => row.id
     )
+  }
+
+  // One batch (the oldest first), not the whole list: the sweep queues one batch a minute, as it always did
+  async pickupsPendingStale(filter: PendingPickupFilter): Promise<PickupTarget[]> {
+    const rows = await this.prisma.client.$queryRaw<{ id: string; store_id: string }[]>`
+      SELECT id, store_id FROM rls_list_pickups_pending_stale(${filter.status}, ${filter.createdBefore}, ${filter.dateFrom}::date, ${filter.limit})`
+    return rows.map(row => ({ id: row.id, storeId: row.store_id }))
+  }
+
+  async pickupsCountBehind(filter: BehindPickupFilter): Promise<PickupTarget[]> {
+    const rows = await this.prisma.client.$queryRaw<{ id: string; store_id: string }[]>`
+      SELECT id, store_id FROM rls_list_pickups_count_behind(${[...filter.statuses]}::text[], ${filter.dateFrom}::date, ${filter.updatedBefore}, ${filter.limit})`
+    return rows.map(row => ({ id: row.id, storeId: row.store_id }))
   }
 
   activeChannelConnections(filter: ChannelConnectionFilter): Promise<ChannelConnectionRef[]> {

@@ -5,7 +5,12 @@ import type { Redis } from 'ioredis'
 import { PinoLogger } from 'nestjs-pino'
 
 import { CacheKeys } from '@platform/core/cache'
-import { PrismaService } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import {
   CarrierConnectionStatus,
   OrderStatus,
@@ -39,6 +44,9 @@ import {
 import { CarrierRegistry } from '@platform/plugins/runtime'
 import { ShipmentCreationModes } from '@platform/plugins/sdk'
 
+// rls-context: the connections and the sweep come from lists of the database (WorkerLists); every other read or write of a table of a
+// store runs inside JobContext.forStore. The carrier and the guide engine (PickupsService, ShippingService) are called outside it
+
 // A tick that starts later than this after its minute is not run: what it would decide is about a moment that is over
 const STALE_TICK_MS = 10 * 60 * 1000
 const MINUTE_MS = 60_000
@@ -47,6 +55,15 @@ const DAY_MS = 24 * 60 * MINUTE_MS
 const AUTO_RUN_ORDERS = 100
 // ... and the most pages of them in one run
 const AUTO_RUN_MAX_PAGES = 20
+// A pickup that no longer exists for its store (the store was deleted after it was listed) has nothing left to ask for
+const isGone = (error: unknown): boolean => error instanceof JobContextGoneError
+
+type PickupConnection = {
+  id: string
+  storeId: string
+  carrierId: string
+  store: { timezone: string }
+} & PickupScheduleRules
 
 export interface PickupEvaluation {
   connections: number
@@ -72,7 +89,9 @@ export class PickupEvaluator {
     private readonly events: DomainEvents,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly queue: Queue<SyncPickupJob>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext,
+    private readonly lists: WorkerLists
   ) {
     this.logger.setContext(PickupEvaluator.name)
   }
@@ -125,31 +144,61 @@ export class PickupEvaluator {
       swept: 0,
       failed: 0
     }
-    const connections = await this.prisma.client.carrierConnection.findMany({
-      where: { status: CarrierConnectionStatus.ACTIVE, pickupEnabled: true },
-      select: {
-        id: true,
-        storeId: true,
-        carrierId: true,
-        pickupDays: true,
-        pickupCutoffTime: true,
-        autoPickup: true,
-        autoPickupTime: true,
-        pickupReminderMinutes: true,
-        store: { select: { timezone: true } }
-      }
-    })
-    for (const connection of connections) {
-      report.connections += 1
+    // The connections that take pickups come from a list of the database, read to its end; the settings of each one are then read in
+    // the context of its store, one store at a time
+    const targets = await this.lists.pickupTargets(CarrierConnectionStatus.ACTIVE)
+    const byStore = new Map<string, string[]>()
+    for (const target of targets) {
+      const ids = byStore.get(target.storeId) ?? []
+      ids.push(target.id)
+      byStore.set(target.storeId, ids)
+    }
+    for (const [storeId, ids] of byStore) {
+      let connections: PickupConnection[]
       try {
-        await this.one(connection, now, report)
+        connections = await this.jobContext.forStore(storeId, () =>
+          this.prisma.client.carrierConnection.findMany({
+            where: {
+              storeId,
+              id: { in: ids },
+              status: CarrierConnectionStatus.ACTIVE,
+              pickupEnabled: true
+            },
+            select: {
+              id: true,
+              storeId: true,
+              carrierId: true,
+              pickupDays: true,
+              pickupCutoffTime: true,
+              autoPickup: true,
+              autoPickupTime: true,
+              pickupReminderMinutes: true,
+              store: { select: { timezone: true } }
+            }
+          })
+        )
       } catch (error) {
-        // One connection that fails does not stop the others; the next minute looks again
+        if (isGone(error)) continue
         report.failed += 1
         this.logger.error(
-          { connectionId: connection.id, errorName: errorName(error) },
-          'the pickups of a connection could not be evaluated'
+          { storeId, errorName: errorName(error) },
+          'the connections of a store could not be read for its pickups'
         )
+        continue
+      }
+      for (const connection of connections) {
+        report.connections += 1
+        try {
+          await this.one(connection, now, report)
+        } catch (error) {
+          // One connection that fails does not stop the others; the next minute looks again. A store deleted meanwhile is not a fault
+          if (isGone(error)) continue
+          report.failed += 1
+          this.logger.error(
+            { connectionId: connection.id, errorName: errorName(error) },
+            'the pickups of a connection could not be evaluated'
+          )
+        }
       }
     }
     try {
@@ -162,12 +211,7 @@ export class PickupEvaluator {
   }
 
   private async one(
-    connection: {
-      id: string
-      storeId: string
-      carrierId: string
-      store: { timezone: string }
-    } & PickupScheduleRules,
+    connection: PickupConnection,
     now: Date,
     report: PickupEvaluation
   ): Promise<void> {
@@ -213,16 +257,18 @@ export class PickupEvaluator {
     const first = await this.redis.set(key, '1', 'EX', PickupSchedule.MEMORY_TTL_SECONDS, 'NX')
     if (first !== 'OK') return
     try {
-      await this.prisma.transaction(tx => {
-        this.events.publish(tx, Events.PICKUP_CUTOFF_APPROACHING, {
-          storeId: connection.storeId,
-          connectionId: connection.id,
-          pickupDate: clock.date,
-          waiting,
-          minutesLeft: reminder.minutesLeft
+      await this.jobContext.forStore(connection.storeId, () =>
+        this.prisma.transaction(tx => {
+          this.events.publish(tx, Events.PICKUP_CUTOFF_APPROACHING, {
+            storeId: connection.storeId,
+            connectionId: connection.id,
+            pickupDate: clock.date,
+            waiting,
+            minutesLeft: reminder.minutesLeft
+          })
+          return Promise.resolve()
         })
-        return Promise.resolve()
-      })
+      )
     } catch (error) {
       // The day's reminder was not raised: the next minute of the window tries again
       await this.redis.del(key).catch(() => undefined)
@@ -233,16 +279,18 @@ export class PickupEvaluator {
 
   // The guides that wait for a pickup on a connection: a label made, no pickup yet
   private waiting(connection: { id: string; storeId: string }): Promise<number> {
-    return this.prisma.client.shipment.count({
-      where: {
-        storeId: connection.storeId,
-        connectionId: connection.id,
-        kind: ShipmentKind.OUTBOUND,
-        status: { in: [...PickupEligibleStatuses] },
-        pickupId: null,
-        guideNumber: { not: null }
-      }
-    })
+    return this.jobContext.forStore(connection.storeId, () =>
+      this.prisma.client.shipment.count({
+        where: {
+          storeId: connection.storeId,
+          connectionId: connection.id,
+          kind: ShipmentKind.OUTBOUND,
+          status: { in: [...PickupEligibleStatuses] },
+          pickupId: null,
+          guideNumber: { not: null }
+        }
+      })
+    )
   }
 
   // `autoPickup` of a pickup-bound carrier (TDD_17 §4.10): the guides and the pickup together for every confirmed or preparing order
@@ -262,23 +310,26 @@ export class PickupEvaluator {
       // In pages by id: what the engine refuses stays an order with no guide, and a cursor passes it instead of asking again
       let after: string | undefined
       for (let page = 0; page < AUTO_RUN_MAX_PAGES; page += 1) {
-        const orders = await this.prisma.client.order.findMany({
-          where: {
-            storeId: connection.storeId,
-            carrierConnectionId: connection.id,
-            status: { in: [OrderStatus.CONFIRMED, OrderStatus.PREPARING] },
-            shipments: {
-              none: {
-                kind: ShipmentKind.OUTBOUND,
-                status: { notIn: [...ShipmentInactiveStatuses] }
-              }
+        // One short context for each page: the carrier is asked for the guides of the page outside of it
+        const orders = await this.jobContext.forStore(connection.storeId, () =>
+          this.prisma.client.order.findMany({
+            where: {
+              storeId: connection.storeId,
+              carrierConnectionId: connection.id,
+              status: { in: [OrderStatus.CONFIRMED, OrderStatus.PREPARING] },
+              shipments: {
+                none: {
+                  kind: ShipmentKind.OUTBOUND,
+                  status: { notIn: [...ShipmentInactiveStatuses] }
+                }
+              },
+              ...(after === undefined ? {} : { id: { gt: after } })
             },
-            ...(after === undefined ? {} : { id: { gt: after } })
-          },
-          select: { id: true },
-          orderBy: { id: 'asc' },
-          take: AUTO_RUN_ORDERS
-        })
+            select: { id: true },
+            orderBy: { id: 'asc' },
+            take: AUTO_RUN_ORDERS
+          })
+        )
         if (orders.length === 0) break
         if (!claimed) {
           // The day is claimed by the first run that has orders: a minute with none leaves the day open for an order confirmed later
@@ -327,31 +378,23 @@ export class PickupEvaluator {
   // per bucket of time, with its own job id.
   private async sweep(now: Date): Promise<number> {
     const bucket = Math.floor(now.getTime() / PickupSchedule.SWEEP_BUCKET_MS)
-    const pending = await this.prisma.client.pickupRequest.findMany({
-      where: {
-        status: PickupStatus.PENDING,
-        createdAt: { lt: new Date(now.getTime() - PickupSchedule.PENDING_STALE_MS) },
-        // A pickup of a day that is over is not asked for any more
-        pickupDate: { gte: new Date(now.getTime() - DAY_MS) }
-      },
-      select: { id: true, storeId: true },
-      orderBy: { createdAt: 'asc' },
-      take: PickupSchedule.SWEEP_BATCH
+    // Both lists are read across every store by functions of the database (ids only); the sync of each pickup is a job that runs in the
+    // context of its own store. The comparison of the two counts is in the function: filtered after a limit, the pickups that agree
+    // (never touched again, so always the oldest) would crowd out the ones that do not
+    const pickupDateFrom = new Date(now.getTime() - DAY_MS)
+    const pending = await this.lists.pickupsPendingStale({
+      status: PickupStatus.PENDING,
+      createdBefore: new Date(now.getTime() - PickupSchedule.PENDING_STALE_MS),
+      // A pickup of a day that is over is not asked for any more
+      dateFrom: pickupDateFrom,
+      limit: PickupSchedule.SWEEP_BATCH
     })
-    // The comparison of the two counts is in the query: filtered after a `take`, the pickups that agree (never touched again, so always
-    // the oldest) would crowd out the ones that do not
-    const behind = await this.prisma.client.$queryRaw<{ id: string; storeId: string }[]>`
-      SELECT id, store_id AS "storeId"
-      FROM pickup_requests
-      WHERE status IN (${PickupStatus.REQUESTED}, ${PickupStatus.CONFIRMED})
-        AND provider_pickup_id IS NOT NULL
-        AND carrier_package_count IS NOT NULL
-        AND carrier_package_count <> package_count
-        AND package_count > 0
-        AND pickup_date >= ${new Date(now.getTime() - DAY_MS)}::date
-        AND updated_at < ${new Date(now.getTime() - PickupSchedule.RESYNC_AFTER_MS)}
-      ORDER BY updated_at ASC
-      LIMIT ${PickupSchedule.SWEEP_BATCH}`
+    const behind = await this.lists.pickupsCountBehind({
+      statuses: [PickupStatus.REQUESTED, PickupStatus.CONFIRMED],
+      dateFrom: pickupDateFrom,
+      updatedBefore: new Date(now.getTime() - PickupSchedule.RESYNC_AFTER_MS),
+      limit: PickupSchedule.SWEEP_BATCH
+    })
     const jobs = [...pending, ...behind].map(pickup => ({
       name: JobNames.SYNC_PICKUP,
       data: { storeId: pickup.storeId, pickupId: pickup.id, requestedBy: null },

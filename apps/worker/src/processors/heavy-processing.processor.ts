@@ -371,7 +371,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const bulk = bulkLabelsJobSchema.safeParse(job.data)
       if (!bulk.success) throw new UnrecoverableError('the bulk labels job does not fit its schema')
       // The last attempt that ends on a fault closes the run as failed; an earlier one is repeated and finds what it made
-      await this.bulkLabels.run(bulk.data, isLastAttempt(job))
+      await this.skipIfGone(job, () => this.bulkLabels.run(bulk.data, isLastAttempt(job)))
       return
     }
     if (job.name === JobNames.CANCEL_SHIPMENT) {
