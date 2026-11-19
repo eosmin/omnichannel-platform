@@ -396,9 +396,18 @@ export class PluginInstallationsService {
     }
     // The built-in plugins make no challenge: one context for the rest. A reinstall that finds connections still open disconnects them
     // in it, and that calls the provider or the carrier inside the unit (the limit of the 15 s unit, written in the plan, F6-3f (e))
-    return this.jobs.forStoreOrJoin(storeId, () =>
+    const entry = await this.jobs.forStoreOrJoin(storeId, () =>
       this.installBuiltIn(store, pluginId, plugin.type, scopes, actor)
     )
+    // After the unit has committed: the audit write is not awaited, and one queued inside the unit would find its context closed
+    this.record(
+      AuditAction.PLUGIN_INSTALLED,
+      storeId,
+      entry.installationId ?? pluginId,
+      pluginId,
+      actor
+    )
+    return { ...entry, setup: null }
   }
 
   // The plugins that run inside the platform (a channel of the registry, the shipping plugin): installed in one transaction
@@ -408,7 +417,7 @@ export class PluginInstallationsService {
     type: string,
     scopes: readonly string[] | undefined,
     actor: Actor
-  ): Promise<PluginInstallResult> {
+  ): Promise<PluginCatalogEntry> {
     const storeId = store.id
     if (scopes !== undefined) {
       throw new PlatformException(
@@ -483,15 +492,7 @@ export class PluginInstallationsService {
       if (!isUniqueViolation(error)) throw error
       await inSavepoint(write)
     }
-    const entry = await this.entryOf(store, pluginId)
-    this.record(
-      AuditAction.PLUGIN_INSTALLED,
-      storeId,
-      entry.installationId ?? pluginId,
-      pluginId,
-      actor
-    )
-    return { ...entry, setup: null }
+    return this.entryOf(store, pluginId)
   }
 
   // The installation is revoked first, so that nothing new connects; then every connection that

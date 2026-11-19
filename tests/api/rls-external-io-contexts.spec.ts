@@ -13,6 +13,7 @@ import {
   ShipmentStatus,
   ShippingPayer
 } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
 import { CarrierRegistry } from '@platform/plugins/runtime'
 import { PluginScopes } from '@platform/plugins/sdk'
 
@@ -21,7 +22,8 @@ import {
   buildFakeCarrier,
   createCarrierConnection,
   createOrder,
-  type FakeCarrier
+  type FakeCarrier,
+  FakeCarrierBehaviors
 } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -31,6 +33,7 @@ import { type CreatedBody, ordersKit, type OrdersKit } from '../helpers/orders'
 
 const OK = 200
 const CREATED = 201
+const BAD_REQUEST = 400
 const ADDRESS = { line1: 'Calle 1 #23', city: 'San Salvador', state: 'San Salvador', country: 'SV' }
 
 // RLS phase 6, F6-3f: the three routes that call outside the platform (the guide of a carrier, the guide of the way back of a return, the
@@ -97,6 +100,7 @@ describe('RLS phase 6: the routes that call outside run in short contexts', () =
   beforeEach(() => {
     opened.length = 0
     fake.state.guides.clear()
+    fake.state.create = FakeCarrierBehaviors.OK
     challenge.run.mockReset()
     challenge.run.mockImplementation(() => {
       opened.push({ call: 'challenge', tenantOpen: guarded.hasTenantContext() })
@@ -131,7 +135,8 @@ describe('RLS phase 6: the routes that call outside run in short contexts', () =
     expect(rows[0]).toMatchObject({ status: ShipmentStatus.LABEL_CREATED, storeId: ctx.storeA.id })
   })
 
-  it('makes the guide of the way back of a return the same way', async () => {
+  // A delivered order of 2 units and a return of all of them, approved and paid by the sender
+  async function approvedReturn(): Promise<{ orderId: string; returnId: string }> {
     const product = await kit.stocked(10)
     const body = await kit.orderBody({ items: [{ productId: product.id, quantity: 2 }] })
     const created = await admin().post(ApiRoutes.orders.create).send(body)
@@ -157,6 +162,11 @@ describe('RLS phase 6: the routes that call outside run in short contexts', () =
       where: { id: returnId },
       data: { shippingPayer: ShippingPayer.SENDER }
     })
+    return { orderId: order.id, returnId }
+  }
+
+  it('makes the guide of the way back of a return the same way', async () => {
+    const { orderId, returnId } = await approvedReturn()
     opened.length = 0
 
     const response = await admin()
@@ -166,12 +176,84 @@ describe('RLS phase 6: the routes that call outside run in short contexts', () =
     expect(response.status).toBe(CREATED)
     expect(opened).toEqual([{ call: 'createShipment', tenantOpen: false }])
     const guide = await owner.shipment.findFirstOrThrow({
-      where: { orderId: order.id, kind: ShipmentKind.RETURN }
+      where: { orderId, kind: ShipmentKind.RETURN }
     })
     expect(guide.status).toBe(ShipmentStatus.LABEL_CREATED)
     const linked = await owner.orderReturn.findUniqueOrThrow({ where: { id: returnId } })
     expect(linked.status).toBe(OrderReturnStatus.APPROVED)
     expect(linked.returnShipmentId).toBe(guide.id)
+  })
+
+  it('records a refusal of the carrier as a failed guide, with the carrier called outside any context, and a retry makes exactly one guide', async () => {
+    const order = await createOrder(owner, {
+      storeId: ctx.storeA.id,
+      status: 'CONFIRMED',
+      shippingAddress: ADDRESS,
+      allocatedAt: ctx.warehouseA.id
+    })
+    fake.state.create = FakeCarrierBehaviors.REJECT
+
+    const refused = await admin()
+      .post(ApiRoutes.shipments.forOrder(order.id))
+      .send({ connectionId: forzaId })
+
+    expect(refused.status).toBe(BAD_REQUEST)
+    expect((refused.body as { error: { code: string } }).error.code).toBe(
+      ErrorCodes.SHIPPING_CARRIER_REJECTED
+    )
+    expect(opened).toEqual([{ call: 'createShipment', tenantOpen: false }])
+    const failed = await owner.shipment.findMany({ where: { orderId: order.id } })
+    expect(failed).toHaveLength(1)
+    expect(failed[0]).toMatchObject({ status: ShipmentStatus.FAILED, guideNumber: null })
+    expect(failed[0]?.lastError).toEqual(expect.any(String))
+
+    fake.state.create = FakeCarrierBehaviors.OK
+    opened.length = 0
+    const retried = await admin()
+      .post(ApiRoutes.shipments.forOrder(order.id))
+      .send({ connectionId: forzaId })
+
+    expect(retried.status).toBe(CREATED)
+    expect(opened).toEqual([{ call: 'createShipment', tenantOpen: false }])
+    const rows = await owner.shipment.findMany({ where: { orderId: order.id } })
+    expect(rows.filter(row => row.status === String(ShipmentStatus.FAILED))).toHaveLength(1)
+    expect(rows.filter(row => row.status === String(ShipmentStatus.LABEL_CREATED))).toHaveLength(1)
+    expect(rows).toHaveLength(2)
+  })
+
+  it('leaves a return approved when the carrier refuses its guide, and the retry links the new one', async () => {
+    const { orderId, returnId } = await approvedReturn()
+    opened.length = 0
+    fake.state.create = FakeCarrierBehaviors.REJECT
+
+    const refused = await admin()
+      .post(ApiRoutes.returns.returnShipment(returnId))
+      .send({ connectionId: forzaId })
+
+    expect(refused.status).toBe(BAD_REQUEST)
+    expect(opened).toEqual([{ call: 'createShipment', tenantOpen: false }])
+    const failed = await owner.shipment.findFirstOrThrow({
+      where: { orderId, kind: ShipmentKind.RETURN }
+    })
+    expect(failed.status).toBe(ShipmentStatus.FAILED)
+    // The row of the attempt is linked when it is written (before the carrier is asked), so the failed guide is the last one
+    const held = await owner.orderReturn.findUniqueOrThrow({ where: { id: returnId } })
+    expect(held.status).toBe(OrderReturnStatus.APPROVED)
+    expect(held.returnShipmentId).toBe(failed.id)
+
+    fake.state.create = FakeCarrierBehaviors.OK
+    const retried = await admin()
+      .post(ApiRoutes.returns.returnShipment(returnId))
+      .send({ connectionId: forzaId })
+
+    expect(retried.status).toBe(CREATED)
+    const guides = await owner.shipment.findMany({ where: { orderId, kind: ShipmentKind.RETURN } })
+    expect(guides.filter(row => row.status === String(ShipmentStatus.LABEL_CREATED))).toHaveLength(
+      1
+    )
+    const relinked = await owner.orderReturn.findUniqueOrThrow({ where: { id: returnId } })
+    expect(relinked.returnShipmentId).toBe((retried.body as { id: string }).id)
+    expect(relinked.status).toBe(OrderReturnStatus.APPROVED)
   })
 
   it('installs an integration plugin with the challenge outside any context, and installing again finds it installed', async () => {
