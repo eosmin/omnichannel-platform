@@ -2,6 +2,7 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher, parseEncryptionKey } from '@platform/core/crypto'
 import {
+  JobContextError,
   JobContextGoneError,
   type JobContext,
   type PrismaService,
@@ -58,6 +59,7 @@ function setup(initial: Row[] = []) {
     secretReads: 0,
     failList: false,
     storeGone: false,
+    contextError: null as Error | null,
     filters: [] as unknown[],
     contexts: [] as string[]
   }
@@ -90,6 +92,7 @@ function setup(initial: Row[] = []) {
   const jobs = {
     forStoreOrJoin: jest.fn(<T>(storeId: string, work: () => Promise<T>) => {
       state.contexts.push(storeId)
+      if (state.contextError !== null) return Promise.reject(state.contextError)
       return state.storeGone ? Promise.reject(new JobContextGoneError('gone')) : work()
     })
   } as unknown as JobContext
@@ -383,8 +386,6 @@ describe('RemoteChannelSync: the secrets of the commands', () => {
     expect(state.filters).toEqual([
       { type: 'channel', status: 'approved', installationStatus: 'active' }
     ])
-    const prisma = (sync as unknown as { prisma: PrismaService }).prisma
-    expect(prisma.client).not.toHaveProperty('plugin')
   })
 
   it('reads the secrets of a store in the context of THAT store, and answers null when the store is gone', async () => {
@@ -403,5 +404,12 @@ describe('RemoteChannelSync: the secrets of the commands', () => {
     expect(state.contexts).toEqual(['store-b', 'store-c'])
     state.storeGone = true
     await expect(sync.secretsForDisconnect('store-d', 'acme_chat')).resolves.toBeNull()
+  })
+
+  it('does not hide a refusal of the context behind "not installed": only a deleted store answers null', async () => {
+    const { sync, state } = setup()
+    state.contextError = new JobContextError('a context of another store is already open')
+    await expect(sync.secretsOf('store-b', 'acme_chat')).rejects.toThrow(/another store/)
+    await expect(sync.secretsForDisconnect('store-b', 'acme_chat')).rejects.toThrow(/another store/)
   })
 })

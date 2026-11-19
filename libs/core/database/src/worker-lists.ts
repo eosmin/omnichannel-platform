@@ -3,6 +3,9 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
 import { readAllPages } from './read-all-pages'
 
+// EXCEPTION: remoteChannelPlugins is the one list that the api runs too (RemoteChannelSync lives in both processes), so its function is
+// granted to platform_app as well as platform_worker: an explicit decision of the RLS phase 5 plan (B2c), not a precedent for the others.
+//
 // The lists that a scheduler of the worker walks before it can name a store (RLS phase 5). Each one is a SECURITY DEFINER function of
 // the database that returns ids and nothing else (migration 20270121800000_rls_worker_lists); the worker role has no policy-free
 // access to those tables once it loses BYPASSRLS. A list is read PAGE by PAGE until a page comes back short, and a page that fails
