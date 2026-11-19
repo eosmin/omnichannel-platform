@@ -9,7 +9,8 @@ import { join } from 'node:path'
 // entry is lowered or removed), so nobody adds a listener with no context and each PR that wraps one closes its line. A handler that
 // opens its context in its body (`this.events.inStore(...)`) is not seen by this check: wrap it with the decorator or keep it listed.
 // A handler counts as wrapped with the decorator OR when its own body calls inStore( / inOrganization( / inOrganizationOfStore( /
-// inUser( / forStore( / forOrganization( (it cannot see a context opened by another method it delegates to: list that handler).
+// inUser( / forStore( / forOrganization( (comments and string literals do not count; it cannot see a context opened by another method it delegates to, nor a dead branch: list
+// that handler or review it).
 // NOT covered by this check: a listener registered with `emitter.on(...)` / `onAny(...)` (WebhookDispatcher), tracked in the plan.
 // Debt with owners: docs/IMPLEMENTATION_PLAN.md, "Event listeners with no context".
 const ROOT = join(__dirname, '..', '..', '..', '..', '..')
@@ -30,8 +31,13 @@ interface Handler {
   wrapped: boolean
 }
 
+// A call on a receiver (`this.events.inStore(`, `jobs.forStore(`), never a bare word
 const OPENS_CONTEXT =
-  /\b(?:inStore|inEventStore|inOrganization|inOrganizationOfStore|inUser|forStore|forOrganization)\(/
+  /[\w)\]]\.(?:inStore|inEventStore|inOrganization|inOrganizationOfStore|inUser|forStore|forOrganization)\(/
+// Comments and string literals, in one pass so that a `//` inside a string is not a comment: what they say is not what the code does
+const COMMENTS_AND_LITERALS =
+  /\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`/g
+const withoutCommentsAndLiterals = (text: string): string => text.replace(COMMENTS_AND_LITERALS, '')
 
 // The text of the method that starts at `from`: up to the brace that closes its first `{`
 function bodyFrom(lines: readonly string[], from: number): string {
@@ -84,7 +90,7 @@ function handlersIn(file: string, source: string): Handler[] {
     }
     // Or the handler opens its context itself, in its body (so that the call to a carrier, a channel or Redis stays outside the
     // transaction): the body runs from the first `{` after the decorators to its closing one
-    if (!wrapped) wrapped = OPENS_CONTEXT.test(bodyFrom(lines, next))
+    if (!wrapped) wrapped = OPENS_CONTEXT.test(withoutCommentsAndLiterals(bodyFrom(lines, next)))
     found.push({ file, line: index + 1, event: call.trim(), wrapped })
     index = end
   }
@@ -165,6 +171,12 @@ describe('the listeners of domain events open the context of their event', () =>
       '  async onE(p: P): Promise<void> {',
       '    await this.other.follow(p)',
       '  }',
+      '  @OnEvent(Events.F)',
+      '  async onF(p: P): Promise<void> {',
+      '    // this.events.inStore(p.storeId, work)',
+      '    const note = "this.events.inStore("',
+      '    await this.other.follow(note)',
+      '  }',
       '  // inStore( in a later method does not count for E',
       '  async later(): Promise<void> {',
       '    await this.events.inStore(id, async () => {})',
@@ -175,6 +187,7 @@ describe('the listeners of domain events open the context of their event', () =>
       true,
       true,
       true,
+      false,
       false
     ])
   })
