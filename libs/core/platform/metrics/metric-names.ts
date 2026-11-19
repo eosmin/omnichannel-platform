@@ -17,6 +17,9 @@ export const MetricNames = {
   // starts; a gauge, so an alert clears itself once the bucket is configured and the api restarts
   STORAGE_BUCKET_PROTECTION_GAP: 'platform_storage_bucket_protection_gap',
 
+  // 1 while the role the worker connects with can skip row-level security (BYPASSRLS), 0 when it cannot (TDD_01 §3.2)
+  WORKER_ROLE_BYPASSES_RLS: 'platform_worker_role_bypasses_rls',
+
   // Inventory (TDD_16 §3)
   INVENTORY_RECONCILIATION_MISMATCHES: 'platform_inventory_reconciliation_mismatches_total',
 
