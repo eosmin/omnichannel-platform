@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -59,46 +59,52 @@ export class IdentitiesService {
     }
     const body = { ...raw, channelIdentity }
     try {
-      return await this.prisma.transaction(async tx => {
-        await lockCustomerForWrite(tx, storeId, customerId)
-        const taken = await tx.customerIdentity.findFirst({
-          where: { storeId, channelType: body.channelType, channelIdentity: body.channelIdentity },
-          select: { ...IDENTITY_SELECT, customerId: true }
-        })
-        if (taken !== null) {
-          if (taken.customerId !== customerId) throw this.taken(taken.customerId)
-          return {
-            identity: {
-              id: taken.id,
-              channelType: taken.channelType,
-              channelIdentity: taken.channelIdentity,
-              displayName: taken.displayName,
-              lastInboundAt: taken.lastInboundAt
+      return await inSavepoint(() =>
+        this.prisma.transaction(async tx => {
+          await lockCustomerForWrite(tx, storeId, customerId)
+          const taken = await tx.customerIdentity.findFirst({
+            where: {
+              storeId,
+              channelType: body.channelType,
+              channelIdentity: body.channelIdentity
             },
-            created: false
+            select: { ...IDENTITY_SELECT, customerId: true }
+          })
+          if (taken !== null) {
+            if (taken.customerId !== customerId) throw this.taken(taken.customerId)
+            return {
+              identity: {
+                id: taken.id,
+                channelType: taken.channelType,
+                channelIdentity: taken.channelIdentity,
+                displayName: taken.displayName,
+                lastInboundAt: taken.lastInboundAt
+              },
+              created: false
+            }
           }
-        }
-        // Only a new identity is checked: linking the handle the customer already has writes nothing,
-        // so it still answers when the plugin of that channel was removed
-        this.channels.require(storeId, [body.channelType])
-        const identity = await tx.customerIdentity.create({
-          data: {
+          // Only a new identity is checked: linking the handle the customer already has writes nothing,
+          // so it still answers when the plugin of that channel was removed
+          this.channels.require(storeId, [body.channelType])
+          const identity = await tx.customerIdentity.create({
+            data: {
+              storeId,
+              customerId,
+              channelType: body.channelType,
+              channelIdentity: body.channelIdentity,
+              displayName: body.displayName ?? null
+            },
+            select: IDENTITY_SELECT
+          })
+          this.events.publish(tx, Events.CUSTOMER_IDENTITY_LINKED, {
             storeId,
             customerId,
-            channelType: body.channelType,
-            channelIdentity: body.channelIdentity,
-            displayName: body.displayName ?? null
-          },
-          select: IDENTITY_SELECT
+            identityId: identity.id,
+            channelType: body.channelType
+          })
+          return { identity, created: true }
         })
-        this.events.publish(tx, Events.CUSTOMER_IDENTITY_LINKED, {
-          storeId,
-          customerId,
-          identityId: identity.id,
-          channelType: body.channelType
-        })
-        return { identity, created: true }
-      })
+      )
     } catch (error) {
       // Two links of the same handle at once: the unique index let one through
       if (!isUniqueViolation(error)) throw error

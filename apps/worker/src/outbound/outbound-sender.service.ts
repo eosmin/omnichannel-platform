@@ -8,7 +8,7 @@ import {
   errorName,
   withTimeout
 } from '@platform/channels/connections'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   CaptionState,
   ChannelConnectionStatus,
@@ -404,7 +404,7 @@ export class OutboundSender {
       taken > 0 ? withoutId : { ...withoutId, channelMessageId: accepted.externalId }
     for (let attempt = 1; ; attempt += 1) {
       try {
-        const applied = await this.status.apply(change)
+        const applied = await inSavepoint(() => this.status.apply(change))
         // A receipt moved the message past this state first: the id is still a fact about what was sent, and
         // receipts and echoes find the message by it
         if (!applied && change.channelMessageId !== undefined) {

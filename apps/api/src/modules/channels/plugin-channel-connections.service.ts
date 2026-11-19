@@ -4,6 +4,7 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher } from '@platform/core/crypto'
 import {
+  inSavepoint,
   isUniqueViolation,
   lockStoreForWrite,
   lockStoreScope,
@@ -71,7 +72,7 @@ export class PluginChannelConnectionsService {
   ): Promise<boolean> {
     let outcome: { created: boolean; id: string; connected: boolean }
     try {
-      outcome = await this.write(caller, connectionId, body)
+      outcome = await inSavepoint(() => this.write(caller, connectionId, body))
     } catch (error) {
       // The store lock is the store's own, so two stores that register the same new account at once can both find nothing: the
       // unique index decides, and the loser runs again to find the row of the winner, and conflict

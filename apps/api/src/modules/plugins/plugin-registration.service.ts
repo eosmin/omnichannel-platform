@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { RemoteChannelSync } from '@platform/channels/remote'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   isOfficialChannelId,
   PluginCatalogTypes,
@@ -109,7 +109,7 @@ export class PluginRegistrationService {
     const write = () => this.write(store, manifest)
     let result: WriteResult
     try {
-      result = await write()
+      result = await inSavepoint(write)
     } catch (error) {
       // Two registrations of the same id at once: the second one finds the first one's row and decides again
       if (!isUniqueViolation(error)) throw error

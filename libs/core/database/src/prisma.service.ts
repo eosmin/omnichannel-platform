@@ -6,7 +6,7 @@ import { readReplicas } from '@prisma/extension-read-replicas'
 
 import { RlsGlobalModels, RlsPolicyTables } from '@platform/core/domain'
 
-import { PrismaClient } from '../generated/client/client'
+import { Prisma, PrismaClient } from '../generated/client/client'
 
 import { policyTablesOfRawSql, sqlTextOfRawArgs } from './raw-sql-tables'
 import type { TenantContext } from './tenant-context'
@@ -139,6 +139,35 @@ const querySource = new AsyncLocalStorage<string>()
 
 function hasQueryScope(): boolean {
   return tenantScope.getStore() !== undefined || querySource.getStore() !== undefined
+}
+
+let savepointCounter = 0
+
+// Runs `attempt` (a write that may break a unique rule the caller means to catch) inside a SAVEPOINT of the transaction that is
+// open: tenantScope's, or `tx` for code that opened its own. In Postgres a failed statement aborts the whole transaction (25P02)
+// even when the code caught the error, and under RLS_CONTEXT a request is one transaction: the next query of the same request
+// would fail. When `attempt` throws, the savepoint is rolled back (the transaction is usable again, what was written before stays)
+// and the SAME error is rethrown for the caller to catch. With no transaction open there is nothing to protect and `attempt`
+// runs as it is.
+export async function inSavepoint<T>(
+  attempt: () => Promise<T>,
+  tx?: PrismaTransaction
+): Promise<T> {
+  const target = tx ?? tenantScope.getStore()?.tx
+  if (target === undefined) return attempt()
+  savepointCounter = (savepointCounter + 1) % 1_000_000_000
+  // A name made of a counter: nothing from outside reaches the statement
+  const name = Prisma.raw(`attempt_${savepointCounter}`)
+  await target.$executeRaw(Prisma.sql`SAVEPOINT ${name}`)
+  try {
+    const result = await attempt()
+    await target.$executeRaw(Prisma.sql`RELEASE SAVEPOINT ${name}`)
+    return result
+  } catch (error) {
+    // If this fails too the connection is gone: the error that matters is the first one
+    await target.$executeRaw(Prisma.sql`ROLLBACK TO SAVEPOINT ${name}`).catch(() => undefined)
+    throw error
+  }
 }
 
 // A tenant transaction holds a connection for its whole duration, so its limits are set above

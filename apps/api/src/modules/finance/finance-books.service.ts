@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   FinanceAutoMemo,
   FinancePostingKey,
@@ -544,7 +544,8 @@ export class FinanceBooksService {
     built: { book: BookView; csv: string },
     actor: Actor
   ): Promise<{ book: BookView; csv: string }> {
-    if (period.closedAt === null) return built
+    const builtUnder = period.closedAt
+    if (builtUnder === null) return built
     // The close this book was built under must still be the close of the period: a month reopened and closed again while the book was
     // being built is not frozen under the old closing
     const now = await this.prisma.client.fiscalPeriod.findFirst({
@@ -554,7 +555,7 @@ export class FinanceBooksService {
     if (
       now === null ||
       (now.status as PeriodStatus) !== PeriodStatus.CLOSED ||
-      now.closedAt?.getTime() !== period.closedAt.getTime()
+      now.closedAt?.getTime() !== builtUnder.getTime()
     ) {
       return built
     }
@@ -562,20 +563,22 @@ export class FinanceBooksService {
       Object.entries(built.book).filter(([key]) => key !== 'frozen')
     ) as Omit<BookView, 'frozen'>
     try {
-      await this.prisma.client.financeBookSnapshot.create({
-        data: {
-          organizationId,
-          periodId: period.id,
-          bookKind: kind,
-          layoutVersion,
-          closedAt: period.closedAt,
-          // The CSV is stored with the book: what leaves for a closed month is the file that was frozen, whatever the writer does later
-          book: JSON.parse(JSON.stringify({ ...stored, csv: built.csv })) as object,
-          contentSha256: built.book.contentSha256,
-          createdBy: actor.userId
-        },
-        select: { id: true }
-      })
+      await inSavepoint(() =>
+        this.prisma.client.financeBookSnapshot.create({
+          data: {
+            organizationId,
+            periodId: period.id,
+            bookKind: kind,
+            layoutVersion,
+            closedAt: builtUnder,
+            // The CSV is stored with the book: what leaves for a closed month is the file that was frozen, whatever the writer does later
+            book: JSON.parse(JSON.stringify({ ...stored, csv: built.csv })) as object,
+            contentSha256: built.book.contentSha256,
+            createdBy: actor.userId
+          },
+          select: { id: true }
+        })
+      )
     } catch (error) {
       if (!isUniqueViolation(error)) throw error
       const winner = await this.frozenOf(organizationId, kind, period, layoutVersion)

@@ -17,6 +17,7 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher } from '@platform/core/crypto'
 import {
+  inSavepoint,
   isUniqueViolation,
   lockStoreForWrite,
   PrismaService,
@@ -583,7 +584,7 @@ export class ChannelConnectionsService {
     let connection
     try {
       try {
-        connection = await store()
+        connection = await inSavepoint(store)
       } catch (error) {
         // The store lock is shared, so two connects of a new account can both find nothing: the
         // unique index decides, and the second one runs again to find what the first wrote (and
