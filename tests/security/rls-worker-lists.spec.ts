@@ -161,6 +161,31 @@ describe('row-level security, phase 5: the lists of the worker', () => {
       made.stuck.push(stuck.id)
       made.behind.push(behind.id)
     }
+    // A count the carrier agrees with, and a pickup of a day that is over, are not asked again
+    const agreed = await owner.pickupRequest.create({
+      data: {
+        storeId: stores[0] ?? '',
+        connectionId: pickups[0] ?? '',
+        pickupDate: day,
+        status: PickupStatus.REQUESTED,
+        packageCount: 2,
+        carrierPackageCount: 2,
+        providerPickupId: `${prefix}-agreed`,
+        requestedBy: 'system'
+      }
+    })
+    await owner.pickupRequest.updateMany({ where: { id: agreed.id }, data: { updatedAt: old } })
+    const past = await owner.pickupRequest.create({
+      data: {
+        storeId: stores[0] ?? '',
+        connectionId: pickups[0] ?? '',
+        pickupDate: new Date('2031-01-01T00:00:00.000Z'),
+        status: PickupStatus.PENDING,
+        packageCount: 1,
+        requestedBy: 'system',
+        createdAt: old
+      }
+    })
     await asWorker(async query => {
       const pending = await query(
         'SELECT id, store_id FROM rls_list_pickups_pending_stale($1, $2, $3, 1000)',
@@ -182,6 +207,11 @@ describe('row-level security, phase 5: the lists of the worker', () => {
       expect(mineBehind.map((row: { store_id: string }) => row.store_id).sort()).toEqual(
         [...stores].sort()
       )
+      const rowsOf = (result: { rows: unknown[] }): { id: string }[] =>
+        result.rows as { id: string }[]
+      const everyId = [...rowsOf(pending), ...rowsOf(behind)].map(row => row.id)
+      expect(everyId).not.toContain(agreed.id)
+      expect(everyId).not.toContain(past.id)
       await raw.query('SAVEPOINT filter')
       await expect(
         query('SELECT * FROM rls_list_pickups_pending_stale(NULL, $1, $2, 10)', [old, day])

@@ -38,7 +38,7 @@ import { CarrierRegistry } from '@platform/plugins/runtime'
 import { ShipmentCreationModes } from '@platform/plugins/sdk'
 
 // rls-context: every read and write of a table of a store runs inside JobContext.forStore of the store of the run; the carrier and the
-// guide engine (ShippingService, MergedLabels) are called outside it and open their own short contexts
+// guide engine (ShippingService, MergedLabels) are called outside it; until C3 PR2 they open no context of their own (plan, C3 note)
 
 // The guides an earlier attempt of the run made, from the account it left (their shipment ids): the next attempt finds them
 // printable and must not take them for guides that already existed. A split order that lost a part keeps no such mark for the

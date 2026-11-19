@@ -45,7 +45,8 @@ import { CarrierRegistry } from '@platform/plugins/runtime'
 import { ShipmentCreationModes } from '@platform/plugins/sdk'
 
 // rls-context: the connections and the sweep come from lists of the database (WorkerLists); every other read or write of a table of a
-// store runs inside JobContext.forStore. The carrier and the guide engine (PickupsService, ShippingService) are called outside it
+// store runs inside JobContext.forStore. The carrier and the guide engine (PickupsService, ShippingService) are called outside it;
+// until C3 PR2 they open no context of their own (plan, C3 note)
 
 // A tick that starts later than this after its minute is not run: what it would decide is about a moment that is over
 const STALE_TICK_MS = 10 * 60 * 1000
@@ -153,6 +154,9 @@ export class PickupEvaluator {
       ids.push(target.id)
       byStore.set(target.storeId, ids)
     }
+    // A store whose connections could not be read is a fault of the minute: it is thrown at the end, so the claim is released and the queue
+    // asks again (the once-a-day guards keep what was done from being done twice)
+    let readFailed = false
     for (const [storeId, ids] of byStore) {
       let connections: PickupConnection[]
       try {
@@ -180,6 +184,7 @@ export class PickupEvaluator {
       } catch (error) {
         if (isGone(error)) continue
         report.failed += 1
+        readFailed = true
         this.logger.error(
           { storeId, errorName: errorName(error) },
           'the connections of a store could not be read for its pickups'
@@ -207,6 +212,7 @@ export class PickupEvaluator {
       report.failed += 1
       this.logger.error({ errorName: errorName(error) }, 'the pickup sweep failed')
     }
+    if (readFailed) throw new Error('the connections of a store could not be read for its pickups')
     return report
   }
 

@@ -135,13 +135,13 @@ export class WorkerLists {
   // One batch (the oldest first), not the whole list: the sweep queues one batch a minute, as it always did
   async pickupsPendingStale(filter: PendingPickupFilter): Promise<PickupTarget[]> {
     const rows = await this.prisma.client.$queryRaw<{ id: string; store_id: string }[]>`
-      SELECT id, store_id FROM rls_list_pickups_pending_stale(${filter.status}, ${filter.createdBefore}, ${filter.dateFrom}::date, ${filter.limit})`
+      SELECT id, store_id FROM rls_list_pickups_pending_stale(${filter.status}, ${filter.createdBefore}::timestamp, ${filter.dateFrom}::date, ${filter.limit}::integer)`
     return rows.map(row => ({ id: row.id, storeId: row.store_id }))
   }
 
   async pickupsCountBehind(filter: BehindPickupFilter): Promise<PickupTarget[]> {
     const rows = await this.prisma.client.$queryRaw<{ id: string; store_id: string }[]>`
-      SELECT id, store_id FROM rls_list_pickups_count_behind(${[...filter.statuses]}::text[], ${filter.dateFrom}::date, ${filter.updatedBefore}, ${filter.limit})`
+      SELECT id, store_id FROM rls_list_pickups_count_behind(${[...filter.statuses]}::text[], ${filter.dateFrom}::date, ${filter.updatedBefore}::timestamp, ${filter.limit}::integer)`
     return rows.map(row => ({ id: row.id, storeId: row.store_id }))
   }
 
