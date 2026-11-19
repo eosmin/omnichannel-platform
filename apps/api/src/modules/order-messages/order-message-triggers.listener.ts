@@ -238,6 +238,11 @@ export class OrderMessageListener implements OnModuleDestroy {
 
   private track(work: () => Promise<void>): Promise<void> {
     const running = work().catch((error: unknown) => {
+      // The store was deleted after the event: nothing is left to tell
+      if (error instanceof JobContextGoneError) {
+        this.logger.warn('an order message trigger did nothing: the store is gone')
+        return
+      }
       // Nothing here may reach the event that caused it: the order and the shipment are committed already
       this.logger.error({ errorName: errorName(error) }, 'an order message trigger failed')
     })

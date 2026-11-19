@@ -387,13 +387,15 @@ export class OrderMessagesService {
       if (values.ok && fits) {
         const variables = values.values
         try {
-          // It reads the conversation, so it needs the context; the provider answer inside it is bounded by the provider's own timeout
-          const approved = await this.inStore(storeId, () =>
-            this.channelTemplates.renderForSystem(storeId, found.conversationId, {
+          // The read of the conversation opens its own short context; the provider is asked outside of any
+          const approved = await this.channelTemplates.renderForSystem(
+            storeId,
+            found.conversationId,
+            {
               name: link.name,
               language: link.language,
               variables
-            })
+            }
           )
           approvedText = approved.content
           channelTemplate = { name: link.name, language: link.language, variables }

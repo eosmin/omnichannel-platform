@@ -4,13 +4,16 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { type EventContext, JobContextGoneError } from '@platform/core/database'
 import { Events } from '@platform/core/events'
+import { PluginScopes } from '@platform/plugins/sdk'
 
 import { WebhookDispatcher } from './webhook-dispatcher'
 
 const STORE = 'store-1'
 
 // A stand-in for the row security of the database: a read answers only when it runs inside a context of the store it asks for
-function build(options: { goneStore?: boolean; webhookReadFails?: boolean } = {}) {
+function build(
+  options: { goneStore?: boolean; webhookReadFails?: boolean; installed?: boolean } = {}
+) {
   const open = new AsyncLocalStorage<string>()
   const opened: string[] = []
   const queued: { name: string; data: Record<string, unknown> }[][] = []
@@ -33,7 +36,24 @@ function build(options: { goneStore?: boolean; webhookReadFails?: boolean } = {}
             ? Promise.reject(new Error('read failed'))
             : readsFor([{ id: 'webhook-1' }])
       },
-      pluginInstallation: { findMany: () => readsFor([]) }
+      pluginInstallation: {
+        findMany: () =>
+          readsFor(
+            options.installed === true
+              ? [
+                  {
+                    id: 'installation-1',
+                    scopes: [PluginScopes.ORDERS_READ],
+                    plugin: {
+                      manifest: {
+                        webhooks: { events: [Events.ORDER_CREATED], signatureHeader: 'X-Sig' }
+                      }
+                    }
+                  }
+                ]
+              : []
+          )
+      }
     }
   }
   const queue = {
@@ -98,6 +118,24 @@ describe('WebhookDispatcher under row security', () => {
   it('does not fail the event when the webhooks of the store could not be read', async () => {
     const { dispatcher, errors } = build({ webhookReadFails: true })
     await expect(dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE })).resolves.toBe(0)
+    expect(errors).toHaveLength(1)
+  })
+
+  it('reads the installations of the plugins inside the context and queues their jobs outside', async () => {
+    const { dispatcher, queued, queuedOutside } = build({ installed: true })
+    // One job for the webhook of the store, one for the plugin
+    expect(await dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE, orderId: 'o1' })).toBe(
+      2
+    )
+    expect(queued).toHaveLength(2)
+    expect(queuedOutside).toEqual([true, true])
+  })
+
+  it('keeps the plugin side when the webhooks of the store could not be read', async () => {
+    const { dispatcher, errors } = build({ webhookReadFails: true, installed: true })
+    expect(await dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE, orderId: 'o1' })).toBe(
+      1
+    )
     expect(errors).toHaveLength(1)
   })
 })

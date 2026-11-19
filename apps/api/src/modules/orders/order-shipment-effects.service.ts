@@ -83,7 +83,7 @@ export class OrderShipmentEffects {
   ): Promise<OrderFollowResult> {
     // The listener runs after the commit of the shipment, in no request: the work of the order opens the context of the store of the
     // event (and joins it when a request already holds it). The audit entries below leave after it has closed.
-    const outcome = await this.inEventStore(storeId, () =>
+    const outcome = await this.inEventStore(storeId, shipmentId, () =>
       this.prisma.transaction(async tx => {
         await lockStoreForWrite(tx, storeId)
         const known = await tx.shipment.findFirst({
@@ -266,12 +266,19 @@ export class OrderShipmentEffects {
   }
 
   // A store deleted after the event leaves nothing to follow: not a failure, and not worth a retry
-  private async inEventStore<T>(storeId: string, work: () => Promise<T>): Promise<T | null> {
+  private async inEventStore<T>(
+    storeId: string,
+    shipmentId: string,
+    work: () => Promise<T>
+  ): Promise<T | null> {
     try {
       return await this.context.inStore(storeId, work)
     } catch (error) {
       if (error instanceof JobContextGoneError) {
-        this.logger.warn('the store of a shipment event no longer exists: nothing to follow')
+        this.logger.warn(
+          { storeId, shipmentId },
+          'the store of a shipment event no longer exists: nothing to follow'
+        )
         return null
       }
       throw error
@@ -350,7 +357,7 @@ export class OrderShipmentEffects {
       'the order could not follow its shipment'
     )
     try {
-      await this.inEventStore(storeId, () =>
+      await this.inEventStore(storeId, shipmentId, () =>
         this.prisma.transaction(tx => this.askForReview(tx, storeId, shipmentId, actor))
       )
     } catch (inner) {

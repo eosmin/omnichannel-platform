@@ -68,11 +68,10 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
       )
       return 0
     }
-    // Each side fails on its own: a store whose webhooks could not be read does not cost its plugins their delivery
-    const [tenants, plugins] = await Promise.all([
-      this.dispatchToTenants(event, storeId, body),
-      this.dispatchToPlugins(event, storeId, body)
-    ])
+    // Each side fails on its own: a store whose webhooks could not be read does not cost its plugins their delivery. One after the
+    // other, so an event takes one connection at a time for its short read and not two (it is heard for every store and event)
+    const tenants = await this.dispatchToTenants(event, storeId, body)
+    const plugins = await this.dispatchToPlugins(event, storeId, body)
     return tenants + plugins
   }
 
