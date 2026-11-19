@@ -5,7 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   FinanceCountryCodes,
@@ -118,7 +118,8 @@ describe('The check of the fiscal documents', () => {
           set: (labels: Record<string, string>, value: number) => gauge.push({ labels, value })
         } as never,
         app.get(DomainEvents),
-        logger
+        logger,
+        app.get(JobContext)
       )
     }
   }
@@ -306,7 +307,8 @@ describe('The check of the fiscal documents', () => {
         broken as never,
         { set: () => undefined } as never,
         app.get(DomainEvents),
-        logger
+        logger,
+        app.get(JobContext)
       )
       await expect(down.reconcile(ctx.orgA.id)).rejects.toThrow('could not be acted on')
       // The document was made (one row, whatever the retries) and waits as QUEUED: once it is left for an hour the next night asks for its job

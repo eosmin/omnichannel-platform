@@ -1,4 +1,4 @@
-import { orderListWhere } from './order-list-where'
+import { orderListWhere, orderTextCustomerPatterns } from './order-list-where'
 
 const STORE = 'store-1'
 
@@ -62,39 +62,41 @@ describe('orderListWhere', () => {
     expect(where.AND).toHaveLength(2)
   })
 
-  it('searches the number by prefix, a bare number as the padded one, and the customer by name, e-mail and phone', () => {
-    const where = orderListWhere(STORE, { q: 'ana' })
+  it('searches the number by prefix, a bare number as the padded one, and the customers the text names by their ids', () => {
+    const where = orderListWhere(STORE, { q: 'ana' }, ['c1', 'c2'])
     const or = (where.AND?.[0] as { OR: Record<string, unknown>[] }).OR
     expect(or).toContainEqual({ orderNumber: { startsWith: 'ana' } })
+    expect(or).toContainEqual({ customerId: { in: ['c1', 'c2'] } })
     const bare = orderListWhere(STORE, { q: '#12' }).AND?.[0] as { OR: Record<string, unknown>[] }
     expect(bare.OR).toContainEqual({ orderNumber: '00012' })
-    const customer = or.find(entry => 'customer' in entry) as {
-      customer: { OR: Record<string, unknown>[] }
-    }
-    expect(customer.customer.OR).toHaveLength(2)
   })
 
   it('reads a few digits as an order number only, never as the end of a phone or a name', () => {
     for (const q of ['12', '#00012', '1234567']) {
-      const where = orderListWhere(STORE, { q }).AND?.[0] as { OR: Record<string, unknown>[] }
-      expect(where.OR.some(entry => 'customer' in entry)).toBe(false)
+      const where = orderListWhere(STORE, { q }, ['c1']).AND?.[0] as {
+        OR: Record<string, unknown>[]
+      }
+      expect(where.OR.some(entry => 'customerId' in entry)).toBe(false)
+      expect(orderTextCustomerPatterns(q)).toBeNull()
     }
-    const phone = orderListWhere(STORE, { q: '12345678' }).AND?.[0] as {
+    expect(orderTextCustomerPatterns('12345678')?.phone).toBe('%12345678%')
+  })
+
+  it('names no customer when the text names none: an empty list, never every order', () => {
+    const where = orderListWhere(STORE, { q: 'zzz' }, []).AND?.[0] as {
       OR: Record<string, unknown>[]
     }
-    expect(phone.OR.some(entry => 'customer' in entry)).toBe(true)
+    expect(where.OR).toContainEqual({ customerId: { in: [] } })
   })
 
   it('looks in the phones only for a text that is a phone, and never takes a wildcard as one', () => {
-    const phone = orderListWhere(STORE, { q: '7123-4567' }).AND?.[0] as {
-      OR: Record<string, unknown>[]
-    }
-    const customer = phone.OR.find(entry => 'customer' in entry) as {
-      customer: { OR: Record<string, unknown>[] }
-    }
-    expect(customer.customer.OR).toContainEqual({ phoneNormalized: { contains: '71234567' } })
-    const wild = orderListWhere(STORE, { q: '50%_' }).AND?.[0] as { OR: Record<string, unknown>[] }
-    expect(JSON.stringify(wild)).toContain('50\\\\%\\\\_')
+    expect(orderTextCustomerPatterns('7123-4567')?.phone).toBe('%71234567%')
+    expect(orderTextCustomerPatterns('Calle 12')?.phone).toBeNull()
+    expect(orderTextCustomerPatterns('50%_')).toEqual({
+      name: '%50\\%\\_%',
+      email: '%50\\%\\_%',
+      phone: null
+    })
   })
 
   it('does not take a number longer than any number can be as one', () => {

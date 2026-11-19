@@ -9,6 +9,7 @@ import { CredentialCipher } from '@platform/core/crypto'
 import {
   inSavepoint,
   isUniqueViolation,
+  JobContext,
   PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
@@ -231,9 +232,29 @@ export class FiscalDocumentsService {
     private readonly providers: FiscalProviderRegistry,
     private readonly evidence: FiscalEvidenceService,
     private readonly contingencies: FiscalContingencyService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(FiscalDocumentsService.name)
+  }
+
+  // One unit of fiscal work is one transaction in ONE short context of the organization (a request joins its own). The call to the authority
+  // (build, consult, submit of the provider) is never inside one: it runs between two units, so the database is held for the rows only, and
+  // what the authority answered is written by the next unit
+  private inTx<T>(organizationId: string, work: (tx: PrismaTransaction) => Promise<T>): Promise<T> {
+    return this.jobContext.inOrganizationOrRequest(
+      organizationId,
+      () => this.prisma.transaction(work),
+      { maxWait: FiscalLimits.CONTEXT_MAX_WAIT_MS, timeout: FiscalLimits.CONTEXT_TIMEOUT_MS }
+    )
+  }
+
+  // The same for a single statement of the client
+  private inUnit<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
+    return this.jobContext.inOrganizationOrRequest(organizationId, work, {
+      maxWait: FiscalLimits.CONTEXT_MAX_WAIT_MS,
+      timeout: FiscalLimits.CONTEXT_TIMEOUT_MS
+    })
   }
 
   // ---------------------------------------------------------------- reads
@@ -330,7 +351,7 @@ export class FiscalDocumentsService {
     orderId: string,
     moment: FiscalIssueOn
   ): Promise<string | null> {
-    return this.prisma.transaction(async tx => {
+    return this.inTx(organizationId, async tx => {
       const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
       // Made at the moment the issuer chose; an issuer that chose SHIPPED also makes it at DELIVERED when the order never went through a
       // shipped event (one document per order: a second call finds the first and does nothing)
@@ -540,7 +561,7 @@ export class FiscalDocumentsService {
     returnId: string
   ): Promise<string | null> {
     return this.onceOnly(() =>
-      this.prisma.transaction(async tx => {
+      this.inTx(organizationId, async tx => {
         const found = await tx.orderReturn.findFirst({
           where: { id: returnId, store: { organizationId } },
           select: { id: true, storeId: true, orderId: true, status: true, receivedAt: true }
@@ -564,7 +585,7 @@ export class FiscalDocumentsService {
   }
 
   private makeOrderCreditNote(organizationId: string, orderId: string): Promise<string | null> {
-    return this.prisma.transaction(async tx => {
+    return this.inTx(organizationId, async tx => {
       const order = await tx.order.findFirst({
         where: { id: orderId, store: { organizationId } },
         select: { id: true, storeId: true, status: true }
@@ -1108,10 +1129,12 @@ export class FiscalDocumentsService {
       context.issuer.environment
     )
     if (route.kind !== 'attach') return false
-    await this.prisma.client.fiscalDocument.updateMany({
-      where: { id: doc.id, organizationId, status: FiscalDocumentStatus.SUBMITTED },
-      data: { status: FiscalDocumentStatus.QUEUED }
-    })
+    await this.inUnit(organizationId, () =>
+      this.prisma.client.fiscalDocument.updateMany({
+        where: { id: doc.id, organizationId, status: FiscalDocumentStatus.SUBMITTED },
+        data: { status: FiscalDocumentStatus.QUEUED }
+      })
+    )
     await this.submit(organizationId, doc.id)
     return true
   }
@@ -1233,51 +1256,47 @@ export class FiscalDocumentsService {
     const key = fiscalSequenceKey(scope, parts)
     if (key === null) return { correlative: doc.sequenceNumber, documentType: null }
     const resolvedType = scope?.perDocumentType === true ? documentType : null
-    return this.prisma
-      .transaction(async tx => {
-        await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${doc.id} AND organization_id = ${organizationId} FOR UPDATE`
-        const current = await tx.fiscalDocument.findFirst({
-          where: { id: doc.id, organizationId },
-          select: { correlative: true, correlativeScopeKey: true, status: true }
-        })
-        if (current === null) return null
-        // Only the attempt that holds the claim numbers a document
-        if (current.status !== (FiscalDocumentStatus.SUBMITTED as string)) return 'stale' as const
-        // Already numbered in this series (an earlier attempt, a corrected document of the same type): the same number
-        if (current.correlative !== null && current.correlativeScopeKey === key) {
-          return { correlative: current.correlative, documentType: resolvedType }
-        }
-        const described = toJson({
-          providerId: parts.providerId,
-          environment: parts.environment,
-          ...(scope?.perDocumentType === true ? { documentType } : {}),
-          ...(scope?.perEstablishment === true
-            ? { establishmentCode: parts.establishmentCode }
-            : {}),
-          ...(scope?.perPointOfSale === true ? { pointOfSaleCode: parts.pointOfSaleCode } : {})
-        })
-        // An atomic upsert: the first document of a series creates it at 2 and takes 1, any other adds one and takes the one before. Two
-        // documents of the same series never share a number, and the lock of the document above keeps the same document from taking two.
-        const rows = await tx.$queryRaw<{ taken: number }[]>`
+    return this.inTx(organizationId, async tx => {
+      await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${doc.id} AND organization_id = ${organizationId} FOR UPDATE`
+      const current = await tx.fiscalDocument.findFirst({
+        where: { id: doc.id, organizationId },
+        select: { correlative: true, correlativeScopeKey: true, status: true }
+      })
+      if (current === null) return null
+      // Only the attempt that holds the claim numbers a document
+      if (current.status !== (FiscalDocumentStatus.SUBMITTED as string)) return 'stale' as const
+      // Already numbered in this series (an earlier attempt, a corrected document of the same type): the same number
+      if (current.correlative !== null && current.correlativeScopeKey === key) {
+        return { correlative: current.correlative, documentType: resolvedType }
+      }
+      const described = toJson({
+        providerId: parts.providerId,
+        environment: parts.environment,
+        ...(scope?.perDocumentType === true ? { documentType } : {}),
+        ...(scope?.perEstablishment === true ? { establishmentCode: parts.establishmentCode } : {}),
+        ...(scope?.perPointOfSale === true ? { pointOfSaleCode: parts.pointOfSaleCode } : {})
+      })
+      // An atomic upsert: the first document of a series creates it at 2 and takes 1, any other adds one and takes the one before. Two
+      // documents of the same series never share a number, and the lock of the document above keeps the same document from taking two.
+      const rows = await tx.$queryRaw<{ taken: number }[]>`
         INSERT INTO fiscal_sequences (organization_id, scope_key, scope, next_value, updated_at)
         VALUES (${organizationId}, ${key}, ${JSON.stringify(described)}::jsonb, 2, now())
         ON CONFLICT (organization_id, scope_key)
         DO UPDATE SET next_value = fiscal_sequences.next_value + 1, updated_at = now()
         RETURNING next_value - 1 AS taken`
-        const taken = rows[0]?.taken
-        if (taken === undefined) throw new Error('the series did not answer a number')
-        // Past the INTEGER of the document: the transaction is rolled back, so the counter stays where it was and nothing is written
-        if (taken > FiscalLimits.MAX_CORRELATIVE) throw new FiscalSequenceExhaustedError()
-        await tx.fiscalDocument.update({
-          where: { id: doc.id },
-          data: { correlative: taken, correlativeScopeKey: key }
-        })
-        return { correlative: taken, documentType: resolvedType }
+      const taken = rows[0]?.taken
+      if (taken === undefined) throw new Error('the series did not answer a number')
+      // Past the INTEGER of the document: the transaction is rolled back, so the counter stays where it was and nothing is written
+      if (taken > FiscalLimits.MAX_CORRELATIVE) throw new FiscalSequenceExhaustedError()
+      await tx.fiscalDocument.update({
+        where: { id: doc.id },
+        data: { correlative: taken, correlativeScopeKey: key }
       })
-      .catch((error: unknown) => {
-        if (error instanceof FiscalSequenceExhaustedError) return 'exhausted' as const
-        throw error
-      })
+      return { correlative: taken, documentType: resolvedType }
+    }).catch((error: unknown) => {
+      if (error instanceof FiscalSequenceExhaustedError) return 'exhausted' as const
+      throw error
+    })
   }
 
   // The last attempt of the job failed and the document is still waiting for the provider (QUEUED or SUBMITTED): nobody retries it any
@@ -1304,7 +1323,7 @@ export class FiscalDocumentsService {
     documentId: string,
     claimMayBeAlive: boolean
   ): Promise<void> {
-    await this.prisma.transaction(async tx => {
+    await this.inTx(organizationId, async tx => {
       const doc = await tx.fiscalDocument.findFirst({
         where: {
           id: documentId,
@@ -1339,10 +1358,12 @@ export class FiscalDocumentsService {
     documentId: string,
     message: string
   ): Promise<never> {
-    await this.prisma.client.fiscalDocument.updateMany({
-      where: { id: documentId, organizationId, status: FiscalDocumentStatus.SUBMITTED },
-      data: { status: FiscalDocumentStatus.QUEUED }
-    })
+    await this.inUnit(organizationId, () =>
+      this.prisma.client.fiscalDocument.updateMany({
+        where: { id: documentId, organizationId, status: FiscalDocumentStatus.SUBMITTED },
+        data: { status: FiscalDocumentStatus.QUEUED }
+      })
+    )
     throw new Error(message)
   }
 
@@ -1382,7 +1403,7 @@ export class FiscalDocumentsService {
   // already moved and does nothing. A document that is SUBMITTED was claimed by an attempt that is alive (it claimed less than the lease
   // ago: this one waits) or dead (its worker died after the claim: this one takes it over).
   private async claim(organizationId: string, documentId: string) {
-    return this.prisma.transaction(async tx => {
+    return this.inTx(organizationId, async tx => {
       await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${documentId} AND organization_id = ${organizationId} FOR UPDATE`
       const doc = await tx.fiscalDocument.findFirst({ where: { id: documentId, organizationId } })
       if (doc === null) return null
@@ -1475,7 +1496,7 @@ export class FiscalDocumentsService {
         : this.safeResponse(result.providerData, FiscalLimits.PROVIDER_DATA_MAX_CHARS)
     const response = result.response === undefined ? undefined : this.safeResponse(result.response)
     const sealedPayload = this.sealPayload(built.payload)
-    const accepted = await this.prisma.transaction(async tx => {
+    const accepted = await this.inTx(organizationId, async tx => {
       await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${documentId} AND organization_id = ${organizationId} FOR UPDATE`
       const doc = await tx.fiscalDocument.findFirstOrThrow({
         where: { id: documentId, organizationId },
@@ -1553,7 +1574,7 @@ export class FiscalDocumentsService {
       options.built === undefined ? undefined : this.sealPayload(options.built.payload)
     const response =
       options.response === undefined ? undefined : this.safeResponse(options.response)
-    await this.prisma.transaction(async tx => {
+    await this.inTx(organizationId, async tx => {
       await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${documentId} AND organization_id = ${organizationId} FOR UPDATE`
       const doc = await tx.fiscalDocument.findFirstOrThrow({
         where: { id: documentId, organizationId }

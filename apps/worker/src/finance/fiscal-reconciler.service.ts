@@ -1,12 +1,14 @@
+// rls-context: every database access of this file runs inside `unit` (JobContext.inOrganization); the queue is reached outside of it
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
 import type { Gauge } from '@prometheus-io/client'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
 import {
   FiscalIssueOn,
+  FiscalLimits,
   FiscalSweepKind,
   fiscalJobOptions,
   FiscalSweepLimits
@@ -56,16 +58,28 @@ export class FiscalReconciler {
     private readonly queue: Queue<SubmitFiscalDocumentJob>,
     @InjectMetric(MetricNames.FINANCE_FISCAL_FINDINGS) private readonly findings: Gauge<string>,
     private readonly events: DomainEvents,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(FiscalReconciler.name)
   }
 
-  async reconcile(organizationId: string, now: Date = new Date()): Promise<FiscalReconcileReport> {
-    const issuer = await this.prisma.client.fiscalIssuer.findUnique({
-      where: { organizationId },
-      select: { issueOn: true }
+  // Each read or write of the run is one short unit in a context of the organization: a finding that fails aborts only its own unit (a
+  // transaction that failed once refuses every later statement), and the queue is reached between two units, never inside one
+  private unit<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
+    return this.jobContext.inOrganization(organizationId, work, {
+      maxWait: FiscalLimits.CONTEXT_MAX_WAIT_MS,
+      timeout: FiscalLimits.CONTEXT_TIMEOUT_MS
     })
+  }
+
+  async reconcile(organizationId: string, now: Date = new Date()): Promise<FiscalReconcileReport> {
+    const issuer = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalIssuer.findUnique({
+        where: { organizationId },
+        select: { issueOn: true }
+      })
+    )
     const found = emptyCounts()
     const report: FiscalReconcileReport = { found, queued: 0, unresolved: 0, truncated: false }
     // An organization that issues no documents has nothing to find: its gauges are zero
@@ -242,14 +256,16 @@ export class FiscalReconciler {
       'sale documents disagree with their entries of the books'
     )
     // The notice is once for each person and document until it is read: asking every night does not repeat it
-    await this.prisma.transaction(tx => {
-      this.events.publish(tx, Events.FISCAL_ENTRY_MISMATCH, {
-        organizationId,
-        documentId: first.id,
-        count: items.length
+    await this.unit(organizationId, () =>
+      this.prisma.transaction(tx => {
+        this.events.publish(tx, Events.FISCAL_ENTRY_MISMATCH, {
+          organizationId,
+          documentId: first.id,
+          count: items.length
+        })
+        return Promise.resolve()
       })
-      return Promise.resolve()
-    })
+    )
   }
 }
 
