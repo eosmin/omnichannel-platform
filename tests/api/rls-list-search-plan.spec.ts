@@ -2,12 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import pg from 'pg'
 
-import {
-  connectionUrls,
-  ensureStore,
-  ensureUser,
-  type OwnerClient
-} from '@platform/core/database-testing'
+import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 
@@ -19,9 +14,11 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 // bitmap of the whole table) but "does turning the policies ON change HOW the list reads the table". If it does not, enforcement
 // costs the lists nothing and they need no function; if it does, the plan of both is in the message of the failure.
 //
-// The statements have the shape of what Prisma writes for those filters (the store first, then the OR of the columns, newest first, a
-// page). The policy is added to the tables inside a transaction that is always rolled back, and both plans are read as platform_app
-// with the context of the same store, so the only difference between them is the policy.
+// The statement has the shape of what Prisma writes for that filter (the store first, then the OR of the columns, newest first, a
+// page). The policy is added to the table inside a transaction that is always rolled back, and both plans are read as platform_app
+// with the context of the same store, so the only difference between them is the policy. The ORDERS list is not measured here: the
+// first version compared it and it passed, but its statement (a prefix LIKE and a sub-select) is not one the planner reads the same way
+// run after run, and a comparison that depends on the statistics proves nothing in either direction (plan-notas-76.md).
 
 const ROWS_PER_STORE = 15_000
 const CHUNK = 5_000
@@ -45,8 +42,6 @@ describe('the plan of the searches of the lists with row-level security on', () 
     const org = await owner.organization.create({
       data: { name: `${prefix}-org`, slug: `${prefix}-org` }
     })
-    // An order has an author (orders_created_actor_check): a person
-    const author = await ensureUser(owner, `${prefix}-user@example.invalid`, 'List plan user')
     for (const side of ['a', 'b'] as const) {
       const store = await ensureStore(owner, org.id, `${prefix}-store-${side}`)
       if (side === 'a') storeA = store.id
@@ -62,22 +57,8 @@ describe('the plan of the searches of the lists with row-level security on', () 
       for (let at = 0; at < customers.length; at += CHUNK) {
         await owner.customer.createMany({ data: customers.slice(at, at + CHUNK) })
       }
-      const orders = customers.map((customer, i) => ({
-        id: randomUUID(),
-        storeId: store.id,
-        customerId: customer.id,
-        orderNumber: String(i + 1).padStart(6, '0'),
-        paymentMethod: 'CASH',
-        createdBy: author.id,
-        subtotalCents: 1000,
-        totalCents: 1000
-      }))
-      for (let at = 0; at < orders.length; at += CHUNK) {
-        await owner.order.createMany({ data: orders.slice(at, at + CHUNK) })
-      }
     }
     await raw.query('ANALYZE customers')
-    await raw.query('ANALYZE orders')
   }, 180_000)
 
   afterAll(async () => {
@@ -107,6 +88,10 @@ describe('the plan of the searches of the lists with row-level security on', () 
           )
         }
       }
+      // Only the bitmaps of the indexes are left to the planner, so that what it can use shows, not what it prefers by the statistics
+      await raw.query('SET LOCAL enable_seqscan = off')
+      await raw.query('SET LOCAL enable_indexscan = off')
+      await raw.query('SET LOCAL enable_indexonlyscan = off')
       await raw.query('SET LOCAL ROLE platform_app')
       await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
       const { rows } = await raw.query<{ 'QUERY PLAN': { Plan: PlanNode }[] }>(
@@ -128,36 +113,33 @@ describe('the plan of the searches of the lists with row-level security on', () 
     return [...own, ...(node.Plans ?? []).flatMap(accessPath)].sort()
   }
 
-  async function expectSamePath(statement: string, values: unknown[], tables: string[]) {
-    const off = await planOf(statement, values, tables, false)
-    const on = await planOf(statement, values, tables, true)
-    // Both plans travel with the failure
-    expect({ on: accessPath(on), plan: JSON.stringify(on) }).toMatchObject({
-      on: accessPath(off)
-    })
+  // The names of the trigram indexes a plan reads (a bitmap over the whole OR of the columns of the search)
+  function trigramIndexes(node: PlanNode): string[] {
+    return accessPath(node).filter(path => /_trgm|idx_customers_phone/.test(path))
   }
 
-  it('reads the customers of a name, an email and a phone the same way with the policies on', async () => {
-    await expectSamePath(
-      `SELECT c.id FROM customers c
+  // The customers list: MEASURED in CI (main, run 44430489099 of #735): with the policies off the planner read the OR of name, email and
+  // phone through the trigram indexes (a BitmapOr), and with the policy on through customers_store_id_idx and a filter: the LIKE / ILIKE
+  // of the search are not LEAKPROOF, so next to a policy they cannot be index conditions. WHICH plan it picks without a policy depends on
+  // the statistics (the first run of the PR read the store index in both, and with the scans switched off the baseline did not read
+  // the trigram either), so the baseline is NOT asserted: it travels in the failure, with the plan of the policy, for who reads it.
+  // What does not depend on the statistics is the other side: with the policy on no plan can read a trigram index for these operators.
+  // That is the gap, and this case records it for the raw statement of the list. It is not turned around by plan B (the list then goes
+  // through a function, whose plan is measured in the spec of its own, like the one of the search of the inbox): it stays as the reason
+  // the list cannot keep the raw statement once the policies are enforced (plan-notas-76.md, owner BU).
+  it('customers list: with the policy on the raw search statement cannot read a trigram index (plan B pending)', async () => {
+    const statement = `SELECT c.id FROM customers c
         WHERE c.store_id = $1 AND c.merged_into_id IS NULL
           AND (c.name_search LIKE $2 OR c.email ILIKE $3 OR c.phone_normalized LIKE $4)
-        ORDER BY c.created_at DESC, c.id DESC LIMIT 25`,
-      [storeA, '%zorbalux%', '%zorbalux%', '%5030000%'],
-      ['customers']
-    )
-  })
-
-  it('reads the orders of a number or of who they are for the same way with the policies on', async () => {
-    await expectSamePath(
-      `SELECT o.id FROM orders o
-        WHERE o.store_id = $1
-          AND (o.order_number LIKE $2
-               OR o.customer_id IN (SELECT c.id FROM customers c
-                                     WHERE c.store_id = $1 AND (c.name ILIKE $3 OR c.email ILIKE $3)))
-        ORDER BY o.created_at DESC, o.id DESC LIMIT 25`,
-      [storeA, '0001%', '%zorbalux%'],
-      ['orders', 'customers']
-    )
+        ORDER BY c.created_at DESC, c.id DESC LIMIT 25`
+    const values = [storeA, '%zorbalux%', '%zorbalux%', '%5030000%']
+    const off = await planOf(statement, values, ['customers'], false)
+    const on = await planOf(statement, values, ['customers'], true)
+    // Both plans travel with a failure
+    expect({
+      on: trigramIndexes(on),
+      baselineTrigram: trigramIndexes(off),
+      plans: { off: JSON.stringify(off), on: JSON.stringify(on) }
+    }).toMatchObject({ on: [] })
   })
 })

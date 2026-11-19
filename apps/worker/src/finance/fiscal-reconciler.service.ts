@@ -4,7 +4,7 @@ import type { Gauge } from '@prometheus-io/client'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   FiscalIssueOn,
   FiscalSweepKind,
@@ -189,7 +189,9 @@ export class FiscalReconciler {
     if (item.kind === FiscalSweepKind.SALE_WITHOUT_DOCUMENT) {
       let documentId: string | null
       try {
-        documentId = await this.documents.createForOrder(organizationId, item.orderId, issueOn)
+        documentId = await inSavepoint(() =>
+          this.documents.createForOrder(organizationId, item.orderId, issueOn)
+        )
       } catch (error) {
         // The listener of the sale made it between the sweep's read and its insert: the unique index of the live sale document says so
         if (isUniqueViolation(error)) return 'exists'

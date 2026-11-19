@@ -5,7 +5,7 @@ import type { Redis } from 'ioredis'
 
 import type { Permission } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import { FinanceConflicts, FinanceTransactionKind, MediaStatus } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -233,21 +233,23 @@ export class MediaService {
 
     let media: MediaRow
     try {
-      media = await this.prisma.client.media.create({
-        data: {
-          id: body.mediaId,
-          storeId,
-          purpose: body.purpose,
-          ...parentColumnsOf(body),
-          uploadedBy: userId,
-          key: keys.final,
-          filename,
-          contentType: body.contentType,
-          fileSize: body.fileSizeBytes,
-          status: MediaStatus.PENDING
-        },
-        select: MEDIA_SELECT
-      })
+      media = await inSavepoint(() =>
+        this.prisma.client.media.create({
+          data: {
+            id: body.mediaId,
+            storeId,
+            purpose: body.purpose,
+            ...parentColumnsOf(body),
+            uploadedBy: userId,
+            key: keys.final,
+            filename,
+            contentType: body.contentType,
+            fileSize: body.fileSizeBytes,
+            status: MediaStatus.PENDING
+          },
+          select: MEDIA_SELECT
+        })
+      )
     } catch (error) {
       // The parent was deleted after it was checked: the same answer as a parent that is not there
       if (isForeignKeyViolation(error)) {

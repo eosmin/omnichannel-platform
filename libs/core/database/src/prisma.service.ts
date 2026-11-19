@@ -6,7 +6,7 @@ import { readReplicas } from '@prisma/extension-read-replicas'
 
 import { RlsGlobalModels, RlsPolicyTables } from '@platform/core/domain'
 
-import { PrismaClient } from '../generated/client/client'
+import { Prisma, PrismaClient } from '../generated/client/client'
 
 import { policyTablesOfRawSql, sqlTextOfRawArgs } from './raw-sql-tables'
 import type { TenantContext } from './tenant-context'
@@ -141,6 +141,46 @@ function hasQueryScope(): boolean {
   return tenantScope.getStore() !== undefined || querySource.getStore() !== undefined
 }
 
+// The unit of work of each transaction this module opened: afterCommit queues its hooks here, and inSavepoint drops the ones of an
+// attempt it rolls back
+const units = new WeakMap<object, UnitOfWork>()
+let savepointCounter = 0
+
+// Runs `attempt` (a write that may break a unique rule the caller means to catch) inside a SAVEPOINT of the transaction that is
+// open: tenantScope's, or `tx` for code that opened its own. In Postgres a failed statement aborts the whole transaction (25P02)
+// even when the code caught the error, and under RLS_CONTEXT a request is one transaction: the next query of the same request
+// would fail. When `attempt` throws, the savepoint is rolled back (the transaction is usable again, what was written before stays)
+// and the SAME error is rethrown for the caller to catch. With no transaction open there is nothing to protect and `attempt`
+// runs as it is.
+export async function inSavepoint<T>(
+  attempt: () => Promise<T>,
+  tx?: PrismaTransaction
+): Promise<T> {
+  const target = tx ?? tenantScope.getStore()?.tx
+  if (target === undefined) return attempt()
+  savepointCounter = (savepointCounter + 1) % 1_000_000_000
+  // A name made of a counter: nothing from outside reaches the statement
+  const name = Prisma.raw(`attempt_${savepointCounter}`)
+  const unit = units.get(target)
+  const hooksBefore = unit?.hooks.length ?? 0
+  await target.$executeRaw(Prisma.sql`SAVEPOINT ${name}`)
+  try {
+    const result = await attempt()
+    await target.$executeRaw(Prisma.sql`RELEASE SAVEPOINT ${name}`)
+    return result
+  } catch (error) {
+    // If this fails too the connection is gone: the error that matters is the first one
+    // What the attempt asked to announce after the commit did not happen: its hooks go
+    if (unit !== undefined && unit.hooks.length > hooksBefore) unit.hooks.length = hooksBefore
+    // Released too: a rolled-back savepoint stays open until the transaction ends, and a loop of caught violations would pile them up
+    await target
+      .$executeRaw(Prisma.sql`ROLLBACK TO SAVEPOINT ${name}`)
+      .then(() => target.$executeRaw(Prisma.sql`RELEASE SAVEPOINT ${name}`))
+      .catch(() => undefined)
+    throw error
+  }
+}
+
 // A tenant transaction holds a connection for its whole duration, so its limits are set above
 // Prisma's defaults on purpose and no external I/O (carriers, channels, S3, e-mail) runs inside it.
 const TENANT_TRANSACTION: Required<TransactionOptions> = { maxWait: 5_000, timeout: 15_000 }
@@ -154,7 +194,6 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   // nothing outside this class touches `base` for a query: `client` is this, which is the primary for reads and writes alike.
   // One object for the whole life of the service, because afterCommit tells the base client apart by identity.
   private readonly primary: PrimaryClient
-  private readonly units = new WeakMap<object, UnitOfWork>()
   private readonly logger = new Logger(PrismaService.name)
 
   constructor(options: PrismaServiceOptions) {
@@ -220,6 +259,22 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return tenantScope.getStore()?.context
   }
 
+  // For a read that needs the context of ONE store (the search functions of the database read the store from it): the context of the
+  // request when the interceptor opened it, which must then be the context of THIS store alone (the functions answer for every store
+  // of the context), or its own, for the store the TenantGuard put in the request, when the interceptor is off.
+  async inStoreContext<T>(storeId: string, work: () => Promise<T>, userId?: string): Promise<T> {
+    const current = this.currentTenantContext()
+    if (current !== undefined) {
+      if (current.storeIds.length !== 1 || current.storeIds[0] !== storeId) {
+        throw new Error(
+          'this read runs in the context of the store of the request, and of that store alone'
+        )
+      }
+      return work()
+    }
+    return this.tenantTransaction({ storeIds: [storeId], organizationIds: [], userId }, work)
+  }
+
   // Services never call client.$transaction: they call this, which joins the tenant transaction
   // when there is one (a lint rule forbids the direct call).
   transaction<T>(
@@ -233,7 +288,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   // Runs `hook` once the transaction `tx` has committed, and never if it rolls back: what a
   // transaction announces (a domain event) must not be announced before it is true. With the
   // transaction of a unit of work, the hook waits for the outermost commit; a nested transaction()
-  // joins it without a savepoint, so there is no partial rollback to wait for. A hook that throws is
+  // joins it, and only inSavepoint rolls part of it back (it drops the hooks queued inside that part). A hook that throws is
   // logged and the others still run: the data is committed. Outside any transaction (the base
   // client) there is nothing to wait for and the hook runs at once; a transaction this service did
   // not open is refused, because the hook could not be held until its commit.
@@ -242,7 +297,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       this.runHook(hook)
       return
     }
-    const unit = this.units.get(db)
+    const unit = units.get(db)
     if (unit === undefined) {
       throw new Error('afterCommit was given a transaction that PrismaService did not open')
     }
@@ -261,7 +316,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     let result: T
     try {
       result = await this.base.$transaction(async (tx: PrismaTransaction) => {
-        this.units.set(tx, unit)
+        units.set(tx, unit)
         return fn(tx)
       }, options)
     } catch (error) {

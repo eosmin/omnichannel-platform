@@ -4,7 +4,7 @@ import type { Queue } from 'bullmq'
 import type { Redis } from 'ioredis'
 
 import { CacheKeys } from '@platform/core/cache'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
@@ -131,21 +131,23 @@ export class AvatarUploadsService {
     if (!(await this.storage.copy(upload, final, stored.etag))) throw uploadVerificationFailed()
 
     try {
-      await this.prisma.client.media.create({
-        data: {
-          id: body.mediaId,
-          // The picture is the person's: no store, so deleting a store never takes it
-          storeId: null,
-          purpose: MediaPurpose.AVATAR,
-          uploadedBy: userId,
-          key: final,
-          filename,
-          contentType: body.contentType,
-          fileSize: body.fileSizeBytes,
-          status: MediaStatus.PENDING
-        },
-        select: ROW_SELECT
-      })
+      await inSavepoint(() =>
+        this.prisma.client.media.create({
+          data: {
+            id: body.mediaId,
+            // The picture is the person's: no store, so deleting a store never takes it
+            storeId: null,
+            purpose: MediaPurpose.AVATAR,
+            uploadedBy: userId,
+            key: final,
+            filename,
+            contentType: body.contentType,
+            fileSize: body.fileSizeBytes,
+            status: MediaStatus.PENDING
+          },
+          select: ROW_SELECT
+        })
+      )
     } catch (error) {
       if (!isUniqueViolation(error)) throw error
       // Two confirmations at once: the other one won

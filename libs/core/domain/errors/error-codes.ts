@@ -29,6 +29,8 @@ export const ErrorCodes = {
 
   // Validation
   VALIDATION_FAILED: 'VALIDATION_FAILED',
+  // A search text that matches more rows than the answer can carry: the caller must refine it (400)
+  SEARCH_TOO_BROAD: 'SEARCH_TOO_BROAD',
   VALIDATION_INVALID_INPUT: 'VALIDATION_INVALID_INPUT',
   VALIDATION_URL_NOT_ALLOWED: 'VALIDATION_URL_NOT_ALLOWED',
   // The body of a request is bigger than the parser accepts (413)

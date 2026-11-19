@@ -4,7 +4,12 @@ import type { Queue } from 'bullmq'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { isUniqueViolation, lockStoreScope, PrismaService } from '@platform/core/database'
+import {
+  inSavepoint,
+  isUniqueViolation,
+  lockStoreScope,
+  PrismaService
+} from '@platform/core/database'
 import {
   CarrierConnectionStatus,
   CarrierLockScopes,
@@ -274,13 +279,8 @@ export class CarrierStatusMappingsService {
 
     let result: Awaited<ReturnType<CarrierStatusMappingsService['writeMapping']>>
     try {
-      result = await this.writeMapping(
-        storeId,
-        connectionId,
-        providerCode,
-        body,
-        actor,
-        catalogLabel
+      result = await inSavepoint(() =>
+        this.writeMapping(storeId, connectionId, providerCode, body, actor, catalogLabel)
       )
     } catch (error) {
       // Two PUTs of a code with no row at once: the loser finds the row of the winner and changes it
