@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CarrierId,
@@ -31,6 +32,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { type CreatedBody, type ErrorBody, ordersKit, type OrdersKit } from '../helpers/orders'
+import { inStoreContext } from '../helpers/tenant-context'
 
 const OK = 200
 const CREATED = 201
@@ -69,9 +71,23 @@ describe('The return leg of a return', () => {
   let ctx: TestContext
   let kit: OrdersKit
   let returns: ReturnsService
+  let prisma: PrismaService
   let fake: FakeCarrier
   let forzaId = ''
   let localId = ''
+
+  // The scan runs inside the request of the reception; a spec that calls the service by hand opens the context of the ONE store
+  // and organization it acts for, and nothing wider
+  const receiveScanned = (
+    storeId: string,
+    input: Parameters<ReturnsService['receiveFromScan']>[1],
+    by: Parameters<ReturnsService['receiveFromScan']>[2]
+  ) => {
+    const organizationId = storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id
+    return inStoreContext(prisma, { storeId, organizationId }, () =>
+      returns.receiveFromScan(storeId, input, by)
+    )
+  }
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -79,6 +95,7 @@ describe('The return leg of a return', () => {
     ctx = await seedTestContext(owner, app, prefix)
     kit = ordersKit(owner, app, ctx)
     returns = app.get(ReturnsService)
+    prisma = app.get(PrismaService)
     // The fake stands for a carrier that can make the way back: only a variant of it declares the capability, never the core
     fake = buildFakeCarrier({ id: CarrierId.FORZA, returnShipment: true })
     app.get(CarrierRegistry, { strict: false }).register(fake.plugin)
@@ -392,7 +409,7 @@ describe('The return leg of a return', () => {
         data: { status: ShipmentStatus.IN_TRANSIT }
       })
 
-      const done = await returns.receiveFromScan(
+      const done = await receiveScanned(
         ctx.storeA.id,
         {
           shipmentId: guide.id,
@@ -421,7 +438,7 @@ describe('The return leg of a return', () => {
 
       // Scanned again: the return is over, nothing is counted twice
       await expect(
-        returns.receiveFromScan(
+        receiveScanned(
           ctx.storeA.id,
           { shipmentId: guide.id, reason: 'DEFECTIVE', condition: OrderReturnCondition.RESELLABLE },
           { userId: ctx.adminA.id, storeId: ctx.storeA.id }
@@ -444,7 +461,7 @@ describe('The return leg of a return', () => {
       }
       const by = { userId: ctx.adminA.id, storeId: ctx.storeA.id }
 
-      expect((await returns.receiveFromScan(ctx.storeA.id, scan, by)).returnId).toBe(returnId)
+      expect((await receiveScanned(ctx.storeA.id, scan, by)).returnId).toBe(returnId)
 
       const other = await approved()
       const failed = await owner.shipment.create({
@@ -463,7 +480,7 @@ describe('The return leg of a return', () => {
         }
       })
       await expect(
-        returns.receiveFromScan(ctx.storeA.id, { ...scan, shipmentId: failed.id }, by)
+        receiveScanned(ctx.storeA.id, { ...scan, shipmentId: failed.id }, by)
       ).rejects.toMatchObject({ code: ErrorCodes.SHIPPING_INVALID_STATUS_TRANSITION })
     })
 
@@ -480,7 +497,7 @@ describe('The return leg of a return', () => {
           .originWarehouseId
       ).toBe(ctx.warehouseASecond.id)
 
-      await returns.receiveFromScan(
+      await receiveScanned(
         ctx.storeA.id,
         {
           shipmentId: (guide.body as GuideBody).id,
@@ -500,7 +517,7 @@ describe('The return leg of a return', () => {
       const item = await owner.orderItem.findFirstOrThrow({ where: { productId: product.id } })
 
       await expect(
-        returns.receiveFromScan(
+        receiveScanned(
           ctx.storeA.id,
           {
             shipmentId: guide.id,
@@ -526,7 +543,7 @@ describe('The return leg of a return', () => {
       const item = await owner.orderItem.findFirstOrThrow({ where: { productId: product.id } })
 
       await expect(
-        returns.receiveFromScan(
+        receiveScanned(
           ctx.storeA.id,
           {
             shipmentId: guide.id,
@@ -540,7 +557,7 @@ describe('The return leg of a return', () => {
         )
       ).rejects.toMatchObject({ code: ErrorCodes.VALIDATION_INVALID_INPUT })
 
-      await returns.receiveFromScan(
+      await receiveScanned(
         ctx.storeA.id,
         {
           shipmentId: guide.id,

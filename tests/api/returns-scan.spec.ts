@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   OrderReturnCondition,
@@ -21,6 +22,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { type CreatedBody, ordersKit, type OrdersKit } from '../helpers/orders'
+import { inStoreContext } from '../helpers/tenant-context'
 
 // `ReturnsService.receiveFromScan` (Step 4.12 PR R1), the entry of the reception by scanner (PR R2): one package, one transaction.
 describe('Receiving a scanned package', () => {
@@ -30,7 +32,21 @@ describe('Receiving a scanned package', () => {
   let ctx: TestContext
   let kit: OrdersKit
   let returns: ReturnsService
+  let prisma: PrismaService
   const actor = () => ({ userId: ctx.adminA.id, storeId: ctx.storeA.id })
+
+  // The scan runs inside the request of the reception; a spec that calls the service by hand opens the context of the ONE store
+  // and organization it acts for, and nothing wider
+  const receiveScanned = (
+    storeId: string,
+    input: Parameters<ReturnsService['receiveFromScan']>[1],
+    by: Parameters<ReturnsService['receiveFromScan']>[2]
+  ) => {
+    const organizationId = storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id
+    return inStoreContext(prisma, { storeId, organizationId }, () =>
+      returns.receiveFromScan(storeId, input, by)
+    )
+  }
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -38,6 +54,7 @@ describe('Receiving a scanned package', () => {
     ctx = await seedTestContext(owner, app, prefix)
     kit = ordersKit(owner, app, ctx)
     returns = app.get(ReturnsService)
+    prisma = app.get(PrismaService)
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)
@@ -89,7 +106,7 @@ describe('Receiving a scanned package', () => {
   it('makes, receives and completes the return, puts the package back, and returns the order when all of it is back', async () => {
     const { order, product, shipmentId } = await shipped()
 
-    const done = await returns.receiveFromScan(
+    const done = await receiveScanned(
       ctx.storeA.id,
       { shipmentId, reason: 'DELIVERY_FAILED', condition: OrderReturnCondition.RESELLABLE },
       actor()
@@ -129,16 +146,12 @@ describe('Receiving a scanned package', () => {
       condition: OrderReturnCondition.RESELLABLE
     }
 
-    expect(await failure(returns.receiveFromScan(ctx.storeA.id, scan, actor()))).toBe(
+    expect(await failure(receiveScanned(ctx.storeA.id, scan, actor()))).toBe(
       ErrorCodes.RETURN_RECEIPT_INVALID
     )
     expect(await owner.orderReturn.count({ where: { orderId: order.id } })).toBe(0)
 
-    const done = await returns.receiveFromScan(
-      ctx.storeA.id,
-      { ...scan, confirmDelivered: true },
-      actor()
-    )
+    const done = await receiveScanned(ctx.storeA.id, { ...scan, confirmDelivered: true }, actor())
 
     expect(done.orderId).toBe(order.id)
     const shipment = await owner.shipment.findUniqueOrThrow({ where: { id: shipmentId } })
@@ -156,7 +169,7 @@ describe('Receiving a scanned package', () => {
   it('leaves a defective package out of the stock, and a package scanned twice is refused', async () => {
     const { order, product, shipmentId } = await shipped(ShipmentStatus.RETURNING)
 
-    await returns.receiveFromScan(
+    await receiveScanned(
       ctx.storeA.id,
       { shipmentId, reason: 'REFUSED_BY_CUSTOMER', condition: OrderReturnCondition.DAMAGED },
       actor()
@@ -165,7 +178,7 @@ describe('Receiving a scanned package', () => {
     expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 6 })
     expect((await orderOf(order.id)).status).toBe('RETURNED')
     const again = await failure(
-      returns.receiveFromScan(
+      receiveScanned(
         ctx.storeA.id,
         { shipmentId, reason: 'REFUSED_BY_CUSTOMER', condition: OrderReturnCondition.RESELLABLE },
         actor()
@@ -179,7 +192,7 @@ describe('Receiving a scanned package', () => {
   it('takes a partial package by line, each with its own condition, and keeps the order shipped', async () => {
     const { order, product, shipmentId, itemId } = await shipped()
 
-    await returns.receiveFromScan(
+    await receiveScanned(
       ctx.storeA.id,
       {
         shipmentId,
@@ -193,7 +206,7 @@ describe('Receiving a scanned package', () => {
     expect((await orderOf(order.id)).status).toBe('SHIPPED')
     expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 7 })
     const over = await failure(
-      returns.receiveFromScan(
+      receiveScanned(
         ctx.storeA.id,
         {
           shipmentId,
@@ -211,7 +224,7 @@ describe('Receiving a scanned package', () => {
     const waiting = await shipped(ShipmentStatus.LABEL_CREATED)
     expect(
       await failure(
-        returns.receiveFromScan(
+        receiveScanned(
           ctx.storeA.id,
           {
             shipmentId: waiting.shipmentId,
@@ -226,7 +239,7 @@ describe('Receiving a scanned package', () => {
     const { order, product, shipmentId, itemId } = await shipped()
     expect(
       await failure(
-        returns.receiveFromScan(
+        receiveScanned(
           ctx.storeB.id,
           { shipmentId, reason: 'OTHER', condition: OrderReturnCondition.RESELLABLE },
           { userId: ctx.adminB.id, storeId: ctx.storeB.id }
@@ -236,7 +249,7 @@ describe('Receiving a scanned package', () => {
 
     // A warehouse the store does not sell from: the whole package rolls back, the stock, the return and the shipment
     const failed = await failure(
-      returns.receiveFromScan(
+      receiveScanned(
         ctx.storeA.id,
         {
           shipmentId,
@@ -268,7 +281,7 @@ describe('Receiving a scanned package', () => {
     await owner.order.update({ where: { id: order.id }, data: { paymentStatus: 'COMPLETED' } })
     const total = (await orderOf(order.id)).totalCents
 
-    const done = await returns.receiveFromScan(
+    const done = await receiveScanned(
       ctx.storeA.id,
       {
         shipmentId,
@@ -316,7 +329,7 @@ describe('Receiving a scanned package', () => {
     })
 
     const guessed = await failure(
-      returns.receiveFromScan(
+      receiveScanned(
         ctx.storeA.id,
         { shipmentId, reason: 'OTHER', condition: OrderReturnCondition.RESELLABLE },
         actor()
@@ -325,7 +338,7 @@ describe('Receiving a scanned package', () => {
     expect(guessed).toBe(ErrorCodes.VALIDATION_INVALID_INPUT)
     expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 6 })
 
-    await returns.receiveFromScan(
+    await receiveScanned(
       ctx.storeA.id,
       {
         shipmentId,
@@ -343,7 +356,7 @@ describe('Receiving a scanned package', () => {
     const { order, product, shipmentId } = await shipped()
 
     const refused = await failure(
-      returns.receiveFromScan(
+      receiveScanned(
         ctx.storeA.id,
         {
           shipmentId,
@@ -362,7 +375,7 @@ describe('Receiving a scanned package', () => {
 
   it('leaves a trail on the order when the return puts it in RETURNED', async () => {
     const { order, shipmentId } = await shipped()
-    const done = await returns.receiveFromScan(
+    const done = await receiveScanned(
       ctx.storeA.id,
       { shipmentId, reason: 'DELIVERY_FAILED', condition: OrderReturnCondition.RESELLABLE },
       actor()
@@ -380,7 +393,7 @@ describe('Receiving a scanned package', () => {
     const { order, product, shipmentId } = await shipped()
     const scan = () =>
       failure(
-        returns.receiveFromScan(
+        receiveScanned(
           ctx.storeA.id,
           { shipmentId, reason: 'OTHER', condition: OrderReturnCondition.RESELLABLE },
           actor()
