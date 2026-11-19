@@ -232,11 +232,22 @@ describe('the search functions of row-level security', () => {
   })
 
   it('lists the customers of a search text from the store of the context only, in the order of the list and of the export', async () => {
-    const mine = await createCustomer(owner, { storeId: ctx.storeA.id, name: `Wanda ${tag}` })
-    const second = await createCustomer(owner, { storeId: ctx.storeA.id, name: `Wanda ${tag} bis` })
+    // The moments of creation are exact and apart: two customers made back to back can share a millisecond, and the list is only as
+    // ordered as its moments are (ties break by id, which a test cannot predict), so the case does not depend on the clock
+    const mine = await createCustomer(owner, {
+      storeId: ctx.storeA.id,
+      name: `Wanda ${tag}`,
+      createdAt: new Date('2026-01-10T10:00:00.000Z')
+    })
+    const second = await createCustomer(owner, {
+      storeId: ctx.storeA.id,
+      name: `Wanda ${tag} bis`,
+      createdAt: new Date('2026-01-11T10:00:00.000Z')
+    })
     const absorbed = await createCustomer(owner, {
       storeId: ctx.storeA.id,
-      name: `Wanda ${tag} old`
+      name: `Wanda ${tag} old`,
+      createdAt: new Date('2026-01-12T10:00:00.000Z')
     })
     await owner.customer.update({ where: { id: absorbed.id }, data: { mergedIntoId: mine.id } })
     const alien = await createCustomer(owner, { storeId: ctx.storeB.id, name: `Wanda ${tag}` })
@@ -257,7 +268,9 @@ describe('the search functions of row-level security', () => {
       )
     // Another store never shows, an absorbed customer is left out, and the export order is by id with a keyset
     const byId = await page([ctx.storeA.id], true, null, 25)
-    expect(byId).toEqual([mine.id, second.id].sort())
+    // The order of the export is the order of the database on the id (its collation, not the one of JavaScript): the ids as a set, and
+    // the keyset below walks THAT order
+    expect([...byId].sort()).toEqual([mine.id, second.id].sort())
     expect(byId).not.toContain(alien.id)
     expect(byId).not.toContain(absorbed.id)
     expect(await page([ctx.storeA.id], true, byId[0] ?? null, 25)).toEqual(byId.slice(1))
