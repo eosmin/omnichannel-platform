@@ -581,6 +581,41 @@ describe('PrismaService', () => {
       expect(ran).toEqual(['before', 'after'])
     })
 
+    it('runs what was queued before the commit, one at a time, and drops it when the transaction rolls back', async () => {
+      const ran: string[] = []
+      const queue = (name: string, fail = false) =>
+        service.beforeCommit(service.client, async tx => {
+          await tx.organization.create({ data: { name, slug: `${slug}-${name}` } })
+          ran.push(name)
+          if (fail) throw new Error('queued work failed')
+        })
+      await service.tenantTransaction(context, () => {
+        // Queued while the handler is still running: nothing has been written yet
+        expect(queue('q1')).toBe(true)
+        expect(queue('q2', true)).toBe(true)
+        expect(queue('q3')).toBe(true)
+        expect(ran).toEqual([])
+        return Promise.resolve()
+      })
+      // All three ran in order, the failure of the second did not stop the commit, and what they wrote is there
+      expect(ran).toEqual(['q1', 'q2', 'q3'])
+      expect(
+        await service.client.organization.count({
+          where: { slug: { in: [`${slug}-q1`, `${slug}-q3`] } }
+        })
+      ).toBe(2)
+
+      await service
+        .tenantTransaction(context, () => {
+          queue('lost')
+          return Promise.reject(new Error('the request failed'))
+        })
+        .catch(() => undefined)
+      expect(ran).toEqual(['q1', 'q2', 'q3'])
+      // No transaction of ours behind the base client: nothing is queued
+      expect(service.beforeCommit(service.client, () => Promise.resolve())).toBe(false)
+    })
+
     it('runs the attempt as it is when there is no transaction to protect', async () => {
       await expect(inSavepoint(() => Promise.resolve('plain'))).resolves.toBe('plain')
     })
