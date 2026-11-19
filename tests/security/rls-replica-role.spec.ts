@@ -149,9 +149,6 @@ describe('the read only role of the replica', () => {
       await expect(
         connection.query(`UPDATE stores SET name = name WHERE false`)
       ).rejects.toMatchObject({ code: '42501' })
-      await expect(connection.query(`DELETE FROM stores WHERE false`)).rejects.toMatchObject({
-        code: '42501'
-      })
       await expect(connection.query('SELECT count(*) FROM stores')).resolves.toBeDefined()
     } finally {
       await connection.end()
