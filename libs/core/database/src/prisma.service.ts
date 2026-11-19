@@ -128,6 +128,9 @@ interface TransactionOptions {
 interface UnitOfWork {
   state: 'open' | 'committed' | 'rolledBack'
   hooks: Array<() => void>
+  // Work queued to run, one at a time, once the callback of the transaction has finished and before it commits (the audit entry of a
+  // request). It is dropped when the transaction rolls back.
+  beforeCommit: Array<(tx: PrismaTransaction) => Promise<void>>
 }
 
 // The transaction that a unit of work runs in, once there is one. Prisma queries are lazy: they run
@@ -353,17 +356,53 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     // After a rollback it is dropped: what it would announce did not happen
   }
 
+  // Queues `work` to run just before the transaction `db` commits, after the callback of the unit of work has finished and with the
+  // connection to itself (the audit entry of a request: it cannot be started earlier without racing the rest of the request, and
+  // later it would find the transaction closed). It gets the transaction; a failure must be handled by the work itself (a throw
+  // is logged and does not stop the commit). If the transaction rolls back it never runs. With no transaction of ours behind
+  // `db` (the base client) it returns false and the caller does the work some other way.
+  beforeCommit(
+    db: PrismaService['client'],
+    work: (tx: PrismaTransaction) => Promise<void>
+  ): boolean {
+    const unit = units.get(db)
+    if (unit === undefined || unit.state !== 'open') return false
+    unit.beforeCommit.push(work)
+    return true
+  }
+
+  private async runBeforeCommit(unit: UnitOfWork, tx: PrismaTransaction): Promise<void> {
+    for (
+      let next = unit.beforeCommit.shift();
+      next !== undefined;
+      next = unit.beforeCommit.shift()
+    ) {
+      try {
+        await next(tx)
+      } catch (error) {
+        this.logger.error(
+          'work queued before a commit failed',
+          error instanceof Error ? error.stack : String(error)
+        )
+      }
+    }
+  }
+
   // One real transaction, whose commit hooks run after it commits
   private async open<T>(
     fn: (tx: PrismaTransaction) => Promise<T>,
     options: TransactionOptions | undefined
   ): Promise<T> {
-    const unit: UnitOfWork = { state: 'open', hooks: [] }
+    const unit: UnitOfWork = { state: 'open', hooks: [], beforeCommit: [] }
     let result: T
     try {
       result = await this.base.$transaction(async (tx: PrismaTransaction) => {
         units.set(tx, unit)
-        return fn(tx)
+        const out = await fn(tx)
+        // After the callback and before the COMMIT, when nothing else of the request is using the connection: what was queued runs
+        // here. A callback that throws rolls back, and what was queued with it is dropped.
+        await this.runBeforeCommit(unit, tx)
+        return out
       }, options)
     } catch (error) {
       unit.state = 'rolledBack'
@@ -405,7 +444,14 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         await applyTenantContext(tx, context)
         // `fn` is awaited INSIDE the scope: a Prisma query is lazy, and one that is only started after run() returns (a callback that
         // returns `client.model.findMany()` as it is) would run its hooks with no scope
-        return tenantScope.run({ tx, context }, async () => await fn())
+        return tenantScope.run({ tx, context }, async () => {
+          const out = await fn()
+          // What was queued for the commit (the audit entry of a request) runs here, still in the scope: a query outside it is
+          // refused by the guard of the context
+          const unit = units.get(tx)
+          if (unit !== undefined) await this.runBeforeCommit(unit, tx)
+          return out
+        })
       },
       { ...TENANT_TRANSACTION, ...options }
     )
