@@ -112,6 +112,10 @@ CREATE FUNCTION rls_clear_orphan_avatar(p_media_id text, p_cutoff timestamp, p_r
     IF p_media_id IS NULL OR p_cutoff IS NULL OR p_refused_statuses IS NULL THEN
       RAISE EXCEPTION 'the avatar, the cutoff and the refused states are required' USING ERRCODE = '22023';
     END IF;
+    -- A write that removes a person's picture is never for a row younger than an hour: a cutoff in the future would reach every avatar
+    IF p_cutoff > (pg_catalog.now() AT TIME ZONE 'UTC') - interval '1 hour' THEN
+      RAISE EXCEPTION 'the cutoff of an avatar sweep is at least an hour old' USING ERRCODE = '22023';
+    END IF;
     SELECT m.status, m.key INTO v_status, v_key FROM public.media m
       WHERE m.id = p_media_id AND m.store_id IS NULL AND m.purpose = 'avatar' AND m.created_at < p_cutoff
       FOR UPDATE OF m SKIP LOCKED;

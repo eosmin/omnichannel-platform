@@ -1,4 +1,4 @@
--- Rollback of 20270122300000_rls_worker_cleanup_definers: the code that calls these functions (AuditColdExporter, OrphanMediaCleaner)
+-- Rollback of 20270122300000_rls_worker_cleanup_definers: the code that calls these functions (AuditColdExporter now; OrphanMediaCleaner in PR B2b for the avatar functions)
 -- goes first (revert the commit), then this runs. Idempotent.
 DROP FUNCTION IF EXISTS public.rls_avatar_media_keys(text[]);
 DROP FUNCTION IF EXISTS public.rls_clear_orphan_avatar(text, timestamp, text[]);

@@ -98,10 +98,12 @@ export class PlatformCleaner {
     // entered stops the category, which the run reports as failed
     await run('webhookDeliveries', () =>
       this.perStore(
-        () => this.prisma.client.$executeRaw`
+        storeId => this.prisma.client.$executeRaw`
           DELETE FROM webhook_deliveries WHERE id IN (
             SELECT id FROM webhook_deliveries
             WHERE created_at < (${webhookCutoff}::timestamptz AT TIME ZONE 'UTC')
+              AND (webhook_id IN (SELECT id FROM webhooks WHERE store_id = ${storeId})
+                OR plugin_installation_id IN (SELECT id FROM plugin_installations WHERE store_id = ${storeId}))
             ORDER BY created_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
       )
     )
@@ -150,7 +152,10 @@ export class PlatformCleaner {
         more = more || outcome.more
       })
     } catch (error) {
-      throw deleted > 0 ? new PartialRunError(deleted, error) : error
+      // The inner batches already counted what the failing store deleted: add it and keep the real cause
+      const inner = error instanceof PartialRunError ? error : undefined
+      const total = deleted + (inner?.deleted ?? 0)
+      throw total > 0 ? new PartialRunError(total, inner?.original ?? error) : error
     }
     return { deleted, more }
   }
@@ -170,7 +175,10 @@ export class PlatformCleaner {
         more = more || outcome.more
       })
     } catch (error) {
-      throw deleted > 0 ? new PartialRunError(deleted, error) : error
+      // The inner batches already counted what the failing store deleted: add it and keep the real cause
+      const inner = error instanceof PartialRunError ? error : undefined
+      const total = deleted + (inner?.deleted ?? 0)
+      throw total > 0 ? new PartialRunError(total, inner?.original ?? error) : error
     }
     return { deleted, more }
   }

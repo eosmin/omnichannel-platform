@@ -113,7 +113,7 @@ describe('row-level security, phase 5: the cleanup definers of the worker', () =
     await asRole('platform_worker', async query => {
       const cleared = await query<{ key: string | null }>(
         'SELECT rls_clear_orphan_avatar($1::text, $2::timestamp, $3::text[]) AS key',
-        ['00000000-0000-0000-0000-000000000000', '2100-01-01', ['infected']]
+        ['00000000-0000-0000-0000-000000000000', '2000-01-01', ['infected']]
       )
       expect(cleared.rows[0]?.key).toBeNull()
       const listed = await query(
