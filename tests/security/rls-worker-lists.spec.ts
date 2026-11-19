@@ -131,6 +131,10 @@ describe('row-level security, phase 5: the lists of the worker', () => {
   it('lists the pickups of the sweep of every store, oldest first, and refuses a missing filter', async () => {
     const old = new Date('2031-01-06T10:00:00.000Z')
     const day = new Date('2031-01-06T00:00:00.000Z')
+    // Dates go to the database as UTC text: node-pg writes a Date in the LOCAL zone with an offset, which a cast to timestamp drops
+    const oldText = old.toISOString()
+    const dayText = day.toISOString().slice(0, 10)
+    const cutoffText = '2031-01-06T11:00:00.000'
     const made: { stuck: string[]; behind: string[] } = { stuck: [], behind: [] }
     for (const [index, storeId] of stores.entries()) {
       const connectionId = pickups[index] ?? ''
@@ -188,20 +192,16 @@ describe('row-level security, phase 5: the lists of the worker', () => {
     })
     await asWorker(async query => {
       const pending = await query(
-        'SELECT id, store_id FROM rls_list_pickups_pending_stale($1, $2, $3, 1000)',
-        [PickupStatus.PENDING, new Date('2031-01-06T11:00:00.000Z'), day]
+        'SELECT id, store_id FROM rls_list_pickups_pending_stale($1, $2::timestamp, $3::date, 1000)',
+        [PickupStatus.PENDING, cutoffText, dayText]
       )
       const mine = pending.rows.filter((row: { id: string }) => made.stuck.includes(row.id))
       expect(mine.map((row: { store_id: string }) => row.store_id).sort()).toEqual(
         [...stores].sort()
       )
       const behind = await query(
-        'SELECT id, store_id FROM rls_list_pickups_count_behind($1::text[], $2, $3, 1000)',
-        [
-          [PickupStatus.REQUESTED, PickupStatus.CONFIRMED],
-          day,
-          new Date('2031-01-06T11:00:00.000Z')
-        ]
+        'SELECT id, store_id FROM rls_list_pickups_count_behind($1::text[], $2::date, $3::timestamp, 1000)',
+        [[PickupStatus.REQUESTED, PickupStatus.CONFIRMED], dayText, cutoffText]
       )
       const mineBehind = behind.rows.filter((row: { id: string }) => made.behind.includes(row.id))
       expect(mineBehind.map((row: { store_id: string }) => row.store_id).sort()).toEqual(
@@ -214,7 +214,10 @@ describe('row-level security, phase 5: the lists of the worker', () => {
       expect(everyId).not.toContain(past.id)
       await raw.query('SAVEPOINT filter')
       await expect(
-        query('SELECT * FROM rls_list_pickups_pending_stale(NULL, $1, $2, 10)', [old, day])
+        query('SELECT * FROM rls_list_pickups_pending_stale(NULL, $1::timestamp, $2::date, 10)', [
+          oldText,
+          dayText
+        ])
       ).rejects.toMatchObject({ code: '22023' })
       await raw.query('ROLLBACK TO SAVEPOINT filter')
     })
