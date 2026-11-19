@@ -93,6 +93,16 @@ describe('Transfers between warehouses', () => {
   const transferOf = (response: { body: unknown }) => response.body as TransferBody
 
   // A product of store A (or of the store given) with stock in the warehouse given
+  // Work of a fixture, in the context of ONE store and the organization it belongs to (and nothing wider)
+  const inStoreOf = <T>(storeId: string, work: () => Promise<T>): Promise<T> => {
+    const organizationId = {
+      [ctx.storeA.id]: ctx.orgA.id,
+      [ctx.storeA2.id]: ctx.orgA.id,
+      [ctx.storeB.id]: ctx.orgB.id
+    }[storeId]
+    if (organizationId === undefined) throw new Error(`the case has no organization for ${storeId}`)
+    return inStoreContext(prisma, { storeId, organizationId }, work)
+  }
   async function stocked(options: {
     quantity?: number
     storeId?: string
@@ -101,20 +111,17 @@ describe('Transfers between warehouses', () => {
   }) {
     const storeId = options.storeId ?? ctx.storeA.id
     const product = await createProduct(owner, { storeId })
-    await inStoreContext(
-      prisma,
-      { storeId, organizationId: storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id },
-      () =>
-        inventory.move({
-          storeId,
-          productId: product.id,
-          warehouseId: options.warehouseId ?? ctx.warehouseA.id,
-          type: Type.RECEIPT,
-          quantity: options.quantity ?? 10,
-          reason: InventoryAdjustmentReason.OPENING_STOCK,
-          idempotencyKey: randomUUID(),
-          ...(options.unitCostCents === undefined ? {} : { unitCostCents: options.unitCostCents })
-        })
+    await inStoreOf(storeId, () =>
+      inventory.move({
+        storeId,
+        productId: product.id,
+        warehouseId: options.warehouseId ?? ctx.warehouseA.id,
+        type: Type.RECEIPT,
+        quantity: options.quantity ?? 10,
+        reason: InventoryAdjustmentReason.OPENING_STOCK,
+        idempotencyKey: randomUUID(),
+        ...(options.unitCostCents === undefined ? {} : { unitCostCents: options.unitCostCents })
+      })
     )
     return { storeId, productId: product.id }
   }
@@ -456,13 +463,15 @@ describe('Transfers between warehouses', () => {
     it('needs real available stock: reserved units cannot leave, and then nothing at all is dispatched', async () => {
       const ok = await stocked({ quantity: 10 })
       const reserved = await stocked({ quantity: 10 })
-      await inventory.reserve({
-        storeId: reserved.storeId,
-        productId: reserved.productId,
-        warehouseId: ctx.warehouseA.id,
-        quantity: 8,
-        idempotencyKey: randomUUID()
-      })
+      await inStoreOf(reserved.storeId, () =>
+        inventory.reserve({
+          storeId: reserved.storeId,
+          productId: reserved.productId,
+          warehouseId: ctx.warehouseA.id,
+          quantity: 8,
+          idempotencyKey: randomUUID()
+        })
+      )
       const made = await draft([
         { productId: ok.productId, quantity: 5 },
         { productId: reserved.productId, quantity: 5 }
@@ -557,7 +566,9 @@ describe('Transfers between warehouses', () => {
       })
       expect(level.valueCents).toBe(5000n)
       for (const warehouseId of [ctx.warehouseA.id, shared.id]) {
-        const check = await inventory.checkLevel({ ...item, warehouseId })
+        const check = await inStoreOf(item.storeId, () =>
+          inventory.checkLevel({ ...item, warehouseId })
+        )
         expect(check.matches).toBe(true)
       }
       const entries = await waitForAuditEntries(
@@ -807,7 +818,10 @@ describe('Transfers between warehouses', () => {
       expect(await onHand(item, ctx.warehouseA.id)).toBe(6)
       expect(await onHand(item, shared.id)).toBe(4)
       for (const warehouseId of [ctx.warehouseA.id, shared.id]) {
-        expect((await inventory.checkLevel({ ...item, warehouseId })).matches).toBe(true)
+        expect(
+          (await inStoreOf(item.storeId, () => inventory.checkLevel({ ...item, warehouseId })))
+            .matches
+        ).toBe(true)
       }
     })
 
