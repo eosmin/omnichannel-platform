@@ -101,16 +101,16 @@ CREATE FUNCTION rls_list_orphan_avatars(
 
 -- The one write: one avatar row, by id, only if it is still an avatar with no store older than the cutoff. A person who attached a
 -- refused picture while it was pending has the pointer cleared (the picture is no picture); the row is deleted only if nobody points at
--- it. A row that another run holds is skipped (SKIP LOCKED). Returns the key of the object to delete, or NULL when nothing was removed.
-CREATE FUNCTION rls_clear_orphan_avatar(p_media_id text, p_cutoff timestamp, p_refused_statuses text[]) RETURNS text
+-- it. The refused states are fixed inside. A row that another run holds is skipped (SKIP LOCKED). Returns the key of the object to delete, or NULL when nothing was removed.
+CREATE FUNCTION rls_clear_orphan_avatar(p_media_id text, p_cutoff timestamp) RETURNS text
   LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $$
   DECLARE
     v_status text;
     v_key text;
   BEGIN
-    IF p_media_id IS NULL OR p_cutoff IS NULL OR p_refused_statuses IS NULL THEN
-      RAISE EXCEPTION 'the avatar, the cutoff and the refused states are required' USING ERRCODE = '22023';
+    IF p_media_id IS NULL OR p_cutoff IS NULL THEN
+      RAISE EXCEPTION 'the avatar and the cutoff are required' USING ERRCODE = '22023';
     END IF;
     -- A write that removes a person's picture is never for a row younger than an hour: a cutoff in the future would reach every avatar
     IF p_cutoff > (pg_catalog.now() AT TIME ZONE 'UTC') - interval '1 hour' THEN
@@ -122,7 +122,9 @@ CREATE FUNCTION rls_clear_orphan_avatar(p_media_id text, p_cutoff timestamp, p_r
     IF NOT FOUND THEN
       RETURN NULL;
     END IF;
-    IF v_status = ANY (p_refused_statuses) THEN
+    -- The refused states are the function's own (MediaStatus.INFECTED and UNSCANNABLE; a spec compares them with the enum): a caller
+    -- cannot widen them to detach the picture of a person whose scan passed
+    IF v_status IN ('infected', 'unscannable') THEN
       UPDATE public.users SET avatar_media_id = NULL WHERE avatar_media_id = p_media_id;
     END IF;
     IF EXISTS (SELECT 1 FROM public.users u WHERE u.avatar_media_id = p_media_id) THEN
@@ -151,12 +153,12 @@ REVOKE ALL ON FUNCTION public.rls_audit_count_between(timestamp, timestamp) FROM
 REVOKE ALL ON FUNCTION public.rls_audit_logs_for_cold_export(timestamp, timestamp, timestamp, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.rls_list_avatar_media(text[], timestamp, timestamp, text[], text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.rls_list_orphan_avatars(timestamp, text[], text[], text, integer) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.rls_clear_orphan_avatar(text, timestamp, text[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.rls_clear_orphan_avatar(text, timestamp) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.rls_avatar_media_keys(text[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.rls_audit_oldest_before(timestamp) TO platform_worker;
 GRANT EXECUTE ON FUNCTION public.rls_audit_count_between(timestamp, timestamp) TO platform_worker;
 GRANT EXECUTE ON FUNCTION public.rls_audit_logs_for_cold_export(timestamp, timestamp, timestamp, text, integer) TO platform_worker;
 GRANT EXECUTE ON FUNCTION public.rls_list_avatar_media(text[], timestamp, timestamp, text[], text, integer) TO platform_worker;
 GRANT EXECUTE ON FUNCTION public.rls_list_orphan_avatars(timestamp, text[], text[], text, integer) TO platform_worker;
-GRANT EXECUTE ON FUNCTION public.rls_clear_orphan_avatar(text, timestamp, text[]) TO platform_worker;
+GRANT EXECUTE ON FUNCTION public.rls_clear_orphan_avatar(text, timestamp) TO platform_worker;
 GRANT EXECUTE ON FUNCTION public.rls_avatar_media_keys(text[]) TO platform_worker;

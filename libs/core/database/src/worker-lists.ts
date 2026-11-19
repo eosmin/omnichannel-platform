@@ -244,13 +244,9 @@ export class WorkerLists {
   }
 
   // The key of the object to delete, or null when the row stayed (it is held, attached, or no longer an avatar)
-  async clearOrphanAvatar(
-    mediaId: string,
-    cutoff: Date,
-    refusedStatuses: readonly string[]
-  ): Promise<string | null> {
+  async clearOrphanAvatar(mediaId: string, cutoff: Date): Promise<string | null> {
     const rows = await this.prisma.client.$queryRaw<{ key: string | null }[]>`
-      SELECT rls_clear_orphan_avatar(${mediaId}::text, ${cutoff}::timestamp, ${[...refusedStatuses]}::text[]) AS key`
+      SELECT rls_clear_orphan_avatar(${mediaId}::text, ${cutoff}::timestamp) AS key`
     return rows[0]?.key ?? null
   }
 

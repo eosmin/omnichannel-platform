@@ -1,6 +1,7 @@
 import pg from 'pg'
 
 import { connectionUrls } from '@platform/core/database-testing'
+import { MediaStatus } from '@platform/core/domain'
 
 // Row-Level Security, phase 5, PR B2 (migration 20270122300000_rls_worker_cleanup_definers): the functions that the cleaners of the worker
 // call for the audit log and the avatar. What is proved with one client and ROLLBACK: only the worker may call them (the api gets 42501),
@@ -13,7 +14,7 @@ const FUNCTIONS = [
   'rls_audit_logs_for_cold_export(timestamp, timestamp, timestamp, text, integer)',
   'rls_list_avatar_media(text[], timestamp, timestamp, text[], text, integer)',
   'rls_list_orphan_avatars(timestamp, text[], text[], text, integer)',
-  'rls_clear_orphan_avatar(text, timestamp, text[])',
+  'rls_clear_orphan_avatar(text, timestamp)',
   'rls_avatar_media_keys(text[])'
 ] as const
 
@@ -109,11 +110,21 @@ describe('row-level security, phase 5: the cleanup definers of the worker', () =
     ).rejects.toMatchObject({ code: '22023' })
   })
 
+  it('fixes the refused states of the write to the enum of the code', async () => {
+    const { rows } = await raw.query<{ src: string }>(
+      "SELECT pg_get_functiondef('public.rls_clear_orphan_avatar(text, timestamp)'::regprocedure) AS src"
+    )
+    const literals = [...(rows[0]?.src.matchAll(/v_status IN \(([^)]*)\)/g) ?? [])].flatMap(match =>
+      [...(match[1] ?? '').matchAll(/'([^']+)'/g)].map(item => item[1])
+    )
+    expect([...literals].sort()).toEqual([MediaStatus.INFECTED, MediaStatus.UNSCANNABLE].sort())
+  })
+
   it('removes nothing for an id that is no avatar, and lists avatars as ids and keys only', async () => {
     await asRole('platform_worker', async query => {
       const cleared = await query<{ key: string | null }>(
-        'SELECT rls_clear_orphan_avatar($1::text, $2::timestamp, $3::text[]) AS key',
-        ['00000000-0000-0000-0000-000000000000', '2000-01-01', ['infected']]
+        'SELECT rls_clear_orphan_avatar($1::text, $2::timestamp) AS key',
+        ['00000000-0000-0000-0000-000000000000', '2000-01-01']
       )
       expect(cleared.rows[0]?.key).toBeNull()
       const listed = await query(
