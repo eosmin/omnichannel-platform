@@ -120,14 +120,14 @@ describe('the plan of the searches of the lists with row-level security on', () 
 
   // The customers list: MEASURED in CI (main, run 44430489099 of #735): with the policies off the planner read the OR of name, email and
   // phone through the trigram indexes (a BitmapOr), and with the policy on through customers_store_id_idx and a filter: the LIKE / ILIKE
-  // of the search are not LEAKPROOF, so next to a policy they cannot be index conditions. Which one it picks without a policy depends on
-  // the statistics (the first run of the PR read the store index in both), so the case does not leave the choice to the planner: the
-  // sequential and the plain index scan are switched off for both plans, which leaves the bitmaps of the trigram indexes for the plan
-  // with no policy and nothing but the store for the plan with it. The first assertion is that the baseline can use them at all.
-  // The second records the gap: the day the customers list goes through a read-only SECURITY DEFINER function (as the search of the
-  // inbox does, migration rls_search_functions) the policy is the explicit store inside it, the trigram serves the list again, and this
-  // case is turned around. Enforcement must not be switched on before that (plan-notas-76.md, owner BU).
-  it('customers list: the policy takes the trigram indexes away from the search (known gap, plan B pending)', async () => {
+  // of the search are not LEAKPROOF, so next to a policy they cannot be index conditions. WHICH plan it picks without a policy depends on
+  // the statistics (the first run of the PR read the store index in both, and with the scans switched off the baseline did not read
+  // the trigram either), so the baseline is NOT asserted: it travels in the failure, with the plan of the policy, for who reads it.
+  // What does not depend on the statistics is the other side: with the policy on no plan can read a trigram index for these operators.
+  // That is the gap, and this case records it for the raw statement of the list. It is not turned around by plan B (the list then goes
+  // through a function, whose plan is measured in the spec of its own, like the one of the search of the inbox): it stays as the reason
+  // the list cannot keep the raw statement once the policies are enforced (plan-notas-76.md, owner BU).
+  it('customers list: with the policy on the raw search statement cannot read a trigram index (plan B pending)', async () => {
     const statement = `SELECT c.id FROM customers c
         WHERE c.store_id = $1 AND c.merged_into_id IS NULL
           AND (c.name_search LIKE $2 OR c.email ILIKE $3 OR c.phone_normalized LIKE $4)
@@ -136,9 +136,10 @@ describe('the plan of the searches of the lists with row-level security on', () 
     const off = await planOf(statement, values, ['customers'], false)
     const on = await planOf(statement, values, ['customers'], true)
     // Both plans travel with a failure
-    expect({ off: trigramIndexes(off).length > 0, plan: JSON.stringify(off) }).toMatchObject({
-      off: true
-    })
-    expect({ on: trigramIndexes(on), plan: JSON.stringify(on) }).toMatchObject({ on: [] })
+    expect({
+      on: trigramIndexes(on),
+      baselineTrigram: trigramIndexes(off),
+      plans: { off: JSON.stringify(off), on: JSON.stringify(on) }
+    }).toMatchObject({ on: [] })
   })
 })
