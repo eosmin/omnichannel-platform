@@ -47,7 +47,7 @@
       "cache": false,
       "dependsOn": ["^prisma-generate"],
       "options": {
-        "command": "if [ -n \"$SECURITY_SHARD\" ]; then echo \"security shard $SECURITY_SHARD only\"; jest --config jest.config.cts --runInBand --shard=\"$SECURITY_SHARD\"; else status=0; for shard in 1/6 2/6 3/6 4/6 5/6 6/6; do echo \"security shard $shard\"; jest --config jest.config.cts --runInBand --shard=\"$shard\" || status=1; done; echo \"latency specs\"; jest --config jest.latency.config.cts --runInBand || status=1; exit $status; fi",
+        "command": "if [ -n \"$SECURITY_SHARD\" ]; then echo \"security shard $SECURITY_SHARD only\"; jest --config jest.config.cts --runInBand --logHeapUsage --shard=\"$SECURITY_SHARD\"; else status=0; for shard in 1/8 2/8 3/8 4/8 5/8 6/8 7/8 8/8; do echo \"security shard $shard\"; jest --config jest.config.cts --runInBand --logHeapUsage --shard=\"$shard\" || status=1; done; echo \"latency specs\"; jest --config jest.latency.config.cts --runInBand || status=1; exit $status; fi",
         "cwd": "{projectRoot}",
         "env": {
           "NODE_OPTIONS": "--experimental-vm-modules --max-old-space-size=4096 --no-warnings=ExperimentalWarning"

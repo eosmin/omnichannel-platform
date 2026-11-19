@@ -164,6 +164,9 @@ export async function settleDeferred(constraint: string, tx?: PrismaTransaction)
   await target.$executeRaw(Prisma.sql`SET CONSTRAINTS ${name} DEFERRED`)
 }
 
+// SEQUENTIAL only: never two at once on one transaction (`Promise.all` over inSavepoint). The attempts would interleave their SAVEPOINT,
+// ROLLBACK TO and RELEASE statements on the one connection, and a rollback would undo the writes of the sibling. No caller does it
+// today (every one awaits its attempt before the next); a nested call inside `attempt` is fine.
 // Runs `attempt` (a write that may break a unique rule the caller means to catch) inside a SAVEPOINT of the transaction that is
 // open: tenantScope's, or `tx` for code that opened its own. In Postgres a failed statement aborts the whole transaction (25P02)
 // even when the code caught the error, and under RLS_CONTEXT a request is one transaction: the next query of the same request
@@ -287,6 +290,11 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         throw new Error(
           'this read runs in the context of the store of the request, and of that store alone'
         )
+      }
+      // The person the caller names is the one the functions of the database read from the context: another person (or none) would
+      // answer with someone else's rows, so it is refused, as inUserContext does
+      if (userId !== undefined && current.userId !== userId) {
+        throw new Error('this read runs in the context of another person')
       }
       return work()
     }

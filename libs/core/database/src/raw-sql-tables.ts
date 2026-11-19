@@ -69,12 +69,19 @@ export function policyTablesOfRawSql(sql: string, policyTables: readonly string[
 // The text of the arguments that Prisma hands to the guard of a raw statement: the tagged template of $queryRaw / $executeRaw is
 // `{ strings, values }` (a value can itself be a Prisma.sql fragment, with its own strings), and the Unsafe forms take the text first
 export function sqlTextOfRawArgs(args: unknown): string {
+  // Only the top level may be the list of an Unsafe call (`sql, ...values`): its first element is the statement
   if (Array.isArray(args)) return typeof args[0] === 'string' ? args[0] : ''
-  if (typeof args !== 'object' || args === null) return ''
+  return sqlTextOfTemplate(args)
+}
+
+// A template `{ strings, values }`; among its values only another template is SQL (a Prisma.sql fragment). An array there is a bound
+// parameter (`ANY(${ids})`), never a statement: its text must not count as a table that the statement reads.
+function sqlTextOfTemplate(args: unknown): string {
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) return ''
   const { strings, values } = args as { strings?: unknown; values?: unknown }
   const text = Array.isArray(strings)
     ? strings.filter(part => typeof part === 'string').join(' ')
     : ''
-  const nested = Array.isArray(values) ? values.map(value => sqlTextOfRawArgs(value)) : []
+  const nested = Array.isArray(values) ? values.map(value => sqlTextOfTemplate(value)) : []
   return [text, ...nested].join(' ')
 }

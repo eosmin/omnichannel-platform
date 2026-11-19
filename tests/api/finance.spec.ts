@@ -8,6 +8,7 @@ import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AccountRole,
+  AccountType,
   FinanceConflicts,
   FinanceAutoMemo,
   FinanceCountryCodes,
@@ -16,7 +17,7 @@ import {
   PeriodStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { financeTemplateFor } from '@platform/core/finance'
+import { financeTemplateFor, normalSideOf } from '@platform/core/finance'
 import { verifyChain } from '@platform/core/finance-hash'
 import { LedgerService } from '@platform/core/finance-ledger'
 
@@ -181,6 +182,44 @@ describe('The books of an organization', () => {
 
       expect(response.status).toBe(CONFLICT)
       expect(errorOf(response).code).toBe(ErrorCodes.FINANCE_SETUP_REQUIRED)
+    })
+
+    it('is all or nothing: a chart row that is already there is a conflict and leaves no settings', async () => {
+      const code = financeTemplateFor('SV')?.accounts[0]?.code ?? ''
+      expect(code).not.toBe('')
+      const seeded = await owner.ledgerAccount.create({
+        data: {
+          organizationId: ctx.orgB.id,
+          code,
+          name: 'already here',
+          type: AccountType.ASSET,
+          normalSide: normalSideOf(AccountType.ASSET)
+        },
+        select: { id: true }
+      })
+      try {
+        const response = await asAdminB()
+          .post(ApiRoutes.finance.setup)
+          .send({ countryCode: 'SV', accountingStartDate: START })
+
+        expect(response.status).toBe(CONFLICT)
+        expect(errorOf(response).metadata).toMatchObject({
+          conflict: FinanceConflicts.ALREADY_SET_UP
+        })
+        // The savepoint took the whole setup back: the row of the test is the only one, and no settings were left
+        expect(await owner.financeSettings.count({ where: { organizationId: ctx.orgB.id } })).toBe(
+          0
+        )
+        expect(await owner.ledgerAccount.count({ where: { organizationId: ctx.orgB.id } })).toBe(1)
+        // The same again: the same answer, nothing added
+        const again = await asAdminB()
+          .post(ApiRoutes.finance.setup)
+          .send({ countryCode: 'SV', accountingStartDate: START })
+        expect(again.status).toBe(CONFLICT)
+        expect(await owner.ledgerAccount.count({ where: { organizationId: ctx.orgB.id } })).toBe(1)
+      } finally {
+        await owner.ledgerAccount.delete({ where: { id: seeded.id } })
+      }
     })
 
     it('copies the template: the chart, a mapped account for every role, the payment accounts and two periods', async () => {
