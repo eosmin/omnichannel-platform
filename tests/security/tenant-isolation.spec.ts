@@ -3333,7 +3333,13 @@ describe('Tenant isolation', () => {
       expect(byAccountOfA.status).toBe(404)
       expect(byPartyOfA.status).toBe(200)
       expect((byPartyOfA.body as { lines: unknown[] }).lines).toEqual([])
-      expect(JSON.stringify([byAccountOfA.body, byPartyOfA.body])).not.toContain('5151')
+      // The error body carries a random correlation id, and "5151" appears in one of them by chance: that key is
+      // left out of what is searched, and the amount is looked for in everything else
+      const withoutCorrelation = (key: string, value: unknown) =>
+        /correlation|request.?id/i.test(key) ? undefined : value
+      expect(
+        JSON.stringify([byAccountOfA.body, byPartyOfA.body], withoutCorrelation)
+      ).not.toContain('5151')
     })
 
     it('show every line of an entry whatever store the line is tagged with: the store of a line is a dimension and not a scope', async () => {
