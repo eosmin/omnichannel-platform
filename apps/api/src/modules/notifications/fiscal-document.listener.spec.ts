@@ -58,7 +58,10 @@ function build(
     notifications as never,
     {} as never,
     { inc: () => undefined } as never,
-    { inStore: (_id: string, work: () => Promise<unknown>) => work() } as never
+    {
+      inStore: (_id: string, work: () => Promise<unknown>) => work(),
+      inOrganization: (_id: string, work: () => Promise<unknown>) => work()
+    } as never
   )
   return { listener, asked, sent }
 }

@@ -47,7 +47,10 @@ function build(members: { userId: string; storeId: string }[], options: { fails?
     notifications as never,
     {} as never,
     { inc: (labels: unknown) => counted.push(labels) } as never,
-    { inStore: (_id: string, work: () => Promise<unknown>) => work() } as never
+    {
+      inStore: (_id: string, work: () => Promise<unknown>) => work(),
+      inOrganization: (_id: string, work: () => Promise<unknown>) => work()
+    } as never
   )
   return { listener, asked, sent, counted }
 }
