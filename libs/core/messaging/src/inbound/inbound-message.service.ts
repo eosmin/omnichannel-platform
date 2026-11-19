@@ -4,6 +4,8 @@ import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import {
+  inSavepoint,
+  JobContext,
   lockStoreForWrite,
   lockStoreScope,
   PrismaService,
@@ -71,7 +73,8 @@ export class InboundMessageService {
     private readonly events: DomainEvents,
     @InjectQueue(QueueNames.HEAVY_PROCESSING)
     private readonly heavyQueue: Queue<FetchInboundMediaJob | FetchOriginMediaJob>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobs: JobContext
   ) {
     this.logger.setContext(InboundMessageService.name)
   }
@@ -92,7 +95,7 @@ export class InboundMessageService {
     }
     const { storeId } = connection
 
-    // Own transactions: the handle may be new, and two events for it at once end in one customer
+    // Its own savepoint inside the store context: the handle may be new, and two events for it at once end in one customer
     const { identityId } = await this.identities.findOrCreateByIdentity({
       storeId,
       channelType: pluginId,
@@ -101,32 +104,54 @@ export class InboundMessageService {
     })
 
     const receivedAt = receivedTime(event.message.timestamp, now)
-    const stored = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      // The events of one handle take turns, so that two first messages do not open two conversations
-      // and a duplicate is seen as one. Not a row lock: a merge holds the customer while it moves the
-      // identities, and waiting for each other in opposite orders would be a deadlock.
-      await lockStoreScope(tx, storeId, `inbound-${identityId}`)
-      return this.store(
-        tx,
-        { storeId, connectionRowId: connection.id, identityId },
-        event,
-        receivedAt
-      )
-    })
+    // Each piece of database work below runs in the context of the store of the connection (row security); the queue and the
+    // provider are never inside one
+    const inStore = <T>(work: () => Promise<T>): Promise<T> =>
+      this.jobs.forStoreOrJoin(storeId, work)
+    const stored = await inStore(() =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        // The events of one handle take turns, so that two first messages do not open two conversations
+        // and a duplicate is seen as one. Not a row lock: a merge holds the customer while it moves the
+        // identities, and waiting for each other in opposite orders would be a deadlock.
+        await lockStoreScope(tx, storeId, `inbound-${identityId}`)
+        return this.store(
+          tx,
+          { storeId, connectionRowId: connection.id, identityId },
+          event,
+          receivedAt
+        )
+      })
+    )
 
     if (stored.replyUnresolved) {
-      await this.logUnresolvedQuote(pluginId, storeId, stored.conversationId, event)
+      await this.bestEffort('the unresolved quote could not be logged', () =>
+        inStore(() => this.logUnresolvedQuote(pluginId, storeId, stored.conversationId, event))
+      )
     }
     await this.queueMediaFetches(pluginId, storeId, event, stored.messageId)
-    if (event.message.origin !== undefined) await this.queueOriginFetches(storeId, stored.messageId)
+    if (event.message.origin !== undefined) {
+      await this.queueOriginFetches(storeId, stored.messageId)
+    }
     if (stored.duplicate) return InboundOutcomes.DUPLICATE
     if (stored.needsRouting) {
       await this.route(storeId, stored.conversationId, event, receivedAt)
     }
     // After the routing, so that the team already has the conversation; once for each closed stretch
-    await this.awayReply.replyIfClosed(storeId, stored.conversationId, receivedAt)
+    await this.bestEffort('the away reply could not be sent', () =>
+      inStore(() => this.awayReply.replyIfClosed(storeId, stored.conversationId, receivedAt))
+    )
     return InboundOutcomes.STORED
+  }
+
+  // A step that must never fail a message that is stored already (a retry would see a duplicate and skip what follows): failing to
+  // open its store context (pool, connection) is told, not thrown
+  private async bestEffort(message: string, work: () => Promise<unknown>): Promise<void> {
+    try {
+      await work()
+    } catch (error) {
+      this.logger.error({ errorName: error instanceof Error ? error.name : 'unknown' }, message)
+    }
   }
 
   // Permanent, safe diagnostic: a quote that points at a message this thread does not have is stored as a plain
@@ -144,7 +169,11 @@ export class InboundMessageService {
     const shape = await missingTargetShapeOrNull({
       targetId,
       now: new Date(),
-      count: countersOf(this.prisma.client, { storeId, conversationId }, AuthorType.CUSTOMER)
+      // A savepoint: a failed count must not leave the transaction of the store context aborted
+      count: filter =>
+        inSavepoint(() =>
+          countersOf(this.prisma.client, { storeId, conversationId }, AuthorType.CUSTOMER)(filter)
+        )
     }).catch(() => null)
     this.logger.info(
       { pluginId, ...(shape ? { target: shape } : {}) },
@@ -179,23 +208,30 @@ export class InboundMessageService {
       profile: event.channelProfile
     })
     const receivedAt = receivedTime(event.message.timestamp, now)
-    const stored = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      await lockStoreScope(tx, storeId, `inbound-${identityId}`)
-      return this.storeEcho(
-        tx,
-        { storeId, connectionRowId: connection.id, identityId },
-        event,
-        receivedAt,
-        isLastAttempt
-      )
-    })
+    const inStore = <T>(work: () => Promise<T>): Promise<T> =>
+      this.jobs.forStoreOrJoin(storeId, work)
+    const stored = await inStore(() =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        await lockStoreScope(tx, storeId, `inbound-${identityId}`)
+        return this.storeEcho(
+          tx,
+          { storeId, connectionRowId: connection.id, identityId },
+          event,
+          receivedAt,
+          isLastAttempt
+        )
+      })
+    )
     // A message of the platform that comes back has its files already; the owner's is fetched, again
     // after a failure here (the job id makes it one)
     // The quote of an owner's message that finds nothing is told as the customer's is: the channel and the
     // shape of the id, never the id (read after the transaction)
     if (stored.replyUnresolved && stored.conversationId !== null) {
-      await this.logUnresolvedQuote(pluginId, storeId, stored.conversationId, event)
+      const conversationId = stored.conversationId
+      await this.bestEffort('the unresolved quote could not be logged', () =>
+        inStore(() => this.logUnresolvedQuote(pluginId, storeId, conversationId, event))
+      )
     }
     if (stored.fetchMedia) await this.queueMediaFetches(pluginId, storeId, event, stored.messageId)
     return stored.duplicate ? InboundOutcomes.DUPLICATE : InboundOutcomes.STORED
@@ -447,10 +483,13 @@ export class InboundMessageService {
   // makes no row). The job reads the links from the row; its id is the origin and the slot, so a
   // retry of the event queues nothing twice.
   private async queueOriginFetches(storeId: string, messageId: string): Promise<void> {
-    const origin = await this.prisma.client.conversationOrigin.findFirst({
-      where: { storeId, messageId },
-      select: { id: true, mediaType: true, mediaUrl: true, thumbnailUrl: true }
-    })
+    // The read is the database work (a store context); the queue is called after it, never inside it
+    const origin = await this.jobs.forStoreOrJoin(storeId, () =>
+      this.prisma.client.conversationOrigin.findFirst({
+        where: { storeId, messageId },
+        select: { id: true, mediaType: true, mediaUrl: true, thumbnailUrl: true }
+      })
+    )
     if (origin === null) return
     const slots = [
       ...(origin.thumbnailUrl === null ? [] : [OriginMediaSlots.THUMBNAIL]),
@@ -677,14 +716,18 @@ export class InboundMessageService {
     receivedAt: Date
   ): Promise<void> {
     try {
-      await this.routing.apply(storeId, conversationId, {
-        text: event.message.type === MessageType.TEXT ? event.message.content : null,
-        receivedAt
-      })
+      await this.jobs.forStoreOrJoin(storeId, () =>
+        this.routing.apply(storeId, conversationId, {
+          text: event.message.type === MessageType.TEXT ? event.message.content : null,
+          receivedAt
+        })
+      )
     } catch (error) {
       this.logger.error({ err: error, storeId, conversationId }, 'routing failed, left unassigned')
-      // Left in the queue all the same: the team has to hear of it
-      await this.routing.announceQueue(storeId, conversationId)
+      // Left in the queue all the same: the team has to hear of it. Its own context: the failed one is rolled back
+      await this.jobs.forStoreOrJoin(storeId, () =>
+        this.routing.announceQueue(storeId, conversationId)
+      )
     }
   }
 }

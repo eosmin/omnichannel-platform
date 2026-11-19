@@ -71,7 +71,7 @@ describe('Conversation attention', () => {
     wake = new SnoozeWakeScheduler(
       locks,
       createGuardedWorkerPrisma(),
-      new ConversationsService(workerPrisma, events),
+      new ConversationsService(workerPrisma, events, new JobContext(workerPrisma)),
       await app.resolve(PinoLogger),
       new JobContext(createGuardedWorkerPrisma())
     )
