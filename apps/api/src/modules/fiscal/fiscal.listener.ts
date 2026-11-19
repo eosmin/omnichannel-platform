@@ -49,6 +49,9 @@ export class FiscalListener {
     }
   }
 
+  // Read with no tenant context on purpose: `stores` has no row policy (`neverPolicy` in scripts/rls-exceptions.ts). The documents are
+  // made inside `inOrganizationOfStore`; the queue is Redis, outside any transaction. tests/api/fiscal-credit-notes.spec.ts and
+  // fiscal-documents.spec.ts drive both handlers under RLS.
   private async organizationOf(storeId: string): Promise<string | null> {
     const store = await this.prisma.client.store.findUnique({
       where: { id: storeId },
