@@ -16,7 +16,7 @@ const ROUNDS = 12
 
 // RLS phase 6: with the switch ON a request is ONE transaction that the interceptor commits as soon as the handler answers. The audit
 // entry of a request is written by `AuditService.log()` without being awaited, so it used to reach the connection after the commit
-// ("Transaction already closed") and the entry was lost. The commit now waits for the entries the request wrote. This reads the table
+// ("Transaction already closed") and the entry was lost. The entries of a request are now queued and written just before the commit, on a savepoint. This reads the table
 // right after each answer, with NO waiting loop: an entry that is only there "soon" is the bug.
 describe('RLS phase 6: the audit entry of a request survives the commit of the request', () => {
   const prefix = newRunPrefix()
