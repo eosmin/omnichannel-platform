@@ -78,7 +78,16 @@ export class AuditService implements OnModuleDestroy {
         }
       })
       if (queued) return
+      // The request transaction is past its last drain (or already finished): a late entry cannot join it. Written on a transaction
+      // of its own, but only once the request has committed: before that it could not see rows the request created (a user the entry
+      // points to) and it could record an action whose commit then fails. A rolled back request drops it, like the queued entries.
+      this.prisma.afterCommit(this.prisma.client, () => this.writeDetached(entry))
+      return
     }
+    this.writeDetached(entry)
+  }
+
+  private writeDetached(entry: AuditEntry): void {
     if (this.pending.size >= MAX_PENDING) {
       this.fail(AUDIT_FAILURE_REASONS.QUEUE_FULL, entry.action)
       return
