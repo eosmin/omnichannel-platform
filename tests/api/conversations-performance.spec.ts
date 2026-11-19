@@ -58,6 +58,13 @@ describe('The list of conversations at the size of a real inbox', () => {
   let agent: ReturnType<typeof api>
   let adminId: string
 
+  // The tables this spec fills and empties: after either, the autovacuum has work to do on them unless it is done here, in order
+  async function vacuumSeeded(): Promise<void> {
+    for (const table of ['customers', 'customer_identities', 'conversations', 'messages']) {
+      await owner.$executeRawUnsafe(`VACUUM (ANALYZE) ${table}`)
+    }
+  }
+
   beforeAll(async () => {
     owner = ownerClient()
     app = await createTestApp()
@@ -143,13 +150,18 @@ describe('The list of conversations at the size of a real inbox', () => {
     for (let from = 0; from < messages.length; from += 10_000) {
       await owner.message.createMany({ data: messages.slice(from, from + 10_000) })
     }
-    // A real database has statistics; a table that was just filled has none until this runs
-    await owner.$executeRawUnsafe('ANALYZE conversations')
-    await owner.$executeRawUnsafe('ANALYZE messages')
+    // A real database has statistics; a table that was just filled has none until this runs. VACUUM ANALYZE (and not ANALYZE alone)
+    // leaves no work to the autovacuum, which would otherwise wake on these tables in the middle of the measurement, or, worse, in the
+    // next spec of this process (rls-search-plan takes ALTER TABLE locks on customers and deadlocked with the autovacuum of customers
+    // in two runs of main). customers and customer_identities were never analyzed here.
+    await vacuumSeeded()
   }, 120_000)
 
   afterAll(async () => {
     await cleanUp(owner, prefix)
+    // cleanUp just deleted the thousands of rows of the seed: the dead tuples are what wakes the autovacuum right when the next spec
+    // starts, so they are vacuumed here, at once
+    await vacuumSeeded()
     await app.close()
     await owner.$disconnect()
   }, 120_000)
