@@ -725,7 +725,8 @@ describe('row-level security, phase 1', () => {
       for (const row of result.rows) {
         expect(row.definer).toBe(true)
         expect(row.volatility).toBe('s')
-        expect(row.config).toEqual(['search_path=public, pg_temp'])
+        // The search path of 20270122200000_rls_resolvers_live_rows: the catalog first, pg_temp last
+        expect(row.config).toEqual(['search_path=pg_catalog, public, pg_temp'])
         expect(row.owned_by_tables_owner).toBe(true)
         expect(row.public_exec).toBe(false)
         expect(row.app_exec).toBe(true)

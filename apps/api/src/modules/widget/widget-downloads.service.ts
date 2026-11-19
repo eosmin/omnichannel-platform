@@ -8,6 +8,7 @@ import { ImageVariants } from '@platform/core/storage'
 import { MediaService } from '../media/media.service'
 
 import type { WidgetSite } from './widget-sites.service'
+import { WidgetTenant } from './widget-tenant'
 
 // What the visitor is given to open a file: the download of the original, and the picture shown inline
 // for an image (null for any other file)
@@ -26,10 +27,20 @@ export interface WidgetFileLink {
 export class WidgetDownloads {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly media: MediaService
+    private readonly media: MediaService,
+    private readonly tenant: WidgetTenant
   ) {}
 
-  async linkFor(site: WidgetSite, visitorId: string, mediaId: string): Promise<WidgetFileLink> {
+  linkFor(site: WidgetSite, visitorId: string, mediaId: string): Promise<WidgetFileLink> {
+    // The signing is local (no call to the bucket), so the whole link is made inside the context of the site's store
+    return this.tenant.run(site, () => this.makeLink(site, visitorId, mediaId))
+  }
+
+  private async makeLink(
+    site: WidgetSite,
+    visitorId: string,
+    mediaId: string
+  ): Promise<WidgetFileLink> {
     // A file of another store, of another visitor, of a note, of a message that was deleted or never
     // reached the visitor, or one the scan has not cleared is the same answer as one that does not exist
     const owned = await this.prisma.client.media.findFirst({

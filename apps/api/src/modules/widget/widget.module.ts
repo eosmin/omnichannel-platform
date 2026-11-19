@@ -18,6 +18,7 @@ import { WidgetHistory } from './widget-history.service'
 import { WidgetSettingsController } from './widget-settings.controller'
 import { WidgetSettings } from './widget-settings.service'
 import { WidgetSites } from './widget-sites.service'
+import { WidgetTenant } from './widget-tenant'
 import { WidgetTokens } from './widget-tokens.service'
 import { WidgetUploads } from './widget-uploads.service'
 import { WidgetController } from './widget.controller'
@@ -38,6 +39,7 @@ import { WidgetGateway } from './widget.gateway'
   controllers: [WidgetController, WidgetSettingsController],
   providers: [
     WidgetSites,
+    WidgetTenant,
     WidgetSettings,
     WidgetTokens,
     WidgetHistory,
