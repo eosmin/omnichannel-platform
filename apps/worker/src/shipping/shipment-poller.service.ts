@@ -1,8 +1,9 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the carrier is called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import {
   CarrierCapability,
   CarrierConnectionStatus,
@@ -53,7 +54,8 @@ export class ShipmentPoller {
     private readonly registry: CarrierRegistry,
     private readonly cipher: CredentialCipher,
     private readonly applier: CarrierEventApplier,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(ShipmentPoller.name)
   }
@@ -72,17 +74,19 @@ export class ShipmentPoller {
       ignored: 0,
       failed: 0
     }
-    const connection = await this.prisma.client.carrierConnection.findFirst({
-      where: { id: connectionId, storeId },
-      select: {
-        id: true,
-        storeId: true,
-        carrierId: true,
-        status: true,
-        credentials: true,
-        contact: true
-      }
-    })
+    const connection = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.carrierConnection.findFirst({
+        where: { id: connectionId, storeId },
+        select: {
+          id: true,
+          storeId: true,
+          carrierId: true,
+          status: true,
+          credentials: true,
+          contact: true
+        }
+      })
+    )
     if (connection === null || connection.status !== String(CarrierConnectionStatus.ACTIVE)) {
       // A connection that was let go is not asked again: dropped and said once
       this.logger.info({ connectionId }, 'a poll for a connection that is not active was dropped')
@@ -100,25 +104,27 @@ export class ShipmentPoller {
     const oldBefore = new Date(now.getTime() - CarrierPolling.OLD_AFTER_DAYS * DAY_MS)
     let cursor: string | undefined
     for (;;) {
-      const shipments = await this.prisma.client.shipment.findMany({
-        where: {
-          storeId,
-          connectionId,
-          kind: ShipmentKind.OUTBOUND,
-          status: { in: [...POLLED_STATUSES] },
-          guideNumber: { not: null },
-          ...(options.includeOld ? {} : { createdAt: { gte: oldBefore } })
-        },
-        select: {
-          id: true,
-          guideNumber: true,
-          providerShipmentId: true,
-          order: { select: { orderNumber: true } }
-        },
-        orderBy: { id: 'asc' },
-        take: CarrierPolling.BATCH_SIZE,
-        ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
-      })
+      const shipments = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.shipment.findMany({
+          where: {
+            storeId,
+            connectionId,
+            kind: ShipmentKind.OUTBOUND,
+            status: { in: [...POLLED_STATUSES] },
+            guideNumber: { not: null },
+            ...(options.includeOld ? {} : { createdAt: { gte: oldBefore } })
+          },
+          select: {
+            id: true,
+            guideNumber: true,
+            providerShipmentId: true,
+            order: { select: { orderNumber: true } }
+          },
+          orderBy: { id: 'asc' },
+          take: CarrierPolling.BATCH_SIZE,
+          ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
+        })
+      )
       if (shipments.length === 0) break
       cursor = shipments.at(-1)?.id
       report.asked += shipments.length

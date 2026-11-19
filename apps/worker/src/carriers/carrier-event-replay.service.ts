@@ -1,7 +1,8 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the carrier is called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import {
   CarrierConnectionStatus,
   CarrierEventOutcomes,
@@ -43,7 +44,8 @@ export class CarrierEventReplay {
     private readonly resolver: CarrierEventResolver,
     private readonly applier: CarrierEventApplier,
     private readonly replayer: ShipmentReplayer,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     // Not @InjectPinoLogger(name): see ProcessorSupport
     this.logger.setContext(CarrierEventReplay.name)
@@ -61,10 +63,12 @@ export class CarrierEventReplay {
     }
     const connection = await this.resolver.liveConnection(storeId, connectionId)
     if (connection === null) {
-      const row = await this.prisma.client.carrierConnection.findFirst({
-        where: { id: connectionId, storeId },
-        select: { status: true }
-      })
+      const row = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.carrierConnection.findFirst({
+          where: { id: connectionId, storeId },
+          select: { status: true }
+        })
+      )
       // A connection in `error` may recover: the code is already marked resolved, so the job fails and is asked again instead of
       // finishing as if the lines had been replayed
       if (row !== null && row.status === String(CarrierConnectionStatus.ERROR)) {
@@ -83,29 +87,31 @@ export class CarrierEventReplay {
         occurredAt: Date
         source: string
         payload: unknown
-      }[] = await this.prisma.client.shipmentEvent.findMany({
-        where: {
-          storeId,
-          status: null,
-          shipment: { connectionId },
-          OR: keptCodeFilter(providerCode),
-          ...(after === null
-            ? {}
-            : {
-                AND: [
-                  {
-                    OR: [
-                      { occurredAt: { gt: after.occurredAt } },
-                      { occurredAt: after.occurredAt, id: { gt: after.id } }
-                    ]
-                  }
-                ]
-              })
-        },
-        select: { id: true, shipmentId: true, occurredAt: true, source: true, payload: true },
-        orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
-        take: CarrierReplayLimits.PAGE_SIZE
-      })
+      }[] = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.shipmentEvent.findMany({
+          where: {
+            storeId,
+            status: null,
+            shipment: { connectionId },
+            OR: keptCodeFilter(providerCode),
+            ...(after === null
+              ? {}
+              : {
+                  AND: [
+                    {
+                      OR: [
+                        { occurredAt: { gt: after.occurredAt } },
+                        { occurredAt: after.occurredAt, id: { gt: after.id } }
+                      ]
+                    }
+                  ]
+                })
+          },
+          select: { id: true, shipmentId: true, occurredAt: true, source: true, payload: true },
+          orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+          take: CarrierReplayLimits.PAGE_SIZE
+        })
+      )
       for (const line of page) {
         report.read += 1
         try {
@@ -172,7 +178,9 @@ export class CarrierEventReplay {
       report.unconfirmed += 1
       return
     }
-    const outcome = await this.replayer.replay(storeId, line.id, resolution.status, requestedBy)
+    const outcome = await this.jobContext.forStore(storeId, () =>
+      this.replayer.replay(storeId, line.id, resolution.status, requestedBy)
+    )
     if (outcome === CarrierEventOutcomes.APPLIED) report.applied += 1
     else if (outcome === CarrierEventOutcomes.STORED) report.stored += 1
     else report.left += 1

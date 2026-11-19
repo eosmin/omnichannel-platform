@@ -1,4 +1,5 @@
-import type { PrismaService } from '@platform/core/database'
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the file is written to the bucket outside of it
+import type { JobContext, PrismaService } from '@platform/core/database'
 import { ExportStatus } from '@platform/core/queues'
 
 // A file this far along is shown as 99 until it settles: 100 is the row turning `ready`
@@ -17,6 +18,7 @@ export class ExportProgress {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobContext: JobContext,
     private readonly row: { id: string; storeId: string },
     private readonly total: number,
     private readonly now: () => number = Date.now
@@ -50,12 +52,14 @@ export class ExportProgress {
     this.writing = true
     this.lastPercent = percent
     this.lastWriteAt = this.now()
-    void this.prisma.client.export
-      .updateMany({
-        // Not over a row that settled meanwhile
-        where: { id: this.row.id, storeId: this.row.storeId, status: ExportStatus.PENDING },
-        data: { progress: percent }
-      })
+    void this.jobContext
+      .forStore(this.row.storeId, () =>
+        this.prisma.client.export.updateMany({
+          // Not over a row that settled meanwhile
+          where: { id: this.row.id, storeId: this.row.storeId, status: ExportStatus.PENDING },
+          data: { progress: percent }
+        })
+      )
       .catch(() => undefined)
       .finally(() => {
         this.writing = false

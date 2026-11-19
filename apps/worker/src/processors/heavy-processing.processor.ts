@@ -43,7 +43,7 @@ import {
   FiscalDocumentsService
 } from '@platform/fiscal/runtime'
 
-import { CarrierEventReplay } from '../carriers/carrier-event-replay.service'
+import { CarrierEventReplay, type ReplayReport } from '../carriers/carrier-event-replay.service'
 import { FinanceChainChecker } from '../finance/finance-chain-checker.service'
 import { FinanceReconciler } from '../finance/finance-reconciler.service'
 import { FiscalReconciler } from '../finance/fiscal-reconciler.service'
@@ -355,9 +355,11 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     if (job.name === JobNames.POLL_SHIPMENT_STATUS) {
       const poll = pollJobSchema.safeParse(job.data)
       if (!poll.success) throw new UnrecoverableError('the poll job does not fit its schema')
-      await this.poller.poll(poll.data.storeId, poll.data.connectionId, {
-        includeOld: poll.data.includeOld
-      })
+      await this.skipIfGone(job, () =>
+        this.poller.poll(poll.data.storeId, poll.data.connectionId, {
+          includeOld: poll.data.includeOld
+        })
+      )
       return
     }
     if (job.name === JobNames.BULK_LABELS_MERGE) {
@@ -394,7 +396,13 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!reprocess.success) {
         throw new UnrecoverableError('the carrier replay job does not fit its schema')
       }
-      const report = await this.carrierReplay.reprocess(reprocess.data)
+      const replayed: { report?: ReplayReport } = {}
+      await this.skipIfGone(job, async () => {
+        replayed.report = await this.carrierReplay.reprocess(reprocess.data)
+      })
+      // A store that was deleted meanwhile: the job is done
+      const { report } = replayed
+      if (report === undefined) return
       // Lines that failed or could not be confirmed stay as they were, and the job is asked again: finishing it as a success would
       // leave them kept for good (and a re-sent event of theirs would be taken for a twin)
       if (report.failed + report.unconfirmed > 0) {
