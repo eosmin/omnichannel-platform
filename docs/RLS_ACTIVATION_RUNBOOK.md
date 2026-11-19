@@ -24,9 +24,10 @@ This is run by the OWNER, never by a session or by the CI. It turns on, in this 
   1. Deploy the api first (it already sends `storeId`) with `RLS_CONTEXT=false`.
   2. Stop the old workers and let `heavy-processing`, `exports` and the scheduled reports drain (or accept that the orphan cleaner
      requeues the pending files, which now carry their owner).
-  3. Give `platform_replica_ro` its login: `scripts/set-db-role-passwords.ts` with `DB_REPLICA_PASSWORD` set (the role is NOLOGIN until
-     then), and set `DATABASE_REPLICA_URL` to it if the api reads a replica.
-  4. Run `pnpm db:migrate` (it brings `NOBYPASSRLS` for the worker and `platform_replica_ro`).
+  3. Run `pnpm db:migrate`, with `DB_REPLICA_PASSWORD` set in its environment. The migration creates `platform_replica_ro` (NOLOGIN) and
+     brings `NOBYPASSRLS` for the worker; `db:migrate` then runs `scripts/set-db-role-passwords.ts`, which gives the role its login.
+  4. Only now set `DATABASE_REPLICA_URL` to `platform_replica_ro` if the api reads a replica (before the migration the role does not
+     exist, and an api whose url names a role that cannot log in does not start).
   5. Start the new workers with `WORKER_RLS_CONTEXT=false`, and restart the api.
 - Check: `/health` answers. `SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname IN ('platform_app','platform_worker','platform_replica_ro')`
   gives `false` for the three. The worker log has no start error (with the flag off it only warns).
