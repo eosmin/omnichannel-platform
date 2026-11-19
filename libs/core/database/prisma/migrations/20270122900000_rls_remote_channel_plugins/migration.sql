@@ -6,14 +6,17 @@
 -- qualified objects, reads only), a PAGE by plugin id like the other lists of the phase (a p_limit outside 1..1000 is an error, never a
 -- clamp; the filters are required, never defaulted).
 --
--- Unlike the lists of the worker, this one is granted to platform_app too, because the api process runs the same service. What it
--- returns is what the registry needs and nothing else: the id and the manifest of the plugin (public by design, TDD_10 §6.1) and the ids
--- of the stores that installed it. Never a secret: the command secret of an installation is read in the context of its store (readSecrets).
+-- Unlike the lists of the worker, this one is granted to platform_app too, because the api process runs the same service (its registry
+-- is filled for every store at start, and the message of Redis names no store). An EXCEPTION to the design (§10: lists to the worker
+-- alone), approved by the coordinator on the condition that it exposes the least: the id of the plugin and the ids of the stores that
+-- installed it, and NOT the manifest. The manifest of a PRIVATE plugin is the whole JSON that its organization registered (webhook
+-- endpoints, UI urls, the author's e-mail), which only that organization may read (policy organization_or_null): RemoteChannelSync reads
+-- it per plugin in the context of one of its stores. Never a secret: the command secret is read in the context of its store too.
 -- No policy is created or changed here, so rls_extend_policies_to_replica() has nothing to extend.
 
 CREATE FUNCTION rls_list_remote_channel_plugins(
   p_type text, p_status text, p_install_status text, p_after text, p_limit integer
-) RETURNS TABLE (id text, manifest jsonb, store_ids text[])
+) RETURNS TABLE (id text, store_ids text[])
   LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $$
   BEGIN
@@ -22,7 +25,7 @@ CREATE FUNCTION rls_list_remote_channel_plugins(
       RAISE EXCEPTION 'the filter of the remote channel plugins is required' USING ERRCODE = '22023';
     END IF;
     RETURN QUERY
-      SELECT p.id, p.manifest, array_agg(i.store_id ORDER BY i.store_id)
+      SELECT p.id, array_agg(i.store_id ORDER BY i.store_id)
       FROM public.plugins p
       JOIN public.plugin_installations i ON i.plugin_id = p.id
       WHERE p.type = p_type AND NOT p.is_official AND p.status = p_status AND i.status = p_install_status

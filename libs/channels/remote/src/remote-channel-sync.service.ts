@@ -5,6 +5,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { CredentialCipher } from '@platform/core/crypto'
 import {
   JobContext,
+  JobContextError,
   JobContextGoneError,
   PrismaService,
   WorkerLists
@@ -219,6 +220,27 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
     }
   }
 
+  // The manifest of a private plugin is the JSON its organization registered: it is read in the context of one of the stores that
+  // installed it (the policy of plugins lets that organization read it), never through the list. undefined: could not be read now.
+  private async manifestOf(pluginId: string, storeId: string | undefined): Promise<unknown> {
+    if (storeId === undefined) return undefined
+    try {
+      const row = await this.jobs.forStore(storeId, () =>
+        this.prisma.client.plugin.findUnique({
+          where: { id: pluginId },
+          select: { manifest: true }
+        })
+      )
+      return row?.manifest
+    } catch (error) {
+      if (error instanceof JobContextError) {
+        this.logger.warn({ pluginId }, 'the manifest of a remote channel plugin could not be read')
+        return undefined
+      }
+      throw error
+    }
+  }
+
   private async readAll(): Promise<void> {
     try {
       // Across stores, with no context: the definer of the database lists them (a plain query would answer none under row security)
@@ -232,14 +254,20 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
       const signatures = new Map<string, string>()
       for (const row of rows) {
         const storeIds = [...row.storeIds].sort()
-        const signature = JSON.stringify([row.manifest, storeIds])
+        const stored = await this.manifestOf(row.id, storeIds[0])
+        if (stored === undefined) {
+          // Not readable now (no store to read it in, a context that refuses): its previous adapter, if any, stays
+          untouched.add(row.id)
+          continue
+        }
+        const signature = JSON.stringify([stored, storeIds])
         // Unchanged since it was registered: its adapter stays, and nothing is built, validated or logged for it
         if (this.registered.get(row.id) === signature && this.registry.isRemote(row.id)) {
           untouched.add(row.id)
           signatures.set(row.id, signature)
           continue
         }
-        const manifest = pluginManifestSchema.safeParse(row.manifest)
+        const manifest = pluginManifestSchema.safeParse(stored)
         if (!manifest.success || manifest.data.channel === undefined) {
           // A stored manifest that no longer reads does not take down the adapter that works for the stores that installed it
           this.logger.error(

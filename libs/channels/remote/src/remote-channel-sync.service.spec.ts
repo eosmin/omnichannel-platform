@@ -65,6 +65,13 @@ function setup(initial: Row[] = []) {
   }
   const prisma = {
     client: {
+      plugin: {
+        findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve({
+            manifest: state.rows.find(row => row.id === where.id)?.manifest ?? null
+          })
+        )
+      },
       pluginInstallation: {
         findFirst: jest.fn(() => {
           state.secretReads += 1
@@ -83,13 +90,13 @@ function setup(initial: Row[] = []) {
         : Promise.resolve(
             state.rows.map(row => ({
               id: row.id ?? '',
-              manifest: row.manifest,
               storeIds: row.installations.map(installation => installation.storeId)
             }))
           )
     })
   } as unknown as WorkerLists
   const jobs = {
+    forStore: jest.fn(<T>(_storeId: string, work: () => Promise<T>) => work()),
     forStoreOrJoin: jest.fn(<T>(storeId: string, work: () => Promise<T>) => {
       state.contexts.push(storeId)
       if (state.contextError !== null) return Promise.reject(state.contextError)
@@ -411,5 +418,26 @@ describe('RemoteChannelSync: the secrets of the commands', () => {
     state.contextError = new JobContextError('a context of another store is already open')
     await expect(sync.secretsOf('store-b', 'acme_chat')).rejects.toThrow(/another store/)
     await expect(sync.secretsForDisconnect('store-b', 'acme_chat')).rejects.toThrow(/another store/)
+  })
+
+  it('reads the manifest of a plugin in the context of one of its stores, and keeps the adapter when that context refuses', async () => {
+    const { sync, registry } = setup([
+      {
+        id: 'acme_chat',
+        manifest: manifestOf('acme_chat'),
+        installations: [{ storeId: 's2' }, { storeId: 's1' }]
+      }
+    ])
+    const jobs = (sync as unknown as { jobs: { forStore: jest.Mock } }).jobs
+    await sync.refresh()
+    expect((jobs.forStore.mock.calls[0] as string[] | undefined)?.[0]).toBe('s1')
+    const first = registry.get('acme_chat')
+    jest
+      .mocked(jobs.forStore)
+      .mockImplementationOnce(() =>
+        Promise.reject(new JobContextError('a context of another store is already open'))
+      )
+    await sync.refresh()
+    expect(registry.get('acme_chat')).toBe(first)
   })
 })

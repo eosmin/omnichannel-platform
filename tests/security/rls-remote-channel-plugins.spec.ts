@@ -19,11 +19,10 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 // skipped, a page that would cut the list in silence and a missing filter are refused, and PUBLIC cannot call it.
 
 const FUNCTION = 'rls_list_remote_channel_plugins(text, text, text, text, integer)'
-const LIST = `SELECT id, manifest, store_ids FROM rls_list_remote_channel_plugins($1, $2, $3, $4, $5)`
+const LIST = `SELECT id, store_ids FROM rls_list_remote_channel_plugins($1, $2, $3, $4, $5)`
 
 interface Listed {
   id: string
-  manifest: unknown
   store_ids: string[]
 }
 
@@ -144,7 +143,8 @@ describe('row-level security, phase 5: the list of remote channel plugins', () =
         const byId = new Map(rows.map(row => [row.id, row]))
         expect([...(byId.get(ids.shared)?.store_ids ?? [])].sort()).toEqual([...stores].sort())
         expect(byId.get(ids.lonely)?.store_ids).toEqual([stores[1]])
-        expect(byId.get(ids.lonely)?.manifest).toEqual({ marker: ids.lonely })
+        // The manifest is not in the list: for a private plugin it is the JSON of its organization
+        expect(Object.keys(rows[0] ?? {}).sort()).toEqual(['id', 'store_ids'])
       })
     })
   }
