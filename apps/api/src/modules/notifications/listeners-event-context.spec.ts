@@ -8,6 +8,9 @@ import { join } from 'node:path'
 // handlers each still has: the list can only SHRINK (a new bare handler, or a bigger number, fails; a smaller count fails too until the
 // entry is lowered or removed), so nobody adds a listener with no context and each PR that wraps one closes its line. A handler that
 // opens its context in its body (`this.events.inStore(...)`) is not seen by this check: wrap it with the decorator or keep it listed.
+// NOT covered by this check: a listener registered with `emitter.on(...)` / `onAny(...)` (WebhookDispatcher) and a handler that opens its
+// context in its body: both are tracked in the plan and by their owners (B1), not by this list. Whoever merges second between this and
+// the PR that opens the context in the body (B1) makes this spec recognise a call to `inStore(` / `forStore(` in the body.
 // Debt with owners: docs/IMPLEMENTATION_PLAN.md, "Event listeners with no context".
 const ROOT = join(__dirname, '..', '..', '..', '..', '..')
 const WRAPPERS = ['@InEventStore', '@InEventOrganization']
