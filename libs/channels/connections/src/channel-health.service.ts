@@ -2,7 +2,13 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 import { z } from 'zod'
 
-import { JobContext, lockStoreForWrite, PrismaService, WorkerLists } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  lockStoreForWrite,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   ChannelHealthErrors,
@@ -201,6 +207,8 @@ export class ChannelHealthService {
       result.checked += 1
       if (!health.healthy) result.unhealthy += 1
     } catch (error) {
+      // A store deleted while the provider answered has no connection left to record
+      if (error instanceof JobContextGoneError) return
       // One connection must not stop the others
       this.logger.error(
         { errorName: errorName(error), connection: connectionRowId },

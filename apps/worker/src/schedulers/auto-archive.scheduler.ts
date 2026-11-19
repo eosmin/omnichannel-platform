@@ -57,26 +57,32 @@ export class AutoArchiveScheduler {
   // One batch: how many conversations were due and how many of them were archived
   async archive(now: Date = new Date(), skip: Set<string> = new Set()): Promise<SweepBatch> {
     // The days are a setting of the store, so each store is read in its own context: its setting, then its resolved conversations
-    const found = await readInEachStore(this.prisma, this.jobContext, async storeId => {
-      const settings = await this.prisma.client.storeSettings.findUnique({
-        where: { storeId },
-        select: { autoArchiveAfterDays: true }
-      })
-      if (settings === null) return []
-      const cutoff = new Date(now.getTime() - settings.autoArchiveAfterDays * DAY_MS)
-      const rows = await this.prisma.client.conversation.findMany({
-        where: {
-          storeId,
-          status: ConversationStatus.RESOLVED,
-          resolvedAt: { lt: cutoff },
-          id: { notIn: [...skip] }
-        },
-        select: { id: true, storeId: true, resolvedAt: true },
-        orderBy: [{ resolvedAt: 'asc' }, { id: 'asc' }],
-        take: ConversationSweep.BATCH
-      })
-      return rows.map(row => ({ ...row, cutoff }))
-    })
+    const found = await readInEachStore(
+      this.prisma,
+      this.jobContext,
+      async storeId => {
+        const settings = await this.prisma.client.storeSettings.findUnique({
+          where: { storeId },
+          select: { autoArchiveAfterDays: true }
+        })
+        if (settings === null) return []
+        const cutoff = new Date(now.getTime() - settings.autoArchiveAfterDays * DAY_MS)
+        const rows = await this.prisma.client.conversation.findMany({
+          where: {
+            storeId,
+            status: ConversationStatus.RESOLVED,
+            resolvedAt: { lt: cutoff },
+            id: { notIn: [...skip] }
+          },
+          select: { id: true, storeId: true, resolvedAt: true },
+          orderBy: [{ resolvedAt: 'asc' }, { id: 'asc' }],
+          take: ConversationSweep.BATCH
+        })
+        return rows.map(row => ({ ...row, cutoff }))
+      },
+      (storeId, error) =>
+        this.logger.error({ storeId, errorName: errorName(error) }, 'a store could not be swept')
+    )
     // The oldest of all the groups first, so that a group with a long backlog holds back no other
     const due = found
       .sort((a, b) => (a.resolvedAt?.getTime() ?? 0) - (b.resolvedAt?.getTime() ?? 0))

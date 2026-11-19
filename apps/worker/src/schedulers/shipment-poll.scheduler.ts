@@ -87,7 +87,9 @@ export class ShipmentPollScheduler {
     }[] = []
     const byStore = new Map<string, string[]>()
     for (const group of groups) {
-      byStore.set(group.storeId, [...(byStore.get(group.storeId) ?? []), group.connectionId])
+      const ids = byStore.get(group.storeId) ?? []
+      ids.push(group.connectionId)
+      byStore.set(group.storeId, ids)
     }
     for (const [storeId, ids] of byStore) {
       try {

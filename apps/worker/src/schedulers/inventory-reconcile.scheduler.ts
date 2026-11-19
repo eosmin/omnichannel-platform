@@ -17,6 +17,7 @@ import {
 } from '@platform/core/queues'
 
 import { LeaderLockService } from './leader-lock.service'
+import { unlessGone } from './store-sweep'
 
 // rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
 // every read or write of a table of a store runs inside JobContext.forStore / forOrganization
@@ -71,14 +72,16 @@ export class InventoryReconcileScheduler {
       // "Has stock or a ledger" is read in the context of each store: the rows of the stock are not visible from outside of one
       const stores: { id: string }[] = []
       for (const store of page) {
-        const has = await this.jobContext.forStore(store.id, () =>
-          this.prisma.client.store.findFirst({
-            where: {
-              id: store.id,
-              OR: [{ inventoryLevels: { some: {} } }, { inventoryMovements: { some: {} } }]
-            },
-            select: { id: true }
-          })
+        const has = await unlessGone(
+          this.jobContext.forStore(store.id, () =>
+            this.prisma.client.store.findFirst({
+              where: {
+                id: store.id,
+                OR: [{ inventoryLevels: { some: {} } }, { inventoryMovements: { some: {} } }]
+              },
+              select: { id: true }
+            })
+          )
         )
         if (has !== null) stores.push(store)
       }

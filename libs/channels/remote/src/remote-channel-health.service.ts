@@ -8,7 +8,12 @@ import {
   errorName
 } from '@platform/channels/connection-health'
 import { CacheKeys } from '@platform/core/cache'
-import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   ChannelHealthLimits,
@@ -112,6 +117,8 @@ export class RemoteChannelHealthService {
         await this.jobContext.forStore(row.storeId, () => this.health.record(row, checked))
       }
     } catch (error) {
+      // A store deleted while the plugin answered has no connection left to record
+      if (error instanceof JobContextGoneError) return
       // One connection must not stop the others; a Redis that is down leaves the state as it was (nothing is concluded without the count)
       this.logger.error(
         { errorName: errorName(error), connection: connectionRowId },

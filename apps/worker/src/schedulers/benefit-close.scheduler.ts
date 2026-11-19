@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { PinoLogger } from 'nestjs-pino'
 
-import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import { CarrierConnectionStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { LockNames, Schedules } from '@platform/core/queues'
@@ -57,6 +62,8 @@ export class BenefitCloseScheduler {
           return (await closeBenefitPeriods(this.prisma, policy, now)).length
         })
       } catch (error) {
+        // A store deleted since the list was read has no benefit left to judge
+        if (error instanceof JobContextGoneError) continue
         this.logger.error(
           { connectionId: row.connectionId, errorName: errorName(error) },
           'the benefit periods of a connection were not closed'

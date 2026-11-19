@@ -70,8 +70,11 @@ export class ReportDispatchScheduler {
     // half way would dispatch only part of the reports); each store's rows are then read in the context of that store
     const refs = await this.lists.enabledScheduledReports()
     const idsByStore = new Map<string, string[]>()
-    for (const ref of refs)
-      idsByStore.set(ref.storeId, [...(idsByStore.get(ref.storeId) ?? []), ref.id])
+    for (const ref of refs) {
+      const ids = idsByStore.get(ref.storeId) ?? []
+      ids.push(ref.id)
+      idsByStore.set(ref.storeId, ids)
+    }
     for (const [storeId, ids] of idsByStore) {
       for (let from = 0; from < ids.length; from += pageSize) {
         queued += await this.dispatchChunk(now, storeId, ids.slice(from, from + pageSize))

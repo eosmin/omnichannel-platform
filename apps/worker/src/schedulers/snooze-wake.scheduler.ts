@@ -54,18 +54,23 @@ export class SnoozeWakeScheduler {
 
   // One batch: how many conversations were due and how many of them woke up
   async wake(now: Date = new Date(), skip: Set<string> = new Set()): Promise<SweepBatch> {
-    const found = await readInEachStore(this.prisma, this.jobContext, storeId =>
-      this.prisma.client.conversation.findMany({
-        where: {
-          storeId,
-          status: ConversationStatus.SNOOZED,
-          snoozedUntil: { lte: now },
-          id: { notIn: [...skip] }
-        },
-        select: { id: true, storeId: true, snoozedUntil: true },
-        orderBy: [{ snoozedUntil: 'asc' }, { id: 'asc' }],
-        take: ConversationSweep.BATCH
-      })
+    const found = await readInEachStore(
+      this.prisma,
+      this.jobContext,
+      storeId =>
+        this.prisma.client.conversation.findMany({
+          where: {
+            storeId,
+            status: ConversationStatus.SNOOZED,
+            snoozedUntil: { lte: now },
+            id: { notIn: [...skip] }
+          },
+          select: { id: true, storeId: true, snoozedUntil: true },
+          orderBy: [{ snoozedUntil: 'asc' }, { id: 'asc' }],
+          take: ConversationSweep.BATCH
+        }),
+      (storeId, error) =>
+        this.logger.error({ storeId, errorName: errorName(error) }, 'a store could not be swept')
     )
     // The longest asleep of every store first, as one batch
     const due = found

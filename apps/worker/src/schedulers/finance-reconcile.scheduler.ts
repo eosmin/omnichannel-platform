@@ -17,6 +17,7 @@ import {
 } from '@platform/core/queues'
 
 import { LeaderLockService } from './leader-lock.service'
+import { unlessGone } from './store-sweep'
 
 // rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
 // every read or write of a table of a store runs inside JobContext.forStore / forOrganization
@@ -68,11 +69,13 @@ export class FinanceReconcileScheduler {
       // Only an organization that keeps books is queued; the settings are read in the context of each organization
       const settings: { organizationId: string }[] = []
       for (const organization of page) {
-        const kept = await this.jobContext.forOrganization(organization.id, () =>
-          this.prisma.client.financeSettings.findUnique({
-            where: { organizationId: organization.id },
-            select: { organizationId: true }
-          })
+        const kept = await unlessGone(
+          this.jobContext.forOrganization(organization.id, () =>
+            this.prisma.client.financeSettings.findUnique({
+              where: { organizationId: organization.id },
+              select: { organizationId: true }
+            })
+          )
         )
         if (kept !== null) settings.push(kept)
       }

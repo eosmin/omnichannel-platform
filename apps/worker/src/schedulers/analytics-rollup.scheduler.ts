@@ -138,13 +138,15 @@ export class AnalyticsRollupScheduler {
     const changedSince = new Date(now.getTime() - RollupLimits.LATE_ORDER_CHANGE_HOURS * HOUR_MS)
     const oldest = new Date(now.getTime() - RollupLimits.LATE_ORDER_LOOKBACK_DAYS * DAY_MS)
     const days = new Map<string, Set<number>>()
-    // The orders of each store are read in the context of that store; a store that is deleted meanwhile has no late days
+    // The orders of each store are read in the context of that store, one context for each page (a context lasts 15 s); a store that is
+    // deleted meanwhile has no late days
     for (const storeId of storeIds) {
-      try {
-        await this.jobContext.forStore(storeId, async () => {
-          let cursor: string | undefined
-          for (;;) {
-            const orders = await this.prisma.client.order.findMany({
+      let cursor: string | undefined
+      for (;;) {
+        let orders: { id: string; createdAt: Date }[]
+        try {
+          orders = await this.jobContext.forStore(storeId, () =>
+            this.prisma.client.order.findMany({
               where: {
                 storeId,
                 updatedAt: { gte: changedSince },
@@ -155,19 +157,19 @@ export class AnalyticsRollupScheduler {
               take: RollupLimits.LATE_ORDER_PAGE_SIZE,
               ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
             })
-            for (const order of orders) {
-              const start = Math.floor(order.createdAt.getTime() / DAY_MS) * DAY_MS
-              const of = days.get(storeId) ?? new Set<number>()
-              of.add(start)
-              days.set(storeId, of)
-            }
-            if (orders.length < RollupLimits.LATE_ORDER_PAGE_SIZE) break
-            cursor = orders.at(-1)?.id
-          }
-        })
-      } catch (error) {
-        if (error instanceof JobContextGoneError) continue
-        throw error
+          )
+        } catch (error) {
+          if (error instanceof JobContextGoneError) break
+          throw error
+        }
+        for (const order of orders) {
+          const start = Math.floor(order.createdAt.getTime() / DAY_MS) * DAY_MS
+          const of = days.get(storeId) ?? new Set<number>()
+          of.add(start)
+          days.set(storeId, of)
+        }
+        if (orders.length < RollupLimits.LATE_ORDER_PAGE_SIZE) break
+        cursor = orders.at(-1)?.id
       }
     }
     const jobs = [...days].flatMap(([storeId, starts]) =>

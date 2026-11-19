@@ -60,30 +60,39 @@ describe('row-level security, phase 5: the schedulers that go store by store', (
 
   it('reads each store in its own context, and the rows of a store are the ones of that store', async () => {
     const seen = new Map<string, string[]>()
-    const rows = await readInEachStore(prisma, jobContext, async storeId => {
-      const own = await connectionsOf(storeId)
-      seen.set(
-        storeId,
-        own.map(row => row.id)
-      )
-      return own
-    })
+    const rows = await readInEachStore(
+      prisma,
+      jobContext,
+      async storeId => {
+        const own = await connectionsOf(storeId)
+        seen.set(
+          storeId,
+          own.map(row => row.id)
+        )
+        return own
+      },
+      () => undefined
+    )
     expect(seen.get(stores[0] ?? '')).toEqual([connections[0]])
     expect(seen.get(stores[1] ?? '')).toEqual([connections[1]])
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining(connections))
   })
 
-  it('skips a store that is deleted between the list and its turn, and fails on any other error', async () => {
-    const gone = jest
+  it('skips a store that is deleted between the list and its turn, and reports one that fails without stopping the others', async () => {
+    const forStore = jest
       .spyOn(jobContext, 'forStore')
       .mockRejectedValueOnce(new JobContextGoneError('gone'))
-    await expect(
-      readInEachStore(prisma, jobContext, () => Promise.resolve([1]))
-    ).resolves.toBeDefined()
-    gone.mockRejectedValueOnce(new Error('database down'))
-    await expect(readInEachStore(prisma, jobContext, () => Promise.resolve([1]))).rejects.toThrow(
-      'database down'
+      .mockRejectedValueOnce(new Error('database down'))
+    const failed: string[] = []
+    const rows = await readInEachStore(
+      prisma,
+      jobContext,
+      () => Promise.resolve([1]),
+      storeId => failed.push(storeId)
     )
-    gone.mockRestore()
+    // The first store was gone (skipped silently), the second failed (reported), every other store was still read
+    expect(failed).toHaveLength(1)
+    expect(rows.length).toBeGreaterThan(0)
+    forStore.mockRestore()
   })
 })

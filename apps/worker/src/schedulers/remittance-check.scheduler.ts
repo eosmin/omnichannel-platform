@@ -17,6 +17,7 @@ import {
 } from '@platform/core/queues'
 
 import { LeaderLockService } from './leader-lock.service'
+import { unlessGone } from './store-sweep'
 
 // rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
 // every read or write of a table of a store runs inside JobContext.forStore / forOrganization
@@ -69,14 +70,16 @@ export class RemittanceCheckScheduler {
       // "Cash on delivery still owed" is read in the context of each store: the shipments are not visible from outside of one
       const stores: { id: string }[] = []
       for (const store of page) {
-        const owed = await this.jobContext.forStore(store.id, () =>
-          this.prisma.client.store.findFirst({
-            where: {
-              id: store.id,
-              shipments: { some: { codStatus: { in: [...RemittableCodStatuses] } } }
-            },
-            select: { id: true }
-          })
+        const owed = await unlessGone(
+          this.jobContext.forStore(store.id, () =>
+            this.prisma.client.store.findFirst({
+              where: {
+                id: store.id,
+                shipments: { some: { codStatus: { in: [...RemittableCodStatuses] } } }
+              },
+              select: { id: true }
+            })
+          )
         )
         if (owed !== null) stores.push(store)
       }
