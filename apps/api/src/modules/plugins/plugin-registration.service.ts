@@ -113,7 +113,14 @@ export class PluginRegistrationService {
     } catch (error) {
       // Two registrations of the same id at once: the second one finds the first one's row and decides again
       if (!isUniqueViolation(error)) throw error
-      result = await inSavepoint(write)
+      try {
+        result = await inSavepoint(write)
+      } catch (second) {
+        // The id is held by a row this organization cannot see (another organization's, hidden by row level security): the
+        // existence check found nothing and the insert collided. Same answer as when the row is visible; nothing says it exists.
+        if (isUniqueViolation(second)) throw alreadyRegistered('that plugin id is taken')
+        throw second
+      }
     }
 
     const view: RegisteredPlugin = {

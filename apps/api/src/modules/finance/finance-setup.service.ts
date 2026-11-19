@@ -4,7 +4,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   FinanceConflicts,
@@ -78,92 +78,101 @@ export class FinanceSetupService {
       )
     }
 
-    await this.prisma.transaction(async tx => {
-      await lockChart(tx, organizationId)
-      const existing = await tx.financeSettings.findUnique({
-        where: { organizationId },
-        select: { organizationId: true }
-      })
-      if (existing !== null) {
-        throw resourceConflict('the books of the organization are set up already', {
-          conflict: FinanceConflicts.ALREADY_SET_UP
+    const written = inSavepoint(() =>
+      this.prisma.transaction(async tx => {
+        await lockChart(tx, organizationId)
+        const existing = await tx.financeSettings.findUnique({
+          where: { organizationId },
+          select: { organizationId: true }
         })
-      }
-      await tx.financeSettings.create({
-        data: {
-          organizationId,
-          countryCode: template.countryCode,
-          accountingStartDate: dayDate(start),
-          shippingTaxed: template.shippingTaxed
+        if (existing !== null) {
+          throw resourceConflict('the books of the organization are set up already', {
+            conflict: FinanceConflicts.ALREADY_SET_UP
+          })
         }
-      })
+        await tx.financeSettings.create({
+          data: {
+            organizationId,
+            countryCode: template.countryCode,
+            accountingStartDate: dayDate(start),
+            shippingTaxed: template.shippingTaxed
+          }
+        })
 
-      // One statement for the whole chart: a header and what sits under it are written together, and the keys that tie them are
-      // checked when the statement ends
-      const idOf = new Map(template.accounts.map(account => [account.code, randomUUID()]))
-      const accountId = (code: string): string => {
-        const id = idOf.get(code)
-        if (id === undefined)
-          throw new Error(`the template names the account ${code}, which it does not have`)
-        return id
-      }
-      await tx.ledgerAccount.createMany({
-        data: template.accounts.map(account => ({
-          id: accountId(account.code),
-          organizationId,
-          code: account.code,
-          name: account.name,
-          type: account.type,
-          normalSide: normalSideOf(account.type),
-          parentId: account.parentCode === null ? null : accountId(account.parentCode),
-          isPostable: account.isPostable,
-          cashKind: account.cashKind ?? null,
-          isSystem: true
-        }))
+        // One statement for the whole chart: a header and what sits under it are written together, and the keys that tie them are
+        // checked when the statement ends
+        const idOf = new Map(template.accounts.map(account => [account.code, randomUUID()]))
+        const accountId = (code: string): string => {
+          const id = idOf.get(code)
+          if (id === undefined)
+            throw new Error(`the template names the account ${code}, which it does not have`)
+          return id
+        }
+        await tx.ledgerAccount.createMany({
+          data: template.accounts.map(account => ({
+            id: accountId(account.code),
+            organizationId,
+            code: account.code,
+            name: account.name,
+            type: account.type,
+            normalSide: normalSideOf(account.type),
+            parentId: account.parentCode === null ? null : accountId(account.parentCode),
+            isPostable: account.isPostable,
+            cashKind: account.cashKind ?? null,
+            isSystem: true
+          }))
+        })
+        await tx.accountRoleMapping.createMany({
+          data: Object.values(AccountRole).map(role => ({
+            organizationId,
+            role,
+            accountId: accountId(template.roles[role])
+          }))
+        })
+        await tx.paymentMethodAccount.createMany({
+          data: Object.entries(template.paymentMethods).map(([paymentMethod, code]) => ({
+            organizationId,
+            storeId: null,
+            paymentMethod,
+            accountId: accountId(code)
+          }))
+        })
+        await tx.taxRate.createMany({
+          data: template.taxRates.map(rate => ({
+            organizationId,
+            code: rate.code,
+            name: rate.name,
+            rateBps: rate.rateBps,
+            kind: rate.kind,
+            outputAccountId: accountId(template.roles[rate.outputRole]),
+            inputAccountId: accountId(template.roles[rate.inputRole]),
+            isDefault: rate.isDefault
+          }))
+        })
+        await tx.financeSettings.update({
+          where: { organizationId },
+          data: { roundingAccountId: accountId(template.roles[AccountRole.ROUNDING]) }
+        })
+        // The period of the start date and the next one are there before anything needs them
+        const first = periodOfDate(start)
+        const second = nextPeriod(first)
+        await tx.fiscalPeriod.createMany({
+          data: [first, second].map(bounds => ({
+            organizationId,
+            year: bounds.year,
+            month: bounds.month,
+            startsOn: dayDate(bounds.startsOn),
+            endsOn: dayDate(bounds.endsOn)
+          })),
+          skipDuplicates: true
+        })
       })
-      await tx.accountRoleMapping.createMany({
-        data: Object.values(AccountRole).map(role => ({
-          organizationId,
-          role,
-          accountId: accountId(template.roles[role])
-        }))
-      })
-      await tx.paymentMethodAccount.createMany({
-        data: Object.entries(template.paymentMethods).map(([paymentMethod, code]) => ({
-          organizationId,
-          storeId: null,
-          paymentMethod,
-          accountId: accountId(code)
-        }))
-      })
-      await tx.taxRate.createMany({
-        data: template.taxRates.map(rate => ({
-          organizationId,
-          code: rate.code,
-          name: rate.name,
-          rateBps: rate.rateBps,
-          kind: rate.kind,
-          outputAccountId: accountId(template.roles[rate.outputRole]),
-          inputAccountId: accountId(template.roles[rate.inputRole]),
-          isDefault: rate.isDefault
-        }))
-      })
-      await tx.financeSettings.update({
-        where: { organizationId },
-        data: { roundingAccountId: accountId(template.roles[AccountRole.ROUNDING]) }
-      })
-      // The period of the start date and the next one are there before anything needs them
-      const first = periodOfDate(start)
-      const second = nextPeriod(first)
-      await tx.fiscalPeriod.createMany({
-        data: [first, second].map(bounds => ({
-          organizationId,
-          year: bounds.year,
-          month: bounds.month,
-          startsOn: dayDate(bounds.startsOn),
-          endsOn: dayDate(bounds.endsOn)
-        })),
-        skipDuplicates: true
+    )
+    await written.catch((error: unknown) => {
+      // A row of the chart the check above could not see: the books of the organization are set up already
+      if (!isUniqueViolation(error)) throw error
+      throw resourceConflict('the books of the organization are set up already', {
+        conflict: FinanceConflicts.ALREADY_SET_UP
       })
     })
 
