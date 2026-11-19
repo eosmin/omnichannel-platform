@@ -37,11 +37,12 @@ This is run by the OWNER, never by a session or by the CI. It turns on, in this 
 ## 3. Production, the flags first
 
 - Do: `RLS_CONTEXT=true` on the api and `WORKER_RLS_CONTEXT=true` on the workers; restart. The policies are still off, so the loud
-  guard shows every access without a context and harms no data.
+  guard shows every access without a context and the policies cannot hide a row. It is still a change of behavior: a request that
+  writes and then answers 4xx loses its write (the transaction rolls back), so go in only after staging passed.
 - Check: one hour of traffic and one cycle of the crons. Zero `RLS_CONTEXT_REQUIRED`; 5xx and the p95 latency as in the baseline; a 4xx
   after a write behaves as it did in staging. Alert on the counter `worker_job_subject_missing_total` (a worker job that ran without the
   store or the organization it needed): any value above zero is a job that found nothing to do.
-- Back: both flags to `false` and restart.
+- Back: both flags to `false` and restart (a write lost to a 4xx rollback is not recovered: tell the person who made it).
 
 ## 4. Turn the policies on
 
@@ -72,4 +73,5 @@ Check after each step: `status` shows OFF, and the walk of step 2 passes.
 - The migration `20270122600000_rls_search_order_customers` and the customers one build `idx_customers_name_trgm` inside their
   transaction: deploy at a quiet hour.
 - The validators that guard the code (`validate:rls-worker`, `validate:replica`, `validate:definer`) are a net, not a proof: the
-  proof is the job `rls-enforced` of the CI and the walk of step 2.
+  proof is the check `rls-enforced-tests` of the CI (it waits for `rls-enforced-integration` and the six `rls-enforced-security` shards)
+  and the walk of step 2.

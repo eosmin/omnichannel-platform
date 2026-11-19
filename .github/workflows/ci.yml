@@ -362,7 +362,7 @@ jobs:
       # The specs that read the plan of a statement with row level security on take locks (some ACCESS EXCLUSIVE until their
       # rollback): a process of their own, after the shard, like the latency spec (`tests/jest.rls-plan.config.cts`)
       - name: Plan specs of row level security, in a fresh process
-        if: startsWith(matrix.shard, format('{0}/', strategy.job-total))
+        if: ${{ !cancelled() && startsWith(matrix.shard, format('{0}/', strategy.job-total)) }}
         run: pnpm test:rls-plan
 
   # The required check. It keeps the name of the job that used to run the whole suite, and it runs whatever
@@ -407,8 +407,8 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Docs, markdown, the web app and the widget cannot change what the database sees
-          relevant=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -Ev '^(docs/|apps/web/|apps/widget/)|\.md$' || true)
+          # Docs, markdown at the root, the web app and the widget cannot change what the database sees (a markdown file under libs or apps may be read at run time)
+          relevant=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -Ev '^(docs/|apps/web/|apps/widget/)|^[^/]*\.md$' || true)
           if [ -n "$relevant" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
 
   rls-enforced-integration:
@@ -576,7 +576,7 @@ jobs:
       # No latency spec here (a number measured under enforcement is not comparable with the baseline). The plan specs run once, in a
       # process of their own, in the last shard: they take locks, and measure under the policies the job turned on
       - name: Plan specs of row level security, in a fresh process
-        if: startsWith(matrix.shard, format('{0}/', strategy.job-total))
+        if: ${{ !cancelled() && startsWith(matrix.shard, format('{0}/', strategy.job-total)) }}
         run: pnpm test:rls-plan
 
   # The check for the ruleset of `main` (the owner adds it after a green run). It runs whatever happened upstream: only `success` of

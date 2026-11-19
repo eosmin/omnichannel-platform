@@ -7,7 +7,8 @@ export interface ReplicaRoleFacts {
   roleName: string
   isSuperuser: boolean
   bypassesRls: boolean
-  // Any of INSERT, UPDATE, DELETE or TRUNCATE on any table of the public schema
+  // INSERT or UPDATE on the table or on any column of it, DELETE or TRUNCATE, on any table of the public schema. Sequences and the
+  // EXECUTE of a writing definer function are not probed: the grants of the migration of the role are the guarantee there
   canWrite: boolean
   // The server is a standby (pg_is_in_recovery())
   inRecovery: boolean
@@ -22,8 +23,8 @@ export const REPLICA_ROLE_FACTS_SQL = `
       SELECT 1 FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
-        AND (has_table_privilege(current_user, c.oid, 'INSERT')
-          OR has_table_privilege(current_user, c.oid, 'UPDATE')
+        AND (has_any_column_privilege(current_user, c.oid, 'INSERT')
+          OR has_any_column_privilege(current_user, c.oid, 'UPDATE')
           OR has_table_privilege(current_user, c.oid, 'DELETE')
           OR has_table_privilege(current_user, c.oid, 'TRUNCATE'))
     ) AS "canWrite",

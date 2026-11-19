@@ -441,14 +441,20 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     await this.base.$connect()
     if (this.options.replicaUrl !== undefined && this.options.verifyReplicaRole === true) {
-      const [facts] = await this.base
-        .$replica()
-        .$queryRawUnsafe<ReplicaRoleFacts[]>(REPLICA_ROLE_FACTS_SQL)
-      const problem =
-        facts === undefined
-          ? 'the role of DATABASE_REPLICA_URL is not in pg_roles'
-          : replicaRoleProblem(facts)
-      if (problem !== null) throw new Error(problem)
+      // Nest does not call onModuleDestroy when the start fails: the pools opened above are closed here
+      try {
+        const [facts] = await this.base
+          .$replica()
+          .$queryRawUnsafe<ReplicaRoleFacts[]>(REPLICA_ROLE_FACTS_SQL)
+        const problem =
+          facts === undefined
+            ? 'the role of DATABASE_REPLICA_URL is not in pg_roles'
+            : replicaRoleProblem(facts)
+        if (problem !== null) throw new Error(problem)
+      } catch (error) {
+        await this.base.$disconnect()
+        throw error
+      }
     }
   }
 
