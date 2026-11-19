@@ -458,7 +458,8 @@ jobs:
       # Both guards ON, and the policies ENABLED and FORCED below: the code runs as it will once the owner turns it on
       RLS_CONTEXT: 'true'
       WORKER_RLS_CONTEXT: 'true'
-      # The replica of the api is the read only role: a write through it fails here as it would in production
+      # The replica of the api is the read only role. The suites of tests/ remove this variable (helpers/env.ts) and build their own handle
+      # (rls-replica-role.spec, rls-replica-startup-check.spec): the variable here is read by the processes that start from the env
       DATABASE_REPLICA_URL: postgresql://platform_replica_ro:ci_replica_password@localhost:5432/platform_ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -533,7 +534,8 @@ jobs:
       # Both guards ON, and the policies ENABLED and FORCED below: the code runs as it will once the owner turns it on
       RLS_CONTEXT: 'true'
       WORKER_RLS_CONTEXT: 'true'
-      # The replica of the api is the read only role: a write through it fails here as it would in production
+      # The replica of the api is the read only role. The suites of tests/ remove this variable (helpers/env.ts) and build their own handle
+      # (rls-replica-role.spec, rls-replica-startup-check.spec): the variable here is read by the processes that start from the env
       DATABASE_REPLICA_URL: postgresql://platform_replica_ro:ci_replica_password@localhost:5432/platform_ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

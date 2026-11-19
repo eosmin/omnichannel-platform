@@ -19,11 +19,19 @@ This is run by the OWNER, never by a session or by the CI. It turns on, in this 
 
 ## 1. Deploy with both flags off
 
-- Do: deploy the code with `RLS_CONTEXT=false` and `WORKER_RLS_CONTEXT=false`, run `pnpm db:migrate` (it brings
-  `NOBYPASSRLS` for the worker and `platform_replica_ro`), restart the api and the workers.
+- Do, in this order (the order matters: the jobs already queued in `heavy-processing` and `exports` carry no `storeId`/`userId` and fail
+  for good, and the old worker calls the `rls_store_of_*` functions that migration `20270121850000` drops):
+  1. Deploy the api first (it already sends `storeId`) with `RLS_CONTEXT=false`.
+  2. Stop the old workers and let `heavy-processing`, `exports` and the scheduled reports drain (or accept that the orphan cleaner
+     requeues the pending files, which now carry their owner).
+  3. Give `platform_replica_ro` its login: `scripts/set-db-role-passwords.ts` with `DB_REPLICA_PASSWORD` set (the role is NOLOGIN until
+     then), and set `DATABASE_REPLICA_URL` to it if the api reads a replica.
+  4. Run `pnpm db:migrate` (it brings `NOBYPASSRLS` for the worker and `platform_replica_ro`).
+  5. Start the new workers with `WORKER_RLS_CONTEXT=false`, and restart the api.
 - Check: `/health` answers. `SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname IN ('platform_app','platform_worker','platform_replica_ro')`
   gives `false` for the three. The worker log has no start error (with the flag off it only warns).
-- Back: revert the deploy. If the worker cannot work, `ALTER ROLE platform_worker BYPASSRLS` and restart the workers.
+- Back: revert the deploy; the rollback of `20270121850000` recreates the `rls_store_of_*` functions, but the old jobs that already failed are
+  lost. If the worker cannot work, `ALTER ROLE platform_worker BYPASSRLS` and restart the workers.
 
 ## 2. Staging or a copy with synthetic data
 
@@ -70,6 +78,8 @@ Check after each step: `status` shows OFF, and the walk of step 2 passes.
 
 ## Notes for the owner
 
+- The check of the replica role runs only when the api starts: a standby promoted later while the url still names `platform_app` is writable.
+  The runbook asks for `platform_replica_ro` always; this limit is accepted.
 - The migration `20270122600000_rls_search_order_customers` and the customers one build `idx_customers_name_trgm` inside their
   transaction: deploy at a quiet hour.
 - The validators that guard the code (`validate:rls-worker`, `validate:replica`, `validate:definer`) are a net, not a proof: the
