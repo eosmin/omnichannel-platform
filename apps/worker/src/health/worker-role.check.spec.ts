@@ -7,6 +7,7 @@ const build = (bypass: boolean | undefined, contextOn = false, fail = false) => 
   const rows = bypass === undefined ? [] : [{ bypass }]
   const check = new WorkerRoleCheck(
     {
+      withoutTenantContext: (_reason: string, work: () => Promise<unknown>) => work(),
       client: {
         $queryRaw: () => (fail ? Promise.reject(new Error('db down')) : Promise.resolve(rows))
       }
