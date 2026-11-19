@@ -8,5 +8,9 @@ export const EXTERNAL_IO_PROVIDERS: readonly ExternalIoProvider[] = [
   { name: 'StorageService', reason: 'the bucket (S3 compatible)' },
   { name: 'EmailService', reason: 'the mail provider' },
   { name: 'PluginIconService', reason: 'downloads the icon of a plugin from its address' },
-  { name: 'MetaGraphClient', reason: 'the HTTP API of the channel provider' }
+  { name: 'MetaGraphClient', reason: 'the HTTP API of the channel provider' },
+  { name: 'S3Client', reason: 'the bucket, through the AWS SDK' },
+  { name: 'Transporter', reason: 'the SMTP transport of nodemailer' },
+  { name: 'EmailProvider', reason: 'the port of the mail provider' },
+  { name: 'SvAuthOptions', reason: 'carries the fetch of the tax authority of El Salvador' }
 ]
