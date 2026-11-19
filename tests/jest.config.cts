@@ -13,6 +13,7 @@ module.exports = {
   testPathIgnorePatterns: [
     '/node_modules/',
     '<rootDir>/api/products-search-performance.spec.ts',
+    '<rootDir>/api/conversations-performance.spec.ts',
     // The specs that read a plan with row level security on take locks: `jest.rls-plan.config.cts` runs them (`pnpm test:rls-plan`)
     '<rootDir>/api/rls-.*-plan\\.spec\\.ts$'
   ],

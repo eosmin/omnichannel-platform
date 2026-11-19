@@ -7,7 +7,11 @@ module.exports = {
   preset: '../jest.preset.cjs',
   testEnvironment: '<rootDir>/helpers/test-environment.cjs',
   // The specs that read a plan with row security on (they take locks) have their own process: `jest.rls-plan.config.cts`
-  testMatch: ['<rootDir>/api/products-search-performance.spec.ts'],
+  testMatch: [
+    '<rootDir>/api/products-search-performance.spec.ts',
+    // 10 000 conversations and a p95 of 300 ms: the garbage collections of a full shard land in the measure
+    '<rootDir>/api/conversations-performance.spec.ts'
+  ],
   setupFiles: ['<rootDir>/helpers/env.ts'],
   // Closes the connections of createWorkerPrisma when a file ends
   setupFilesAfterEnv: ['<rootDir>/helpers/worker-db-teardown.ts'],
