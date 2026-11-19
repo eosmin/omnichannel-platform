@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto'
 
 import pg from 'pg'
 
-import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  ensureStore,
+  ensureUser,
+  type OwnerClient
+} from '@platform/core/database-testing'
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 
@@ -40,6 +45,8 @@ describe('the plan of the searches of the lists with row-level security on', () 
     const org = await owner.organization.create({
       data: { name: `${prefix}-org`, slug: `${prefix}-org` }
     })
+    // An order has an author (orders_created_actor_check): a person
+    const author = await ensureUser(owner, `${prefix}-user@example.invalid`, 'List plan user')
     for (const side of ['a', 'b'] as const) {
       const store = await ensureStore(owner, org.id, `${prefix}-store-${side}`)
       if (side === 'a') storeA = store.id
@@ -61,6 +68,7 @@ describe('the plan of the searches of the lists with row-level security on', () 
         customerId: customer.id,
         orderNumber: String(i + 1).padStart(6, '0'),
         paymentMethod: 'CASH',
+        createdBy: author.id,
         subtotalCents: 1000,
         totalCents: 1000
       }))
