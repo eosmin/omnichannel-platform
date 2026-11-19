@@ -5,7 +5,12 @@ import type { Counter } from '@prometheus-io/client'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
+import {
+  EventContext,
+  InEventOrganization,
+  InEventStore,
+  PrismaService
+} from '@platform/core/database'
 import {
   AppPaths,
   AuthorType,
@@ -94,11 +99,13 @@ export class NotificationsEventsListener {
     private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
     @InjectMetric(MetricNames.FINANCE_POSTING_FAILURES)
-    private readonly postingFailures: Counter<string>
+    private readonly postingFailures: Counter<string>,
+    private readonly events: EventContext
   ) {}
 
   // Only to the person mentioned, and only if they may still open the conversation and read its notes
   @OnEvent(Events.MESSAGE_MENTION)
+  @InEventStore()
   async onMention(payload: MessageMentionPayload): Promise<void> {
     try {
       const { storeId, conversationId, messageId, mentionedUserId } = payload
@@ -158,6 +165,7 @@ export class NotificationsEventsListener {
   // To the person who is given the conversation, unless they took it themselves. It comes from the
   // api (a person assigns, a rule routes) and from the worker (the round robin of a bulk action)
   @OnEvent(Events.CONVERSATION_ASSIGNED)
+  @InEventStore()
   async onAssigned(payload: ConversationAssignedPayload): Promise<void> {
     const { storeId, conversationId, assignedTo, previousAssignee, assignedBy } = payload
     if (assignedTo === null || assignedTo === previousAssignee) return
@@ -172,6 +180,7 @@ export class NotificationsEventsListener {
   // To the assignee when the snooze of their conversation ran out. Nobody records who snoozed it, so
   // a conversation without an assignee tells nobody here: the unassigned queue is its own notification
   @OnEvent(Events.CONVERSATION_SNOOZE_EXPIRED)
+  @InEventStore()
   async onSnoozeExpired(payload: ConversationSnoozeExpiredPayload): Promise<void> {
     const { storeId, conversationId, assignedTo } = payload
     if (assignedTo === null) return
@@ -189,6 +198,7 @@ export class NotificationsEventsListener {
   // the news (`onMessageReceived`), and telling both would be the same alert twice. One nobody owns
   // goes to the queue of the team (`NotificationsInboxListener`).
   @OnEvent(Events.CONVERSATION_REOPENED)
+  @InEventStore()
   async onReopened(payload: ConversationReopenedPayload): Promise<void> {
     const { storeId, conversationId, assignedTo, reason, reopenedBy } = payload
     if (assignedTo === null || reason === ConversationStatusReasons.CUSTOMER_REPLIED) return
@@ -206,6 +216,7 @@ export class NotificationsEventsListener {
   // queue's news (`NotificationsInboxListener`), never one per message to everyone. What the team
   // wrote itself (an agent, the owner's phone, the platform) is not news to the team.
   @OnEvent(Events.MESSAGE_RECEIVED)
+  @InEventStore()
   async onMessageReceived(payload: MessageReceivedPayload): Promise<void> {
     if (payload.authorType !== AuthorType.CUSTOMER) return
     await this.notifyAssignee(NotificationTypes.MESSAGE_RECEIVED, {
@@ -289,6 +300,7 @@ export class NotificationsEventsListener {
   // each downward crossing, after the commit, so this tells once too. The members who may see the stock are found now, not
   // when the movement happened, and the product is read under the store of the event: an id of another store tells nobody.
   @OnEvent(Events.INVENTORY_LOW)
+  @InEventStore()
   async onInventoryLow(payload: InventoryLowPayload): Promise<void> {
     const { storeId, productId, available, threshold } = payload
     try {
@@ -319,6 +331,7 @@ export class NotificationsEventsListener {
   // updates under that code are kept and not applied, so the people who manage carriers are told once. The connection is read
   // under the store of the event (an id of another store tells nobody) and who may be told is decided now.
   @OnEvent(Events.CARRIER_STATUS_UNMAPPED)
+  @InEventStore()
   async onCarrierStatusUnmapped(payload: CarrierStatusUnmappedPayload): Promise<void> {
     const { storeId, connectionId, providerCode } = payload
     try {
@@ -351,6 +364,7 @@ export class NotificationsEventsListener {
   // daily check raises it at most once a week for each connection; the people who settle remittances are told, and only while
   // they still hold the permission. The connection is read under the store of the event: an id of another store tells nobody.
   @OnEvent(Events.REMITTANCE_OVERDUE)
+  @InEventStore()
   async onRemittanceOverdue(payload: RemittanceOverduePayload): Promise<void> {
     const { storeId, connectionId, count, overdueAfterDays } = payload
     try {
@@ -387,6 +401,7 @@ export class NotificationsEventsListener {
   // The prepaid guides of a connection fell to the low-balance threshold or to zero (TDD_17 §4.18). Raised once, inside the move
   // that took the balance there; the people who may see the balance are told, and only while they still hold the permission.
   @OnEvent(Events.CARRIER_GUIDE_BALANCE_ALERT)
+  @InEventStore()
   async onGuideBalanceAlert(payload: CarrierGuideBalanceAlertPayload): Promise<void> {
     const { storeId, connectionId, level, balance } = payload
     await this.notifyConnection(
@@ -401,6 +416,7 @@ export class NotificationsEventsListener {
 
   // The return rate of the period got worse: close to the limit, or at it (TDD_17 §4.18), before the carrier takes the benefit away
   @OnEvent(Events.CARRIER_BENEFIT_ALERT)
+  @InEventStore()
   async onBenefitAlert(payload: CarrierBenefitAlertPayload): Promise<void> {
     const { storeId, connectionId, level, rateBps, thresholdBps } = payload
     await this.notifyConnection(
@@ -454,6 +470,7 @@ export class NotificationsEventsListener {
   // the change; the people who manage webhooks are told, and only while they still hold the permission. The webhook is read under
   // the store of the event: an id of another store tells nobody.
   @OnEvent(Events.WEBHOOK_AUTO_DISABLED)
+  @InEventStore()
   async onWebhookAutoDisabled(payload: WebhookAutoDisabledPayload): Promise<void> {
     const { storeId, webhookId } = payload
     try {
@@ -483,6 +500,7 @@ export class NotificationsEventsListener {
   // can fix it (the permission of "post again") are told, once for each source until they read it, and only while they still hold the
   // permission in a store of the organization. The text names no amount and no source: the list of failures does.
   @OnEvent(Events.FINANCE_POSTING_FAILED)
+  @InEventOrganization()
   async onFinancePostingFailed(payload: FinancePostingFailedPayload): Promise<void> {
     const { organizationId, sourceId, eventKind, reason } = payload
     this.postingFailures.inc({ reason })
@@ -524,6 +542,7 @@ export class NotificationsEventsListener {
   // fiscal documents of the organization are told, once for each document until they read it, and only while they still hold the
   // permission in a store of the organization. The text names no receiver, no amount and no reason: the document does.
   @OnEvent(Events.FISCAL_DOCUMENT_REJECTED)
+  @InEventStore()
   async onFiscalDocumentRejected(payload: FiscalDocumentRejectedPayload): Promise<void> {
     await this.tellFiscalManagers(
       payload.organizationId,
@@ -533,6 +552,7 @@ export class NotificationsEventsListener {
   }
 
   @OnEvent(Events.FISCAL_DOCUMENT_STUCK)
+  @InEventStore()
   async onFiscalDocumentStuck(payload: FiscalDocumentStuckPayload): Promise<void> {
     await this.tellFiscalManagers(
       payload.organizationId,
@@ -544,6 +564,7 @@ export class NotificationsEventsListener {
   // The daily check found a sale document that disagrees with its entry. The person who manages the fiscal documents is told once until
   // they read it; the text names no amount and no receiver, the fiscal screens say which.
   @OnEvent(Events.FISCAL_ENTRY_MISMATCH)
+  @InEventOrganization()
   async onFiscalEntryMismatch(payload: FiscalEntryMismatchPayload): Promise<void> {
     await this.tellFiscalManagers(
       payload.organizationId,
@@ -555,6 +576,7 @@ export class NotificationsEventsListener {
   // A contingency needs a person (Step 4B.7c-7). Told once for each person, contingency and kind until they read it; the text names
   // no document and no reason: the fiscal screens say which.
   @OnEvent(Events.FISCAL_CONTINGENCY_ALERT)
+  @InEventOrganization()
   async onFiscalContingencyAlert(payload: FiscalContingencyAlertPayload): Promise<void> {
     const type = {
       [FiscalContingencyAlertKind.OPENED_BY_SYSTEM]: NotificationTypes.FISCAL_CONTINGENCY_OPENED,
@@ -634,6 +656,7 @@ export class NotificationsEventsListener {
   // is told (the incident stops that very close), once until they read it, and only while they still hold the permission in a store of the
   // organization. The text names no entry: the check of the chain says which.
   @OnEvent(Events.FINANCE_CHAIN_BROKEN)
+  @InEventOrganization()
   async onFinanceChainBroken(payload: FinanceChainBrokenPayload): Promise<void> {
     const { organizationId } = payload
     try {
@@ -673,6 +696,7 @@ export class NotificationsEventsListener {
   // the change; the people who manage plugins are told, and only while they still hold the permission. The installation is read under
   // the store of the event: an id of another store tells nobody.
   @OnEvent(Events.PLUGIN_ERROR)
+  @InEventStore()
   async onPluginError(payload: PluginErrorPayload): Promise<void> {
     const { storeId, installationId } = payload
     try {
@@ -703,6 +727,7 @@ export class NotificationsEventsListener {
   // active member who still prints guides (the labels carry customer data). What happened is read from the run, not from the event:
   // a run that failed, or that made no file, has nothing to download and is not announced here (the screen shows it).
   @OnEvent(Events.BULK_LABELS_DONE)
+  @InEventStore()
   async onBulkLabelsDone(payload: BulkLabelsDonePayload): Promise<void> {
     const { storeId, jobId, requestedBy } = payload
     try {
@@ -742,6 +767,7 @@ export class NotificationsEventsListener {
   // submitted. A notification is kept in a store: each person is told once, in the store of the submitter when they
   // belong to it, otherwise in the first store where they hold the permission.
   @OnEvent(Events.COUNT_SUBMITTED)
+  @InEventStore()
   async onCountSubmitted(payload: CountSubmittedPayload): Promise<void> {
     const { organizationId, storeId, countId, number } = payload
     try {
@@ -797,6 +823,7 @@ export class NotificationsEventsListener {
   // one whose products travel in it (they are the ones who can see its lines). The warehouse is read under the
   // organization of the event: an id of another organization tells nobody.
   @OnEvent(Events.TRANSFER_DISPATCHED)
+  @InEventOrganization()
   async onTransferDispatched(payload: TransferChangedPayload): Promise<void> {
     const { organizationId, transferId, number, toWarehouseId, storeIds } = payload
     let name: string | null
@@ -838,6 +865,7 @@ export class NotificationsEventsListener {
   // A delivery attempt failed (TDD_17 §4.9): every failure tells the members who manage shipments, so three attempts on three
   // days are three notifications. What the customer is told is `orders.failedAttemptMessages` (Step 4.9 sends it).
   @OnEvent(Events.SHIPMENT_STATUS_CHANGED)
+  @InEventStore()
   async onShipmentStatusChanged(payload: ShipmentStatusChangedPayload): Promise<void> {
     if (payload.to !== ShipmentStatus.FAILED_ATTEMPT) return
     // A failed attempt read again after the owner mapped its code is told in the center only: it may have happened days ago
@@ -850,6 +878,7 @@ export class NotificationsEventsListener {
 
   // A shipment, or what the order should do because of it, needs a person (TDD_17 §4.9)
   @OnEvent(Events.SHIPMENT_REQUIRES_REVIEW)
+  @InEventStore()
   async onShipmentRequiresReview(payload: ShipmentEventPayload): Promise<void> {
     await this.tellShipmentManagers(payload, NotificationTypes.SHIPMENT_REQUIRES_REVIEW)
   }
@@ -857,6 +886,7 @@ export class NotificationsEventsListener {
   // The carrier could not void a guide, or has no way to (TDD_17 §4.8): the order is cancelled and its stock released either way,
   // and the agent voids the guide at the carrier and presses "mark as voided"
   @OnEvent(Events.SHIPMENT_CANCEL_FAILED)
+  @InEventStore()
   async onShipmentCancelFailed(payload: ShipmentEventPayload): Promise<void> {
     await this.tellShipmentManagers(payload, NotificationTypes.SHIPMENT_CANCEL_FAILED)
   }
@@ -865,6 +895,7 @@ export class NotificationsEventsListener {
   // request. The members who manage pickups are told once per pickup while the earlier warning is unread (a pickup that
   // is asked again and fails again is one line); a store with several failing connections gets one line for each. The event carries ids and the count, never what the carrier said.
   @OnEvent(Events.PICKUP_MANUAL_REQUIRED)
+  @InEventStore()
   async onPickupManualRequired(payload: PickupManualRequiredPayload): Promise<void> {
     const { storeId, pickupId } = payload
     try {
@@ -885,6 +916,7 @@ export class NotificationsEventsListener {
   // The cutoff of a pickup day is near and guides still wait (TDD_17 §4.10): the members who manage pickups are told. The scheduler
   // raises it once per connection and day, so this adds no memory of its own; a line still unread is not repeated.
   @OnEvent(Events.PICKUP_CUTOFF_APPROACHING)
+  @InEventStore()
   async onPickupCutoffApproaching(payload: PickupCutoffApproachingPayload): Promise<void> {
     const { storeId, connectionId } = payload
     try {
@@ -944,6 +976,7 @@ export class NotificationsEventsListener {
   // orders of the store are told, except who changed it. They are found now, not when the note was written. The event
   // carries ids only: the note itself is read in the order, by whoever may read orders.
   @OnEvent(Events.ORDER_PACKING_NOTE_CHANGED)
+  @InEventStore()
   async onPackingNoteChanged(payload: OrderEventPayload): Promise<void> {
     const { storeId, orderId, orderNumber, actor } = payload
     try {
@@ -968,6 +1001,7 @@ export class NotificationsEventsListener {
   // The goods of a return are on their way back (TDD_17 §4.11): the members who receive returns are told, except who marked it. A
   // return that is one of several waiting is one line each (the order number says which); the event carries ids only.
   @OnEvent(Events.RETURN_IN_TRANSIT)
+  @InEventStore()
   async onReturnInTransit(payload: ReturnEventPayload): Promise<void> {
     const { storeId, returnId, orderNumber, actor } = payload
     try {
@@ -998,6 +1032,7 @@ export class NotificationsEventsListener {
   // so a customer is never left uninformed without somebody knowing. The event carries the kind and the reason, never the text.
   // Once per order while the earlier warning is unread: three packages that cannot be told about are one line in the center.
   @OnEvent(Events.ORDER_MESSAGE_NOT_SENT)
+  @InEventStore()
   async onOrderMessageNotSent(payload: OrderMessageNotSentPayload): Promise<void> {
     const { storeId, orderId, orderNumber, kind, reason, actor } = payload
     try {
@@ -1062,6 +1097,7 @@ export class NotificationsEventsListener {
 
   // A new order that waits for its confirmation goes to who may confirm it; one created already confirmed waits for nobody
   @OnEvent(Events.ORDER_CREATED)
+  @InEventStore()
   async onOrderCreated(payload: OrderCreatedPayload): Promise<void> {
     try {
       const order = await this.prisma.client.order.findFirst({
@@ -1087,6 +1123,7 @@ export class NotificationsEventsListener {
   // order whose payment was never booked (cancelled first, or paid before the books) has no advance and tells nobody, and neither does one
   // whose payment already went back. The notice links to nothing: who moves money may not read orders.
   @OnEvent(Events.ORDER_CANCELLED)
+  @InEventStore()
   async onPaidOrderCancelled(payload: OrderEventPayload): Promise<void> {
     try {
       const order = await this.prisma.client.order.findFirst({
@@ -1128,6 +1165,7 @@ export class NotificationsEventsListener {
   // The status of an order changed: the member who made the order is told, unless they made the change, and only while
   // they are still a member of the store
   @OnEvent(Events.ORDER_STATUS_CHANGED)
+  @InEventStore()
   async onOrderStatusChanged(payload: OrderStatusChangedPayload): Promise<void> {
     try {
       const order = await this.prisma.client.order.findFirst({
@@ -1154,6 +1192,7 @@ export class NotificationsEventsListener {
 
   // An agent asked for the approval of a price: whoever may approve is told, but the one who asked
   @OnEvent(Events.ORDER_PRICE_APPROVAL_REQUESTED)
+  @InEventStore()
   async onPriceApprovalRequested(payload: OrderEventPayload): Promise<void> {
     try {
       await this.tellAboutOrder(
@@ -1175,6 +1214,7 @@ export class NotificationsEventsListener {
 
   // A price was set by a member with the override: the approvers are told when the store keeps `notifyOnPriceOverride` on
   @OnEvent(Events.ORDER_PRICE_OVERRIDDEN)
+  @InEventStore()
   async onPriceOverridden(payload: OrderEventPayload): Promise<void> {
     try {
       const settings = await this.prisma.client.storeSettings.findUnique({
@@ -1202,6 +1242,7 @@ export class NotificationsEventsListener {
   // To who may read the conversation of the message (its notes too, when it is a note), and the audit
   // entry of the block. A file that belongs to no message has no event: the composer shows its state.
   @OnEvent(Events.MEDIA_INFECTED)
+  @InEventStore()
   async onInfected(payload: MessageChangedPayload): Promise<void> {
     const { storeId, conversationId, messageId } = payload
     try {
@@ -1239,6 +1280,7 @@ export class NotificationsEventsListener {
 
   // Same readers as an infected file; the team is told to ask the sender for the file again
   @OnEvent(Events.MEDIA_UNSCANNABLE)
+  @InEventStore()
   async onUnscannable(payload: MessageChangedPayload): Promise<void> {
     const { storeId, conversationId, messageId } = payload
     try {
@@ -1277,11 +1319,13 @@ export class NotificationsEventsListener {
   }
 
   @OnEvent(Events.EXPORT_READY)
+  @InEventStore()
   async onExportReady(payload: ExportSettledPayload): Promise<void> {
     await this.notifyExport(payload, NotificationTypes.EXPORT_READY)
   }
 
   @OnEvent(Events.EXPORT_FAILED)
+  @InEventStore()
   async onExportFailed(payload: ExportSettledPayload): Promise<void> {
     await this.notifyExport(payload, NotificationTypes.EXPORT_FAILED)
   }

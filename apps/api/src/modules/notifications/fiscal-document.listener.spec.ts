@@ -57,7 +57,8 @@ function build(
     prisma as never,
     notifications as never,
     {} as never,
-    { inc: () => undefined } as never
+    { inc: () => undefined } as never,
+    { inStore: (_id: string, work: () => Promise<unknown>) => work() } as never
   )
   return { listener, asked, sent }
 }
