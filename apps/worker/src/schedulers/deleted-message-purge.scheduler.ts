@@ -3,12 +3,17 @@ import { Cron } from '@nestjs/schedule'
 import { PinoLogger } from 'nestjs-pino'
 
 import { errorName } from '@platform/channels/connections'
-import { JobContext, PrismaService } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextError,
+  JobContextGoneError,
+  PrismaService
+} from '@platform/core/database'
 import { DeletedMessageRetention } from '@platform/core/domain'
 import { LockNames, Schedules } from '@platform/core/queues'
 
 import { LeaderLockService } from './leader-lock.service'
-import { inEachStoreStrict } from './store-sweep'
+import { allStoreIds } from './store-sweep'
 
 // rls-context: the stores are listed from `stores`; the messages, revisions and files of each store are read and written inside JobContext.forStore
 
@@ -42,20 +47,36 @@ export class DeletedMessagePurgeScheduler {
     }
   }
 
-  // Store by store, each in its own context. A purge decides by what it finds in the store, so a store that cannot be read aborts the
-  // run (the next hour tries again): none is skipped as if it had nothing due. Each store purges one batch.
+  // Store by store, each in its own context. The purge acts only on rows it finds due, so a store that fails must not hold back the
+  // retention deadline of the others: it is logged and left to the next run. When more than half of the stores fail the run throws (a
+  // pool that is down must not look like "nothing due").
   async purge(now: Date = new Date()): Promise<number> {
+    const storeIds = await allStoreIds(this.prisma)
     let total = 0
-    await inEachStoreStrict(this.prisma, async storeId => {
-      const purged = await this.purgeStore(storeId, now)
-      total += purged
-      if (purged === DeletedMessageRetention.PURGE_BATCH) {
-        this.logger.warn(
-          { storeId, purged },
-          'a full batch of deleted messages was purged; more may wait'
+    let failed = 0
+    for (const storeId of storeIds) {
+      try {
+        const purged = await this.purgeStore(storeId, now)
+        total += purged
+        if (purged === DeletedMessageRetention.PURGE_BATCH) {
+          this.logger.warn(
+            { storeId, purged },
+            'a full batch of deleted messages was purged; more may wait'
+          )
+        }
+      } catch (error) {
+        // A store deleted between the list and its turn has nothing left to purge
+        if (error instanceof JobContextGoneError) continue
+        failed += 1
+        this.logger.error(
+          { storeId, errorName: errorName(error) },
+          'the deleted messages of a store could not be purged'
         )
       }
-    })
+    }
+    if (failed > 0 && failed * 2 > storeIds.length) {
+      throw new JobContextError(`the purge could not run in ${failed} of ${storeIds.length} stores`)
+    }
     return total
   }
 

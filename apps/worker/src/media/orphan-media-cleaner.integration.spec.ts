@@ -152,6 +152,36 @@ describe('OrphanMediaCleaner', () => {
     expect(await storage.head(strayUpload)).not.toBeNull()
   })
 
+  it('deletes nothing of a page when only one of its stores cannot be read', async () => {
+    const otherStoreId = randomUUID()
+    const slug = `it-orphan-${otherStoreId.slice(0, 8)}`
+    await owner.query(
+      `INSERT INTO stores (id, organization_id, name, slug, updated_at) VALUES ($1, $2, $3, $3, now())`,
+      [otherStoreId, organizationId, slug]
+    )
+    const readable = await object(StorageKeys.message(storeId, randomUUID(), 'both-a.txt'))
+    const unreadable = await object(StorageKeys.message(otherStoreId, randomUUID(), 'both-b.txt'))
+    const jobContext = moduleRef.get(JobContext, { strict: false })
+    const real = jobContext.forStore.bind(jobContext)
+    const failing = jest
+      .spyOn(jobContext, 'forStore')
+      .mockImplementation((id, work, options) =>
+        id === otherStoreId
+          ? Promise.reject(new JobContextError('the context of the store could not be opened'))
+          : real(id, work, options)
+      )
+    try {
+      await expect(
+        cleaner.runScoped({ storeIds: [storeId, otherStoreId], userIds: [] }, later())
+      ).rejects.toBeInstanceOf(SweepAbortError)
+    } finally {
+      failing.mockRestore()
+    }
+    // The store that could be read keeps its stray too: the sweep went no further than the failure
+    expect(await storage.head(readable)).not.toBeNull()
+    expect(await storage.head(unreadable)).not.toBeNull()
+  })
+
   it('deletes the variants of a media that no longer exists, and keeps those of one that does', async () => {
     const goneId = randomUUID()
     const goneVariant = await object(StorageKeys.messageVariant(storeId, goneId, 'thumb'))

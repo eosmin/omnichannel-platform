@@ -181,11 +181,16 @@ export class WebPushSender {
   ): Promise<'dropped' | 'retry' | 'failed'> {
     if (error instanceof WebPushError && GONE.has(error.statusCode)) {
       // The browser unsubscribed or the push service forgot it: it never comes back
-      await this.jobContext.forUser(userId, () =>
-        this.prisma.client.pushSubscription.deleteMany({
-          where: { id: subscriptionId, userId }
-        })
-      )
+      try {
+        await this.jobContext.forUser(userId, () =>
+          this.prisma.client.pushSubscription.deleteMany({
+            where: { id: subscriptionId, userId }
+          })
+        )
+      } catch (deleteError) {
+        // A person deleted meanwhile took their browsers with them: nothing to drop, and no reason to push the other browsers again
+        if (!(deleteError instanceof JobContextGoneError)) throw deleteError
+      }
       this.logger.info(
         {
           userId,

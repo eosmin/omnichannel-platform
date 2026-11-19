@@ -117,7 +117,10 @@ export class EmailDigestService {
           where: {
             storeId,
             emailPendingAt: { not: null },
+            // Only a person who can still read the store: the batch of a person is read in their own context, which does not see the
+            // marks of a store they left (they are dropped as stale)
             user: {
+              memberships: { some: { storeId, status: MembershipStatus.ACTIVE } },
               OR: [
                 { notificationSettings: { digestFrequency: frequency } },
                 ...(frequency === NotificationSettingsDefaults.digestFrequency

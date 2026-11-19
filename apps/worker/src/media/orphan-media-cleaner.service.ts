@@ -363,8 +363,8 @@ export class OrphanMediaCleaner {
 
   // An avatar that was uploaded and confirmed but never became anyone's picture, or that the scan
   // refused: the row of a user's picture is the one `users.avatar_media_id` names. Older than the TTL,
-  // so a confirmation about to be attached is left alone. The file goes first and the row second, so a
-  // failure leaves a row the next run finds again and not a file nobody can name.
+  // so a confirmation about to be attached is left alone. The row goes first and the file second (the definer decides and deletes in one
+  // statement), so a failure leaves a file with no row, which the sweep of stray avatar files finds by its media id.
   private async dropUnattachedAvatars(now: Date, scope?: CleanupScope): Promise<number> {
     const cutoff = new Date(now.getTime() - UploadLimits.UNCONFIRMED_UPLOAD_TTL_HOURS * HOUR_MS)
     // The avatars have no store, so no context can see them: the worker lists the candidates and clears each one through the definers of the
@@ -602,6 +602,7 @@ export class OrphanMediaCleaner {
           dropped += removed.count
         }
       } catch (error) {
+        if (error instanceof SweepAbortError) throw error
         this.logger.warn({ errorName: errorName(error) }, 'a stuck scan could not be settled')
       }
     }
