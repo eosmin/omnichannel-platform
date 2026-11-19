@@ -4,7 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { WebPushError } from 'web-push'
 import { z } from 'zod'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import {
@@ -60,6 +60,7 @@ function isTransient(error: unknown): boolean {
 export class WebPushSender {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobContext: JobContext,
     private readonly gateway: WebPushGateway,
     private readonly logger: PinoLogger
   ) {
@@ -70,40 +71,20 @@ export class WebPushSender {
     // No keys: nothing can be sent, and retrying will not add them
     if (!this.gateway.enabled) return this.skip(userId, notificationId, 'no_vapid_keys')
 
-    // Both ids, so a job that names someone else's notification pushes nothing
-    const found = await this.prisma.client.notification.findFirst({
-      where: { id: notificationId, userId },
-      select: {
-        id: true,
-        storeId: true,
-        type: true,
-        severity: true,
-        messageKey: true,
-        params: true,
-        resourceId: true,
-        actionPath: true,
-        readAt: true,
-        user: { select: { locale: true } }
-      }
-    })
+    // One short context of the person for everything the database says (their notification, their membership, their browsers); the push
+    // services are called outside of it, and each write afterwards opens its own
+    const read = await this.readOf(userId, notificationId)
+    if (read === 'user_gone') return this.skip(userId, notificationId, 'user_gone')
+    const { found, member, subscriptions } = read
     // Gone, or read in the app while the job waited: the push has no reason left
     if (found === null) return this.skip(userId, notificationId, 'notification_gone')
     if (found.readAt !== null) return this.skip(userId, notificationId, 'already_read')
     // The browser is the person's, not the store's: a push of a store they can no longer enter (a
     // suspended or removed member, queued before it happened) would still reach their screen
-    const member = await this.prisma.client.membership.count({
-      where: {
-        userId,
-        storeId: found.storeId,
-        status: MembershipStatus.ACTIVE,
-        revokedAt: null
-      }
-    })
     if (member === 0) return this.skip(userId, notificationId, 'not_a_member')
 
     const parsed = rowSchema.safeParse(found)
     if (!parsed.success) throw new UnrecoverableError('the notification does not fit a push')
-    const subscriptions = await this.prisma.client.pushSubscription.findMany({ where: { userId } })
     if (subscriptions.length === 0) return this.skip(userId, notificationId, 'no_subscription')
 
     let payload: PushPayload
@@ -124,8 +105,13 @@ export class WebPushSender {
           return this.settle(sub.id, userId, notificationId, error)
         }
         // Bookkeeping: its failure must not turn a delivered push into a retry of every browser
-        await this.prisma.client.pushSubscription
-          .updateMany({ where: { id: sub.id }, data: { lastUsed: new Date() } })
+        await this.jobContext
+          .forUser(userId, () =>
+            this.prisma.client.pushSubscription.updateMany({
+              where: { id: sub.id, userId },
+              data: { lastUsed: new Date() }
+            })
+          )
           .catch((error: unknown) =>
             this.logger.warn({ userId, err: String(error) }, 'lastUsed of a push was not saved')
           )
@@ -134,6 +120,49 @@ export class WebPushSender {
     )
     // Retried as a whole: a browser that already has it gets the same tag, which replaces the first
     if (outcomes.includes('retry')) throw new Error('a push service could not be reached')
+  }
+
+  private async readOf(userId: string, notificationId: string) {
+    try {
+      return await this.jobContext.forUser(userId, async () => {
+        // Both ids, so a job that names someone else's notification pushes nothing
+        const found = await this.prisma.client.notification.findFirst({
+          where: { id: notificationId, userId },
+          select: {
+            id: true,
+            storeId: true,
+            type: true,
+            severity: true,
+            messageKey: true,
+            params: true,
+            resourceId: true,
+            actionPath: true,
+            readAt: true,
+            user: { select: { locale: true } }
+          }
+        })
+        const member =
+          found === null
+            ? 0
+            : await this.prisma.client.membership.count({
+                where: {
+                  userId,
+                  storeId: found.storeId,
+                  status: MembershipStatus.ACTIVE,
+                  revokedAt: null
+                }
+              })
+        const subscriptions =
+          found === null || member === 0
+            ? []
+            : await this.prisma.client.pushSubscription.findMany({ where: { userId } })
+        return { found, member, subscriptions }
+      })
+    } catch (error) {
+      // A person who was deleted while the job waited has nothing left to push to
+      if (error instanceof JobContextGoneError) return 'user_gone' as const
+      throw error
+    }
   }
 
   // A push that is not sent for a reason that is not an error. Nothing of the person or the text goes in
@@ -150,9 +179,11 @@ export class WebPushSender {
   ): Promise<'dropped' | 'retry' | 'failed'> {
     if (error instanceof WebPushError && GONE.has(error.statusCode)) {
       // The browser unsubscribed or the push service forgot it: it never comes back
-      await this.prisma.client.pushSubscription.deleteMany({
-        where: { id: subscriptionId, userId }
-      })
+      await this.jobContext.forUser(userId, () =>
+        this.prisma.client.pushSubscription.deleteMany({
+          where: { id: subscriptionId, userId }
+        })
+      )
       this.logger.info(
         {
           userId,

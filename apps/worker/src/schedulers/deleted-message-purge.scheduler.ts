@@ -3,11 +3,12 @@ import { Cron } from '@nestjs/schedule'
 import { PinoLogger } from 'nestjs-pino'
 
 import { errorName } from '@platform/channels/connections'
-import { PrismaService, assertSeesEveryRow } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { DeletedMessageRetention } from '@platform/core/domain'
 import { LockNames, Schedules } from '@platform/core/queues'
 
 import { LeaderLockService } from './leader-lock.service'
+import { inEachStoreStrict } from './store-sweep'
 
 const LOCK_SECONDS = 600
 const DAY_MS = 86_400_000
@@ -21,6 +22,7 @@ export class DeletedMessagePurgeScheduler {
   constructor(
     private readonly locks: LeaderLockService,
     private readonly prisma: PrismaService,
+    private readonly jobContext: JobContext,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(DeletedMessagePurgeScheduler.name)
@@ -30,10 +32,7 @@ export class DeletedMessagePurgeScheduler {
   async run(): Promise<void> {
     try {
       await this.locks.withLock(LockNames.PURGE_DELETED_MESSAGES, LOCK_SECONDS, async () => {
-        const purged = await this.purge()
-        if (purged === DeletedMessageRetention.PURGE_BATCH) {
-          this.logger.warn({ purged }, 'a full batch of deleted messages was purged; more may wait')
-        }
+        await this.purge()
       })
     } catch (error) {
       // A cron that throws must not take the worker down; the next hour tries again
@@ -41,41 +40,62 @@ export class DeletedMessagePurgeScheduler {
     }
   }
 
+  // Store by store, each in its own context. A purge decides by what it finds in the store, so a store that cannot be read aborts the
+  // run (the next hour tries again): none is skipped as if it had nothing due. Each store purges one batch.
   async purge(now: Date = new Date()): Promise<number> {
-    await assertSeesEveryRow(this.prisma, ['messages', 'message_revisions', 'media'])
-    const due = await this.prisma.client.message.findMany({
-      where: {
-        deletedAt: { lt: new Date(now.getTime() - DeletedMessageRetention.DAYS * DAY_MS) },
-        contentPurgedAt: null
-      },
-      select: { id: true },
-      orderBy: [{ deletedAt: 'asc' }, { id: 'asc' }],
-      take: DeletedMessageRetention.PURGE_BATCH
+    let total = 0
+    await inEachStoreStrict(this.prisma, async storeId => {
+      const purged = await this.purgeStore(storeId, now)
+      total += purged
+      if (purged === DeletedMessageRetention.PURGE_BATCH) {
+        this.logger.warn(
+          { storeId, purged },
+          'a full batch of deleted messages was purged; more may wait'
+        )
+      }
     })
+    return total
+  }
+
+  private async purgeStore(storeId: string, now: Date): Promise<number> {
+    const due = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.message.findMany({
+        where: {
+          storeId,
+          deletedAt: { lt: new Date(now.getTime() - DeletedMessageRetention.DAYS * DAY_MS) },
+          contentPurgedAt: null
+        },
+        select: { id: true },
+        orderBy: [{ deletedAt: 'asc' }, { id: 'asc' }],
+        take: DeletedMessageRetention.PURGE_BATCH
+      })
+    )
     if (due.length === 0) return 0
     const messageIds = due.map(message => message.id)
-    await this.prisma.transaction(async tx => {
-      await tx.messageRevision.updateMany({
-        where: { messageId: { in: messageIds } },
-        data: { content: null }
+    await this.jobContext.forStore(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await tx.messageRevision.updateMany({
+          where: { storeId, messageId: { in: messageIds } },
+          data: { content: null }
+        })
+        // The text under each file is content too (the first file's included, since the text of a message can go
+        // apart from it): it goes with the text of the message
+        await tx.media.updateMany({
+          where: { storeId, messageId: { in: messageIds }, caption: { not: null } },
+          data: { caption: null }
+        })
+        await tx.message.updateMany({
+          where: { storeId, id: { in: messageIds }, contentPurgedAt: null },
+          data: {
+            content: null,
+            pendingContent: null,
+            pendingEditPluginId: null,
+            changeRequestedAt: null,
+            contentPurgedAt: now
+          }
+        })
       })
-      // The text under each file is content too (the first file's included, since the text of a message can go
-      // apart from it): it goes with the text of the message
-      await tx.media.updateMany({
-        where: { messageId: { in: messageIds }, caption: { not: null } },
-        data: { caption: null }
-      })
-      await tx.message.updateMany({
-        where: { id: { in: messageIds }, contentPurgedAt: null },
-        data: {
-          content: null,
-          pendingContent: null,
-          pendingEditPluginId: null,
-          changeRequestedAt: null,
-          contentPurgedAt: now
-        }
-      })
-    })
+    )
     return messageIds.length
   }
 }

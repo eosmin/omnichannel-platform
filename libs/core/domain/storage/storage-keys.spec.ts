@@ -22,14 +22,17 @@ describe('parseMediaObjectKey with path steps', () => {
 describe('parseMediaObjectKey', () => {
   it('reads back the keys the builders make', () => {
     expect(parseMediaObjectKey(StorageKeys.message(STORE, MEDIA, 'a.png'))).toEqual({
+      storeId: STORE,
       area: 'messages',
       mediaId: MEDIA
     })
     expect(parseMediaObjectKey(StorageKeys.messageVariant(STORE, MEDIA, 'thumb'))).toEqual({
+      storeId: STORE,
       area: 'messages',
       mediaId: MEDIA
     })
     expect(parseMediaObjectKey(StorageKeys.messageUpload(STORE, MEDIA, 'a.png'))).toEqual({
+      storeId: STORE,
       area: 'uploads',
       mediaId: MEDIA
     })
