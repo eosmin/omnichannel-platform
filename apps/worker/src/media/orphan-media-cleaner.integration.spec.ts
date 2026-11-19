@@ -152,14 +152,14 @@ describe('OrphanMediaCleaner', () => {
     expect(await storage.head(strayUpload)).not.toBeNull()
   })
 
-  it('deletes nothing of a page when only one of its stores cannot be read', async () => {
+  it('aborts at the store that cannot be read and deletes nothing of it', async () => {
     const otherStoreId = randomUUID()
     const slug = `it-orphan-${otherStoreId.slice(0, 8)}`
     await owner.query(
       `INSERT INTO stores (id, organization_id, name, slug, updated_at) VALUES ($1, $2, $3, $3, now())`,
       [otherStoreId, organizationId, slug]
     )
-    const readable = await object(StorageKeys.message(storeId, randomUUID(), 'both-a.txt'))
+    await object(StorageKeys.message(storeId, randomUUID(), 'both-a.txt'))
     const unreadable = await object(StorageKeys.message(otherStoreId, randomUUID(), 'both-b.txt'))
     const jobContext = moduleRef.get(JobContext, { strict: false })
     const real = jobContext.forStore.bind(jobContext)
@@ -177,8 +177,7 @@ describe('OrphanMediaCleaner', () => {
     } finally {
       failing.mockRestore()
     }
-    // The store that could be read keeps its stray too: the sweep went no further than the failure
-    expect(await storage.head(readable)).not.toBeNull()
+    // The roots are swept in order: the store that could be read was judged whole, the one that could not has nothing deleted
     expect(await storage.head(unreadable)).not.toBeNull()
   })
 
@@ -521,6 +520,30 @@ describe('OrphanMediaCleaner', () => {
       )
       return { id, key, thumb }
     }
+    it('aborts and drops nothing when the store of an unsent file cannot be read', async () => {
+      const file = await unsent()
+      // Only the pass under test: the others would abort first or reach into the shared bucket
+      const silenced = quiet(
+        'deleteStrayObjects',
+        'deleteStrayAvatarUploads',
+        'dropUnattachedAvatars',
+        'deleteInfectedFiles',
+        'settleStuckScans'
+      )
+      const jobContext = moduleRef.get(JobContext, { strict: false })
+      const failing = jest
+        .spyOn(jobContext, 'forStore')
+        .mockRejectedValue(new JobContextError('the context of the store could not be opened'))
+      try {
+        await expect(sweep(unsentLater())).rejects.toBeInstanceOf(SweepAbortError)
+      } finally {
+        failing.mockRestore()
+        for (const spy of silenced) spy.mockRestore()
+      }
+      expect(await rowOf(file.id)).toBe(1)
+      expect(await storage.head(file.key)).not.toBeNull()
+    })
+
     const rowOf = async (id: string) =>
       (await owner.query(`SELECT 1 FROM media WHERE id = $1`, [id])).rows.length
 
