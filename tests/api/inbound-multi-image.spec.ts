@@ -2,7 +2,7 @@ import { getQueueToken } from '@nestjs/bullmq'
 import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { MessageType } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -87,7 +87,8 @@ describe('Several pictures that a customer sends in a row', () => {
       ),
       events,
       queueOf(app, QueueNames.HEAVY_PROCESSING) as never,
-      logger
+      logger,
+      app.get(JobContext, { strict: false })
     )
     reactions = new MessageReactionsService(
       prisma,
