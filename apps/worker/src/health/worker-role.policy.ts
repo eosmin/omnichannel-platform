@@ -9,7 +9,7 @@ export type WorkerRoleVerdict = (typeof WorkerRoleVerdicts)[keyof typeof WorkerR
 // a context that assumes the policies bind it: a role that still skips them would hide a missing context behind full results, so the
 // start fails. With the flag off a bypassing role is the normal state (and what a rollback leaves), so it only warns: no crash loop.
 export function workerRoleVerdict(input: {
-  bypassesRls: boolean
+  bypassesRls: boolean | undefined
   contextOn: boolean
 }): WorkerRoleVerdict {
   // undefined: the role could not be read, which is not the same as safe
