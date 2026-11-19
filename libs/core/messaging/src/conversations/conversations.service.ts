@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common'
 
 import { AssigneePermissions, type Permission, Permissions } from '@platform/core/auth'
-import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
+import {
+  JobContext,
+  lockStoreForWrite,
+  PrismaService,
+  type PrismaTransaction
+} from '@platform/core/database'
 import {
   type AssignmentReason,
   AttentionReasons,
@@ -131,14 +136,17 @@ export interface NewConversation {
 export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly events: DomainEvents
+    private readonly events: DomainEvents,
+    private readonly jobs: JobContext
   ) {}
 
   // Called by the inbound pipeline (Step 2.6), not by a route: a conversation starts with a message
   // from a channel.
   async create(storeId: string, input: NewConversation): Promise<ConversationDetail> {
-    const id = await this.prisma.transaction(tx => this.createIn(tx, storeId, input))
-    return this.get(storeId, id)
+    return this.jobs.forStoreOrJoin(storeId, async () => {
+      const id = await this.prisma.transaction(tx => this.createIn(tx, storeId, input))
+      return this.get(storeId, id)
+    })
   }
 
   // The same inside the transaction of the caller, which holds the store lock already. The customer is

@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, DeliveryStatus, MessageType, ReactionActors } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -91,7 +91,8 @@ describe('A reaction or a quote that points at a message the platform sent', () 
       ),
       events,
       queueOf(app, QueueNames.HEAVY_PROCESSING) as never,
-      logger
+      logger,
+      app.get(JobContext, { strict: false })
     )
     const targets = new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS)
     reactions = new MessageReactionsService(prisma, targets, events, logger)
