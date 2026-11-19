@@ -71,7 +71,7 @@ describe('The status flow from the carrier: engine, poll and schedule (TDD_17 §
     const writes = app.get(ShipmentWrites, { strict: false })
     const applier = new CarrierEventApplier(
       prisma,
-      new CarrierEventResolver(prisma, quietLogger),
+      new CarrierEventResolver(prisma, quietLogger, new JobContext(prisma)),
       engine,
       writes,
       app.get(DomainEvents, { strict: false }),
@@ -83,9 +83,17 @@ describe('The status flow from the carrier: engine, poll and schedule (TDD_17 §
         labelNames: ['carrier'],
         registers: [new Registry()]
       }),
-      quietLogger
+      quietLogger,
+      new JobContext(prisma)
     )
-    poller = new ShipmentPoller(prisma, registry, cipher, applier, quietLogger)
+    poller = new ShipmentPoller(
+      prisma,
+      registry,
+      cipher,
+      applier,
+      quietLogger,
+      new JobContext(prisma)
+    )
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)

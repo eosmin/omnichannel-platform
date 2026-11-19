@@ -1,4 +1,5 @@
-import type { PrismaService } from '@platform/core/database'
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one page or count; the file is written to the bucket outside of it
+import type { JobContext, PrismaService } from '@platform/core/database'
 import { MessageType } from '@platform/core/domain'
 import { ExportLimits } from '@platform/core/exports'
 import { type ConversationsExportFilters, conversationsExportWhere } from '@platform/core/messaging'
@@ -34,6 +35,7 @@ const LEFT_OUT_TYPES = [MessageType.SYSTEM, MessageType.ORDER_SUMMARY, MessageTy
 // message, or one already purged, is never written.
 export function conversationsExportSource(
   prisma: PrismaService,
+  jobContext: JobContext,
   storeId: string,
   filters: ConversationsExportFilters
 ): CsvSource {
@@ -42,28 +44,37 @@ export function conversationsExportSource(
     columns: CONVERSATION_COLUMNS,
     // One row per message the file keeps: the same cut as the pages below
     count: () =>
-      prisma.client.message.count({
-        where: { storeId, discardedAt: null, type: { notIn: LEFT_OUT_TYPES }, conversation: where }
-      }),
+      jobContext.forStore(storeId, () =>
+        prisma.client.message.count({
+          where: {
+            storeId,
+            discardedAt: null,
+            type: { notIn: LEFT_OUT_TYPES },
+            conversation: where
+          }
+        })
+      ),
     rows: async function* () {
       let afterConversation: string | undefined
       for (;;) {
-        const conversations = await prisma.client.conversation.findMany({
-          where:
-            afterConversation === undefined
-              ? where
-              : { AND: [where, { id: { gt: afterConversation } }] },
-          orderBy: { id: 'asc' },
-          // Keyset by `id > last`, as the customers file does. No `cursor` + `skip: 1` on top: the last row
-          // is already left out by the filter, so the skip would drop the next conversation of every page.
-          take: ExportLimits.ROW_PAGE_SIZE,
-          select: {
-            id: true,
-            channelType: true,
-            status: true,
-            customer: { select: { id: true, name: true } }
-          }
-        })
+        const conversations = await jobContext.forStore(storeId, () =>
+          prisma.client.conversation.findMany({
+            where:
+              afterConversation === undefined
+                ? where
+                : { AND: [where, { id: { gt: afterConversation } }] },
+            orderBy: { id: 'asc' },
+            // Keyset by `id > last`, as the customers file does. No `cursor` + `skip: 1` on top: the last row
+            // is already left out by the filter, so the skip would drop the next conversation of every page.
+            take: ExportLimits.ROW_PAGE_SIZE,
+            select: {
+              id: true,
+              channelType: true,
+              status: true,
+              customer: { select: { id: true, name: true } }
+            }
+          })
+        )
         const lastConversation = conversations.at(-1)
         if (lastConversation === undefined) return
         afterConversation = lastConversation.id
@@ -71,38 +82,40 @@ export function conversationsExportSource(
         for (const conversation of conversations) {
           let afterMessage: { createdAt: Date; id: string } | undefined
           for (;;) {
-            const messages = await prisma.client.message.findMany({
-              where: {
-                storeId,
-                conversationId: conversation.id,
-                discardedAt: null,
-                type: { notIn: LEFT_OUT_TYPES },
-                ...(afterMessage === undefined
-                  ? {}
-                  : {
-                      OR: [
-                        { createdAt: { gt: afterMessage.createdAt } },
-                        { createdAt: afterMessage.createdAt, id: { gt: afterMessage.id } }
-                      ]
-                    })
-              },
-              orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-              take: ExportLimits.ROW_PAGE_SIZE,
-              select: {
-                id: true,
-                createdAt: true,
-                authorType: true,
-                authorPluginId: true,
-                type: true,
-                content: true,
-                deliveryStatus: true,
-                deletedAt: true,
-                contentPurgedAt: true,
-                textApart: true,
-                // The text under each file is part of what was said to the customer
-                media: { orderBy: { position: 'asc' }, select: { caption: true, position: true } }
-              }
-            })
+            const messages = await jobContext.forStore(storeId, () =>
+              prisma.client.message.findMany({
+                where: {
+                  storeId,
+                  conversationId: conversation.id,
+                  discardedAt: null,
+                  type: { notIn: LEFT_OUT_TYPES },
+                  ...(afterMessage === undefined
+                    ? {}
+                    : {
+                        OR: [
+                          { createdAt: { gt: afterMessage.createdAt } },
+                          { createdAt: afterMessage.createdAt, id: { gt: afterMessage.id } }
+                        ]
+                      })
+                },
+                orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+                take: ExportLimits.ROW_PAGE_SIZE,
+                select: {
+                  id: true,
+                  createdAt: true,
+                  authorType: true,
+                  authorPluginId: true,
+                  type: true,
+                  content: true,
+                  deliveryStatus: true,
+                  deletedAt: true,
+                  contentPurgedAt: true,
+                  textApart: true,
+                  // The text under each file is part of what was said to the customer
+                  media: { orderBy: { position: 'asc' }, select: { caption: true, position: true } }
+                }
+              })
+            )
             const lastMessage = messages.at(-1)
             if (lastMessage === undefined) break
             afterMessage = { createdAt: lastMessage.createdAt, id: lastMessage.id }

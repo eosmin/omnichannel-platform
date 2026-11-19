@@ -213,6 +213,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     labels: ['reason']
   },
 
+  [MetricNames.WORKER_JOB_SUBJECT_MISSING]: {
+    kind: 'counter',
+    help: 'Jobs whose subject row was not found for the store of the job',
+    labels: ['job']
+  },
   [MetricNames.WEBHOOK_DELIVERIES]: {
     kind: 'counter',
     help: 'Outbound webhook deliveries, of a store or of a plugin',
