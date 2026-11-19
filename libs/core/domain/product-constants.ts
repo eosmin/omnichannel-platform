@@ -62,5 +62,11 @@ export const ProductSearchConfig = {
   MIN_QUERY_LENGTH: 2,
   MAX_QUERY_LENGTH: 100,
   DEFAULT_LIMIT: 8,
-  MAX_LIMIT: 20
+  MAX_LIMIT: 20,
+  // The most products (and the most variants) a text filter of the stock levels may match: a text that matches more is too wide to
+  // be passed on as a list, and the person is asked to refine it (never answered with a truncated list)
+  MAX_FILTER_MATCHES: 2000
 } as const
+
+// What a match of the text filter of the stock levels is: a product or a variant (the words the search function answers with)
+export const ProductMatchKinds = { PRODUCT: 'product', VARIANT: 'variant' } as const

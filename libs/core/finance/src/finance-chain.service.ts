@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import type { Gauge } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import { ChainIncidentChange, ChainProblem, FinanceReportLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -297,15 +297,17 @@ export class FinanceChainMonitor {
     if (seen.count > 0) return ChainIncidentChange.STILL_OPEN
     try {
       // The row and the event commit together: an incident nobody was told about cannot exist
-      await this.prisma.transaction(async tx => {
-        await tx.financeChainIncident.create({
-          data: { organizationId, ...details, detectedAt: now }
+      await inSavepoint(() =>
+        this.prisma.transaction(async tx => {
+          await tx.financeChainIncident.create({
+            data: { organizationId, ...details, detectedAt: now }
+          })
+          this.events.publish(tx, Events.FINANCE_CHAIN_BROKEN, {
+            organizationId,
+            reason: PROBLEM_OF[broken.reason]
+          })
         })
-        this.events.publish(tx, Events.FINANCE_CHAIN_BROKEN, {
-          organizationId,
-          reason: PROBLEM_OF[broken.reason]
-        })
-      })
+      )
     } catch (error) {
       // Another replica opened it between our update and our create: the partial unique index keeps it one
       if (isUniqueViolation(error)) return ChainIncidentChange.STILL_OPEN

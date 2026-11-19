@@ -4,7 +4,7 @@ import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import { withTimeout } from '@platform/channels/connections'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   MediaStatus,
   OriginMediaSlots,
@@ -105,21 +105,23 @@ export class OriginMediaFetcher {
     const key = StorageKeys.message(storeId, mediaId, filename)
     await this.storage.put(key, fetched.body, fetched.contentType)
     try {
-      await this.prisma.client.media.create({
-        data: {
-          id: mediaId,
-          storeId,
-          purpose: MediaPurpose.ORIGIN,
-          originId,
-          originSlot: slot,
-          uploadedBy: null,
-          key,
-          filename,
-          contentType: fetched.contentType,
-          fileSize: fetched.body.length,
-          status: MediaStatus.PENDING
-        }
-      })
+      await inSavepoint(() =>
+        this.prisma.client.media.create({
+          data: {
+            id: mediaId,
+            storeId,
+            purpose: MediaPurpose.ORIGIN,
+            originId,
+            originSlot: slot,
+            uploadedBy: null,
+            key,
+            filename,
+            contentType: fetched.contentType,
+            fileSize: fetched.body.length,
+            status: MediaStatus.PENDING
+          }
+        })
+      )
     } catch (error) {
       // Another attempt wrote the row first; the file it wrote is the same one
       if (!isUniqueViolation(error)) throw error
