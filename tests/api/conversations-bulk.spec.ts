@@ -290,16 +290,20 @@ describe('Marking unread and acting on many conversations', () => {
 
     it('records what was asked in the audit entry: the params and the filter', async () => {
       const conversation = await mk({ assignedTo: ctx.agentA.id })
+      const where = {
+        action: AuditAction.BULK_ACTION_EXECUTED,
+        userId: ctx.adminA.id,
+        metadata: { path: ['action'], equals: BulkActions.ASSIGN_TO_AGENT }
+      }
+      // Other tests of the file wrote entries of the same kind: wait for the one more this call makes, or the last one read is an older one
+      const before = await owner.auditLog.count({ where })
 
       await bulk(asAdmin, BulkActions.ASSIGN_TO_AGENT, ids(conversation), {
         userId: agent2.id
       }).expect(OK)
 
-      const entries = await waitForAuditEntries(owner, {
-        action: AuditAction.BULK_ACTION_EXECUTED,
-        userId: ctx.adminA.id,
-        metadata: { path: ['action'], equals: BulkActions.ASSIGN_TO_AGENT }
-      })
+      const entries = await waitForAuditEntries(owner, where, before + 1)
+      expect(entries).toHaveLength(before + 1)
       expect(entries.at(-1)?.metadata).toMatchObject({ params: { userId: agent2.id } })
     })
 
