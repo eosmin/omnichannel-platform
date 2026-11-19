@@ -36,7 +36,7 @@ CREATE FUNCTION public.rls_search_customer_list(
     IF cardinality(v_stores) = 0 THEN
       RAISE EXCEPTION 'SEARCH_CONTEXT_REQUIRED' USING ERRCODE = '42501';
     END IF;
-    v_after_at := p_after_created_at::public.customers.created_at%TYPE;
+    v_after_at := p_after_created_at::timestamp;
     IF p_limit IS NULL OR p_limit < 1 OR p_limit > 1000 THEN
       RAISE EXCEPTION 'the page of a list is 1 to 1000 rows' USING ERRCODE = '22023';
     END IF;
