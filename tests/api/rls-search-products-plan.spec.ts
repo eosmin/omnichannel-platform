@@ -4,6 +4,7 @@ import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/da
 import { ProductMatchKinds } from '@platform/core/domain'
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { retryOnDeadlock } from '../helpers/deadlock-retry'
 
 // The plan of the search of products and variants with Row-Level Security on (the same question rls-search-plan.spec.ts asks of the
 // messages). The trigram operators (ILIKE) are not LEAKPROOF, so with the policies enforced the planner reads the products through the
@@ -71,13 +72,15 @@ describe('the plan of the product searches with row-level security on', () => {
   }, 180_000)
 
   // The plan of a plain statement as platform_app with the context of store A; the policies are on or off
-  async function planOf(
+  const planOf = (statement: string, values: unknown[], policiesOn: boolean): Promise<string> =>
+    retryOnDeadlock(() => planOfOnce(statement, values, policiesOn))
+  async function planOfOnce(
     statement: string,
     values: unknown[],
     policiesOn: boolean
   ): Promise<string> {
-    await raw.query('BEGIN')
     try {
+      await raw.query('BEGIN')
       await raw.query("SET LOCAL lock_timeout = '20s'")
       if (policiesOn) {
         for (const table of ['products', 'product_variants']) {
@@ -97,7 +100,12 @@ describe('the plan of the product searches with row-level security on', () => {
   }
 
   // The plans auto_explain logs for the statements inside one call of a function, as the non-superuser owner of FORCED tables
-  async function planOfFunction(
+  const planOfFunction = (
+    functionSignature: string,
+    call: string,
+    values: unknown[]
+  ): Promise<string> => retryOnDeadlock(() => planOfFunctionOnce(functionSignature, call, values))
+  async function planOfFunctionOnce(
     functionSignature: string,
     call: string,
     values: unknown[]
@@ -105,8 +113,8 @@ describe('the plan of the product searches with row-level security on', () => {
     const plans: string[] = []
     const collect = (notice: { message?: string }): number => plans.push(notice.message ?? '')
     raw.on('notice', collect)
-    await raw.query('BEGIN')
     try {
+      await raw.query('BEGIN')
       await raw.query("SET LOCAL lock_timeout = '20s'")
       const role = `plan_owner_${prefix.replaceAll(/[^a-z0-9]/gi, '_')}`.slice(0, 60)
       await raw.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`)
