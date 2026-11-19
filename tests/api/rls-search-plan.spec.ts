@@ -19,6 +19,8 @@ import {
 } from '@platform/core/domain'
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { retryOnDeadlock } from '../helpers/deadlock-retry'
+import { PLAN_SPEC_TABLES, quietTables } from '../helpers/quiet-tables'
 
 // The search under Row-Level Security (RLS audit, search section): Postgres evaluates the policy of a table before any condition of
 // the query whose operator is not LEAKPROOF, and `@@` of a tsvector, LIKE, ILIKE and the operators of pg_trgm are not. A condition that
@@ -122,6 +124,8 @@ describe('the plan of the searches with row-level security on', () => {
       }
     }
     await raw.query('ANALYZE messages')
+    // Nothing left for the autovacuum to do while the DDL of the cases below takes its locks (helpers/quiet-tables.ts)
+    await quietTables(owner, PLAN_SPEC_TABLES)
   }, 120_000)
 
   afterAll(async () => {
@@ -133,13 +137,15 @@ describe('the plan of the searches with row-level security on', () => {
   }, 120_000)
 
   // The plan of a statement as platform_app with the context of store A and the policies on; text of the whole plan
-  async function planOf(
+  const planOf = (statement: string, values: unknown[], policiesOn: boolean): Promise<string> =>
+    retryOnDeadlock(() => planOfOnce(statement, values, policiesOn))
+  async function planOfOnce(
     statement: string,
     values: unknown[],
     policiesOn: boolean
   ): Promise<string> {
-    await raw.query('BEGIN')
     try {
+      await raw.query('BEGIN')
       await raw.query("SET LOCAL lock_timeout = '20s'")
       if (policiesOn) {
         for (const table of ['conversations', 'messages']) {
@@ -187,12 +193,13 @@ describe('the plan of the searches with row-level security on', () => {
     'public.rls_search_messages(text, integer, integer, text, boolean, boolean, boolean, boolean, text[], text, text, text, text)'
   const FUNCTION_CALL = `SELECT * FROM public.rls_search_messages($1, 25::integer, $2::integer, NULL::text, true, true, true, true,
     $3::text[], $4, $5, $6, $7)`
-  async function planOfFunction(): Promise<string> {
+  const planOfFunction = (): Promise<string> => retryOnDeadlock(planOfFunctionOnce)
+  async function planOfFunctionOnce(): Promise<string> {
     const plans: string[] = []
     const collect = (notice: { message?: string }) => plans.push(notice.message ?? '')
     raw.on('notice', collect)
-    await raw.query('BEGIN')
     try {
+      await raw.query('BEGIN')
       await raw.query("SET LOCAL lock_timeout = '20s'")
       // The deployment: the function belongs to a role that is NOT a superuser and does not bypass row security, and the tables it reads
       // are FORCED, so what lets it read is the `<table>_owner` policy of its owner, exactly as in production. Everything here is
