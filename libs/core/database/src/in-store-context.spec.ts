@@ -37,6 +37,44 @@ describe('PrismaService.inStoreContext', () => {
     expect(tenantTransaction).not.toHaveBeenCalled()
   })
 
+  it('joins the context of the request when it is that store and the person who asks for it', async () => {
+    const { service, tenantTransaction } = serviceWith({
+      storeIds: ['store-1'],
+      organizationIds: [],
+      userId: 'user-1'
+    })
+    await expect(
+      service.inStoreContext('store-1', () => Promise.resolve('ok'), 'user-1')
+    ).resolves.toBe('ok')
+    expect(tenantTransaction).not.toHaveBeenCalled()
+  })
+
+  it('joins with no person asked for, whoever the context holds', async () => {
+    const { service, tenantTransaction } = serviceWith({
+      storeIds: ['store-1'],
+      organizationIds: [],
+      userId: 'user-9'
+    })
+    await expect(service.inStoreContext('store-1', () => Promise.resolve('ok'))).resolves.toBe('ok')
+    expect(tenantTransaction).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['another person', { storeIds: ['store-1'], organizationIds: [], userId: 'user-2' }],
+    ['no person at all', { storeIds: ['store-1'], organizationIds: [] }]
+  ])(
+    'refuses, and runs nothing, when the person is asked for and the context of the request has %s',
+    async (_name, current) => {
+      const { service, tenantTransaction } = serviceWith(current)
+      const work = jest.fn(() => Promise.resolve('never'))
+      await expect(service.inStoreContext('store-1', work, 'user-1')).rejects.toThrow(
+        /another person/
+      )
+      expect(work).not.toHaveBeenCalled()
+      expect(tenantTransaction).not.toHaveBeenCalled()
+    }
+  )
+
   it.each([
     ['another store', { storeIds: ['store-2'], organizationIds: [] }],
     ['several stores', { storeIds: ['store-1', 'store-2'], organizationIds: [] }],
