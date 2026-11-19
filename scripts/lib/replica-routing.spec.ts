@@ -7,6 +7,45 @@ function check(body: string, file = FILE, readers: readonly string[] = READERS) 
   return checkReplicaUse(file, body, readers)
 }
 
+describe('a replica reader got through another name', () => {
+  const other = 'apps/api/src/modules/y/y.service.ts'
+  const messages = (body: string) => check(body, other).violations.map(v => v.message)
+
+  it('refuses the method taken as a value', () => {
+    expect(
+      messages(`class S { go() { const read = this.prisma.replicaTenantRead; return read } }`)
+    ).toEqual([expect.stringContaining('another name')])
+  })
+
+  it('refuses a destructured method', () => {
+    expect(
+      messages(
+        `class S { go() { const { replicaTenantRead } = this.prisma; return replicaTenantRead } }`
+      )
+    ).toEqual([expect.stringContaining('another name')])
+  })
+
+  it('refuses the method through a string key and a bare call', () => {
+    expect(messages(`class S { go() { return this.prisma['replicaTenantRead'] } }`)).toEqual([
+      expect.stringContaining('another name')
+    ])
+    expect(
+      messages(`class S { go(replicaTenantRead: F) { return replicaTenantRead(1, f) } }`)
+    ).toEqual([expect.stringContaining('another name')])
+  })
+
+  it('counts them as calls of the file, so a listed reader that only has one is not stale', () => {
+    expect(check(`class S { go() { return this.prisma.replicaTenantRead } }`).calls).toBe(1)
+  })
+
+  it('still lets the direct call of a listed reader through', () => {
+    expect(
+      check(`class S { go() { return this.prisma.replicaTenantRead(ctx, tx => tx.a.findMany()) } }`)
+        .violations
+    ).toEqual([])
+  })
+})
+
 describe('checkReplicaUse', () => {
   it('lets a listed file read from the replica', () => {
     const { violations, calls } = check(`

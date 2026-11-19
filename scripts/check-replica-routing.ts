@@ -29,8 +29,8 @@ const violations: ReplicaViolation[] = []
 const callsByFile = new Map<string, number>()
 for (const file of files) {
   const text = readFileSync(file, 'utf8')
-  // The definition and its own comments mention the word; a file with no `replica(` cannot call it
-  if (!text.includes('replica(') && !text.includes('replicaTenantRead(')) continue
+  // The definition and its own comments mention the word; a file with neither name cannot call it
+  if (!text.includes('replica(') && !text.includes('replicaTenantRead')) continue
   const result = checkReplicaUse(file, text, REPLICA_READERS)
   callsByFile.set(file, result.calls)
   violations.push(...result.violations)
