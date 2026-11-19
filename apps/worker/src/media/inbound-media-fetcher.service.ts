@@ -9,7 +9,7 @@ import {
   errorName,
   withTimeout
 } from '@platform/channels/connections'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   MediaStatus,
@@ -217,21 +217,23 @@ export class InboundMediaFetcher {
     try {
       await this.storage.put(key, fetched.body, fetched.contentType)
       try {
-        await this.prisma.client.media.create({
-          data: {
-            id: mediaId,
-            storeId,
-            purpose: MediaPurpose.MESSAGE,
-            messageId,
-            customerId: message.conversation.customerId,
-            uploadedBy: null,
-            key,
-            filename,
-            contentType: fetched.contentType,
-            fileSize: fetched.body.length,
-            status: MediaStatus.PENDING
-          }
-        })
+        await inSavepoint(() =>
+          this.prisma.client.media.create({
+            data: {
+              id: mediaId,
+              storeId,
+              purpose: MediaPurpose.MESSAGE,
+              messageId,
+              customerId: message.conversation.customerId,
+              uploadedBy: null,
+              key,
+              filename,
+              contentType: fetched.contentType,
+              fileSize: fetched.body.length,
+              status: MediaStatus.PENDING
+            }
+          })
+        )
       } catch (error) {
         // Another attempt wrote the row first; the file it wrote is the same one. If the row is not of
         // this message (a row the check above could not see), it is not our file: refuse, never retry
