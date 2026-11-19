@@ -1,18 +1,23 @@
 // Fails when a route of a controller reaches I/O outside the database (a carrier, a channel, the bucket, the mail, a stream) and is not marked
 // @NoTenantTransaction (RLS phase 6, F6-3d). The routes that are not marked today are frozen in scripts/external-io-baseline.json, which can
 // only shrink: mark a route (and give it short contexts of its own), then run with --update-down.
+// The check is a net, not a proof: the real inventory of the I/O that does not fit in the 15 s transaction is the `rls-enforced` job (F6-5).
 // Usage: tsx scripts/validate-external-io.ts [--init | --update-down | --require-main]
 import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { argv, exit } from 'node:process'
 
 import { EXTERNAL_IO_PROVIDERS } from './external-io-providers'
+import { EXTERNAL_IO_PURE_TYPES } from './external-io-pure-types'
 import {
   baselineGrowth,
   type ExternalIoBaseline,
   fixedEntries,
+  networkFunctionsOf,
   newlyUnmarked,
   parseClasses,
+  stalePureTypes,
+  unknownFieldTypes,
   unknownProviders,
   unmarkedExternalRoutes
 } from './lib/external-io-routes'
@@ -35,7 +40,10 @@ if (files.length === 0) {
   console.error('external-io: no file to scan; run it from the root of the repository')
   exit(1)
 }
-const classes = files.flatMap(file => parseClasses(file, readFileSync(file, 'utf8')))
+const texts = files.map(file => [file, readFileSync(file, 'utf8')] as const)
+// First pass: the free functions that go over the network (pinnedHttpsGet, ...); second pass: the classes that call them
+const networkFunctions = new Set(texts.flatMap(([file, text]) => networkFunctionsOf(file, text)))
+const classes = texts.flatMap(([file, text]) => parseClasses(file, text, networkFunctions))
 const current = unmarkedExternalRoutes(classes, EXTERNAL_IO_PROVIDERS)
 const keys = current.map(route => route.key)
 
@@ -83,27 +91,45 @@ function baselineOfMain(): ExternalIoBaseline | undefined {
   return shown.status === 0 ? (JSON.parse(shown.stdout) as string[]) : undefined
 }
 
-const failures: string[] = []
+const routeFailures: string[] = []
+const listFailures: string[] = []
 const previous = baselineOfMain()
 if (previous !== undefined) {
   for (const key of baselineGrowth(previous, baseline)) {
-    failures.push(`${BASELINE_FILE}: ${key} is not on the baseline of main; it can only shrink`)
+    routeFailures.push(
+      `${BASELINE_FILE}: ${key} is not on the baseline of main; it can only shrink`
+    )
   }
 }
 for (const route of newlyUnmarked(baseline, current)) {
-  failures.push(`${route.file}:${route.line}: ${route.key} ${route.why}`)
+  routeFailures.push(`${route.file}:${route.line}: ${route.key} ${route.why}`)
 }
 for (const name of unknownProviders(classes, EXTERNAL_IO_PROVIDERS)) {
-  failures.push(`scripts/external-io-providers.ts: no class named ${name}`)
+  listFailures.push(`scripts/external-io-providers.ts: no class or field type named ${name}`)
 }
-if (failures.length > 0) {
+const pureNames = EXTERNAL_IO_PURE_TYPES.map(entry => entry.name)
+for (const type of unknownFieldTypes(classes, EXTERNAL_IO_PROVIDERS, pureNames)) {
+  listFailures.push(
+    `type ${type}: a field of this type is called and the check cannot tell whether it does I/O; add it to scripts/external-io-providers.ts (it does) or to scripts/external-io-pure-types.ts (it does not)`
+  )
+}
+for (const name of stalePureTypes(classes, pureNames)) {
+  listFailures.push(
+    `scripts/external-io-pure-types.ts: no method calls a field of the type ${name}`
+  )
+}
+if (routeFailures.length > 0) {
   console.error('Routes that reach I/O outside the database and are not @NoTenantTransaction:')
-  for (const failure of failures) console.error(`  ${failure}`)
+  for (const failure of routeFailures) console.error(`  ${failure}`)
   console.error(
     "Mark the route with @NoTenantTransaction('reason') and open short contexts of its own (PrismaService.tenantTransaction)."
   )
-  exit(1)
 }
+if (listFailures.length > 0) {
+  console.error('The lists of providers and of pure types do not match the code:')
+  for (const failure of listFailures) console.error(`  ${failure}`)
+}
+if (routeFailures.length + listFailures.length > 0) exit(1)
 const slack = fixedEntries(baseline, current)
 if (slack.length > 0) {
   console.error(`external-io: ${slack.length} routes on the baseline are fixed; run --update-down`)

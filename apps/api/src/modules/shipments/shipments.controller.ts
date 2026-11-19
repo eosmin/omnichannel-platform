@@ -22,6 +22,7 @@ import {
   actorOf,
   CurrentPermissions,
   CurrentStore,
+  NoTenantTransaction,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -76,6 +77,9 @@ export class ShipmentsController {
   }
 
   @RequirePermissions(Permissions.SHIPPING_MANAGE)
+  @NoTenantTransaction(
+    'calls the carrier and can fail after writing the guide row: a rollback would erase a guide that exists at the carrier (short contexts, F6-3f)'
+  )
   @Post(ApiRoutes.shipments.forOrder(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   create(
