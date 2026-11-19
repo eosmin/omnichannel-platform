@@ -36,6 +36,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { workerChannelHealth } from '../helpers/worker-services'
 
 const OK = 200
 const CREATED = 201
@@ -1768,9 +1769,9 @@ describe('The channel connections of a store', () => {
       const b = (await connect(ill.id)).body as ConnectionBody
       const plugins = new Map([well, ill].map(entry => [entry.id, entry.plugin]))
 
-      const result = await app
-        .get(ChannelHealthService, { strict: false })
-        .checkAll(pluginId => plugins.get(pluginId))
+      const result = await (
+        await workerChannelHealth(app)
+      ).checkAll(pluginId => plugins.get(pluginId))
 
       expect(result.checked).toBeGreaterThanOrEqual(2)
       expect(result.unhealthy).toBeGreaterThanOrEqual(1)
@@ -1790,11 +1791,12 @@ describe('The channel connections of a store', () => {
         select: CONNECTION_ROW_SELECT
       })
       await asAdmin().post(ApiRoutes.channels.disconnect(made.id))
+      // record is not a round: it is what a request or a round calls with its own context, so it is not given the guarded worker here
       const health = app.get(ChannelHealthService, { strict: false })
 
       await health.record(stale, { healthy: true })
       await health.record(stale, { healthy: false, error: 'late' })
-      await health.checkAll(() => plugin, 0)
+      await (await workerChannelHealth(app)).checkAll(() => plugin, 0)
 
       const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: made.id } })
       expect(row.status).toBe(ChannelConnectionStatus.DISCONNECTED)
@@ -1818,9 +1820,9 @@ describe('The channel connections of a store', () => {
         }
       })
 
-      const result = await app
-        .get(ChannelHealthService, { strict: false })
-        .checkAll(pluginId => (pluginId === id ? plugin : undefined))
+      const result = await (
+        await workerChannelHealth(app)
+      ).checkAll(pluginId => (pluginId === id ? plugin : undefined))
 
       expect(result.checked).toBeGreaterThanOrEqual(1)
       const after = await owner.channelConnection.findUniqueOrThrow({ where: { id: row.id } })
@@ -1834,9 +1836,7 @@ describe('The channel connections of a store', () => {
       const { id, plugin } = register()
       await connect(id)
 
-      const result = await app
-        .get(ChannelHealthService, { strict: false })
-        .checkAll(() => plugin, 0)
+      const result = await (await workerChannelHealth(app)).checkAll(() => plugin, 0)
 
       expect(result).toEqual({ checked: 0, unhealthy: 0 })
     })
@@ -1845,7 +1845,7 @@ describe('The channel connections of a store', () => {
       const { id } = register()
       const made = (await connect(id)).body as ConnectionBody
 
-      await app.get(ChannelHealthService, { strict: false }).checkAll(() => undefined)
+      await (await workerChannelHealth(app)).checkAll(() => undefined)
 
       expect(
         (await owner.channelConnection.findUniqueOrThrow({ where: { id: made.id } })).status
@@ -1857,9 +1857,9 @@ describe('The channel connections of a store', () => {
       const made = (await connect(id)).body as ConnectionBody
       await asAdmin().post(ApiRoutes.channels.disconnect(made.id))
 
-      await app
-        .get(ChannelHealthService, { strict: false })
-        .checkAll(pluginId => (pluginId === id ? plugin : undefined))
+      await (
+        await workerChannelHealth(app)
+      ).checkAll(pluginId => (pluginId === id ? plugin : undefined))
 
       expect(
         (await owner.channelConnection.findUniqueOrThrow({ where: { id: made.id } })).status

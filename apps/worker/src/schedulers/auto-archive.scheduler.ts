@@ -3,13 +3,17 @@ import { Cron } from '@nestjs/schedule'
 import { PinoLogger } from 'nestjs-pino'
 
 import { errorName } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { ConversationStatus, ConversationStatusReasons, DAY_MS } from '@platform/core/domain'
 import { ConversationsService } from '@platform/core/messaging'
 import { ConversationSweep, LockNames, Schedules } from '@platform/core/queues'
 
 import { LeaderLockService } from './leader-lock.service'
+import { readInEachStore } from './store-sweep'
 import { isNoLongerDue, runBatches, type SweepBatch } from './sweep-errors'
+
+// rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
+// every read or write of a table of a store runs inside JobContext.forStore / forOrganization
 
 const LOCK_SECONDS = 600
 
@@ -23,7 +27,8 @@ export class AutoArchiveScheduler {
     private readonly locks: LeaderLockService,
     private readonly prisma: PrismaService,
     private readonly conversations: ConversationsService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(AutoArchiveScheduler.name)
   }
@@ -51,26 +56,33 @@ export class AutoArchiveScheduler {
 
   // One batch: how many conversations were due and how many of them were archived
   async archive(now: Date = new Date(), skip: Set<string> = new Set()): Promise<SweepBatch> {
-    // The days are a setting of the store: one query for each value in use, which are few
-    const groups = await this.prisma.client.storeSettings.groupBy({
-      by: ['autoArchiveAfterDays']
-    })
-    const found: { id: string; storeId: string; resolvedAt: Date | null; cutoff: Date }[] = []
-    for (const { autoArchiveAfterDays } of groups) {
-      const cutoff = new Date(now.getTime() - autoArchiveAfterDays * DAY_MS)
-      const rows = await this.prisma.client.conversation.findMany({
-        where: {
-          status: ConversationStatus.RESOLVED,
-          resolvedAt: { lt: cutoff },
-          id: { notIn: [...skip] },
-          store: { settings: { is: { autoArchiveAfterDays } } }
-        },
-        select: { id: true, storeId: true, resolvedAt: true },
-        orderBy: [{ resolvedAt: 'asc' }, { id: 'asc' }],
-        take: ConversationSweep.BATCH
-      })
-      found.push(...rows.map(row => ({ ...row, cutoff })))
-    }
+    // The days are a setting of the store, so each store is read in its own context: its setting, then its resolved conversations
+    const found = await readInEachStore(
+      this.prisma,
+      this.jobContext,
+      async storeId => {
+        const settings = await this.prisma.client.storeSettings.findUnique({
+          where: { storeId },
+          select: { autoArchiveAfterDays: true }
+        })
+        if (settings === null) return []
+        const cutoff = new Date(now.getTime() - settings.autoArchiveAfterDays * DAY_MS)
+        const rows = await this.prisma.client.conversation.findMany({
+          where: {
+            storeId,
+            status: ConversationStatus.RESOLVED,
+            resolvedAt: { lt: cutoff },
+            id: { notIn: [...skip] }
+          },
+          select: { id: true, storeId: true, resolvedAt: true },
+          orderBy: [{ resolvedAt: 'asc' }, { id: 'asc' }],
+          take: ConversationSweep.BATCH
+        })
+        return rows.map(row => ({ ...row, cutoff }))
+      },
+      (storeId, error) =>
+        this.logger.error({ storeId, errorName: errorName(error) }, 'a store could not be swept')
+    )
     // The oldest of all the groups first, so that a group with a long backlog holds back no other
     const due = found
       .sort((a, b) => (a.resolvedAt?.getTime() ?? 0) - (b.resolvedAt?.getTime() ?? 0))
@@ -78,12 +90,14 @@ export class AutoArchiveScheduler {
     let archived = 0
     for (const { id, storeId, cutoff } of due) {
       try {
-        await this.prisma.transaction(tx =>
-          this.conversations.applyStatus(tx, storeId, id, ConversationStatus.ARCHIVED, {
-            actor: 'system',
-            reason: ConversationStatusReasons.AUTO_ARCHIVED,
-            onlyIfDue: { status: ConversationStatus.RESOLVED, by: cutoff }
-          })
+        await this.jobContext.forStore(storeId, () =>
+          this.prisma.transaction(tx =>
+            this.conversations.applyStatus(tx, storeId, id, ConversationStatus.ARCHIVED, {
+              actor: 'system',
+              reason: ConversationStatusReasons.AUTO_ARCHIVED,
+              onlyIfDue: { status: ConversationStatus.RESOLVED, by: cutoff }
+            })
+          )
         )
         archived += 1
       } catch (error) {

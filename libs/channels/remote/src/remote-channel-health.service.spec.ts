@@ -2,7 +2,7 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import type { ChannelHealthService, CheckedHealth } from '@platform/channels/connection-health'
 import { CacheKeys } from '@platform/core/cache'
-import type { PrismaService } from '@platform/core/database'
+import type { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
 
@@ -60,15 +60,28 @@ function setup(rows: ReturnType<typeof row>[], verdicts: Record<string, CheckedH
   const prisma = {
     client: {
       channelConnection: {
-        findMany: jest.fn(() =>
-          Promise.resolve(rows.map(r => ({ id: r.id, pluginId: r.pluginId })))
-        ),
         findFirst: jest.fn(({ where }: { where: { id: string } }) =>
           Promise.resolve(rows.find(r => r.id === where.id) ?? null)
         )
       }
     }
   } as unknown as PrismaService
+  // The list of the database, and a context that just runs the work
+  const lists = {
+    activeChannelConnections: jest.fn(() =>
+      Promise.resolve(
+        rows.map(r => ({
+          id: r.id,
+          storeId: 'store-1',
+          pluginId: r.pluginId,
+          updatedAt: new Date(0)
+        }))
+      )
+    )
+  } as unknown as WorkerLists
+  const jobContext = {
+    forStore: jest.fn((_storeId: string, work: () => Promise<unknown>) => work())
+  } as unknown as JobContext
   const recorded: { id: string; healthy: boolean }[] = []
   const check = jest.fn((r: { id: string }) => {
     const next = verdicts[r.id]?.shift()
@@ -91,7 +104,9 @@ function setup(rows: ReturnType<typeof row>[], verdicts: Record<string, CheckedH
     health,
     registry,
     redis as unknown as ConstructorParameters<typeof RemoteChannelHealthService>[3],
-    logger
+    logger,
+    jobContext,
+    lists
   )
   return { service, redis, recorded, counts, check }
 }

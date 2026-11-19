@@ -8,7 +8,12 @@ import {
   errorName
 } from '@platform/channels/connection-health'
 import { CacheKeys } from '@platform/core/cache'
-import { PrismaService } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   ChannelHealthLimits,
@@ -29,7 +34,9 @@ export class RemoteChannelHealthService {
     private readonly health: ChannelHealthService,
     private readonly registry: PluginRegistry,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext,
+    private readonly lists: WorkerLists
   ) {
     this.logger.setContext(RemoteChannelHealthService.name)
   }
@@ -37,14 +44,14 @@ export class RemoteChannelHealthService {
   async checkAll(
     budgetMs: number = ChannelHealthLimits.ROUND_BUDGET_MS
   ): Promise<{ checked: number; unhealthy: number }> {
-    const rows = await this.prisma.client.channelConnection.findMany({
-      where: {
-        status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
-        ...OfActiveInstallation
-      },
-      select: { id: true, pluginId: true },
-      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }]
-    })
+    // The list of the database is read to its end and ordered here: the one checked longest ago first
+    const rows = (
+      await this.lists.activeChannelConnections({
+        statuses: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR],
+        installationStatus: OfActiveInstallation.installation.status,
+        pluginStatus: OfActiveInstallation.installation.plugin.status
+      })
+    ).sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime() || (a.id < b.id ? -1 : 1))
     const ids = rows.filter(row => this.registry.isRemote(row.pluginId))
     const deadline = Date.now() + budgetMs
     const result = { checked: 0, unhealthy: 0 }
@@ -54,7 +61,7 @@ export class RemoteChannelHealthService {
         const item = ids[next]
         next += 1
         if (item === undefined) return
-        await this.checkOne(item.id, result)
+        await this.checkOne(item.id, item.storeId, result)
       }
     }
     await Promise.all(Array.from({ length: RemoteChannelHealthLimits.CONCURRENCY }, worker))
@@ -66,17 +73,22 @@ export class RemoteChannelHealthService {
 
   private async checkOne(
     connectionRowId: string,
+    storeId: string,
     result: { checked: number; unhealthy: number }
   ): Promise<void> {
     try {
-      const row = await this.prisma.client.channelConnection.findFirst({
-        where: {
-          id: connectionRowId,
-          status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
-          ...OfActiveInstallation
-        },
-        select: CONNECTION_ROW_SELECT
-      })
+      // The context of the store holds only the read and the write; the call to the plugin and Redis are outside of it
+      const row = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.channelConnection.findFirst({
+          where: {
+            id: connectionRowId,
+            storeId,
+            status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
+            ...OfActiveInstallation
+          },
+          select: CONNECTION_ROW_SELECT
+        })
+      )
       if (row === null) return // Disconnected or gone since the round began
       const plugin = this.registry.isRemote(row.pluginId)
         ? this.registry.find(row.pluginId)
@@ -88,7 +100,7 @@ export class RemoteChannelHealthService {
       if (checked.healthy) {
         // A count that could not be cleared is not "recovered": an error here leaves the state as it was
         await this.redis.del(key)
-        await this.health.record(row, checked)
+        await this.jobContext.forStore(row.storeId, () => this.health.record(row, checked))
         return
       }
       result.unhealthy += 1
@@ -102,9 +114,11 @@ export class RemoteChannelHealthService {
       const failures = Number(answers?.[0]?.[1] ?? 0)
       // The first failures are only counted: a plugin that restarts must not show the agents a banner
       if (failures >= RemoteChannelHealthLimits.FAILURES_TO_ERROR) {
-        await this.health.record(row, checked)
+        await this.jobContext.forStore(row.storeId, () => this.health.record(row, checked))
       }
     } catch (error) {
+      // A store deleted while the plugin answered has no connection left to record
+      if (error instanceof JobContextGoneError) return
       // One connection must not stop the others; a Redis that is down leaves the state as it was (nothing is concluded without the count)
       this.logger.error(
         { errorName: errorName(error), connection: connectionRowId },
