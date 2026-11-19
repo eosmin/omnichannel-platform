@@ -82,6 +82,15 @@ describe('row-level security, phase 5: the lists of the worker', () => {
     })
   })
 
+  it('keeps one store for each connection of the shipment list, which its paging by connection relies on', async () => {
+    // rls_list_shipment_poll_targets pages by connection_id and returns (connection_id, store_id): a connection with two stores would
+    // lose the second at a page boundary. The invariant is that a shipment takes the store of its connection (trigger of shipments).
+    const result = await raw.query(
+      `SELECT count(*)::int AS n FROM (SELECT s.connection_id FROM shipments s GROUP BY s.connection_id HAVING count(DISTINCT s.store_id) > 1) x`
+    )
+    expect((result.rows[0] as { n: number }).n).toBe(0)
+  })
+
   it('walks a list page by page with no row twice or skipped', async () => {
     await asWorker(async query => {
       const seen: string[] = []
