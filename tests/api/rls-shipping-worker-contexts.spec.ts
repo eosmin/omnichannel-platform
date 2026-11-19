@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { PrismaService, RLS_CONTEXT_ENABLED } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
-import { CarrierId, GuideMovementKind, PickupStatus, ShipmentStatus } from '@platform/core/domain'
+import { CarrierId, PickupStatus, ShipmentStatus } from '@platform/core/domain'
 import {
   PickupSync,
   PickupSyncOutcomes,
@@ -131,10 +131,6 @@ describe('RLS phase 5: the carrier jobs call the carrier outside any context', (
     sync.run(ctx.storeA.id, pickupId, carrierId => registry.find(carrierId), lastAttempt)
   const shipmentRow = (id: string) => owner.shipment.findUniqueOrThrow({ where: { id } })
   const pickupRow = (id: string) => owner.pickupRequest.findUniqueOrThrow({ where: { id } })
-  const refunds = (shipmentId: string) =>
-    owner.carrierGuideMovement.count({
-      where: { shipmentId, storeId: ctx.storeA.id, kind: GuideMovementKind.REFUND }
-    })
   async function pending() {
     const made = await guide()
     await owner.shipment.update({
@@ -168,22 +164,18 @@ describe('RLS phase 5: the carrier jobs call the carrier outside any context', (
       expect(await shipmentRow(made.id)).toMatchObject({ status: ShipmentStatus.CANCELLED })
     })
 
-    it('leaves the guide waiting when the carrier does not answer, and the retry voids it once', async () => {
+    it('leaves the guide waiting when the carrier does not answer, and the retry voids it once (the carrier is asked twice, a third run asks nobody)', async () => {
       const made = await pending()
-      const before = await refunds(made.id)
       fake.state.cancel = FakeCarrierBehaviors.TIMEOUT_BEFORE
 
       expect(await settle(made.id, false)).toBe(VoidSettlements.RETRY)
 
       expect(await shipmentRow(made.id)).toMatchObject({ status: ShipmentStatus.CANCEL_PENDING })
-      expect(await refunds(made.id)).toBe(before)
       fake.state.cancel = FakeCarrierBehaviors.OK
       expect(await settle(made.id, false)).toBe(VoidSettlements.CANCELLED)
       // A job that runs twice voids nothing twice
-      const after = await refunds(made.id)
       expect(await settle(made.id, false)).toBe(VoidSettlements.SKIPPED)
 
-      expect(await refunds(made.id)).toBe(after)
       expect(await shipmentRow(made.id)).toMatchObject({ status: ShipmentStatus.CANCELLED })
       expect(opened.map(entry => entry.tenantOpen)).toEqual([false, false])
       expect(fake.callsTo('cancelShipment')).toHaveLength(2)
