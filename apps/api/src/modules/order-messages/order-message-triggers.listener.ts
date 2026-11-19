@@ -2,7 +2,7 @@ import { Injectable, type OnModuleDestroy } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
-import { EventContext, PrismaService } from '@platform/core/database'
+import { EventContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import {
   customerMessageOfShipment,
   FailedAttemptMessagePolicy,
@@ -198,6 +198,14 @@ export class OrderMessageListener implements OnModuleDestroy {
           this.logger.warn(
             { orderId: input.orderId, kind: input.kind },
             'an order message was not sent: the order is gone'
+          )
+          return
+        }
+        // The store was deleted after the event: nothing is left to tell, and asking again cannot change that
+        if (error instanceof JobContextGoneError) {
+          this.logger.warn(
+            { orderId: input.orderId, kind: input.kind },
+            'an order message was not sent: the store is gone'
           )
           return
         }

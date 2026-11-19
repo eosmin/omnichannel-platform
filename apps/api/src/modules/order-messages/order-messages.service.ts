@@ -8,7 +8,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { ConsentPurposes } from '@platform/core/compliance'
-import { PrismaService, type PrismaTransaction } from '@platform/core/database'
+import { EventContext, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
   AuthorType,
   ChannelConnectionStatus,
@@ -217,10 +217,21 @@ interface FoundChannel {
 // what the channel of the conversation DECLARES says how: free text at any time for a channel with no window, inside the window
 // otherwise, the approved template linked to the template outside it, the email fallback when there is none, and a reason that
 // the team sees when nothing is left. Never by the name of a plugin (CLAUDE.md rule 13), and never dropped without a trace.
+// What the first stretch of a send reads: the answer when there is nothing left to do, or what the rest needs
+type Read =
+  | { answer: OrderMessageOutcome }
+  | {
+      answer: undefined
+      order: LoadedOrder
+      template: OrderTemplateView | null
+      stop: OrderMessageNotSentReason | null
+    }
+
 @Injectable()
 export class OrderMessagesService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly context: EventContext,
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
     private readonly templates: OrderTemplatesService,
@@ -264,18 +275,29 @@ export class OrderMessagesService {
 
   async send(input: SendOrderMessageInput): Promise<OrderMessageOutcome> {
     const { storeId, orderId, kind } = input
-    // A repeated event or request finds its earlier answer: the check before the work spares the provider a call, the
-    // unique key under the claim is what makes it true when two arrive at once
-    const earlier = await this.storedOutcome(storeId, input.idempotencyKey)
-    if (earlier !== null) return earlier
-
-    const order = await this.loadOrder(storeId, orderId)
-    const template = await this.templates.resolve(storeId, kind, order.customer.locale)
-    // What was not asked for is not done and not recorded: a store that never set its messages up is not alerted at every status
-    if (input.onlyIfAutoSend === true && (template === null || !template.autoSend)) {
-      return { status: OrderMessageOutcomeStatus.SKIPPED }
-    }
-    const stop = await this.customerStop(storeId, order)
+    // Every stretch of database work runs in the context of the store (`inStore`): the listeners that call this hear an event, in no
+    // request. The call to a provider, the bucket and the queues stay between the stretches. Inside a request the stretch joins its
+    // context, so nothing changes there.
+    const read = await this.inStore<Read>(storeId, async () => {
+      // A repeated event or request finds its earlier answer: the check before the work spares the provider a call, the
+      // unique key under the claim is what makes it true when two arrive at once
+      const earlier = await this.storedOutcome(storeId, input.idempotencyKey)
+      if (earlier !== null) return { answer: earlier }
+      const loaded = await this.loadOrder(storeId, orderId)
+      const found = await this.templates.resolve(storeId, kind, loaded.customer.locale)
+      // What was not asked for is not done and not recorded: a store that never set its messages up is not alerted at every status
+      if (input.onlyIfAutoSend === true && (found === null || !found.autoSend)) {
+        return { answer: { status: OrderMessageOutcomeStatus.SKIPPED } }
+      }
+      return {
+        answer: undefined,
+        order: loaded,
+        template: found,
+        stop: await this.customerStop(storeId, loaded)
+      }
+    })
+    if (read.answer !== undefined) return read.answer
+    const { order, template, stop } = read
     if (stop !== null) return this.recordNotSent(input, order, stop, null)
     if (template === null) {
       return this.recordNotSent(input, order, OrderMessageNotSentReasons.NO_TEMPLATE, null)
@@ -295,11 +317,14 @@ export class OrderMessagesService {
   // caller: nothing is claimed, so a later event of the same shipment sends it, and the team is told now, because a customer who
   // is not told is something somebody should know
   async alertNotSent(input: SendOrderMessageInput, reason: OrderMessageAlertReason): Promise<void> {
-    const order = await this.loadOrder(input.storeId, input.orderId)
-    // The event leaves with the commit of an empty transaction, as every event of the platform does
-    await this.prisma.transaction(tx => {
-      this.announceNotSent(tx, input, order, reason)
-      return Promise.resolve()
+    const order = await this.inStore(input.storeId, async () => {
+      const loaded = await this.loadOrder(input.storeId, input.orderId)
+      // The event leaves with the commit of an empty transaction, as every event of the platform does
+      await this.prisma.transaction(tx => {
+        this.announceNotSent(tx, input, loaded, reason)
+        return Promise.resolve()
+      })
+      return loaded
     })
     this.logNotSent(input, order, reason)
   }
@@ -317,7 +342,9 @@ export class OrderMessagesService {
     // The text is the body of the template alone: the variables that fill the approved template are checked apart, so an order
     // that lacks one of them can still be told in free text or by email. Rendered first: a message that cannot be written
     // does not need a channel looked for (carrier events are the hot path)
-    const rendered = await this.renderFor(storeId, order, template, input.shipmentId)
+    const rendered = await this.inStore(storeId, () =>
+      this.renderFor(storeId, order, template, input.shipmentId)
+    )
     if (!rendered.text.ok) {
       this.logger.info(
         { orderId: order.id, kind: input.kind, reason: rendered.text.reason },
@@ -326,7 +353,7 @@ export class OrderMessagesService {
       return { route: OrderMessageRoutes.NOT_SENT, reason: rendered.text.reason }
     }
     const text = rendered.text.text
-    const found = await this.findChannel(storeId, order)
+    const found = await this.inStore(storeId, () => this.findChannel(storeId, order))
     const link = template.channelTemplate
     // The linked template counts only for the channel of the plugin it was linked for, and only while that plugin still
     // declares what makes a template usable (TDD_17 §4.7): a link is stored once and read later
@@ -360,10 +387,13 @@ export class OrderMessagesService {
       if (values.ok && fits) {
         const variables = values.values
         try {
-          const approved = await this.channelTemplates.renderForSystem(
-            storeId,
-            found.conversationId,
-            { name: link.name, language: link.language, variables }
+          // It reads the conversation, so it needs the context; the provider answer inside it is bounded by the provider's own timeout
+          const approved = await this.inStore(storeId, () =>
+            this.channelTemplates.renderForSystem(storeId, found.conversationId, {
+              name: link.name,
+              language: link.language,
+              variables
+            })
           )
           approvedText = approved.content
           channelTemplate = { name: link.name, language: link.language, variables }
@@ -606,67 +636,72 @@ export class OrderMessagesService {
         : null
     let messageId: string | null
     try {
-      messageId = await this.prisma.transaction(async tx => {
-        // The conversation first, as every write of a message does (the lock order of the thread)
-        const current = await lockConversationForWrite(tx, storeId, conversationId)
-        // The state that decided the channel was read before this lock: a conversation marked as spam or hidden in between
-        // carries nothing, and the realtime event below must not show a thread that is hidden
-        if (current.status === String(ConversationStatus.SPAM) || isHiddenStatus(current.status)) {
-          throw resourceNotFound('conversation')
-        }
-        const id = randomUUID()
-        const claimed = await this.claim(tx, input, route, null, locale, id)
-        if (!claimed) return null
-        const now = new Date()
-        const row = await tx.message.create({
-          data: {
-            id,
-            storeId,
-            conversationId,
-            type:
-              route === OrderMessageRoutes.CHANNEL_TEMPLATE
-                ? MessageType.TEMPLATE
-                : MessageType.TEXT,
-            content: decision.text,
-            authorType: AuthorType.SYSTEM,
-            // The template message keeps what the worker needs to send it by name; both keep what they are about
-            metadata: {
-              ...(decision.route === OrderMessageRoutes.CHANNEL_TEMPLATE
-                ? { template: decision.channelTemplate }
-                : {}),
-              orderMessage: { orderId: order.id, kind: input.kind }
+      messageId = await this.inStore(storeId, () =>
+        this.prisma.transaction(async tx => {
+          // The conversation first, as every write of a message does (the lock order of the thread)
+          const current = await lockConversationForWrite(tx, storeId, conversationId)
+          // The state that decided the channel was read before this lock: a conversation marked as spam or hidden in between
+          // carries nothing, and the realtime event below must not show a thread that is hidden
+          if (
+            current.status === String(ConversationStatus.SPAM) ||
+            isHiddenStatus(current.status)
+          ) {
+            throw resourceNotFound('conversation')
+          }
+          const id = randomUUID()
+          const claimed = await this.claim(tx, input, route, null, locale, id)
+          if (!claimed) return null
+          const now = new Date()
+          const row = await tx.message.create({
+            data: {
+              id,
+              storeId,
+              conversationId,
+              type:
+                route === OrderMessageRoutes.CHANNEL_TEMPLATE
+                  ? MessageType.TEMPLATE
+                  : MessageType.TEXT,
+              content: decision.text,
+              authorType: AuthorType.SYSTEM,
+              // The template message keeps what the worker needs to send it by name; both keep what they are about
+              metadata: {
+                ...(decision.route === OrderMessageRoutes.CHANNEL_TEMPLATE
+                  ? { template: decision.channelTemplate }
+                  : {}),
+                orderMessage: { orderId: order.id, kind: input.kind }
+              },
+              idempotencyKey: input.idempotencyKey,
+              deliveryStatus: DeliveryStatus.QUEUED,
+              createdAt: now
             },
-            idempotencyKey: input.idempotencyKey,
-            deliveryStatus: DeliveryStatus.QUEUED,
-            createdAt: now
-          },
-          select: { id: true }
-        })
-        // The thread moves up the inbox; it is not a reply of the team (no first response, nothing reopened)
-        await this.conversations.recordMessageAt(tx, storeId, conversationId, now)
-        this.events.publish(tx, Events.MESSAGE_QUEUED, {
-          storeId,
-          conversationId,
-          messageId: row.id,
-          authorId: null,
-          clientMessageId: null,
-          createdAt: now.toISOString(),
-          visibility: { hidden: false, assignedTo: current.assignedTo }
-        })
-        this.queueAfterCommit(tx, storeId, row.id)
-        if (document !== null) {
-          await this.writeSummaryDocument(tx, {
+            select: { id: true }
+          })
+          // The thread moves up the inbox; it is not a reply of the team (no first response, nothing reopened)
+          await this.conversations.recordMessageAt(tx, storeId, conversationId, now)
+          this.events.publish(tx, Events.MESSAGE_QUEUED, {
             storeId,
             conversationId,
-            order,
-            kind: input.kind,
-            document,
-            at: new Date(now.getTime() + 1),
-            assignedTo: current.assignedTo
+            messageId: row.id,
+            authorId: null,
+            clientMessageId: null,
+            createdAt: now.toISOString(),
+            visibility: { hidden: false, assignedTo: current.assignedTo }
           })
-        }
-        return row.id
-      })
+          this.queueAfterCommit(tx, storeId, row.id)
+          if (document !== null) {
+            await this.writeSummaryDocument(tx, {
+              storeId,
+              conversationId,
+              order,
+              kind: input.kind,
+              document,
+              at: new Date(now.getTime() + 1),
+              assignedTo: current.assignedTo
+            })
+          }
+          return row.id
+        })
+      )
     } catch (error) {
       // Removed only when the transaction is known not to have committed (it stopped on the conversation): after a connection error
       // the commit may have happened, and then the file is the one the queued message reads. A stray object is found by its prefix.
@@ -833,8 +868,8 @@ export class OrderMessagesService {
       )
       throw error
     }
-    const claimed = await this.prisma.transaction(tx =>
-      this.claim(tx, input, OrderMessageRoutes.EMAIL, null, locale)
+    const claimed = await this.inStore(storeId, () =>
+      this.prisma.transaction(tx => this.claim(tx, input, OrderMessageRoutes.EMAIL, null, locale))
     )
     if (!claimed) return this.duplicateOf(input)
     this.logSent(input, order, OrderMessageRoutes.EMAIL)
@@ -851,11 +886,13 @@ export class OrderMessagesService {
     reason: OrderMessageNotSentReason,
     locale: string | null
   ): Promise<OrderMessageOutcome> {
-    const claimed = await this.prisma.transaction(async tx => {
-      const made = await this.claim(tx, input, OrderMessageRoutes.NOT_SENT, reason, locale)
-      if (made) this.announceNotSent(tx, input, order, reason)
-      return made
-    })
+    const claimed = await this.inStore(input.storeId, () =>
+      this.prisma.transaction(async tx => {
+        const made = await this.claim(tx, input, OrderMessageRoutes.NOT_SENT, reason, locale)
+        if (made) this.announceNotSent(tx, input, order, reason)
+        return made
+      })
+    )
     if (!claimed) return this.duplicateOf(input)
     this.logNotSent(input, order, reason)
     return { status: OrderMessageOutcomeStatus.NOT_SENT, reason }
@@ -943,10 +980,16 @@ export class OrderMessagesService {
   private async duplicateOf(
     input: SendOrderMessageInput
   ): Promise<Extract<OrderMessageOutcome, { status: typeof OrderMessageOutcomeStatus.DUPLICATE }>> {
-    const stored = await this.storedOutcome(input.storeId, input.idempotencyKey)
+    const stored = await this.inStore(input.storeId, () =>
+      this.storedOutcome(input.storeId, input.idempotencyKey)
+    )
     // The winner's row is there once the key was taken; it is gone only if its order was deleted in between
     if (stored === null) throw resourceNotFound('order message')
     return stored
+  }
+
+  private inStore<T>(storeId: string, work: () => Promise<T>): Promise<T> {
+    return this.context.inStore(storeId, work)
   }
 
   private async loadOrder(storeId: string, orderId: string): Promise<LoadedOrder> {

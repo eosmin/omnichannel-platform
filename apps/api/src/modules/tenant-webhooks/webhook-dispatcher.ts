@@ -6,7 +6,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { EventContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import {
   isWebhookEvent,
   PluginInstallationStatus,
@@ -39,6 +39,7 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly emitter: EventEmitter2,
     private readonly prisma: PrismaService,
+    private readonly events: EventContext,
     @InjectQueue(QueueNames.WEBHOOKS)
     private readonly queue: Queue<TriggerWebhookJob | TriggerPluginWebhookJob>,
     private readonly logger: PinoLogger
@@ -58,7 +59,15 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
     if (!isWebhookEvent(event)) return 0
     const body = withoutText(asRecord(payload))
     const storeId = body?.storeId
-    if (body === null || typeof storeId !== 'string') return 0
+    if (body === null || typeof storeId !== 'string' || storeId === '') {
+      // Every event of the catalog names its store: one that does not is a bug of its emitter, and its webhooks would be lost in
+      // silence. The id is never taken from anywhere else.
+      this.logger.error(
+        { event },
+        'an event of the webhook catalog carries no store: not dispatched'
+      )
+      return 0
+    }
     // Each side fails on its own: a store whose webhooks could not be read does not cost its plugins their delivery
     const [tenants, plugins] = await Promise.all([
       this.dispatchToTenants(event, storeId, body),
@@ -73,10 +82,13 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
     body: Record<string, unknown>
   ): Promise<number> {
     try {
-      const webhooks = await this.prisma.client.webhook.findMany({
-        where: { storeId, status: WebhookStatus.ACTIVE, events: { has: event } },
-        select: { id: true }
-      })
+      // The read is the only work inside the context of the store; the queue is asked after it has closed
+      const webhooks = await this.events.inStore(storeId, () =>
+        this.prisma.client.webhook.findMany({
+          where: { storeId, status: WebhookStatus.ACTIVE, events: { has: event } },
+          select: { id: true }
+        })
+      )
       if (webhooks.length === 0) return 0
       await this.queue.addBulk(
         webhooks.map(webhook => {
@@ -98,6 +110,8 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
       )
       return webhooks.length
     } catch (error) {
+      // A store deleted after the event has nothing left to deliver
+      if (error instanceof JobContextGoneError) return 0
       this.logger.error(
         { event, storeId, err: String(error) },
         'the webhooks of an event could not be queued'
@@ -118,18 +132,20 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
     const needed = PluginEventScopes[event]
     if (needed === undefined) return 0
     try {
-      const installations = await this.prisma.client.pluginInstallation.findMany({
-        where: {
-          storeId,
-          scopes: { has: needed },
-          status: PluginInstallationStatus.ACTIVE,
-          webhookEndpoint: { not: null },
-          webhookSecret: { not: null },
-          webhookDisabledAt: null,
-          plugin: { status: PluginStatus.APPROVED }
-        },
-        select: { id: true, scopes: true, plugin: { select: { manifest: true } } }
-      })
+      const installations = await this.events.inStore(storeId, () =>
+        this.prisma.client.pluginInstallation.findMany({
+          where: {
+            storeId,
+            scopes: { has: needed },
+            status: PluginInstallationStatus.ACTIVE,
+            webhookEndpoint: { not: null },
+            webhookSecret: { not: null },
+            webhookDisabledAt: null,
+            plugin: { status: PluginStatus.APPROVED }
+          },
+          select: { id: true, scopes: true, plugin: { select: { manifest: true } } }
+        })
+      )
       const jobs = installations.flatMap(installation => {
         if (manifestWebhookOf(installation.plugin.manifest)?.events.includes(event) !== true) {
           return []
@@ -150,6 +166,8 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
       await this.queue.addBulk(jobs)
       return jobs.length
     } catch (error) {
+      // A store deleted after the event has nothing left to deliver
+      if (error instanceof JobContextGoneError) return 0
       this.logger.error(
         { event, storeId, err: String(error) },
         'the plugin webhooks of an event could not be queued'
