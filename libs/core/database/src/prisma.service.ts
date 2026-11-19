@@ -9,12 +9,16 @@ import { RlsGlobalModels, RlsPolicyTables } from '@platform/core/domain'
 import { Prisma, PrismaClient } from '../generated/client/client'
 
 import { policyTablesOfRawSql, sqlTextOfRawArgs } from './raw-sql-tables'
+import { REPLICA_ROLE_FACTS_SQL, replicaRoleProblem, type ReplicaRoleFacts } from './replica-role'
 import type { TenantContext } from './tenant-context'
 
 export interface PrismaServiceOptions {
   databaseUrl: string
   // Without a replica, replica() answers from the primary
   replicaUrl?: string | undefined
+  // The service refuses to start when the role of the replica could write on a server that is not a standby, or skips row level
+  // security (replica-role.ts). Off for the suites that build their own replica database with the role of the api
+  verifyReplicaRole?: boolean
   poolSize?: number
   // Row-Level Security (Step 7.1): a query on a model that is not global (RlsGlobalModels), made outside a tenant transaction, a
   // read of the replica or a withoutTenantContext call, throws TenantContextRequiredError instead of answering no rows. The api
@@ -214,7 +218,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly primary: PrimaryClient
   private readonly logger = new Logger(PrismaService.name)
 
-  constructor(options: PrismaServiceOptions) {
+  constructor(private readonly options: PrismaServiceOptions) {
     this.base = createClient(options)
     this.primary = this.base.$primary()
   }
@@ -436,6 +440,16 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     await this.base.$connect()
+    if (this.options.replicaUrl !== undefined && this.options.verifyReplicaRole === true) {
+      const [facts] = await this.base
+        .$replica()
+        .$queryRawUnsafe<ReplicaRoleFacts[]>(REPLICA_ROLE_FACTS_SQL)
+      const problem =
+        facts === undefined
+          ? 'the role of DATABASE_REPLICA_URL is not in pg_roles'
+          : replicaRoleProblem(facts)
+      if (problem !== null) throw new Error(problem)
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
