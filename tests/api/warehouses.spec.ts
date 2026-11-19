@@ -5,6 +5,7 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
+import { PrismaService } from '@platform/core/database'
 import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import {
   InventoryAdjustmentReason,
@@ -25,6 +26,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { inStoreContext } from '../helpers/tenant-context'
 
 interface ErrorBody {
   error: { code: string; metadata?: Record<string, unknown> }
@@ -800,15 +802,20 @@ describe('The warehouses of an organization', () => {
 
         const [off, receipt] = await Promise.allSettled([
           asAdmin().patch(ApiRoutes.warehouses.byId(body.id)).send({ active: false }),
-          inventory.move({
-            storeId: ctx.storeA.id,
-            productId: product.id,
-            warehouseId: body.id,
-            type: InventoryMovementType.RECEIPT,
-            quantity: 2,
-            reason: InventoryAdjustmentReason.FOUND,
-            idempotencyKey: key()
-          })
+          inStoreContext(
+            app.get(PrismaService, { strict: false }),
+            { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+            () =>
+              inventory.move({
+                storeId: ctx.storeA.id,
+                productId: product.id,
+                warehouseId: body.id,
+                type: InventoryMovementType.RECEIPT,
+                quantity: 2,
+                reason: InventoryAdjustmentReason.FOUND,
+                idempotencyKey: key()
+              })
+          )
         ])
 
         const row = await owner.warehouse.findUniqueOrThrow({ where: { id: body.id } })

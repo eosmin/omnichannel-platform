@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AccountRole,
@@ -24,6 +25,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { inStoreContext } from '../helpers/tenant-context'
 
 const CREATED = 201
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -42,7 +44,9 @@ describe('The sale of an order with nothing to collect (an exchange, a full disc
   let owner: OwnerClient
   let ctx: TestContext
   let posting: FinancePostingService
-  let guard: FinanceCloseGuard
+  // The guard as the close of a period reaches it: inside the request of a person of the store, whose context is the store and
+  // its organization
+  let guard: Pick<FinanceCloseGuard, 'check'>
   const codeOf: Record<string, string> = {}
 
   beforeAll(async () => {
@@ -50,7 +54,15 @@ describe('The sale of an order with nothing to collect (an exchange, a full disc
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     posting = app.get(FinancePostingService)
-    guard = app.get(FinanceCloseGuard)
+    const realGuard = app.get(FinanceCloseGuard)
+    guard = {
+      check: (organizationId, options) =>
+        inStoreContext(
+          app.get(PrismaService, { strict: false }),
+          { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+          () => realGuard.check(organizationId, options)
+        )
+    }
     const setup = await api(app, ctx.adminA, ctx.storeA)
       .post(ApiRoutes.finance.setup)
       .send({ countryCode: FinanceCountryCodes.EL_SALVADOR, accountingStartDate: '2020-01-01' })
