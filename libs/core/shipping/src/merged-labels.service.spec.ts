@@ -60,13 +60,20 @@ function build(shipments: Shipment[], media: Media[], files: Map<string, Buffer 
     downloadUrl: jest.fn(() => Promise.resolve('https://files.example/labels.pdf'))
   }
   const logger = { setContext: jest.fn(), warn: jest.fn() }
+  // The store of every context that a database section opened
+  const contexts: string[] = []
   const service = new MergedLabels(
     prisma as never,
     storage as never,
     logger as never,
-    { forStoreOrJoin: (_storeId: string, work: () => Promise<unknown>) => work() } as never
+    {
+      forStoreOrJoin: (storeId: string, work: () => Promise<unknown>) => {
+        contexts.push(storeId)
+        return work()
+      }
+    } as never
   )
-  return { service, prisma, storage, created, stored, logger }
+  return { service, prisma, storage, created, stored, logger, contexts }
 }
 
 const OPTIONS = { requestedBy: 'user-1', waitForScan: false }
@@ -77,7 +84,7 @@ describe('MergedLabels.build', () => {
       ['k1', await pdfOf(410)],
       ['k2', await pdfOf(420)]
     ])
-    const { service, created, stored } = build(
+    const { service, created, stored, contexts } = build(
       [
         { id: 's1', status: ShipmentStatus.LABEL_CREATED, labelMediaId: 'm1' },
         { id: 's2', status: ShipmentStatus.DELIVERED, labelMediaId: 'm2' }
@@ -96,6 +103,9 @@ describe('MergedLabels.build', () => {
     expect(outcome.file?.pageCount).toBe(2)
     expect(outcome.file?.mixedSizes).toBe(true)
     expect(created).toHaveLength(1)
+    // The read of the rows, the read of the media and the write of the file each opened a context, all of this store
+    expect(contexts.length).toBeGreaterThanOrEqual(3)
+    expect(new Set(contexts)).toEqual(new Set(['store-1']))
     expect(created[0]).toMatchObject({
       storeId: 'store-1',
       purpose: 'bulk_labels',

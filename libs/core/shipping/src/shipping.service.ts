@@ -8,7 +8,8 @@ import {
   lockStoreScope,
   PrismaService,
   type PrismaTransaction,
-  JobContext
+  JobContext,
+  JobContextGoneError
 } from '@platform/core/database'
 import {
   BulkLabelLimits,
@@ -326,29 +327,38 @@ export class ShippingService {
     let shipmentId = ''
     let stored: StoredLabel | null = null
     try {
-      const done = await this.jobContext.forStoreOrJoin(storeId, () =>
-        this.prisma.transaction(async tx => {
-          await lockStoreForWrite(tx, storeId)
-          await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${request.orderId}`)
-          prepared = await prepareGuide(tx, store, request, caller, plugins, connectionId)
-          shipmentId = await this.writes.insertCreating(tx, prepared.row, caller.actor)
-          if (prepared.plugin.shipmentCreation !== ShipmentCreationModes.INTERNAL) return false
-          // The core makes the guide and the label, in the transaction that wrote the row: a failure gives the number back
-          const identity = { ...prepared.identity, shipmentId }
-          const guideNumber = await takeLocalGuideNumber(tx, storeId, connectionId)
-          stored = await this.drawLocalLabel(store, prepared, shipmentId, guideNumber)
-          await this.labels.record(tx, storeId, prepared.identity.orderId, caller.actor.id, stored)
-          await this.writes.move(
-            tx,
-            identity,
-            ShipmentStatus.CREATING,
-            ShipmentStatus.LABEL_CREATED,
-            { guideNumber, labelMediaId: stored.mediaId },
-            { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
-          )
-          await this.copyTrackingNumber(tx, prepared.identity, guideNumber, prepared.row.kind)
-          return true
-        }, LOCAL_GUIDE_TRANSACTION)
+      const done = await this.jobContext.forStoreOrJoin(
+        storeId,
+        () =>
+          this.prisma.transaction(async tx => {
+            await lockStoreForWrite(tx, storeId)
+            await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${request.orderId}`)
+            prepared = await prepareGuide(tx, store, request, caller, plugins, connectionId)
+            shipmentId = await this.writes.insertCreating(tx, prepared.row, caller.actor)
+            if (prepared.plugin.shipmentCreation !== ShipmentCreationModes.INTERNAL) return false
+            // The core makes the guide and the label, in the transaction that wrote the row: a failure gives the number back
+            const identity = { ...prepared.identity, shipmentId }
+            const guideNumber = await takeLocalGuideNumber(tx, storeId, connectionId)
+            stored = await this.drawLocalLabel(store, prepared, shipmentId, guideNumber)
+            await this.labels.record(
+              tx,
+              storeId,
+              prepared.identity.orderId,
+              caller.actor.id,
+              stored
+            )
+            await this.writes.move(
+              tx,
+              identity,
+              ShipmentStatus.CREATING,
+              ShipmentStatus.LABEL_CREATED,
+              { guideNumber, labelMediaId: stored.mediaId },
+              { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
+            )
+            await this.copyTrackingNumber(tx, prepared.identity, guideNumber, prepared.row.kind)
+            return true
+          }),
+        LOCAL_GUIDE_TRANSACTION
       )
       if (done)
         return {
@@ -865,69 +875,76 @@ export class ShippingService {
     const written: { index: number; prepared: PreparedGuide; identity: ShipmentIdentity }[] = []
     let pickupId = ''
     try {
-      await this.jobContext.forStoreOrJoin(storeId, () =>
-        this.prisma.transaction(async tx => {
-          await lockStoreForWrite(tx, storeId)
-          // In the same order for every batch, so two batches that share orders cannot wait for each other
-          const ordered = [...chunk].sort((a, b) =>
-            a.request.orderId.localeCompare(b.request.orderId)
-          )
-          for (const item of ordered) {
-            await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${item.request.orderId}`)
-          }
-          // The pickup first, and each shipment written as soon as it is judged: what the next one reads (the guides the order
-          // already has, which decide the amount to collect) must include this one
-          const pickup = await tx.pickupRequest.create({
-            data: {
-              storeId,
-              connectionId,
-              pickupDate: new Date(`${window.date}T00:00:00.000Z`),
-              status: PickupStatus.PENDING,
-              packageCount: chunk.length,
-              windowStart: window.from,
-              windowEnd: window.to,
-              requestedBy: caller.actor.id ?? 'system'
-            },
-            select: { id: true }
-          })
-          pickupId = pickup.id
-          for (const item of chunk) {
-            try {
-              const prepared = await prepareGuide(
+      await this.jobContext.forStoreOrJoin(
+        storeId,
+        () =>
+          this.prisma.transaction(async tx => {
+            await lockStoreForWrite(tx, storeId)
+            // In the same order for every batch, so two batches that share orders cannot wait for each other
+            const ordered = [...chunk].sort((a, b) =>
+              a.request.orderId.localeCompare(b.request.orderId)
+            )
+            for (const item of ordered) {
+              await lockStoreScope(
                 tx,
-                store,
-                item.request,
-                caller,
-                plugins,
-                connectionId
+                storeId,
+                `${ShipmentLockScopes.ORDER}:${item.request.orderId}`
               )
-              const shipmentId = await this.writes.insertCreating(
-                tx,
-                { ...prepared.row, pickupId },
-                caller.actor
-              )
-              written.push({
-                index: item.index,
-                prepared,
-                identity: { ...prepared.identity, shipmentId }
-              })
-            } catch (error) {
-              if (!(error instanceof PlatformException)) throw error
-              outcomes.set(item.index, this.refused(item.request.orderId, error))
             }
-          }
-          if (written.length === 0) {
-            // Nothing to ask the carrier for: no pickup either
-            await tx.pickupRequest.deleteMany({ where: { id: pickupId, storeId } })
-            return
-          }
-          if (written.length !== chunk.length) {
-            await tx.pickupRequest.updateMany({
-              where: { id: pickupId, storeId },
-              data: { packageCount: written.length }
+            // The pickup first, and each shipment written as soon as it is judged: what the next one reads (the guides the order
+            // already has, which decide the amount to collect) must include this one
+            const pickup = await tx.pickupRequest.create({
+              data: {
+                storeId,
+                connectionId,
+                pickupDate: new Date(`${window.date}T00:00:00.000Z`),
+                status: PickupStatus.PENDING,
+                packageCount: chunk.length,
+                windowStart: window.from,
+                windowEnd: window.to,
+                requestedBy: caller.actor.id ?? 'system'
+              },
+              select: { id: true }
             })
-          }
-        }, BATCH_TRANSACTION)
+            pickupId = pickup.id
+            for (const item of chunk) {
+              try {
+                const prepared = await prepareGuide(
+                  tx,
+                  store,
+                  item.request,
+                  caller,
+                  plugins,
+                  connectionId
+                )
+                const shipmentId = await this.writes.insertCreating(
+                  tx,
+                  { ...prepared.row, pickupId },
+                  caller.actor
+                )
+                written.push({
+                  index: item.index,
+                  prepared,
+                  identity: { ...prepared.identity, shipmentId }
+                })
+              } catch (error) {
+                if (!(error instanceof PlatformException)) throw error
+                outcomes.set(item.index, this.refused(item.request.orderId, error))
+              }
+            }
+            if (written.length === 0) {
+              // Nothing to ask the carrier for: no pickup either
+              await tx.pickupRequest.deleteMany({ where: { id: pickupId, storeId } })
+              return
+            }
+            if (written.length !== chunk.length) {
+              await tx.pickupRequest.updateMany({
+                where: { id: pickupId, storeId },
+                data: { packageCount: written.length }
+              })
+            }
+          }),
+        BATCH_TRANSACTION
       )
     } catch (error) {
       for (const item of chunk) {
@@ -1554,12 +1571,18 @@ export class ShippingService {
   }
 
   private async storeFacts(storeId: string): Promise<StoreFacts> {
-    const store = await this.jobContext.forStoreOrJoin(storeId, () =>
-      this.prisma.client.store.findUnique({
-        where: { id: storeId },
-        select: { organizationId: true, timezone: true, defaultLocale: true }
+    // A store that is gone is "not found", as it was before the context looked it up first
+    const store = await this.jobContext
+      .forStoreOrJoin(storeId, () =>
+        this.prisma.client.store.findUnique({
+          where: { id: storeId },
+          select: { organizationId: true, timezone: true, defaultLocale: true }
+        })
+      )
+      .catch((error: unknown) => {
+        if (error instanceof JobContextGoneError) return null
+        throw error
       })
-    )
     if (store === null) throw resourceNotFound('store')
     return {
       storeId,
