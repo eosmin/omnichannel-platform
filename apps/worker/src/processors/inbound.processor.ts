@@ -37,7 +37,12 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
     this.logger.setContext(InboundProcessor.name)
   }
 
-  protected async handle(job: Job<ProcessChannelEventJob>): Promise<void> {
+  // The store of the connection may be deleted between the resolution and the context of the work: nothing is left to do
+  protected handle(job: Job<ProcessChannelEventJob>): Promise<void> {
+    return this.skipIfGone(job, () => this.handleEvent(job))
+  }
+
+  private async handleEvent(job: Job<ProcessChannelEventJob>): Promise<void> {
     const { pluginId } = job.data
     const parsed = channelEventSchema.safeParse(job.data.event)
     // What does not fit now will not fit when it is tried again: it goes to the dead letter queue

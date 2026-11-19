@@ -218,7 +218,7 @@ describe('Replies on their way to a channel', () => {
       registry,
       contexts,
       writer,
-      new ConversationsService(prisma, events),
+      new ConversationsService(prisma, events, new JobContext(prisma)),
       app.get(MessagingWindowService, { strict: false }),
       events,
       app.get(StorageService, { strict: false }),
@@ -1960,7 +1960,11 @@ describe('Replies on their way to a channel', () => {
             open: () => ({ accessToken: 'EAAB-test-token' })
           } as unknown as CredentialCipher),
           writer,
-          new ConversationsService(prisma, app.get(DomainEvents, { strict: false })),
+          new ConversationsService(
+            prisma,
+            app.get(DomainEvents, { strict: false }),
+            new JobContext(prisma)
+          ),
           app.get(MessagingWindowService, { strict: false }),
           app.get(DomainEvents, { strict: false }),
           app.get(StorageService, { strict: false }),
