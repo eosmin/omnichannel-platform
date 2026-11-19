@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import type { Counter } from '@prometheus-io/client'
 import { unzipSync } from 'fflate'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { type Permission, Permissions } from '@platform/core/auth'
+import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ChannelIds, ConversationStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -98,15 +100,23 @@ describe('Media gallery', () => {
     const logger = { setContext: jest.fn(), error: jest.fn(), warn } as unknown as PinoLogger
     const prisma = createWorkerPrisma()
     const { events, audit } = await workerServices(app, prisma)
+    const subjectMissing = { inc: jest.fn() } as unknown as Counter<string>
     generator = new ExportGenerator(
       prisma,
       new CsvExportWriter(storage),
       new ZipExportWriter(storage, logger),
-      new AnalyticsExportWriter(prisma, storage, new CsvExportWriter(storage)),
+      new AnalyticsExportWriter(
+        prisma,
+        storage,
+        new CsvExportWriter(storage),
+        new JobContext(prisma)
+      ),
       storage,
       audit,
       events,
-      logger
+      logger,
+      new JobContext(prisma),
+      subjectMissing
     )
   })
   afterAll(async () => {
@@ -167,7 +177,7 @@ describe('Media gallery', () => {
   const at = (minutes: number) => new Date(Date.UTC(2026, 10, 1, 9, minutes))
 
   async function zipOf(exportId: string): Promise<Record<string, string>> {
-    await generator.generate(exportId, false)
+    await generator.generate(ctx.storeA.id, exportId, false)
     const row = await owner.export.findUniqueOrThrow({ where: { id: exportId } })
     expect(row.status).toBe(ExportStatus.READY)
     const key = row.key ?? ''
@@ -704,7 +714,7 @@ describe('Media gallery', () => {
       await file({ customerId: customer.id, filename: 'gone.png' })
       const view = (await download({ customerId: customer.id })).body as ExportBody
 
-      await expect(generator.generate(view.id, false)).rejects.toThrow('no files')
+      await expect(generator.generate(ctx.storeA.id, view.id, false)).rejects.toThrow('no files')
 
       const row = await owner.export.findUniqueOrThrow({ where: { id: view.id } })
       expect(row).toMatchObject({ status: ExportStatus.FAILED, error: ErrorCodes.EXPORT_EMPTY })
@@ -723,7 +733,9 @@ describe('Media gallery', () => {
         fileSize: GalleryLimits.ZIP_MAX_BYTES
       })
 
-      await expect(generator.generate(view.id, false)).rejects.toThrow('too many or too large')
+      await expect(generator.generate(ctx.storeA.id, view.id, false)).rejects.toThrow(
+        'too many or too large'
+      )
 
       const row = await owner.export.findUniqueOrThrow({ where: { id: view.id } })
       expect(row).toMatchObject({

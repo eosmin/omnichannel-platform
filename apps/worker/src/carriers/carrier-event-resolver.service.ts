@@ -1,7 +1,8 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the carrier is called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import {
   CarrierConnectionStatus,
   providerStatusCodeOf,
@@ -30,7 +31,8 @@ const SHIPMENT_STATUSES = Object.values(ShipmentStatus)
 export class CarrierEventResolver {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     // Not @InjectPinoLogger(name): see ProcessorSupport
     this.logger.setContext(CarrierEventResolver.name)
@@ -75,10 +77,12 @@ export class CarrierEventResolver {
     storeId: string,
     connectionId: string
   ): Promise<{ carrierId: string } | null> {
-    const connection = await this.prisma.client.carrierConnection.findFirst({
-      where: { id: connectionId, storeId },
-      select: { carrierId: true, status: true }
-    })
+    const connection = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.carrierConnection.findFirst({
+        where: { id: connectionId, storeId },
+        select: { carrierId: true, status: true }
+      })
+    )
     if (connection === null || connection.status !== String(CarrierConnectionStatus.ACTIVE)) {
       return null
     }
@@ -95,11 +99,13 @@ export class CarrierEventResolver {
       code.reasonCode === undefined || code.reasonCode === ''
         ? code.plainCode
         : `${code.plainCode}:${code.reasonCode}`
-    const rows = await this.prisma.client.carrierStatusMapping.findMany({
-      // Only the two codes the event can match (the composite and the plain one), through the unique index
-      where: { storeId, connectionId, providerCode: { in: [code.plainCode, composite] } },
-      select: { providerCode: true, status: true }
-    })
+    const rows = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.carrierStatusMapping.findMany({
+        // Only the two codes the event can match (the composite and the plain one), through the unique index
+        where: { storeId, connectionId, providerCode: { in: [code.plainCode, composite] } },
+        select: { providerCode: true, status: true }
+      })
+    )
     // A row whose status is not one we know is left out, not read as "ignore": the code is then unmapped and the owner is asked
     const mappings = new Map<string, ShipmentStatus | null>()
     for (const row of rows) {

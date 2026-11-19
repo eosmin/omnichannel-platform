@@ -1,9 +1,10 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the POST to the endpoint is made outside of it
 import { Injectable } from '@nestjs/common'
 import type { Counter } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import {
   PluginInstallationStatus,
   PluginStatus,
@@ -53,7 +54,8 @@ export class PluginWebhookDeliverer {
     private readonly cipher: CredentialCipher,
     private readonly events: DomainEvents,
     @InjectMetric(MetricNames.WEBHOOK_DELIVERIES) private readonly deliveries: Counter<string>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(PluginWebhookDeliverer.name)
   }
@@ -66,18 +68,20 @@ export class PluginWebhookDeliverer {
   ): Promise<WebhookOutcome> {
     const { pluginInstallationId: installationId, storeId, event, payload, deliveryId } = job
     const final = job.final === true
-    const installation = await this.prisma.client.pluginInstallation.findFirst({
-      where: { id: installationId, storeId },
-      select: {
-        pluginId: true,
-        scopes: true,
-        status: true,
-        webhookEndpoint: true,
-        webhookSecret: true,
-        webhookDisabledAt: true,
-        plugin: { select: { status: true, manifest: true } }
-      }
-    })
+    const installation = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.pluginInstallation.findFirst({
+        where: { id: installationId, storeId },
+        select: {
+          pluginId: true,
+          scopes: true,
+          status: true,
+          webhookEndpoint: true,
+          webhookSecret: true,
+          webhookDisabledAt: true,
+          plugin: { select: { status: true, manifest: true } }
+        }
+      })
+    )
     if (installation === null) return WebhookOutcome.SKIPPED
     const { webhookEndpoint: endpoint, webhookSecret: sealed } = installation
     const manifest = manifestWebhookOf(installation.plugin.manifest)
@@ -110,28 +114,32 @@ export class PluginWebhookDeliverer {
     // instant may pass the cap by the number that raced (plan: debt of the PR of PLG-256).
     const cap = manifestMaxWebhooksPerDay(installation.plugin.manifest)
     if (!final && attempt <= 1 && cap !== null) {
-      const today = await this.prisma.client.webhookDelivery.count({
-        where: {
-          pluginInstallationId: installationId,
-          attempt: 1,
-          createdAt: { gte: new Date(now() - WebhookLimits.PLUGIN_DAY_MS) }
-        }
-      })
+      const today = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.webhookDelivery.count({
+          where: {
+            pluginInstallationId: installationId,
+            attempt: 1,
+            createdAt: { gte: new Date(now() - WebhookLimits.PLUGIN_DAY_MS) }
+          }
+        })
+      )
       if (today >= cap) {
         // Said in the log the owner reads (`attempt: 0`, which the count above never takes for a delivery), so a capped event is
         // told from one the endpoint did not get
         await this.guarded(installationId, async () => {
-          await this.prisma.client.webhookDelivery.create({
-            data: {
-              pluginInstallationId: installationId,
-              event,
-              statusCode: null,
-              durationMs: 0,
-              success: false,
-              error: WebhookLimits.DAILY_CAP_REACHED_CODE,
-              attempt: 0
-            }
-          })
+          await this.jobContext.forStore(storeId, () =>
+            this.prisma.client.webhookDelivery.create({
+              data: {
+                pluginInstallationId: installationId,
+                event,
+                statusCode: null,
+                durationMs: 0,
+                success: false,
+                error: WebhookLimits.DAILY_CAP_REACHED_CODE,
+                attempt: 0
+              }
+            })
+          )
         })
         return WebhookOutcome.SKIPPED
       }
@@ -194,10 +202,12 @@ export class PluginWebhookDeliverer {
     // Its own guard: the delivery is over, and a failure to write that down must not send the last webhook again. The failure is
     // said in the logs; a revoked row that still holds its secret is Step 7.3's nightly sweep (plan, debt (l) of PR P3).
     try {
-      await this.prisma.client.pluginInstallation.updateMany({
-        where: { id: installationId, storeId, status: PluginInstallationStatus.REVOKED },
-        data: { webhookEndpoint: null, webhookSecret: null }
-      })
+      await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.pluginInstallation.updateMany({
+          where: { id: installationId, storeId, status: PluginInstallationStatus.REVOKED },
+          data: { webhookEndpoint: null, webhookSecret: null }
+        })
+      )
     } catch (error) {
       this.logger.error(
         { installationId, err: String(error) },
@@ -216,21 +226,25 @@ export class PluginWebhookDeliverer {
   ): Promise<void> {
     this.deliveries.inc({ target: WebhookMetricTarget.PLUGIN, success: 'true' })
     await this.guarded(installationId, async () => {
-      await this.prisma.client.webhookDelivery.create({
-        data: {
-          pluginInstallationId: installationId,
-          event,
-          statusCode,
-          durationMs,
-          success: true,
-          attempt
-        }
-      })
+      await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.webhookDelivery.create({
+          data: {
+            pluginInstallationId: installationId,
+            event,
+            statusCode,
+            durationMs,
+            success: true,
+            attempt
+          }
+        })
+      )
       // The count is written only when there is something to clear: a healthy installation costs one insert
-      await this.prisma.client.pluginInstallation.updateMany({
-        where: { id: installationId, storeId, webhookConsecutiveFailures: { gt: 0 } },
-        data: { webhookConsecutiveFailures: 0 }
-      })
+      await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.pluginInstallation.updateMany({
+          where: { id: installationId, storeId, webhookConsecutiveFailures: { gt: 0 } },
+          data: { webhookConsecutiveFailures: 0 }
+        })
+      )
     })
   }
 
@@ -245,52 +259,54 @@ export class PluginWebhookDeliverer {
     this.deliveries.inc({ target: WebhookMetricTarget.PLUGIN, success: 'false' })
     let disabled = false
     await this.guarded(installationId, async () => {
-      disabled = await this.prisma.transaction(async tx => {
-        await tx.webhookDelivery.create({
-          data: {
-            pluginInstallationId: installationId,
-            event,
-            statusCode: failure.status,
-            durationMs,
-            success: false,
-            error: failure.code.slice(0, WebhookLimits.DELIVERY_ERROR_MAX_LENGTH),
-            attempt
+      disabled = await this.jobContext.forStore(storeId, () =>
+        this.prisma.transaction(async tx => {
+          await tx.webhookDelivery.create({
+            data: {
+              pluginInstallationId: installationId,
+              event,
+              statusCode: failure.status,
+              durationMs,
+              success: false,
+              error: failure.code.slice(0, WebhookLimits.DELIVERY_ERROR_MAX_LENGTH),
+              attempt
+            }
+          })
+          // The last delivery of a revoked installation is logged and counts toward nothing: there is no webhook left to turn off
+          if (final) return false
+          // Every try is a row of the log; only the end of a delivery counts toward turning the webhooks off
+          const updated = await tx.pluginInstallation.update({
+            where: { id: installationId, storeId },
+            data: {
+              webhookLastFailureAt: new Date(),
+              ...(over ? { webhookConsecutiveFailures: { increment: 1 } } : {})
+            },
+            select: { webhookConsecutiveFailures: true }
+          })
+          if (!over) return false
+          if (updated.webhookConsecutiveFailures < WebhookLimits.MAX_CONSECUTIVE_FAILURES) {
+            return false
           }
-        })
-        // The last delivery of a revoked installation is logged and counts toward nothing: there is no webhook left to turn off
-        if (final) return false
-        // Every try is a row of the log; only the end of a delivery counts toward turning the webhooks off
-        const updated = await tx.pluginInstallation.update({
-          where: { id: installationId, storeId },
-          data: {
-            webhookLastFailureAt: new Date(),
-            ...(over ? { webhookConsecutiveFailures: { increment: 1 } } : {})
-          },
-          select: { webhookConsecutiveFailures: true }
-        })
-        if (!over) return false
-        if (updated.webhookConsecutiveFailures < WebhookLimits.MAX_CONSECUTIVE_FAILURES) {
-          return false
-        }
-        // Only the one that changes it from delivering tells anybody: two deliveries that fail together say it once
-        const turnedOff = await tx.pluginInstallation.updateMany({
-          where: {
-            id: installationId,
+          // Only the one that changes it from delivering tells anybody: two deliveries that fail together say it once
+          const turnedOff = await tx.pluginInstallation.updateMany({
+            where: {
+              id: installationId,
+              storeId,
+              status: PluginInstallationStatus.ACTIVE,
+              webhookDisabledAt: null
+            },
+            data: { webhookDisabledAt: new Date() }
+          })
+          if (turnedOff.count === 0) return false
+          this.events.publish(tx, Events.PLUGIN_ERROR, {
             storeId,
-            status: PluginInstallationStatus.ACTIVE,
-            webhookDisabledAt: null
-          },
-          data: { webhookDisabledAt: new Date() }
+            installationId,
+            pluginId,
+            consecutiveFailures: updated.webhookConsecutiveFailures
+          })
+          return true
         })
-        if (turnedOff.count === 0) return false
-        this.events.publish(tx, Events.PLUGIN_ERROR, {
-          storeId,
-          installationId,
-          pluginId,
-          consecutiveFailures: updated.webhookConsecutiveFailures
-        })
-        return true
-      })
+      )
     })
     if (disabled) {
       this.logger.warn(
