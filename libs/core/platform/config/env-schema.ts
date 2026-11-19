@@ -177,6 +177,12 @@ export const envSchema = z
     // owner decides, and only after the routes that call something outside the database say so with @NoTenantTransaction.
     RLS_CONTEXT: z.stringbool().default(false),
 
+    // The same guard for the worker (RLS phase 5): with it on, a query of the worker on a table with a policy, made outside a
+    // JobContext (a model operation or a raw statement), throws instead of answering no rows. Off until every access of the worker has
+    // its context (the baseline of scripts/rls-worker-baseline.json is empty); the specs of the worker turn it on for themselves.
+    // It is turned on for good with the step that takes BYPASSRLS from the role of the worker.
+    WORKER_RLS_CONTEXT: z.stringbool().default(false),
+
     // Several files in one message to a customer (each channel declares how many it takes). Off until the
     // interface offers it and a real test with the providers passes: with it off a message carries one file.
     OUTBOUND_MULTI_FILE_ENABLED: z.stringbool().default(false),

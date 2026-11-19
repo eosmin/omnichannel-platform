@@ -14,7 +14,11 @@ import { connectionUrls } from '../testing/connection-urls'
 
 import { bootstrapOwner, ensureSystemRoles } from './bootstrap-owner'
 import { loadDevFixtures } from './dev-fixtures'
-import { PrismaService, TenantContextRequiredError } from './prisma.service'
+import {
+  PrismaService,
+  RawSqlContextRequiredError,
+  TenantContextRequiredError
+} from './prisma.service'
 import { ProcessedWebhookEventsService } from './processed-webhook-events.service'
 
 const urls = connectionUrls()
@@ -780,6 +784,42 @@ describe('PrismaService with requireContext', () => {
     expect(
       await guarded.catalogTransaction(() => guarded.client.plugin.count())
     ).toBeGreaterThanOrEqual(0)
+  })
+
+  it('throws for a raw statement that names a table with a policy when there is no context, in the four forms', async () => {
+    const client = guarded.client
+    await expect(client.$queryRaw`SELECT count(*) FROM conversations`).rejects.toBeInstanceOf(
+      RawSqlContextRequiredError
+    )
+    await expect(client.$executeRaw`UPDATE messages SET id = id WHERE false`).rejects.toThrow(
+      'messages'
+    )
+    await expect(client.$queryRawUnsafe('SELECT 1 FROM public.media')).rejects.toBeInstanceOf(
+      RawSqlContextRequiredError
+    )
+    await expect(
+      client.$executeRawUnsafe('UPDATE "orders" SET id = id WHERE false')
+    ).rejects.toBeInstanceOf(RawSqlContextRequiredError)
+  })
+
+  it('lets a raw statement through inside a context, on a global table, with no table, and while the switch is off', async () => {
+    expect(
+      await guarded.tenantTransaction(
+        context,
+        () => guarded.client.$queryRaw`SELECT count(*)::int AS n FROM conversations`
+      )
+    ).toHaveLength(1)
+    expect(
+      await guarded.withoutTenantContext(
+        'a lookup with no tenant yet',
+        () => guarded.client.$queryRaw`SELECT count(*)::int AS n FROM conversations`
+      )
+    ).toHaveLength(1)
+    expect(await guarded.client.$queryRaw`SELECT count(*)::int AS n FROM stores`).toHaveLength(1)
+    expect(await guarded.client.$queryRaw`SELECT 1 AS one`).toHaveLength(1)
+    expect(await open.client.$queryRaw`SELECT count(*)::int AS n FROM conversations`).toHaveLength(
+      1
+    )
   })
 
   it('refuses to open a catalog transaction inside a tenant transaction', () => {
