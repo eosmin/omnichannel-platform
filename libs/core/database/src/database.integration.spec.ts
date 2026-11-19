@@ -60,13 +60,17 @@ describe('database roles', () => {
     })
   })
 
-  it('lets platform_app append to audit_logs and read it, but not change or delete', async () => {
+  it('lets platform_app append to audit_logs, but not change or delete', async () => {
     await withClient(urls.app, async app => {
       await app.query("INSERT INTO audit_logs (id, action) VALUES ($1, 'integration.test')", [
         AUDIT_ID
       ])
-      const { rows } = await app.query('SELECT id FROM audit_logs WHERE id = $1', [AUDIT_ID])
-      expect(rows).toHaveLength(1)
+      // Read as the owner: under row level security the app sees an audit row only inside a tenant context, and this
+      // connection has none. What the test checks is that the append landed.
+      await withClient(urls.owner, async owner => {
+        const { rows } = await owner.query('SELECT id FROM audit_logs WHERE id = $1', [AUDIT_ID])
+        expect(rows).toHaveLength(1)
+      })
       await expect(
         app.query("UPDATE audit_logs SET action = 'x' WHERE id = $1", [AUDIT_ID])
       ).rejects.toThrow(/permission denied/)

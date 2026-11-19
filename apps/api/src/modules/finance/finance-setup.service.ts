@@ -4,7 +4,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { PrismaService } from '@platform/core/database'
+import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   FinanceConflicts,
@@ -78,7 +78,7 @@ export class FinanceSetupService {
       )
     }
 
-    await this.prisma.transaction(async tx => {
+    const written = this.prisma.transaction(async tx => {
       await lockChart(tx, organizationId)
       const existing = await tx.financeSettings.findUnique({
         where: { organizationId },
@@ -164,6 +164,13 @@ export class FinanceSetupService {
           endsOn: dayDate(bounds.endsOn)
         })),
         skipDuplicates: true
+      })
+    })
+    await written.catch((error: unknown) => {
+      // A row of the chart the check above could not see: the books of the organization are set up already
+      if (!isUniqueViolation(error)) throw error
+      throw resourceConflict('the books of the organization are set up already', {
+        conflict: FinanceConflicts.ALREADY_SET_UP
       })
     })
 
