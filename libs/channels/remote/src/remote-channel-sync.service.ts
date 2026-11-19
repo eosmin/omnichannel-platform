@@ -222,19 +222,34 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
 
   // The manifest of a private plugin is the JSON its organization registered: it is read in the context of one of the stores that
   // installed it (the policy of plugins lets that organization read it), never through the list. undefined: could not be read now.
-  private async manifestOf(pluginId: string, storeId: string | undefined): Promise<unknown> {
+  // When a request opened the refresh (announceChange after an install), the store of that request is the one to read in: forStoreOrJoin
+  // joins its context, so the registry of this process is up to date when the request is answered.
+  private async manifestOf(pluginId: string, storeIds: readonly string[]): Promise<unknown> {
+    const inRequest = this.prisma.currentTenantContext()?.storeIds ?? []
+    const storeId = storeIds.find(id => inRequest.includes(id)) ?? storeIds[0]
     if (storeId === undefined) return undefined
     try {
-      const row = await this.jobs.forStore(storeId, () =>
+      const row = await this.jobs.forStoreOrJoin(storeId, () =>
         this.prisma.client.plugin.findUnique({
           where: { id: pluginId },
           select: { manifest: true }
         })
       )
-      return row?.manifest
+      if (row === null) {
+        // Hidden from that store (or gone): a plugin that never registers must leave a trace
+        this.logger.warn(
+          { pluginId, storeId },
+          'a remote channel plugin has no manifest for its store'
+        )
+        return undefined
+      }
+      return row.manifest
     } catch (error) {
       if (error instanceof JobContextError) {
-        this.logger.warn({ pluginId }, 'the manifest of a remote channel plugin could not be read')
+        this.logger.warn(
+          { pluginId, storeId },
+          'the manifest of a remote channel plugin could not be read'
+        )
         return undefined
       }
       throw error
@@ -254,7 +269,7 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
       const signatures = new Map<string, string>()
       for (const row of rows) {
         const storeIds = [...row.storeIds].sort()
-        const stored = await this.manifestOf(row.id, storeIds[0])
+        const stored = await this.manifestOf(row.id, storeIds)
         if (stored === undefined) {
           // Not readable now (no store to read it in, a context that refuses): its previous adapter, if any, stays
           untouched.add(row.id)

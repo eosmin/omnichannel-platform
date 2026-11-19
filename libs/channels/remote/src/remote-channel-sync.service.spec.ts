@@ -60,10 +60,14 @@ function setup(initial: Row[] = []) {
     failList: false,
     storeGone: false,
     contextError: null as Error | null,
+    requestStores: [] as string[],
     filters: [] as unknown[],
     contexts: [] as string[]
   }
   const prisma = {
+    currentTenantContext: jest.fn(() =>
+      state.requestStores.length === 0 ? undefined : { storeIds: state.requestStores }
+    ),
     client: {
       plugin: {
         findUnique: jest.fn(({ where }: { where: { id: string } }) =>
@@ -96,7 +100,6 @@ function setup(initial: Row[] = []) {
     })
   } as unknown as WorkerLists
   const jobs = {
-    forStore: jest.fn(<T>(_storeId: string, work: () => Promise<T>) => work()),
     forStoreOrJoin: jest.fn(<T>(storeId: string, work: () => Promise<T>) => {
       state.contexts.push(storeId)
       if (state.contextError !== null) return Promise.reject(state.contextError)
@@ -428,16 +431,47 @@ describe('RemoteChannelSync: the secrets of the commands', () => {
         installations: [{ storeId: 's2' }, { storeId: 's1' }]
       }
     ])
-    const jobs = (sync as unknown as { jobs: { forStore: jest.Mock } }).jobs
+    const jobs = (sync as unknown as { jobs: { forStoreOrJoin: jest.Mock } }).jobs
     await sync.refresh()
-    expect((jobs.forStore.mock.calls[0] as string[] | undefined)?.[0]).toBe('s1')
+    expect((jobs.forStoreOrJoin.mock.calls[0] as string[] | undefined)?.[0]).toBe('s1')
     const first = registry.get('acme_chat')
-    jest
-      .mocked(jobs.forStore)
-      .mockImplementationOnce(() =>
-        Promise.reject(new JobContextError('a context of another store is already open'))
-      )
+    jobs.forStoreOrJoin.mockImplementationOnce(() =>
+      Promise.reject(new JobContextError('a context of another store is already open'))
+    )
     await sync.refresh()
     expect(registry.get('acme_chat')).toBe(first)
+  })
+
+  it('reads the manifest in the store of the request that asked for the refresh, so the new channel is registered at once', async () => {
+    const { sync, registry, state } = setup([
+      {
+        id: 'acme_chat',
+        manifest: manifestOf('acme_chat'),
+        installations: [{ storeId: 's1' }, { storeId: 's2' }]
+      }
+    ])
+    state.requestStores = ['s2']
+    await sync.refresh()
+    expect(state.contexts).toContain('s2')
+    expect(registry.has('acme_chat')).toBe(true)
+  })
+
+  it('leaves a trace when the manifest of a plugin is hidden from its store, and keeps what it had', async () => {
+    const { sync, registry, state } = setup([
+      { id: 'acme_chat', manifest: manifestOf('acme_chat'), installations: [{ storeId: 's1' }] }
+    ])
+    await sync.refresh()
+    const prisma = (
+      sync as unknown as { prisma: { client: { plugin: { findUnique: jest.Mock } } } }
+    ).prisma
+    prisma.client.plugin.findUnique.mockResolvedValueOnce(null)
+    state.rows = [...state.rows]
+    await sync.refresh()
+    expect(registry.has('acme_chat')).toBe(true)
+    const warn = (sync as unknown as { logger: { warn: jest.Mock } }).logger.warn
+    expect(warn).toHaveBeenCalledWith(
+      { pluginId: 'acme_chat', storeId: 's1' },
+      expect.stringContaining('no manifest')
+    )
   })
 })
