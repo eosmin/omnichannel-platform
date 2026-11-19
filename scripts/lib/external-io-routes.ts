@@ -23,6 +23,8 @@ interface ClassInfo {
   readonly name: string
   readonly file: string
   readonly fields: ReadonlyMap<string, string>
+  // The class it extends, so `this.method()` and the fields of a base class are found
+  readonly parent: string | undefined
   readonly isController: boolean
   readonly marked: boolean
   readonly methods: readonly MethodInfo[]
@@ -43,6 +45,8 @@ interface Call {
   // The field of `this` that is called, or undefined for `this.method()`
   readonly field: string | undefined
   readonly method: string
+  // The name is one of NETWORK_METHODS: it counts when the type of the field is not a class the scan knows (an interface, a port)
+  readonly network: boolean
 }
 
 export interface ExternalRoute {
@@ -101,8 +105,18 @@ function decoratorsOf(node: ts.Node): string[] {
   return (ts.getDecorators(node) ?? []).flatMap(d => decoratorName(d) ?? [])
 }
 
+// `Service`, `Service | null` and `Service | undefined` name the class; anything else (a generic, an intersection) does not
 function typeName(type: ts.TypeNode | undefined): string | undefined {
-  return type !== undefined && ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)
+  if (type === undefined) return undefined
+  if (ts.isUnionTypeNode(type)) {
+    const named = type.types.filter(
+      member =>
+        member.kind !== ts.SyntaxKind.UndefinedKeyword &&
+        !(ts.isLiteralTypeNode(member) && member.literal.kind === ts.SyntaxKind.NullKeyword)
+    )
+    return named.length === 1 ? typeName(named[0]) : undefined
+  }
+  return ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)
     ? type.typeName.text
     : undefined
 }
@@ -118,12 +132,16 @@ function callsIn(body: ts.Node): { calls: Call[]; directIo: boolean } {
       const callee = node.expression
       const target = callee.expression
       if (target.kind === ts.SyntaxKind.ThisKeyword) {
-        calls.push({ field: undefined, method: callee.name.text })
+        calls.push({ field: undefined, method: callee.name.text, network: false })
       } else if (
         ts.isPropertyAccessExpression(target) &&
         target.expression.kind === ts.SyntaxKind.ThisKeyword
       ) {
-        calls.push({ field: target.name.text, method: callee.name.text })
+        calls.push({
+          field: target.name.text,
+          method: callee.name.text,
+          network: NETWORK_METHODS.has(callee.name.text)
+        })
       } else if (NETWORK_METHODS.has(callee.name.text)) {
         directIo = true
       }
@@ -186,6 +204,9 @@ export function parseClasses(file: string, text: string): ClassInfo[] {
         name: node.name.text,
         file,
         fields,
+        parent: node.heritageClauses
+          ?.find(clause => clause.token === ts.SyntaxKind.ExtendsKeyword)
+          ?.types[0]?.expression.getText(source),
         isController: classDecorators.includes('Controller'),
         marked: classDecorators.includes('NoTenantTransaction'),
         methods
@@ -197,19 +218,43 @@ export function parseClasses(file: string, text: string): ClassInfo[] {
   return found
 }
 
+// Whether a call reaches external I/O. `this.method()` is looked up in the class and in the classes it extends; the type of a field in
+// the same chain
+function callReaches(
+  owner: ClassInfo,
+  call: Call,
+  byName: ReadonlyMap<string, ClassInfo>,
+  roots: ReadonlySet<string>,
+  external: ReadonlySet<string>
+): boolean {
+  const chain: ClassInfo[] = []
+  for (
+    let current: ClassInfo | undefined = owner;
+    current !== undefined && !chain.includes(current);
+    current = current.parent === undefined ? undefined : byName.get(current.parent)
+  ) {
+    chain.push(current)
+  }
+  if (call.field === undefined) {
+    return chain.some(c => external.has(`${c.name}.${call.method}`))
+  }
+  const target = chain.map(c => c.fields.get(call.field as string)).find(t => t !== undefined)
+  if (target === undefined) return false
+  if (roots.has(target)) return true
+  if (external.has(`${target}.${call.method}`)) return true
+  return call.network && !byName.has(target)
+}
+
 // The `Class.method` nodes that reach external I/O: a fixed point over the graph
 export function externalNodes(
   classes: readonly ClassInfo[],
   providers: readonly ExternalIoProvider[]
 ): Set<string> {
   const roots = new Set(providers.map(p => p.name))
+  const byName = new Map(classes.map(c => [c.name, c]))
   const external = new Set<string>()
-  const reaches = (owner: ClassInfo, call: Call): boolean => {
-    const target = call.field === undefined ? owner.name : owner.fields.get(call.field)
-    if (target === undefined) return false
-    if (roots.has(target)) return true
-    return external.has(`${target}.${call.method}`)
-  }
+  const reaches = (owner: ClassInfo, call: Call): boolean =>
+    callReaches(owner, call, byName, roots, external)
   for (let changed = true; changed;) {
     changed = false
     for (const owner of classes) {
@@ -234,17 +279,13 @@ export function unmarkedExternalRoutes(
 ): ExternalRoute[] {
   const external = externalNodes(classes, providers)
   const roots = new Set(providers.map(p => p.name))
+  const byName = new Map(classes.map(c => [c.name, c]))
   const routes: ExternalRoute[] = []
   for (const owner of classes) {
     if (!owner.isController || owner.marked) continue
     for (const method of owner.methods) {
       if (method.marked || !method.decorators.some(name => ROUTE_DECORATORS.has(name))) continue
-      const reached = method.calls.find(call => {
-        const target = call.field === undefined ? owner.name : owner.fields.get(call.field)
-        return (
-          target !== undefined && (roots.has(target) || external.has(`${target}.${call.method}`))
-        )
-      })
+      const reached = method.calls.find(call => callReaches(owner, call, byName, roots, external))
       const why = method.directIo
         ? 'calls a remote API itself'
         : reached

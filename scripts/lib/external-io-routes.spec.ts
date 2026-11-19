@@ -89,6 +89,36 @@ describe('unmarkedExternalRoutes', () => {
   })
 })
 
+describe('what the scan follows', () => {
+  it('flags a network method called on a field whose type is not a class of the scan', () => {
+    expect(
+      routes(
+        `@Controller() class C { constructor(private readonly port: ChannelPort) {} @Post() s() { return this.port.sendMessage(1) } }`
+      )
+    ).toHaveLength(1)
+  })
+
+  it('reads a field typed with null or undefined', () => {
+    expect(
+      routes(
+        `@Controller() class C { constructor(private readonly files: FilesService | null) {} @Get() g() { return this.files?.sign(1) } }`
+      )
+    ).toHaveLength(1)
+    expect(
+      routes(
+        `@Controller() class C { constructor(private readonly files: FilesService | null) {} @Get() g() { return this.files.sign(1) } }`
+      )
+    ).toHaveLength(1)
+  })
+
+  it('follows this.method() and the fields into a base class', () => {
+    const base = `abstract class Base { constructor(protected readonly files: FilesService) {} protected store() { return this.files.sign(1) } }`
+    expect(
+      routes(`@Controller() class C extends Base { @Post() up() { return this.store() } }`, base)
+    ).toHaveLength(1)
+  })
+})
+
 describe('baseline helpers', () => {
   const route = (key: string) => ({ key, file: 'f', line: 1, why: 'w' })
   it('tells new, fixed and grown entries', () => {
