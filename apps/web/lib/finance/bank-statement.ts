@@ -1,12 +1,19 @@
 import {
   ApiError,
+  type BankBookCandidateView,
   type BankLineView,
   type BankRowErrorView,
   type BankSuggestionView,
   type FinanceAccountView,
   type ImportBankFileInput
 } from '@platform/api-client'
-import { BankLineFilters, FinanceConflicts, FinanceLimits } from '@platform/core/domain'
+import {
+  BankLineFilters,
+  BankStatementLimits,
+  FinanceConflicts,
+  FinanceLimits,
+  groupProblems
+} from '@platform/core/domain'
 import { ClientErrorCodes } from '@platform/core/errors'
 
 import { cashAccountsOf } from './account-form'
@@ -166,6 +173,41 @@ export function reasonsOf(
       : { reason: SuggestionReasons.DAYS_APART, days: suggestion.dayDifference },
     ...(suggestion.referenceMatch ? [{ reason: SuggestionReasons.REFERENCE }] : [])
   ]
+}
+
+// What a person has chosen for a group (HC-121), against the amount of the statement line: the signed sum of the chosen lines of the books
+// and how far it is. The api decides (the same rule, `groupProblems`); this is only what the dialog shows while the person chooses, and
+// it never lets a group go that the api would refuse for its shape or its sum.
+export interface GroupSelection {
+  chosen: number
+  journalLineIds: string[]
+  sumCents: number
+  // statement minus chosen: positive when lines are missing, negative when there are too many
+  differenceCents: number
+  tooMany: boolean
+  canConfirm: boolean
+}
+
+export function groupSelectionOf(
+  statementCents: number,
+  candidates: readonly BankBookCandidateView[],
+  selected: ReadonlySet<string>
+): GroupSelection {
+  const picked = candidates.filter(candidate => selected.has(candidate.journalLineId))
+  const lines = picked.map(candidate => ({
+    id: candidate.journalLineId,
+    signedCents: candidate.signedCents
+  }))
+  const sumCents = lines.reduce((total, each) => total + each.signedCents, 0)
+  const problems = groupProblems({ statementCents, lines })
+  return {
+    chosen: picked.length,
+    journalLineIds: lines.map(each => each.id),
+    sumCents,
+    differenceCents: statementCents - sumCents,
+    tooMany: picked.length > BankStatementLimits.MAX_GROUP,
+    canConfirm: problems.length === 0
+  }
 }
 
 // The month the status of an account opens on: the one the day is in (UTC, like the periods)

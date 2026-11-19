@@ -40,6 +40,22 @@ export function schemaTables(schema: string): RlsTable[] {
     .sort((a, b) => a.table.localeCompare(b.table))
 }
 
+// Prisma creates a join table for an implicit many-to-many relation (`Tag[] @relation("CustomerTags")` on one model and
+// `Customer[] @relation("CustomerTags")` on the other): `_CustomerTags`, with the two ids in the columns A and B and no model of
+// its own. It carries no store column, so its policy goes through the rows it joins; it is still a table with a policy.
+const LIST_RELATION = /^\s*\w+\s+\w+\[\]\s+@relation\(\s*"(\w+)"\s*\)/gm
+export function implicitJoinTables(schema: string): string[] {
+  const text = schema.replace(LINE_COMMENT, '$1')
+  const sides = new Map<string, number>()
+  for (const [, name] of text.matchAll(LIST_RELATION)) {
+    sides.set(name ?? '', (sides.get(name ?? '') ?? 0) + 1)
+  }
+  return [...sides]
+    .filter(([, count]) => count === 2)
+    .map(([name]) => `_${name}`)
+    .sort()
+}
+
 export interface MigrationSql {
   name: string
   sql: string
@@ -91,9 +107,10 @@ export function checkRlsCoverage(
   tables: readonly RlsTable[],
   covered: ReadonlySet<string>,
   exemptions: Readonly<Record<string, RlsExemption>>,
-  phases: readonly number[]
+  phases: readonly number[],
+  joinTables: readonly string[] = []
 ): RlsReport {
-  const names = new Set(tables.map(t => t.table))
+  const names = new Set([...tables.map(t => t.table), ...joinTables])
   const unclassified: string[] = []
   const stale: string[] = []
   for (const { table } of tables) {
@@ -112,6 +129,10 @@ export function checkRlsCoverage(
     } else if (exemption.kind === 'pending' && !phases.includes(exemption.phase)) {
       stale.push(`${table}: pending for phase ${exemption.phase}, which the plan does not have`)
     }
+  }
+  // A join table is decided like any other: a policy, or a reason in the list
+  for (const table of joinTables) {
+    if (!covered.has(table) && exemptions[table] === undefined) unclassified.push(table)
   }
   for (const table of Object.keys(exemptions)) {
     if (!names.has(table)) stale.push(`${table}: listed but not a table of the schema`)

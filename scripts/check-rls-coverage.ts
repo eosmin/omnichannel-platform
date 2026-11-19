@@ -11,6 +11,7 @@ import { RlsGlobalModels } from '@platform/core/domain'
 import {
   checkRlsCoverage,
   coveredTables,
+  implicitJoinTables,
   roleViolations,
   scopeMismatches,
   schemaTables,
@@ -35,7 +36,8 @@ function* sourceFiles(directory: string): Generator<string> {
   }
 }
 
-const tables = schemaTables(readFileSync(SCHEMA, 'utf8'))
+const schemaText = readFileSync(SCHEMA, 'utf8')
+const tables = schemaTables(schemaText)
 // No table at all means the schema was not read as expected, which is not a pass
 if (tables.length === 0) {
   console.error(`no model found in ${SCHEMA}: the schema convention changed?`)
@@ -47,7 +49,13 @@ const migrations = readdirSync(MIGRATIONS)
   .map(name => ({ name, sql: readFileSync(`${MIGRATIONS}/${name}/migration.sql`, 'utf8') }))
 const covered = coveredTables(migrations)
 
-const report = checkRlsCoverage(tables, covered, RLS_EXEMPTIONS, RLS_PHASES)
+const report = checkRlsCoverage(
+  tables,
+  covered,
+  RLS_EXEMPTIONS,
+  RLS_PHASES,
+  implicitJoinTables(schemaText)
+)
 const globalModels = tables
   .filter(({ table }) => RLS_EXEMPTIONS[table]?.kind === 'global')
   .map(({ model }) => model)

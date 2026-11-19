@@ -5,9 +5,12 @@ import {
   fetchAllSuppliers,
   fetchPayables,
   fetchPurchaseOrderPage,
+  fetchSupplierPaymentReturns,
   receivePurchaseOrder,
   recordPurchaseOrderPayment,
-  voidSupplierPayment
+  recordSupplierPaymentReturn,
+  voidSupplierPayment,
+  voidSupplierPaymentReturn
 } from './purchases-api'
 
 const json = (status: number, body: unknown): Response =>
@@ -153,5 +156,45 @@ describe('purchases-api', () => {
       'https://api.example.com/api/v1/supplier-payments/p1/void'
     )
     expect(JSON.parse(callOf(fetchImpl, 1).init.body as string)).toEqual({ reason: 'Paid twice' })
+  })
+
+  it('lists, records and voids the returns of a payment', async () => {
+    const row = {
+      id: 'r1',
+      supplierId: 's1',
+      supplierPaymentId: 'p1',
+      receivedIntoAccountId: 'a1',
+      amountCents: 500,
+      returnedOn: '2026-11-18',
+      reference: null,
+      entryId: 'e1',
+      voidedByEntryId: null,
+      createdBy: 'u1',
+      createdAt: '2026-11-18T10:00:00.000Z'
+    }
+    const { client, fetchImpl } = setup(
+      json(200, { data: [row], nextCursor: null, hasMore: false }),
+      json(201, row),
+      json(200, { ...row, voidedByEntryId: 'e2' })
+    )
+
+    const page = await fetchSupplierPaymentReturns(client, 'store-1', 'p1', null)
+    await recordSupplierPaymentReturn(client, 'store-1', 'p1', {
+      idempotencyKey: 'k',
+      receivedIntoAccountId: 'a1',
+      amountCents: 500,
+      returnedOn: '2026-11-18'
+    })
+    const voided = await voidSupplierPaymentReturn(client, 'store-1', 'r1', { reason: 'Bounced' })
+
+    expect(page.data[0]?.amountCents).toBe(500)
+    expect(callOf(fetchImpl, 0).url).toContain('/api/v1/supplier-payments/p1/returns?limit=')
+    expect(callOf(fetchImpl, 1).url).toBe(
+      'https://api.example.com/api/v1/supplier-payments/p1/returns'
+    )
+    expect(callOf(fetchImpl, 2).url).toBe(
+      'https://api.example.com/api/v1/supplier-payment-returns/r1/void'
+    )
+    expect(voided.voidedByEntryId).toBe('e2')
   })
 })

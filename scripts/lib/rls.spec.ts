@@ -1,6 +1,7 @@
 import {
   checkRlsCoverage,
   coveredTables,
+  implicitJoinTables,
   roleViolations,
   schemaTables,
   scopeMismatches,
@@ -239,5 +240,37 @@ describe('schemaTables, comments', () => {
   @@map("hooks")
 }`)
     expect(table?.scope).toBe('store')
+  })
+})
+
+describe('implicitJoinTables', () => {
+  const schema = `
+model Tag {
+  id            String         @id
+  conversations Conversation[] @relation("ConversationTags")
+  customers     Customer[]     @relation("CustomerTags")
+  // a one-sided list is a normal relation, not a join table
+  sent          Invite[]       @relation("InvitedBy")
+}
+model Conversation {
+  id   String @id
+  tags Tag[]  @relation("ConversationTags")
+}
+model Customer {
+  id   String @id
+  tags Tag[]  @relation("CustomerTags")
+}
+`
+
+  it('names the join table of each relation that has a list on both sides', () => {
+    expect(implicitJoinTables(schema)).toEqual(['_ConversationTags', '_CustomerTags'])
+  })
+
+  it('does not accept a join table with no policy and no reason, and accepts it once it has one', () => {
+    const tables = schemaTables(schema)
+    const open = checkRlsCoverage(tables, new Set(), {}, [1], ['_CustomerTags'])
+    expect(open.unclassified).toContain('_CustomerTags')
+    const closed = checkRlsCoverage([], new Set(['_CustomerTags']), {}, [1], ['_CustomerTags'])
+    expect(closed).toEqual({ unclassified: [], stale: [], orphanPolicies: [] })
   })
 })

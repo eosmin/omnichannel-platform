@@ -42,6 +42,8 @@ export const SearchConfig = {
 // statement as a literal because `websearch_to_tsquery` and `ts_headline` take a `regconfig`, and a bind
 // parameter arrives as `text`. Nothing a user typed is ever part of it.
 export const SearchLanguage = 'spanish' as const
+// What the search functions of the database raise when the transaction has no store in its context (migration rls_search_functions)
+export const SearchDatabaseErrors = { CONTEXT_REQUIRED: 'SEARCH_CONTEXT_REQUIRED' } as const
 // The configuration that keeps every word (no stop words, no stemming): the snippet of a text made only of stop words
 export const SearchLiteralLanguage = 'simple' as const
 

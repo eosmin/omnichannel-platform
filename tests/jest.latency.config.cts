@@ -6,7 +6,11 @@ module.exports = {
   displayName: 'tests-latency',
   preset: '../jest.preset.cjs',
   testEnvironment: '<rootDir>/helpers/test-environment.cjs',
-  testMatch: ['<rootDir>/api/products-search-performance.spec.ts'],
+  testMatch: [
+    '<rootDir>/api/products-search-performance.spec.ts',
+    // Takes locks on the tables of the inbox to read a plan with row security on: alone in its process
+    '<rootDir>/api/rls-search-plan.spec.ts'
+  ],
   setupFiles: ['<rootDir>/helpers/env.ts'],
   // Closes the connections of createWorkerPrisma when a file ends
   setupFilesAfterEnv: ['<rootDir>/helpers/worker-db-teardown.ts'],
