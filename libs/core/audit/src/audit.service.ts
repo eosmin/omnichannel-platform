@@ -3,7 +3,7 @@ import type { Counter } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
 import type { AuditActionType } from '@platform/core/audit'
-import { inSavepoint, PrismaService } from '@platform/core/database'
+import { PrismaService } from '@platform/core/database'
 import { MetricNames } from '@platform/core/metrics'
 import { getMetricToken } from '@platform/core/metrics-module'
 
@@ -64,21 +64,6 @@ export class AuditService implements OnModuleDestroy {
   }
 
   log(entry: AuditEntry): void {
-    // Read here, before any await: the transaction of the request is the one that is open NOW. An entry of the request goes in it,
-    // but not at once: it is queued to run when the handler is done and before the COMMIT, on a savepoint of its own. Started at once
-    // it raced the commit of the request ("Transaction already closed", the entry lost) and a failed insert would have aborted the
-    // transaction under the rest of the request.
-    if (this.inRequestTransaction(entry)) {
-      const row = toRow(entry)
-      const queued = this.prisma.beforeCommit(this.prisma.client, async tx => {
-        try {
-          await inSavepoint(() => tx.auditLog.createMany({ data: [row] }), tx)
-        } catch (error) {
-          this.fail(AUDIT_FAILURE_REASONS.WRITE_FAILED, entry.action, error)
-        }
-      })
-      if (queued) return
-    }
     if (this.pending.size >= MAX_PENDING) {
       this.fail(AUDIT_FAILURE_REASONS.QUEUE_FULL, entry.action)
       return
@@ -96,17 +81,18 @@ export class AuditService implements OnModuleDestroy {
     await Promise.allSettled(this.pending)
   }
 
-  // Inside the tenant transaction of a request whose context already holds the store of the entry (or an entry with no store)
-  private inRequestTransaction(entry: AuditEntry): boolean {
+  private async write(entry: AuditEntry): Promise<void> {
+    // Inside the tenant transaction of a request whose context already holds the store of the entry (or an entry with no store),
+    // the entry goes in that transaction: no second connection, and it sees what the request wrote (an entry about a row the
+    // request has just created, with a foreign key to it, is not refused). Without RLS this is what it always did.
     const current = this.prisma.currentTenantContext()
-    return (
+    if (
       current !== undefined &&
       (entry.storeId === undefined || current.storeIds.includes(entry.storeId))
-    )
-  }
-
-  // An entry that is not part of a request transaction: a guard, a public route, a store the request is not in
-  private async write(entry: AuditEntry): Promise<void> {
+    ) {
+      await this.prisma.client.auditLog.createMany({ data: [toRow(entry)] })
+      return
+    }
     // Everything else (a guard, a public route, a request that audits a store it is not in) runs in a tenant transaction of its
     // own, outside any request transaction, with the store of the entry as its whole context: the policy of audit_logs lets a
     // row in with no store or with a store of the context, so the trail of a login, of a refused key or of a request for a store
