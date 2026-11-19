@@ -32,15 +32,16 @@ describe('WidgetTenant', () => {
     expect(prisma.tenantTransaction).not.toHaveBeenCalled()
   })
 
-  it('refuses to run in a context of another store, or of several, and never runs the work', () => {
+  it('refuses to run in a context of another store, organization, or of several, and never runs the work', async () => {
     const work = jest.fn(() => Promise.resolve(1))
     for (const open of [
       { storeIds: ['store-b'], organizationIds: ['org-a'] },
       { storeIds: ['store-a', 'store-b'], organizationIds: ['org-a'] },
+      { storeIds: ['store-a'], organizationIds: [] },
       { storeIds: [], organizationIds: [] }
     ]) {
       const { tenant } = build(open)
-      expect(() => tenant.run(SITE, work)).toThrow('of that store alone')
+      await expect(tenant.run(SITE, work)).rejects.toThrow('of those alone')
     }
     expect(work).not.toHaveBeenCalled()
   })

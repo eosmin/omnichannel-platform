@@ -56,20 +56,18 @@ export class WidgetSites {
     if (!isSiteKey(siteKey)) return null
     // The site key says which store it is only to the database: the lookup finds the connection and its store, and the row is read
     // inside the context of that store (the status, the origins and the store's name are the connection's and the store's)
-    const found = await this.resolve(siteKey, Date.now())
+    // The ids may be a moment old (a key deleted and made again for another store): a miss that came from kept ids is asked once more
+    // from the database before the key is given up
+    const wasKept = this.resolved.has(siteKey)
+    let found = await this.resolve(siteKey, Date.now())
     if (found === null) return null
-    const row = await this.prisma.tenantTransaction(contextOf(found), () =>
-      this.prisma.client.channelConnection.findFirst({
-        where: { id: found.id, storeId: found.storeId },
-        select: {
-          id: true,
-          storeId: true,
-          status: true,
-          metadata: true,
-          store: { select: { name: true, defaultLocale: true } }
-        }
-      })
-    )
+    let row = await this.readConnection(found)
+    if (row === null && wasKept) {
+      this.resolved.delete(siteKey)
+      found = await this.resolve(siteKey, Date.now())
+      if (found === null) return null
+      row = await this.readConnection(found)
+    }
     if (row === null || row.status !== String(ChannelConnectionStatus.ACTIVE)) {
       this.resolved.delete(siteKey)
       return null
@@ -84,5 +82,20 @@ export class WidgetSites {
       allowedOrigins: allowedOriginsOf(row.metadata),
       preChatEnabled: preChatEnabledOf(row.metadata)
     }
+  }
+
+  private readConnection(found: ResolvedRow) {
+    return this.prisma.tenantTransaction(contextOf(found), () =>
+      this.prisma.client.channelConnection.findFirst({
+        where: { id: found.id, storeId: found.storeId },
+        select: {
+          id: true,
+          storeId: true,
+          status: true,
+          metadata: true,
+          store: { select: { name: true, defaultLocale: true } }
+        }
+      })
+    )
   }
 }

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 
 import { connectionUrls } from '@platform/core/database-testing'
+import { ApiKeyStatus, ChannelConnectionStatus } from '@platform/core/domain'
 
 // Row-Level Security, phase 6 (F6-3b): the flows that find their store BEFORE there is a tenant context (the api key of the public
 // API, the key of a plugin installation, the site key of the web widget, the id of a carrier connection in the address of its
@@ -138,32 +139,32 @@ describe('row-level security, the flows that find their store before there is a 
         store_id: A,
         plugin_id: WIDGET,
         connection_id: SITE_A,
-        status: 'active'
+        status: ChannelConnectionStatus.ACTIVE
       })
       await insertFixture('channel_connections', {
         id: `cc-b-${run}`,
         store_id: B,
         plugin_id: WIDGET,
         connection_id: SITE_B,
-        status: 'disconnected'
+        status: ChannelConnectionStatus.DISCONNECTED
       })
       await insertFixture('api_keys', {
         id: `k-a-${run}`,
         store_id: A,
         key_hash: `h-a-${run}`,
-        status: 'active'
+        status: ApiKeyStatus.ACTIVE
       })
       await insertFixture('api_keys', {
         id: `k-b-${run}`,
         store_id: B,
         key_hash: `h-b-${run}`,
-        status: 'active'
+        status: ApiKeyStatus.ACTIVE
       })
       await insertFixture('api_keys', {
         id: `k-rev-${run}`,
         store_id: A,
         key_hash: `h-rev-${run}`,
-        status: 'revoked'
+        status: ApiKeyStatus.REVOKED
       })
       await owner.query(`UPDATE public.api_keys SET revoked_at = now() WHERE id = $1`, [
         `k-rev-${run}`
@@ -172,7 +173,7 @@ describe('row-level security, the flows that find their store before there is a 
         id: `k-gone-${run}`,
         store_id: A,
         key_hash: `h-gone-${run}`,
-        status: 'active'
+        status: ApiKeyStatus.ACTIVE
       })
       await owner.query(`UPDATE public.api_keys SET revoked_at = now() WHERE id = $1`, [
         `k-gone-${run}`
@@ -181,7 +182,7 @@ describe('row-level security, the flows that find their store before there is a 
         id: `k-exp-${run}`,
         store_id: A,
         key_hash: `h-exp-${run}`,
-        status: 'active'
+        status: ApiKeyStatus.ACTIVE
       })
       await owner.query(
         `UPDATE public.api_keys SET expires_at = now() - interval '1 hour' WHERE id = $1`,

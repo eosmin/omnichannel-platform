@@ -21,12 +21,17 @@ export function widgetContextOf(site: WidgetTenantSite): TenantContext {
 export class WidgetTenant {
   constructor(private readonly prisma: PrismaService) {}
 
-  run<T>(site: WidgetTenantSite, work: () => Promise<T>): Promise<T> {
+  async run<T>(site: WidgetTenantSite, work: () => Promise<T>): Promise<T> {
     const current = this.prisma.currentTenantContext()
     if (current === undefined) return this.prisma.tenantTransaction(widgetContextOf(site), work)
-    if (current.storeIds.length !== 1 || current.storeIds[0] !== site.storeId) {
+    if (
+      current.storeIds.length !== 1 ||
+      current.storeIds[0] !== site.storeId ||
+      current.organizationIds.length !== 1 ||
+      current.organizationIds[0] !== site.organizationId
+    ) {
       throw new Error(
-        'a widget call runs in the context of the store of its site, and of that store alone'
+        'a widget call runs in the context of the store of its site and its organization, and of those alone'
       )
     }
     return work()
