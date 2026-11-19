@@ -334,3 +334,8 @@ export const OrderStatusMessageKinds: Readonly<Partial<Record<OrderStatus, Order
     [OrderStatus.DELIVERED]: OrderMessageKind.ORDER_DELIVERED,
     [OrderStatus.CANCELLED]: OrderMessageKind.ORDER_CANCELLED
   }
+
+// The customers a text of the orders list may match: the orders are read by `customer_id IN (those)`, so a text that matches more
+// customers than this is too wide and is refused (400 SEARCH_TOO_BROAD, the person is asked to type more), never answered with a
+// truncated list that silently lacks orders. Below the limit of bind parameters of a statement.
+export const OrderSearchConfig = { MAX_CUSTOMER_MATCHES: 2000 } as const

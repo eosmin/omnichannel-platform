@@ -1,7 +1,11 @@
 import type { PrismaService } from '@platform/core/database'
 import { calendarDayToDate, dateToCalendarDay } from '@platform/core/domain'
 import { ExportLimits } from '@platform/core/exports'
-import { orderListWhere, type OrdersExportFilters } from '@platform/core/messaging'
+import {
+  orderListWhere,
+  orderTextCustomerIds,
+  type OrdersExportFilters
+} from '@platform/core/messaging'
 
 import type { CsvSource } from './csv-export-writer'
 
@@ -40,19 +44,27 @@ export function ordersExportSource(
   storeId: string,
   filters: OrdersExportFilters
 ): CsvSource {
-  const where = {
-    ...orderListWhere(storeId, {
-      q: filters.q,
-      status: filters.status,
-      paymentStatus: filters.paymentStatus,
-      priceApprovalStatus: filters.priceApprovalStatus,
-      customerId: filters.customerId,
-      carrierConnectionId: filters.carrierConnectionId,
-      guide: filters.guide,
-      createdFrom: filters.createdFrom === undefined ? undefined : new Date(filters.createdFrom),
-      createdBefore:
-        filters.createdBefore === undefined ? undefined : new Date(filters.createdBefore)
-    }),
+  // The customers the text names are found once, by a function of the database, before the first read of the orders
+  let resolved: Promise<ReturnType<typeof filtersOf>> | undefined
+  const whereOf = (): Promise<ReturnType<typeof filtersOf>> => (resolved ??= resolve())
+  const resolve = async () => filtersOf(await orderTextCustomerIds(prisma, storeId, filters.q))
+  const filtersOf = (textCustomers: readonly string[]) => ({
+    ...orderListWhere(
+      storeId,
+      {
+        q: filters.q,
+        status: filters.status,
+        paymentStatus: filters.paymentStatus,
+        priceApprovalStatus: filters.priceApprovalStatus,
+        customerId: filters.customerId,
+        carrierConnectionId: filters.carrierConnectionId,
+        guide: filters.guide,
+        createdFrom: filters.createdFrom === undefined ? undefined : new Date(filters.createdFrom),
+        createdBefore:
+          filters.createdBefore === undefined ? undefined : new Date(filters.createdBefore)
+      },
+      textCustomers
+    ),
     ...(filters.scheduledDeliveryFrom === undefined && filters.scheduledDeliveryTo === undefined
       ? {}
       : {
@@ -65,13 +77,14 @@ export function ordersExportSource(
               : { lte: calendarDayToDate(filters.scheduledDeliveryTo) })
           }
         })
-  }
+  })
   return {
     columns: ORDER_COLUMNS,
-    count: () => prisma.client.order.count({ where }),
+    count: async () => prisma.client.order.count({ where: await whereOf() }),
     rows: async function* () {
       // Keyset on the list's own order (newest first): a row deleted meanwhile cannot end the file early
       let after: { createdAt: Date; id: string } | undefined
+      const where = await whereOf()
       for (;;) {
         const orders = await prisma.client.order.findMany({
           where: {
