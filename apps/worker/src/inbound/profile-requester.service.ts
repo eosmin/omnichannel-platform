@@ -1,4 +1,4 @@
-// rls-context: every database access of this file runs inside a JobContext (forStore, or forUser for an avatar) opened around that one call; the provider, the bucket and the scanner are called outside of it
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { InjectQueue } from '@nestjs/bullmq'
 import { Inject, Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'

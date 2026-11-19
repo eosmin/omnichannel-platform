@@ -418,7 +418,14 @@ export class OrphanMediaCleaner {
     const pick = (purpose: string | object) =>
       this.prisma.client.media.findMany({
         where: stuckWhere(purpose),
-        select: { id: true, key: true, createdAt: true, storeId: true, uploadedBy: true },
+        select: {
+          id: true,
+          key: true,
+          createdAt: true,
+          storeId: true,
+          uploadedBy: true,
+          purpose: true
+        },
         orderBy: { createdAt: 'asc' },
         take: UploadLimits.ORPHAN_CLEANUP_BATCH
       })
@@ -445,10 +452,16 @@ export class OrphanMediaCleaner {
           const owner =
             row.storeId !== null
               ? { storeId: row.storeId }
-              : row.uploadedBy !== null
+              : row.uploadedBy !== null && row.purpose === String(MediaPurpose.AVATAR)
                 ? { userId: row.uploadedBy }
                 : null
-          if (owner === null) continue
+          if (owner === null) {
+            this.logger.warn(
+              { mediaId: row.id },
+              'a pending file with no store and no avatar owner was not queued'
+            )
+            continue
+          }
           await this.heavyQueue.add(
             JobNames.SCAN_FILE,
             { mediaId: row.id, ...owner },

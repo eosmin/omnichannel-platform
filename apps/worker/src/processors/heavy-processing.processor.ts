@@ -185,7 +185,9 @@ const mediaJobSchema = z
     userId: z.uuid().optional(),
     correlationId: z.string().optional()
   })
-  .refine(job => (job.storeId === undefined) !== (job.userId === undefined))
+  .refine(job => (job.storeId === undefined) !== (job.userId === undefined), {
+    message: 'a media job names a store or a person, and only one'
+  })
 // The same keys as the job type, checked when it is compiled: zod drops what it is not told about
 const fetchJobSchema = exactly<FetchInboundMediaJob>()(
   z.object({
@@ -235,12 +237,13 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const fetch = fetchJobSchema.safeParse(job.data)
       // The job crossed Redis: what does not fit now will not fit when it is tried again
       if (!fetch.success) throw new UnrecoverableError('the fetch job does not fit its schema')
-      return this.fetcher.fetch(fetch.data, isLastAttempt(job))
+      // A store deleted after the job was queued is a file with nothing left to do
+      return this.skipIfGone(job, () => this.fetcher.fetch(fetch.data, isLastAttempt(job)))
     }
     if (job.name === JobNames.FETCH_ORIGIN_MEDIA) {
       const fetch = originFetchJobSchema.safeParse(job.data)
       if (!fetch.success) throw new UnrecoverableError('the fetch job does not fit its schema')
-      return this.originFetcher.fetch(fetch.data)
+      return this.skipIfGone(job, () => this.originFetcher.fetch(fetch.data))
     }
     if (job.name === JobNames.RECONCILE_INVENTORY) {
       const reconcile = reconcileJobSchema.safeParse(job.data)
@@ -411,9 +414,9 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     if (scope === null) throw new UnrecoverableError('the media job has no store and no person')
     switch (job.name) {
       case JobNames.SCAN_FILE:
-        return this.pipeline.scan(mediaId, scope, isLastAttempt(job))
+        return this.skipIfGone(job, () => this.pipeline.scan(mediaId, scope, isLastAttempt(job)))
       case JobNames.PROCESS_IMAGE:
-        return this.pipeline.processImage(mediaId, scope)
+        return this.skipIfGone(job, () => this.pipeline.processImage(mediaId, scope))
       default:
         throw new UnrecoverableError('the heavy-processing queue does not know this job')
     }

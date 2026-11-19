@@ -35,6 +35,7 @@ export class CustomerProfileProcessor extends BaseProcessor<FetchCustomerProfile
     const parsed = jobSchema.safeParse(job.data)
     // The job crossed Redis: what does not fit now will not fit when it is tried again
     if (!parsed.success) throw new UnrecoverableError('the profile job does not fit its schema')
-    await this.fetcher.fetch(parsed.data, isLastAttempt(job))
+    // A store deleted after the job was queued is a read with nothing left to do
+    await this.skipIfGone(job, () => this.fetcher.fetch(parsed.data, isLastAttempt(job)))
   }
 }
