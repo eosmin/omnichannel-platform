@@ -105,14 +105,53 @@ const NETWORK_FUNCTIONS = new Set(['fetch', 'safeFetch'])
 // A file that imports one of these talks to the network: its classes are providers without being listed
 const NETWORK_MODULES = /^(node:)?https?$|^undici$|^axios$|^web-push$|^@aws-sdk\/|^nodemailer$/
 
+// `import type { X }` and `import { type X }` bring a type only: no I/O comes with them
+function importsValue(clause: ts.ImportClause | undefined): boolean {
+  if (clause === undefined) return true
+  if (clause.isTypeOnly) return false
+  const bindings = clause.namedBindings
+  if (clause.name !== undefined || bindings === undefined || !ts.isNamedImports(bindings))
+    return true
+  return bindings.elements.some(element => !element.isTypeOnly)
+}
+
 function importsNetworkModule(source: ts.SourceFile): boolean {
   return source.statements.some(
     statement =>
       ts.isImportDeclaration(statement) &&
-      statement.importClause?.isTypeOnly !== true &&
+      importsValue(statement.importClause) &&
       ts.isStringLiteral(statement.moduleSpecifier) &&
       NETWORK_MODULES.test(statement.moduleSpecifier.text)
   )
+}
+
+// The exported functions of a file that imports a network module: calling one of them from anywhere is a remote call, like `fetch`.
+// (`pinnedHttpsGet` and `pinnedHttpsExchange` are free functions, so no class of the graph holds them.)
+export function networkFunctionsOf(file: string, text: string): string[] {
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true)
+  if (!importsNetworkModule(source)) return []
+  const names: string[] = []
+  for (const statement of source.statements) {
+    const exported = ts.canHaveModifiers(statement)
+      ? (ts.getModifiers(statement) ?? []).some(m => m.kind === ts.SyntaxKind.ExportKeyword)
+      : false
+    if (!exported) continue
+    if (ts.isFunctionDeclaration(statement) && statement.name !== undefined) {
+      names.push(statement.name.text)
+    } else if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        const init = declaration.initializer
+        if (
+          ts.isIdentifier(declaration.name) &&
+          init !== undefined &&
+          (ts.isArrowFunction(init) || ts.isFunctionExpression(init))
+        ) {
+          names.push(declaration.name.text)
+        }
+      }
+    }
+  }
+  return names
 }
 
 function decoratorName(decorator: ts.Decorator): string | undefined {
@@ -142,7 +181,9 @@ function typeName(
     )
     return named.length === 1 ? typeName(named[0], aliases) : undefined
   }
-  if (!ts.isTypeReferenceNode(type) || !ts.isIdentifier(type.typeName)) return undefined
+  if (!ts.isTypeReferenceNode(type)) return undefined
+  // `vendor.Client`: named in full, so that it is a type to classify and not a field that disappears
+  if (!ts.isIdentifier(type.typeName)) return type.typeName.getText()
   // `import { PickupsService as CorePickups }`: the graph knows the class by its own name
   return aliases.get(type.typeName.text) ?? type.typeName.text
 }
@@ -164,12 +205,20 @@ function importAliases(source: ts.SourceFile): Map<string, string> {
   return aliases
 }
 
-function callsIn(body: ts.Node): { calls: Call[]; directIo: boolean } {
+function callsIn(
+  body: ts.Node,
+  networkFunctions: ReadonlySet<string>
+): { calls: Call[]; directIo: boolean } {
   const calls: Call[] = []
   let directIo = false
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      if (NETWORK_FUNCTIONS.has(node.expression.text)) directIo = true
+      if (
+        NETWORK_FUNCTIONS.has(node.expression.text) ||
+        networkFunctions.has(node.expression.text)
+      ) {
+        directIo = true
+      }
     }
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const callee = node.expression
@@ -206,7 +255,23 @@ function takesStream(parameter: ts.ParameterDeclaration): boolean {
   })
 }
 
-export function parseClasses(file: string, text: string): ClassInfo[] {
+// `networkFunctions`: the free functions that go over the network (see networkFunctionsOf), found in a first pass over every file
+function parentName(
+  node: ts.ClassDeclaration,
+  source: ts.SourceFile,
+  aliases: ReadonlyMap<string, string>
+): string | undefined {
+  const name = node.heritageClauses
+    ?.find(clause => clause.token === ts.SyntaxKind.ExtendsKeyword)
+    ?.types[0]?.expression.getText(source)
+  return name === undefined ? undefined : (aliases.get(name) ?? name)
+}
+
+export function parseClasses(
+  file: string,
+  text: string,
+  networkFunctions: ReadonlySet<string> = new Set()
+): ClassInfo[] {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true)
   const found: ClassInfo[] = []
   const importsNetwork = importsNetworkModule(source)
@@ -234,7 +299,9 @@ export function parseClasses(file: string, text: string): ClassInfo[] {
         const decorators = decoratorsOf(member)
         const takesResponse = member.parameters.some(takesStream)
         const { calls, directIo } =
-          member.body === undefined ? { calls: [], directIo: false } : callsIn(member.body)
+          member.body === undefined
+            ? { calls: [], directIo: false }
+            : callsIn(member.body, networkFunctions)
         methods.push({
           directIo,
           name: member.name.text,
@@ -249,9 +316,7 @@ export function parseClasses(file: string, text: string): ClassInfo[] {
         name: node.name.text,
         file,
         fields,
-        parent: node.heritageClauses
-          ?.find(clause => clause.token === ts.SyntaxKind.ExtendsKeyword)
-          ?.types[0]?.expression.getText(source),
+        parent: parentName(node, source, aliases),
         importsNetwork,
         isController: classDecorators.includes('Controller'),
         marked: classDecorators.includes('NoTenantTransaction'),
@@ -264,6 +329,36 @@ export function parseClasses(file: string, text: string): ClassInfo[] {
   return found
 }
 
+// The class and the classes it extends, nearest first
+function chainOf(owner: ClassInfo, byName: ReadonlyMap<string, ClassInfo>): ClassInfo[] {
+  const chain: ClassInfo[] = []
+  for (
+    let current: ClassInfo | undefined = owner;
+    current !== undefined && !chain.includes(current);
+    current = current.parent === undefined ? undefined : byName.get(current.parent)
+  ) {
+    chain.push(current)
+  }
+  return chain
+}
+
+// The types of the fields that a method calls (through the bases too) with a method that is not one of NETWORK_METHODS
+function calledFieldTypes(classes: readonly ClassInfo[]): Set<string> {
+  const byName = new Map(classes.map(c => [c.name, c]))
+  const types = new Set<string>()
+  for (const owner of classes) {
+    const chain = chainOf(owner, byName)
+    for (const method of owner.methods) {
+      for (const call of method.calls) {
+        if (call.field === undefined || call.network) continue
+        const type = chain.map(c => c.fields.get(call.field as string)).find(t => t !== undefined)
+        if (type !== undefined) types.add(type)
+      }
+    }
+  }
+  return types
+}
+
 // Whether a call reaches external I/O. `this.method()` is looked up in the class and in the classes it extends; the type of a field in
 // the same chain
 function callReaches(
@@ -273,14 +368,7 @@ function callReaches(
   roots: ReadonlySet<string>,
   external: ReadonlySet<string>
 ): boolean {
-  const chain: ClassInfo[] = []
-  for (
-    let current: ClassInfo | undefined = owner;
-    current !== undefined && !chain.includes(current);
-    current = current.parent === undefined ? undefined : byName.get(current.parent)
-  ) {
-    chain.push(current)
-  }
+  const chain = chainOf(owner, byName)
   if (call.field === undefined) {
     return chain.some(c => external.has(`${c.name}.${call.method}`))
   }
@@ -388,27 +476,17 @@ export function unknownFieldTypes(
   const known = new Set(classes.map(c => c.name))
   const roots = providerRoots(classes, providers)
   const pure = new Set(pureTypes)
-  const unknown = new Set<string>()
-  for (const owner of classes) {
-    for (const method of owner.methods) {
-      for (const call of method.calls) {
-        if (call.field === undefined || call.network) continue
-        const type = owner.fields.get(call.field)
-        if (type !== undefined && !known.has(type) && !roots.has(type) && !pure.has(type)) {
-          unknown.add(type)
-        }
-      }
-    }
-  }
-  return [...unknown].sort((a, b) => a.localeCompare(b))
+  return [...calledFieldTypes(classes)]
+    .filter(type => !known.has(type) && !roots.has(type) && !pure.has(type))
+    .sort((x, y) => x.localeCompare(y))
 }
 
-// Pure types listed that no field has: a stale entry would hide the next unknown type behind a name that no longer exists
+// Pure types listed that no method calls on a field: a stale entry would hide the next unknown type behind a name that no longer exists
 export function stalePureTypes(
   classes: readonly ClassInfo[],
   pureTypes: readonly string[]
 ): string[] {
-  const used = new Set(classes.flatMap(c => [...c.fields.values()]))
+  const used = calledFieldTypes(classes)
   return pureTypes.filter(name => !used.has(name))
 }
 

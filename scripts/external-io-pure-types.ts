@@ -15,6 +15,7 @@ export const EXTERNAL_IO_PURE_TYPES: readonly ExternalIoPureType[] = [
   { name: 'Array', reason: LANGUAGE },
   { name: 'Map', reason: LANGUAGE },
   { name: 'Promise', reason: LANGUAGE },
+  { name: 'NodeJS.Timeout', reason: 'the handle of a timer: clearTimeout, unref' },
   { name: 'T', reason: LANGUAGE },
   { name: 'Counter', reason: OBSERVABILITY },
   { name: 'Gauge', reason: OBSERVABILITY },

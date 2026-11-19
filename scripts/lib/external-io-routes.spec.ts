@@ -1,6 +1,7 @@
 import {
   baselineGrowth,
   fixedEntries,
+  networkFunctionsOf,
   newlyUnmarked,
   parseClasses,
   providerRoots,
@@ -164,6 +165,16 @@ describe('providers by import', () => {
     expect(reach(CLIENT, '@Get() list() { return this.remote.get() }')).toEqual(['a/c.ts#C.list'])
   })
 
+  it('does not count an inline type specifier, and counts a default, namespace or mixed import', () => {
+    const size = (code: string): number =>
+      providerRoots(parseClasses('x.ts', `${code}\nclass A {}`), []).size
+    expect(size(`import { type AxiosInstance } from 'axios'`)).toBe(0)
+    expect(size(`import { createServer, type IncomingMessage } from 'node:http'`)).toBe(1)
+    expect(size(`import * as https from 'node:https'`)).toBe(1)
+    expect(size(`import axios from 'axios'`)).toBe(1)
+    expect(size(`import 'undici'`)).toBe(1)
+  })
+
   it('flags the routes of a controller whose file imports a network module itself', () => {
     const classes = parseClasses(
       'a/c.ts',
@@ -189,7 +200,63 @@ describe('renamed imports', () => {
   })
 })
 
+describe('free functions that go over the network', () => {
+  const FILE = `import { request } from 'node:https'
+export function pinnedGet() { return request() }
+export const pinnedPost = () => request()
+export const LIMIT = 5
+function helper() { return 1 }`
+  it('names the exported functions of a file that imports a network module', () => {
+    expect(networkFunctionsOf('a/p.ts', FILE)).toEqual(['pinnedGet', 'pinnedPost'])
+    expect(networkFunctionsOf('a/q.ts', `export function pure() { return 1 }`)).toEqual([])
+  })
+  it('flags a route whose service calls one of them', () => {
+    const service = `class S { go() { return pinnedPost() } }`
+    const classes = [
+      ...parseClasses('a/s.ts', service, new Set(['pinnedPost'])),
+      ...parseClasses(
+        'a/c.ts',
+        `@Controller() class C { constructor(private readonly s: S) {} @Post() run() { return this.s.go() } }`
+      )
+    ]
+    expect(unmarkedExternalRoutes(classes, []).map(r => r.key)).toEqual(['a/c.ts#C.run'])
+    expect(
+      unmarkedExternalRoutes([...parseClasses('a/s.ts', service), ...classes.slice(1)], [])
+    ).toEqual([])
+  })
+})
+
+describe('inheritance with renamed imports', () => {
+  it('follows a base class imported under another name', () => {
+    const base = parseClasses(
+      'a/base.ts',
+      `class PickupsService { constructor(protected readonly storage: StorageService) {} protected make() { return this.storage.put(1) } }`
+    )
+    const child = parseClasses(
+      'a/c.ts',
+      `import { PickupsService as CorePickups } from 'x'\n@Controller() class C extends CorePickups { @Post() go() { return this.make() } }`
+    )
+    expect(unmarkedExternalRoutes([...base, ...child], PROVIDERS).map(r => r.key)).toEqual([
+      'a/c.ts#C.go'
+    ])
+  })
+})
+
 describe('unknown field types', () => {
+  it('sees a called field declared in a base class, and a qualified type', () => {
+    const classes = [
+      ...parseClasses(
+        'a/b.ts',
+        `class Base { constructor(protected readonly sdk: vendor.Client) {} }`
+      ),
+      ...parseClasses('a/c.ts', `class Child extends Base { run() { this.sdk.upload() } }`)
+    ]
+    expect(unknownFieldTypes(classes, [], [])).toEqual(['vendor.Client'])
+  })
+  it('reports a pure type that nothing calls, even when a field has the type', () => {
+    const classes = parseClasses('a/h.ts', `class H { constructor(private readonly q: Queue) {} }`)
+    expect(stalePureTypes(classes, ['Queue'])).toEqual(['Queue'])
+  })
   const classes = parseClasses(
     'a/s.ts',
     `class S { constructor(private readonly a: Mystery, private readonly b: Known, private readonly c: Sender) {} run() { this.a.go(); this.b.go(); this.c.sendMessage() } }`
