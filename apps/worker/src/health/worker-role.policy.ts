@@ -12,6 +12,7 @@ export function workerRoleVerdict(input: {
   bypassesRls: boolean
   contextOn: boolean
 }): WorkerRoleVerdict {
-  if (!input.bypassesRls) return WorkerRoleVerdicts.OK
+  // undefined: the role could not be read, which is not the same as safe
+  if (input.bypassesRls === false) return WorkerRoleVerdicts.OK
   return input.contextOn ? WorkerRoleVerdicts.FAIL : WorkerRoleVerdicts.WARN
 }

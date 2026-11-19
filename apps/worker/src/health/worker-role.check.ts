@@ -22,19 +22,34 @@ export class WorkerRoleCheck implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    const rows = await this.prisma.client.$queryRaw<Array<{ bypass: boolean }>>`
-      SELECT rolbypassrls AS bypass FROM pg_roles WHERE rolname = current_user`
-    const bypassesRls = rows[0]?.bypass === true
-    this.gauge.set(bypassesRls ? 1 : 0)
+    let bypassesRls: boolean | undefined
+    try {
+      // A superuser skips row security too, with or without the flag
+      const rows = await this.prisma.client.$queryRaw<Array<{ bypass: boolean }>>`
+        SELECT (rolsuper OR rolbypassrls) AS bypass FROM pg_roles WHERE rolname = current_user`
+      bypassesRls = rows[0]?.bypass
+    } catch (error) {
+      // With the flag off this is only a diagnostic and must not stop the start; with it on, not knowing is not safe
+      if (this.contextOn) throw error
+      this.logger.warn(
+        `the role of the worker could not be checked: ${error instanceof Error ? error.message : String(error)}`
+      )
+      return
+    }
+    if (bypassesRls !== undefined) this.gauge.set(bypassesRls ? 1 : 0)
     const verdict = workerRoleVerdict({ bypassesRls, contextOn: this.contextOn })
     if (verdict === WorkerRoleVerdicts.FAIL) {
       throw new Error(
-        'the worker role skips row-level security (BYPASSRLS) while WORKER_RLS_CONTEXT is on: remove BYPASSRLS from the role or turn the flag off'
+        bypassesRls === undefined
+          ? 'the role of the worker could not be read while WORKER_RLS_CONTEXT is on'
+          : 'the worker role skips row-level security (BYPASSRLS or superuser) while WORKER_RLS_CONTEXT is on: remove it from the role or turn the flag off'
       )
     }
     if (verdict === WorkerRoleVerdicts.WARN) {
       this.logger.warn(
-        'the worker role skips row-level security (BYPASSRLS); WORKER_RLS_CONTEXT is off'
+        bypassesRls === undefined
+          ? 'the role of the worker was not found in pg_roles'
+          : 'the worker role skips row-level security; WORKER_RLS_CONTEXT is off'
       )
     }
   }
