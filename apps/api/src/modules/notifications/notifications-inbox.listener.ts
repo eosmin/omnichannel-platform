@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 
 import { Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
+import { EventContext, InEventStore, PrismaService } from '@platform/core/database'
 import {
   AppPaths,
   AuthorType,
@@ -45,17 +45,20 @@ export class NotificationsInboxListener {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService
+    private readonly notifications: NotificationsService,
+    private readonly events: EventContext
   ) {}
 
   // Routing finished and nobody got it
   @OnEvent(Events.CONVERSATION_UNASSIGNED)
+  @InEventStore()
   async onUnassigned(payload: ConversationUnassignedPayload): Promise<void> {
     await this.notifyQueue(payload.storeId, payload.conversationId, payload.unassignedBy)
   }
 
   // A person gave the conversation up (assigned it to nobody): who took it from the owner knows
   @OnEvent(Events.CONVERSATION_ASSIGNED)
+  @InEventStore()
   async onAssigned(payload: ConversationAssignedPayload): Promise<void> {
     if (payload.assignedTo !== null) return
     await this.notifyQueue(payload.storeId, payload.conversationId, payload.assignedBy)
@@ -63,6 +66,7 @@ export class NotificationsInboxListener {
 
   // Nothing records who snoozed a conversation nobody owns, so the team is told when it is back
   @OnEvent(Events.CONVERSATION_SNOOZE_EXPIRED)
+  @InEventStore()
   async onSnoozeExpired(payload: ConversationSnoozeExpiredPayload): Promise<void> {
     if (payload.assignedTo !== null) return
     await this.notifyQueue(payload.storeId, payload.conversationId, null)
@@ -72,6 +76,7 @@ export class NotificationsInboxListener {
   // it, routing runs next and says it itself if nobody takes it; when a reply did it, the team just
   // answered it and it is not news to the team.
   @OnEvent(Events.CONVERSATION_REOPENED)
+  @InEventStore()
   async onReopened(payload: ConversationReopenedPayload): Promise<void> {
     if (payload.assignedTo !== null || payload.reason !== null) return
     await this.notifyQueue(payload.storeId, payload.conversationId, payload.reopenedBy)
@@ -147,6 +152,7 @@ export class NotificationsInboxListener {
   // (the platform's, an automatic one) goes to the owner of the conversation. The state is read from the
   // row: a reply that went out on the second try is not news.
   @OnEvent(Events.MESSAGE_FAILED)
+  @InEventStore()
   async onMessageFailed(payload: MessageFailedPayload): Promise<void> {
     const { storeId, conversationId, messageId } = payload
     try {
@@ -193,6 +199,7 @@ export class NotificationsInboxListener {
   // Two different people need to know: who invited (their invitation worked) and who runs the team
   // (the roster changed). Nobody is told twice, and nobody is told about themselves.
   @OnEvent(Events.MEMBER_JOINED)
+  @InEventStore()
   async onMemberJoined(payload: MemberJoinedPayload): Promise<void> {
     const { storeId, userId, invitedBy } = payload
     try {
@@ -232,6 +239,7 @@ export class NotificationsInboxListener {
   // To who can set the channel up, with the day it stops. Not "once until they look": a renewed token that
   // is about to expire again is another notice.
   @OnEvent(Events.CHANNEL_TOKEN_EXPIRING)
+  @InEventStore()
   async onChannelTokenExpiring(payload: ChannelTokenExpiringPayload): Promise<void> {
     const { storeId, channelConnectionId } = payload
     try {
@@ -274,6 +282,7 @@ export class NotificationsInboxListener {
   // Only when the health check took it down (a person who disconnects it knows). To who can set it up
   // again, once per connection until they look; the row must still be in error.
   @OnEvent(Events.CHANNEL_DISCONNECTED)
+  @InEventStore()
   async onChannelDisconnected(payload: ChannelDisconnectedPayload): Promise<void> {
     if (payload.reason !== ChannelDisconnectedReasons.ERROR) return
     const { storeId, channelConnectionId } = payload

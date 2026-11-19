@@ -60,6 +60,23 @@ export async function readInEachStore<T>(
   return rows
 }
 
+// The sweep that DELETES or decides by what it does not find (retention, purges, orphan files): every store, one context at a time, and ANY
+// failure of a store aborts the whole sweep (a store that could not be read is not "a store with nothing to do"). Only a store that was
+// deleted between the list and its turn is skipped: there is nothing of it left. `work` opens its own contexts (forStore) and keeps its tallies.
+export async function inEachStoreStrict(
+  prisma: PrismaService,
+  work: (storeId: string) => Promise<void>
+): Promise<void> {
+  for (const storeId of await allStoreIds(prisma)) {
+    try {
+      await work(storeId)
+    } catch (error) {
+      if (error instanceof JobContextGoneError) continue
+      throw error
+    }
+  }
+}
+
 // A store or an organization that is deleted between a list and its turn has nothing left to do: its answer is "none"
 export async function unlessGone<T>(work: Promise<T | null>): Promise<T | null> {
   try {
