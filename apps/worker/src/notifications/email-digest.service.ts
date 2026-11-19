@@ -30,6 +30,8 @@ import { readInEachStore } from '../schedulers/store-sweep'
 
 import { messageParams, pushLocale } from './push-payload'
 
+// rls-context: the notifications are read inside JobContext.forStore (the scan and the stale marks) or JobContext.forUser (a person's batch)
+
 const HOUR_MS = 3_600_000
 // Rows one run reads for one person; what is left waits for the next run
 const READ_BATCH = 200

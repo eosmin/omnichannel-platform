@@ -31,6 +31,9 @@ import { StorageService } from '@platform/core/storage-module'
 
 import { inEachStoreStrict } from '../schedulers/store-sweep'
 
+// rls-context: the rows of a store are read and written inside JobContext.forStore (a store that fails aborts the whole sweep); the media
+// without a store (avatars) go through the definers of WorkerLists, which no context can see
+
 const HOUR_MS = 3_600_000
 const AVATAR_KEYS_PER_CALL = 1000
 const MINUTE_MS = 60_000

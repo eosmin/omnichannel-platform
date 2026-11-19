@@ -10,6 +10,8 @@ import { LockNames, Schedules } from '@platform/core/queues'
 import { LeaderLockService } from './leader-lock.service'
 import { inEachStoreStrict } from './store-sweep'
 
+// rls-context: the stores are listed from `stores`; the messages, revisions and files of each store are read and written inside JobContext.forStore
+
 const LOCK_SECONDS = 600
 const DAY_MS = 86_400_000
 

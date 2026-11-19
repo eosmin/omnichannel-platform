@@ -16,6 +16,8 @@ import {
 import { buildPushPayload, pushLocale } from './push-payload'
 import { WebPushGateway } from './web-push.gateway'
 
+// rls-context: the notification of the person is read inside JobContext.forUser; the tables of the person (browsers, memberships) are global
+
 const GONE: ReadonlySet<number> = new Set([HttpStatusCodes.NOT_FOUND, HttpStatusCodes.GONE])
 
 const rowSchema = z.object({
