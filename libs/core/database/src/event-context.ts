@@ -11,6 +11,11 @@ import { RLS_CONTEXT_ENABLED, type TenantContext } from './tenant-context'
 //  - Off (RLS_CONTEXT false): the work runs as it is, so nothing changes until the switch is turned on.
 //  - A context is already open for that store (the listener was called inside the request): the work joins it.
 //  - Otherwise: the context is opened from the id of the event, with the same rules as a job of the worker (JobContext).
+// Trust: the id of the event comes from a domain event of the server (emitted after the commit of a service, or bridged from the
+// worker through Redis, which is as trusted as a job); no listener here hears an event of a public gateway, whose ids come from
+// the client. The detached branch (another store or organization INSIDE a request) opens a second connection that does not see the
+// uncommitted writes of the request: it holds while every listener runs after commit, so a synchronous emit in the middle of a
+// request that expects to read what it just wrote does not belong here.
 // Keep the work to the database: the context holds a connection and a transaction (15 s), so a call to a carrier, a channel, the
 // bucket, the mailer or a push service goes outside of it, before or after.
 @Injectable()
@@ -81,6 +86,12 @@ export class EventContext {
   }
 }
 
+const eventListenerLogger = new Logger('EventContext')
+
+function listenerName(target: object, key: string | symbol): string {
+  return `${target.constructor.name}.${String(key)}`
+}
+
 // What a listener is given by the framework: it reaches `events` through the instance, because a decorator has no injector
 interface HasEvents {
   readonly events: EventContext
@@ -92,8 +103,8 @@ interface HasEvents {
 // was deleted after the event is not an error: there is nothing left to do.
 export function InEventStore<P extends { storeId: string }>() {
   return (
-    _target: object,
-    _key: string | symbol,
+    target: object,
+    key: string | symbol,
     descriptor: TypedPropertyDescriptor<(payload: P) => Promise<void>>
   ): void => {
     const original = descriptor.value
@@ -104,7 +115,12 @@ export function InEventStore<P extends { storeId: string }>() {
           original.call(this, payload)
         )
       } catch (error) {
-        if (error instanceof JobContextGoneError) return
+        if (error instanceof JobContextGoneError) {
+          eventListenerLogger.warn(
+            `${listenerName(target, key)}: the store or organization of the event no longer exists, nothing done`
+          )
+          return
+        }
         throw error
       }
     }
@@ -115,8 +131,8 @@ export function InEventStore<P extends { storeId: string }>() {
 // the organization, with every store of it
 export function InEventOrganization<P extends { organizationId: string }>() {
   return (
-    _target: object,
-    _key: string | symbol,
+    target: object,
+    key: string | symbol,
     descriptor: TypedPropertyDescriptor<(payload: P) => Promise<void>>
   ): void => {
     const original = descriptor.value
@@ -127,7 +143,12 @@ export function InEventOrganization<P extends { organizationId: string }>() {
           original.call(this, payload)
         )
       } catch (error) {
-        if (error instanceof JobContextGoneError) return
+        if (error instanceof JobContextGoneError) {
+          eventListenerLogger.warn(
+            `${listenerName(target, key)}: the store or organization of the event no longer exists, nothing done`
+          )
+          return
+        }
         throw error
       }
     }
