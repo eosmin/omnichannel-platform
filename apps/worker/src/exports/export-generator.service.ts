@@ -12,7 +12,7 @@ import {
 } from '@platform/core/analytics'
 import { AuditService } from '@platform/core/audit-module'
 import { JobContext, PrismaService } from '@platform/core/database'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { ExportFileExtensions } from '@platform/core/exports'
@@ -146,6 +146,12 @@ export class ExportGenerator {
       await this.announce(Events.EXPORT_READY, row)
     } catch (error) {
       this.logger.error({ exportId, errorName: errorName(error) }, 'an export could not be written')
+      // A text that names too many customers (it grew since the request) finds the same on every attempt: the export says so and stops
+      if (error instanceof PlatformException && error.code === ErrorCodes.SEARCH_TOO_BROAD) {
+        await this.fail(row, ErrorCodes.SEARCH_TOO_BROAD)
+        await this.discard(key)
+        throw new UnrecoverableError(error.message)
+      }
       if (error instanceof ZipTooLargeError || error instanceof ZipEmptyError) {
         // Trying again finds the same files
         const code =
