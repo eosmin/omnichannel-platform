@@ -11,7 +11,7 @@ import * as ts from 'typescript'
 // @Res() / @UploadedFile(), must be marked on the method or on the class.
 //
 // Limits, on purpose: a call through an interface, a callback, a spread or a type the graph does not know is not followed (the list of
-// providers is where a new boundary is added); inheritance is not followed. The routes that are not marked today are frozen in
+// providers is where a new boundary is added); a class that extends another is followed through `this.method()` and the fields of the base (not through composition by token). The routes that are not marked today are frozen in
 // scripts/external-io-baseline.json and the list can only shrink.
 
 export interface ExternalIoProvider {
