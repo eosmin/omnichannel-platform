@@ -24,9 +24,13 @@ interface Harness {
 // with createMany (no RETURNING): the double keeps the context it was asked for so the cases can see it
 let current: { storeIds: readonly string[]; organizationIds: readonly string[] } | undefined
 const contexts: Array<{ storeIds: readonly string[]; organizationIds: readonly string[] }> = []
+const held: Promise<unknown>[] = []
 function prismaOf(create: Create): PrismaService {
   return {
     currentTenantContext: () => current,
+    holdCommit: (_db: unknown, work: Promise<unknown>) => {
+      held.push(work)
+    },
     detachedTenantTransaction: (
       context: { storeIds: readonly string[]; organizationIds: readonly string[] },
       fn: () => Promise<unknown>
@@ -156,6 +160,27 @@ describe('AuditService', () => {
       { storeIds: [STORE_ID], organizationIds: [] },
       { storeIds: [], organizationIds: [] }
     ])
+  })
+
+  it('makes the commit of the request wait for the entries it wrote, and for no other', async () => {
+    held.length = 0
+    current = { storeIds: [STORE_ID], organizationIds: [] }
+    try {
+      const { service } = build()
+
+      service.log({
+        action: AuditAction.USER_LOGOUT,
+        actor: { userId: USER_ID },
+        storeId: STORE_ID
+      })
+      // An entry about a store the request is not in goes in a transaction of its own: nothing to hold
+      service.log({ action: AuditAction.USER_LOGOUT, actor: { userId: USER_ID }, storeId: 'other' })
+      await service.onModuleDestroy()
+
+      expect(held).toHaveLength(1)
+    } finally {
+      current = undefined
+    }
   })
 
   it('writes inside the transaction of the request when its context already holds the store of the entry', async () => {

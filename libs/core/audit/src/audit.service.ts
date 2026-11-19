@@ -68,12 +68,21 @@ export class AuditService implements OnModuleDestroy {
       this.fail(AUDIT_FAILURE_REASONS.QUEUE_FULL, entry.action)
       return
     }
-    const write: Promise<void> = this.write(entry)
+    // Read here, before the first await: the transaction of the request is the one that is open NOW, and the write must not find
+    // another one (or none) by the time it runs
+    const inRequest = this.inRequestTransaction(entry)
+    const db = this.prisma.client
+    const write: Promise<void> = this.write(entry, inRequest)
       .catch((error: unknown) => {
         this.fail(AUDIT_FAILURE_REASONS.WRITE_FAILED, entry.action, error)
       })
       .finally(() => this.pending.delete(write))
     this.pending.add(write)
+    // The answer does not wait for the entry, but the commit of the request does: an entry that reached the connection after the
+    // COMMIT was lost ("Transaction already closed"). An entry in the transaction commits with the request, so it is as durable
+    // as the request. Limit: an entry that goes in a transaction of its own (a guard, a store the request is not in) is written
+    // after the answer, so a process that dies right after the answer loses it.
+    if (inRequest) this.prisma.holdCommit(db, write)
   }
 
   // A shutdown waits for the writes in flight (graceful stop of the process)
@@ -81,15 +90,20 @@ export class AuditService implements OnModuleDestroy {
     await Promise.allSettled(this.pending)
   }
 
-  private async write(entry: AuditEntry): Promise<void> {
+  // Inside the tenant transaction of a request whose context already holds the store of the entry (or an entry with no store)
+  private inRequestTransaction(entry: AuditEntry): boolean {
+    const current = this.prisma.currentTenantContext()
+    return (
+      current !== undefined &&
+      (entry.storeId === undefined || current.storeIds.includes(entry.storeId))
+    )
+  }
+
+  private async write(entry: AuditEntry, inRequest: boolean): Promise<void> {
     // Inside the tenant transaction of a request whose context already holds the store of the entry (or an entry with no store),
     // the entry goes in that transaction: no second connection, and it sees what the request wrote (an entry about a row the
     // request has just created, with a foreign key to it, is not refused). Without RLS this is what it always did.
-    const current = this.prisma.currentTenantContext()
-    if (
-      current !== undefined &&
-      (entry.storeId === undefined || current.storeIds.includes(entry.storeId))
-    ) {
+    if (inRequest) {
       await this.prisma.client.auditLog.createMany({ data: [toRow(entry)] })
       return
     }

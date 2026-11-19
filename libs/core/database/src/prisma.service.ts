@@ -128,6 +128,8 @@ interface TransactionOptions {
 interface UnitOfWork {
   state: 'open' | 'committed' | 'rolledBack'
   hooks: Array<() => void>
+  // Work started inside the transaction that nobody awaits (the audit entry of a request): the commit waits for it
+  holds: Set<Promise<unknown>>
 }
 
 // The transaction that a unit of work runs in, once there is one. Prisma queries are lazy: they run
@@ -145,6 +147,15 @@ function hasQueryScope(): boolean {
 // attempt it rolls back
 const units = new WeakMap<object, UnitOfWork>()
 let savepointCounter = 0
+
+// Waits for the work a transaction was told to hold, including what that work holds in turn
+async function settleHolds(unit: UnitOfWork): Promise<void> {
+  while (unit.holds.size > 0) {
+    const batch = [...unit.holds]
+    await Promise.allSettled(batch)
+    for (const held of batch) unit.holds.delete(held)
+  }
+}
 
 // Asks the database to run, now, the check of a constraint trigger that is DEFERRABLE INITIALLY DEFERRED (it would run at the COMMIT),
 // and puts it back to deferred. Under RLS_CONTEXT the commit of a request is the interceptor's, outside the try/catch of the service
@@ -345,17 +356,32 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     // After a rollback it is dropped: what it would announce did not happen
   }
 
+  // Makes the commit of the transaction `db` wait for `work`, a promise that the caller does not await (the audit entry of a request is
+  // written without blocking the answer, but it must reach the connection before the transaction closes). Its failure is the
+  // caller's to handle: the commit only waits for it to finish. With no transaction of ours behind `db` (the base client) there is
+  // nothing to wait for.
+  holdCommit(db: PrismaService['client'], work: Promise<unknown>): void {
+    const unit = units.get(db)
+    if (unit === undefined || unit.state !== 'open') return
+    unit.holds.add(work)
+  }
+
   // One real transaction, whose commit hooks run after it commits
   private async open<T>(
     fn: (tx: PrismaTransaction) => Promise<T>,
     options: TransactionOptions | undefined
   ): Promise<T> {
-    const unit: UnitOfWork = { state: 'open', hooks: [] }
+    const unit: UnitOfWork = { state: 'open', hooks: [], holds: new Set() }
     let result: T
     try {
       result = await this.base.$transaction(async (tx: PrismaTransaction) => {
         units.set(tx, unit)
-        return fn(tx)
+        try {
+          return await fn(tx)
+        } finally {
+          // Before the COMMIT (or the ROLLBACK): a held query that reached the connection after it would fail on a closed transaction
+          await settleHolds(unit)
+        }
       }, options)
     } catch (error) {
       unit.state = 'rolledBack'
