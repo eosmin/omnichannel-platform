@@ -50,6 +50,18 @@ export interface ChannelConnectionFilter {
   pluginStatus: string
 }
 
+export interface RemoteChannelPluginFilter {
+  type: string
+  status: string
+  installationStatus: string
+}
+// A private channel plugin with the stores that have it installed and active (what RemoteChannelSync registers)
+export interface RemoteChannelPluginRef {
+  id: string
+  manifest: unknown
+  storeIds: string[]
+}
+
 export interface AvatarMediaRef {
   id: string
   key: string
@@ -157,6 +169,19 @@ export class WorkerLists {
           pluginId: row.plugin_id,
           updatedAt: row.updated_at
         }))
+      },
+      row => row.id
+    )
+  }
+
+  // Run by the api and the worker alike (RemoteChannelSync), so the function is granted to both roles
+  remoteChannelPlugins(filter: RemoteChannelPluginFilter): Promise<RemoteChannelPluginRef[]> {
+    return readAllPages(
+      async (after, size) => {
+        const rows = await this.prisma.client.$queryRaw<
+          { id: string; manifest: unknown; store_ids: string[] }[]
+        >`SELECT id, manifest, store_ids FROM rls_list_remote_channel_plugins(${filter.type}, ${filter.status}, ${filter.installationStatus}, ${after}, ${size})`
+        return rows.map(row => ({ id: row.id, manifest: row.manifest, storeIds: row.store_ids }))
       },
       row => row.id
     )

@@ -3,7 +3,12 @@ import type { Redis } from 'ioredis'
 import { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import {
   PLUGINS_CHANGED_CHANNEL,
   PluginCatalogTypes,
@@ -50,6 +55,8 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly lists: WorkerLists,
+    private readonly jobs: JobContext,
     private readonly cipher: CredentialCipher,
     private readonly registry: PluginRegistry,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
@@ -173,16 +180,25 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
     pluginId: string,
     statuses: readonly string[]
   ): Promise<RemoteCommandSecrets | null> {
-    const row = await this.prisma.client.pluginInstallation.findFirst({
-      // The store is the one of the connection the call is for, read from the row by the core, never from a request
-      where: {
-        storeId,
-        pluginId,
-        status: { in: [...statuses] },
-        plugin: { status: PluginStatus.APPROVED }
-      },
-      select: { commandSecret: true, commandSecretPrevious: true, commandSecretRotatedAt: true }
-    })
+    // In the context of the store of the connection the call is for (the one of the request or the job when it already is that store's),
+    // read from the row by the core, never from a request
+    const row = await this.jobs
+      .forStoreOrJoin(storeId, () =>
+        this.prisma.client.pluginInstallation.findFirst({
+          where: {
+            storeId,
+            pluginId,
+            status: { in: [...statuses] },
+            plugin: { status: PluginStatus.APPROVED }
+          },
+          select: { commandSecret: true, commandSecretPrevious: true, commandSecretRotatedAt: true }
+        })
+      )
+      // A store deleted while the call was on its way has no installation left
+      .catch((error: unknown) => {
+        if (error instanceof JobContextGoneError) return null
+        throw error
+      })
     if (row?.commandSecret == null) return null
     try {
       const open = (sealed: Uint8Array): string => {
@@ -205,27 +221,17 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
 
   private async readAll(): Promise<void> {
     try {
-      const rows = await this.prisma.client.plugin.findMany({
-        where: {
-          type: PluginCatalogTypes.CHANNEL,
-          isOfficial: false,
-          status: PluginStatus.APPROVED,
-          installations: { some: { status: PluginInstallationStatus.ACTIVE } }
-        },
-        select: {
-          id: true,
-          manifest: true,
-          installations: {
-            where: { status: PluginInstallationStatus.ACTIVE },
-            select: { storeId: true }
-          }
-        }
+      // Across stores, with no context: the definer of the database lists them (a plain query would answer none under row security)
+      const rows = await this.lists.remoteChannelPlugins({
+        type: PluginCatalogTypes.CHANNEL,
+        status: PluginStatus.APPROVED,
+        installationStatus: PluginInstallationStatus.ACTIVE
       })
       const wanted = []
       const untouched = new Set<string>()
       const signatures = new Map<string, string>()
       for (const row of rows) {
-        const storeIds = row.installations.map(installation => installation.storeId).sort()
+        const storeIds = [...row.storeIds].sort()
         const signature = JSON.stringify([row.manifest, storeIds])
         // Unchanged since it was registered: its adapter stays, and nothing is built, validated or logged for it
         if (this.registered.get(row.id) === signature && this.registry.isRemote(row.id)) {
