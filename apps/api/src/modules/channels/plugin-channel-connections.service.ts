@@ -77,7 +77,7 @@ export class PluginChannelConnectionsService {
       // The store lock is the store's own, so two stores that register the same new account at once can both find nothing: the
       // unique index decides, and the loser runs again to find the row of the winner, and conflict
       if (!isUniqueViolation(error)) throw error
-      outcome = await this.write(caller, connectionId, body)
+      outcome = await inSavepoint(() => this.write(caller, connectionId, body))
     }
     // Only a connection that was made or brought back is a connection: a plugin that keeps its name up to date leaves no trace here
     if (outcome.connected) {

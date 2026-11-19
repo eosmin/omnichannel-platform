@@ -141,6 +141,9 @@ function hasQueryScope(): boolean {
   return tenantScope.getStore() !== undefined || querySource.getStore() !== undefined
 }
 
+// The unit of work of each transaction this module opened: afterCommit queues its hooks here, and inSavepoint drops the ones of an
+// attempt it rolls back
+const units = new WeakMap<object, UnitOfWork>()
 let savepointCounter = 0
 
 // Runs `attempt` (a write that may break a unique rule the caller means to catch) inside a SAVEPOINT of the transaction that is
@@ -158,6 +161,8 @@ export async function inSavepoint<T>(
   savepointCounter = (savepointCounter + 1) % 1_000_000_000
   // A name made of a counter: nothing from outside reaches the statement
   const name = Prisma.raw(`attempt_${savepointCounter}`)
+  const unit = units.get(target)
+  const hooksBefore = unit?.hooks.length ?? 0
   await target.$executeRaw(Prisma.sql`SAVEPOINT ${name}`)
   try {
     const result = await attempt()
@@ -165,7 +170,13 @@ export async function inSavepoint<T>(
     return result
   } catch (error) {
     // If this fails too the connection is gone: the error that matters is the first one
-    await target.$executeRaw(Prisma.sql`ROLLBACK TO SAVEPOINT ${name}`).catch(() => undefined)
+    // What the attempt asked to announce after the commit did not happen: its hooks go
+    if (unit !== undefined && unit.hooks.length > hooksBefore) unit.hooks.length = hooksBefore
+    // Released too: a rolled-back savepoint stays open until the transaction ends, and a loop of caught violations would pile them up
+    await target
+      .$executeRaw(Prisma.sql`ROLLBACK TO SAVEPOINT ${name}`)
+      .then(() => target.$executeRaw(Prisma.sql`RELEASE SAVEPOINT ${name}`))
+      .catch(() => undefined)
     throw error
   }
 }
@@ -183,7 +194,6 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   // nothing outside this class touches `base` for a query: `client` is this, which is the primary for reads and writes alike.
   // One object for the whole life of the service, because afterCommit tells the base client apart by identity.
   private readonly primary: PrimaryClient
-  private readonly units = new WeakMap<object, UnitOfWork>()
   private readonly logger = new Logger(PrismaService.name)
 
   constructor(options: PrismaServiceOptions) {
@@ -262,7 +272,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   // Runs `hook` once the transaction `tx` has committed, and never if it rolls back: what a
   // transaction announces (a domain event) must not be announced before it is true. With the
   // transaction of a unit of work, the hook waits for the outermost commit; a nested transaction()
-  // joins it without a savepoint, so there is no partial rollback to wait for. A hook that throws is
+  // joins it, and only inSavepoint rolls part of it back (it drops the hooks queued inside that part). A hook that throws is
   // logged and the others still run: the data is committed. Outside any transaction (the base
   // client) there is nothing to wait for and the hook runs at once; a transaction this service did
   // not open is refused, because the hook could not be held until its commit.
@@ -271,7 +281,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       this.runHook(hook)
       return
     }
-    const unit = this.units.get(db)
+    const unit = units.get(db)
     if (unit === undefined) {
       throw new Error('afterCommit was given a transaction that PrismaService did not open')
     }
@@ -290,7 +300,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     let result: T
     try {
       result = await this.base.$transaction(async (tx: PrismaTransaction) => {
-        this.units.set(tx, unit)
+        units.set(tx, unit)
         return fn(tx)
       }, options)
     } catch (error) {

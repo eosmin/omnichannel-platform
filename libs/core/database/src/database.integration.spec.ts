@@ -514,6 +514,20 @@ describe('PrismaService', () => {
       expect(rows).toBe(2)
     })
 
+    it('drops the commit hooks of an attempt it rolls back and keeps the ones before it', async () => {
+      const ran: string[] = []
+      await service.tenantTransaction(context, async () => {
+        service.afterCommit(service.client, () => ran.push('before'))
+        await inSavepoint(async () => {
+          service.afterCommit(service.client, () => ran.push('lost'))
+          await create('hook', `${slug}-g`)
+          await create('hook again', `${slug}-g`)
+        }).catch(() => undefined)
+        service.afterCommit(service.client, () => ran.push('after'))
+      })
+      expect(ran).toEqual(['before', 'after'])
+    })
+
     it('runs the attempt as it is when there is no transaction to protect', async () => {
       await expect(inSavepoint(() => Promise.resolve('plain'))).resolves.toBe('plain')
     })

@@ -113,7 +113,7 @@ export class PluginRegistrationService {
     } catch (error) {
       // Two registrations of the same id at once: the second one finds the first one's row and decides again
       if (!isUniqueViolation(error)) throw error
-      result = await write()
+      result = await inSavepoint(write)
     }
 
     const view: RegisteredPlugin = {

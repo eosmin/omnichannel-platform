@@ -590,7 +590,7 @@ export class ChannelConnectionsService {
         // unique index decides, and the second one runs again to find what the first wrote (and
         // conflict, or update its own)
         if (!isUniqueViolation(error)) throw error
-        connection = await store()
+        connection = await inSavepoint(store)
       }
     } catch (error) {
       // The plugin was uninstalled while the provider was answering: no row will ever hold this

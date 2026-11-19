@@ -458,7 +458,7 @@ export class PluginInstallationsService {
     } catch (error) {
       // Two installs at once: the second one runs again and finds the first one's row
       if (!isUniqueViolation(error)) throw error
-      await write()
+      await inSavepoint(write)
     }
     const entry = await this.entryOf(store, pluginId)
     this.record(
