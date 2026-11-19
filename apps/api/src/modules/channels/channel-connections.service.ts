@@ -452,6 +452,13 @@ export class ChannelConnectionsService {
     await this.installationOf(this.prisma.client, storeId, pluginId)
   }
 
+  // The function that takes a released account requires the store that connects in the context. A request that already carries a
+  // context (RLS_CONTEXT on) keeps it, and the function refuses one that lacks this store; one that does not (the switch is off) gets
+  // the store the guard resolved, for this transaction only. Temporary: removed when RLS_CONTEXT is always on (the plan, Step 7.1)
+  private async ensureStoreContext(tx: PrismaTransaction, storeId: string): Promise<void> {
+    await tx.$executeRaw`SELECT set_config('app.store_ids', ${storeId}, true) WHERE coalesce(current_setting('app.store_ids', true), '') = ''`
+  }
+
   async connect(
     storeId: string,
     pluginId: string,
@@ -521,18 +528,27 @@ export class ChannelConnectionsService {
             throw await this.accountInUse(tx, existing.storeId, actor.userId)
           }
           // Its store let it go. The row stays with that store, because its conversations point at it,
-          // and gives up the key (plugin, account) so that this store can have it.
-          // Conditional: its store may have reconnected it since it was read, and then it keeps it
-          const released = await tx.channelConnection.updateMany({
-            where: {
-              id: existing.id,
-              storeId: existing.storeId,
-              status: ChannelConnectionStatus.DISCONNECTED
-            },
-            data: { connectionId: `${existing.connectionId}~released~${existing.id}` }
-          })
-          if (released.count !== 1)
+          // and gives up the key (plugin, account) so that this store can have it. Through the function and not
+          // an UPDATE: the row of another store is invisible to this transaction once row security is enforced. It
+          // changes the row only while it is DISCONNECTED (its store may have reconnected it since it was read, and
+          // then it keeps it) and answers how many rows it changed
+          await this.ensureStoreContext(tx, storeId)
+          const released = await tx.$queryRaw<{ changed: number }[]>`
+            SELECT public.rls_take_disconnected_connection(${storeId}, ${pluginId}, ${result.connectionId}) AS changed`
+          if (released[0]?.changed !== 1)
             throw await this.accountInUse(tx, existing.storeId, actor.userId)
+          // The only write of the api that renames a row of ANOTHER store: the entry says which row and from which store, in the log
+          // of the store that took it (the count alone would not tell). A refusal above writes none
+          this.audit.log({
+            action: AuditAction.CHANNEL_ACCOUNT_TAKEN,
+            actor: { userId: actor.userId },
+            storeId,
+            resourceType: 'channel_connection',
+            resourceId: existing.id,
+            metadata: { pluginId, previousStoreId: existing.storeId },
+            ipAddress: actor.ipAddress,
+            userAgent: actor.userAgent
+          })
           existing = null
         }
         // This store's own row keeps its name when the plugin could only make one up, unless that name
