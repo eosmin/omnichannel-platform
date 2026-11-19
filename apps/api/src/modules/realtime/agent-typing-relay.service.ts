@@ -74,13 +74,18 @@ export class AgentTypingRelay {
     } else if (state?.on !== true) {
       return
     }
-    const conversation = await this.prisma.client.conversation.findFirst({
-      where: { id: conversationId, storeId },
-      select: {
-        channelConnection: { select: { pluginId: true, connectionId: true, status: true } },
-        customerIdentity: { select: { channelIdentity: true } }
-      }
-    })
+    // A socket has no request, so no context: the lookup alone opens one, for the store the handshake of
+    // the socket proved (never a value of a message), and closes it before `mayStart` (which opens its
+    // own) and before anything is queued
+    const conversation = await this.prisma.inStoreContext(storeId, () =>
+      this.prisma.client.conversation.findFirst({
+        where: { id: conversationId, storeId },
+        select: {
+          channelConnection: { select: { pluginId: true, connectionId: true, status: true } },
+          customerIdentity: { select: { channelIdentity: true } }
+        }
+      })
+    )
     // A stop that finds nothing to tell leaves nothing remembered: the channel is not showing it any more
     if (conversation === null) {
       this.forget(conversationId, active)

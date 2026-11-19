@@ -7,7 +7,12 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { hashToken } from '@platform/core/crypto'
-import { contextOf, PrismaService, resolvePluginInstallation } from '@platform/core/database'
+import {
+  contextOf,
+  PrismaService,
+  resolvePluginInstallation,
+  resolvePluginInstallationPluginStatus
+} from '@platform/core/database'
 import {
   PLUGIN_API_KEY_TOKEN_PREFIX,
   PluginApiDenialReasons,
@@ -73,7 +78,8 @@ export class PluginApiKeyGuard implements CanActivate {
 
     // The key tells the database, and nobody else, which store it opens: the lookup answers the installation and its store, and the
     // row is read inside the context of that store (never a store the caller names)
-    const found = await resolvePluginInstallation(this.prisma.client, hashToken(token))
+    const keyHash = hashToken(token)
+    const found = await resolvePluginInstallation(this.prisma.client, keyHash)
     const installation =
       found === null
         ? null
@@ -86,19 +92,22 @@ export class PluginApiKeyGuard implements CanActivate {
                 scopes: true,
                 status: true,
                 rateLimitPerMinute: true,
-                plugin: { select: { status: true } },
                 store: { select: { id: true, organizationId: true, name: true } }
               }
             })
           )
     if (installation === null) return this.refuseKey(request, PluginApiDenialReasons.INVALID_KEY)
+    // The status of the plugin is not read with a nested select inside the context of the store: the policy of `plugins` hides the
+    // plugin of another organization there and the row would come back null. The lookup of the key answers it; no answer is a
+    // refusal, the same one as for an unknown key, never an error
+    const pluginStatus = await resolvePluginInstallationPluginStatus(this.prisma.client, keyHash)
     if (
       installation.status !== String(PluginInstallationStatus.ACTIVE) ||
-      installation.plugin.status !== String(PluginStatus.APPROVED)
+      pluginStatus !== String(PluginStatus.APPROVED)
     ) {
       // The caller gets the same answer as for an unknown key; the audit log knows which installation it was
       return this.refuseKey(request, PluginApiDenialReasons.INACTIVE, installation, {
-        status: { installation: installation.status, plugin: installation.plugin.status }
+        status: { installation: installation.status, plugin: pluginStatus }
       })
     }
 
@@ -199,7 +208,7 @@ export class PluginApiKeyGuard implements CanActivate {
     request: AuthenticatedRequest,
     reason: PluginApiDenialReason,
     installation?: { id: string; pluginId: string; store: { id: string } },
-    detail: { status?: { installation: string; plugin: string } } = {}
+    detail: { status?: { installation: string; plugin: string | null } } = {}
   ): never {
     // The audit is capped, so the log keeps every one of these (never the key)
     this.logger.warn(
@@ -215,7 +224,10 @@ export class PluginApiKeyGuard implements CanActivate {
     request: AuthenticatedRequest,
     reason: PluginApiDenialReason,
     installation?: { id: string; pluginId: string; store: { id: string } },
-    detail: { missing?: readonly string[]; status?: { installation: string; plugin: string } } = {}
+    detail: {
+      missing?: readonly string[]
+      status?: { installation: string; plugin: string | null }
+    } = {}
   ): Promise<void> {
     return auditPluginDenial(
       { audit: this.audit, redis: this.redis, logger: this.logger },
