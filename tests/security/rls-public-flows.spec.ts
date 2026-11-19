@@ -346,7 +346,11 @@ describe('row-level security, the flows that find their store before there is a 
           `ph-a-${run}`
         ])
         expect(found).toEqual([{ id: `pi-a-${run}`, store_id: A, organization_id: ORG_A }])
-        expect(await readAs(found[0] ?? null, 'plugin_installations')).toEqual([`pi-a-${run}`])
+        // Store A holds two installations (pi-c is the one of the plugin of another organization): both are its own, none of store B
+        expect(await readAs(found[0] ?? null, 'plugin_installations')).toEqual([
+          `pi-a-${run}`,
+          `pi-c-${run}`
+        ])
       })
     })
 
