@@ -1,25 +1,34 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
+import * as ts from 'typescript'
+
 // Every handler of a domain event runs after the commit, outside the transaction that made the event true, so with RLS_CONTEXT on it
 // reads no row (or fails WITH CHECK) unless its work is wrapped in the context of the store or organization the event carries
 // (EventContext, #745: @InEventStore / @InEventOrganization). This reads the source of EVERY listener of apps/ and libs/ (it needs no
 // database). A listener of the notifications module must be fully wrapped. The others are listed in PENDING with the number of bare
 // handlers each still has: the list can only SHRINK (a new bare handler, or a bigger number, fails; a smaller count fails too until the
-// entry is lowered or removed), so nobody adds a listener with no context and each PR that wraps one closes its line. A handler that
-// opens its context in its body (`this.events.inStore(...)`) is not seen by this check: wrap it with the decorator or keep it listed.
-// A handler counts as wrapped with the decorator OR when its own body calls inStore( / inOrganization( / inOrganizationOfStore( /
-// inUser( / forStore( / forOrganization( (comments and string literals do not count; it cannot see a context opened by another method it delegates to, nor a dead branch: list
-// that handler or review it).
-// A handler that needs no context at all (it only publishes to a socket room or drops a Redis key) says so with
-// `@EventContextNotNeeded('reason')`. The marker is checked, not trusted: the reason must be there, and the body of the handler and of
-// every method of the same file must not name prisma, a transaction or a client (comments and literals do not count): a marked handler that touches the database is a bare one. What it calls in ANOTHER class is for the reviewer: the reason says it.
+// entry is lowered or removed), so nobody adds a listener with no context and each PR that wraps one closes its line.
+// A handler counts as wrapped with the decorator OR when its own body REACHES a call `x.inStore(` / `inEventStore(` / `inOrganization(` /
+// `inOrganizationOfStore(` / `inUser(` / `forStore(` / `forOrganization(` (read from the TypeScript syntax tree: a comment, a string,
+// a branch that never runs (`if (false)`) or the code after a `return` / `throw` does not count). It cannot see a context opened by
+// another method the handler delegates to: such a handler stays listed, with the reason (order-message-triggers 2 and
+// shipment-effects 1 are covered by delegation, B1 #776: `this.send` / `effects.follow` open it per step so no transaction stays open
+// during the provider, the e-mail or the retry sleeps; they are not debt of B3).
+// A handler marked `@EventContextNotNeeded('reason')` (it only moves a socket or Redis) counts as declared when the reason is not empty and
+// neither the handler (signature included) nor a method of its class that it calls through `this.` names prisma* / PrismaService / tenantTransaction / transaction / client / db / repo.
+// Limits of the walk, to be read in review (it proves a context CAN be opened, not that every path opens it): a call needs a receiver
+// (`x.inStore(`; a bare imported helper is not seen); any branch that opens counts, even if another branch reads the database bare;
+// only `if (true/false/0/null/undefined)` and the code after a `return` / `throw` / `break` / `continue` in a block are cut: `false && x`,
+// `cond ? a : x`, `while (false)`, code after an `if` whose branches all return, a `case` clause, and a closure that is defined and never
+// called still count. The marker is a declaration checked by name only (the four names above): a handler marked as socket-only that reads
+// the database through another member (`this.orders.findMany()`) passes, so a reviewer reads every marked handler.
 // NOT covered by this check: a listener registered with `emitter.on(...)` / `onAny(...)` (WebhookDispatcher), tracked in the plan.
 // Debt with owners: docs/IMPLEMENTATION_PLAN.md, "Event listeners with no context".
 const ROOT = join(__dirname, '..', '..', '..', '..', '..')
-const WRAPPERS = ['@InEventStore', '@InEventOrganization']
+const WRAPPERS = new Set(['InEventStore', 'InEventOrganization'])
 // Bare handlers per file today (fiscal and widget-delivery open their context in the body, so they are not listed). Owner B1 (session 7b):
-// shipment-effects, order-message-triggers. Owner B3 (74): finance-posting. (cache-invalidation and realtime-events carry the marker.)
+// shipment-effects, order-message-triggers. Owner B3 (74): finance-posting. (cache-invalidation and realtime-events carry the marker, B3b.)
 const PENDING: Readonly<Record<string, number>> = {
   'apps/api/src/modules/finance/finance-posting.listener.ts': 11,
   'apps/api/src/modules/order-messages/order-message-triggers.listener.ts': 2,
@@ -33,98 +42,174 @@ interface Handler {
 }
 
 // A call on a receiver (`this.events.inStore(`, `jobs.forStore(`), never a bare word
-const OPENS_CONTEXT =
-  /[\w)\]]\.(?:inStore|inEventStore|inOrganization|inOrganizationOfStore|inUser|forStore|forOrganization)\(/
-// Comments and string literals, in one pass so that a `//` inside a string is not a comment: what they say is not what the code does
-const COMMENTS_AND_LITERALS =
-  /\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`/g
-const withoutCommentsAndLiterals = (text: string): string => text.replace(COMMENTS_AND_LITERALS, '')
+const OPENING_CALLS = new Set([
+  'inStore',
+  'inEventStore',
+  'inOrganization',
+  'inOrganizationOfStore',
+  'inUser',
+  'forStore',
+  'forOrganization'
+])
 
-// The text of the method that starts at `from`: up to the brace that closes its first `{`
-function bodyFrom(lines: readonly string[], from: number): string {
-  let depth = 0
-  let opened = false
-  const body: string[] = []
-  for (let at = from; at < lines.length; at += 1) {
-    const text = lines[at] ?? ''
-    body.push(text)
-    for (const char of text) {
-      if (char === '{') {
-        depth += 1
-        opened = true
-      } else if (char === '}') depth -= 1
-    }
-    if (opened && depth <= 0) break
-  }
-  return body.join('\n')
-}
-
-// The marker with a reason that is not empty, over one or several lines
-const MARKER = /^\s*@EventContextNotNeeded\(\s*(['"`])\s*\S[\s\S]*?\1\s*\)/m
-// What a handler with no context must never touch
-const DATABASE =
-  /\b(?:prisma\w*|PrismaService|tenantTransaction|detachedTenantTransaction|transaction|client|db|repo|\$queryRaw|\$executeRaw)\b/i
-
-// The marker is checked against the WHOLE file (code only): a listener that is marked anywhere must not name prisma, a transaction
-// or a client in any method, signature, helper or injected dependency of the file, so a destructured multi-line signature or a helper
-// cannot hide a read. What the file calls in ANOTHER class is for the reviewer: the reason says it.
-const namesDatabase = (source: string): boolean => DATABASE.test(withoutCommentsAndLiterals(source))
-
-// Parentheses of the code of a line: a bracket inside a reason is text, not syntax
-const parenBalance = (text: string): number => {
-  const code = withoutCommentsAndLiterals(text)
-  return (code.match(/\(/g) ?? []).length - (code.match(/\)/g) ?? []).length
-}
-
-const isDecoratorOrComment = (line: string): boolean => {
-  const text = line.trim()
+const isConstantFalse = (node: ts.Expression): boolean => {
+  if (ts.isParenthesizedExpression(node)) return isConstantFalse(node.expression)
   return (
-    text.startsWith('@') || text.startsWith('//') || text.startsWith('/*') || text.startsWith('*')
+    node.kind === ts.SyntaxKind.FalseKeyword ||
+    node.kind === ts.SyntaxKind.NullKeyword ||
+    (ts.isNumericLiteral(node) && Number(node.text) === 0) ||
+    (ts.isIdentifier(node) && node.text === 'undefined')
   )
 }
+const isConstantTrue = (node: ts.Expression): boolean => {
+  if (ts.isParenthesizedExpression(node)) return isConstantTrue(node.expression)
+  return (
+    node.kind === ts.SyntaxKind.TrueKeyword ||
+    (ts.isNumericLiteral(node) && Number(node.text) !== 0)
+  )
+}
+const endsFlow = (node: ts.Node): boolean =>
+  ts.isReturnStatement(node) ||
+  ts.isThrowStatement(node) ||
+  ts.isBreakStatement(node) ||
+  ts.isContinueStatement(node)
 
-// The decorators of a handler are the lines under its @OnEvent that are decorators or comments, up to the first line that is not:
-// a wrapper that belongs to the NEXT handler is never counted for this one. The @OnEvent call may span several lines.
-function handlersIn(file: string, source: string): Handler[] {
-  const lines = source.split('\n')
-  const found: Handler[] = []
-  for (let index = 0; index < lines.length; index += 1) {
-    if (!/^\s*@OnEvent\(/.test(lines[index] ?? '')) continue
-    let call = ''
-    let end = index
-    let depth = 0
-    for (; end < lines.length; end += 1) {
-      const text = lines[end] ?? ''
-      call += `${text.trim()} `
-      depth += (text.match(/\(/g) ?? []).length - (text.match(/\)/g) ?? []).length
-      if (depth <= 0) break
+// Does this code REACH a call that opens a context: not one in a comment or a string (they are no nodes), not one under a constant
+// false condition, not one after a return or a throw in the same block
+function reachesOpeningCall(root: ts.Node): boolean {
+  const visit = (node: ts.Node): boolean => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      OPENING_CALLS.has(node.expression.name.text)
+    ) {
+      return true
     }
-    let wrapped = false
-    let next = end + 1
-    const decorators: string[] = []
-    for (; next < lines.length; next += 1) {
-      const text = lines[next] ?? ''
-      if (!isDecoratorOrComment(text)) break
-      // A decorator call may span several lines (prettier splits a long reason): take it whole
-      let depth = text.trim().startsWith('@') ? parenBalance(text) : 0
-      let whole = text
-      while (depth > 0 && next + 1 < lines.length) {
-        next += 1
-        const more = lines[next] ?? ''
-        whole += `\n${more}`
-        depth += parenBalance(more)
+    if (ts.isIfStatement(node)) {
+      if (isConstantFalse(node.expression)) {
+        return node.elseStatement !== undefined && visit(node.elseStatement)
       }
-      decorators.push(whole)
-      if (WRAPPERS.some(wrapper => text.trim().startsWith(wrapper))) wrapped = true
+      if (isConstantTrue(node.expression)) return visit(node.thenStatement)
     }
-    // Or the handler opens its context itself, in its body (so that the call to a carrier, a channel or Redis stays outside the
-    // transaction): the body runs from the first `{` after the decorators to its closing one
-    if (!wrapped) wrapped = OPENS_CONTEXT.test(withoutCommentsAndLiterals(bodyFrom(lines, next)))
-    // Or it says, with a reason, that it needs none, and what it does is no database work
-    if (!wrapped && MARKER.test(decorators.join('\n'))) wrapped = !namesDatabase(source)
-    found.push({ file, line: index + 1, event: call.trim(), wrapped })
-    index = end
+    if (ts.isBlock(node)) {
+      for (const statement of node.statements) {
+        if (visit(statement)) return true
+        if (endsFlow(statement)) return false
+      }
+      return false
+    }
+    return ts.forEachChild(node, child => (visit(child) ? true : undefined)) === true
   }
+  return visit(root)
+}
+
+const decoratorName = (decorator: ts.Decorator): string | undefined => {
+  const expression = ts.isCallExpression(decorator.expression)
+    ? decorator.expression.expression
+    : decorator.expression
+  return ts.isIdentifier(expression) ? expression.text : undefined
+}
+
+// The marker of a handler that needs no context because it never touches the database (a socket, Redis): it counts as declared ONLY
+// with a reason that is not empty and code that names none of these (the handler, and the methods of its class it calls through `this.`).
+const DATABASE_NAMES = new Set([
+  'tenantTransaction',
+  'detachedTenantTransaction',
+  'transaction',
+  'client',
+  'PrismaService',
+  'db',
+  'repo'
+])
+const isDatabaseName = (name: string): boolean => DATABASE_NAMES.has(name) || /^prisma/i.test(name)
+const MARKER = 'EventContextNotNeeded'
+
+const touchesDatabase = (root: ts.Node): boolean => {
+  const visit = (node: ts.Node): boolean =>
+    (ts.isIdentifier(node) && isDatabaseName(node.text)) ||
+    ts.forEachChild(node, child => (visit(child) ? true : undefined)) === true
+  return visit(root)
+}
+
+// The method itself (signature included) and every method of its class it calls through `this.`, followed to any depth: a helper, or a
+// destructured multi-line signature, cannot hide a read from the marker. What is called on another object is for the reviewer.
+const touchesDatabaseThroughClass = (method: ts.MethodDeclaration): boolean => {
+  const owner = method.parent
+  const methods = new Map<string, ts.MethodDeclaration>()
+  if (ts.isClassLike(owner)) {
+    for (const member of owner.members) {
+      if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name)) {
+        methods.set(member.name.text, member)
+      }
+    }
+  }
+  const seen = new Set<ts.MethodDeclaration>()
+  const walk = (current: ts.MethodDeclaration): boolean => {
+    if (seen.has(current)) return false
+    seen.add(current)
+    if (touchesDatabase(current)) return true
+    const called: string[] = []
+    const collect = (node: ts.Node): void => {
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        node.expression.kind === ts.SyntaxKind.ThisKeyword
+      ) {
+        called.push(node.name.text)
+      }
+      ts.forEachChild(node, collect)
+    }
+    collect(current)
+    return called.some(name => {
+      const next = methods.get(name)
+      return next !== undefined && walk(next)
+    })
+  }
+  return walk(method)
+}
+
+const isDeclaredNotNeeded = (
+  decorators: readonly ts.Decorator[],
+  method: ts.MethodDeclaration
+): boolean => {
+  const marker = decorators.find(decorator => decoratorName(decorator) === MARKER)
+  if (marker === undefined || !ts.isCallExpression(marker.expression)) return false
+  const reason = marker.expression.arguments[0]
+  const hasReason =
+    reason !== undefined &&
+    (ts.isStringLiteral(reason) || ts.isNoSubstitutionTemplateLiteral(reason)) &&
+    reason.text.trim() !== ''
+  return hasReason && method.body !== undefined && !touchesDatabaseThroughClass(method)
+}
+
+// The event a listener names: the text of the argument of @OnEvent(...)
+const eventOf = (decorator: ts.Decorator, tree: ts.SourceFile): string =>
+  ts.isCallExpression(decorator.expression)
+    ? (decorator.expression.arguments[0]?.getText(tree) ?? '')
+    : ''
+
+// Every method of the file that carries @OnEvent: wrapped by a decorator under it, or by a context its body reaches
+function handlersIn(file: string, source: string): Handler[] {
+  const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true)
+  const found: Handler[] = []
+  const visit = (node: ts.Node): void => {
+    if (ts.isMethodDeclaration(node)) {
+      const decorators = ts.getDecorators(node) ?? []
+      const listeners = decorators.filter(decorator => decoratorName(decorator) === 'OnEvent')
+      // One entry for each @OnEvent: a method that listens to several events counts once for each of them
+      if (listeners.length > 0) {
+        const wrapped =
+          decorators.some(decorator => WRAPPERS.has(decoratorName(decorator) ?? '')) ||
+          isDeclaredNotNeeded(decorators, node) ||
+          (node.body !== undefined && reachesOpeningCall(node.body))
+        for (const listener of listeners) {
+          const { line } = tree.getLineAndCharacterOfPosition(listener.getStart(tree))
+          found.push({ file, line: line + 1, event: eventOf(listener, tree), wrapped })
+        }
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(tree)
   return found
 }
 
@@ -181,8 +266,9 @@ describe('the listeners of domain events open the context of their event', () =>
     expect(stale).toEqual([])
   })
 
-  it('does not count the wrapper of the next handler, and reads an @OnEvent over several lines', () => {
+  it('reads the handlers from the syntax tree', () => {
     const source = [
+      'class L {',
       '  @OnEvent(Events.A)',
       '  async onA(p: P): Promise<void> {}',
       '  @OnEvent(',
@@ -208,108 +294,88 @@ describe('the listeners of domain events open the context of their event', () =>
       '    const note = "this.events.inStore("',
       '    await this.other.follow(note)',
       '  }',
-      '  // inStore( in a later method does not count for E',
+      '  @OnEvent(Events.G)',
+      '  async onG(p: P): Promise<void> {',
+      '    if (false) {',
+      '      await this.events.inStore(p.storeId, async () => {})',
+      '    }',
+      '  }',
+      '  @OnEvent(Events.H)',
+      '  async onH(p: P): Promise<void> {',
+      '    if (true) {',
+      '      await this.events.inStore(p.storeId, async () => {})',
+      '    } else {',
+      '      await this.other.follow(p)',
+      '    }',
+      '  }',
+      '  @OnEvent(Events.I)',
+      '  async onI(p: P): Promise<void> {',
+      '    return',
+      '    await this.events.inStore(p.storeId, async () => {})',
+      '  }',
+      '  @OnEvent(Events.J)',
+      '  async onJ(p: P): Promise<void> {',
+      '    const open = bare.inStore',
+      '    await events.inStore',
+      '      .call(open)',
+      '  }',
+      '  @OnEvent(Events.K)',
+      "  @EventContextNotNeeded('only the socket')",
+      '  async onK(p: P): Promise<void> { this.realtime.toStore(p.storeId) }',
+      '  @OnEvent(Events.L)',
+      '  @EventContextNotNeeded()',
+      '  async onL(p: P): Promise<void> { this.realtime.toStore(p.storeId) }',
+      '  @OnEvent(Events.M)',
+      "  @EventContextNotNeeded('  ')",
+      '  async onM(p: P): Promise<void> { this.realtime.toStore(p.storeId) }',
+      '  @OnEvent(Events.N)',
+      "  @EventContextNotNeeded('says it needs none')",
+      '  async onN(p: P): Promise<void> { await this.prisma.client.order.findMany() }',
+      '  @OnEvent(Events.O)',
+      "  @EventContextNotNeeded('reads through a helper')",
+      '  async onO(p: P): Promise<void> { await this.reader(p) }',
+      '  @OnEvent(Events.P)',
+      "  @EventContextNotNeeded('multi-line signature')",
+      '  async onP(',
+      '    { storeId }: P',
+      '  ): Promise<void> {',
+      '    await this.prismaService.conversation.findMany()',
+      '  }',
+      '  @OnEvent(Events.Q)',
+      "  @EventContextNotNeeded('a db property')",
+      '  async onQ(p: P): Promise<void> { await this.db.message.findMany() }',
+      '  @OnEvent(Events.R)',
+      "  @EventContextNotNeeded('helper without a read')",
+      '  async onR(p: P): Promise<void> { await this.publish(p) }',
+      '  private async publish(p: P): Promise<void> { this.realtime.toStore(p.storeId) }',
+      '  private async reader(p: P): Promise<void> { await this.prisma.tenantTransaction(ctx, () => work(p)) }',
+      '  // inStore( in a later method does not count for these',
       '  async later(): Promise<void> {',
       '    await this.events.inStore(id, async () => {})',
-      '  }'
+      '  }',
+      '}'
     ].join('\n')
-    expect(handlersIn('sample.ts', source).map(handler => handler.wrapped)).toEqual([
-      false,
-      true,
-      true,
-      true,
-      false,
-      false
+    expect(
+      handlersIn('sample.ts', source).map(handler => `${handler.event}:${handler.wrapped}`)
+    ).toEqual([
+      'Events.A:false',
+      'Events.B:true',
+      'Events.C:true',
+      'Events.D:true',
+      'Events.E:false',
+      'Events.F:false',
+      'Events.G:false',
+      'Events.H:true',
+      'Events.I:false',
+      'Events.J:false',
+      'Events.K:true',
+      'Events.L:false',
+      'Events.M:false',
+      'Events.N:false',
+      'Events.O:false',
+      'Events.P:false',
+      'Events.Q:false',
+      'Events.R:true'
     ])
-  })
-
-  describe('a marker is taken only with a reason and no database work in the file', () => {
-    const wrappedOf = (...lines: string[]): boolean[] =>
-      handlersIn('sample.ts', lines.join('\n')).map(handler => handler.wrapped)
-    const handler = (...body: string[]): string[] => [
-      '  @OnEvent(Events.A)',
-      "  @EventContextNotNeeded('only a socket')",
-      '  async onA(p: P): Promise<void> {',
-      ...body,
-      '  }'
-    ]
-
-    it('takes a handler that only publishes', () => {
-      expect(wrappedOf(...handler('    await this.realtime.toStore(p)'))).toEqual([true])
-    })
-
-    it('takes a marker on stacked @OnEvent and a reason over several lines', () => {
-      expect(
-        wrappedOf(
-          '  @OnEvent(Events.A)',
-          '  @OnEvent(Events.B)',
-          '  @EventContextNotNeeded(',
-          "    'a reason over several lines'",
-          '  )',
-          '  async onA(p: P): Promise<void> {}'
-        )
-      ).toEqual([true, true])
-    })
-
-    it('refuses an empty reason', () => {
-      expect(
-        wrappedOf('  @OnEvent(Events.A)', "  @EventContextNotNeeded('')", '  async onA() {}')
-      ).toEqual([false])
-    })
-
-    it('refuses a marker that is only a comment', () => {
-      expect(
-        wrappedOf(
-          '  @OnEvent(Events.A)',
-          "  // @EventContextNotNeeded('later')",
-          '  async onA(p: P): Promise<void> {}'
-        )
-      ).toEqual([false])
-    })
-
-    it('reads a reason with an unbalanced parenthesis as text', () => {
-      expect(
-        wrappedOf(
-          '  @OnEvent(Events.A)',
-          "  @EventContextNotNeeded('drops a key (no table')",
-          '  async onA(p: P): Promise<void> {}',
-          '  @OnEvent(Events.B)',
-          '  async onB(p: P): Promise<void> {}'
-        )
-      ).toEqual([true, false])
-    })
-
-    it.each([
-      ['prisma in the body', '    await this.prisma.client.message.findMany({})'],
-      ['a transaction', '    await this.other.tenantTransaction(ctx, () => work(p))'],
-      ['a differently named service', '    await this.prismaService.conversation.findMany({})'],
-      ['a db property', '    await this.db.message.findMany({})']
-    ])('refuses a marked handler with %s', (_name, line) => {
-      expect(wrappedOf(...handler(line))).toEqual([false])
-    })
-
-    it('refuses a marked handler whose database work is in a helper or a multi-line signature', () => {
-      expect(
-        wrappedOf(
-          ...handler('    await this.reader(p)'),
-          '  private async reader(',
-          '    { storeId }: P',
-          '  ): Promise<void> {',
-          '    await this.prisma.client.x.findMany()',
-          '  }'
-        )
-      ).toEqual([false])
-    })
-
-    it('does not count a database word in a comment or a string', () => {
-      expect(
-        wrappedOf(
-          ...handler(
-            '    await this.realtime.toStore(p) // this.prisma is a comment',
-            "    log('client')"
-          )
-        )
-      ).toEqual([true])
-    })
   })
 })

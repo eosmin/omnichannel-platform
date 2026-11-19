@@ -126,7 +126,8 @@ interface TransactionOptions {
 
 // What afterCommit holds for a real transaction: its hooks, and whether they are still waiting
 interface UnitOfWork {
-  state: 'open' | 'committed' | 'rolledBack'
+  // 'closing': the last drain is done and the COMMIT is on its way; nothing new can be queued for it
+  state: 'open' | 'closing' | 'committed' | 'rolledBack'
   hooks: Array<() => void>
   // Work queued to run, one at a time, once the callback of the transaction has finished and before it commits (the audit entry of a
   // request). It is dropped when the transaction rolls back.
@@ -386,7 +387,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     if (unit === undefined) {
       throw new Error('afterCommit was given a transaction that PrismaService did not open')
     }
-    if (unit.state === 'open') unit.hooks.push(hook)
+    if (unit.state === 'open' || unit.state === 'closing') unit.hooks.push(hook)
     // Added after the commit (work that outlived its callback): the data is there already
     else if (unit.state === 'committed') this.runHook(hook)
     // After a rollback it is dropped: what it would announce did not happen
@@ -422,6 +423,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         )
       }
     }
+    // No await since the last shift: from here beforeCommit() answers false, and the caller (the audit trail) writes the entry on a
+    // transaction of its own instead of queueing it where nothing will ever run it
+    if (unit.state === 'open') unit.state = 'closing'
   }
 
   // One real transaction, whose commit hooks run after it commits
@@ -515,10 +519,13 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       async tx => {
         await tx.$executeRaw`SELECT set_config('app.platform_catalog', 'on', true)`
         // `fn` is awaited INSIDE the scope: a Prisma query is lazy, and one that fn only returns would start after run() ends
-        return tenantScope.run(
-          { tx, context: { storeIds: [], organizationIds: [] } },
-          async () => await fn()
-        )
+        return tenantScope.run({ tx, context: { storeIds: [], organizationIds: [] } }, async () => {
+          const out = await fn()
+          // Drained inside the scope, like tenantTransaction: a query outside it is refused by the guard of the context
+          const unit = units.get(tx)
+          if (unit !== undefined) await this.runBeforeCommit(unit, tx)
+          return out
+        })
       },
       { ...TENANT_TRANSACTION, ...options }
     )
