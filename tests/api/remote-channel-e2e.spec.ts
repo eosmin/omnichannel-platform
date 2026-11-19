@@ -8,7 +8,7 @@ import supertest from 'supertest'
 import { ChannelContextFactory, ChannelHealthService } from '@platform/channels/connections'
 import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService, JobContext } from '@platform/core/database'
+import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -190,7 +190,14 @@ describe('A remote channel plugin, from its registration to the status of a repl
       prisma,
       connections,
       writer,
-      new ChannelHealthService(prisma, contexts, events, logger),
+      new ChannelHealthService(
+        prisma,
+        contexts,
+        events,
+        logger,
+        new JobContext(prisma),
+        new WorkerLists(prisma)
+      ),
       logger,
       new JobContext(prisma)
     )

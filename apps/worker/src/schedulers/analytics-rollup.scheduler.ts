@@ -5,7 +5,7 @@ import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import { RollupLimits } from '@platform/core/analytics'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import { errorName } from '@platform/core/errors'
 import {
   JobNames,
@@ -24,6 +24,9 @@ import {
 } from '../analytics/rollup-periods'
 
 import { LeaderLockService } from './leader-lock.service'
+
+// rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
+// every read or write of a table of a store runs inside JobContext.forStore / forOrganization
 
 const LOCK_SECONDS = 300
 const HOUR_MS = 3_600_000
@@ -47,7 +50,8 @@ export class AnalyticsRollupScheduler {
     private readonly locks: LeaderLockService,
     @InjectQueue(QueueNames.ANALYTICS) private readonly queue: Queue<RollupJob>,
     private readonly prisma: PrismaService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(AnalyticsRollupScheduler.name)
   }
@@ -84,6 +88,7 @@ export class AnalyticsRollupScheduler {
     // The run is the period that was running when the schedule fired: it names the jobs of this run and no other
     const runStart = new Date(periods[0]?.end ?? now)
     let queued = 0
+    const storeIds: string[] = []
     let cursor: string | undefined
     for (;;) {
       const stores = await this.prisma.client.store.findMany({
@@ -92,6 +97,7 @@ export class AnalyticsRollupScheduler {
         take: pageSize,
         ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
       })
+      storeIds.push(...stores.map(store => store.id))
       if (stores.length > 0) {
         await this.queue.addBulk(
           stores.flatMap(store =>
@@ -114,7 +120,7 @@ export class AnalyticsRollupScheduler {
       cursor = stores.at(-1)?.id
     }
     if (granularity === RollupGranularities.DAILY) {
-      queued += await this.enqueueLateDays(now, periods, runStart)
+      queued += await this.enqueueLateDays(now, periods, runStart, storeIds)
     }
     return queued
   }
@@ -125,32 +131,46 @@ export class AnalyticsRollupScheduler {
   private async enqueueLateDays(
     now: Date,
     window: readonly RollupPeriod[],
-    runStart: Date
+    runStart: Date,
+    storeIds: readonly string[]
   ): Promise<number> {
     const windowStart = window.at(-1)?.start ?? now
     const changedSince = new Date(now.getTime() - RollupLimits.LATE_ORDER_CHANGE_HOURS * HOUR_MS)
     const oldest = new Date(now.getTime() - RollupLimits.LATE_ORDER_LOOKBACK_DAYS * DAY_MS)
     const days = new Map<string, Set<number>>()
-    let cursor: string | undefined
-    for (;;) {
-      const orders = await this.prisma.client.order.findMany({
-        where: {
-          updatedAt: { gte: changedSince },
-          createdAt: { gte: oldest, lt: windowStart }
-        },
-        select: { id: true, storeId: true, createdAt: true },
-        orderBy: { id: 'asc' },
-        take: RollupLimits.LATE_ORDER_PAGE_SIZE,
-        ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
-      })
-      for (const order of orders) {
-        const start = Math.floor(order.createdAt.getTime() / DAY_MS) * DAY_MS
-        const of = days.get(order.storeId) ?? new Set<number>()
-        of.add(start)
-        days.set(order.storeId, of)
+    // The orders of each store are read in the context of that store, one context for each page (a context lasts 15 s); a store that is
+    // deleted meanwhile has no late days
+    for (const storeId of storeIds) {
+      let cursor: string | undefined
+      for (;;) {
+        let orders: { id: string; createdAt: Date }[]
+        try {
+          orders = await this.jobContext.forStore(storeId, () =>
+            this.prisma.client.order.findMany({
+              where: {
+                storeId,
+                updatedAt: { gte: changedSince },
+                createdAt: { gte: oldest, lt: windowStart }
+              },
+              select: { id: true, createdAt: true },
+              orderBy: { id: 'asc' },
+              take: RollupLimits.LATE_ORDER_PAGE_SIZE,
+              ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
+            })
+          )
+        } catch (error) {
+          if (error instanceof JobContextGoneError) break
+          throw error
+        }
+        for (const order of orders) {
+          const start = Math.floor(order.createdAt.getTime() / DAY_MS) * DAY_MS
+          const of = days.get(storeId) ?? new Set<number>()
+          of.add(start)
+          days.set(storeId, of)
+        }
+        if (orders.length < RollupLimits.LATE_ORDER_PAGE_SIZE) break
+        cursor = orders.at(-1)?.id
       }
-      if (orders.length < RollupLimits.LATE_ORDER_PAGE_SIZE) break
-      cursor = orders.at(-1)?.id
     }
     const jobs = [...days].flatMap(([storeId, starts]) =>
       [...starts].map(start => ({

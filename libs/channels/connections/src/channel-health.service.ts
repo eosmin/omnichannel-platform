@@ -2,7 +2,13 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 import { z } from 'zod'
 
-import { lockStoreForWrite, PrismaService } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  lockStoreForWrite,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   ChannelHealthErrors,
@@ -40,7 +46,9 @@ export class ChannelHealthService {
     private readonly prisma: PrismaService,
     private readonly contexts: ChannelContextFactory,
     private readonly events: DomainEvents,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext,
+    private readonly lists: WorkerLists
   ) {
     this.logger.setContext(ChannelHealthService.name)
   }
@@ -141,14 +149,14 @@ export class ChannelHealthService {
   ): Promise<{ checked: number; unhealthy: number }> {
     // The ids first, and each row only when its turn comes: a round is long, and a connection
     // reconnected or disconnected meanwhile must be asked with what it has now, not with what it had
-    const rows = await this.prisma.client.channelConnection.findMany({
-      where: {
-        status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
-        ...OfActiveInstallation
-      },
-      select: { id: true, pluginId: true },
-      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }]
-    })
+    // The list of the database is read to its end and ordered here: the one checked longest ago first
+    const rows = (
+      await this.lists.activeChannelConnections({
+        statuses: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR],
+        installationStatus: OfActiveInstallation.installation.status,
+        pluginStatus: OfActiveInstallation.installation.plugin.status
+      })
+    ).sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime() || (a.id < b.id ? -1 : 1))
     const ids = rows.filter(row => !skip(row.pluginId))
     const deadline = Date.now() + budgetMs
     const result = { checked: 0, unhealthy: 0 }
@@ -159,7 +167,7 @@ export class ChannelHealthService {
         const item = ids[next]
         next += 1
         if (item === undefined) return
-        await this.checkOne(item.id, findPlugin, result)
+        await this.checkOne(item.id, item.storeId, findPlugin, result)
       }
     }
     await Promise.all(Array.from({ length: ChannelHealthLimits.CONCURRENCY }, worker))
@@ -171,18 +179,23 @@ export class ChannelHealthService {
 
   private async checkOne(
     connectionRowId: string,
+    storeId: string,
     findPlugin: (pluginId: string) => ChannelPlugin | undefined,
     result: { checked: number; unhealthy: number }
   ): Promise<void> {
     try {
-      const row = await this.prisma.client.channelConnection.findFirst({
-        where: {
-          id: connectionRowId,
-          status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
-          ...OfActiveInstallation
-        },
-        select: CONNECTION_ROW_SELECT
-      })
+      // The context of the store holds only the reads and the write; the call to the provider is outside of it
+      const row = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.channelConnection.findFirst({
+          where: {
+            id: connectionRowId,
+            storeId,
+            status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
+            ...OfActiveInstallation
+          },
+          select: CONNECTION_ROW_SELECT
+        })
+      )
       if (row === null) return // Disconnected or gone since the round began
       const plugin = findPlugin(row.pluginId)
       if (plugin === undefined) {
@@ -190,10 +203,12 @@ export class ChannelHealthService {
         return
       }
       const health = await this.check(row, plugin)
-      await this.record(row, health)
+      await this.jobContext.forStore(row.storeId, () => this.record(row, health))
       result.checked += 1
       if (!health.healthy) result.unhealthy += 1
     } catch (error) {
+      // A store deleted while the provider answered has no connection left to record
+      if (error instanceof JobContextGoneError) return
       // One connection must not stop the others
       this.logger.error(
         { errorName: errorName(error), connection: connectionRowId },

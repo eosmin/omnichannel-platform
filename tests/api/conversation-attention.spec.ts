@@ -3,7 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AttentionReasons,
@@ -24,7 +24,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { transactionInContext } from '../helpers/tenant-context'
-import { createWorkerPrisma } from '../helpers/worker-db'
+import { createWorkerPrisma, createGuardedWorkerPrisma } from '../helpers/worker-db'
 import { workerServices } from '../helpers/worker-services'
 
 const OK = 200
@@ -70,9 +70,10 @@ describe('Conversation attention', () => {
     const { events } = await workerServices(app, workerPrisma)
     wake = new SnoozeWakeScheduler(
       locks,
-      workerPrisma,
+      createGuardedWorkerPrisma(),
       new ConversationsService(workerPrisma, events),
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      new JobContext(createGuardedWorkerPrisma())
     )
     app.get(EventEmitter2).onAny((event, payload) => {
       heard.push({ event: String(event), payload })

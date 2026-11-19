@@ -7,6 +7,7 @@ import { AnalyticsEventNames, AnalyticsMetrics, MetricDimensions } from '@platfo
 import { ApiRoutes } from '@platform/core/api'
 import { RoleNames } from '@platform/core/auth'
 import type { PrismaService } from '@platform/core/database'
+import { JobContext } from '@platform/core/database'
 import { ensureMembership, ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, ConversationStatus, MessageType, OrderStatus } from '@platform/core/domain'
 import { ConversationsService } from '@platform/core/messaging'
@@ -25,7 +26,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
-import { createWorkerPrisma } from '../helpers/worker-db'
+import { createWorkerPrisma, createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 // The rollups of the metrics (TDD_11 §7.2, TDD_08 §6, Step 5.2 PR A), the answer of a person apart from the one of an automation, the
 // event key and the route that reads the rollup tables. Every case works in a store of its own.
@@ -629,7 +630,13 @@ describe('The rollups of analytics', () => {
     let scheduler: AnalyticsRollupScheduler
 
     beforeAll(() => {
-      scheduler = new AnalyticsRollupScheduler(locks, queue as never, prisma, logger)
+      scheduler = new AnalyticsRollupScheduler(
+        locks,
+        queue as never,
+        createGuardedWorkerPrisma(),
+        logger,
+        new JobContext(createGuardedWorkerPrisma())
+      )
     })
     beforeEach(() => {
       queue.jobs.length = 0
