@@ -3333,7 +3333,9 @@ describe('Tenant isolation', () => {
       expect(byAccountOfA.status).toBe(404)
       expect(byPartyOfA.status).toBe(200)
       expect((byPartyOfA.body as { lines: unknown[] }).lines).toEqual([])
-      expect(JSON.stringify([byAccountOfA.body, byPartyOfA.body])).not.toContain('5151')
+      // The 404 carries no ledger at all (no lines, so no figure of the first organization); the 200 of the party was
+      // asserted empty above. Not a search for "5151" as text: an error body carries random ids that contain it by chance
+      expect(byAccountOfA.body).not.toHaveProperty('lines')
     })
 
     it('show every line of an entry whatever store the line is tagged with: the store of a line is a dimension and not a scope', async () => {

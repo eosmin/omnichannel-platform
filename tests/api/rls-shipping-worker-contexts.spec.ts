@@ -137,6 +137,16 @@ describe('RLS phase 5: the carrier jobs call the carrier outside any context', (
       where: { id: made.id },
       data: { status: ShipmentStatus.CANCEL_PENDING, cancelRequestedAt: new Date() }
     })
+    // The carrier only voids a guide it made: the row was written by the builder, so the fake is told of it
+    fake.state.guides.set(made.guideNumber, {
+      guideNumber: made.guideNumber,
+      providerShipmentId: `prov-${made.guideNumber}`,
+      reference: made.orderNumber,
+      idempotencyKey: `key-${made.guideNumber}`,
+      voided: false,
+      pickupRef: null,
+      rawStatus: 'created'
+    })
     return made
   }
   async function requested(): Promise<string> {
