@@ -43,6 +43,40 @@ function isReplicaCall(node: ts.Node): node is ts.CallExpression {
   )
 }
 
+const REPLICA_NAME = 'replicaTenantRead'
+
+// A way to reach the method that is not `x.replicaTenantRead(...)`: the method taken as a value (`const read = x.replicaTenantRead`), a
+// destructured one (`const { replicaTenantRead } = x`), a string key (`x['replicaTenantRead']`) or a bare call. Each one passes the
+// method around under a name the rest of this check does not look for, so it is refused like any other call outside a listed reader
+function isIndirectReplicaReference(node: ts.Node): boolean {
+  if (ts.isPropertyAccessExpression(node) && node.name.text === REPLICA_NAME) {
+    const parent = node.parent
+    return !(ts.isCallExpression(parent) && parent.expression === node)
+  }
+  // The name as a string anywhere (`x['replicaTenantRead']`, a computed key, `Reflect.get(x, 'replicaTenantRead')`, a const key); the
+  // import of a module and a message that is not a code path are the only other places such a string can be
+  if (ts.isStringLiteralLike(node) && node.text === REPLICA_NAME) {
+    return !ts.isImportDeclaration(node.parent) && !ts.isExportDeclaration(node.parent)
+  }
+  // A key built at run time on the prisma service (`this.prisma[key]`, `this.prisma['replica' + 'TenantRead']`)
+  if (ts.isElementAccessExpression(node)) {
+    return (
+      /\bprisma$/i.test(node.expression.getText()) &&
+      !ts.isStringLiteralLike(node.argumentExpression)
+    )
+  }
+  // Only an object pattern names a property of the object (`const { replicaTenantRead } = x`); `const [replicaTenantRead] = list` does not
+  if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
+    const name = node.propertyName ?? node.name
+    return ts.isIdentifier(name) && name.text === REPLICA_NAME
+  }
+  return (
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === REPLICA_NAME
+  )
+}
+
 function enclosingFunction(node: ts.Node): ts.FunctionLikeDeclaration | undefined {
   for (let current = node.parent; current !== undefined; current = current.parent) {
     if (
@@ -130,6 +164,14 @@ export function checkReplicaUse(
   const lineOf = (node: ts.Node): number =>
     source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1
   const visit = (node: ts.Node): void => {
+    if (isIndirectReplicaReference(node)) {
+      calls++
+      violations.push({
+        file,
+        line: lineOf(node),
+        message: `${REPLICA_NAME} reached through another name or as a value: call it as x.${REPLICA_NAME}(context, fn)`
+      })
+    }
     if (isReplicaCall(node)) {
       calls++
       const line = lineOf(node)

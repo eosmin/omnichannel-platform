@@ -1,8 +1,12 @@
 import {
   baselineGrowth,
   fixedEntries,
+  networkFunctionsOf,
   newlyUnmarked,
   parseClasses,
+  providerRoots,
+  stalePureTypes,
+  unknownFieldTypes,
   unknownProviders,
   unmarkedExternalRoutes
 } from './external-io-routes'
@@ -116,6 +120,158 @@ describe('what the scan follows', () => {
     expect(
       routes(`@Controller() class C extends Base { @Post() up() { return this.store() } }`, base)
     ).toHaveLength(1)
+  })
+})
+
+describe('providers by import', () => {
+  const CLIENT = `import axios from 'axios'\nclass RemoteClient { get() { return axios.get('x') } }\nclass OtherInFile { run() { return 1 } }`
+  const typeOnly = `import type { AxiosInstance } from 'axios'\nclass Shape { constructor(private readonly h: AxiosInstance) {} }`
+  const reach = (client: string, controllerBody: string): string[] => {
+    const classes = [
+      ...parseClasses('a/client.ts', client),
+      ...parseClasses(
+        'a/c.ts',
+        `@Controller() class C { constructor(private readonly remote: RemoteClient) {} ${controllerBody} }`
+      )
+    ]
+    return unmarkedExternalRoutes(classes, []).map(r => r.key)
+  }
+
+  it('treats every class of a file that imports a network module as a provider', () => {
+    const classes = parseClasses('a/client.ts', CLIENT)
+    expect([...providerRoots(classes, [])].sort()).toEqual(['OtherInFile', 'RemoteClient'])
+    for (const module of [
+      'node:https',
+      'http',
+      'undici',
+      'web-push',
+      '@aws-sdk/client-s3',
+      'nodemailer'
+    ]) {
+      expect(
+        providerRoots(parseClasses('x.ts', `import x from '${module}'\nclass A {}`), []).size
+      ).toBe(1)
+    }
+  })
+
+  it('does not count a type-only import or another module', () => {
+    expect(providerRoots(parseClasses('a/t.ts', typeOnly), []).size).toBe(0)
+    expect(
+      providerRoots(parseClasses('a/u.ts', `import { z } from 'zod'\nclass A {}`), []).size
+    ).toBe(0)
+  })
+
+  it('flags a route that reaches such a class', () => {
+    expect(reach(CLIENT, '@Get() list() { return this.remote.get() }')).toEqual(['a/c.ts#C.list'])
+  })
+
+  it('does not count an inline type specifier, and counts a default, namespace or mixed import', () => {
+    const size = (code: string): number =>
+      providerRoots(parseClasses('x.ts', `${code}\nclass A {}`), []).size
+    expect(size(`import { type AxiosInstance } from 'axios'`)).toBe(0)
+    expect(size(`import { createServer, type IncomingMessage } from 'node:http'`)).toBe(1)
+    expect(size(`import * as https from 'node:https'`)).toBe(1)
+    expect(size(`import axios from 'axios'`)).toBe(1)
+    expect(size(`import 'undici'`)).toBe(1)
+  })
+
+  it('flags the routes of a controller whose file imports a network module itself', () => {
+    const classes = parseClasses(
+      'a/c.ts',
+      `import axios from 'axios'\n@Controller() class C { @Get() list() { return 1 } }`
+    )
+    expect(unmarkedExternalRoutes(classes, []).map(r => r.key)).toEqual(['a/c.ts#C.list'])
+  })
+})
+
+describe('renamed imports', () => {
+  it('follows a class imported under another name', () => {
+    const classes = [
+      ...parseClasses(
+        'a/core.ts',
+        `class PickupsService { make() { return this.storage.put(1) } constructor(private readonly storage: StorageService) {} }`
+      ),
+      ...parseClasses(
+        'a/c.ts',
+        `import { PickupsService as CorePickups } from 'x'\n@Controller() class C { constructor(private readonly pickups: CorePickups) {} @Post() go() { return this.pickups.make() } }`
+      )
+    ]
+    expect(unmarkedExternalRoutes(classes, PROVIDERS).map(r => r.key)).toEqual(['a/c.ts#C.go'])
+  })
+})
+
+describe('free functions that go over the network', () => {
+  const FILE = `import { request } from 'node:https'
+export function pinnedGet() { return request() }
+export const pinnedPost = () => request()
+export const LIMIT = 5
+function helper() { return 1 }`
+  it('names the exported functions of a file that imports a network module', () => {
+    expect(networkFunctionsOf('a/p.ts', FILE)).toEqual(['pinnedGet', 'pinnedPost'])
+    expect(networkFunctionsOf('a/q.ts', `export function pure() { return 1 }`)).toEqual([])
+  })
+  it('flags a route whose service calls one of them', () => {
+    const service = `class S { go() { return pinnedPost() } }`
+    const classes = [
+      ...parseClasses('a/s.ts', service, new Set(['pinnedPost'])),
+      ...parseClasses(
+        'a/c.ts',
+        `@Controller() class C { constructor(private readonly s: S) {} @Post() run() { return this.s.go() } }`
+      )
+    ]
+    expect(unmarkedExternalRoutes(classes, []).map(r => r.key)).toEqual(['a/c.ts#C.run'])
+    expect(
+      unmarkedExternalRoutes([...parseClasses('a/s.ts', service), ...classes.slice(1)], [])
+    ).toEqual([])
+  })
+})
+
+describe('inheritance with renamed imports', () => {
+  it('follows a base class imported under another name', () => {
+    const base = parseClasses(
+      'a/base.ts',
+      `class PickupsService { constructor(protected readonly storage: StorageService) {} protected make() { return this.storage.put(1) } }`
+    )
+    const child = parseClasses(
+      'a/c.ts',
+      `import { PickupsService as CorePickups } from 'x'\n@Controller() class C extends CorePickups { @Post() go() { return this.make() } }`
+    )
+    expect(unmarkedExternalRoutes([...base, ...child], PROVIDERS).map(r => r.key)).toEqual([
+      'a/c.ts#C.go'
+    ])
+  })
+})
+
+describe('unknown field types', () => {
+  it('sees a called field declared in a base class, and a qualified type', () => {
+    const classes = [
+      ...parseClasses(
+        'a/b.ts',
+        `class Base { constructor(protected readonly sdk: vendor.Client) {} }`
+      ),
+      ...parseClasses('a/c.ts', `class Child extends Base { run() { this.sdk.upload() } }`)
+    ]
+    expect(unknownFieldTypes(classes, [], [])).toEqual(['vendor.Client'])
+  })
+  it('reports a pure type that nothing calls, even when a field has the type', () => {
+    const classes = parseClasses('a/h.ts', `class H { constructor(private readonly q: Queue) {} }`)
+    expect(stalePureTypes(classes, ['Queue'])).toEqual(['Queue'])
+  })
+  const classes = parseClasses(
+    'a/s.ts',
+    `class S { constructor(private readonly a: Mystery, private readonly b: Known, private readonly c: Sender) {} run() { this.a.go(); this.b.go(); this.c.sendMessage() } }`
+  )
+  it('lists a called type that is not a class, a provider or a pure type', () => {
+    expect(unknownFieldTypes(classes, [], [])).toEqual(['Known', 'Mystery'])
+  })
+  it('lets a provider or a pure type through, and a network method needs no list', () => {
+    expect(unknownFieldTypes(classes, [{ name: 'Mystery', reason: 'r' }], ['Known'])).toEqual([])
+  })
+  it('reports a pure type that no field has', () => {
+    expect(stalePureTypes(classes, ['Known', 'Gone'])).toEqual(['Gone'])
+  })
+  it('accepts a provider that is a library type used by a field', () => {
+    expect(unknownProviders(classes, [{ name: 'Mystery', reason: 'r' }])).toEqual([])
   })
 })
 

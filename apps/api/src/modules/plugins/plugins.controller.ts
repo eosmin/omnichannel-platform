@@ -9,7 +9,13 @@ import { HttpStatusCodes } from '@platform/core/errors'
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  actorOf,
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import {
   PluginCommandSecretService,
@@ -91,6 +97,9 @@ export class PluginsController {
   @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
   // The answer of an integration plugin carries the one-time setup code: not stored by anything between the owner and the platform
   @NoStore()
+  @NoTenantTransaction(
+    'the challenge of an integration plugin is an HTTPS call to its address (pinnedHttpsExchange): short contexts of its own, F6-3f'
+  )
   @Post(ApiRoutes.plugins.install)
   @HttpCode(HttpStatusCodes.CREATED)
   install(
