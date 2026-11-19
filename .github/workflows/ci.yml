@@ -575,11 +575,9 @@ jobs:
           }
           trap report EXIT
           pnpm test:security
-      # No latency spec here (a number measured under enforcement is not comparable with the baseline). The plan specs run once, in a
-      # process of their own, in the last shard: they take locks, and measure under the policies the job turned on
-      - name: Plan specs of row level security, in a fresh process
-        if: ${{ !cancelled() && startsWith(matrix.shard, format('{0}/', strategy.job-total)) }}
-        run: pnpm test:rls-plan
+      # No latency spec and no plan spec here: a number measured under enforcement is not comparable with the baseline, and the plan
+      # specs assert a baseline with the policies OFF first (`rls-search-plan.spec`), which this job turned on. The plan specs run in
+      # `security-shards` (Step 7.3 owns their measurement under FORCE)
 
   # The check for the ruleset of `main` (the owner adds it after a green run). It runs whatever happened upstream: only `success` of
   # both jobs, or a skip because `rls-changes` found nothing that touches the database, is a green.
