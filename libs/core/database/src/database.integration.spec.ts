@@ -483,6 +483,49 @@ describe('PrismaService', () => {
     expect(replica[0]?.txid).not.toBe(tenant[0]?.txid)
   })
 
+  // withCreatedStore proves the store with `xmin = txid_current()`: the unit spec mocks that SQL, so this runs it on the real database
+  it('withCreatedStore accepts a store written by this transaction and refuses one an earlier transaction wrote', async () => {
+    const orgId = randomUUID()
+    const older = await withClient(urls.owner, async owner => {
+      await owner.query(
+        'INSERT INTO organizations (id, name, slug, updated_at) VALUES ($1, $2, $3, now())',
+        [orgId, 'Created store', `it-${runId}-created-store`]
+      )
+      return randomUUID()
+    })
+    const context = { storeIds: [], organizationIds: [orgId] }
+    const slug = `it-${runId}-store`
+    try {
+      await service.client.store.create({
+        data: { id: older, organizationId: orgId, name: 'Older', slug: `${slug}-older` }
+      })
+      const seen = await service.tenantTransaction(context, async () => {
+        const created = await service.client.store.create({
+          data: { organizationId: orgId, name: 'Fresh', slug: `${slug}-fresh` },
+          select: { id: true }
+        })
+        const inside = await service.withCreatedStore(created.id, () =>
+          Promise.resolve(service.currentTenantContext()?.storeIds.slice())
+        )
+        const after = service.currentTenantContext()?.storeIds.slice()
+        const refused = await service
+          .withCreatedStore(older, () => Promise.resolve())
+          .then(
+            () => 'accepted',
+            (error: unknown) => (error instanceof Error ? error.message : String(error))
+          )
+        return { created: created.id, inside, after, refused }
+      })
+      expect(seen.inside).toEqual([seen.created])
+      expect(seen.after).toEqual([])
+      expect(seen.refused).toMatch(/was not created/)
+    } finally {
+      await withClient(urls.owner, async owner => {
+        await owner.query('DELETE FROM stores WHERE organization_id = $1', [orgId])
+      })
+    }
+  })
+
   // A request is ONE transaction under RLS_CONTEXT: a statement that fails aborts it (25P02) even when the code caught the error
   describe('a unique violation that the code catches', () => {
     const context = { storeIds: [], organizationIds: [] }
