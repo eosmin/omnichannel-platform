@@ -52,7 +52,7 @@ describe('The listener of the automatic entries opens its own context (RLS phase
     // The api of the activation, whatever the environment says: the switch ON and the guard of PrismaService ON (a query of a table
     // behind row security with no context open throws), on the role that is subject to the policies
     guarded = new PrismaService({
-      databaseUrl: connectionUrls().worker,
+      databaseUrl: connectionUrls().app,
       poolSize: 8,
       requireContext: true
     })
@@ -78,7 +78,9 @@ describe('The listener of the automatic entries opens its own context (RLS phase
 
   // The control that makes the cases below mean something: the same read the listener makes, with no context, is refused
   it('precondition: a table behind row security cannot be read with no context open', async () => {
-    await expect(guarded.client.stockTransferLine.findMany({ take: 1 })).rejects.toThrow()
+    await expect(guarded.client.stockTransferLine.findMany({ take: 1 })).rejects.toThrow(
+      /no tenant context/
+    )
   })
 
   const system = { type: 'system', id: null } as const
