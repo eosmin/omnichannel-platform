@@ -31,6 +31,7 @@ import { WidgetDownloads, type WidgetFileLink } from './widget-downloads.service
 import { WidgetHistory } from './widget-history.service'
 import { allowOrigin } from './widget-origin'
 import { type WidgetSite, WidgetSites } from './widget-sites.service'
+import { WidgetTenant } from './widget-tenant'
 import { WidgetTokens } from './widget-tokens.service'
 import { WidgetUploads } from './widget-uploads.service'
 
@@ -88,6 +89,7 @@ export class WidgetController {
     private readonly away: WidgetAway,
     private readonly uploads: WidgetUploads,
     private readonly downloads: WidgetDownloads,
+    private readonly tenant: WidgetTenant,
     private readonly registry: PluginRegistry,
     private readonly queue: InboundEventQueue,
     @InjectMetric(MetricNames.CHANNEL_WEBHOOK_RECEIVED) private readonly received: Counter<string>,
@@ -104,11 +106,14 @@ export class WidgetController {
   ): Promise<WidgetBootstrapView> {
     const site = await this.sites.find(body.siteKey)
     allowOrigin(site, origin, res)
-    const [messages, readUpToMessageId, away] = await Promise.all([
-      this.history.of(site, body.visitorId),
-      this.history.readUpTo(site, body.visitorId),
-      this.away.isAway(site)
-    ])
+    // One transaction in the context of the site's store for the three reads (each joins it)
+    const [messages, readUpToMessageId, away] = await this.tenant.run(site, () =>
+      Promise.all([
+        this.history.of(site, body.visitorId),
+        this.history.readUpTo(site, body.visitorId),
+        this.away.isAway(site)
+      ])
+    )
     const { token, expiresInSeconds } = this.tokens.issue({
       siteKey: site.siteKey,
       visitorId: body.visitorId

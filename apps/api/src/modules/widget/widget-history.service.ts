@@ -12,18 +12,30 @@ import { AuthorType, ChannelIds, WidgetLimits } from '@platform/core/domain'
 import { readStorePreferences } from '@platform/core/store-preferences'
 
 import type { WidgetSite } from './widget-sites.service'
+import { WidgetTenant } from './widget-tenant'
 
 // What a visitor may read of their own conversation with the store
 @Injectable()
 export class WidgetHistory {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenant: WidgetTenant
+  ) {}
 
   // The last messages the visitor and the store have exchanged on this widget, oldest first. Only what
   // reached the visitor (see `visitorMessagesWhere`): not a note, a system line, a reply still waiting
   // or one that failed, and not a message that was deleted. A message of files shows the files the scan
   // found clean.
   async of(site: WidgetSite, visitorId: string): Promise<WidgetMessageView[]> {
-    const rows = await this.prisma.client.message.findMany({
+    const rows = await this.tenant.run(site, () => this.messagesOf(site, visitorId))
+    return rows
+      .map(row => widgetMessageView(row))
+      .filter((view): view is WidgetMessageView => view !== null)
+      .reverse()
+  }
+
+  private messagesOf(site: WidgetSite, visitorId: string) {
+    return this.prisma.client.message.findMany({
       // Something to show is part of the query, or a message of files not yet clean would use up one of
       // the slots of the window and push an older real message out
       where: {
@@ -40,17 +52,17 @@ export class WidgetHistory {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: WidgetLimits.HISTORY_MESSAGES
     })
-    return rows
-      .map(row => widgetMessageView(row))
-      .filter((view): view is WidgetMessageView => view !== null)
-      .reverse()
   }
 
   // The latest message of the visitor that an agent has read, for a visitor who comes back after
   // the live "read" was sent. `lastReadAt` is the moment of the last read of the conversation, and
   // "mark as unread" moves it back before the last message. Null when the store sends no read
   // receipts, as for the live ones, or nothing of the visitor was read.
-  async readUpTo(site: WidgetSite, visitorId: string): Promise<string | null> {
+  readUpTo(site: WidgetSite, visitorId: string): Promise<string | null> {
+    return this.tenant.run(site, () => this.latestRead(site, visitorId))
+  }
+
+  private async latestRead(site: WidgetSite, visitorId: string): Promise<string | null> {
     const settings = await this.prisma.client.storeSettings.findUnique({
       where: { storeId: site.storeId },
       select: { preferences: true }

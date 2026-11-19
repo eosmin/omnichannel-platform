@@ -5,9 +5,12 @@ import { PrismaService } from '@platform/core/database'
 import { ChannelIds, ConversationHiddenStatuses } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
 
+import { WidgetTenant } from './widget-tenant'
+
 // What the handshake of the socket already proved about the site of the visitor
 export interface WidgetTypingSite {
   storeId: string
+  organizationId: string
   // ChannelConnection.id
   connectionId: string
 }
@@ -19,20 +22,24 @@ export interface WidgetTypingSite {
 export class WidgetCustomerTyping {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly emitter: EventEmitter2
+    private readonly emitter: EventEmitter2,
+    private readonly tenant: WidgetTenant
   ) {}
 
   async signal(site: WidgetTypingSite, visitorId: string): Promise<void> {
-    const conversation = await this.prisma.client.conversation.findFirst({
-      where: {
-        storeId: site.storeId,
-        channelConnectionId: site.connectionId,
-        status: { notIn: [...ConversationHiddenStatuses] },
-        customerIdentity: { channelType: ChannelIds.WEB_WIDGET, channelIdentity: visitorId }
-      },
-      orderBy: [{ lastMessageAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
-      select: { id: true }
-    })
+    // The lookup alone is inside the context: the signal goes out after the transaction ends, to listeners that open their own
+    const conversation = await this.tenant.run(site, () =>
+      this.prisma.client.conversation.findFirst({
+        where: {
+          storeId: site.storeId,
+          channelConnectionId: site.connectionId,
+          status: { notIn: [...ConversationHiddenStatuses] },
+          customerIdentity: { channelType: ChannelIds.WEB_WIDGET, channelIdentity: visitorId }
+        },
+        orderBy: [{ lastMessageAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+        select: { id: true }
+      })
+    )
     if (conversation === null) return
     await this.emitter.emitAsync(Events.CUSTOMER_TYPING, {
       storeId: site.storeId,
