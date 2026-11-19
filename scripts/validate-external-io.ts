@@ -1,18 +1,22 @@
 // Fails when a route of a controller reaches I/O outside the database (a carrier, a channel, the bucket, the mail, a stream) and is not marked
 // @NoTenantTransaction (RLS phase 6, F6-3d). The routes that are not marked today are frozen in scripts/external-io-baseline.json, which can
 // only shrink: mark a route (and give it short contexts of its own), then run with --update-down.
+// The check is a net, not a proof: the real inventory of the I/O that does not fit in the 15 s transaction is the `rls-enforced` job (F6-5).
 // Usage: tsx scripts/validate-external-io.ts [--init | --update-down | --require-main]
 import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { argv, exit } from 'node:process'
 
 import { EXTERNAL_IO_PROVIDERS } from './external-io-providers'
+import { EXTERNAL_IO_PURE_TYPES } from './external-io-pure-types'
 import {
   baselineGrowth,
   type ExternalIoBaseline,
   fixedEntries,
   newlyUnmarked,
   parseClasses,
+  stalePureTypes,
+  unknownFieldTypes,
   unknownProviders,
   unmarkedExternalRoutes
 } from './lib/external-io-routes'
@@ -95,6 +99,15 @@ for (const route of newlyUnmarked(baseline, current)) {
 }
 for (const name of unknownProviders(classes, EXTERNAL_IO_PROVIDERS)) {
   failures.push(`scripts/external-io-providers.ts: no class named ${name}`)
+}
+const pureNames = EXTERNAL_IO_PURE_TYPES.map(entry => entry.name)
+for (const type of unknownFieldTypes(classes, EXTERNAL_IO_PROVIDERS, pureNames)) {
+  failures.push(
+    `type ${type}: a field of this type is called and the check cannot tell whether it does I/O; add it to scripts/external-io-providers.ts (it does) or to scripts/external-io-pure-types.ts (it does not)`
+  )
+}
+for (const name of stalePureTypes(classes, pureNames)) {
+  failures.push(`scripts/external-io-pure-types.ts: no field has the type ${name}`)
 }
 if (failures.length > 0) {
   console.error('Routes that reach I/O outside the database and are not @NoTenantTransaction:')

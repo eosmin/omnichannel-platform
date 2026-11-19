@@ -30,6 +30,7 @@ import {
   actorOf,
   CurrentPermissions,
   CurrentStore,
+  NoTenantTransaction,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -190,6 +191,9 @@ export class ReturnsController {
   // The guide of the way back of an approved return (TDD_17 §4.11), for a connection whose carrier declares RETURN_SHIPMENT
   @RequirePermissions(Permissions.RETURNS_MANAGE)
   @NoStore()
+  @NoTenantTransaction(
+    'calls the carrier and can fail after writing the guide row: a rollback would erase a guide that exists at the carrier (short contexts, F6-3f)'
+  )
   @Post(ApiRoutes.returns.returnShipment(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   returnShipment(
