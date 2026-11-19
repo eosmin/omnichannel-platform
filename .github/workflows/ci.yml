@@ -265,7 +265,7 @@ jobs:
 
   # The tenant isolation suite (TDD_13 section 6) and the endpoint specs of tests/api: the real app of
   # the api, the real Postgres and Redis, the database role the api runs with. A failure in the
-  # isolation suite means a user could reach the data of a store they do not belong to. It runs in six
+  # isolation suite means a user could reach the data of a store they do not belong to. It runs in eight
   # jobs (`SECURITY_SHARD`; the denominator must match the `--shard` of tests/project.json), each
   # with its own services; it also needs SeaweedFS, for the media suites (Step 3.4). The required check
   # is `security-tests`, below.
@@ -281,9 +281,9 @@ jobs:
         # with four the slowest job took 156 s (134, 131, 156 and 127 s), peak memory 3.5-3.9 GB of the 16 GB of the runner;
         # at four, shards 1/4 and 2/4 ran out of the 4 GB heap of node (PR #542, `JavaScript heap out of memory`) because every
         # spec file adds an app to the process: five shards put fewer files in each process; at five (174 files, 35 per shard) shard 4/5 ran out of the heap again
-        # after PR #588 (run 43969526825, 4055 MB of 4096 at the crash), so six shards put 29 files in each process. The heap is not raised
+        # after PR #588 (run 43969526825, 4055 MB of 4096 at the crash), so six shards put 29 files in each process. At six, shard 1/6 ran out of the heap again (4050 MB of 4096 at 237 s, no failed test) once PR #763 and the specs of the short contexts of C3 joined the suite (34 files in a process, the app specs are the heavy ones), so eight shards put 25-26 files in each one; `--logHeapUsage` prints the heap after every file. The heap is not raised
         # and no spec is skipped. Watch the files per shard (Step 7.3)
-        shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']
+        shard: ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
