@@ -9,6 +9,7 @@ import { Events } from '@platform/core/events'
 import { createChannelConnection } from '../builders/conversation'
 import { createWebhook } from '../builders/webhook'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { retryOnDeadlock } from '../helpers/deadlock-retry'
 
 // The two reads whose plan was never measured with the policies on (debts of 8e and ba): the list of the INBOX (conversations) and the
 // log of a webhook (webhook_deliveries, which has no store of its own: its policy asks the parent). The question is not whether the
@@ -124,14 +125,20 @@ describe('the plan of the inbox and of the delivery log with row-level security 
   }, 120_000)
 
   // The plan of a statement as platform_app with the context of store A, with the real policies of `tables` enabled or not
-  async function planOf(
+  const planOf = (
+    statement: string,
+    values: unknown[],
+    tables: string[],
+    policiesOn: boolean
+  ): Promise<PlanNode> => retryOnDeadlock(() => planOfOnce(statement, values, tables, policiesOn))
+  async function planOfOnce(
     statement: string,
     values: unknown[],
     tables: string[],
     policiesOn: boolean
   ): Promise<PlanNode> {
-    await raw.query('BEGIN')
     try {
+      await raw.query('BEGIN')
       await raw.query("SET LOCAL lock_timeout = '20s'")
       if (policiesOn) {
         for (const table of tables)
