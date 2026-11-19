@@ -8,6 +8,8 @@ module.exports = {
   testEnvironment: '<rootDir>/helpers/test-environment.cjs',
   testMatch: [
     '<rootDir>/api/products-search-performance.spec.ts',
+    // 10 000 conversations and a p95 of 300 ms: the garbage collections of a full shard land in the measure
+    '<rootDir>/api/conversations-performance.spec.ts',
     // Takes locks on the tables of the inbox to read a plan with row security on: alone in its process
     '<rootDir>/api/rls-search-plan.spec.ts',
     '<rootDir>/api/rls-list-search-plan.spec.ts'

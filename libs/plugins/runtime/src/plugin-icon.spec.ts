@@ -4,6 +4,11 @@ import { PluginIconLimits } from '@platform/core/domain'
 
 import { PluginIconRefused, renderPluginIcon } from './plugin-icon'
 
+// The first call of sharp in a process loads its native library, and on a slow runner that took more than the 5 s
+// of a case (the first case failed alone, the rest passed). Every case here decodes or draws pictures, so the
+// limit is raised for the file; what each case asserts is unchanged.
+jest.setTimeout(30_000)
+
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 const picture = (width: number, height: number) =>
