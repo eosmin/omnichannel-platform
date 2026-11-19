@@ -305,6 +305,8 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   // refused. `work` runs with the context widened by that one id and the context of the request is put back when it ends (the audit and
   // the rest of the request see what they saw before). The store must be of an organization of the context AND a row written by THIS
   // transaction (xmin is its id): a sibling store, or any older one, is refused, so no id picked by the caller opens another store.
+  // xmin proves "written by this transaction" (an UPDATE of this transaction also leaves its id there), not "created": the caller passes
+  // the id of the row it just inserted. Inside inSavepoint the row carries the id of the SUBtransaction, so the proof fails closed.
   // Not for use inside inSavepoint (a rolled-back savepoint reverts the setting but not the scope).
   async withCreatedStore<T>(storeId: string, work: () => Promise<T>): Promise<T> {
     const scope = tenantScope.getStore()
