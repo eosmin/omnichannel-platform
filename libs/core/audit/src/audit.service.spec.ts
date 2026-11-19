@@ -26,12 +26,18 @@ let current: { storeIds: readonly string[]; organizationIds: readonly string[] }
 const contexts: Array<{ storeIds: readonly string[]; organizationIds: readonly string[] }> = []
 // The work queued to run before the commit of the request, and the transaction it would get
 const queued: Array<(tx: unknown) => Promise<void>> = []
+// When set, the transaction is past its last drain: beforeCommit refuses and the commit hooks are held here
+const late = { closing: false, hooks: [] as Array<() => void> }
 function prismaOf(create: Create): PrismaService {
   return {
     currentTenantContext: () => current,
     beforeCommit: (_db: unknown, work: (tx: unknown) => Promise<void>) => {
+      if (late.closing) return false
       queued.push(work)
       return true
+    },
+    afterCommit: (_db: unknown, hook: () => void) => {
+      late.hooks.push(hook)
     },
     detachedTenantTransaction: (
       context: { storeIds: readonly string[]; organizationIds: readonly string[] },
@@ -185,6 +191,35 @@ describe('AuditService', () => {
       expect(create).toHaveBeenCalledTimes(1)
     } finally {
       current = undefined
+    }
+  })
+
+  it('holds an entry that arrives after the last drain until the request has committed', async () => {
+    queued.length = 0
+    contexts.length = 0
+    late.hooks.length = 0
+    late.closing = true
+    current = { storeIds: [STORE_ID], organizationIds: [] }
+    try {
+      const { service, create } = build()
+      service.log({
+        action: AuditAction.USER_LOGOUT,
+        actor: { userId: USER_ID },
+        storeId: STORE_ID
+      })
+      // Nothing is queued where it would be lost, and nothing is written before the commit
+      expect(queued).toHaveLength(0)
+      expect(late.hooks).toHaveLength(1)
+      expect(create).not.toHaveBeenCalled()
+
+      late.hooks[0]?.()
+      await service.onModuleDestroy()
+      expect(contexts).toEqual([{ storeIds: [STORE_ID], organizationIds: [] }])
+      expect(create).toHaveBeenCalledTimes(1)
+    } finally {
+      current = undefined
+      late.closing = false
+      late.hooks.length = 0
     }
   })
 

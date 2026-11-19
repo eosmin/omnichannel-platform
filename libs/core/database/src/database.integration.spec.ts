@@ -804,6 +804,55 @@ describe('PrismaService', () => {
       expect(service.beforeCommit(service.client, () => Promise.resolve())).toBe(false)
     })
 
+    it('refuses what is queued right after the last drain, and still holds its commit hooks', async () => {
+      // No timers: the window between the last drain and the COMMIT is built by hand. runBeforeCommit is wrapped so that, the moment a
+      // drain has finished and before the transaction goes on to commit, the case asks beforeCommit and afterCommit exactly as a late
+      // caller would. Before the fix the unit was still "open" there, beforeCommit answered true and the entry sat in a queue that
+      // nobody empties again.
+      const internals = service as unknown as {
+        runBeforeCommit: (unit: unknown, tx: unknown) => Promise<void>
+      }
+      const original = internals.runBeforeCommit.bind(service)
+      const answers: boolean[] = []
+      const hooks: string[] = []
+      // The transaction handle, taken inside the scope: the second drain runs outside it, where service.client is the base client
+      let db: typeof service.client | undefined
+      const spy = jest
+        .spyOn(internals, 'runBeforeCommit')
+        .mockImplementation(async (unit: unknown, tx: unknown) => {
+          await original(unit, tx)
+          if (db === undefined) return
+          answers.push(service.beforeCommit(db, () => Promise.resolve()))
+          service.afterCommit(db, () => hooks.push('late'))
+          // The transaction has not committed: the hook waits
+          expect(hooks).toEqual([])
+        })
+      try {
+        await service.tenantTransaction(context, () => {
+          db = service.client
+          return Promise.resolve()
+        })
+      } finally {
+        spy.mockRestore()
+      }
+      // One answer per drain (inside the scope, then in open()), all false: the first comes right after a real drain
+      expect(answers).toEqual([false, false])
+      // Held through the window and run once each, after the COMMIT
+      expect(hooks).toEqual(['late', 'late'])
+    })
+
+    it('drains what was queued in a catalog transaction, inside its scope', async () => {
+      const ran: string[] = []
+      await service.catalogTransaction(() => {
+        service.beforeCommit(service.client, async tx => {
+          await tx.$queryRaw`SELECT 1`
+          ran.push('catalog')
+        })
+        return Promise.resolve()
+      })
+      expect(ran).toEqual(['catalog'])
+    })
+
     it('runs the attempt as it is when there is no transaction to protect', async () => {
       await expect(inSavepoint(() => Promise.resolve('plain'))).resolves.toBe('plain')
     })
