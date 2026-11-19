@@ -73,7 +73,7 @@ export class FiscalEvidenceService {
     // The cheap read first: the document row (with its sealed payload) is read only when a file has to be made or made again
     const owned = await this.prisma.client.fiscalDocument.findFirst({
       where: { id: documentId, organizationId },
-      select: { id: true, status: true }
+      select: { id: true, status: true, storeId: true }
     })
     if (owned === null || !KIND_STATES[kind].includes(owned.status as FiscalDocumentStatus)) {
       return null
@@ -83,7 +83,8 @@ export class FiscalEvidenceService {
       select: { id: true, key: true, status: true }
     })
     if (existing?.status === String(MediaStatus.CLEAN)) return { mediaId: existing.id }
-    if (existing !== null) return this.repair(organizationId, documentId, kind, existing)
+    if (existing !== null)
+      return this.repair(organizationId, documentId, kind, existing, owned.storeId)
     return this.make(organizationId, documentId, kind)
   }
 
@@ -94,7 +95,8 @@ export class FiscalEvidenceService {
     organizationId: string,
     documentId: string,
     kind: FiscalEvidenceKind,
-    row: { id: string; key: string; status: string }
+    row: { id: string; key: string; status: string },
+    storeId: string
   ): Promise<{ mediaId: string } | null> {
     // A file the scan found infected is not written again: it is the platform's own JSON, so a virus in it is a fault to look into, and
     // rewriting it on every request would make a scan for each one
@@ -112,7 +114,7 @@ export class FiscalEvidenceService {
         })
       }
     }
-    await this.queueScan(row.id)
+    await this.queueScan(storeId, row.id)
     return { mediaId: row.id }
   }
 
@@ -158,7 +160,7 @@ export class FiscalEvidenceService {
       })
       return winner === null ? null : { mediaId: winner.id }
     }
-    await this.queueScan(mediaId)
+    await this.queueScan(doc.storeId, mediaId)
     return { mediaId }
   }
 
@@ -199,14 +201,14 @@ export class FiscalEvidenceService {
 
   // Scanned like any file: nobody is given a link before it is clean. The job of a file has one id, so asking again never makes two; a
   // finished job keeps its id and would swallow the new one, so it is removed first.
-  private async queueScan(mediaId: string): Promise<void> {
+  private async queueScan(storeId: string, mediaId: string): Promise<void> {
     const jobId = `${JobNames.SCAN_FILE}-${mediaId}`
     try {
       const old = await this.heavyQueue.getJob(jobId)
       if (old !== undefined && ((await old.isCompleted()) || (await old.isFailed()))) {
         await old.remove()
       }
-      await this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId }, { jobId })
+      await this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId, storeId }, { jobId })
     } catch (error) {
       // A queue that blinks leaves a pending file: asked for again, it is queued again (the sweep of Step 4B.8 does it too)
       this.logger.warn(

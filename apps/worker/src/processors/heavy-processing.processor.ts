@@ -2,7 +2,6 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
-import { JobContext } from '@platform/core/database'
 import {
   bulkLocationIdsSchema,
   bulkLocationsByConnectionSchema,
@@ -22,6 +21,7 @@ import {
   type EvaluatePickupsJob,
   type FetchInboundMediaJob,
   type FetchOriginMediaJob,
+  type MediaScope,
   type PostFinanceEventJob,
   exactly,
   JobNames,
@@ -176,14 +176,16 @@ const reprocessJobSchema = exactly<ReprocessCarrierEventsJob>()(
     correlationId: z.string().optional()
   })
 )
-// A scan and the variants of an image take the same job
-const mediaJobSchema = exactly<ScanFileJob & ProcessImageJob>()(
-  z.object({
+// A scan and the variants of an image take the same job. Its database work is the context of a store, or of the person for an avatar
+// (a picture of a person has no store): exactly one of the two is required, and nothing is looked up when it is missing.
+const mediaJobSchema = z
+  .object({
     mediaId: z.uuid(),
     storeId: z.uuid().optional(),
+    userId: z.uuid().optional(),
     correlationId: z.string().optional()
   })
-)
+  .refine(job => (job.storeId === undefined) !== (job.userId === undefined))
 // The same keys as the job type, checked when it is compiled: zod drops what it is not told about
 const fetchJobSchema = exactly<FetchInboundMediaJob>()(
   z.object({
@@ -223,8 +225,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly financeChain: FinanceChainChecker,
     private readonly fiscalReconciler: FiscalReconciler,
     private readonly fiscalDocuments: FiscalDocumentsService,
-    private readonly fiscalContingencies: FiscalContingencyService,
-    private readonly jobContext: JobContext
+    private readonly fiscalContingencies: FiscalContingencyService
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -403,14 +404,16 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     const parsed = mediaJobSchema.safeParse(job.data)
     if (!parsed.success) throw new UnrecoverableError('the media job does not fit its schema')
 
-    // A file is found by its id: its store is learnt and proved visible first, so that a row row security hides is an error and not
-    // "no row, nothing to do"
-    await this.jobContext.anchor('media', parsed.data.mediaId, parsed.data.storeId)
+    const { mediaId } = parsed.data
+    const { storeId, userId } = parsed.data
+    const scope: MediaScope | null =
+      storeId !== undefined ? { storeId } : userId !== undefined ? { userId } : null
+    if (scope === null) throw new UnrecoverableError('the media job has no store and no person')
     switch (job.name) {
       case JobNames.SCAN_FILE:
-        return this.pipeline.scan(parsed.data.mediaId, isLastAttempt(job))
+        return this.pipeline.scan(mediaId, scope, isLastAttempt(job))
       case JobNames.PROCESS_IMAGE:
-        return this.pipeline.processImage(parsed.data.mediaId)
+        return this.pipeline.processImage(mediaId, scope)
       default:
         throw new UnrecoverableError('the heavy-processing queue does not know this job')
     }

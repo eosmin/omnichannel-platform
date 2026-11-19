@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore, or forUser for an avatar) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 import { z } from 'zod'
@@ -9,7 +10,7 @@ import {
   errorName,
   withTimeout
 } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import {
   CaptionState,
   ChannelConnectionStatus,
@@ -72,7 +73,8 @@ export class MessageChangeSender {
     private readonly registry: PluginRegistry,
     private readonly contexts: ChannelContextFactory,
     private readonly status: MessageChangeStatusWriter,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(MessageChangeSender.name)
   }
@@ -209,10 +211,12 @@ export class MessageChangeSender {
   }
 
   private read(storeId: string, messageId: string) {
-    return this.prisma.client.message.findFirst({
-      where: { id: messageId, storeId },
-      select: MESSAGE_SELECT
-    })
+    return this.jobContext.forStore(storeId, () =>
+      this.prisma.client.message.findFirst({
+        where: { id: messageId, storeId },
+        select: MESSAGE_SELECT
+      })
+    )
   }
 
   private prepare(

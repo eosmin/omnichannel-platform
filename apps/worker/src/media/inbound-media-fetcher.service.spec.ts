@@ -95,7 +95,8 @@ function setup(options: {
     contexts as never,
     queue as never,
     marker as never,
-    logger as never
+    logger as never,
+    { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
   )
   return { fetcher, media, storage, queue, logger, marker }
 }

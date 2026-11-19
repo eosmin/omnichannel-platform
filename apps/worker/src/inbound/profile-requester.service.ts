@@ -1,10 +1,11 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore, or forUser for an avatar) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { InjectQueue } from '@nestjs/bullmq'
 import { Inject, Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import { errorName } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import { CHANNEL_IDENTITY_KINDS, type ChannelIdentityKindSource } from '@platform/core/domain'
 import {
   ChannelConnectionResolver,
@@ -27,7 +28,8 @@ export class ProfileRequester {
     @Inject(CHANNEL_IDENTITY_KINDS) private readonly kinds: ChannelIdentityKindSource,
     @InjectQueue(QueueNames.CUSTOMER_PROFILES)
     private readonly queue: Queue<FetchCustomerProfileJob>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(ProfileRequester.name)
   }
@@ -43,14 +45,16 @@ export class ProfileRequester {
       // Two lookups by unique index. The store is the connection's, never one that the event names.
       const connection = await this.connections.resolve(pluginId, connectionId)
       if (connection === null || !connection.active) return
-      const identity = await this.prisma.client.customerIdentity.findFirst({
-        where: {
-          storeId: connection.storeId,
-          channelType: pluginId,
-          channelIdentity: parsed.identity
-        },
-        select: { id: true, profileFetchedAt: true, profileRetryAfter: true }
-      })
+      const identity = await this.jobContext.forStore(connection.storeId, () =>
+        this.prisma.client.customerIdentity.findFirst({
+          where: {
+            storeId: connection.storeId,
+            channelType: pluginId,
+            channelIdentity: parsed.identity
+          },
+          select: { id: true, profileFetchedAt: true, profileRetryAfter: true }
+        })
+      )
       if (identity === null || !needsProfileRead(identity, now)) return
       await this.queue.add(
         JobNames.FETCH_CUSTOMER_PROFILE,

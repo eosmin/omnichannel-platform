@@ -5,7 +5,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelContextFactory } from '@platform/channels/connections'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { OutboundLimits } from '@platform/core/domain'
 import { OutboundQueue } from '@platform/core/messaging'
@@ -58,7 +58,8 @@ describe('Showing the customer that an agent is typing', () => {
       app.get(PrismaService, { strict: false }),
       registry,
       new ChannelContextFactory(cipher),
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      new JobContext(app.get(PrismaService, { strict: false }))
     )
   })
   afterAll(async () => {

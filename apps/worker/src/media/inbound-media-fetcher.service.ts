@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore, or forUser for an avatar) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
@@ -9,7 +10,7 @@ import {
   errorName,
   withTimeout
 } from '@platform/channels/connections'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { isUniqueViolation, PrismaService, JobContext } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   MediaStatus,
@@ -82,7 +83,8 @@ export class InboundMediaFetcher {
     private readonly contexts: ChannelContextFactory,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ScanFileJob>,
     private readonly marker: UnavailableFileMarker,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(InboundMediaFetcher.name)
   }
@@ -101,43 +103,47 @@ export class InboundMediaFetcher {
         : inboundMediaId(messageId, index)
 
     // An earlier attempt got this far: only the scan may be missing
-    const existing = await this.prisma.client.media.findFirst({
-      where: { id: mediaId, storeId, messageId },
-      select: { status: true }
-    })
+    const existing = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.media.findFirst({
+        where: { id: mediaId, storeId, messageId },
+        select: { status: true }
+      })
+    )
     // An id that is already a file of another message or store is not ours to write: the same answer
     // on every try, and the existing file is left alone
     if (
       existing === null &&
       mediaId !== inboundMediaId(messageId, index) &&
-      (await this.isTaken(mediaId))
+      (await this.isTaken(storeId, mediaId))
     ) {
       this.logger.warn({ messageId, index }, 'the id chosen for a file is already in use')
       await this.marker.mark(storeId, messageId, index, MediaUnavailableCodes.REFUSED)
       return
     }
     if (existing !== null) {
-      if (existing.status === String(MediaStatus.PENDING)) await this.queueScan(mediaId)
+      if (existing.status === String(MediaStatus.PENDING)) await this.queueScan(storeId, mediaId)
       await this.marker.clear(storeId, messageId, index)
       return
     }
 
-    const [message, connection] = await Promise.all([
-      this.prisma.client.message.findFirst({
-        where: { id: messageId, storeId },
-        select: { conversation: { select: { customerId: true } } }
-      }),
-      this.prisma.client.channelConnection.findFirst({
-        where: {
-          storeId,
-          pluginId: job.pluginId,
-          connectionId: job.connectionId,
-          status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
-          ...OfActiveInstallation
-        },
-        select: CONNECTION_ROW_SELECT
-      })
-    ])
+    const [message, connection] = await this.jobContext.forStore(storeId, () =>
+      Promise.all([
+        this.prisma.client.message.findFirst({
+          where: { id: messageId, storeId },
+          select: { conversation: { select: { customerId: true } } }
+        }),
+        this.prisma.client.channelConnection.findFirst({
+          where: {
+            storeId,
+            pluginId: job.pluginId,
+            connectionId: job.connectionId,
+            status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
+            ...OfActiveInstallation
+          },
+          select: CONNECTION_ROW_SELECT
+        })
+      ])
+    )
     // Either is gone since the job was queued: there is nobody to give the file to
     if (message === null || connection === null) return
 
@@ -217,29 +223,33 @@ export class InboundMediaFetcher {
     try {
       await this.storage.put(key, fetched.body, fetched.contentType)
       try {
-        await this.prisma.client.media.create({
-          data: {
-            id: mediaId,
-            storeId,
-            purpose: MediaPurpose.MESSAGE,
-            messageId,
-            customerId: message.conversation.customerId,
-            uploadedBy: null,
-            key,
-            filename,
-            contentType: fetched.contentType,
-            fileSize: fetched.body.length,
-            status: MediaStatus.PENDING
-          }
-        })
+        await this.jobContext.forStore(storeId, () =>
+          this.prisma.client.media.create({
+            data: {
+              id: mediaId,
+              storeId,
+              purpose: MediaPurpose.MESSAGE,
+              messageId,
+              customerId: message.conversation.customerId,
+              uploadedBy: null,
+              key,
+              filename,
+              contentType: fetched.contentType,
+              fileSize: fetched.body.length,
+              status: MediaStatus.PENDING
+            }
+          })
+        )
       } catch (error) {
         // Another attempt wrote the row first; the file it wrote is the same one. If the row is not of
         // this message (a row the check above could not see), it is not our file: refuse, never retry
         if (!isUniqueViolation(error)) throw error
-        const ours = await this.prisma.client.media.findFirst({
-          where: { id: mediaId, storeId, messageId },
-          select: { id: true }
-        })
+        const ours = await this.jobContext.forStore(storeId, () =>
+          this.prisma.client.media.findFirst({
+            where: { id: mediaId, storeId, messageId },
+            select: { id: true }
+          })
+        )
         if (ours === null) {
           this.logger.warn({ messageId, index }, 'the id chosen for a file is already in use')
           await this.marker.mark(storeId, messageId, index, MediaUnavailableCodes.REFUSED)
@@ -261,7 +271,7 @@ export class InboundMediaFetcher {
       throw error
     }
     await this.marker.clear(storeId, messageId, index)
-    await this.queueScan(mediaId)
+    await this.queueScan(storeId, mediaId)
   }
 
   // What an agent needs to ask for the file again. Only the plain id of the provider is kept: a link is
@@ -343,19 +353,19 @@ export class InboundMediaFetcher {
     }
   }
 
-  // True when a row of any store holds the id: the primary key is global
-  private async isTaken(mediaId: string): Promise<boolean> {
-    const row = await this.prisma.client.media.findFirst({
-      where: { id: mediaId },
-      select: { id: true }
-    })
+  // True when a row of this store holds the id (the primary key is global: a row of another store is a unique violation at the insert)
+  private async isTaken(storeId: string, mediaId: string): Promise<boolean> {
+    // Row security shows this store's rows only: a row of another store is found by the unique violation of the insert below
+    const row = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.media.findFirst({ where: { id: mediaId }, select: { id: true } })
+    )
     return row !== null
   }
 
-  private async queueScan(mediaId: string): Promise<void> {
+  private async queueScan(storeId: string, mediaId: string): Promise<void> {
     await this.heavyQueue.add(
       JobNames.SCAN_FILE,
-      { mediaId },
+      { mediaId, storeId },
       { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
     )
   }

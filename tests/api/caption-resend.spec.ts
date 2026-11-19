@@ -6,7 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { ChannelContextFactory } from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -72,20 +72,21 @@ describe('Sending only the text under a file again', () => {
     registry.register(buildChannelPlugin({ sendMessage: (c, p) => sendMessage(c, p) }))
     const events = app.get(DomainEvents, { strict: false })
     const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
-    const status = new MessageChangeStatusWriter(prisma, events)
+    const status = new MessageChangeStatusWriter(prisma, events, new JobContext(prisma))
     sender = new MessageChangeSender(
       prisma,
       registry,
       new ChannelContextFactory(cipher),
       status,
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      new JobContext(prisma)
     )
     sweep = new OutboundRequeueScheduler(
       { withLock: (_name: string, _seconds: number, work: () => Promise<void>) => work() } as never, // the lock is not what is tested
       prisma,
       new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never),
       undefined as never, // the replies are not what is tested
-      new ReactionStatusWriter(prisma, events),
+      new ReactionStatusWriter(prisma, events, new JobContext(prisma)),
       status,
       await app.resolve(PinoLogger)
     )

@@ -10,7 +10,7 @@ import { WhatsAppLimits } from '@platform/channels/whatsapp'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -209,7 +209,7 @@ describe('Replies on their way to a channel', () => {
 
     const logger: PinoLogger = await app.resolve(PinoLogger)
     const events = app.get(DomainEvents, { strict: false })
-    writer = new MessageStatusWriter(prisma, events)
+    writer = new MessageStatusWriter(prisma, events, new JobContext(prisma))
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
     const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
     const contexts = new ChannelContextFactory(cipher)
@@ -222,14 +222,16 @@ describe('Replies on their way to a channel', () => {
       app.get(MessagingWindowService, { strict: false }),
       events,
       app.get(StorageService, { strict: false }),
-      logger
+      logger,
+      new JobContext(prisma)
     )
     receipts = new ChannelReceipts(
       prisma,
       new ChannelConnectionResolver(prisma),
       writer,
       new ChannelHealthService(prisma, contexts, events, logger),
-      logger
+      logger,
+      new JobContext(prisma)
     )
     outboundQueue = new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never)
     sweep = new OutboundRequeueScheduler(
@@ -237,8 +239,8 @@ describe('Replies on their way to a channel', () => {
       prisma,
       outboundQueue,
       writer,
-      new ReactionStatusWriter(prisma, events),
-      new MessageChangeStatusWriter(prisma, events),
+      new ReactionStatusWriter(prisma, events, new JobContext(prisma)),
+      new MessageChangeStatusWriter(prisma, events, new JobContext(prisma)),
       logger
     )
     app.get(EventEmitter2).onAny((event, payload) => {
@@ -1954,7 +1956,8 @@ describe('Replies on their way to a channel', () => {
           app.get(MessagingWindowService, { strict: false }),
           app.get(DomainEvents, { strict: false }),
           app.get(StorageService, { strict: false }),
-          await app.resolve(PinoLogger)
+          await app.resolve(PinoLogger),
+          new JobContext(prisma)
         )
       const connectionStatusOf = async (conversationId: string) =>
         (

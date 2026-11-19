@@ -1,9 +1,10 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore, or forUser for an avatar) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 import { z } from 'zod'
 
 import { errorName } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import { type MediaUnavailableCode, UNAVAILABLE_FILES_KEY } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -27,7 +28,8 @@ export class UnavailableFileMarker {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: DomainEvents,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(UnavailableFileMarker.name)
   }
@@ -43,61 +45,63 @@ export class UnavailableFileMarker {
     diagnostic?: { host: string }
   ): Promise<void> {
     try {
-      await this.prisma.transaction(async tx => {
-        // An album is several jobs on one message: they take turns on its row
-        await lockMessageRow(tx, messageId)
-        const message = await tx.message.findFirst({
-          where: { id: messageId, storeId },
-          select: { metadata: true }
-        })
-        if (message === null) return
-        // A list that does not parse is left alone: writing it back would drop the entries the parse lost
-        const parsed = storedListSchema.safeParse(message.metadata)
-        const rawList = (message.metadata as Record<string, unknown> | null)?.[
-          UNAVAILABLE_FILES_KEY
-        ]
-        if (rawList !== undefined && !parsed.success) {
-          this.logger.warn(
-            { messageId, index },
-            'the lost-files list does not parse: left as it is'
-          )
-          return
-        }
-        // Read as it is stored: an entry this version does not know (a newer worker wrote it) is kept
-        const current = parsed.data?.[UNAVAILABLE_FILES_KEY] ?? []
-        const existing = current.find(file => file.index === index)
-        // Asked twice (a retry, a redelivered job): one entry per place of the file. A different answer
-        // for a place already listed (a file asked for again that now fails otherwise) replaces it, so the
-        // thread stops offering a download that cannot succeed.
-        // (a source that was not kept before is added when this answer brings one)
-        // (the same for the host of a refused link: an entry written without it gets it when it comes)
-        if (
-          existing?.code === code &&
-          (source === undefined || existing.source !== undefined) &&
-          (diagnostic === undefined || existing.host === diagnostic.host)
-        )
-          return
-        const kept = keptMetadataSchema.safeParse(message.metadata).data ?? {}
-        const entry = {
-          index,
-          code,
-          ...(source === undefined ? {} : { source }),
-          ...(diagnostic === undefined ? {} : { host: diagnostic.host })
-        }
-        await tx.message.updateMany({
-          where: { id: messageId, storeId },
-          data: {
-            metadata: {
-              ...kept,
-              [UNAVAILABLE_FILES_KEY]:
-                existing === undefined
-                  ? [...current, entry]
-                  : current.map(file => (file.index === index ? entry : file))
-            }
+      await this.jobContext.forStore(storeId, () =>
+        this.prisma.transaction(async tx => {
+          // An album is several jobs on one message: they take turns on its row
+          await lockMessageRow(tx, messageId)
+          const message = await tx.message.findFirst({
+            where: { id: messageId, storeId },
+            select: { metadata: true }
+          })
+          if (message === null) return
+          // A list that does not parse is left alone: writing it back would drop the entries the parse lost
+          const parsed = storedListSchema.safeParse(message.metadata)
+          const rawList = (message.metadata as Record<string, unknown> | null)?.[
+            UNAVAILABLE_FILES_KEY
+          ]
+          if (rawList !== undefined && !parsed.success) {
+            this.logger.warn(
+              { messageId, index },
+              'the lost-files list does not parse: left as it is'
+            )
+            return
           }
+          // Read as it is stored: an entry this version does not know (a newer worker wrote it) is kept
+          const current = parsed.data?.[UNAVAILABLE_FILES_KEY] ?? []
+          const existing = current.find(file => file.index === index)
+          // Asked twice (a retry, a redelivered job): one entry per place of the file. A different answer
+          // for a place already listed (a file asked for again that now fails otherwise) replaces it, so the
+          // thread stops offering a download that cannot succeed.
+          // (a source that was not kept before is added when this answer brings one)
+          // (the same for the host of a refused link: an entry written without it gets it when it comes)
+          if (
+            existing?.code === code &&
+            (source === undefined || existing.source !== undefined) &&
+            (diagnostic === undefined || existing.host === diagnostic.host)
+          )
+            return
+          const kept = keptMetadataSchema.safeParse(message.metadata).data ?? {}
+          const entry = {
+            index,
+            code,
+            ...(source === undefined ? {} : { source }),
+            ...(diagnostic === undefined ? {} : { host: diagnostic.host })
+          }
+          await tx.message.updateMany({
+            where: { id: messageId, storeId },
+            data: {
+              metadata: {
+                ...kept,
+                [UNAVAILABLE_FILES_KEY]:
+                  existing === undefined
+                    ? [...current, entry]
+                    : current.map(file => (file.index === index ? entry : file))
+              }
+            }
+          })
+          await publishMessageChanged(this.events, tx, Events.MEDIA_UNAVAILABLE, storeId, messageId)
         })
-        await publishMessageChanged(this.events, tx, Events.MEDIA_UNAVAILABLE, storeId, messageId)
-      })
+      )
     } catch (error) {
       this.logger.warn(
         { messageId, index, errorName: errorName(error) },
@@ -111,41 +115,45 @@ export class UnavailableFileMarker {
   async clear(storeId: string, messageId: string, index: number): Promise<void> {
     try {
       // Most files were never listed: look without the lock first, and lock only to change something
-      const peek = await this.prisma.client.message.findFirst({
-        where: { id: messageId, storeId },
-        select: { metadata: true }
-      })
-      const listed = storedListSchema.safeParse(peek?.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
-      if (!listed.some(file => file.index === index)) return
-      await this.prisma.transaction(async tx => {
-        await lockMessageRow(tx, messageId)
-        const message = await tx.message.findFirst({
+      const peek = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.message.findFirst({
           where: { id: messageId, storeId },
           select: { metadata: true }
         })
-        if (message === null) return
-        const current =
-          storedListSchema.safeParse(message.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
-        const remaining = current.filter(file => file.index !== index)
-        // Nothing was listed for this place: the common case, no write and no event
-        if (remaining.length === current.length) return
-        // Metadata that does not parse is left alone: writing it back would drop what the parse lost
-        const parsed = keptMetadataSchema.safeParse(message.metadata)
-        if (!parsed.success) return
-        const kept = parsed.data
-        const others = Object.fromEntries(
-          Object.entries(kept).filter(([key]) => key !== UNAVAILABLE_FILES_KEY)
-        )
-        await tx.message.updateMany({
-          where: { id: messageId, storeId },
-          data: {
-            metadata:
-              remaining.length === 0 ? others : { ...others, [UNAVAILABLE_FILES_KEY]: remaining }
-          }
+      )
+      const listed = storedListSchema.safeParse(peek?.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
+      if (!listed.some(file => file.index === index)) return
+      await this.jobContext.forStore(storeId, () =>
+        this.prisma.transaction(async tx => {
+          await lockMessageRow(tx, messageId)
+          const message = await tx.message.findFirst({
+            where: { id: messageId, storeId },
+            select: { metadata: true }
+          })
+          if (message === null) return
+          const current =
+            storedListSchema.safeParse(message.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
+          const remaining = current.filter(file => file.index !== index)
+          // Nothing was listed for this place: the common case, no write and no event
+          if (remaining.length === current.length) return
+          // Metadata that does not parse is left alone: writing it back would drop what the parse lost
+          const parsed = keptMetadataSchema.safeParse(message.metadata)
+          if (!parsed.success) return
+          const kept = parsed.data
+          const others = Object.fromEntries(
+            Object.entries(kept).filter(([key]) => key !== UNAVAILABLE_FILES_KEY)
+          )
+          await tx.message.updateMany({
+            where: { id: messageId, storeId },
+            data: {
+              metadata:
+                remaining.length === 0 ? others : { ...others, [UNAVAILABLE_FILES_KEY]: remaining }
+            }
+          })
+          // The thread reads the message again on this event and draws what the row holds now
+          await publishMessageChanged(this.events, tx, Events.MEDIA_UNAVAILABLE, storeId, messageId)
         })
-        // The thread reads the message again on this event and draws what the row holds now
-        await publishMessageChanged(this.events, tx, Events.MEDIA_UNAVAILABLE, storeId, messageId)
-      })
+      )
     } catch (error) {
       this.logger.warn(
         { messageId, index, errorName: errorName(error) },

@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore, or forUser for an avatar) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
@@ -6,7 +7,7 @@ import {
   ChannelHealthService,
   pluginHealthReason
 } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import {
   AuthorType,
   ChannelConnectionStatus,
@@ -47,7 +48,8 @@ export class ChannelReceipts {
     private readonly connections: ChannelConnectionResolver,
     private readonly status: MessageStatusWriter,
     private readonly health: ChannelHealthService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(ChannelReceipts.name)
   }
@@ -65,16 +67,18 @@ export class ChannelReceipts {
     if (connection === null || externalId === undefined) return
     // Two at most: a provider id is unique per conversation, not per connection, and a plugin that
     // repeats ids must not make a receipt land on the first of them it happens to find
-    const found = await this.prisma.client.message.findMany({
-      where: {
-        storeId: connection.storeId,
-        channelMessageId: externalId,
-        ...TEAM_REPLY,
-        conversation: { channelConnectionId: connection.id }
-      },
-      select: { id: true },
-      take: 2
-    })
+    const found = await this.jobContext.forStore(connection.storeId, () =>
+      this.prisma.client.message.findMany({
+        where: {
+          storeId: connection.storeId,
+          channelMessageId: externalId,
+          ...TEAM_REPLY,
+          conversation: { channelConnectionId: connection.id }
+        },
+        select: { id: true },
+        take: 2
+      })
+    )
     if (found.length > 1) {
       this.logger.warn(
         { pluginId },
@@ -86,17 +90,19 @@ export class ChannelReceipts {
     // A file after the first of a message has its own provider id, kept on its row: a receipt of it is a receipt
     // of its message (a file that did not arrive fails it), and the file keeps its own state
     if (message === null) {
-      const file = await this.prisma.client.media.findFirst({
-        where: {
-          storeId: connection.storeId,
-          channelMessageId: externalId,
-          message: {
-            ...TEAM_REPLY,
-            conversation: { channelConnectionId: connection.id }
-          }
-        },
-        select: { messageId: true }
-      })
+      const file = await this.jobContext.forStore(connection.storeId, () =>
+        this.prisma.client.media.findFirst({
+          where: {
+            storeId: connection.storeId,
+            channelMessageId: externalId,
+            message: {
+              ...TEAM_REPLY,
+              conversation: { channelConnectionId: connection.id }
+            }
+          },
+          select: { messageId: true }
+        })
+      )
       if (file?.messageId != null) {
         message = { id: file.messageId }
       }
@@ -105,15 +111,17 @@ export class ChannelReceipts {
     // platform does not have, or has differently: the message is found by that id, inside this connection and among the
     // replies of the team (an agent's, or a plugin's as the system), so it still cannot reach a message of another account (TDD_10 §6.7.5)
     if (message === null && event.messageId !== undefined) {
-      message = await this.prisma.client.message.findFirst({
-        where: {
-          id: event.messageId,
-          storeId: connection.storeId,
-          ...TEAM_REPLY,
-          conversation: { channelConnectionId: connection.id }
-        },
-        select: { id: true }
-      })
+      message = await this.jobContext.forStore(connection.storeId, () =>
+        this.prisma.client.message.findFirst({
+          where: {
+            id: event.messageId,
+            storeId: connection.storeId,
+            ...TEAM_REPLY,
+            conversation: { channelConnectionId: connection.id }
+          },
+          select: { id: true }
+        })
+      )
     }
     // A receipt for a message this platform did not send (it went out from the phone) or one it has
     // not finished writing: nothing to update
@@ -126,26 +134,30 @@ export class ChannelReceipts {
     }
     const to = RECEIPT_STATES[event.type]
     // The file the receipt is about keeps its own state, whichever file of the message it is
-    await this.prisma.client.media.updateMany({
-      where: {
-        storeId: connection.storeId,
-        messageId: message.id,
-        channelMessageId: externalId,
-        deliveryStatus: { in: statesBefore(to) }
-      },
-      data: {
-        deliveryStatus: to,
-        sendErrorCode: to === DeliveryStatus.FAILED ? ErrorCodes.CHANNEL_MESSAGE_FAILED : null
-      }
-    })
+    await this.jobContext.forStore(connection.storeId, () =>
+      this.prisma.client.media.updateMany({
+        where: {
+          storeId: connection.storeId,
+          messageId: message.id,
+          channelMessageId: externalId,
+          deliveryStatus: { in: statesBefore(to) }
+        },
+        data: {
+          deliveryStatus: to,
+          sendErrorCode: to === DeliveryStatus.FAILED ? ErrorCodes.CHANNEL_MESSAGE_FAILED : null
+        }
+      })
+    )
     // A message of several files is delivered, or read, when every one of its files is: the receipt of one file
     // moves that file, and the message only when it was the last. A failure of any file fails the message (the
     // agent sends again the files that failed).
     if (to !== DeliveryStatus.FAILED) {
-      const states = await this.prisma.client.media.findMany({
-        where: { storeId: connection.storeId, messageId: message.id, position: { not: null } },
-        select: { deliveryStatus: true }
-      })
+      const states = await this.jobContext.forStore(connection.storeId, () =>
+        this.prisma.client.media.findMany({
+          where: { storeId: connection.storeId, messageId: message.id, position: { not: null } },
+          select: { deliveryStatus: true }
+        })
+      )
       const reached =
         to === DeliveryStatus.READ
           ? [DeliveryStatus.READ]
@@ -172,15 +184,17 @@ export class ChannelReceipts {
     id: string
     storeId: string
   }): Promise<boolean> {
-    const waiting = await this.prisma.client.message.count({
-      where: {
-        storeId: connection.storeId,
-        deliveryStatus: DeliveryStatus.QUEUED,
-        ...TEAM_REPLY,
-        createdAt: { gt: new Date(Date.now() - OutboundLimits.RECEIPT_WAIT_MS) },
-        conversation: { channelConnectionId: connection.id }
-      }
-    })
+    const waiting = await this.jobContext.forStore(connection.storeId, () =>
+      this.prisma.client.message.count({
+        where: {
+          storeId: connection.storeId,
+          deliveryStatus: DeliveryStatus.QUEUED,
+          ...TEAM_REPLY,
+          createdAt: { gt: new Date(Date.now() - OutboundLimits.RECEIPT_WAIT_MS) },
+          conversation: { channelConnectionId: connection.id }
+        }
+      })
+    )
     return waiting > 0
   }
 
@@ -192,15 +206,17 @@ export class ChannelReceipts {
   ): Promise<void> {
     const resolved = await this.connections.resolve(pluginId, event.connectionId)
     if (resolved === null) return
-    const row = await this.prisma.client.channelConnection.findFirst({
-      where: {
-        id: resolved.id,
-        storeId: resolved.storeId,
-        status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
-        ...OfActiveInstallation
-      },
-      select: CONNECTION_ROW_SELECT
-    })
+    const row = await this.jobContext.forStore(resolved.storeId, () =>
+      this.prisma.client.channelConnection.findFirst({
+        where: {
+          id: resolved.id,
+          storeId: resolved.storeId,
+          status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
+          ...OfActiveInstallation
+        },
+        select: CONNECTION_ROW_SELECT
+      })
+    )
     if (row === null) return
     await this.health.record(row, {
       healthy: false,

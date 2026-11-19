@@ -48,7 +48,8 @@ function setup(options: { existing?: { status: string } | null; origin?: object 
     { client: { media, conversationOrigin: origin } } as never,
     storage as never,
     queue as never,
-    logger as never
+    logger as never,
+    { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
   )
   return { fetcher, media, storage, queue, logger }
 }

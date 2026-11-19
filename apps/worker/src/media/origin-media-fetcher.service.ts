@@ -1,10 +1,11 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore, or forUser for an avatar) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import { withTimeout } from '@platform/channels/connections'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { isUniqueViolation, PrismaService, JobContext } from '@platform/core/database'
 import {
   MediaStatus,
   OriginMediaSlots,
@@ -51,7 +52,8 @@ export class OriginMediaFetcher {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ScanFileJob>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(OriginMediaFetcher.name)
   }
@@ -62,19 +64,23 @@ export class OriginMediaFetcher {
     const mediaId = originMediaId(originId, slot)
 
     // An earlier attempt got this far: only the scan may be missing
-    const existing = await this.prisma.client.media.findFirst({
-      where: { id: mediaId, storeId },
-      select: { status: true }
-    })
+    const existing = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.media.findFirst({
+        where: { id: mediaId, storeId },
+        select: { status: true }
+      })
+    )
     if (existing !== null) {
-      if (existing.status === String(MediaStatus.PENDING)) await this.queueScan(mediaId)
+      if (existing.status === String(MediaStatus.PENDING)) await this.queueScan(storeId, mediaId)
       return
     }
 
-    const origin = await this.prisma.client.conversationOrigin.findFirst({
-      where: { id: originId, storeId },
-      select: { mediaType: true, mediaUrl: true, thumbnailUrl: true }
-    })
+    const origin = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.conversationOrigin.findFirst({
+        where: { id: originId, storeId },
+        select: { mediaType: true, mediaUrl: true, thumbnailUrl: true }
+      })
+    )
     // Gone since the job was queued
     if (origin === null) return
     const link = this.linkOf(origin, slot)
@@ -105,26 +111,28 @@ export class OriginMediaFetcher {
     const key = StorageKeys.message(storeId, mediaId, filename)
     await this.storage.put(key, fetched.body, fetched.contentType)
     try {
-      await this.prisma.client.media.create({
-        data: {
-          id: mediaId,
-          storeId,
-          purpose: MediaPurpose.ORIGIN,
-          originId,
-          originSlot: slot,
-          uploadedBy: null,
-          key,
-          filename,
-          contentType: fetched.contentType,
-          fileSize: fetched.body.length,
-          status: MediaStatus.PENDING
-        }
-      })
+      await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.media.create({
+          data: {
+            id: mediaId,
+            storeId,
+            purpose: MediaPurpose.ORIGIN,
+            originId,
+            originSlot: slot,
+            uploadedBy: null,
+            key,
+            filename,
+            contentType: fetched.contentType,
+            fileSize: fetched.body.length,
+            status: MediaStatus.PENDING
+          }
+        })
+      )
     } catch (error) {
       // Another attempt wrote the row first; the file it wrote is the same one
       if (!isUniqueViolation(error)) throw error
     }
-    await this.queueScan(mediaId)
+    await this.queueScan(storeId, mediaId)
   }
 
   // The thumbnail is the picture of the card; the media is kept only when it is an image: a video of an
@@ -195,10 +203,10 @@ export class OriginMediaFetcher {
     }
   }
 
-  private async queueScan(mediaId: string): Promise<void> {
+  private async queueScan(storeId: string, mediaId: string): Promise<void> {
     await this.heavyQueue.add(
       JobNames.SCAN_FILE,
-      { mediaId },
+      { mediaId, storeId },
       { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
     )
   }

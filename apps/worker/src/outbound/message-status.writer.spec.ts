@@ -21,7 +21,15 @@ function setup(changed: number) {
   }
   const prisma = { transaction: jest.fn((work: (t: typeof tx) => Promise<boolean>) => work(tx)) }
   const events = { publish: jest.fn() }
-  return { writer: new MessageStatusWriter(prisma as never, events as never), tx, events }
+  return {
+    writer: new MessageStatusWriter(
+      prisma as never,
+      events as never,
+      { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
+    ),
+    tx,
+    events
+  }
 }
 
 describe('MessageStatusWriter caption facts', () => {

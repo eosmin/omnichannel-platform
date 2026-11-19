@@ -96,9 +96,9 @@ describe('MediaPipeline', () => {
   it('marks a clean image clean and queues its variants once', async () => {
     const media = await pendingMedia('photo.png', 'image/png', await png(3000, 2000))
 
-    await pipeline.scan(media.id)
+    await pipeline.scan(media.id, { storeId: 'store-1' })
     // A repeated job (a retry after the first attempt died late) changes nothing
-    await pipeline.scan(media.id)
+    await pipeline.scan(media.id, { storeId: 'store-1' })
 
     const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
     expect(row.status).toBe('clean')
@@ -138,7 +138,7 @@ describe('MediaPipeline', () => {
       expect((await sharp(photo).metadata()).exif).toBeDefined()
       const media = await pendingMedia('photo.jpg', 'image/jpeg', photo)
 
-      await pipeline.scan(media.id)
+      await pipeline.scan(media.id, { storeId: 'store-1' })
 
       const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
       expect(row.status).toBe('clean')
@@ -155,13 +155,13 @@ describe('MediaPipeline', () => {
 
     it('does not encode the picture again when the scan is tried again', async () => {
       const media = await pendingMedia('photo.jpg', 'image/jpeg', await phonePhoto())
-      await pipeline.scan(media.id)
+      await pipeline.scan(media.id, { storeId: 'store-1' })
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
       const first = await stored(media.key)
       // As after a verdict that never came: the row is pending again and the scan runs once more
       await owner.query(`UPDATE media SET status = 'pending' WHERE id = $1`, [media.id])
 
-      await pipeline.scan(media.id)
+      await pipeline.scan(media.id, { storeId: 'store-1' })
 
       expect((await stored(media.key)).equals(first)).toBe(true)
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
@@ -171,7 +171,7 @@ describe('MediaPipeline', () => {
       const media = await pendingMedia('broken.jpg', 'image/jpeg', Buffer.alloc(300, 0x41))
       const remove = jest.spyOn(storage, 'delete').mockRejectedValueOnce(new Error('bucket down'))
 
-      await pipeline.scan(media.id)
+      await pipeline.scan(media.id, { storeId: 'store-1' })
 
       remove.mockRestore()
       const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
@@ -187,7 +187,7 @@ describe('MediaPipeline', () => {
         Buffer.concat([photo.subarray(0, 60), Buffer.alloc(300, 0x41)])
       )
 
-      await pipeline.scan(media.id)
+      await pipeline.scan(media.id, { storeId: 'store-1' })
 
       const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
       expect(row.status).toBe('unscannable')
@@ -207,7 +207,7 @@ describe('MediaPipeline', () => {
       ] as const) {
         const media = await pendingMedia(filename, contentType, Buffer.from(EICAR))
 
-        await pipeline.scan(media.id)
+        await pipeline.scan(media.id, { storeId: 'store-1' })
 
         const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
         expect([filename, row.status]).toEqual([filename, 'infected'])
@@ -228,7 +228,7 @@ describe('MediaPipeline', () => {
         await put(...args)
       })
 
-      await pipeline.scan(media.id)
+      await pipeline.scan(media.id, { storeId: 'store-1' })
 
       spy.mockRestore()
       expect(seenWhileCleaning).toBe('pending')
@@ -243,7 +243,7 @@ describe('MediaPipeline', () => {
         .toBuffer()
       const media = await pendingMedia('bomb.png', 'image/png', bomb)
 
-      await pipeline.scan(media.id)
+      await pipeline.scan(media.id, { storeId: 'store-1' })
 
       const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
       expect(row.status).toBe('unscannable')
@@ -260,7 +260,7 @@ describe('MediaPipeline', () => {
         .toBuffer()
       const media = await pendingMedia('moving.gif', 'image/gif', gif)
 
-      await pipeline.scan(media.id)
+      await pipeline.scan(media.id, { storeId: 'store-1' })
 
       expect((await stored(media.key)).equals(gif)).toBe(true)
       const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
@@ -273,7 +273,7 @@ describe('MediaPipeline', () => {
   it('deletes an infected file and never serves it', async () => {
     const media = await pendingMedia('invoice.txt', 'text/plain', Buffer.from(EICAR))
 
-    await pipeline.scan(media.id)
+    await pipeline.scan(media.id, { storeId: 'store-1' })
 
     const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
     expect(row.status).toBe('infected')
@@ -285,7 +285,7 @@ describe('MediaPipeline', () => {
   it('does not queue variants for a file that is not an image', async () => {
     const media = await pendingMedia('notes.txt', 'text/plain', Buffer.from('plain text'))
 
-    await pipeline.scan(media.id)
+    await pipeline.scan(media.id, { storeId: 'store-1' })
 
     expect((await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })).status).toBe(
       'clean'
@@ -295,10 +295,10 @@ describe('MediaPipeline', () => {
 
   it('makes the three WebP variants of a clean image and keeps their keys', async () => {
     const media = await pendingMedia('photo.png', 'image/png', await png(3000, 2000))
-    await pipeline.scan(media.id)
+    await pipeline.scan(media.id, { storeId: 'store-1' })
     await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
 
-    await pipeline.processImage(media.id)
+    await pipeline.processImage(media.id, { storeId: 'store-1' })
 
     const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
     expect(row.processedAt).not.toBeNull()
@@ -321,11 +321,13 @@ describe('MediaPipeline', () => {
     // A gif is not re-encoded by the cleaning of metadata (that would flatten it), so a broken one gets
     // to the variants; a broken jpeg, png or webp is refused earlier, at the scan
     const media = await pendingMedia('broken.gif', 'image/gif', Buffer.from('GIF89a not an image'))
-    await pipeline.scan(media.id)
+    await pipeline.scan(media.id, { storeId: 'store-1' })
     await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
 
     // Unrecoverable: the queue must not try a file the decoder refuses a second time
-    const failure = await pipeline.processImage(media.id).catch((error: unknown) => error)
+    const failure = await pipeline
+      .processImage(media.id, { storeId: 'store-1' })
+      .catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(UnrecoverableError)
     expect((failure as Error).message).toContain('could not be processed')
 
@@ -367,9 +369,9 @@ describe('MediaPipeline', () => {
 
   async function processed(filename: string, contentType: string, body: Buffer) {
     const media = await pendingMedia(filename, contentType, body)
-    await pipeline.scan(media.id)
+    await pipeline.scan(media.id, { storeId: 'store-1' })
     await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
-    await pipeline.processImage(media.id)
+    await pipeline.processImage(media.id, { storeId: 'store-1' })
     return media
   }
 
@@ -452,7 +454,9 @@ describe('MediaPipeline', () => {
     it('stays pending while the job has tries left, so the queue retries it', async () => {
       const media = await pendingMedia('retry.txt', 'text/plain', Buffer.from('plain text'))
 
-      await expect(pipeline.scan(media.id, false)).rejects.toThrow('the daemon is down')
+      await expect(pipeline.scan(media.id, { storeId: 'store-1' }, false)).rejects.toThrow(
+        'the daemon is down'
+      )
 
       const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
       expect(row.status).toBe('pending')
@@ -462,14 +466,16 @@ describe('MediaPipeline', () => {
     it('is given up on the last try: terminal row, file gone, error still raised', async () => {
       const media = await pendingMedia('lost.txt', 'text/plain', Buffer.from('plain text'))
 
-      await expect(pipeline.scan(media.id, true)).rejects.toThrow('the daemon is down')
+      await expect(pipeline.scan(media.id, { storeId: 'store-1' }, true)).rejects.toThrow(
+        'the daemon is down'
+      )
 
       const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
       expect(row.status).toBe('unscannable')
       expect(row.scannedAt).not.toBeNull()
       expect(await storage.head(media.key)).toBeNull()
       // Past its state: a later job does nothing, not even ask the daemon
-      await expect(pipeline.scan(media.id, true)).resolves.toBeUndefined()
+      await expect(pipeline.scan(media.id, { storeId: 'store-1' }, true)).resolves.toBeUndefined()
     })
   })
 
@@ -513,9 +519,9 @@ describe('MediaPipeline', () => {
       expect((await sharp(original).metadata()).exif).toBeDefined()
       const avatar = await pendingAvatar(original)
 
-      await pipeline.scan(avatar.id)
+      await pipeline.scan(avatar.id, { storeId: 'store-1' })
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
-      await pipeline.processImage(avatar.id)
+      await pipeline.processImage(avatar.id, { storeId: 'store-1' })
 
       const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
       const served = StorageKeys.avatarImage(avatar.userId, avatar.id)
@@ -537,12 +543,12 @@ describe('MediaPipeline', () => {
 
     it('is processed once: a repeated job changes nothing', async () => {
       const avatar = await pendingAvatar(await photoWithMetadata())
-      await pipeline.scan(avatar.id)
+      await pipeline.scan(avatar.id, { storeId: 'store-1' })
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
-      await pipeline.processImage(avatar.id)
+      await pipeline.processImage(avatar.id, { storeId: 'store-1' })
       const first = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
 
-      await pipeline.processImage(avatar.id)
+      await pipeline.processImage(avatar.id, { storeId: 'store-1' })
 
       const again = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
       expect(again.processedAt).toEqual(first.processedAt)
@@ -550,10 +556,12 @@ describe('MediaPipeline', () => {
 
     it('is refused for good when it cannot be re-encoded: never served, file gone', async () => {
       const avatar = await pendingAvatar(Buffer.from('not an image'))
-      await pipeline.scan(avatar.id)
+      await pipeline.scan(avatar.id, { storeId: 'store-1' })
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
 
-      await expect(pipeline.processImage(avatar.id)).resolves.toBeUndefined()
+      await expect(
+        pipeline.processImage(avatar.id, { storeId: 'store-1' })
+      ).resolves.toBeUndefined()
 
       const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
       expect(row.status).toBe('unscannable')
@@ -563,7 +571,7 @@ describe('MediaPipeline', () => {
 
     it('leaves nothing behind when the person replaced it while it was processed', async () => {
       const avatar = await pendingAvatar(await photoWithMetadata())
-      await pipeline.scan(avatar.id)
+      await pipeline.scan(avatar.id, { storeId: 'store-1' })
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
       // The person's replacement deletes the row after the worker read it and before it wrote
       const put = storage.put.bind(storage)
@@ -572,7 +580,7 @@ describe('MediaPipeline', () => {
         await owner.query(`DELETE FROM media WHERE id = $1`, [avatar.id])
       })
       try {
-        await pipeline.processImage(avatar.id)
+        await pipeline.processImage(avatar.id, { storeId: 'store-1' })
       } finally {
         spy.mockRestore()
       }
@@ -582,11 +590,11 @@ describe('MediaPipeline', () => {
 
     it('is not processed when its key is not under its own user', async () => {
       const avatar = await pendingAvatar(await photoWithMetadata())
-      await pipeline.scan(avatar.id)
+      await pipeline.scan(avatar.id, { storeId: 'store-1' })
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
       await owner.query(`UPDATE media SET uploaded_by = NULL WHERE id = $1`, [avatar.id])
 
-      await pipeline.processImage(avatar.id)
+      await pipeline.processImage(avatar.id, { storeId: 'store-1' })
 
       const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
       expect(row.processedAt).toBeNull()
@@ -595,11 +603,13 @@ describe('MediaPipeline', () => {
 
     it('fails (to be tried again) when its file is missing but the row is there', async () => {
       const avatar = await pendingAvatar(await photoWithMetadata())
-      await pipeline.scan(avatar.id)
+      await pipeline.scan(avatar.id, { storeId: 'store-1' })
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
       await storage.delete(avatar.key)
 
-      await expect(pipeline.processImage(avatar.id)).rejects.toThrow('not in the bucket')
+      await expect(pipeline.processImage(avatar.id, { storeId: 'store-1' })).rejects.toThrow(
+        'not in the bucket'
+      )
     })
 
     it('is refused when it declares more pixels than an avatar needs', async () => {
@@ -609,10 +619,10 @@ describe('MediaPipeline', () => {
         .png({ compressionLevel: 9 })
         .toBuffer()
       const avatar = await pendingAvatar(huge, 'image/png')
-      await pipeline.scan(avatar.id)
+      await pipeline.scan(avatar.id, { storeId: 'store-1' })
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
 
-      await pipeline.processImage(avatar.id)
+      await pipeline.processImage(avatar.id, { storeId: 'store-1' })
 
       const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
       expect(row.status).toBe('unscannable')
@@ -620,7 +630,9 @@ describe('MediaPipeline', () => {
   })
 
   it('does nothing for a media that was deleted or is not pending', async () => {
-    await expect(pipeline.scan(randomUUID())).resolves.toBeUndefined()
-    await expect(pipeline.processImage(randomUUID())).resolves.toBeUndefined()
+    await expect(pipeline.scan(randomUUID(), { storeId: 'store-1' })).resolves.toBeUndefined()
+    await expect(
+      pipeline.processImage(randomUUID(), { storeId: 'store-1' })
+    ).resolves.toBeUndefined()
   })
 })

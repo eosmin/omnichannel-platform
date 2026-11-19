@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore, or forUser for an avatar) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 import { z } from 'zod'
@@ -8,7 +9,7 @@ import {
   errorName,
   withTimeout
 } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   CustomerProfileFetch,
@@ -50,7 +51,8 @@ export class ProfileFetcher {
     private readonly registry: PluginRegistry,
     private readonly contexts: ChannelContextFactory,
     private readonly profiles: CustomerProfileService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(ProfileFetcher.name)
   }
@@ -58,21 +60,23 @@ export class ProfileFetcher {
   // Throws when the attempt should be repeated; returns when the read is settled or no longer wanted
   async fetch(job: FetchCustomerProfileJob, isLastAttempt: boolean): Promise<void> {
     const { storeId, identityId, connectionRowId } = job
-    const [identity, connection] = await Promise.all([
-      this.prisma.client.customerIdentity.findFirst({
-        where: { id: identityId, storeId },
-        select: { channelIdentity: true }
-      }),
-      this.prisma.client.channelConnection.findFirst({
-        where: {
-          id: connectionRowId,
-          storeId,
-          status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
-          ...OfActiveInstallation
-        },
-        select: CONNECTION_ROW_SELECT
-      })
-    ])
+    const [identity, connection] = await this.jobContext.forStore(storeId, () =>
+      Promise.all([
+        this.prisma.client.customerIdentity.findFirst({
+          where: { id: identityId, storeId },
+          select: { channelIdentity: true }
+        }),
+        this.prisma.client.channelConnection.findFirst({
+          where: {
+            id: connectionRowId,
+            storeId,
+            status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
+            ...OfActiveInstallation
+          },
+          select: CONNECTION_ROW_SELECT
+        })
+      ])
+    )
     // Either is gone since the job was queued: nothing to read, nothing to mark
     if (identity === null || connection === null) return
 
@@ -80,20 +84,24 @@ export class ProfileFetcher {
     if (plugin === undefined) {
       // A registry that is still filling is not a plugin that is gone: not a verdict on the channel
       if (!isLastAttempt) throw new Error('the plugin of the connection is not registered')
-      await this.profiles.recordFailure(
-        storeId,
-        identityId,
-        ErrorCodes.CHANNEL_NOT_CONNECTED,
-        ProfileFailureKinds.OUTAGE
+      await this.jobContext.forStore(storeId, () =>
+        this.profiles.recordFailure(
+          storeId,
+          identityId,
+          ErrorCodes.CHANNEL_NOT_CONNECTED,
+          ProfileFailureKinds.OUTAGE
+        )
       )
       return
     }
     if (plugin.fetchProfile === undefined) {
-      await this.profiles.recordFailure(
-        storeId,
-        identityId,
-        ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
-        ProfileFailureKinds.REFUSED
+      await this.jobContext.forStore(storeId, () =>
+        this.profiles.recordFailure(
+          storeId,
+          identityId,
+          ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
+          ProfileFailureKinds.REFUSED
+        )
       )
       return
     }
@@ -125,27 +133,33 @@ export class ProfileFetcher {
         'reading a customer profile failed'
       )
       if (refused.retryable && !isLastAttempt) throw new ProfileAttemptFailed(refused.code, error)
-      await this.profiles.recordFailure(
-        storeId,
-        identityId,
-        refused.code,
-        // A token the channel refuses says nothing about the person: asked again once it is replaced
-        refused.retryable || refused.code === ErrorCodes.CHANNEL_CREDENTIALS_INVALID
-          ? ProfileFailureKinds.OUTAGE
-          : ProfileFailureKinds.REFUSED
+      await this.jobContext.forStore(storeId, () =>
+        this.profiles.recordFailure(
+          storeId,
+          identityId,
+          refused.code,
+          // A token the channel refuses says nothing about the person: asked again once it is replaced
+          refused.retryable || refused.code === ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+            ? ProfileFailureKinds.OUTAGE
+            : ProfileFailureKinds.REFUSED
+        )
       )
       return
     }
     const parsed = readSchema.safeParse(read)
     if (!parsed.success) {
-      await this.profiles.recordFailure(
-        storeId,
-        identityId,
-        ErrorCodes.CHANNEL_MESSAGE_FAILED,
-        ProfileFailureKinds.REFUSED
+      await this.jobContext.forStore(storeId, () =>
+        this.profiles.recordFailure(
+          storeId,
+          identityId,
+          ErrorCodes.CHANNEL_MESSAGE_FAILED,
+          ProfileFailureKinds.REFUSED
+        )
       )
       return
     }
-    await this.profiles.recordRead(storeId, identityId, parsed.data)
+    await this.jobContext.forStore(storeId, () =>
+      this.profiles.recordRead(storeId, identityId, parsed.data)
+    )
   }
 }

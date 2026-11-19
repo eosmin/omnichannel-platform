@@ -47,8 +47,6 @@ export class JobContextGoneError extends JobContextError {
   }
 }
 
-export type AnchorKind = 'media' | 'export' | 'scheduled_report'
-
 interface ActiveContext {
   // What opened it: only a context of the same kind and subject is joined (an organization needs every store of it, which the context of a
   // store does not have)
@@ -180,58 +178,6 @@ export class JobContext {
       work,
       options
     )
-  }
-
-  // The first thing a job that carries only the id of a row does (a file, an export, a report): learn the store of the row, with a
-  // function of the database that sees every row, and prove that the row is visible from the context of that store. It proves the
-  // row and not the rest of the job: the work that follows runs with no context until its service adopts one (see the baseline of
-  // scripts/validate-rls-worker.ts). Answers
-  // 'gone' when the row does not exist (the job then takes its usual way for a missing row), 'unowned' for a row with no store (the
-  // avatar of a person) and 'visible' otherwise. A row that exists but cannot be read from its own context is an error: the job
-  // would otherwise read "no row" and call it done. A `storeId` in the payload must be the one of the row.
-  async anchor(
-    kind: AnchorKind,
-    id: string,
-    payloadStoreId?: string
-  ): Promise<'gone' | 'unowned' | 'visible'> {
-    const found = await this.storeOfRow(kind, id)
-    if (found === null) return 'gone'
-    if (payloadStoreId !== undefined && payloadStoreId !== found.storeId) {
-      throw new JobContextMismatchError(`the store of the job is not the store of its ${kind}`)
-    }
-    if (found.storeId === null) return 'unowned'
-    const storeId = found.storeId
-    const seen = await this.forStore(storeId, () => this.visible(kind, id))
-    if (!seen) throw new JobContextError(`the ${kind} of the job is hidden from its own store`)
-    return 'visible'
-  }
-
-  private async storeOfRow(
-    kind: AnchorKind,
-    id: string
-  ): Promise<{ storeId: string | null } | null> {
-    const rows = await (kind === 'media'
-      ? this.prisma.client.$queryRaw<{ store_id: string | null }[]>`
-          SELECT store_id FROM rls_store_of_media(${id})`
-      : kind === 'export'
-        ? this.prisma.client.$queryRaw<{ store_id: string | null }[]>`
-            SELECT store_id FROM rls_store_of_export(${id})`
-        : this.prisma.client.$queryRaw<{ store_id: string | null }[]>`
-            SELECT store_id FROM rls_store_of_scheduled_report(${id})`)
-    const [row] = rows
-    return row === undefined ? null : { storeId: row.store_id }
-  }
-
-  private async visible(kind: AnchorKind, id: string): Promise<boolean> {
-    const rows =
-      kind === 'media'
-        ? await this.prisma.client.$queryRaw<unknown[]>`SELECT 1 FROM media WHERE id = ${id}`
-        : kind === 'export'
-          ? await this.prisma.client.$queryRaw<unknown[]>`SELECT 1 FROM exports WHERE id = ${id}`
-          : await this.prisma.client.$queryRaw<
-              unknown[]
-            >`SELECT 1 FROM scheduled_reports WHERE id = ${id}`
-    return rows.length > 0
   }
 
   // True when the code runs inside a context of this class: for a service that is called by both a job and a request

@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore, or forUser for an avatar) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
@@ -7,7 +8,7 @@ import {
   errorName,
   withTimeout
 } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import {
   AuthorType,
   ChannelConnectionStatus,
@@ -29,7 +30,8 @@ export class ReadReceiptSender {
     private readonly prisma: PrismaService,
     private readonly registry: PluginRegistry,
     private readonly contexts: ChannelContextFactory,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(ReadReceiptSender.name)
   }
@@ -37,30 +39,32 @@ export class ReadReceiptSender {
   // Throws when the attempt should be repeated; returns when there is nothing more to do
   async send(job: SendOutboundReadReceiptJob, isLastAttempt: boolean): Promise<void> {
     const { storeId, conversationId, messageId } = job
-    const message = await this.prisma.client.message.findFirst({
-      where: {
-        id: messageId,
-        storeId,
-        conversationId,
-        authorType: AuthorType.CUSTOMER,
-        // The customer may take the message back between the read and this job
-        deletedAt: null
-      },
-      select: {
-        channelMessageId: true,
-        conversation: {
-          select: {
-            customerIdentity: { select: { channelIdentity: true } },
-            channelConnection: {
-              select: {
-                ...CONNECTION_ROW_SELECT,
-                installation: { select: { status: true, plugin: { select: { status: true } } } }
+    const message = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.message.findFirst({
+        where: {
+          id: messageId,
+          storeId,
+          conversationId,
+          authorType: AuthorType.CUSTOMER,
+          // The customer may take the message back between the read and this job
+          deletedAt: null
+        },
+        select: {
+          channelMessageId: true,
+          conversation: {
+            select: {
+              customerIdentity: { select: { channelIdentity: true } },
+              channelConnection: {
+                select: {
+                  ...CONNECTION_ROW_SELECT,
+                  installation: { select: { status: true, plugin: { select: { status: true } } } }
+                }
               }
             }
           }
         }
-      }
-    })
+      })
+    )
     if (message?.channelMessageId == null) return
     const { channelConnection: connection, customerIdentity } = message.conversation
     const connectionStatus = isInstallationActive(connection.installation)
