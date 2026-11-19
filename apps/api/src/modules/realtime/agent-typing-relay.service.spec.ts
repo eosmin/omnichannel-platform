@@ -6,14 +6,14 @@ const STORE = '11111111-1111-4111-8111-111111111111'
 const CONVERSATION = '22222222-2222-4222-8222-222222222222'
 
 // A client that answers only inside a store context, as the database does with row level security on
-function build(options: { mayStart?: boolean } = {}) {
+function build(options: { mayStart?: boolean; found?: boolean; status?: string } = {}) {
   let open: string | null = null
   const opened: string[] = []
   const conversation = {
     channelConnection: {
       pluginId: 'p',
       connectionId: 'site',
-      status: ChannelConnectionStatus.ACTIVE
+      status: options.status ?? ChannelConnectionStatus.ACTIVE
     },
     customerIdentity: { channelIdentity: 'visitor' }
   }
@@ -33,13 +33,19 @@ function build(options: { mayStart?: boolean } = {}) {
           if (open === null || open !== args.where.storeId) {
             return Promise.reject(new Error('queried with no tenant context'))
           }
-          return Promise.resolve(conversation)
+          return Promise.resolve(options.found === false ? null : conversation)
         })
       }
     }
   }
   const registry = { hasCapability: jest.fn(() => true) }
-  const outbound = { enqueueTyping: jest.fn(() => Promise.resolve()) }
+  // Nothing is queued while the lookup still holds the connection
+  const outbound = {
+    enqueueTyping: jest.fn(() => {
+      expect(open).toBeNull()
+      return Promise.resolve()
+    })
+  }
   // The permission look of the agent runs in its own context: it must not find this one still open
   const mayStart = jest.fn(() => {
     expect(open).toBeNull()
@@ -68,5 +74,28 @@ describe('AgentTypingRelay under row level security', () => {
     const { relay, outbound, mayStart } = build({ mayStart: false })
     await relay.relay(STORE, CONVERSATION, true, mayStart)
     expect(outbound.enqueueTyping).not.toHaveBeenCalled()
+  })
+
+  it('tells nothing for a conversation the store does not hold, or a channel that is not active', async () => {
+    for (const options of [{ found: false }, { status: 'DISCONNECTED' }]) {
+      const { relay, outbound } = build(options)
+      await relay.relay(STORE, CONVERSATION, true)
+      expect(outbound.enqueueTyping).not.toHaveBeenCalled()
+    }
+  })
+
+  it('refuses the work, and queues nothing, when the context cannot be opened', async () => {
+    const { relay, prisma, outbound } = build()
+    prisma.inStoreContext.mockRejectedValueOnce(new Error('pool exhausted'))
+    await expect(relay.relay(STORE, CONVERSATION, true)).rejects.toThrow('pool exhausted')
+    expect(outbound.enqueueTyping).not.toHaveBeenCalled()
+  })
+
+  it('sends the stop that follows a start, in the same store', async () => {
+    const { relay, outbound, opened } = build()
+    await relay.relay(STORE, CONVERSATION, true)
+    await relay.relay(STORE, CONVERSATION, false)
+    expect(opened).toEqual([STORE, STORE])
+    expect(outbound.enqueueTyping).toHaveBeenCalledTimes(2)
   })
 })
