@@ -102,6 +102,7 @@ const STEPS: AffectedStep[] = [
   { name: 'validate:frontend', command: ['validate:frontend'] },
   { name: 'validate:channel-agnostic', command: ['validate:channel-agnostic'] },
   { name: 'validate:rls-worker', command: ['validate:rls-worker'] },
+  { name: 'validate:external-io', command: ['validate:external-io'] },
   { name: 'validate:carrier-agnostic', command: ['validate:carrier-agnostic'] },
   { name: 'validate:fiscal-agnostic', command: ['validate:fiscal-agnostic'] },
   { name: 'validate:plugin-api', command: ['validate:plugin-api'] },
