@@ -559,6 +559,12 @@ export const BankTriggerPrefixes = {
   ENTRY_RECONCILED: 'FINANCE_ENTRY_RECONCILED'
 } as const
 
+// The constraint triggers of the reconciliation that the database checks at the COMMIT of the transaction. A request is one transaction
+// under RLS_CONTEXT and its commit is the interceptor's, so the service asks for the check before it, with settleDeferred
+export const BankDeferredConstraints = {
+  GROUP: 'trg_reconciliation_group'
+} as const
+
 // The names of the ways a chart change breaks the chart, beside the ones `account-rules` returns
 export const FinanceChartProblems = { HAS_CHILDREN: 'has_children' } as const
 
