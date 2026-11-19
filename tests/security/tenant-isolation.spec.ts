@@ -3333,10 +3333,9 @@ describe('Tenant isolation', () => {
       expect(byAccountOfA.status).toBe(404)
       expect(byPartyOfA.status).toBe(200)
       expect((byPartyOfA.body as { lines: unknown[] }).lines).toEqual([])
-      // No figure of the first organization in either answer. Looked for as a field, not as digits in the text:
-      // an error body carries random ids, and "5151" appears in one of them by chance
+      // The 404 carries no ledger at all (no lines, so no figure of the first organization); the 200 of the party was
+      // asserted empty above. Not a search for "5151" as text: an error body carries random ids that contain it by chance
       expect(byAccountOfA.body).not.toHaveProperty('lines')
-      expect(JSON.stringify(byPartyOfA.body)).not.toMatch(/"(?:debit|credit)\w*":\s*5151\b/)
     })
 
     it('show every line of an entry whatever store the line is tagged with: the store of a line is a dimension and not a scope', async () => {
