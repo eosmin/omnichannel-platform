@@ -366,7 +366,14 @@ export class OrphanMediaCleaner {
   // so a confirmation about to be attached is left alone. The row goes first and the file second (the definer decides and deletes in one
   // statement), so a failure leaves a file with no row, which the sweep of stray avatar files finds by its media id.
   private async dropUnattachedAvatars(now: Date, scope?: CleanupScope): Promise<number> {
-    const cutoff = new Date(now.getTime() - UploadLimits.UNCONFIRMED_UPLOAD_TTL_HOURS * HOUR_MS)
+    // The definer refuses a cutoff younger than an hour of the database's own clock; whatever clock a caller passes (a spec runs "in the
+    // future"), a write that removes a person's picture never reaches a row younger than that
+    const cutoff = new Date(
+      Math.min(
+        now.getTime() - UploadLimits.UNCONFIRMED_UPLOAD_TTL_HOURS * HOUR_MS,
+        Date.now() - HOUR_MS
+      )
+    )
     // The avatars have no store, so no context can see them: the worker lists the candidates and clears each one through the definers of the
     // database. Each clear is one statement that decides and deletes (the person who attaches the picture at this moment either commits
     // first and the row is kept, or finds no row to attach; two runs at once take different rows). A picture the scan or the re-encode
