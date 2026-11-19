@@ -102,6 +102,7 @@ jobs:
       # Rule 13: no new knowledge of a channel or Meta outside libs/channels/*; the baseline only shrinks
       - run: pnpm validate:channel-agnostic --require-main
       - run: pnpm validate:rls-worker --require-main
+      - run: pnpm validate:external-io --require-main
       # Rule 13 for carriers: no concrete carrier named outside libs/carriers/*; the baseline only shrinks
       - run: pnpm validate:carrier-agnostic --require-main
       # Rule 13 for fiscal documents (owner proposal, Step 4B.7): no country document, authority or provider named outside libs/fiscal/<provider>; the baseline only shrinks
