@@ -76,7 +76,7 @@ export class EventContext {
       where: { id: storeId },
       select: { organizationId: true }
     })
-    if (store === null) throw new Error('the store of the event does not exist')
+    if (store === null) throw new JobContextGoneError('the store of the event does not exist')
     return { storeIds: [storeId], organizationIds: [store.organizationId] }
   }
 }

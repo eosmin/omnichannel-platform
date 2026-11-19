@@ -542,7 +542,7 @@ export class NotificationsEventsListener {
   // fiscal documents of the organization are told, once for each document until they read it, and only while they still hold the
   // permission in a store of the organization. The text names no receiver, no amount and no reason: the document does.
   @OnEvent(Events.FISCAL_DOCUMENT_REJECTED)
-  @InEventStore()
+  @InEventOrganization()
   async onFiscalDocumentRejected(payload: FiscalDocumentRejectedPayload): Promise<void> {
     await this.tellFiscalManagers(
       payload.organizationId,
@@ -552,7 +552,7 @@ export class NotificationsEventsListener {
   }
 
   @OnEvent(Events.FISCAL_DOCUMENT_STUCK)
-  @InEventStore()
+  @InEventOrganization()
   async onFiscalDocumentStuck(payload: FiscalDocumentStuckPayload): Promise<void> {
     await this.tellFiscalManagers(
       payload.organizationId,
@@ -767,7 +767,7 @@ export class NotificationsEventsListener {
   // submitted. A notification is kept in a store: each person is told once, in the store of the submitter when they
   // belong to it, otherwise in the first store where they hold the permission.
   @OnEvent(Events.COUNT_SUBMITTED)
-  @InEventStore()
+  @InEventOrganization()
   async onCountSubmitted(payload: CountSubmittedPayload): Promise<void> {
     const { organizationId, storeId, countId, number } = payload
     try {
