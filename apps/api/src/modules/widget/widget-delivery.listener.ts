@@ -7,7 +7,7 @@ import {
   WIDGET_VISIBLE_TYPES,
   widgetMessageView
 } from '@platform/channels/web-widget'
-import { PrismaService } from '@platform/core/database'
+import { EventContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import { AuthorType } from '@platform/core/domain'
 import { Events, type MessageStatusPayload } from '@platform/core/events'
 
@@ -19,34 +19,45 @@ import { WidgetDelivery } from './widget-delivery.service'
 export class WidgetDeliveryListener {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly events: EventContext,
     private readonly delivery: WidgetDelivery
   ) {}
 
   @OnEvent(Events.MESSAGE_SENT)
   async onSent(payload: MessageStatusPayload): Promise<void> {
-    const message = await this.prisma.client.message.findFirst({
-      where: {
-        id: payload.messageId,
-        storeId: payload.storeId,
-        type: { in: [...WIDGET_VISIBLE_TYPES] },
-        deletedAt: null,
-        authorType: { not: AuthorType.CUSTOMER },
-        conversation: { channelConnection: LIVE_DELIVERY_CONNECTION }
-      },
-      select: {
-        id: true,
-        content: true,
-        authorType: true,
-        createdAt: true,
-        media: WIDGET_FILES_SELECT,
-        conversation: {
+    // Only the read runs in the context of the store of the event: the push to the visitor is not database work
+    let message
+    try {
+      message = await this.events.inStore(payload.storeId, () =>
+        this.prisma.client.message.findFirst({
+          where: {
+            id: payload.messageId,
+            storeId: payload.storeId,
+            type: { in: [...WIDGET_VISIBLE_TYPES] },
+            deletedAt: null,
+            authorType: { not: AuthorType.CUSTOMER },
+            conversation: { channelConnection: LIVE_DELIVERY_CONNECTION }
+          },
           select: {
-            channelConnection: { select: { connectionId: true } },
-            customerIdentity: { select: { channelIdentity: true } }
+            id: true,
+            content: true,
+            authorType: true,
+            createdAt: true,
+            media: WIDGET_FILES_SELECT,
+            conversation: {
+              select: {
+                channelConnection: { select: { connectionId: true } },
+                customerIdentity: { select: { channelIdentity: true } }
+              }
+            }
           }
-        }
-      }
-    })
+        })
+      )
+    } catch (error) {
+      // A store deleted after the event: nothing left to deliver
+      if (error instanceof JobContextGoneError) return
+      throw error
+    }
     if (message === null) return
     const view = widgetMessageView(message)
     if (view === null) return
