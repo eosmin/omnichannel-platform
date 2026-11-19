@@ -70,6 +70,15 @@ describe('database roles', () => {
       await withClient(urls.owner, async owner => {
         const { rows } = await owner.query('SELECT id FROM audit_logs WHERE id = $1', [AUDIT_ID])
         expect(rows).toHaveLength(1)
+        // The grants the app role holds, read as the owner: it reads and appends (the read is filtered by the policy), and
+        // changes nothing
+        const grants = await owner.query<Record<string, boolean>>(
+          `SELECT has_table_privilege('platform_app', 'audit_logs', 'SELECT') AS "select",
+                  has_table_privilege('platform_app', 'audit_logs', 'INSERT') AS "insert",
+                  has_table_privilege('platform_app', 'audit_logs', 'UPDATE') AS "update",
+                  has_table_privilege('platform_app', 'audit_logs', 'DELETE') AS "delete"`
+        )
+        expect(grants.rows[0]).toEqual({ select: true, insert: true, update: false, delete: false })
       })
       await expect(
         app.query("UPDATE audit_logs SET action = 'x' WHERE id = $1", [AUDIT_ID])
