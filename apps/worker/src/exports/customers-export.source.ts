@@ -1,4 +1,5 @@
-import type { PrismaService } from '@platform/core/database'
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one page or count; the file is written to the bucket outside of it
+import type { JobContext, PrismaService } from '@platform/core/database'
 import { CustomerFigureOrderStatuses, customerOrderFigures } from '@platform/core/domain'
 import { ExportLimits } from '@platform/core/exports'
 import {
@@ -50,6 +51,7 @@ export const CUSTOMER_COLUMNS = [
 
 export function customersExportSource(
   prisma: PrismaService,
+  jobContext: JobContext,
   storeId: string,
   filters: CustomersExportFilters
 ): CsvSource {
@@ -60,16 +62,21 @@ export function customersExportSource(
       const { q } = filters
       return q === undefined
         ? undefined
-        : customerSearchPatterns(q, await foldInDatabase(prisma.client, q))
+        : customerSearchPatterns(
+            q,
+            await jobContext.forStore(storeId, () => foldInDatabase(prisma.client, q))
+          )
     })())
   return {
     columns: CUSTOMER_COLUMNS,
     count: async () => {
       const found = await patternsOfText()
-      // The search runs inside the context of the store of the export: the functions of the database read the store from it
-      const matching =
-        found === undefined ? undefined : await countCustomerSearch(prisma, storeId, found)
-      return matching ?? prisma.client.customer.count({ where: customerSearchWhere(storeId) })
+      // The functions of the database read the store from the context of the job, which the search joins
+      return jobContext.forStore(storeId, () =>
+        found === undefined
+          ? prisma.client.customer.count({ where: customerSearchWhere(storeId) })
+          : countCustomerSearch(prisma, storeId, found)
+      )
     },
     rows: async function* () {
       let after: string | undefined
@@ -78,54 +85,57 @@ export function customersExportSource(
       while (!finished) {
         // With a search text, the ids of the page come from the function of the database (one page after the last id: a row
         // deleted meanwhile cannot end the file early); without one, the keyset is a condition of the read
-        const ids =
-          found === undefined
-            ? undefined
-            : await searchCustomerIds(prisma, storeId, found, {
-                order: CustomerSearchOrders.ID,
-                after,
-                limit: ExportLimits.ROW_PAGE_SIZE
-              })
-        const customers = await prisma.client.customer.findMany({
-          where: {
-            ...customerSearchWhere(storeId),
-            ...(ids === undefined
-              ? after === undefined
-                ? {}
-                : { id: { gt: after } }
-              : { id: { in: ids } })
-          },
-          orderBy: { id: 'asc' },
-          take: ExportLimits.ROW_PAGE_SIZE,
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            phoneNormalized: true,
-            locale: true,
-            createdAt: true,
-            updatedAt: true,
-            isCaution: true,
-            cautionReason: true,
-            identities: {
-              orderBy: { createdAt: 'asc' },
-              select: { channelType: true, channelIdentity: true }
+        const { ids, customers } = await jobContext.forStore(storeId, async () => {
+          const chosen =
+            found === undefined
+              ? undefined
+              : await searchCustomerIds(prisma, storeId, found, {
+                  order: CustomerSearchOrders.ID,
+                  after,
+                  limit: ExportLimits.ROW_PAGE_SIZE
+                })
+          const rows = await prisma.client.customer.findMany({
+            where: {
+              ...customerSearchWhere(storeId),
+              ...(chosen === undefined
+                ? after === undefined
+                  ? {}
+                  : { id: { gt: after } }
+                : { id: { in: chosen } })
             },
-            tags: { orderBy: { name: 'asc' }, select: { name: true } },
-            addresses: {
-              select: {
-                line1: true,
-                line2: true,
-                city: true,
-                state: true,
-                postalCode: true,
-                country: true,
-                isDefault: true
-              }
-            },
-            _count: { select: { notes: true, conversations: true } }
-          }
+            orderBy: { id: 'asc' },
+            take: ExportLimits.ROW_PAGE_SIZE,
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              phoneNormalized: true,
+              locale: true,
+              createdAt: true,
+              updatedAt: true,
+              isCaution: true,
+              cautionReason: true,
+              identities: {
+                orderBy: { createdAt: 'asc' },
+                select: { channelType: true, channelIdentity: true }
+              },
+              tags: { orderBy: { name: 'asc' }, select: { name: true } },
+              addresses: {
+                select: {
+                  line1: true,
+                  line2: true,
+                  city: true,
+                  state: true,
+                  postalCode: true,
+                  country: true,
+                  isDefault: true
+                }
+              },
+              _count: { select: { notes: true, conversations: true } }
+            }
+          })
+          return { ids: chosen, customers: rows }
         })
         if (ids === undefined) {
           const last = customers.at(-1)
@@ -140,26 +150,30 @@ export function customersExportSource(
           finished = ids.length < ExportLimits.ROW_PAGE_SIZE
         }
 
-        const spans = await prisma.client.conversation.groupBy({
-          by: ['customerId'],
-          where: { storeId, customerId: { in: customers.map(customer => customer.id) } },
-          _min: { createdAt: true },
-          _max: { createdAt: true }
-        })
+        const spans = await jobContext.forStore(storeId, () =>
+          prisma.client.conversation.groupBy({
+            by: ['customerId'],
+            where: { storeId, customerId: { in: customers.map(customer => customer.id) } },
+            _min: { createdAt: true },
+            _max: { createdAt: true }
+          })
+        )
         const spanOf = new Map(spans.map(span => [span.customerId, span]))
         // The orders of the whole page in ONE grouped read, as the conversation dates are
-        const sums = await prisma.client.order.groupBy({
-          by: ['customerId'],
-          where: {
-            storeId,
-            customerId: { in: customers.map(customer => customer.id) },
-            status: { in: [...CustomerFigureOrderStatuses] }
-          },
-          _count: { _all: true },
-          _sum: { totalCents: true },
-          _min: { createdAt: true },
-          _max: { createdAt: true }
-        })
+        const sums = await jobContext.forStore(storeId, () =>
+          prisma.client.order.groupBy({
+            by: ['customerId'],
+            where: {
+              storeId,
+              customerId: { in: customers.map(customer => customer.id) },
+              status: { in: [...CustomerFigureOrderStatuses] }
+            },
+            _count: { _all: true },
+            _sum: { totalCents: true },
+            _min: { createdAt: true },
+            _max: { createdAt: true }
+          })
+        )
         const sumOf = new Map(sums.map(sum => [sum.customerId, sum]))
 
         for (const customer of customers) {

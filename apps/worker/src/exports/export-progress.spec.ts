@@ -1,4 +1,4 @@
-import type { PrismaService } from '@platform/core/database'
+import type { JobContext, PrismaService } from '@platform/core/database'
 import { ExportStatus } from '@platform/core/queues'
 
 import { ExportProgress, PROGRESS_MIN_INTERVAL_MS } from './export-progress'
@@ -10,7 +10,17 @@ function build(total: number) {
   const updateMany = jest.fn().mockResolvedValue({ count: 1 })
   const prisma = { client: { export: { updateMany } } } as unknown as PrismaService
   let time = 10_000
-  const progress = new ExportProgress(prisma, { id: 'e1', storeId: 's1' }, total, () => time)
+  // The context is a double that runs the work as it is: what is tested here is the pacing of the writes, not the context
+  const jobContext = {
+    forStore: (_storeId: string, work: () => Promise<unknown>) => work()
+  } as unknown as JobContext
+  const progress = new ExportProgress(
+    prisma,
+    jobContext,
+    { id: 'e1', storeId: 's1' },
+    total,
+    () => time
+  )
   return {
     progress,
     updateMany,

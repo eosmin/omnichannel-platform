@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside the JobContext that its caller opens (the generator, the expired-exports cleaner)
 import type { PrismaService } from '@platform/core/database'
 import type { DomainEvents } from '@platform/core/event-bus'
 import type { Events } from '@platform/core/events'

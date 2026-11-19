@@ -7,7 +7,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { CredentialCipher, generateToken } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AppPaths,
@@ -80,7 +80,8 @@ describe('The delivery of a webhook', () => {
       cipher,
       app.get(DomainEvents),
       counter,
-      logger
+      logger,
+      new JobContext(app.get(PrismaService))
     )
   })
   afterAll(async () => {
@@ -292,9 +293,16 @@ describe('The delivery of a webhook', () => {
 
   it('does not send again, nor count a failure, when the endpoint took the delivery and the log could not be written', async () => {
     const row = await webhook()
+    // The second context of the delivery is the one that writes its log: it fails like a pool that timed out
+    const prisma = app.get(PrismaService)
+    const real = prisma.tenantTransaction.bind(prisma)
+    let opened = 0
     const create = jest
-      .spyOn(app.get(PrismaService).client.webhookDelivery, 'create')
-      .mockRejectedValueOnce(new Error('pool timeout'))
+      .spyOn(prisma, 'tenantTransaction')
+      .mockImplementation((...args: Parameters<typeof real>) => {
+        opened += 1
+        return opened === 2 ? Promise.reject(new Error('pool timeout')) : real(...args)
+      })
     const post = answers(200)
 
     expect(await deliverer.deliver(jobFor(row), 1, { post })).toBe(WebhookOutcome.DELIVERED)
