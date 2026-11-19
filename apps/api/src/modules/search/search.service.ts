@@ -11,6 +11,7 @@ import {
 } from '@platform/core/domain'
 import { escapeLike, foldInDatabase, phoneDigitsOf } from '@platform/core/messaging'
 
+import { contextPersonOf } from './search-access'
 import type {
   CustomerSearchHit,
   MessageSearchHit,
@@ -75,7 +76,9 @@ export class SearchService {
     viewer: SearchViewer,
     params: { q: string; limit: number; conversationId?: string }
   ): Promise<SearchResult<MessageSearchHit>> {
-    return this.inContext(storeId, viewer.userId, () => this.messagesInContext(viewer, params))
+    return this.inContext(storeId, contextPersonOf(viewer.userId), () =>
+      this.messagesInContext(viewer, params)
+    )
   }
 
   private async messagesInContext(
