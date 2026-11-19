@@ -10,6 +10,7 @@ import {
   DatabaseNull,
   inSavepoint,
   isUniqueViolation,
+  JobContext,
   PrismaService
 } from '@platform/core/database'
 import {
@@ -48,9 +49,19 @@ export class FiscalEvidenceService {
     private readonly cipher: CredentialCipher,
     private readonly storage: StorageService,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ScanFileJob>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(FiscalEvidenceService.name)
+  }
+
+  // Each read or write of the database is one short unit in a context of the organization (a request joins its own): the object store and
+  // the queue are reached between two units, never inside one
+  private unit<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
+    return this.jobContext.inOrganizationOrRequest(organizationId, work, {
+      maxWait: FiscalLimits.CONTEXT_MAX_WAIT_MS,
+      timeout: FiscalLimits.CONTEXT_TIMEOUT_MS
+    })
   }
 
   // After the document was accepted or voided: every kind the document has. A failure of one never stops the others and never reaches
@@ -76,17 +87,21 @@ export class FiscalEvidenceService {
     kind: FiscalEvidenceKind
   ): Promise<{ mediaId: string } | null> {
     // The cheap read first: the document row (with its sealed payload) is read only when a file has to be made or made again
-    const owned = await this.prisma.client.fiscalDocument.findFirst({
-      where: { id: documentId, organizationId },
-      select: { id: true, status: true, storeId: true }
-    })
+    const owned = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalDocument.findFirst({
+        where: { id: documentId, organizationId },
+        select: { id: true, status: true, storeId: true }
+      })
+    )
     if (owned === null || !KIND_STATES[kind].includes(owned.status as FiscalDocumentStatus)) {
       return null
     }
-    const existing = await this.prisma.client.media.findFirst({
-      where: { fiscalDocumentId: owned.id, fiscalEvidenceKind: kind },
-      select: { id: true, key: true, status: true }
-    })
+    const existing = await this.unit(organizationId, () =>
+      this.prisma.client.media.findFirst({
+        where: { fiscalDocumentId: owned.id, fiscalEvidenceKind: kind },
+        select: { id: true, key: true, status: true }
+      })
+    )
     if (existing?.status === String(MediaStatus.CLEAN)) return { mediaId: existing.id }
     if (existing !== null)
       return this.repair(organizationId, documentId, kind, existing, owned.storeId)
@@ -113,10 +128,12 @@ export class FiscalEvidenceService {
       if (bytes === null) return null
       await this.storage.put(row.key, bytes, FiscalEvidenceContentType)
       if (unscannable) {
-        await this.prisma.client.media.updateMany({
-          where: { id: row.id, status: row.status },
-          data: { status: MediaStatus.PENDING, scannedAt: null, scanResult: DatabaseNull }
-        })
+        await this.unit(organizationId, () =>
+          this.prisma.client.media.updateMany({
+            where: { id: row.id, status: row.status },
+            data: { status: MediaStatus.PENDING, scannedAt: null, scanResult: DatabaseNull }
+          })
+        )
       }
     }
     await this.queueScan(storeId, row.id)
@@ -128,10 +145,12 @@ export class FiscalEvidenceService {
     documentId: string,
     kind: FiscalEvidenceKind
   ): Promise<{ mediaId: string } | null> {
-    const doc = await this.prisma.client.fiscalDocument.findFirst({
-      where: { id: documentId, organizationId },
-      select: { id: true, storeId: true, sequenceNumber: true }
-    })
+    const doc = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalDocument.findFirst({
+        where: { id: documentId, organizationId },
+        select: { id: true, storeId: true, sequenceNumber: true }
+      })
+    )
     if (doc === null) return null
     const bytes = await this.bytesOf(organizationId, documentId, kind)
     if (bytes === null) return null
@@ -141,30 +160,34 @@ export class FiscalEvidenceService {
     await this.storage.put(key, bytes, FiscalEvidenceContentType)
     try {
       await inSavepoint(() =>
-        this.prisma.client.media.create({
-          data: {
-            id: mediaId,
-            storeId: doc.storeId,
-            purpose: MediaPurpose.FISCAL_EVIDENCE,
-            fiscalDocumentId: doc.id,
-            fiscalEvidenceKind: kind,
-            key,
-            filename,
-            contentType: FiscalEvidenceContentType,
-            fileSize: bytes.byteLength,
-            status: MediaStatus.PENDING
-          }
-        })
+        this.unit(organizationId, () =>
+          this.prisma.client.media.create({
+            data: {
+              id: mediaId,
+              storeId: doc.storeId,
+              purpose: MediaPurpose.FISCAL_EVIDENCE,
+              fiscalDocumentId: doc.id,
+              fiscalEvidenceKind: kind,
+              key,
+              filename,
+              contentType: FiscalEvidenceContentType,
+              fileSize: bytes.byteLength,
+              status: MediaStatus.PENDING
+            }
+          })
+        )
       )
     } catch (error) {
       // The object is not the file of any row: it goes, whatever the reason
       await this.storage.delete(key).catch(() => undefined)
       if (!isUniqueViolation(error)) throw error
       // Another request kept the same evidence first: it is the one
-      const winner = await this.prisma.client.media.findFirst({
-        where: { fiscalDocumentId: doc.id, fiscalEvidenceKind: kind },
-        select: { id: true }
-      })
+      const winner = await this.unit(organizationId, () =>
+        this.prisma.client.media.findFirst({
+          where: { fiscalDocumentId: doc.id, fiscalEvidenceKind: kind },
+          select: { id: true }
+        })
+      )
       return winner === null ? null : { mediaId: winner.id }
     }
     await this.queueScan(doc.storeId, mediaId)
@@ -177,21 +200,23 @@ export class FiscalEvidenceService {
     documentId: string,
     kind: FiscalEvidenceKind
   ): Promise<Buffer | null> {
-    const doc = await this.prisma.client.fiscalDocument.findFirst({
-      where: { id: documentId, organizationId },
-      select: {
-        sequenceNumber: true,
-        documentType: true,
-        externalNumber: true,
-        providerData: true,
-        builtPayloadEncrypted: true,
-        response: true,
-        voidReason: true,
-        voidedAt: true,
-        voidResponse: true,
-        issuedAt: true
-      }
-    })
+    const doc = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalDocument.findFirst({
+        where: { id: documentId, organizationId },
+        select: {
+          sequenceNumber: true,
+          documentType: true,
+          externalNumber: true,
+          providerData: true,
+          builtPayloadEncrypted: true,
+          response: true,
+          voidReason: true,
+          voidedAt: true,
+          voidResponse: true,
+          issuedAt: true
+        }
+      })
+    )
     if (doc === null) return null
     const content = this.contentOf(kind, doc)
     if (content === null) return null
