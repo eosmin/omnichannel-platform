@@ -445,8 +445,9 @@ describe('Showing the customer that an agent is typing', () => {
     it('lets go of a failure of the database too, so the job is not dead-lettered', async () => {
       const conversation = await conversationOf()
 
+      // The read of the conversation runs in the context of its store: the failure is the database's, at the transaction it opens
       const lookup = jest
-        .spyOn(app.get(PrismaService, { strict: false }).client.conversation, 'findFirst')
+        .spyOn(app.get(PrismaService, { strict: false }), 'tenantTransaction')
         .mockRejectedValueOnce(new Error('db down'))
 
       try {

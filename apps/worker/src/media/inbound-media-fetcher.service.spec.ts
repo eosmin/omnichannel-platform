@@ -140,7 +140,7 @@ describe('InboundMediaFetcher', () => {
     })
     expect(queue.add).toHaveBeenCalledWith(
       'scan-file',
-      { mediaId },
+      { mediaId, storeId: STORE },
       { jobId: `scan-file-${mediaId}` }
     )
   })
@@ -603,7 +603,7 @@ describe('InboundMediaFetcher', () => {
       expect(storage.put).toHaveBeenCalledTimes(1)
       expect(queue.add).toHaveBeenCalledWith(
         'scan-file',
-        { mediaId: CHOSEN },
+        { mediaId: CHOSEN, storeId: STORE },
         { jobId: `scan-file-${CHOSEN}` }
       )
     })

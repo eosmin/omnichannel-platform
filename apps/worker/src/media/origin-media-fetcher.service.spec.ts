@@ -93,7 +93,7 @@ describe('OriginMediaFetcher', () => {
     })
     expect(queue.add).toHaveBeenCalledWith(
       JobNames.SCAN_FILE,
-      { mediaId: id },
+      { mediaId: id, storeId: STORE },
       { jobId: `${JobNames.SCAN_FILE}-${id}` }
     )
   })
