@@ -26,7 +26,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { anonymousApi, api } from '../helpers/http'
-import { transactionInContext } from '../helpers/tenant-context'
+import { transactionInContext, withTenantContext } from '../helpers/tenant-context'
 
 interface RuleBody {
   id: string
@@ -892,6 +892,13 @@ describe('The routing rules of a store', () => {
   // The rules are applied by the inbound pipeline (Step 2.6) with the service: there is no route
   describe('applying them to a new conversation', () => {
     const routing = () => app.get(RoutingService, { strict: false })
+    // The pipeline and the start of a conversation run the rules inside the context of the store; the suite calls them by hand
+    const inStore = <T>(work: () => Promise<T>) =>
+      withTenantContext(
+        app.get(PrismaService, { strict: false }),
+        { storeIds: [storeId()], organizationIds: [ctx.orgA.id] },
+        work
+      )
     // A conversation of a customer of the store, as the pipeline would have just made it
     const arriving = async (extra: Partial<Parameters<typeof createConversationOf>[1]> = {}) =>
       createConversationOf(owner, {
@@ -904,10 +911,12 @@ describe('The routing rules of a store', () => {
       made: { id: string },
       context: { text?: string | null; receivedAt?: Date } = {}
     ) =>
-      routing().apply(storeId(), made.id, {
-        text: context.text === undefined ? 'hola' : context.text,
-        receivedAt: context.receivedAt ?? new Date()
-      })
+      inStore(() =>
+        routing().apply(storeId(), made.id, {
+          text: context.text === undefined ? 'hola' : context.text,
+          receivedAt: context.receivedAt ?? new Date()
+        })
+      )
     const assignedTo = async (id: string) =>
       (await owner.conversation.findUniqueOrThrow({ where: { id } })).assignedTo
     const assignTo = (userId: string) => ({ type: ASSIGN_USER, userIds: [userId] })
@@ -1001,7 +1010,10 @@ describe('The routing rules of a store', () => {
       it('announces the queue when routing itself could not run', async () => {
         const made = await arriving()
 
-        const heard = await heardUnassigned(() => routing().announceQueue(storeId(), made.id), 1)
+        const heard = await heardUnassigned(
+          () => inStore(() => routing().announceQueue(storeId(), made.id)),
+          1
+        )
 
         expect(heard).toHaveLength(1)
         expect(heard[0]).toMatchObject({ storeId: storeId(), conversationId: made.id })
@@ -1011,7 +1023,9 @@ describe('The routing rules of a store', () => {
         const made = await arriving()
         await owner.conversation.update({ where: { id: made.id }, data: { assignedTo: ana.id } })
 
-        const heard = await heardUnassigned(() => routing().announceQueue(storeId(), made.id))
+        const heard = await heardUnassigned(() =>
+          inStore(() => routing().announceQueue(storeId(), made.id))
+        )
 
         expect(heard).toEqual([])
       })
@@ -1623,7 +1637,9 @@ describe('The routing rules of a store', () => {
         const foreign = await createConversationOf(owner, { storeId: ctx.storeB.id })
 
         await expect(
-          routing().apply(storeId(), foreign.id, { text: 'hola', receivedAt: new Date() })
+          inStore(() =>
+            routing().apply(storeId(), foreign.id, { text: 'hola', receivedAt: new Date() })
+          )
         ).rejects.toMatchObject({ code: ErrorCodes.RESOURCE_NOT_FOUND })
       })
     })

@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -28,6 +29,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { withTenantContext } from '../helpers/tenant-context'
 
 const BAD_REQUEST = 400
 
@@ -110,16 +112,25 @@ describe('A message written by a plugin', () => {
     idempotencyKey: randomUUID(),
     mentions
   })
+  // The plugin route runs the service inside the context of the store; the suite calls it by hand
+  const inStoreA = <T>(work: () => Promise<T>) =>
+    withTenantContext(
+      app.get(PrismaService, { strict: false }),
+      { storeIds: [ctx.storeA.id], organizationIds: [ctx.orgA.id] },
+      work
+    )
   const send = (body: CreateMessageBody, origin: PluginMessageOrigin, storeId = ctx.storeA.id) =>
-    messages.create(
-      storeId,
-      body,
-      pluginViewerOf(HELD),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      origin
+    inStoreA(() =>
+      messages.create(
+        storeId,
+        body,
+        pluginViewerOf(HELD),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        origin
+      )
     )
   const row = (id: string) => owner.conversation.findUniqueOrThrow({ where: { id } })
   const mk = (extra: Partial<Parameters<typeof createConversationOf>[1]> = {}) =>
@@ -421,15 +432,17 @@ describe('A message written by a plugin', () => {
         const { id } = await mk()
 
         await expect(
-          messages.create(
-            ctx.storeA.id,
-            body(id),
-            pluginViewerOf(held),
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            system()
+          inStoreA(() =>
+            messages.create(
+              ctx.storeA.id,
+              body(id),
+              pluginViewerOf(held),
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              system()
+            )
           )
         ).rejects.toBeInstanceOf(PlatformException)
 
