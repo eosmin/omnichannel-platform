@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 
 import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
-import { ChannelIds, ConversationStatus } from '@platform/core/domain'
+import { ChannelIds, ConversationHiddenStatuses, ConversationStatus } from '@platform/core/domain'
+import { Events } from '@platform/core/events'
 
 import { createChannelConnection } from '../builders/conversation'
 import { createWebhook } from '../builders/webhook'
@@ -104,7 +105,7 @@ describe('the plan of the inbox and of the delivery log with row-level security 
         await owner.webhookDelivery.createMany({
           data: Array.from({ length: CHUNK }, (_, n) => ({
             webhookId: webhook.id,
-            event: 'order.created',
+            event: Events.ORDER_CREATED,
             durationMs: 10,
             success: n % 3 !== 0,
             createdAt: new Date(now - (from + n) * 1000)
@@ -157,7 +158,7 @@ describe('the plan of the inbox and of the delivery log with row-level security 
   // conversations_store_list_order_idx, a page)
   it('the inbox list reads conversations through the same index, with no extra sort, under the policy', async () => {
     const statement = `SELECT c.id FROM conversations c
-        WHERE c.store_id = $1 AND c.status NOT IN ('ARCHIVED', 'DELETED')
+        WHERE c.store_id = $1 AND c.status NOT IN (${ConversationHiddenStatuses.map(status => `'${status}'`).join(', ')})
           AND (c.assigned_to IS NULL OR c.assigned_to = $2)
         ORDER BY c.attention_at DESC NULLS LAST, c.last_message_at DESC NULLS LAST, c.id DESC LIMIT 26`
     const values = [storeA, agent]

@@ -28,7 +28,7 @@ describe('PrismaService.inUserContext', () => {
 
   it('joins the context of the same person without opening another', async () => {
     const { service, tenantTransaction } = serviceWith({
-      storeIds: ['store-1'],
+      storeIds: [],
       organizationIds: [],
       userId: 'user-1'
     })
@@ -38,11 +38,14 @@ describe('PrismaService.inUserContext', () => {
 
   it.each([
     ['another person', { storeIds: [], organizationIds: [], userId: 'user-2' }],
-    ['no person', { storeIds: ['store-1'], organizationIds: [] }]
+    ['no person', { storeIds: [], organizationIds: [] }],
+    ['the person and a store', { storeIds: ['store-1'], organizationIds: [], userId: 'user-1' }]
   ])('refuses, and runs nothing, when the open context is of %s', async (_name, current) => {
     const { service, tenantTransaction } = serviceWith(current)
     const work = jest.fn(() => Promise.resolve('never'))
-    await expect(service.inUserContext('user-1', work)).rejects.toThrow(/another person/)
+    await expect(service.inUserContext('user-1', work)).rejects.toThrow(
+      /another person, or of a store/
+    )
     expect(work).not.toHaveBeenCalled()
     expect(tenantTransaction).not.toHaveBeenCalled()
   })

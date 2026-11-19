@@ -300,8 +300,13 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     if (userId.trim() === '') throw new Error('inUserContext needs the person')
     const current = this.currentTenantContext()
     if (current !== undefined) {
-      if (current.userId !== userId) {
-        throw new Error('this work runs in the context of another person')
+      // Only a context of the person alone: one with stores would let the work read beyond the person's own rows
+      if (
+        current.userId !== userId ||
+        current.storeIds.length > 0 ||
+        current.organizationIds.length > 0
+      ) {
+        throw new Error('this work runs in the context of another person, or of a store')
       }
       return work()
     }
