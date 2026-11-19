@@ -10,7 +10,7 @@ import { ApiKeyStatus, ChannelConnectionStatus } from '@platform/core/domain'
 // webhook). Each one asks a SECURITY DEFINER function (migration 20270122200000_rls_resolvers_live_rows) for the ids of the store
 // and then reads its row inside the context of THAT store. The functions are the real ones, called as platform_app with no context;
 // the tables they lead to are private temporary copies that carry the REAL policies and are enforced for platform_app inside a
-// transaction that is always rolled back, so the shared tables are never locked or written and the cases run next to every suite.
+// transaction that is always rolled back, so the shared tables are never locked and every fixture (also inserted into the real tables, with session_replication_role = replica) lives in a transaction that is always rolled back, so the cases run next to every suite. The owner of the tables is a superuser in CI: the function under an owner that is not (with FORCE) is covered by the `rls-enforced` job (F6-5).
 // What is proven: the right context comes back or nothing does, an id of another store never resolves, a key that can no longer open
 // a door opens no context, and the context that comes back reaches the row of its store and no other.
 
@@ -185,7 +185,7 @@ describe('row-level security, the flows that find their store before there is a 
         status: ApiKeyStatus.ACTIVE
       })
       await owner.query(
-        `UPDATE public.api_keys SET expires_at = now() - interval '1 hour' WHERE id = $1`,
+        `UPDATE public.api_keys SET expires_at = (now() AT TIME ZONE 'UTC') - interval '1 hour' WHERE id = $1`,
         [`k-exp-${run}`]
       )
       await insertFixture('plugin_installations', {
@@ -290,6 +290,29 @@ describe('row-level security, the flows that find their store before there is a 
       await inFlows(async () => {
         for (const hash of [`h-rev-${run}`, `h-gone-${run}`, `h-exp-${run}`]) {
           expect(await resolve('SELECT * FROM resolve_api_key($1)', [hash])).toEqual([])
+        }
+      })
+    })
+
+    it('judges the expiry in UTC whatever the time zone of the session is (expires_at holds UTC with no zone)', async () => {
+      await inFlows(async () => {
+        await insertFixture('api_keys', {
+          id: `k-soon-${run}`,
+          store_id: A,
+          key_hash: `h-soon-${run}`,
+          status: ApiKeyStatus.ACTIVE
+        })
+        await owner.query(
+          `UPDATE public.api_keys SET expires_at = (now() AT TIME ZONE 'UTC') + interval '5 hours' WHERE id = $1`,
+          [`k-soon-${run}`]
+        )
+        for (const zone of ['Pacific/Auckland', 'America/Los_Angeles', 'UTC']) {
+          await owner.query(`SET LOCAL TIME ZONE '${zone}'`)
+          // Valid for five more hours: resolves in every zone. The one that expired an hour ago never does.
+          expect(await resolve('SELECT * FROM resolve_api_key($1)', [`h-soon-${run}`])).toEqual([
+            { id: `k-soon-${run}`, store_id: A, organization_id: ORG_A }
+          ])
+          expect(await resolve('SELECT * FROM resolve_api_key($1)', [`h-exp-${run}`])).toEqual([])
         }
       })
     })

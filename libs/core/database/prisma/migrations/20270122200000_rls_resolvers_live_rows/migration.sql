@@ -42,7 +42,8 @@ CREATE OR REPLACE FUNCTION public.resolve_api_key(p_key_hash text)
     WHERE k.key_hash = p_key_hash
       AND k.status = 'active'
       AND k.revoked_at IS NULL
-      AND (k.expires_at IS NULL OR k.expires_at > pg_catalog.now())
+      -- expires_at is a timestamp WITHOUT zone that holds UTC: compare it with now() in UTC, never in the zone of the session
+      AND (k.expires_at IS NULL OR k.expires_at > (pg_catalog.now() AT TIME ZONE 'UTC'))
     LIMIT 1
   $$;
 

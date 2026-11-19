@@ -47,7 +47,11 @@ export class WidgetSites {
     this.resolved.delete(siteKey)
     const found = await resolveWidgetSite(this.prisma.client, ChannelIds.WEB_WIDGET, siteKey)
     if (found === null) return null
-    if (this.resolved.size >= RESOLVED_MAX) this.resolved.clear()
+    if (this.resolved.size >= RESOLVED_MAX) {
+      // The oldest goes, not all of them: a visitor who tries false keys must not empty the cache of the real ones
+      const oldest = this.resolved.keys().next().value
+      if (oldest !== undefined) this.resolved.delete(oldest)
+    }
     this.resolved.set(siteKey, { row: found, until: now + RESOLVED_TTL_MS })
     return found
   }
@@ -61,12 +65,12 @@ export class WidgetSites {
     const wasKept = this.resolved.has(siteKey)
     let found = await this.resolve(siteKey, Date.now())
     if (found === null) return null
-    let row = await this.readConnection(found)
+    let row = await this.readConnection(found, siteKey)
     if (row === null && wasKept) {
       this.resolved.delete(siteKey)
       found = await this.resolve(siteKey, Date.now())
       if (found === null) return null
-      row = await this.readConnection(found)
+      row = await this.readConnection(found, siteKey)
     }
     if (row === null || row.status !== String(ChannelConnectionStatus.ACTIVE)) {
       this.resolved.delete(siteKey)
@@ -84,10 +88,11 @@ export class WidgetSites {
     }
   }
 
-  private readConnection(found: ResolvedRow) {
+  private readConnection(found: ResolvedRow, siteKey: string) {
     return this.prisma.tenantTransaction(contextOf(found), () =>
       this.prisma.client.channelConnection.findFirst({
-        where: { id: found.id, storeId: found.storeId },
+        // The key too: a site key that was rotated on the same connection stops working at once, not when the kept ids end
+        where: { id: found.id, storeId: found.storeId, connectionId: siteKey },
         select: {
           id: true,
           storeId: true,
