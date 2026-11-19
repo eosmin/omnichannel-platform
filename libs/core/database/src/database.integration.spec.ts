@@ -815,24 +815,30 @@ describe('PrismaService', () => {
       const original = internals.runBeforeCommit.bind(service)
       const answers: boolean[] = []
       const hooks: string[] = []
+      // The transaction handle, taken inside the scope: the second drain runs outside it, where service.client is the base client
+      let db: typeof service.client | undefined
       const spy = jest
         .spyOn(internals, 'runBeforeCommit')
         .mockImplementation(async (unit: unknown, tx: unknown) => {
           await original(unit, tx)
-          answers.push(service.beforeCommit(service.client, () => Promise.resolve()))
-          service.afterCommit(service.client, () => hooks.push('late'))
+          if (db === undefined) return
+          answers.push(service.beforeCommit(db, () => Promise.resolve()))
+          service.afterCommit(db, () => hooks.push('late'))
           // The transaction has not committed: the hook waits
           expect(hooks).toEqual([])
         })
       try {
-        await service.tenantTransaction(context, () => Promise.resolve())
+        await service.tenantTransaction(context, () => {
+          db = service.client
+          return Promise.resolve()
+        })
       } finally {
         spy.mockRestore()
       }
-      expect(answers.length).toBeGreaterThan(0)
-      expect(answers.every(answer => !answer)).toBe(true)
-      // Held through the window and run once, after the COMMIT
-      expect(hooks).toEqual(Array(answers.length).fill('late'))
+      // One answer per drain (inside the scope, then in open()), all false: the first comes right after a real drain
+      expect(answers).toEqual([false, false])
+      // Held through the window and run once each, after the COMMIT
+      expect(hooks).toEqual(['late', 'late'])
     })
 
     it('drains what was queued in a catalog transaction, inside its scope', async () => {
