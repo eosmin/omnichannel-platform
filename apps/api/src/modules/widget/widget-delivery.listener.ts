@@ -7,12 +7,7 @@ import {
   WIDGET_VISIBLE_TYPES,
   widgetMessageView
 } from '@platform/channels/web-widget'
-import {
-  EventContext,
-  EventContextNotNeeded,
-  JobContextGoneError,
-  PrismaService
-} from '@platform/core/database'
+import { EventContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import { AuthorType } from '@platform/core/domain'
 import { Events, type MessageStatusPayload } from '@platform/core/events'
 
@@ -29,9 +24,6 @@ export class WidgetDeliveryListener {
   ) {}
 
   @OnEvent(Events.MESSAGE_SENT)
-  @EventContextNotNeeded(
-    'opens its own context for the one read, the push to the visitor is no database work'
-  )
   async onSent(payload: MessageStatusPayload): Promise<void> {
     // Only the read runs in the context of the store of the event: the push to the visitor is not database work
     let message

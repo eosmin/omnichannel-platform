@@ -11,18 +11,20 @@ import { join } from 'node:path'
 // A handler counts as wrapped with the decorator OR when its own body calls inStore( / inOrganization( / inOrganizationOfStore( /
 // inUser( / forStore( / forOrganization( (comments and string literals do not count; it cannot see a context opened by another method it delegates to, nor a dead branch: list
 // that handler or review it).
+// A handler that needs no context at all (it only publishes to a socket room or drops a Redis key) says so with
+// `@EventContextNotNeeded('reason')`. The marker is checked, not trusted: the reason must be there, and the body of the handler and of
+// every method of the same file it calls through `this.` must not name prisma, a transaction or a client (comments and literals do not
+// count): a marked handler that touches the database is a bare one. What it calls in ANOTHER class is for the reviewer: the reason says it.
 // NOT covered by this check: a listener registered with `emitter.on(...)` / `onAny(...)` (WebhookDispatcher), tracked in the plan.
 // Debt with owners: docs/IMPLEMENTATION_PLAN.md, "Event listeners with no context".
 const ROOT = join(__dirname, '..', '..', '..', '..', '..')
 const WRAPPERS = ['@InEventStore', '@InEventOrganization']
 // Bare handlers per file today (fiscal and widget-delivery open their context in the body, so they are not listed). Owner B1 (session 7b):
-// shipment-effects, order-message-triggers. Owner B3 (74 and 8c): finance-posting, cache-invalidation, realtime-events.
+// shipment-effects, order-message-triggers. Owner B3 (74): finance-posting. (cache-invalidation and realtime-events carry the marker.)
 const PENDING: Readonly<Record<string, number>> = {
-  'apps/api/src/modules/cache/cache-invalidation.listener.ts': 7,
   'apps/api/src/modules/finance/finance-posting.listener.ts': 11,
   'apps/api/src/modules/order-messages/order-message-triggers.listener.ts': 2,
-  'apps/api/src/modules/orders/shipment-effects.listener.ts': 1,
-  'apps/api/src/modules/realtime/realtime-events.listener.ts': 33
+  'apps/api/src/modules/orders/shipment-effects.listener.ts': 1
 }
 interface Handler {
   file: string
@@ -58,6 +60,38 @@ function bodyFrom(lines: readonly string[], from: number): string {
   return body.join('\n')
 }
 
+// The marker with a reason that is not empty, over one or several lines
+const MARKER = /@EventContextNotNeeded\(\s*(['"`])\s*\S[\s\S]*?\1\s*\)/
+// What a handler with no context must never touch
+const DATABASE =
+  /\b(?:prisma|tenantTransaction|detachedTenantTransaction|transaction|client|\$queryRaw|\$executeRaw)\b/
+
+// The body of the method `name` of the same file, or undefined when the file has no such method
+function methodBody(lines: readonly string[], name: string): string | undefined {
+  const at = lines.findIndex(text =>
+    new RegExp(`^\\s*(?:(?:private|public|protected|async)\\s+)*${name}\\s*[(<]`).test(text)
+  )
+  return at === -1 ? undefined : bodyFrom(lines, at)
+}
+
+// True when the body, or a method of the same file it calls through `this.`, names the database
+function touchesDatabase(
+  lines: readonly string[],
+  body: string,
+  seen = new Set<string>()
+): boolean {
+  const code = withoutCommentsAndLiterals(body)
+  if (DATABASE.test(code)) return true
+  for (const match of code.matchAll(/\bthis\.([A-Za-z_$][\w$]*)\s*\(/g)) {
+    const name = match[1] ?? ''
+    if (seen.has(name)) continue
+    seen.add(name)
+    const inner = methodBody(lines, name)
+    if (inner !== undefined && touchesDatabase(lines, inner, seen)) return true
+  }
+  return false
+}
+
 const isDecoratorOrComment = (line: string): boolean => {
   const text = line.trim()
   return (
@@ -83,14 +117,31 @@ function handlersIn(file: string, source: string): Handler[] {
     }
     let wrapped = false
     let next = end + 1
+    const decorators: string[] = []
     for (; next < lines.length; next += 1) {
       const text = lines[next] ?? ''
       if (!isDecoratorOrComment(text)) break
+      // A decorator call may span several lines (prettier splits a long reason): take it whole
+      let depth = text.trim().startsWith('@')
+        ? (text.match(/\(/g) ?? []).length - (text.match(/\)/g) ?? []).length
+        : 0
+      let whole = text
+      while (depth > 0 && next + 1 < lines.length) {
+        next += 1
+        const more = lines[next] ?? ''
+        whole += `\n${more}`
+        depth += (more.match(/\(/g) ?? []).length - (more.match(/\)/g) ?? []).length
+      }
+      decorators.push(whole)
       if (WRAPPERS.some(wrapper => text.trim().startsWith(wrapper))) wrapped = true
     }
     // Or the handler opens its context itself, in its body (so that the call to a carrier, a channel or Redis stays outside the
     // transaction): the body runs from the first `{` after the decorators to its closing one
     if (!wrapped) wrapped = OPENS_CONTEXT.test(withoutCommentsAndLiterals(bodyFrom(lines, next)))
+    // Or it says, with a reason, that it needs none, and what it does is no database work
+    if (!wrapped && MARKER.test(decorators.join('\n'))) {
+      wrapped = !touchesDatabase(lines, bodyFrom(lines, next))
+    }
     found.push({ file, line: index + 1, event: call.trim(), wrapped })
     index = end
   }
@@ -186,6 +237,56 @@ describe('the listeners of domain events open the context of their event', () =>
       false,
       true,
       true,
+      true,
+      false,
+      false
+    ])
+  })
+
+  it('takes a marker only with a reason and only when no database work is behind the handler', () => {
+    const source = [
+      '  @OnEvent(Events.A)',
+      "  @EventContextNotNeeded('only a socket')",
+      '  async onA(p: P): Promise<void> {',
+      '    await this.realtime.toStore(p)',
+      '  }',
+      '  @OnEvent(Events.B)',
+      "  @EventContextNotNeeded('')",
+      '  async onB(p: P): Promise<void> {',
+      '    await this.realtime.toStore(p)',
+      '  }',
+      '  @OnEvent(Events.C)',
+      "  @EventContextNotNeeded('says it is not database work')",
+      '  async onC(p: P): Promise<void> {',
+      '    await this.prisma.client.message.findMany({})',
+      '  }',
+      '  @OnEvent(Events.D)',
+      '  @EventContextNotNeeded(',
+      "    'a reason over several lines'",
+      '  )',
+      '  async onD(p: P): Promise<void> {',
+      '    await this.helper(p)',
+      '  }',
+      '  @OnEvent(Events.E)',
+      "  @EventContextNotNeeded('reads through a helper of the same file')",
+      '  async onE(p: P): Promise<void> {',
+      '    await this.reader(p)',
+      '  }',
+      '  @OnEvent(Events.F)',
+      '  async onF(p: P): Promise<void> {',
+      '    await this.realtime.toStore(p)',
+      '  }',
+      '  private async helper(p: P): Promise<void> {',
+      '    await this.realtime.toStore(p) // this.prisma is only a comment',
+      '  }',
+      '  private async reader(p: P): Promise<void> {',
+      '    await this.prisma.tenantTransaction(ctx, () => this.other(p))',
+      '  }'
+    ].join('\n')
+    expect(handlersIn('sample.ts', source).map(handler => handler.wrapped)).toEqual([
+      true,
+      false,
+      false,
       true,
       false,
       false
