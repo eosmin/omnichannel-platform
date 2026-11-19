@@ -309,7 +309,10 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       const media = await owner.media.findUniqueOrThrow({ where: { id: row.labelMediaId ?? '' } })
       expect(media.status).toBe(MediaStatus.PENDING)
       expect(scans.jobs.slice(jobs)).toEqual([
-        expect.objectContaining({ name: JobNames.SCAN_FILE, data: { mediaId: media.id } })
+        expect.objectContaining({
+          name: JobNames.SCAN_FILE,
+          data: { mediaId: media.id, storeId: ctx.storeA.id }
+        })
       ])
       // The label of a shipment that is not clean yet is not served
       expect(codeOf((await asAdmin().get(ApiRoutes.shipments.label(body.id))).body)).toBe(
