@@ -40,6 +40,23 @@ CREATE FUNCTION public.rls_search_products(
       RAISE EXCEPTION 'SEARCH_LIMIT_INVALID' USING ERRCODE = '22023';
     END IF;
     RETURN QUERY
+    WITH cand AS (
+      -- The products that match, by name or sku, or through a variant: two statements joined by UNION so that each one can be an
+      -- index condition (an OR with an EXISTS cannot: the planner would read the whole store)
+      SELECT p.id
+      FROM public.products p
+      WHERE p.store_id = ANY ((SELECT public.app_store_ids())::text[])
+        AND (p_archived OR p.active)
+        AND (p.name ILIKE p_contains ESCAPE '\' OR p.sku ILIKE p_contains ESCAPE '\')
+      UNION
+      SELECT v.product_id
+      FROM public.product_variants v
+      JOIN public.products p ON p.id = v.product_id
+      WHERE p.store_id = ANY ((SELECT public.app_store_ids())::text[])
+        AND (p_archived OR p.active)
+        AND (p_archived OR v.active)
+        AND (v.name ILIKE p_contains ESCAPE '\' OR v.sku ILIKE p_contains ESCAPE '\')
+    )
     SELECT
       h.id, h.name, h.sku, h.price_cents, h.image_media_id, h.active,
       mv.id, mv.name, mv.sku, mv.price_cents
@@ -63,18 +80,7 @@ CREATE FUNCTION public.rls_search_products(
           ELSE 2
         END AS rank
       FROM public.products p
-      WHERE p.store_id = ANY ((SELECT public.app_store_ids())::text[])
-        AND (p_archived OR p.active)
-        AND (
-          p.name ILIKE p_contains ESCAPE '\'
-          OR p.sku ILIKE p_contains ESCAPE '\'
-          OR EXISTS (
-            SELECT 1 FROM public.product_variants v
-            WHERE v.product_id = p.id
-              AND (v.name ILIKE p_contains ESCAPE '\' OR v.sku ILIKE p_contains ESCAPE '\')
-              AND (p_archived OR v.active)
-          )
-        )
+      WHERE p.id IN (SELECT cand.id FROM cand)
       ORDER BY rank, p.name, p.id
       LIMIT p_limit
     ) h
