@@ -16,6 +16,8 @@ import * as ts from 'typescript'
 // another method the handler delegates to: such a handler stays listed, with the reason (order-message-triggers 2 and
 // shipment-effects 1 are covered by delegation, B1 #776: `this.send` / `effects.follow` open it per step so no transaction stays open
 // during the provider, the e-mail or the retry sleeps; they are not debt of B3).
+// A handler marked `@EventContextNotNeeded('reason')` (it only moves a socket or Redis) counts as declared when the reason is not empty and
+// its own body names no prisma / tenantTransaction / transaction / client; the decorator itself is added by the PR that needs it.
 // NOT covered by this check: a listener registered with `emitter.on(...)` / `onAny(...)` (WebhookDispatcher), tracked in the plan.
 // Debt with owners: docs/IMPLEMENTATION_PLAN.md, "Event listeners with no context".
 const ROOT = join(__dirname, '..', '..', '..', '..', '..')
@@ -105,6 +107,32 @@ const decoratorName = (decorator: ts.Decorator): string | undefined => {
   return ts.isIdentifier(expression) ? expression.text : undefined
 }
 
+// The marker of a handler that needs no context because it never touches the database (a socket, Redis): it counts as declared ONLY
+// with a reason that is not empty and a body that names none of these (the handler itself; a method it delegates to is not read).
+const DATABASE_NAMES = new Set(['prisma', 'tenantTransaction', 'transaction', 'client'])
+const MARKER = 'EventContextNotNeeded'
+
+const touchesDatabase = (root: ts.Node): boolean => {
+  const visit = (node: ts.Node): boolean =>
+    (ts.isIdentifier(node) && DATABASE_NAMES.has(node.text)) ||
+    ts.forEachChild(node, child => (visit(child) ? true : undefined)) === true
+  return visit(root)
+}
+
+const isDeclaredNotNeeded = (
+  decorators: readonly ts.Decorator[],
+  body: ts.Node | undefined
+): boolean => {
+  const marker = decorators.find(decorator => decoratorName(decorator) === MARKER)
+  if (marker === undefined || !ts.isCallExpression(marker.expression)) return false
+  const reason = marker.expression.arguments[0]
+  const hasReason =
+    reason !== undefined &&
+    (ts.isStringLiteral(reason) || ts.isNoSubstitutionTemplateLiteral(reason)) &&
+    reason.text.trim() !== ''
+  return hasReason && body !== undefined && !touchesDatabase(body)
+}
+
 // The event a listener names: the text of the argument of @OnEvent(...)
 const eventOf = (decorator: ts.Decorator, tree: ts.SourceFile): string =>
   ts.isCallExpression(decorator.expression)
@@ -123,6 +151,7 @@ function handlersIn(file: string, source: string): Handler[] {
       if (listeners.length > 0) {
         const wrapped =
           decorators.some(decorator => WRAPPERS.has(decoratorName(decorator) ?? '')) ||
+          isDeclaredNotNeeded(decorators, node.body) ||
           (node.body !== undefined && reachesOpeningCall(node.body))
         for (const listener of listeners) {
           const { line } = tree.getLineAndCharacterOfPosition(listener.getStart(tree))
@@ -242,6 +271,18 @@ describe('the listeners of domain events open the context of their event', () =>
       '    await events.inStore',
       '      .call(open)',
       '  }',
+      '  @OnEvent(Events.K)',
+      "  @EventContextNotNeeded('only the socket')",
+      '  async onK(p: P): Promise<void> { this.realtime.toStore(p.storeId) }',
+      '  @OnEvent(Events.L)',
+      '  @EventContextNotNeeded()',
+      '  async onL(p: P): Promise<void> { this.realtime.toStore(p.storeId) }',
+      '  @OnEvent(Events.M)',
+      "  @EventContextNotNeeded('  ')",
+      '  async onM(p: P): Promise<void> { this.realtime.toStore(p.storeId) }',
+      '  @OnEvent(Events.N)',
+      "  @EventContextNotNeeded('says it needs none')",
+      '  async onN(p: P): Promise<void> { await this.prisma.client.order.findMany() }',
       '  // inStore( in a later method does not count for these',
       '  async later(): Promise<void> {',
       '    await this.events.inStore(id, async () => {})',
@@ -260,7 +301,11 @@ describe('the listeners of domain events open the context of their event', () =>
       'Events.G:false',
       'Events.H:true',
       'Events.I:false',
-      'Events.J:false'
+      'Events.J:false',
+      'Events.K:true',
+      'Events.L:false',
+      'Events.M:false',
+      'Events.N:false'
     ])
   })
 })
