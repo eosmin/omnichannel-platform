@@ -54,7 +54,7 @@ export class AccountSettingsService {
     })
     // The access token outlives the account for up to its lifetime
     if (user === null) throw unauthorized('account no longer exists')
-    const avatar = await this.avatar(user.avatarMediaId)
+    const avatar = await this.avatar(userId, user.avatarMediaId)
     return { ...user, avatarMediaId: avatar.mediaId, avatarUrl: avatar.url }
   }
 
@@ -63,7 +63,25 @@ export class AccountSettingsService {
     body: UpdateProfileBody,
     actor: AccountActor
   ): Promise<ProfileView> {
-    const replaced = await this.prisma.transaction(async tx => {
+    // One short context of the person: the picture rows are read and written under their id (the storage stays outside)
+    const replaced = await this.prisma.inUserContext(userId, () => this.swapProfile(userId, body))
+    if (replaced !== null) await this.dropObject(replaced.key)
+
+    this.audit.log({
+      action: AuditAction.ACCOUNT_PROFILE_UPDATED,
+      actor: { userId },
+      resourceType: 'user',
+      resourceId: userId,
+      // Which fields, never their values: a name is personal data
+      metadata: { fields: Object.keys(body) },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return this.profile(userId)
+  }
+
+  private swapProfile(userId: string, body: UpdateProfileBody) {
+    return this.prisma.transaction(async tx => {
       // The row is locked while the picture is swapped: two requests that change it at once each
       // find the one the other left, so no uploaded file is left without an owner
       const rows = await tx.$queryRaw<{ avatar_media_id: string | null }[]>`
@@ -108,19 +126,6 @@ export class AccountSettingsService {
       await tx.media.deleteMany({ where: { id: previous } })
       return old
     })
-    if (replaced !== null) await this.dropObject(replaced.key)
-
-    this.audit.log({
-      action: AuditAction.ACCOUNT_PROFILE_UPDATED,
-      actor: { userId },
-      resourceType: 'user',
-      resourceId: userId,
-      // Which fields, never their values: a name is personal data
-      metadata: { fields: Object.keys(body) },
-      ipAddress: actor.ipAddress,
-      userAgent: actor.userAgent
-    })
-    return this.profile(userId)
   }
 
   async preferences(userId: string): Promise<AccountPreferencesView> {
@@ -158,13 +163,17 @@ export class AccountSettingsService {
   // instead of naming an id that never shows. One still being scanned or re-encoded keeps its id and
   // has no link yet.
   private async avatar(
+    userId: string,
     mediaId: string | null
   ): Promise<{ mediaId: string | null; url: string | null }> {
     if (mediaId === null) return { mediaId: null, url: null }
-    const media = await this.prisma.client.media.findFirst({
-      where: { id: mediaId, storeId: null, purpose: MediaPurpose.AVATAR },
-      select: { key: true, filename: true, contentType: true, status: true, processedAt: true }
-    })
+    const media = await this.prisma.inUserContext(userId, () =>
+      this.prisma.client.media.findFirst({
+        // The person's own picture: the policy of the row reads app.user_id, so the owner is named here too
+        where: { id: mediaId, storeId: null, purpose: MediaPurpose.AVATAR, uploadedBy: userId },
+        select: { key: true, filename: true, contentType: true, status: true, processedAt: true }
+      })
+    )
     if (media === null) return { mediaId: null, url: null }
     if (
       media.status === String(MediaStatus.INFECTED) ||
