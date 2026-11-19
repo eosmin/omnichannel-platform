@@ -60,7 +60,12 @@ function build(shipments: Shipment[], media: Media[], files: Map<string, Buffer 
     downloadUrl: jest.fn(() => Promise.resolve('https://files.example/labels.pdf'))
   }
   const logger = { setContext: jest.fn(), warn: jest.fn() }
-  const service = new MergedLabels(prisma as never, storage as never, logger as never)
+  const service = new MergedLabels(
+    prisma as never,
+    storage as never,
+    logger as never,
+    { forStoreOrJoin: (_storeId: string, work: () => Promise<unknown>) => work() } as never
+  )
   return { service, prisma, storage, created, stored, logger }
 }
 
