@@ -150,12 +150,15 @@ let savepointCounter = 0
 // and puts it back to deferred. Under RLS_CONTEXT the commit of a request is the interceptor's, outside the try/catch of the service
 // that knows what the refusal means: with this call at the end of the attempt (inside inSavepoint) the refusal is raised where the
 // service can map it. Deferred again right after, because the rows of what comes next are written one by one. The name is a
-// constant of ours, never an input: only a plain identifier is accepted.
+// constant of ours, never an input: only a plain identifier is accepted. It always leaves the constraint DEFERRED, whatever the mode was.
 export async function settleDeferred(constraint: string, tx?: PrismaTransaction): Promise<void> {
   const target = tx ?? tenantScope.getStore()?.tx
+  // With no transaction open there is nothing deferred to settle
   if (target === undefined) return
-  if (!/^[a-z_][a-z0-9_]*$/.test(constraint))
-    throw new Error('settleDeferred needs a plain constraint name')
+  // `all` is a plain word too, and it would fire every deferred check of the transaction
+  if (constraint === 'all' || !/^[a-z_][a-z0-9_]*$/.test(constraint)) {
+    throw new Error('settleDeferred needs the plain name of one constraint')
+  }
   const name = Prisma.raw(constraint)
   await target.$executeRaw(Prisma.sql`SET CONSTRAINTS ${name} IMMEDIATE`)
   await target.$executeRaw(Prisma.sql`SET CONSTRAINTS ${name} DEFERRED`)
