@@ -194,6 +194,8 @@ export const AuditAction = {
   CHANNEL_DISCONNECTED: 'channel.disconnected',
   CHANNEL_TOKEN_UPDATED: 'channel.token_updated',
   CHANNEL_RENAMED: 'channel.renamed',
+  // A store took an account that another store had disconnected (the row of that store is renamed, not deleted)
+  CHANNEL_ACCOUNT_TAKEN: 'channel.account_taken',
   WIDGET_ORIGINS_CHANGED: 'channel.widget_origins_changed',
   WIDGET_PRE_CHAT_CHANGED: 'channel.widget_pre_chat_changed',
   SETTINGS_CHANGED: 'settings.changed',

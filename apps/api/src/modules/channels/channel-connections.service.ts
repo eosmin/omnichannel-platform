@@ -537,6 +537,18 @@ export class ChannelConnectionsService {
             SELECT public.rls_take_disconnected_connection(${storeId}, ${pluginId}, ${result.connectionId}) AS changed`
           if (released[0]?.changed !== 1)
             throw await this.accountInUse(tx, existing.storeId, actor.userId)
+          // The only write of the api that renames a row of ANOTHER store: the entry says which row and from which store, in the log
+          // of the store that took it (the count alone would not tell). A refusal above writes none
+          this.audit.log({
+            action: AuditAction.CHANNEL_ACCOUNT_TAKEN,
+            actor: { userId: actor.userId },
+            storeId,
+            resourceType: 'channel_connection',
+            resourceId: existing.id,
+            metadata: { pluginId, previousStoreId: existing.storeId },
+            ipAddress: actor.ipAddress,
+            userAgent: actor.userAgent
+          })
           existing = null
         }
         // This store's own row keeps its name when the plugin could only make one up, unless that name

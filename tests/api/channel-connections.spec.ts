@@ -239,6 +239,15 @@ describe('The channel connections of a store', () => {
         where: { id: (theirs.body as ConnectionBody).id }
       })
       expect(row.storeId).toBe(ctx.storeB.id)
+      // A refusal is not a take-over: nothing was renamed, so nothing is audited
+      expect(
+        await owner.auditLog.count({
+          where: {
+            action: AuditAction.CHANNEL_ACCOUNT_TAKEN,
+            resourceId: (theirs.body as ConnectionBody).id
+          }
+        })
+      ).toBe(0)
     })
 
     // The other store is named only to somebody who is an active member of it (and the answer is the
@@ -438,6 +447,13 @@ describe('The channel connections of a store', () => {
         status: ChannelConnectionStatus.DISCONNECTED
       })
       expect(old.connectionId).toContain('~released~')
+      // The take-over is audited in the log of the store that took it, with the row and the store it came from
+      expect(await auditCount(AuditAction.CHANNEL_ACCOUNT_TAKEN, first.id, 1)).toBe(1)
+      const taken = await owner.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.CHANNEL_ACCOUNT_TAKEN, resourceId: first.id }
+      })
+      expect(taken.storeId).toBe(ctx.storeB.id)
+      expect(taken.metadata).toMatchObject({ previousStoreId: ctx.storeA.id })
       const fresh = await owner.channelConnection.findUniqueOrThrow({
         where: { id: (second.body as ConnectionBody).id }
       })

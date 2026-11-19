@@ -209,6 +209,45 @@ describe('rls_take_disconnected_connection', () => {
     expect((await holderRow()).connection_id).toBe(holder.connectionId)
   })
 
+  it('is not fooled by a temporary table of the same name made by the caller (the search_path ends in pg_temp)', async () => {
+    await holderIs(ChannelConnectionStatus.DISCONNECTED)
+    const changed = await asApp([store.b], async query => {
+      await query(
+        'CREATE TEMP TABLE channel_connections (LIKE public.channel_connections INCLUDING DEFAULTS)'
+      )
+      await query(
+        'CREATE TEMP TABLE plugin_installations (LIKE public.plugin_installations INCLUDING DEFAULTS)'
+      )
+      const { rows } = await query<{ changed: number }>(
+        'SELECT public.rls_take_disconnected_connection($1, $2, $3) AS changed',
+        [store.b, pluginId, holder.connectionId]
+      )
+      return rows[0]?.changed
+    })
+    // The real tables answered (the real installation of store b, the real row), not the empty copies
+    expect(changed).toBe(1)
+  })
+
+  it('writes updated_at in UTC whatever the time zone of the session', async () => {
+    await holderIs(ChannelConnectionStatus.DISCONNECTED)
+    const gap = await asApp([store.b], async query => {
+      await query("SET LOCAL TIME ZONE 'Pacific/Auckland'")
+      await query('SELECT public.rls_take_disconnected_connection($1, $2, $3)', [
+        store.b,
+        pluginId,
+        holder.connectionId
+      ])
+      await query('RESET ROLE')
+      const { rows } = await query<{ seconds: number }>(
+        `SELECT abs(extract(epoch FROM (updated_at - (now() AT TIME ZONE 'UTC')))) AS seconds
+           FROM channel_connections WHERE id = $1`,
+        [holder.id]
+      )
+      return Number(rows[0]?.seconds)
+    })
+    expect(gap).toBeLessThan(60)
+  })
+
   it('is a narrow definer: fixed search_path ending in pg_temp, owned by the migrations, executable only by the api, and the status is the enum', async () => {
     const { rows } = await raw.query<{
       secdef: boolean

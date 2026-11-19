@@ -7,7 +7,7 @@
 --     a parameter alone) and must have the plugin installed and active, which is what `connect` has already checked;
 --   - it renames the connection id of the row of (p_plugin_id, p_connection_id) to '<id>~released~<row id>' (the name is made here, the
 --     caller cannot choose it), only while the row is DISCONNECTED and only when it is of another store than p_store_id;
---   - it changes no other column, returns the number of rows it changed (0 or 1: the key is unique) and never a row;
+--   - it changes no other column than the key and updated_at (written in UTC, like the rest of the system), returns the number of rows it changed (0 or 1: the key is unique) and never a row;
 --   - a context that does not hold p_store_id raises 42501 instead of answering 0; the context is read once, into a variable.
 -- A row that is ACTIVE or in ERROR is never touched: the status is written in the function, not passed in (a parameter could be 'active').
 -- The function trusts the context like every policy does (the application sets it from the guard, never from the body).
@@ -31,7 +31,7 @@ CREATE FUNCTION public.rls_take_disconnected_connection(p_store_id text, p_plugi
     END IF;
     UPDATE public.channel_connections c
        SET connection_id = c.connection_id || '~released~' || c.id,
-           updated_at = pg_catalog.now()
+           updated_at = (pg_catalog.now() AT TIME ZONE 'UTC')
      WHERE c.plugin_id = p_plugin_id
        AND c.connection_id = p_connection_id
        AND c.status = 'disconnected'
