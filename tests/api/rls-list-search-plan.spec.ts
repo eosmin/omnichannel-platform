@@ -148,8 +148,11 @@ describe('the plan of the searches of the lists with row-level security on', () 
   // the statement INSIDE the function (auto_explain, which the owner of the database, a superuser in CI, loads); the call is made as
   // platform_app with the context of store A. The scans that are not bitmaps are switched off with SET LOCAL inside the transaction of
   // the case (it rolls back: nothing leaks to other cases or to the pooler), so the plan shows what the planner CAN read, and
-  // the gap is the other side of the raw case above: with the function, the trigram index IS available next to the policy.
-  it('customers list through its function: the trigram indexes are the way in, with the policy enforced and the owner not a superuser', async () => {
+  // what is asserted is what does NOT depend on the statistics (MEASURED in CI: the planner read the store index and filtered, by cost,
+  // with the same function): the statement inside the function carries NO policy (no sub-select of app_store_ids(), no InitPlan or
+  // SubPlan) and the store is a CONSTANT of the plan (`v_stores` read once), so nothing next to the LIKE bars a trigram index from the
+  // planner, which is the gap of the raw case above. Which index it then picks is its cost decision and is not asserted (plan-notas-76).
+  it('customers list through its function: no policy barrier next to the search, the store a constant, owner not a superuser', async () => {
     const plans: string[] = []
     const collect = (notice: { message?: string }): void => {
       plans.push(notice.message ?? '')
@@ -192,7 +195,8 @@ describe('the plan of the searches of the lists with row-level security on', () 
     }
     const plan = plans.join('\n')
     // The whole plan travels with the failure
-    expect(plan).toMatch(/idx_customers_name_search_trgm/)
+    expect(plan).toContain(`store_id = ANY ('{${storeA}}'::text[])`)
+    expect(plan).not.toMatch(/app_store_ids|InitPlan|SubPlan/)
     expect(plan).not.toMatch(/Seq Scan on customers/)
   }, 60_000)
   // The ORDERS list: its search is a prefix LIKE on the number OR the orders of the customers whose name, email or phone match (a
