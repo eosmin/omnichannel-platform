@@ -45,9 +45,6 @@ export function ordersExportSource(
   filters: OrdersExportFilters
 ): CsvSource {
   // The customers the text names are found once, by a function of the database, before the first read of the orders
-  let resolved: Promise<ReturnType<typeof filtersOf>> | undefined
-  const whereOf = (): Promise<ReturnType<typeof filtersOf>> => (resolved ??= resolve())
-  const resolve = async () => filtersOf(await orderTextCustomerIds(prisma, storeId, filters.q))
   const filtersOf = (textCustomers: readonly string[]) => ({
     ...orderListWhere(
       storeId,
@@ -78,6 +75,9 @@ export function ordersExportSource(
           }
         })
   })
+  let resolved: Promise<ReturnType<typeof filtersOf>> | undefined
+  const whereOf = (): Promise<ReturnType<typeof filtersOf>> =>
+    (resolved ??= orderTextCustomerIds(prisma, storeId, filters.q).then(filtersOf))
   return {
     columns: ORDER_COLUMNS,
     count: async () => prisma.client.order.count({ where: await whereOf() }),
