@@ -293,6 +293,31 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.tenantTransaction({ storeIds: [storeId], organizationIds: [], userId }, work)
   }
 
+  // A store that this very transaction just created: its context did not hold it, so the rows of the store (its settings) would be
+  // refused. It widens the context of the transaction (the settings and the scope of the work) by that one id, and only when the store
+  // belongs to an organization of the context: the new store is never reachable by an id the caller picked for someone else's.
+  async adoptCreatedStore(storeId: string): Promise<void> {
+    const scope = tenantScope.getStore()
+    // With no tenant transaction (RLS_CONTEXT off) there is no context to widen: the rows are not filtered by the database
+    if (scope === undefined) return
+    if (scope.context.organizationIds.length === 0) {
+      throw new Error('adoptCreatedStore needs the organization of the store in the context')
+    }
+    const owned = await scope.tx.store.findFirst({
+      where: { id: storeId, organizationId: { in: [...scope.context.organizationIds] } },
+      select: { id: true }
+    })
+    if (owned === null)
+      throw new Error('adoptCreatedStore: the store is not one of the organization of the context')
+    if (scope.context.storeIds.includes(storeId)) return
+    const widened: TenantContext = {
+      ...scope.context,
+      storeIds: [...scope.context.storeIds, storeId]
+    }
+    await applyTenantContext(scope.tx, widened)
+    scope.context = widened
+  }
+
   // For the work of ONE person that has no store to name (their avatar, which belongs to them and to no store): the context holds the
   // person alone, which is what the policy of the rows of a person reads (`app.user_id`). The context of the request when the interceptor
   // opened it, which must then be this person's, or its own. It sees no store row: keep it to the person's own rows.
