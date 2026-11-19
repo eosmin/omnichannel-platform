@@ -366,7 +366,7 @@ describe('row-level security, the flows that find their store before there is a 
           try {
             return (
               await owner.query<{ plugin_status: string }>(
-                'SELECT * FROM resolve_plugin_installation_plugin_status($1)',
+                'SELECT * FROM lookup_plugin_status_of_key($1)',
                 [`ph-c-${run}`]
               )
             ).rows
@@ -383,10 +383,7 @@ describe('row-level security, the flows that find their store before there is a 
         for (const hash of [`ph-a-${run}`, `h-a-${run}`, `nope-${run}`]) {
           await owner.query('SET LOCAL ROLE platform_app')
           try {
-            const rows = await owner.query(
-              'SELECT * FROM resolve_plugin_installation_plugin_status($1)',
-              [hash]
-            )
+            const rows = await owner.query('SELECT * FROM lookup_plugin_status_of_key($1)', [hash])
             expect(rows.rows).toEqual([])
           } finally {
             await owner.query('RESET ROLE')

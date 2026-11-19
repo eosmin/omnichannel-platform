@@ -61,7 +61,7 @@ export async function resolvePluginInstallationPluginStatus(
 ): Promise<string | null> {
   const rows = await db.$queryRaw<
     { plugin_status: string }[]
-  >`SELECT * FROM resolve_plugin_installation_plugin_status(${keyHash})`
+  >`SELECT * FROM lookup_plugin_status_of_key(${keyHash})`
   return rows[0]?.plugin_status ?? null
 }
 

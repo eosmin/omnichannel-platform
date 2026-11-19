@@ -5,7 +5,7 @@
 -- answers the store: the input is the hash of a secret the caller holds, never a store or a plugin id, there is no context to read,
 -- and a hash that matches no installation (or an installation with no plugin row) answers no row, which the guard turns into the
 -- same 401 as an unknown key. Objects are schema-qualified and pg_temp is last in the search_path.
-CREATE OR REPLACE FUNCTION public.resolve_plugin_installation_plugin_status(p_key_hash text)
+CREATE OR REPLACE FUNCTION public.lookup_plugin_status_of_key(p_key_hash text)
   RETURNS TABLE (plugin_status text)
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $$
@@ -16,5 +16,5 @@ CREATE OR REPLACE FUNCTION public.resolve_plugin_installation_plugin_status(p_ke
     LIMIT 1
   $$;
 
-REVOKE ALL ON FUNCTION public.resolve_plugin_installation_plugin_status(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.resolve_plugin_installation_plugin_status(text) TO platform_app, platform_worker;
+REVOKE ALL ON FUNCTION public.lookup_plugin_status_of_key(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.lookup_plugin_status_of_key(text) TO platform_app, platform_worker;

@@ -107,7 +107,7 @@ export class PluginApiKeyGuard implements CanActivate {
     ) {
       // The caller gets the same answer as for an unknown key; the audit log knows which installation it was
       return this.refuseKey(request, PluginApiDenialReasons.INACTIVE, installation, {
-        status: { installation: installation.status, plugin: pluginStatus ?? 'unknown' }
+        status: { installation: installation.status, plugin: pluginStatus }
       })
     }
 
@@ -208,7 +208,7 @@ export class PluginApiKeyGuard implements CanActivate {
     request: AuthenticatedRequest,
     reason: PluginApiDenialReason,
     installation?: { id: string; pluginId: string; store: { id: string } },
-    detail: { status?: { installation: string; plugin: string } } = {}
+    detail: { status?: { installation: string; plugin: string | null } } = {}
   ): never {
     // The audit is capped, so the log keeps every one of these (never the key)
     this.logger.warn(
@@ -224,7 +224,10 @@ export class PluginApiKeyGuard implements CanActivate {
     request: AuthenticatedRequest,
     reason: PluginApiDenialReason,
     installation?: { id: string; pluginId: string; store: { id: string } },
-    detail: { missing?: readonly string[]; status?: { installation: string; plugin: string } } = {}
+    detail: {
+      missing?: readonly string[]
+      status?: { installation: string; plugin: string | null }
+    } = {}
   ): Promise<void> {
     return auditPluginDenial(
       { audit: this.audit, redis: this.redis, logger: this.logger },
