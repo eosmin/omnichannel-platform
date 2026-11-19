@@ -1163,7 +1163,9 @@ key drop that subscription and ask again the next time they open the app.
 
 ## 16. Rules for writing a spec that does not flake
 
-Each rule below comes from a red that was not a bug of the product.
+Each rule below comes from a red that was not a bug of the product. **Enforced by a gate:** rule 1
+(`shared-table-cleanup.spec.ts`, over the fixtures and helpers of the suites) and rule 5 (the two jest configs
+ignore and list the same files). **Advice only, today:** rules 2, 3, 4, 6 and 7 (the task is in Step 7.3).
 
 1. **Clean up only what the suite made.** The suites of the api and the worker run at the same time over
    one database. A fixture in SQL never runs `DELETE FROM <table>` without a filter by id, owner, store,
@@ -1179,7 +1181,8 @@ Each rule below comes from a red that was not a bug of the product.
    hex contains "5151" about one run in a few thousand. Assert by exact id or by prefix, or leave the
    random keys out of what is searched.
 5. **A measure of time runs alone.** A spec with a limit in milliseconds goes in `jest.latency.config.cts`
-   and out of `jest.config.cts` (`pnpm test:latency`): after dozens of specs the heap of a shard is full
+   and out of `jest.config.cts` (`pnpm test:latency`, a step of the last security shard in CI; it is not part of `validate:all`, so run it by
+   hand after a change to a measured query): after dozens of specs the heap of a shard is full
    and its garbage collections land in the measure.
 6. **The first call of a native library is slow.** `sharp` loads its binary on the first call, so a spec
    that uses it raises its timeout (`jest.setTimeout`) instead of lowering what it checks.
