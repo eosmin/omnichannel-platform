@@ -6,8 +6,10 @@ import type supertest from 'supertest'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { inSavepoint, PrismaService, settleDeferred } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  BankDeferredConstraints,
   BankStatementLimits,
   FinanceConflicts,
   FinanceCountryCodes,
@@ -22,6 +24,14 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { type Actor, api } from '../helpers/http'
+
+// The real module, with settleDeferred as a spy that still runs: a test makes the database refuse the group at that call
+jest.mock('@platform/core/database', () => {
+  const actual = jest.requireActual<{ settleDeferred: (...args: never[]) => Promise<void> }>(
+    '@platform/core/database'
+  )
+  return { ...actual, settleDeferred: jest.fn(actual.settleDeferred) }
+})
 
 interface ErrorBody {
   error: { code: string; metadata?: Record<string, unknown> }
@@ -1227,6 +1237,25 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
       expect(await confirmedOf(line.id)).toHaveLength(0)
     })
 
+    it('answers a group that the database refuses when the service asks for its check, as a conflict and never a 500', async () => {
+      const [a, b] = [await bookLine('in', 600, day(-3)), await bookLine('in', 400, day(-3))]
+      const made = await imported([`${day(-2)},Asked,,10.00`])
+      const line = await lineOf(made.id)
+      const settle = jest.mocked(settleDeferred)
+      settle.mockRejectedValueOnce(
+        new Error(
+          'RECONCILIATION_GROUP: the lines of the group do not add up to the statement line'
+        )
+      )
+
+      const refused = await group(line.id, [a, b])
+
+      expect(settle).toHaveBeenCalledWith(BankDeferredConstraints.GROUP, expect.anything())
+      expect(refused.status).toBe(CONFLICT)
+      expect(conflictOf(refused.body)).toBe(FinanceConflicts.BANK_GROUP_NOT_ALLOWED)
+      expect(await confirmedOf(line.id)).toHaveLength(0)
+    })
+
     it('refuses a group of one, a line named twice, a line of another account and a line that does not exist', async () => {
       const [a, b] = [await bookLine('in', 600, day(-3)), await bookLine('in', 400, day(-3))]
       const cash = await bookLineOnCash(400, day(-3))
@@ -1420,6 +1449,35 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
           owner.reconciliationMatch.create({ data: rowOf(line.id, a, randomUUID(), true) })
         ).rejects.toThrow(/RECONCILIATION_GROUP/)
         expect(await confirmedOf(line.id)).toHaveLength(0)
+      })
+
+      it('answers the check of a group inside the attempt, where the service can map it, and leaves the next group to the commit', async () => {
+        const [a, b, c] = [
+          await bookLine('in', 600, day(-3)),
+          await bookLine('in', 399, day(-3)),
+          await bookLine('in', 400, day(-3))
+        ]
+        const made = await imported([`${day(-2)},Settled,,10.00`])
+        const line = await lineOf(made.id)
+        const prisma = app.get(PrismaService)
+        const context = { storeIds: [], organizationIds: [ctx.orgA.id] }
+        await prisma.tenantTransaction(context, async () => {
+          // 600 + 399 is not 1000: the database says so when the check runs, which the service asks for before the commit
+          const bad = randomUUID()
+          await expect(
+            inSavepoint(async () => {
+              await prisma.client.reconciliationMatch.create({ data: rowOf(line.id, b, bad, true) })
+              await prisma.client.reconciliationMatch.create({ data: rowOf(line.id, a, bad) })
+              await settleDeferred(BankDeferredConstraints.GROUP)
+            })
+          ).rejects.toThrow(/RECONCILIATION_GROUP/)
+          // The transaction is usable and the check is deferred again: a group is written one row at a time (600 alone is not 1000)
+          const good = randomUUID()
+          await prisma.client.reconciliationMatch.create({ data: rowOf(line.id, a, good, true) })
+          await prisma.client.reconciliationMatch.create({ data: rowOf(line.id, c, good) })
+          await settleDeferred(BankDeferredConstraints.GROUP)
+        })
+        expect(await confirmedOf(line.id)).toHaveLength(2)
       })
 
       it('keeps a pair and a group, or two groups, of one statement line apart', async () => {

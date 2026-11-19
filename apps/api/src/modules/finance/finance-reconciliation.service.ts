@@ -6,6 +6,7 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import {
   inSavepoint,
+  settleDeferred,
   isUniqueViolation,
   type PrismaTransaction,
   PrismaService
@@ -15,6 +16,7 @@ import {
   BankLineFilters,
   BankStatementLimits,
   BankStatementTransaction,
+  BankDeferredConstraints,
   BankTriggerPrefixes,
   canPair,
   DAY_MS,
@@ -668,6 +670,9 @@ export class FinanceReconciliationService {
               }
             })
           }
+          // The database checks the group at the COMMIT, which with a transaction per request is not ours: asked for here, its refusal
+          // reaches the catch below and becomes the answer of the group
+          await settleDeferred(BankDeferredConstraints.GROUP, tx)
         })
       )
     } catch (error) {
