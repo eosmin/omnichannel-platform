@@ -316,7 +316,11 @@ export class FinanceBankImportsService {
       imported = true
       // A scan that was not queued waits for the hourly cleanup of pending files: it must not fail an import that was made
       await this.heavyQueue
-        .add(JobNames.SCAN_FILE, { mediaId }, { jobId: `${JobNames.SCAN_FILE}-${mediaId}` })
+        .add(
+          JobNames.SCAN_FILE,
+          { mediaId, storeId },
+          { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+        )
         .catch(() => undefined)
       this.audit.log({
         action: AuditAction.FINANCE_BANK_STATEMENT_IMPORTED,

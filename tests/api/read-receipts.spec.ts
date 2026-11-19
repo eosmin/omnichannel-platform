@@ -6,7 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { ChannelContextFactory } from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -77,7 +77,8 @@ describe('Telling the channel that an agent read a conversation', () => {
       prisma,
       registry,
       new ChannelContextFactory(cipher),
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      new JobContext(prisma)
     )
   })
   afterEach(async () => {

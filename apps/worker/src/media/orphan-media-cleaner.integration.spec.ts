@@ -414,7 +414,7 @@ describe('OrphanMediaCleaner', () => {
     await sweep()
 
     const queued = await heavy.getJob(`${JobNames.SCAN_FILE}-${id}`)
-    expect(queued?.data).toEqual({ mediaId: id })
+    expect(queued?.data).toEqual({ mediaId: id, storeId })
     await dropJob(queued)
   })
 

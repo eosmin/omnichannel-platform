@@ -22,7 +22,8 @@ describe('MediaPipeline with no row for the job', () => {
     { scan } as unknown as ClamavClient,
     {} as unknown as DomainEvents,
     { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
-    { setContext: jest.fn(), warn } as unknown as PinoLogger
+    { setContext: jest.fn(), warn } as unknown as PinoLogger,
+    { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
   )
 
   beforeEach(() => {
@@ -31,14 +32,14 @@ describe('MediaPipeline with no row for the job', () => {
   })
 
   it('warns with the media id and the job on a scan, and sends nothing to the daemon', async () => {
-    await pipeline.scan('media-1')
+    await pipeline.scan('media-1', { storeId: 'store-1' })
     expect(warn).toHaveBeenCalledTimes(1)
     expect(warn.mock.calls[0]?.[0]).toEqual({ mediaId: 'media-1', job: JobNames.SCAN_FILE })
     expect(scan).not.toHaveBeenCalled()
   })
 
   it('warns with the media id and the job on the processing of a picture', async () => {
-    await pipeline.processImage('media-2')
+    await pipeline.processImage('media-2', { storeId: 'store-1' })
     expect(warn.mock.calls[0]?.[0]).toEqual({ mediaId: 'media-2', job: JobNames.PROCESS_IMAGE })
   })
 })

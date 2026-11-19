@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
@@ -7,7 +8,7 @@ import {
   errorName,
   withTimeout
 } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   isInstallationActive,
@@ -34,7 +35,8 @@ export class TypingSender {
     private readonly prisma: PrismaService,
     private readonly registry: PluginRegistry,
     private readonly contexts: ChannelContextFactory,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(TypingSender.name)
   }
@@ -72,18 +74,20 @@ export class TypingSender {
 
   private async deliver(job: SendOutboundTypingJob): Promise<void> {
     const { storeId, conversationId, active } = job
-    const conversation = await this.prisma.client.conversation.findFirst({
-      where: { id: conversationId, storeId },
-      select: {
-        customerIdentity: { select: { channelIdentity: true } },
-        channelConnection: {
-          select: {
-            ...CONNECTION_ROW_SELECT,
-            installation: { select: { status: true, plugin: { select: { status: true } } } }
+    const conversation = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.conversation.findFirst({
+        where: { id: conversationId, storeId },
+        select: {
+          customerIdentity: { select: { channelIdentity: true } },
+          channelConnection: {
+            select: {
+              ...CONNECTION_ROW_SELECT,
+              installation: { select: { status: true, plugin: { select: { status: true } } } }
+            }
           }
         }
-      }
-    })
+      })
+    )
     if (conversation === null) return
     const { channelConnection: connection, customerIdentity } = conversation
     const connectionStatus = isInstallationActive(connection.installation)
@@ -113,13 +117,15 @@ export class TypingSender {
   }
 
   private async lastInbound(storeId: string, conversationId: string) {
-    const [row, settings] = await Promise.all([
-      this.prisma.client.message.findFirst(lastInboundQuery(storeId, conversationId)),
-      this.prisma.client.storeSettings.findUnique({
-        where: { storeId },
-        select: { preferences: true }
-      })
-    ])
+    const [row, settings] = await this.jobContext.forStore(storeId, () =>
+      Promise.all([
+        this.prisma.client.message.findFirst(lastInboundQuery(storeId, conversationId)),
+        this.prisma.client.storeSettings.findUnique({
+          where: { storeId },
+          select: { preferences: true }
+        })
+      ])
+    )
     return lastInboundOf(row, readStorePreferences(settings?.preferences ?? {}).sendReadReceipts)
   }
 

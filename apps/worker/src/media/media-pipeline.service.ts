@@ -1,17 +1,18 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore, or forUser for an avatar) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
 import { type Queue, UnrecoverableError } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 import sharp from 'sharp'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { ImageNotSanitizable, isSanitizedType, sanitizeImage } from '@platform/core/image-sanitizer'
 import { publishMessageChanged } from '@platform/core/messaging'
-import { JobNames, type ProcessImageJob, QueueNames } from '@platform/core/queues'
+import { JobNames, type MediaScope, type ProcessImageJob, QueueNames } from '@platform/core/queues'
 import {
   AllowedContentTypes,
   ImageVariants,
@@ -52,9 +53,18 @@ export class MediaPipeline {
     private readonly clamav: ClamavClient,
     private readonly events: DomainEvents,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ProcessImageJob>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(MediaPipeline.name)
+  }
+
+  // The database work of a file runs in the context of its owner: a store, or the person for an avatar. The bucket, the scanner and
+  // the encoder are called outside of it, so no transaction is held open while they work.
+  private within<T>(scope: MediaScope, work: () => Promise<T>): Promise<T> {
+    return scope.storeId !== undefined
+      ? this.jobContext.forStore(scope.storeId, work)
+      : this.jobContext.forUser(scope.userId, work)
   }
 
   // A job whose row is not there. It is a valid end when the row was dropped while the job waited, but it
@@ -67,14 +77,16 @@ export class MediaPipeline {
 
   // `lastAttempt` is true on the last try the job has: a scan that still has no verdict then is given
   // up for good (see `giveUp`), instead of being queued again by the hourly cleanup for ever.
-  async scan(mediaId: string, lastAttempt = false): Promise<void> {
-    const media = await this.prisma.client.media.findUnique({ where: { id: mediaId } })
+  async scan(mediaId: string, scope: MediaScope, lastAttempt = false): Promise<void> {
+    const media = await this.within(scope, () =>
+      this.prisma.client.media.findUnique({ where: { id: mediaId } })
+    )
     if (media === null) return this.noRow(mediaId, JobNames.SCAN_FILE)
     // Scanned by an earlier attempt that may have died before queueing the variants: queue them again
     // (same job id, so never twice)
     if (media.status === String(MediaStatus.CLEAN)) {
       if (isImage(media.contentType) && media.processedAt === null)
-        await this.queueVariants(media.id)
+        await this.queueVariants(media.id, scope)
       return
     }
     if (media.status !== String(MediaStatus.PENDING)) return
@@ -82,7 +94,7 @@ export class MediaPipeline {
     const body = await this.storage.stream(media.key)
     if (body === null) {
       // A picture replaced or removed while its job waited: the row and file went together
-      if (await this.isGone(media.id)) return
+      if (await this.isGone(media.id, scope)) return
       throw new Error('the file to scan is not in the bucket')
     }
     // No verdict (the daemon is down or timed out) throws: the file stays pending and the queue retries
@@ -90,7 +102,7 @@ export class MediaPipeline {
     try {
       verdict = await this.clamav.scan(body)
     } catch (error) {
-      if (lastAttempt) await this.giveUp(media)
+      if (lastAttempt) await this.giveUp(media, scope)
       throw error
     }
 
@@ -98,14 +110,16 @@ export class MediaPipeline {
       // The row is the gate for serving, so it is written first: a failure in between leaves an
       // infected row with its file still in the bucket (never served; the cleanup of PR B2 removes
       // it), and not a pending row whose file is gone and whose scan can never finish.
-      const marked = await this.prisma.client.media.updateMany({
-        where: { id: media.id, status: MediaStatus.PENDING },
-        data: {
-          status: MediaStatus.INFECTED,
-          scanResult: { viruses: verdict.viruses },
-          scannedAt: new Date()
-        }
-      })
+      const marked = await this.within(scope, () =>
+        this.prisma.client.media.updateMany({
+          where: { id: media.id, status: MediaStatus.PENDING },
+          data: {
+            status: MediaStatus.INFECTED,
+            scanResult: { viruses: verdict.viruses },
+            scannedAt: new Date()
+          }
+        })
+      )
       // Another attempt moved the row first: its verdict stands, and this one deletes nothing
       if (marked.count === 0) return
       this.logger.warn(
@@ -113,7 +127,7 @@ export class MediaPipeline {
         'an uploaded file is infected'
       )
       // Never throws, so the delete below always runs
-      await this.announce(media, Events.MEDIA_INFECTED)
+      await this.announce(media, Events.MEDIA_INFECTED, scope)
       // Financial evidence is never deleted: it stays in the bucket as a quarantine, never served (the row is the gate)
       if (isEvidenceMedia(media.purpose)) {
         this.logger.error(
@@ -132,36 +146,41 @@ export class MediaPipeline {
     // what comes out is made of the pixels. The row stays `pending`, never served, until it is done.
     // The picture of a person is re-encoded later, by its own processing.
     if (isSanitizedType(media.contentType) && media.purpose !== String(MediaPurpose.AVATAR)) {
-      if (!(await this.sanitize(media))) return
+      if (!(await this.sanitize(media, scope))) return
     }
 
-    const marked = await this.prisma.client.media.updateMany({
-      where: { id: media.id, status: MediaStatus.PENDING },
-      data: { status: MediaStatus.CLEAN, scannedAt: new Date() }
-    })
+    const marked = await this.within(scope, () =>
+      this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.PENDING },
+        data: { status: MediaStatus.CLEAN, scannedAt: new Date() }
+      })
+    )
     if (marked.count === 0) return
-    await this.announce(media, Events.MEDIA_PROCESSED)
-    if (isImage(media.contentType)) await this.queueVariants(media.id)
+    await this.announce(media, Events.MEDIA_PROCESSED, scope)
+    if (isImage(media.contentType)) await this.queueVariants(media.id, scope)
   }
 
   // Replaces the uploaded picture with the same picture, upright and without metadata (see
   // `sanitizeImage`), and keeps the size of the row true. Safe to run twice: the mark in `scanResult`
   // keeps a retry from encoding it again. Returns false when the picture was refused or the row moved
   // on, and the scan must stop.
-  private async sanitize(media: {
-    id: string
-    key: string
-    contentType: string
-    storeId: string | null
-    purpose: string
-    scanResult: unknown
-  }): Promise<boolean> {
+  private async sanitize(
+    media: {
+      id: string
+      key: string
+      contentType: string
+      storeId: string | null
+      purpose: string
+      scanResult: unknown
+    },
+    scope: MediaScope
+  ): Promise<boolean> {
     // Cleaned by an earlier attempt of this scan (it died before the row was marked clean): encoding
     // again would only lose quality
     if (hasSanitizedMark(media.scanResult)) return true
     const original = await this.storage.read(media.key, UploadLimits.MAX_FILE_SIZE_BYTES)
     if (original === null) {
-      if (await this.isGone(media.id)) return false
+      if (await this.isGone(media.id, scope)) return false
       throw new Error('the file to clean is not in the bucket')
     }
     let cleaned
@@ -169,16 +188,18 @@ export class MediaPipeline {
       cleaned = await sanitizeImage(original, media.contentType)
     } catch (error) {
       if (!(error instanceof ImageNotSanitizable)) throw error
-      await this.rejectImage(media, error)
+      await this.rejectImage(media, error, scope)
       return false
     }
     if (cleaned.kind === 'untouched') return true
     // A failure of the bucket is not the image's: it propagates and the queue retries
     await this.storage.put(media.key, cleaned.body, media.contentType)
-    const moved = await this.prisma.client.media.updateMany({
-      where: { id: media.id, status: MediaStatus.PENDING },
-      data: { fileSize: cleaned.body.length, scanResult: { sanitized: true } }
-    })
+    const moved = await this.within(scope, () =>
+      this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.PENDING },
+        data: { fileSize: cleaned.body.length, scanResult: { sanitized: true } }
+      })
+    )
     return moved.count > 0
   }
 
@@ -187,16 +208,19 @@ export class MediaPipeline {
   // with its own reason, and the team is told so that the thread stops showing a placeholder.
   private async rejectImage(
     media: { id: string; key: string; storeId: string | null; purpose: string },
-    error: ImageNotSanitizable
+    error: ImageNotSanitizable,
+    scope: MediaScope
   ): Promise<void> {
-    const marked = await this.prisma.client.media.updateMany({
-      where: { id: media.id, status: MediaStatus.PENDING },
-      data: {
-        status: MediaStatus.UNSCANNABLE,
-        scanResult: { reason: MediaRejectionReasons.IMAGE_NOT_SANITIZABLE },
-        scannedAt: new Date()
-      }
-    })
+    const marked = await this.within(scope, () =>
+      this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.PENDING },
+        data: {
+          status: MediaStatus.UNSCANNABLE,
+          scanResult: { reason: MediaRejectionReasons.IMAGE_NOT_SANITIZABLE },
+          scannedAt: new Date()
+        }
+      })
+    )
     if (marked.count === 0) return
     this.logger.warn(
       {
@@ -209,7 +233,7 @@ export class MediaPipeline {
     )
     // The team is told first (it never throws). A delete that fails leaves the original in the bucket,
     // unserved: the hourly cleanup deletes the file of an unscannable row.
-    await this.announce(media, Events.MEDIA_UNSCANNABLE)
+    await this.announce(media, Events.MEDIA_UNSCANNABLE, scope)
     // A receipt that cannot be decoded is still the evidence of a transaction: it stays, unserved
     if (isEvidenceMedia(media.purpose)) return
     try {
@@ -226,12 +250,15 @@ export class MediaPipeline {
   // at, so it is never queued again, and the file leaves the bucket: it was never scanned, so it is
   // never served. The row is written first (the gate), as for an infected file. The error of the scan
   // still propagates, so the job ends as failed and goes to the dead-letter queue.
-  private async giveUp(media: {
-    id: string
-    key: string
-    storeId: string | null
-    purpose: string
-  }): Promise<void> {
+  private async giveUp(
+    media: {
+      id: string
+      key: string
+      storeId: string | null
+      purpose: string
+    },
+    scope: MediaScope
+  ): Promise<void> {
     // Financial evidence is never given up nor deleted: the row stays `pending` (never served) and the hourly
     // cleanup queues the scan again until the daemon answers (a fiscal document's evidence is scanned again
     // when it is asked for, `FiscalEvidenceService`). The alarm is the error log of every give-up.
@@ -243,10 +270,12 @@ export class MediaPipeline {
       return
     }
     try {
-      const marked = await this.prisma.client.media.updateMany({
-        where: { id: media.id, status: MediaStatus.PENDING },
-        data: { status: MediaStatus.UNSCANNABLE, scannedAt: new Date() }
-      })
+      const marked = await this.within(scope, () =>
+        this.prisma.client.media.updateMany({
+          where: { id: media.id, status: MediaStatus.PENDING },
+          data: { status: MediaStatus.UNSCANNABLE, scannedAt: new Date() }
+        })
+      )
       if (marked.count === 0) return
       this.logger.error(
         { mediaId: media.id, storeId: media.storeId },
@@ -254,7 +283,7 @@ export class MediaPipeline {
       )
       // The file first: announce never throws, but the delete is what must not be skipped
       await this.storage.delete(media.key)
-      await this.announce(media, Events.MEDIA_UNSCANNABLE)
+      await this.announce(media, Events.MEDIA_UNSCANNABLE, scope)
     } catch (error) {
       // The next hourly pass of the cleanup deletes the file of an unscannable row
       this.logger.warn(
@@ -271,7 +300,10 @@ export class MediaPipeline {
   private async announce(
     media: { id: string; storeId: string | null },
     event:
-      typeof Events.MEDIA_PROCESSED | typeof Events.MEDIA_INFECTED | typeof Events.MEDIA_UNSCANNABLE
+      | typeof Events.MEDIA_PROCESSED
+      | typeof Events.MEDIA_INFECTED
+      | typeof Events.MEDIA_UNSCANNABLE,
+    scope: MediaScope
   ): Promise<void> {
     if (media.storeId === null) return
     const { storeId } = media
@@ -280,14 +312,18 @@ export class MediaPipeline {
     // shows the state anyway
     try {
       // Read now, not at the start of the job: a send may have linked the file while it was processed
-      const current = await this.prisma.client.media.findUnique({
-        where: { id: media.id },
-        select: { messageId: true, origin: { select: { messageId: true } } }
-      })
+      const current = await this.within(scope, () =>
+        this.prisma.client.media.findUnique({
+          where: { id: media.id },
+          select: { messageId: true, origin: { select: { messageId: true } } }
+        })
+      )
       const messageId = current?.messageId ?? current?.origin?.messageId ?? null
       if (messageId === null) return
-      await this.prisma.transaction(tx =>
-        publishMessageChanged(this.events, tx, event, storeId, messageId)
+      await this.within(scope, () =>
+        this.prisma.transaction(tx =>
+          publishMessageChanged(this.events, tx, event, storeId, messageId)
+        )
       )
     } catch (error) {
       this.logger.warn(
@@ -297,10 +333,10 @@ export class MediaPipeline {
     }
   }
 
-  private async queueVariants(mediaId: string): Promise<void> {
+  private async queueVariants(mediaId: string, scope: MediaScope): Promise<void> {
     await this.heavyQueue.add(
       JobNames.PROCESS_IMAGE,
-      { mediaId },
+      { mediaId, ...scope },
       { jobId: `${JobNames.PROCESS_IMAGE}-${mediaId}` }
     )
   }
@@ -310,11 +346,14 @@ export class MediaPipeline {
   // asked to keep it. The row is pointed at the new file (the gate for serving: AccountSettingsService
   // gives a link only once `processedAt` is set) and the uploaded file is deleted. Safe to run twice: a
   // retry writes the same key again.
-  private async processAvatar(media: {
-    id: string
-    key: string
-    uploadedBy: string | null
-  }): Promise<void> {
+  private async processAvatar(
+    media: {
+      id: string
+      key: string
+      uploadedBy: string | null
+    },
+    scope: MediaScope
+  ): Promise<void> {
     const owner = parseAvatarKey(media.key)?.userId
     // A row that does not sit under its own user's files is not served
     if (owner === undefined || owner !== media.uploadedBy) {
@@ -322,16 +361,18 @@ export class MediaPipeline {
         { mediaId: media.id },
         'an avatar is not under its own user and was refused'
       )
-      await this.prisma.client.media.updateMany({
-        where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
-        data: { status: MediaStatus.UNSCANNABLE, scannedAt: new Date() }
-      })
+      await this.within(scope, () =>
+        this.prisma.client.media.updateMany({
+          where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
+          data: { status: MediaStatus.UNSCANNABLE, scannedAt: new Date() }
+        })
+      )
       return
     }
     const original = await this.storage.read(media.key, AvatarUpload.MAX_SIZE_BYTES)
     if (original === null) {
       // Replaced or removed while the job waited: the row and file went together
-      if (await this.isGone(media.id)) return
+      if (await this.isGone(media.id, scope)) return
       throw new Error('the avatar to process is not in the bucket')
     }
 
@@ -353,10 +394,12 @@ export class MediaPipeline {
         { mediaId: media.id, errorName: errorName(error) },
         'an avatar could not be re-encoded and was refused'
       )
-      const marked = await this.prisma.client.media.updateMany({
-        where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
-        data: { status: MediaStatus.UNSCANNABLE, scannedAt: new Date() }
-      })
+      const marked = await this.within(scope, () =>
+        this.prisma.client.media.updateMany({
+          where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
+          data: { status: MediaStatus.UNSCANNABLE, scannedAt: new Date() }
+        })
+      )
       if (marked.count > 0) await this.storage.delete(media.key)
       return
     }
@@ -364,16 +407,18 @@ export class MediaPipeline {
     const key = StorageKeys.avatarImage(owner, media.id)
     // A failure of the bucket is not the image's: it propagates and the queue retries
     await this.storage.put(key, encoded, VARIANT_CONTENT_TYPE)
-    const done = await this.prisma.client.media.updateMany({
-      where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
-      data: {
-        key,
-        filename: AvatarProcessing.IMAGE_FILENAME,
-        contentType: VARIANT_CONTENT_TYPE,
-        fileSize: encoded.length,
-        processedAt: new Date()
-      }
-    })
+    const done = await this.within(scope, () =>
+      this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
+        data: {
+          key,
+          filename: AvatarProcessing.IMAGE_FILENAME,
+          contentType: VARIANT_CONTENT_TYPE,
+          fileSize: encoded.length,
+          processedAt: new Date()
+        }
+      })
+    )
     if (done.count === 0) {
       // The person replaced or removed the picture while it was processed: the row is gone
       await this.storage.delete(key)
@@ -393,21 +438,25 @@ export class MediaPipeline {
     }
   }
 
-  private async isGone(mediaId: string): Promise<boolean> {
-    const row = await this.prisma.client.media.findUnique({
-      where: { id: mediaId },
-      select: { id: true }
-    })
+  private async isGone(mediaId: string, scope: MediaScope): Promise<boolean> {
+    const row = await this.within(scope, () =>
+      this.prisma.client.media.findUnique({
+        where: { id: mediaId },
+        select: { id: true }
+      })
+    )
     return row === null
   }
 
-  async processImage(mediaId: string): Promise<void> {
-    const media = await this.prisma.client.media.findUnique({ where: { id: mediaId } })
+  async processImage(mediaId: string, scope: MediaScope): Promise<void> {
+    const media = await this.within(scope, () =>
+      this.prisma.client.media.findUnique({ where: { id: mediaId } })
+    )
     if (media === null) return this.noRow(mediaId, JobNames.PROCESS_IMAGE)
     if (media.status !== String(MediaStatus.CLEAN) || media.processedAt !== null) return
     // A picture of a person has no store and its own, smaller processing
     if (media.storeId === null) {
-      if (media.purpose === String(MediaPurpose.AVATAR)) await this.processAvatar(media)
+      if (media.purpose === String(MediaPurpose.AVATAR)) await this.processAvatar(media, scope)
       return
     }
 
@@ -425,37 +474,39 @@ export class MediaPipeline {
       const header = await sharp(original, { limitInputPixels: MAX_IMAGE_PIXELS }).metadata()
       animated = keepsAnimation(media.contentType, header)
     } catch (error) {
-      return this.refuseImage(media, error, written)
+      return this.refuseImage(media, error, written, scope)
     }
     let variantKeys: Record<ImageVariant, string>
     try {
       variantKeys = await this.makeVariants(original, media.id, storeId, animated, written)
     } catch (error) {
       if (!(error instanceof ImageNotEncoded)) throw error
-      if (!animated) return this.refuseImage(media, error.reason, written)
+      if (!animated) return this.refuseImage(media, error.reason, written, scope)
       // An animation the encoder would not take whole is drawn from its first frame instead of
       // refused: the same keys are written again, still
       try {
         variantKeys = await this.makeVariants(original, media.id, storeId, false, written)
       } catch (second) {
         if (!(second instanceof ImageNotEncoded)) throw second
-        return this.refuseImage(media, second.reason, written)
+        return this.refuseImage(media, second.reason, written, scope)
       }
     }
 
     // Guarded like the refusal: a second attempt of a stalled job finds the row settled and stops, and
     // the keys are the same ones, so there is nothing to undo
-    const settled = await this.prisma.client.media.updateMany({
-      where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
-      data: { variants: variantKeys, processedAt: new Date() }
-    })
+    const settled = await this.within(scope, () =>
+      this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
+        data: { variants: variantKeys, processedAt: new Date() }
+      })
+    )
     if (settled.count === 0) {
       // The file was removed while its variants were made: they belong to nobody
-      if (await this.isGone(media.id)) await this.dropVariants(written)
+      if (await this.isGone(media.id, scope)) await this.dropVariants(written)
       return
     }
     // The thread draws the variants once they exist
-    await this.announce(media, Events.MEDIA_PROCESSED)
+    await this.announce(media, Events.MEDIA_PROCESSED, scope)
   }
 
   // The three WebP variants, put in the bucket under their own keys. An error of the encoder is the
@@ -520,13 +571,16 @@ export class MediaPipeline {
   private async refuseImage(
     media: { id: string; storeId: string | null },
     error: unknown,
-    written: readonly string[]
+    written: readonly string[],
+    scope: MediaScope
   ): Promise<never> {
-    const marked = await this.prisma.client.media.updateMany({
-      where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
-      data: { processedAt: new Date() }
-    })
-    if (marked.count > 0) await this.announce(media, Events.MEDIA_PROCESSED)
+    const marked = await this.within(scope, () =>
+      this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
+        data: { processedAt: new Date() }
+      })
+    )
+    if (marked.count > 0) await this.announce(media, Events.MEDIA_PROCESSED, scope)
     await this.dropVariants(written)
     throw new UnrecoverableError(
       `the image could not be processed: ${error instanceof Error ? error.message : 'unknown'}`

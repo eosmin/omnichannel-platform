@@ -57,7 +57,12 @@ export class OutboundProcessor extends BaseProcessor<OutboundJob> {
     super(QueueNames.OUTBOUND, support)
   }
 
-  protected async handle(job: Job<OutboundJob>): Promise<void> {
+  // A store or person deleted after the job was queued is a job with nothing left to do (the context of every call names it)
+  protected handle(job: Job<OutboundJob>): Promise<void> {
+    return this.skipIfGone(job, () => this.dispatch(job))
+  }
+
+  private async dispatch(job: Job<OutboundJob>): Promise<void> {
     if (job.name === JobNames.SEND_OUTBOUND_REACTION) {
       await this.handleReaction(job)
       return

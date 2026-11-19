@@ -6,7 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { ChannelContextFactory } from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -87,8 +87,9 @@ describe('An agent reacting to a message', () => {
       prisma,
       registry,
       new ChannelContextFactory(cipher),
-      new ReactionStatusWriter(prisma, events),
-      await app.resolve(PinoLogger)
+      new ReactionStatusWriter(prisma, events, new JobContext(prisma)),
+      await app.resolve(PinoLogger),
+      new JobContext(prisma)
     )
     const support = {
       run: (_queue: string, current: unknown, work: (job: unknown) => Promise<void>) =>
@@ -119,8 +120,8 @@ describe('An agent reacting to a message', () => {
       prisma,
       new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never),
       undefined as never, // the replies are not what is tested
-      new ReactionStatusWriter(prisma, events),
-      new MessageChangeStatusWriter(prisma, events),
+      new ReactionStatusWriter(prisma, events, new JobContext(prisma)),
+      new MessageChangeStatusWriter(prisma, events, new JobContext(prisma)),
       await app.resolve(PinoLogger)
     )
   })

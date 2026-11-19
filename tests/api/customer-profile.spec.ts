@@ -4,6 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelContextFactory } from '@platform/channels/connections'
 import type { CredentialCipher } from '@platform/core/crypto'
+import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CHANNEL_IDENTITY_KINDS,
@@ -80,7 +81,8 @@ describe('The name and photo of a customer', () => {
       registry,
       new ChannelContextFactory(cipher),
       new CustomerProfileService(prisma),
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      new JobContext(prisma)
     )
     requester = new ProfileRequester(
       prisma,
@@ -88,7 +90,8 @@ describe('The name and photo of a customer', () => {
       new ChannelConnectionResolver(prisma),
       app.get(CHANNEL_IDENTITY_KINDS, { strict: false }),
       queueOf(app, QueueNames.CUSTOMER_PROFILES) as never,
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      new JobContext(prisma)
     )
   })
   afterAll(async () => {

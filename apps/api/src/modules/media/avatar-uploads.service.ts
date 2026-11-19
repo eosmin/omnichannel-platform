@@ -95,7 +95,7 @@ export class AvatarUploadsService {
     // A retry of a confirmation that went through answers with the same media; the scan is queued again
     // (same job id, so never twice): the first attempt may have died between the row and the queue
     const existing = await this.findOwn(userId, body.mediaId)
-    if (existing !== null) return this.again(existing, final, upload)
+    if (existing !== null) return this.again(existing, final, upload, userId)
 
     // Rows the person holds: a bound on what one account makes the scan and the worker do while
     // nothing is attached (the cleanup frees the unattached ones after a day)
@@ -153,10 +153,10 @@ export class AvatarUploadsService {
       // Two confirmations at once: the other one won
       const winner = await this.findOwn(userId, body.mediaId)
       if (winner === null) throw uploadVerificationFailed()
-      return this.again(winner, final, upload)
+      return this.again(winner, final, upload, userId)
     }
 
-    await this.queueScan(body.mediaId)
+    await this.queueScan(userId, body.mediaId)
     await this.dropStaging(upload)
     return { mediaId: body.mediaId, status: MediaStatus.PENDING }
   }
@@ -164,12 +164,13 @@ export class AvatarUploadsService {
   private async again(
     media: { id: string; key: string; status: string },
     final: string,
-    upload: string
+    upload: string,
+    userId: string
   ): Promise<AvatarUploadView> {
     // The worker moves the key of a picture it has re-encoded: a row past that point is the same upload
     if (media.status === String(MediaStatus.PENDING)) {
       if (media.key !== final) throw uploadVerificationFailed()
-      await this.queueScan(media.id)
+      await this.queueScan(userId, media.id)
       await this.dropStaging(upload)
     }
     return { mediaId: media.id, status: media.status as MediaStatus }
@@ -185,10 +186,10 @@ export class AvatarUploadsService {
     }
   }
 
-  private async queueScan(mediaId: string): Promise<void> {
+  private async queueScan(userId: string, mediaId: string): Promise<void> {
     await this.heavyQueue.add(
       JobNames.SCAN_FILE,
-      { mediaId },
+      { mediaId, userId },
       { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
     )
   }

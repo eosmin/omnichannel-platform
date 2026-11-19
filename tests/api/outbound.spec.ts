@@ -10,7 +10,7 @@ import { WhatsAppLimits } from '@platform/channels/whatsapp'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -209,7 +209,7 @@ describe('Replies on their way to a channel', () => {
 
     const logger: PinoLogger = await app.resolve(PinoLogger)
     const events = app.get(DomainEvents, { strict: false })
-    writer = new MessageStatusWriter(prisma, events)
+    writer = new MessageStatusWriter(prisma, events, new JobContext(prisma))
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
     const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
     const contexts = new ChannelContextFactory(cipher)
@@ -222,14 +222,16 @@ describe('Replies on their way to a channel', () => {
       app.get(MessagingWindowService, { strict: false }),
       events,
       app.get(StorageService, { strict: false }),
-      logger
+      logger,
+      new JobContext(prisma)
     )
     receipts = new ChannelReceipts(
       prisma,
       new ChannelConnectionResolver(prisma),
       writer,
       new ChannelHealthService(prisma, contexts, events, logger),
-      logger
+      logger,
+      new JobContext(prisma)
     )
     outboundQueue = new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never)
     sweep = new OutboundRequeueScheduler(
@@ -237,8 +239,8 @@ describe('Replies on their way to a channel', () => {
       prisma,
       outboundQueue,
       writer,
-      new ReactionStatusWriter(prisma, events),
-      new MessageChangeStatusWriter(prisma, events),
+      new ReactionStatusWriter(prisma, events, new JobContext(prisma)),
+      new MessageChangeStatusWriter(prisma, events, new JobContext(prisma)),
       logger
     )
     app.get(EventEmitter2).onAny((event, payload) => {
@@ -1954,7 +1956,8 @@ describe('Replies on their way to a channel', () => {
           app.get(MessagingWindowService, { strict: false }),
           app.get(DomainEvents, { strict: false }),
           app.get(StorageService, { strict: false }),
-          await app.resolve(PinoLogger)
+          await app.resolve(PinoLogger),
+          new JobContext(prisma)
         )
       const connectionStatusOf = async (conversationId: string) =>
         (
@@ -2433,20 +2436,20 @@ describe('Replies on their way to a channel', () => {
 
     it('does not make the file fail when the state of its text cannot be written after it went', async () => {
       const reply = await albumOf(ChannelIds.WHATSAPP, MessageType.AUDIO, ['say this'], 'audio/ogg')
-      const original = prisma.client.message.updateMany.bind(prisma.client.message)
-      const failing = jest.spyOn(prisma.client.message, 'updateMany').mockImplementation(((args: {
-        data?: Record<string, unknown>
-      }) =>
-        // The state BEFORE the file (in doubt) is written; the one after the answer cannot be
-        args.data !== undefined &&
-        'captionState' in args.data &&
-        args.data['captionState'] !== CaptionState.UNCONFIRMED
-          ? Promise.reject(new Error('database went away'))
-          : original(args as never)) as never)
+      // The database refuses the state that follows the answer (the one before the file, in doubt, is written). A trigger of the row
+      // stands for it: the write runs in the context of the store, where a spy on the client of the service would not be reached.
+      const fn = `it_fail_caption_${reply.id.replaceAll('-', '')}`
+      await owner.$executeRawUnsafe(
+        `CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'database went away'; END $$`
+      )
+      await owner.$executeRawUnsafe(
+        `CREATE TRIGGER ${fn} BEFORE UPDATE ON messages FOR EACH ROW WHEN (NEW.id = '${reply.id}' AND NEW.caption_state IN ('sent', 'failed')) EXECUTE FUNCTION ${fn}()`
+      )
       try {
         await sender.send(job(reply), false)
       } finally {
-        failing.mockRestore()
+        await owner.$executeRawUnsafe(`DROP TRIGGER IF EXISTS ${fn} ON messages`)
+        await owner.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${fn}()`)
       }
 
       const [file] = await filesOf(reply.id)
