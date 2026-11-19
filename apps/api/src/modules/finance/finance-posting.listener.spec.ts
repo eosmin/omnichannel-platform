@@ -1,5 +1,6 @@
 import type { PinoLogger } from 'nestjs-pino'
 
+import type { EventContext } from '@platform/core/database'
 import {
   FinanceEventKind,
   FinanceSourceType,
@@ -51,6 +52,9 @@ function build(options: { organization?: string | null; queueFails?: boolean } =
   }
   const listener = new FinancePostingListener(
     prisma as never,
+    {
+      inOrganization: (_id: string, work: () => Promise<unknown>) => work()
+    } as unknown as EventContext,
     logger as unknown as PinoLogger,
     queue as unknown as FinancePostingQueue,
     posting as unknown as FinancePostingService

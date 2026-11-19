@@ -1,13 +1,17 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService, assertSeesEveryRow } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { BulkLabelJobStatus, BulkLabelLimits } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { MediaPurpose } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
+
+import { inEachStoreStrict } from '../schedulers/store-sweep'
+
+// rls-context: every read and write of a table of a store runs inside JobContext.forStore of the store being cleaned; the bucket is touched outside
 
 export interface BulkLabelsCleanupReport {
   filesDeleted: number
@@ -28,6 +32,7 @@ const HOUR_MS = 60 * 60 * 1000
 export class BulkLabelsCleaner {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobContext: JobContext,
     private readonly storage: StorageService,
     private readonly events: DomainEvents,
     private readonly logger: PinoLogger
@@ -35,39 +40,48 @@ export class BulkLabelsCleaner {
     this.logger.setContext(BulkLabelsCleaner.name)
   }
 
+  // Store by store, each in its own context (the policies answer nothing else). A store that cannot be read stops the run: a file with
+  // a customer's address that is never looked at is a file that stays. The bucket is touched outside the transactions.
   async run(now: Date = new Date()): Promise<BulkLabelsCleanupReport> {
-    await assertSeesEveryRow(this.prisma, ['media', 'bulk_label_jobs', 'store_settings'])
-    return {
-      filesDeleted: await this.deleteExpiredFiles(now),
-      jobsClosed: await this.closeLostRuns(now)
-    }
+    const report: BulkLabelsCleanupReport = { filesDeleted: 0, jobsClosed: 0 }
+    await inEachStoreStrict(this.prisma, async storeId => {
+      report.filesDeleted += await this.deleteExpiredFiles(storeId, now)
+      report.jobsClosed += await this.closeLostRuns(storeId, now)
+    })
+    return report
   }
 
   // Each store keeps its files for its own number of days. The oldest first, so a backlog is worked off in order.
-  private async deleteExpiredFiles(now: Date): Promise<number> {
-    const rows = await this.prisma.client.$queryRaw<ExpiredFile[]>`
+  private async deleteExpiredFiles(storeId: string, now: Date): Promise<number> {
+    const rows = await this.jobContext.forStore(
+      storeId,
+      () =>
+        this.prisma.client.$queryRaw<ExpiredFile[]>`
       SELECT m.id, m.store_id, m.key
       FROM media m
       LEFT JOIN store_settings s ON s.store_id = m.store_id
       WHERE m.purpose = ${MediaPurpose.BULK_LABELS}
-        AND m.store_id IS NOT NULL
+        AND m.store_id = ${storeId}
         AND m.created_at <= (${now.toISOString()}::timestamptz AT TIME ZONE 'UTC') - make_interval(days => GREATEST(COALESCE(s.bulk_label_retention_days, ${BulkLabelLimits.DEFAULT_RETENTION_DAYS}), 1))
       ORDER BY m.created_at ASC
       LIMIT ${BulkLabelLimits.CLEAN_FILES_PER_RUN}`
+    )
     let deleted = 0
     for (const row of rows) {
       // One file that cannot be deleted must not keep the rest from expiring
       try {
         // The object first: a row removed with its file still there would never be looked at again
         await this.storage.delete(row.key)
-        await this.prisma.transaction(async tx => {
-          // A run that points at the file is left pointing at nothing: its screen says the file is gone
-          await tx.bulkLabelJob.updateMany({
-            where: { storeId: row.store_id, mergedMediaId: row.id },
-            data: { mergedMediaId: null }
+        await this.jobContext.forStore(storeId, () =>
+          this.prisma.transaction(async tx => {
+            // A run that points at the file is left pointing at nothing: its screen says the file is gone
+            await tx.bulkLabelJob.updateMany({
+              where: { storeId: row.store_id, mergedMediaId: row.id },
+              data: { mergedMediaId: null }
+            })
+            await tx.media.deleteMany({ where: { id: row.id, storeId: row.store_id } })
           })
-          await tx.media.deleteMany({ where: { id: row.id, storeId: row.store_id } })
-        })
+        )
         deleted += 1
       } catch (error) {
         this.logger.error(
@@ -79,38 +93,43 @@ export class BulkLabelsCleaner {
     return deleted
   }
 
-  private async closeLostRuns(now: Date): Promise<number> {
-    const lost = await this.prisma.client.bulkLabelJob.findMany({
-      where: {
-        status: { in: [BulkLabelJobStatus.QUEUED, BulkLabelJobStatus.RUNNING] },
-        createdAt: { lte: new Date(now.getTime() - BulkLabelLimits.STALE_JOB_HOURS * HOUR_MS) }
-      },
-      select: { id: true, storeId: true, requestedBy: true },
-      orderBy: { createdAt: 'asc' },
-      take: BulkLabelLimits.CLEAN_FILES_PER_RUN
-    })
+  private async closeLostRuns(storeId: string, now: Date): Promise<number> {
+    const lost = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.bulkLabelJob.findMany({
+        where: {
+          storeId,
+          status: { in: [BulkLabelJobStatus.QUEUED, BulkLabelJobStatus.RUNNING] },
+          createdAt: { lte: new Date(now.getTime() - BulkLabelLimits.STALE_JOB_HOURS * HOUR_MS) }
+        },
+        select: { id: true, storeId: true, requestedBy: true },
+        orderBy: { createdAt: 'asc' },
+        take: BulkLabelLimits.CLEAN_FILES_PER_RUN
+      })
+    )
     let closed = 0
     for (const job of lost) {
       try {
-        const done = await this.prisma.transaction(async tx => {
-          const marked = await tx.bulkLabelJob.updateMany({
-            where: {
-              id: job.id,
+        const done = await this.jobContext.forStore(storeId, () =>
+          this.prisma.transaction(async tx => {
+            const marked = await tx.bulkLabelJob.updateMany({
+              where: {
+                id: job.id,
+                storeId: job.storeId,
+                status: { in: [BulkLabelJobStatus.QUEUED, BulkLabelJobStatus.RUNNING] }
+              },
+              data: { status: BulkLabelJobStatus.FAILED, finishedAt: now }
+            })
+            if (marked.count === 0) return false
+            this.events.publish(tx, Events.BULK_LABELS_DONE, {
               storeId: job.storeId,
-              status: { in: [BulkLabelJobStatus.QUEUED, BulkLabelJobStatus.RUNNING] }
-            },
-            data: { status: BulkLabelJobStatus.FAILED, finishedAt: now }
+              jobId: job.id,
+              requestedBy: job.requestedBy,
+              status: BulkLabelJobStatus.FAILED,
+              mergedMediaId: null
+            })
+            return true
           })
-          if (marked.count === 0) return false
-          this.events.publish(tx, Events.BULK_LABELS_DONE, {
-            storeId: job.storeId,
-            jobId: job.id,
-            requestedBy: job.requestedBy,
-            status: BulkLabelJobStatus.FAILED,
-            mergedMediaId: null
-          })
-          return true
-        })
+        )
         if (done) closed += 1
       } catch (error) {
         this.logger.error(

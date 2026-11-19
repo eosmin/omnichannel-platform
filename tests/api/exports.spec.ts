@@ -8,7 +8,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
-import type { PrismaService } from '@platform/core/database'
+import { JobContext, type PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -123,7 +123,7 @@ describe('Exports', () => {
       events,
       logger
     )
-    cleaner = new ExpiredExportsCleaner(prisma, storage, events, logger)
+    cleaner = new ExpiredExportsCleaner(prisma, new JobContext(prisma), storage, events, logger)
   })
   afterAll(async () => {
     for (const key of keys) await storage.delete(key)

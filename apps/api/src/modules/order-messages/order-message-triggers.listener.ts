@@ -2,7 +2,7 @@ import { Injectable, type OnModuleDestroy } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { EventContext, PrismaService } from '@platform/core/database'
 import {
   customerMessageOfShipment,
   FailedAttemptMessagePolicy,
@@ -49,6 +49,7 @@ export class OrderMessageListener implements OnModuleDestroy {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly events: EventContext,
     private readonly messages: OrderMessagesService,
     private readonly logger: PinoLogger
   ) {
@@ -112,10 +113,12 @@ export class OrderMessageListener implements OnModuleDestroy {
       const { storeId, shipmentId, orderId, to } = payload
       // Most statuses say nothing to the customer: they cost no query
       if (payload.replay === true || !ShipmentStatusesTold.includes(to)) return
-      const shipment = await this.prisma.client.shipment.findFirst({
-        where: { id: shipmentId, storeId, orderId, kind: ShipmentKind.OUTBOUND },
-        select: { failedAttempts: true, order: { select: { status: true } } }
-      })
+      const shipment = await this.events.inStore(storeId, () =>
+        this.prisma.client.shipment.findFirst({
+          where: { id: shipmentId, storeId, orderId, kind: ShipmentKind.OUTBOUND },
+          select: { failedAttempts: true, order: { select: { status: true } } }
+        })
+      )
       // A package of an order that was cancelled is a matter for a person (the effects ask for a review), not a message
       if (shipment === null || shipment.order.status === String(OrderStatus.CANCELLED)) return
       // Only a failed attempt follows a preference
@@ -159,22 +162,26 @@ export class OrderMessageListener implements OnModuleDestroy {
   ): Promise<boolean> {
     const status = Object.entries(OrderStatusMessageKinds).find(([, of]) => of === kind)?.[0]
     if (status === undefined) return false
-    const found = await this.prisma.client.orderMessageDispatch.findFirst({
-      where: {
-        storeId,
-        idempotencyKey: manualDispatchKey(orderId, kind, status),
-        route: { not: OrderMessageRoutes.NOT_SENT }
-      },
-      select: { id: true }
-    })
+    const found = await this.events.inStore(storeId, () =>
+      this.prisma.client.orderMessageDispatch.findFirst({
+        where: {
+          storeId,
+          idempotencyKey: manualDispatchKey(orderId, kind, status),
+          route: { not: OrderMessageRoutes.NOT_SENT }
+        },
+        select: { id: true }
+      })
+    )
     return found !== null
   }
 
   private async preferencesOf(storeId: string): Promise<ReturnType<typeof readStorePreferences>> {
-    const settings = await this.prisma.client.storeSettings.findUnique({
-      where: { storeId },
-      select: { preferences: true }
-    })
+    const settings = await this.events.inStore(storeId, () =>
+      this.prisma.client.storeSettings.findUnique({
+        where: { storeId },
+        select: { preferences: true }
+      })
+    )
     return readStorePreferences(settings?.preferences ?? {})
   }
 
