@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import { Counter, Registry } from '@prometheus-io/client'
 import type { PinoLogger } from 'nestjs-pino'
 
-import { JobContext, PrismaService } from '@platform/core/database'
+import { JobContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import { InventoryAdjustmentReason, InventoryMovementType as Type } from '@platform/core/domain'
 import { InventoryService } from '@platform/core/inventory'
@@ -18,7 +18,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { CapturedQueue } from '../helpers/queue'
-import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 // The daily check of the stock against its ledger (TDD_16 §4.8, Step 4.2 PR C): it reads, it reports, it never fixes.
 // Every case works in a store of its own, so what an earlier case forged is not in the way of the next one.
@@ -56,7 +56,7 @@ describe('The reconciliation of the stock', () => {
         warnings.push({ fields, message })
       }
     } as unknown as PinoLogger
-    reconciler = new InventoryReconciler(prisma, inventory, counter, logger)
+    reconciler = new InventoryReconciler(prisma, inventory, counter, logger, new JobContext(prisma))
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)
@@ -351,15 +351,19 @@ describe('The reconciliation of the stock', () => {
       expect(await mismatches(ctx.storeB.id)).toBe(0)
     })
 
-    it('answers an empty report for a store that has no stock or does not exist', async () => {
-      for (const storeId of [(await aStore()).storeId, randomUUID()]) {
-        expect(await reconciler.reconcileStore(storeId)).toEqual({
-          levelsChecked: 0,
-          mismatches: 0,
-          negativeNotAllowed: 0,
-          failed: 0
-        })
-      }
+    it('answers an empty report for a store that has no stock', async () => {
+      expect(await reconciler.reconcileStore((await aStore()).storeId)).toEqual({
+        levelsChecked: 0,
+        mismatches: 0,
+        negativeNotAllowed: 0,
+        failed: 0
+      })
+    })
+
+    it('says gone for a store that does not exist, which ends the job as one whose subject was deleted', async () => {
+      await expect(reconciler.reconcileStore(randomUUID())).rejects.toBeInstanceOf(
+        JobContextGoneError
+      )
     })
   })
 
@@ -376,19 +380,13 @@ describe('The reconciliation of the stock', () => {
     let scheduler: InventoryReconcileScheduler
 
     beforeAll(() => {
-      scheduler = new InventoryReconcileScheduler(
-        locks,
-        heavy as never,
-        createGuardedWorkerPrisma(),
-        logger,
-        new JobContext(createGuardedWorkerPrisma())
-      )
+      scheduler = new InventoryReconcileScheduler(locks, heavy as never, prisma, logger)
     })
     beforeEach(() => {
       heavy.jobs.length = 0
     })
 
-    it('queues one job for each store that has stock, with an id of its own for the day', async () => {
+    it('queues one job for each store, with an id of its own for the day (a store with no stock finds nothing and ends)', async () => {
       const withStock = await aStore()
       await stocked(withStock, 2)
       const empty = await aStore()
@@ -405,9 +403,10 @@ describe('The reconciliation of the stock', () => {
           opts: { jobId: reconcileInventoryJobId(withStock.storeId, '2026-11-12') }
         }
       ])
+      // "Has stock" is a question about tables behind row security: the store with none is queued too, and its job ends at once
       expect(
         heavy.jobs.some(job => (job.data as { storeId: string }).storeId === empty.storeId)
-      ).toBe(false)
+      ).toBe(true)
     })
 
     it('asks for the same job ids when it runs twice in a day, and for new ones the next day', async () => {
@@ -452,13 +451,7 @@ describe('The reconciliation of the stock', () => {
       const broken = {
         addBulk: () => Promise.reject(new Error('redis is down'))
       }
-      const failing = new InventoryReconcileScheduler(
-        locks,
-        broken as never,
-        createGuardedWorkerPrisma(),
-        logger,
-        new JobContext(createGuardedWorkerPrisma())
-      )
+      const failing = new InventoryReconcileScheduler(locks, broken as never, prisma, logger)
 
       await expect(failing.run()).resolves.toBeUndefined()
     })

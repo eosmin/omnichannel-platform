@@ -4,7 +4,7 @@ import { Cron } from '@nestjs/schedule'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { JobContext, PrismaService } from '@platform/core/database'
+import { PrismaService } from '@platform/core/database'
 import { InventoryLimits } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import {
@@ -17,15 +17,13 @@ import {
 } from '@platform/core/queues'
 
 import { LeaderLockService } from './leader-lock.service'
-import { unlessGone } from './store-sweep'
 
-// rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
-// every read or write of a table of a store runs inside JobContext.forStore / forOrganization
+// rls-context: the stores are a global table (no row security); the job of each store opens its own context
 
 const LOCK_SECONDS = 600
 const DAY_LENGTH = 10 // "2026-11-12" in an ISO date
 
-// Daily at 04:00 UTC, on one replica (TDD_16 §4.8): one reconciliation job for each store that has stock or a ledger.
+// Daily at 04:00 UTC, on one replica (TDD_16 §4.8): one reconciliation job for each store (one with no stock or ledger finds nothing and ends).
 // The check itself is the heavy-processing job, so a slow store does not hold the lock of the schedule.
 @Injectable()
 export class InventoryReconcileScheduler {
@@ -34,8 +32,7 @@ export class InventoryReconcileScheduler {
     @InjectQueue(QueueNames.HEAVY_PROCESSING)
     private readonly heavyQueue: Queue<ReconcileInventoryJob>,
     private readonly prisma: PrismaService,
-    private readonly logger: PinoLogger,
-    private readonly jobContext: JobContext
+    private readonly logger: PinoLogger
   ) {
     this.logger.setContext(InventoryReconcileScheduler.name)
   }
@@ -63,28 +60,14 @@ export class InventoryReconcileScheduler {
     let queued = 0
     let cursor: string | undefined
     for (;;) {
-      const page = await this.prisma.client.store.findMany({
+      const stores = await this.prisma.client.store.findMany({
+        // Every store: "has stock or a ledger" is a question about tables behind row security, so it is the job of the store that finds
+        // nothing and ends (a store has no row of the lists the job walks, and the check is cheap)
         select: { id: true },
         orderBy: { id: 'asc' },
         take: pageSize,
         ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
       })
-      // "Has stock or a ledger" is read in the context of each store: the rows of the stock are not visible from outside of one
-      const stores: { id: string }[] = []
-      for (const store of page) {
-        const has = await unlessGone(
-          this.jobContext.forStore(store.id, () =>
-            this.prisma.client.store.findFirst({
-              where: {
-                id: store.id,
-                OR: [{ inventoryLevels: { some: {} } }, { inventoryMovements: { some: {} } }]
-              },
-              select: { id: true }
-            })
-          )
-        )
-        if (has !== null) stores.push(store)
-      }
       if (stores.length > 0) {
         await this.heavyQueue.addBulk(
           stores.map(store => ({
@@ -95,8 +78,8 @@ export class InventoryReconcileScheduler {
         )
         queued += stores.length
       }
-      if (page.length < pageSize) break
-      cursor = page.at(-1)?.id
+      if (stores.length < pageSize) break
+      cursor = stores.at(-1)?.id
     }
     return queued
   }

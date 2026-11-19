@@ -4,7 +4,7 @@ import { Cron } from '@nestjs/schedule'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { JobContext, PrismaService } from '@platform/core/database'
+import { JobContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import { FinanceSweepLimits } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import {
@@ -17,10 +17,8 @@ import {
 } from '@platform/core/queues'
 
 import { LeaderLockService } from './leader-lock.service'
-import { unlessGone } from './store-sweep'
 
-// rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
-// every read or write of a table of a store runs inside JobContext.forStore / forOrganization
+// rls-context: the organizations are a global table (no row security); the settings of the books are read inside forOrganization
 
 const LOCK_SECONDS = 600
 const DAY_LENGTH = 10 // "2026-11-12" in an ISO date
@@ -63,24 +61,28 @@ export class FinanceChainScheduler {
     let queued = 0
     let cursor: string | undefined
     for (;;) {
+      // The organizations are not behind row security; whether one has set up its books is (finance_settings is), so it is asked from the
+      // context of that organization, one at a time (a page of ids is short)
       const page = await this.prisma.client.organization.findMany({
         select: { id: true },
         orderBy: { id: 'asc' },
         take: pageSize,
         ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
       })
-      // Only an organization that keeps books is queued; the settings are read in the context of each organization
       const settings: { organizationId: string }[] = []
       for (const organization of page) {
-        const kept = await unlessGone(
-          this.jobContext.forOrganization(organization.id, () =>
-            this.prisma.client.financeSettings.findUnique({
-              where: { organizationId: organization.id },
-              select: { organizationId: true }
-            })
+        // One organization whose context fails must not leave the rest of the page without its night: it is queued anyway (the job
+        // itself ends when there are no books) and the failure is logged
+        let queue = true
+        try {
+          queue = await this.hasBooks(organization.id)
+        } catch (error) {
+          this.logger.warn(
+            { organizationId: organization.id, errorName: errorName(error) },
+            'the books of an organization could not be looked up: it is queued anyway'
           )
-        )
-        if (kept !== null) settings.push(kept)
+        }
+        if (queue) settings.push({ organizationId: organization.id })
       }
       if (settings.length > 0) {
         await this.heavyQueue.addBulk(
@@ -102,5 +104,22 @@ export class FinanceChainScheduler {
       cursor = page.at(-1)?.id
     }
     return queued
+  }
+
+  // A context that cannot see the settings of its own organization would read as "no books" and skip the night: the organization row
+  // is read first (not behind row security), and an organization deleted since the page was read is skipped
+  private async hasBooks(organizationId: string): Promise<boolean> {
+    try {
+      const settings = await this.jobContext.forOrganization(organizationId, () =>
+        this.prisma.client.financeSettings.findUnique({
+          where: { organizationId },
+          select: { organizationId: true }
+        })
+      )
+      return settings !== null
+    } catch (error) {
+      if (error instanceof JobContextGoneError) return false
+      throw error
+    }
   }
 }

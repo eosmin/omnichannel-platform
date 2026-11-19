@@ -41,7 +41,6 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue, queueOf } from '../helpers/queue'
-import { createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const CREATED = 201
 const ACCEPTED = 202
@@ -117,7 +116,8 @@ describe('The weekly check of the chain, its incident and the guard of the close
       app.get(FinanceChainVerifier),
       workerEvents,
       { set: () => undefined } as never,
-      logger
+      logger,
+      new JobContext(workerDb)
     )
     guard = app.get(FinanceCloseGuard)
     for (const [user, store] of [
@@ -286,7 +286,8 @@ describe('The weekly check of the chain, its incident and the guard of the close
         {
           set: (labels: Record<string, string>, value: number) => values.push({ labels, value })
         } as never,
-        logger
+        logger,
+        new JobContext(workerDb)
       )
       const checker = new FinanceChainChecker(
         counting,
@@ -315,9 +316,9 @@ describe('The weekly check of the chain, its incident and the guard of the close
       const scheduler = new FinanceChainScheduler(
         locks,
         heavy as never,
-        createGuardedWorkerPrisma(),
+        workerDb,
         logger,
-        new JobContext(createGuardedWorkerPrisma())
+        new JobContext(workerDb)
       )
       await scheduler.enqueueAll(new Date('2026-11-15T05:00:00.000Z'), { pageSize: 1 })
       const mine = heavy.jobs.filter(
@@ -349,9 +350,9 @@ describe('The weekly check of the chain, its incident and the guard of the close
           }
         } as never,
         broken as never,
-        createGuardedWorkerPrisma(),
+        workerDb,
         logger,
-        new JobContext(createGuardedWorkerPrisma())
+        new JobContext(workerDb)
       )
       await expect(failing.run()).resolves.toBeUndefined()
     })
