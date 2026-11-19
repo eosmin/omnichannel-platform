@@ -104,7 +104,7 @@ describe('MediaPipeline', () => {
     expect(row.status).toBe('clean')
     expect(row.scannedAt).not.toBeNull()
     const queued = await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`)
-    expect(queued?.data).toEqual({ mediaId: media.id })
+    expect(queued?.data).toEqual({ mediaId: media.id, storeId })
     await dropJob(queued)
   })
 
