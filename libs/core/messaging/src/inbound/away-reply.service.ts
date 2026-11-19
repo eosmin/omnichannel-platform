@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { type PrismaTransaction, PrismaService } from '@platform/core/database'
+import { inSavepoint, type PrismaTransaction, PrismaService } from '@platform/core/database'
 import {
   AuthorType,
   AwayReply,
@@ -49,7 +49,11 @@ export class AwayReplyService {
   // Never throws: a courtesy that fails must not fail the message that set it off, which is stored
   async replyIfClosed(storeId: string, conversationId: string, at: Date): Promise<boolean> {
     try {
-      return await this.prisma.transaction(tx => this.run(tx, storeId, conversationId, at))
+      // A savepoint: the failure is caught here, and inside the store context a failed statement would otherwise leave the
+      // transaction aborted (its commit a rollback) with the hooks of the attempt still to run
+      return await this.prisma.transaction(tx =>
+        inSavepoint(() => this.run(tx, storeId, conversationId, at), tx)
+      )
     } catch (error) {
       this.logger.error(
         { storeId, conversationId, errorName: errorName(error) },

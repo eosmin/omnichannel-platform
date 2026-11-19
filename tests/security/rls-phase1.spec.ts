@@ -703,6 +703,33 @@ describe('row-level security, phase 1', () => {
         expect(row.columns).toEqual(['id', 'store_id', 'organization_id'])
     })
 
+    it('keeps the lookup of the status of a plugin by key hash as narrow as the resolvers: definer, fixed search path, application roles only, one text column', async () => {
+      const result = await owner.query<{
+        definer: boolean
+        config: string[] | null
+        public_exec: boolean
+        app_exec: boolean
+        worker_exec: boolean
+        columns: string[]
+      }>(
+        `SELECT p.prosecdef AS definer, p.proconfig AS config,
+                has_function_privilege('public', p.oid, 'EXECUTE') AS public_exec,
+                has_function_privilege('platform_app', p.oid, 'EXECUTE') AS app_exec,
+                has_function_privilege('platform_worker', p.oid, 'EXECUTE') AS worker_exec,
+                ARRAY(SELECT unnest(p.proargnames[p.pronargs + 1:]))::text[] AS columns
+         FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'lookup_plugin_status_of_key'`
+      )
+      expect(result.rows).toHaveLength(1)
+      expect(result.rows[0]).toEqual({
+        definer: true,
+        config: ['search_path=pg_catalog, public, pg_temp'],
+        public_exec: false,
+        app_exec: true,
+        worker_exec: true,
+        columns: ['plugin_status']
+      })
+    })
+
     it('belongs to the owner of the tables, reads with a fixed search path, writes nothing and is callable by the application roles only', async () => {
       const result = await owner.query<{
         name: string

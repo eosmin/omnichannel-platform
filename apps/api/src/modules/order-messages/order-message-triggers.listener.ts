@@ -2,7 +2,7 @@ import { Injectable, type OnModuleDestroy } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
-import { EventContext, PrismaService } from '@platform/core/database'
+import { EventContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import {
   customerMessageOfShipment,
   FailedAttemptMessagePolicy,
@@ -201,6 +201,14 @@ export class OrderMessageListener implements OnModuleDestroy {
           )
           return
         }
+        // The store was deleted after the event: nothing is left to tell, and asking again cannot change that
+        if (error instanceof JobContextGoneError) {
+          this.logger.warn(
+            { orderId: input.orderId, kind: input.kind },
+            'an order message was not sent: the store is gone'
+          )
+          return
+        }
         const pause = RETRY_PAUSES_MS[attempt]
         // A stop of the process is not a reason to alert: what was not sent is sent by the next event
         if (this.closing) return
@@ -230,6 +238,11 @@ export class OrderMessageListener implements OnModuleDestroy {
 
   private track(work: () => Promise<void>): Promise<void> {
     const running = work().catch((error: unknown) => {
+      // The store was deleted after the event: nothing is left to tell
+      if (error instanceof JobContextGoneError) {
+        this.logger.warn('an order message trigger did nothing: the store is gone')
+        return
+      }
       // Nothing here may reach the event that caused it: the order and the shipment are committed already
       this.logger.error({ errorName: errorName(error) }, 'an order message trigger failed')
     })

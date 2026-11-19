@@ -4,6 +4,8 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import {
+  EventContext,
+  JobContextGoneError,
   lockStoreForWrite,
   lockStoreScope,
   PrismaService,
@@ -63,6 +65,7 @@ const NOTHING: OrderFollowResult = {
 export class OrderShipmentEffects {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly context: EventContext,
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
     private readonly stock: OrderInventoryService,
@@ -78,137 +81,142 @@ export class OrderShipmentEffects {
     // The shipment has just left (an event of this very moment, not a later status of a package already on its way)
     justLeft: boolean
   ): Promise<OrderFollowResult> {
-    const outcome = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      const known = await tx.shipment.findFirst({
-        where: { id: shipmentId, storeId, kind: ShipmentKind.OUTBOUND },
-        select: { orderId: true }
-      })
-      if (known === null) return null
-      const { orderId } = known
-      // The order first, as every change of an order does: the engine, a cancel and an edit take the same lock in the same order
-      await lockOrder(tx, storeId, orderId)
-      const order = await tx.order.findFirstOrThrow({
-        where: { id: orderId, storeId },
-        select: {
-          orderNumber: true,
-          status: true,
-          shippedAt: true,
-          paymentMethod: true,
-          paymentStatus: true,
-          conversationId: true,
-          totalCents: true,
-          currency: true,
-          _count: { select: { items: true } }
-        }
-      })
-      // Every package of the order that is not over, the one that announced the change included: the order is judged by all
-      const live = await tx.shipment.findMany({
-        where: {
-          orderId,
-          storeId,
-          kind: ShipmentKind.OUTBOUND,
-          status: { notIn: [...ShipmentInactiveStatuses] }
-        },
-        select: { status: true }
-      })
-      const from = order.status as OrderStatus
-      const plan: OrderFollowPlan = planOrderFollow({
-        orderStatus: from,
-        liveShipments: live.map(row => row.status as ShipmentStatus)
-      })
-      const common = { storeId, orderId, orderNumber: order.orderNumber, actor }
-      const idle = (review: boolean): Applied => ({
-        result: { ...NOTHING, review },
-        orderId,
-        orderNumber: order.orderNumber,
-        from,
-        steps: [],
-        paymentFrom: null
-      })
-      if (plan.review) {
-        // A package that left for an order that cannot follow it: said once, when it leaves, not at every later status
-        if (justLeft) await this.askForReview(tx, storeId, shipmentId, actor)
-        return idle(justLeft)
-      }
-      if (!plan.ship && !plan.deliver) return idle(false)
-
-      const createdBy = actor.type === 'user' ? actor.id : null
-      const moments = await this.momentsOf(tx, storeId, orderId, order.shippedAt)
-      const steps: OrderStatus[] = []
-      const data: Parameters<typeof tx.order.update>[0]['data'] = {}
-      let paymentFrom: PaymentStatus | null = null
-      if (plan.ship) {
-        // The stock leaves with the package: take the allocation of the store before the levels, as the hand-made change does
-        await lockStoreScope(tx, storeId, OrderLockScopes.ALLOCATION)
-        await this.stock.issue(tx, storeId, orderId, { userId: createdBy, pluginId: null })
-        data.status = OrderStatus.SHIPPED
-        data.shippedAt = moments.shippedAt
-        steps.push(OrderStatus.SHIPPED)
-      }
-      if (plan.deliver) {
-        data.status = OrderStatus.DELIVERED
-        data.deliveredAt = moments.deliveredAt
-        steps.push(OrderStatus.DELIVERED)
-        const payment = order.paymentStatus as PaymentStatus
-        // The carrier collected the cash: the payment of a cash-on-delivery order is complete (§4.4)
-        if (
-          order.paymentMethod === String(PaymentMethod.CASH_ON_DELIVERY) &&
-          (payment === PaymentStatus.PENDING || payment === PaymentStatus.FAILED)
-        ) {
-          data.paymentStatus = PaymentStatus.COMPLETED
-          paymentFrom = payment
-        }
-      }
-      await tx.order.update({ where: { id: orderId, storeId }, data })
-
-      let previous = from
-      for (const step of steps) {
-        if (order.conversationId !== null) {
-          await writeOrderSummaryLine(tx, storeId, order.conversationId, {
-            event: OrderSummaryEvents.STATUS_CHANGED,
-            orderId,
-            orderNumber: order.orderNumber,
-            status: step,
-            previousStatus: previous,
-            totalCents: order.totalCents,
-            currency: order.currency,
-            itemCount: order._count.items,
-            actor
-          })
-        }
-        this.events.publish(tx, Events.ORDER_STATUS_CHANGED, {
-          ...common,
-          from: previous,
-          to: step,
-          // The package says what the customer is told, not this change of the order (the actor is the person who moved the package,
-          // when one did, so only this marker tells the change apart from one made by hand)
-          notifyCustomer: false
+    // The listener runs after the commit of the shipment, in no request: the work of the order opens the context of the store of the
+    // event (and joins it when a request already holds it). The audit entries below leave after it has closed.
+    const outcome = await this.inEventStore(storeId, shipmentId, () =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        const known = await tx.shipment.findFirst({
+          where: { id: shipmentId, storeId, kind: ShipmentKind.OUTBOUND },
+          select: { orderId: true }
         })
-        if (step === OrderStatus.SHIPPED) this.events.publish(tx, Events.ORDER_SHIPPED, common)
-        if (step === OrderStatus.DELIVERED) this.events.publish(tx, Events.ORDER_DELIVERED, common)
-        previous = step
-      }
-      if (paymentFrom !== null) {
-        const payment = { ...common, from: paymentFrom, to: PaymentStatus.COMPLETED }
-        this.events.publish(tx, Events.ORDER_PAYMENT_RECORDED, payment)
-        this.events.publish(tx, Events.ORDER_PAYMENT_STATUS_CHANGED, payment)
-      }
-      const applied: Applied = {
-        result: {
-          shipped: plan.ship,
-          delivered: plan.deliver,
-          paymentCompleted: paymentFrom !== null,
-          review: false
-        },
-        orderId,
-        orderNumber: order.orderNumber,
-        from,
-        steps,
-        paymentFrom
-      }
-      return applied
-    })
+        if (known === null) return null
+        const { orderId } = known
+        // The order first, as every change of an order does: the engine, a cancel and an edit take the same lock in the same order
+        await lockOrder(tx, storeId, orderId)
+        const order = await tx.order.findFirstOrThrow({
+          where: { id: orderId, storeId },
+          select: {
+            orderNumber: true,
+            status: true,
+            shippedAt: true,
+            paymentMethod: true,
+            paymentStatus: true,
+            conversationId: true,
+            totalCents: true,
+            currency: true,
+            _count: { select: { items: true } }
+          }
+        })
+        // Every package of the order that is not over, the one that announced the change included: the order is judged by all
+        const live = await tx.shipment.findMany({
+          where: {
+            orderId,
+            storeId,
+            kind: ShipmentKind.OUTBOUND,
+            status: { notIn: [...ShipmentInactiveStatuses] }
+          },
+          select: { status: true }
+        })
+        const from = order.status as OrderStatus
+        const plan: OrderFollowPlan = planOrderFollow({
+          orderStatus: from,
+          liveShipments: live.map(row => row.status as ShipmentStatus)
+        })
+        const common = { storeId, orderId, orderNumber: order.orderNumber, actor }
+        const idle = (review: boolean): Applied => ({
+          result: { ...NOTHING, review },
+          orderId,
+          orderNumber: order.orderNumber,
+          from,
+          steps: [],
+          paymentFrom: null
+        })
+        if (plan.review) {
+          // A package that left for an order that cannot follow it: said once, when it leaves, not at every later status
+          if (justLeft) await this.askForReview(tx, storeId, shipmentId, actor)
+          return idle(justLeft)
+        }
+        if (!plan.ship && !plan.deliver) return idle(false)
+
+        const createdBy = actor.type === 'user' ? actor.id : null
+        const moments = await this.momentsOf(tx, storeId, orderId, order.shippedAt)
+        const steps: OrderStatus[] = []
+        const data: Parameters<typeof tx.order.update>[0]['data'] = {}
+        let paymentFrom: PaymentStatus | null = null
+        if (plan.ship) {
+          // The stock leaves with the package: take the allocation of the store before the levels, as the hand-made change does
+          await lockStoreScope(tx, storeId, OrderLockScopes.ALLOCATION)
+          await this.stock.issue(tx, storeId, orderId, { userId: createdBy, pluginId: null })
+          data.status = OrderStatus.SHIPPED
+          data.shippedAt = moments.shippedAt
+          steps.push(OrderStatus.SHIPPED)
+        }
+        if (plan.deliver) {
+          data.status = OrderStatus.DELIVERED
+          data.deliveredAt = moments.deliveredAt
+          steps.push(OrderStatus.DELIVERED)
+          const payment = order.paymentStatus as PaymentStatus
+          // The carrier collected the cash: the payment of a cash-on-delivery order is complete (§4.4)
+          if (
+            order.paymentMethod === String(PaymentMethod.CASH_ON_DELIVERY) &&
+            (payment === PaymentStatus.PENDING || payment === PaymentStatus.FAILED)
+          ) {
+            data.paymentStatus = PaymentStatus.COMPLETED
+            paymentFrom = payment
+          }
+        }
+        await tx.order.update({ where: { id: orderId, storeId }, data })
+
+        let previous = from
+        for (const step of steps) {
+          if (order.conversationId !== null) {
+            await writeOrderSummaryLine(tx, storeId, order.conversationId, {
+              event: OrderSummaryEvents.STATUS_CHANGED,
+              orderId,
+              orderNumber: order.orderNumber,
+              status: step,
+              previousStatus: previous,
+              totalCents: order.totalCents,
+              currency: order.currency,
+              itemCount: order._count.items,
+              actor
+            })
+          }
+          this.events.publish(tx, Events.ORDER_STATUS_CHANGED, {
+            ...common,
+            from: previous,
+            to: step,
+            // The package says what the customer is told, not this change of the order (the actor is the person who moved the package,
+            // when one did, so only this marker tells the change apart from one made by hand)
+            notifyCustomer: false
+          })
+          if (step === OrderStatus.SHIPPED) this.events.publish(tx, Events.ORDER_SHIPPED, common)
+          if (step === OrderStatus.DELIVERED)
+            this.events.publish(tx, Events.ORDER_DELIVERED, common)
+          previous = step
+        }
+        if (paymentFrom !== null) {
+          const payment = { ...common, from: paymentFrom, to: PaymentStatus.COMPLETED }
+          this.events.publish(tx, Events.ORDER_PAYMENT_RECORDED, payment)
+          this.events.publish(tx, Events.ORDER_PAYMENT_STATUS_CHANGED, payment)
+        }
+        const applied: Applied = {
+          result: {
+            shipped: plan.ship,
+            delivered: plan.deliver,
+            paymentCompleted: paymentFrom !== null,
+            review: false
+          },
+          orderId,
+          orderNumber: order.orderNumber,
+          from,
+          steps,
+          paymentFrom
+        }
+        return applied
+      })
+    )
     if (outcome === null) return NOTHING
     // The audit entries leave after the commit, as those of a hand-made change do
     const who =
@@ -255,6 +263,26 @@ export class OrderShipmentEffects {
       })
     }
     return outcome.result
+  }
+
+  // A store deleted after the event leaves nothing to follow: not a failure, and not worth a retry
+  private async inEventStore<T>(
+    storeId: string,
+    shipmentId: string,
+    work: () => Promise<T>
+  ): Promise<T | null> {
+    try {
+      return await this.context.inStore(storeId, work)
+    } catch (error) {
+      if (error instanceof JobContextGoneError) {
+        this.logger.warn(
+          { storeId, shipmentId },
+          'the store of a shipment event no longer exists: nothing to follow'
+        )
+        return null
+      }
+      throw error
+    }
   }
 
   // The moments the order shipped and arrived, from the history of its packages: the first applied event that says one left and
@@ -329,7 +357,9 @@ export class OrderShipmentEffects {
       'the order could not follow its shipment'
     )
     try {
-      await this.prisma.transaction(tx => this.askForReview(tx, storeId, shipmentId, actor))
+      await this.inEventStore(storeId, shipmentId, () =>
+        this.prisma.transaction(tx => this.askForReview(tx, storeId, shipmentId, actor))
+      )
     } catch (inner) {
       this.logger.error(
         { err: inner instanceof Error ? inner.message : undefined, shipmentId },

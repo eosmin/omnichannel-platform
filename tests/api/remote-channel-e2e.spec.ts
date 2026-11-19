@@ -217,7 +217,8 @@ describe('A remote channel plugin, from its registration to the status of a repl
       ),
       events,
       queueOf(app, QueueNames.HEAVY_PROCESSING) as never,
-      logger
+      logger,
+      app.get(JobContext, { strict: false })
     )
   })
 

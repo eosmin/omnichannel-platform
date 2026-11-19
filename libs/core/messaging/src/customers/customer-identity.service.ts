@@ -4,6 +4,7 @@ import { z } from 'zod'
 import {
   inSavepoint,
   isUniqueViolation,
+  JobContext,
   lockStoreForWrite,
   PrismaService,
   type PrismaTransaction
@@ -61,14 +62,15 @@ export class CustomerIdentityService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: DomainEvents,
-    @Inject(CHANNEL_IDENTITY_KINDS) private readonly kinds: ChannelIdentityKindSource
+    @Inject(CHANNEL_IDENTITY_KINDS) private readonly kinds: ChannelIdentityKindSource,
+    private readonly jobs: JobContext
   ) {}
 
   // The inbound pipeline's way in (TDD_10 §4): the customer behind a handle on a channel,
   // created with it the first time the handle writes. Two events for a new handle at the same moment
   // end in one customer: the unique index of (store, channel, handle) decides, and the one that
-  // loses reads what the winner wrote. That read needs a transaction of its own: called from inside
-  // another one, the failed insert would have aborted it.
+  // loses reads what the winner wrote. The first attempt runs in a savepoint of the store context, so the failed
+  // insert does not abort it and the retry reads on the same transaction.
   async findOrCreateByIdentity(input: FindOrCreateByIdentityInput): Promise<ResolvedIdentity> {
     const parsed = parseChannelIdentity(
       this.kinds.kindOf(input.channelType),
@@ -90,16 +92,20 @@ export class CustomerIdentityService {
       channelIdentity: parsed.identity
     }
     const profile = cleanProfile(input.profile)
-    try {
-      return await inSavepoint(() =>
-        this.prisma.transaction(tx => this.resolve(tx, key, parsed, profile))
-      )
-    } catch (error) {
-      if (!isUniqueViolation(error)) throw error
-      // The handle was created by an event that was faster: run again, now it is found (and the
-      // profile of this event is applied to it). If it is something else that conflicts, it fails again.
-      return this.prisma.transaction(tx => this.resolve(tx, key, parsed, profile))
-    }
+    // The store is the one of the connection the pipeline already resolved (by signature, never from the payload). Under row security
+    // the work needs its context: it opens one of its own for a worker, and joins the request's when the same store is open.
+    return this.jobs.forStoreOrJoin(input.storeId, async () => {
+      try {
+        return await inSavepoint(() =>
+          this.prisma.transaction(tx => this.resolve(tx, key, parsed, profile))
+        )
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error
+        // The handle was created by an event that was faster: run again, now it is found (and the
+        // profile of this event is applied to it). If it is something else that conflicts, it fails again.
+        return this.prisma.transaction(tx => this.resolve(tx, key, parsed, profile))
+      }
+    })
   }
 
   private async resolve(
