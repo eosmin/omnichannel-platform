@@ -45,9 +45,10 @@ export enum FiscalOperationCondition {
 
 export const FiscalLimits = {
   // The limits of the context of the organization that ONE unit of fiscal work opens in a job (a claim, an answer of the authority, a page of
-  // the sweep). Short on purpose: the call to the authority is never inside one, so a unit holds the database for the rows only
+  // the sweep). The call to the authority is never inside one, so a unit holds the database for the rows only. 30 s (twice the 15 s of a
+  // request) because the page of the entry check reads up to ENTRY_SCAN_MAX documents in one unit; a row lock never waits that long
   CONTEXT_MAX_WAIT_MS: 10_000,
-  CONTEXT_TIMEOUT_MS: 60_000,
+  CONTEXT_TIMEOUT_MS: 30_000,
   // A file of evidence larger than this is not made (the sealed copy in the row stays, which is what the document is): a provider whose
   // document is this big is a fault to read in the logs
   EVIDENCE_MAX_BYTES: 4 * 1024 * 1024,

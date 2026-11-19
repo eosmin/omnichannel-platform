@@ -263,7 +263,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const failures: Error[] = []
       for (const check of [this.financeReconciler, this.fiscalReconciler]) {
         try {
-          await check.reconcile(reconcile.data.organizationId)
+          // An organization deleted after the job was queued has nothing left to check: the job is done, not retried
+          await this.skipIfGone(job, () => check.reconcile(reconcile.data.organizationId))
         } catch (error) {
           failures.push(error instanceof Error ? error : new Error(String(error)))
         }
@@ -293,7 +294,9 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!submit.success) throw new UnrecoverableError('the fiscal job does not fit its schema')
       // Throws when the provider did not answer, so the queue tries again with its backoff; a decision (accepted, rejected) returns
       try {
-        await this.fiscalDocuments.submit(submit.data.organizationId, submit.data.documentId)
+        await this.skipIfGone(job, () =>
+          this.fiscalDocuments.submit(submit.data.organizationId, submit.data.documentId)
+        )
       } catch (error) {
         // The last attempt: nobody retries it after this, so a person is told. The original error stays the one the queue sees.
         if (isLastAttempt(job)) {
@@ -315,7 +318,9 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       }
       // Throws when the authority did not answer, so the queue tries again with its backoff; a decision (taken, refused) returns
       try {
-        await this.fiscalContingencies.report(report.data.organizationId, report.data.contingencyId)
+        await this.skipIfGone(job, () =>
+          this.fiscalContingencies.report(report.data.organizationId, report.data.contingencyId)
+        )
       } catch (error) {
         // The last attempt: nobody asks again by itself, so a person is told. The original error stays the one the queue sees.
         if (isLastAttempt(job)) {
