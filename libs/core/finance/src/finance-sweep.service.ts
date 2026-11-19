@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   FinanceEventKind,
@@ -94,9 +94,16 @@ export class FinanceSweepService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly posting: FinancePostingService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(FinanceSweepService.name)
+  }
+
+  // One read of the books in one context of the organization (a request joins its own). The sweep opens one per page of a table, so a
+  // long run never holds a transaction (the preview of a source that cannot be read would abort every later statement of a shared one)
+  private unit<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
+    return this.jobContext.inOrganizationOrRequest(organizationId, work)
   }
 
   async sweep(
@@ -105,10 +112,12 @@ export class FinanceSweepService {
     options: SweepOptions = {}
   ): Promise<SweepResult> {
     const cap = options.maxCandidates ?? FinanceSweepLimits.MAX_CANDIDATES_PER_RUN
-    const settings = await this.prisma.client.financeSettings.findUnique({
-      where: { organizationId },
-      select: { accountingStartDate: true, recognizeSaleOn: true }
-    })
+    const settings = await this.unit(organizationId, () =>
+      this.prisma.client.financeSettings.findUnique({
+        where: { organizationId },
+        select: { accountingStartDate: true, recognizeSaleOn: true }
+      })
+    )
     // An organization that has not set up its books has nothing to post to and nothing unposted
     if (settings === null) {
       return { examined: 0, toQueue: [], openFailures: 0, unposted: 0, truncated: false }
@@ -117,10 +126,12 @@ export class FinanceSweepService {
     const start = new Date(`${dateToDay(settings.accountingStartDate)}T00:00:00Z`)
     const since = start.getTime() > lookback.getTime() ? start : lookback
 
-    const open = await this.prisma.client.financePostingFailure.findMany({
-      where: { organizationId, resolvedAt: null },
-      select: { sourceType: true, sourceId: true, eventKind: true, reason: true }
-    })
+    const open = await this.unit(organizationId, () =>
+      this.prisma.client.financePostingFailure.findMany({
+        where: { organizationId, resolvedAt: null },
+        select: { sourceType: true, sourceId: true, eventKind: true, reason: true }
+      })
+    )
     const openReason = new Map(
       open.map(row => [`${row.sourceType}:${row.sourceId}:${row.eventKind}`, row.reason])
     )
@@ -230,7 +241,9 @@ export class FinanceSweepService {
   // lines must equal what `account_period_balances` holds. Read only; a difference is the caller's metric and alert, and nothing here
   // (or anywhere) corrects it: the journal is the truth and a correction is a person's decision.
   async balanceMismatches(organizationId: string): Promise<number> {
-    const rows = await this.prisma.client.$queryRaw<{ mismatches: bigint }[]>`
+    const rows = await this.unit(
+      organizationId,
+      () => this.prisma.client.$queryRaw<{ mismatches: bigint }[]>`
       SELECT COUNT(*)::bigint AS mismatches FROM (
         SELECT COALESCE(l.account_id, b.account_id) AS account_id
         FROM (
@@ -250,6 +263,7 @@ export class FinanceSweepService {
         WHERE COALESCE(l.debit_cents, 0) <> COALESCE(b.debit_cents, 0)
            OR COALESCE(l.credit_cents, 0) <> COALESCE(b.credit_cents, 0)
       ) differing`
+    )
     return Number(rows[0]?.mismatches ?? 0)
   }
 
@@ -258,7 +272,9 @@ export class FinanceSweepService {
   // difference is the caller's metric and alert, and nothing here (or anywhere) posts to close it, because what to do with a cent or a
   // sum of money that the stock and the books disagree on is a person's decision. A role with no account mapped reads as a zero ledger.
   async inventoryDrift(organizationId: string): Promise<InventoryDrift> {
-    const rows = await this.prisma.client.$queryRaw<{ ledger: bigint; stock: bigint }[]>`
+    const rows = await this.unit(
+      organizationId,
+      () => this.prisma.client.$queryRaw<{ ledger: bigint; stock: bigint }[]>`
       SELECT
         COALESCE((
           SELECT SUM(ln.debit_cents - ln.credit_cents)
@@ -273,6 +289,7 @@ export class FinanceSweepService {
           JOIN stores st ON st.id = lv.store_id
           WHERE st.organization_id = ${organizationId}
         ), 0)::bigint AS stock`
+    )
     const ledgerCents = rows[0]?.ledger ?? 0n
     const stockCents = rows[0]?.stock ?? 0n
     return { ledgerCents, stockCents, differenceCents: ledgerCents - stockCents }
@@ -285,10 +302,12 @@ export class FinanceSweepService {
     const found = new Set<string>()
     for (let from = 0; from < keys.length; from += PAGE_SIZE) {
       const page = keys.slice(from, from + PAGE_SIZE)
-      const rows = await this.prisma.client.journalEntry.findMany({
-        where: { organizationId, idempotencyKey: { in: page } },
-        select: { idempotencyKey: true }
-      })
+      const rows = await this.unit(organizationId, () =>
+        this.prisma.client.journalEntry.findMany({
+          where: { organizationId, idempotencyKey: { in: page } },
+          select: { idempotencyKey: true }
+        })
+      )
       for (const row of rows) found.add(row.idempotencyKey)
     }
     return found
@@ -316,7 +335,7 @@ export class FinanceSweepService {
     let read = 0
     for (;;) {
       // One row more than the page, to know whether anything is left
-      const rows = await input.page(after, PAGE_SIZE + 1)
+      const rows = await this.unit(input.organizationId, () => input.page(after, PAGE_SIZE + 1))
       const more = rows.length > PAGE_SIZE
       const page = more ? rows.slice(0, PAGE_SIZE) : rows
       read += page.length
@@ -338,7 +357,7 @@ export class FinanceSweepService {
           )
           return candidates.filter(candidate => !done.has(candidate.key))
         })
-      const missing = await keep(mine)
+      const missing = await this.unit(input.organizationId, () => keep(mine))
       out.push(...missing)
       collected += missing.length
       if (!more) return
@@ -360,7 +379,6 @@ export class FinanceSweepService {
     scan: { truncated: boolean },
     cap: number
   ): Promise<Candidate[]> {
-    const db = this.prisma.client
     const out: Candidate[] = []
     const make = (
       sourceType: FinanceSourceType,
@@ -393,7 +411,7 @@ export class FinanceSweepService {
       {
         ...common,
         page: (after, take) =>
-          db.order.findMany({
+          this.prisma.client.order.findMany({
             where: {
               ...storeOf,
               status: live,
@@ -423,7 +441,7 @@ export class FinanceSweepService {
         {
           ...common,
           page: (after, take) =>
-            db.order.findMany({
+            this.prisma.client.order.findMany({
               where: { ...storeOf, status: live, shippedAt: { gte: since } },
               select: { id: true, shippedAt: true },
               orderBy: { id: 'asc' },
@@ -468,7 +486,7 @@ export class FinanceSweepService {
       {
         ...common,
         page: (after, take) =>
-          db.shipment.findMany({
+          this.prisma.client.shipment.findMany({
             where: { ...storeOf, status: ShipmentStatus.DELIVERED, deliveredAt: { gte: since } },
             select: {
               id: true,
@@ -514,7 +532,7 @@ export class FinanceSweepService {
         {
           ...common,
           page: (after, take) =>
-            db.carrierGuideMovement.findMany({
+            this.prisma.client.carrierGuideMovement.findMany({
               where: {
                 ...storeOf,
                 kind: ledgerKind,
@@ -549,7 +567,7 @@ export class FinanceSweepService {
       {
         ...common,
         page: (after, take) =>
-          db.codRemittance.findMany({
+          this.prisma.client.codRemittance.findMany({
             where: {
               ...storeOf,
               status: RemittanceStatus.CONFIRMED,
@@ -578,7 +596,7 @@ export class FinanceSweepService {
       {
         ...common,
         page: (after, take) =>
-          db.codRemittance.findMany({
+          this.prisma.client.codRemittance.findMany({
             where: { ...storeOf, status: RemittanceStatus.VOIDED, voidedAt: { gte: since } },
             select: { id: true, voidedAt: true },
             orderBy: { id: 'asc' },
@@ -595,7 +613,7 @@ export class FinanceSweepService {
           )
         ],
         keep: async candidates => {
-          const confirmed = await db.journalEntry.findMany({
+          const confirmed = await this.prisma.client.journalEntry.findMany({
             where: {
               organizationId,
               idempotencyKey: { in: candidates.map(candidate => candidate.key) }
@@ -604,7 +622,7 @@ export class FinanceSweepService {
           })
           const reversed = new Set(
             (
-              await db.journalEntry.findMany({
+              await this.prisma.client.journalEntry.findMany({
                 where: {
                   organizationId,
                   reversesEntryId: { in: confirmed.map(entry => entry.id) }
@@ -626,7 +644,7 @@ export class FinanceSweepService {
       {
         ...common,
         page: (after, take) =>
-          db.orderReturn.findMany({
+          this.prisma.client.orderReturn.findMany({
             where: { ...storeOf, receivedAt: { gte: since } },
             select: { id: true, receivedAt: true },
             orderBy: { id: 'asc' },
@@ -655,7 +673,7 @@ export class FinanceSweepService {
       {
         ...common,
         page: (after, take) =>
-          db.inventoryMovement.findMany({
+          this.prisma.client.inventoryMovement.findMany({
             where: {
               ...storeOf,
               type: {
@@ -685,7 +703,7 @@ export class FinanceSweepService {
       {
         ...common,
         page: (after, take) =>
-          db.stockTransferLine.findMany({
+          this.prisma.client.stockTransferLine.findMany({
             where: {
               ...storeOf,
               shortageAction: TransferShortageAction.WRITE_OFF,

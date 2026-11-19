@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import { Counter, Registry } from '@prometheus-io/client'
 import type { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import { InventoryAdjustmentReason, InventoryMovementType as Type } from '@platform/core/domain'
 import { InventoryService } from '@platform/core/inventory'
@@ -56,7 +56,7 @@ describe('The reconciliation of the stock', () => {
         warnings.push({ fields, message })
       }
     } as unknown as PinoLogger
-    reconciler = new InventoryReconciler(prisma, inventory, counter, logger)
+    reconciler = new InventoryReconciler(prisma, inventory, counter, logger, new JobContext(prisma))
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)
@@ -382,7 +382,7 @@ describe('The reconciliation of the stock', () => {
       heavy.jobs.length = 0
     })
 
-    it('queues one job for each store that has stock, with an id of its own for the day', async () => {
+    it('queues one job for each store, with an id of its own for the day (a store with no stock finds nothing and ends)', async () => {
       const withStock = await aStore()
       await stocked(withStock, 2)
       const empty = await aStore()
@@ -399,9 +399,10 @@ describe('The reconciliation of the stock', () => {
           opts: { jobId: reconcileInventoryJobId(withStock.storeId, '2026-11-12') }
         }
       ])
+      // "Has stock" is a question about tables behind row security: the store with none is queued too, and its job ends at once
       expect(
         heavy.jobs.some(job => (job.data as { storeId: string }).storeId === empty.storeId)
-      ).toBe(false)
+      ).toBe(true)
     })
 
     it('asks for the same job ids when it runs twice in a day, and for new ones the next day', async () => {

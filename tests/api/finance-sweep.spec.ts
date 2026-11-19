@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   FinanceCountryCodes,
@@ -776,7 +776,8 @@ describe('The sweep of the books and the guard of the close', () => {
         locks,
         heavy as never,
         app.get(PrismaService),
-        logger
+        logger,
+        new JobContext(app.get(PrismaService))
       )
       await scheduler.enqueueAll(NOW, { pageSize: 1 })
       const mine = heavy.jobs.filter(
@@ -805,7 +806,8 @@ describe('The sweep of the books and the guard of the close', () => {
         locks,
         broken as never,
         app.get(PrismaService),
-        logger
+        logger,
+        new JobContext(app.get(PrismaService))
       )
       await expect(failing.run()).resolves.toBeUndefined()
     })

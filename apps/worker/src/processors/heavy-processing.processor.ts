@@ -245,9 +245,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const reconcile = reconcileJobSchema.safeParse(job.data)
       if (!reconcile.success)
         throw new UnrecoverableError('the reconcile job does not fit its schema')
-      // Not inside one context for the whole walk: the check catches the error of one level so that it does not hide the rest, and in a
-      // single transaction the first failed statement would abort every later one (25P02). Its reads move to a context per page in
-      // the step that lets the worker lose BYPASSRLS (see rls-worker-baseline.json)
+      // The reconciler opens a context of the store for each read and each item (a failed item is caught and must not abort the rest)
       await this.reconciler.reconcileStore(reconcile.data.storeId)
       return
     }

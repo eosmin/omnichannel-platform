@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import type { Gauge } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
 import { ChainIncidentChange, ChainProblem, FinanceReportLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -80,7 +80,16 @@ const ENTRY_FIELDS = {
 // the worker (weekly) run this same code.
 @Injectable()
 export class FinanceChainVerifier {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jobContext: JobContext
+  ) {}
+
+  // Each read of the walk (the settings, a page of the journal, the closed periods) is its own context of the organization: the walk reads
+  // the whole journal and a transaction that long would hit its time limit; the postings that land meanwhile are what the head check is for
+  private unit<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
+    return this.jobContext.inOrganizationOrRequest(organizationId, work)
+  }
 
   // A posting that commits while the walk runs moves the head. After the walk the settings are read again: a head AHEAD of the last entry
   // walked means entries landed meanwhile, and the walk goes on from there (a few rounds), so a sound chain of a live ledger is never
@@ -91,12 +100,13 @@ export class FinanceChainVerifier {
   }
 
   private async walk(organizationId: string): Promise<ChainVerification> {
-    const db = this.prisma.client
     const readSettings = () =>
-      db.financeSettings.findUnique({
-        where: { organizationId },
-        select: { nextEntryNumber: true, lastEntryHash: true }
-      })
+      this.unit(organizationId, () =>
+        this.prisma.client.financeSettings.findUnique({
+          where: { organizationId },
+          select: { nextEntryNumber: true, lastEntryHash: true }
+        })
+      )
     if ((await readSettings()) === null) throw financeRefusal(ErrorCodes.FINANCE_SETUP_REQUIRED)
 
     let from: { number: bigint; prevHash: string | null } = { number: 1n, prevHash: null }
@@ -108,12 +118,14 @@ export class FinanceChainVerifier {
     while (found === null) {
       const before = entriesChecked
       for (;;) {
-        const page = await db.journalEntry.findMany({
-          where: { organizationId, number: { gte: from.number } },
-          select: ENTRY_FIELDS,
-          orderBy: { number: 'asc' },
-          take: FinanceReportLimits.CHAIN_PAGE_SIZE
-        })
+        const page = await this.unit(organizationId, () =>
+          this.prisma.client.journalEntry.findMany({
+            where: { organizationId, number: { gte: from.number } },
+            select: ENTRY_FIELDS,
+            orderBy: { number: 'asc' },
+            take: FinanceReportLimits.CHAIN_PAGE_SIZE
+          })
+        )
         if (page.length === 0) break
         const entries: ChainEntry[] = page.map(row => ({
           id: row.id,
@@ -174,24 +186,28 @@ export class FinanceChainVerifier {
 
     // Every period that was ever closed keeps the head it froze (a reopen keeps the record of the close, a trigger holds it), open again or
     // not: the entries up to that head are immutable, so a head that is no longer in the chain means entries were removed (HC-115)
-    const closed = await db.fiscalPeriod.findMany({
-      where: { organizationId, closingHash: { not: null } },
-      select: { id: true, year: true, month: true, closingHash: true },
-      orderBy: [{ year: 'asc' }, { month: 'asc' }]
-    })
+    const closed = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalPeriod.findMany({
+        where: { organizationId, closingHash: { not: null } },
+        select: { id: true, year: true, month: true, closingHash: true },
+        orderBy: [{ year: 'asc' }, { month: 'asc' }]
+      })
+    )
     const known = new Set(
       (
-        await db.journalEntry.findMany({
-          where: {
-            organizationId,
-            hash: {
-              in: closed.flatMap(period =>
-                period.closingHash === null ? [] : [period.closingHash]
-              )
-            }
-          },
-          select: { hash: true }
-        })
+        await this.unit(organizationId, () =>
+          this.prisma.client.journalEntry.findMany({
+            where: {
+              organizationId,
+              hash: {
+                in: closed.flatMap(period =>
+                  period.closingHash === null ? [] : [period.closingHash]
+                )
+              }
+            },
+            select: { hash: true }
+          })
+        )
       ).map(entry => entry.hash)
     )
     const frozenHeads: ChainVerification['frozenHeads'] = closed.map(period => ({
@@ -239,7 +255,8 @@ export class FinanceChainMonitor {
     // 1 while the chain is altered, 0 when it verifies: set by whoever ran the check (the weekly job or an auditor's request), a gauge of the
     // process that ran it (debt (j) of 4B.8b-2: a gauge computed from the table at scrape time is Step 7.3)
     @InjectMetric(MetricNames.FINANCE_CHAIN_BREAKS) private readonly breaks: Gauge<string>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(FinanceChainMonitor.name)
   }
@@ -259,6 +276,10 @@ export class FinanceChainMonitor {
     return { verification, incident }
   }
 
+  private unit<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
+    return this.jobContext.inOrganizationOrRequest(organizationId, work)
+  }
+
   private async record(
     organizationId: string,
     verification: ChainVerification,
@@ -267,17 +288,21 @@ export class FinanceChainMonitor {
   ): Promise<ChainIncidentChange> {
     const broken = verification.break
     if (broken === null && !resolve) {
-      const open = await this.prisma.client.financeChainIncident.count({
-        where: { organizationId, resolvedAt: null }
-      })
+      const open = await this.unit(organizationId, () =>
+        this.prisma.client.financeChainIncident.count({
+          where: { organizationId, resolvedAt: null }
+        })
+      )
       return open > 0 ? ChainIncidentChange.STILL_OPEN : ChainIncidentChange.NONE
     }
     if (broken === null) {
       // A passing check closes whatever was open (a chain restored from a backup, or a head that moved during an earlier walk)
-      const closed = await this.prisma.client.financeChainIncident.updateMany({
-        where: { organizationId, resolvedAt: null },
-        data: { resolvedAt: now }
-      })
+      const closed = await this.unit(organizationId, () =>
+        this.prisma.client.financeChainIncident.updateMany({
+          where: { organizationId, resolvedAt: null },
+          data: { resolvedAt: now }
+        })
+      )
       if (closed.count > 0) {
         this.logger.info({ organizationId }, 'the hash chain of the books verifies again')
       }
@@ -290,22 +315,26 @@ export class FinanceChainMonitor {
       lastSeenAt: now
     }
     // An open incident keeps what the first check found (its reason and entry): a later check only says it saw it again
-    const seen = await this.prisma.client.financeChainIncident.updateMany({
-      where: { organizationId, resolvedAt: null },
-      data: { entriesChecked: details.entriesChecked, lastSeenAt: details.lastSeenAt }
-    })
+    const seen = await this.unit(organizationId, () =>
+      this.prisma.client.financeChainIncident.updateMany({
+        where: { organizationId, resolvedAt: null },
+        data: { entriesChecked: details.entriesChecked, lastSeenAt: details.lastSeenAt }
+      })
+    )
     if (seen.count > 0) return ChainIncidentChange.STILL_OPEN
     try {
       // The row and the event commit together: an incident nobody was told about cannot exist
-      await this.prisma.transaction(async tx => {
-        await tx.financeChainIncident.create({
-          data: { organizationId, ...details, detectedAt: now }
+      await this.unit(organizationId, () =>
+        this.prisma.transaction(async tx => {
+          await tx.financeChainIncident.create({
+            data: { organizationId, ...details, detectedAt: now }
+          })
+          this.events.publish(tx, Events.FINANCE_CHAIN_BROKEN, {
+            organizationId,
+            reason: PROBLEM_OF[broken.reason]
+          })
         })
-        this.events.publish(tx, Events.FINANCE_CHAIN_BROKEN, {
-          organizationId,
-          reason: PROBLEM_OF[broken.reason]
-        })
-      })
+      )
     } catch (error) {
       // Another replica opened it between our update and our create: the partial unique index keeps it one
       if (isUniqueViolation(error)) return ChainIncidentChange.STILL_OPEN

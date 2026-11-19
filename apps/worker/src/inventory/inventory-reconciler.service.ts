@@ -2,12 +2,14 @@ import { Injectable } from '@nestjs/common'
 import type { Counter } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { InventoryLimits } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { InventoryService, type LevelCheck } from '@platform/core/inventory'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
+
+// rls-context: every read and every check runs inside forStore (see inStore)
 
 export interface ReconcileReport {
   levelsChecked: number
@@ -40,17 +42,24 @@ export class InventoryReconciler {
     private readonly inventory: InventoryService,
     @InjectMetric(MetricNames.INVENTORY_RECONCILIATION_MISMATCHES)
     private readonly mismatchCounter: Counter<string>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(InventoryReconciler.name)
   }
 
   async reconcileStore(storeId: string, options: ReconcileOptions = {}): Promise<ReconcileReport> {
     const pageSize = options.pageSize ?? InventoryLimits.RECONCILE_PAGE_SIZE
-    const settings = await this.prisma.client.storeSettings.findUnique({
-      where: { storeId },
-      select: { allowNegativeStock: true }
-    })
+    // One context of the store per read (settings, a page, the check of an item): an item that cannot be read is caught and the walk goes
+    // on, and in one shared transaction its failed statement would abort every later one (25P02)
+    const inStore = <T>(work: () => Promise<T>): Promise<T> =>
+      this.jobContext.forStore(storeId, work)
+    const settings = await inStore(() =>
+      this.prisma.client.storeSettings.findUnique({
+        where: { storeId },
+        select: { allowNegativeStock: true }
+      })
+    )
     const allowNegativeStock = settings?.allowNegativeStock ?? false
     const report: ReconcileReport = {
       levelsChecked: 0,
@@ -62,13 +71,15 @@ export class InventoryReconciler {
     // The levels the table has, in pages by id
     let cursor: string | undefined
     for (;;) {
-      const page = await this.prisma.client.inventoryLevel.findMany({
-        where: { storeId },
-        select: { id: true, productId: true, variantId: true, warehouseId: true },
-        orderBy: { id: 'asc' },
-        take: pageSize,
-        ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
-      })
+      const page = await inStore(() =>
+        this.prisma.client.inventoryLevel.findMany({
+          where: { storeId },
+          select: { id: true, productId: true, variantId: true, warehouseId: true },
+          orderBy: { id: 'asc' },
+          take: pageSize,
+          ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
+        })
+      )
       for (const level of page) {
         await this.check(storeId, level, allowNegativeStock, report)
       }
@@ -79,21 +90,24 @@ export class InventoryReconciler {
     // The items that have a ledger and no level: a level that was deleted is the same disagreement
     let skip = 0
     for (;;) {
-      const page = await this.prisma.client.inventoryMovement.groupBy({
-        by: ['productId', 'variantId', 'warehouseId'],
-        where: { storeId },
-        orderBy: [{ productId: 'asc' }, { variantId: 'asc' }, { warehouseId: 'asc' }],
-        take: pageSize,
-        skip
-      })
-      // Which of this page have a level: one read for the page, not a set of the whole store
-      const levels = await this.prisma.client.inventoryLevel.findMany({
-        where: {
-          storeId,
-          productId: { in: page.map(item => item.productId) },
-          warehouseId: { in: page.map(item => item.warehouseId) }
-        },
-        select: { productId: true, variantId: true, warehouseId: true }
+      const { page, levels } = await inStore(async () => {
+        const items = await this.prisma.client.inventoryMovement.groupBy({
+          by: ['productId', 'variantId', 'warehouseId'],
+          where: { storeId },
+          orderBy: [{ productId: 'asc' }, { variantId: 'asc' }, { warehouseId: 'asc' }],
+          take: pageSize,
+          skip
+        })
+        // Which of this page have a level: one read for the page, not a set of the whole store
+        const found = await this.prisma.client.inventoryLevel.findMany({
+          where: {
+            storeId,
+            productId: { in: items.map(item => item.productId) },
+            warehouseId: { in: items.map(item => item.warehouseId) }
+          },
+          select: { productId: true, variantId: true, warehouseId: true }
+        })
+        return { page: items, levels: found }
       })
       const withLevel = new Set(levels.map(keyOf))
       for (const item of page) {
@@ -114,7 +128,9 @@ export class InventoryReconciler {
   ): Promise<void> {
     let check: LevelCheck
     try {
-      check = await this.inventory.checkLevel({ storeId, ...item })
+      check = await this.jobContext.forStore(storeId, () =>
+        this.inventory.checkLevel({ storeId, ...item })
+      )
     } catch (error) {
       // One item that cannot be read must not hide the rest of the store: it is told, and counted apart
       report.failed += 1

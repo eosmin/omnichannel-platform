@@ -150,6 +150,57 @@ export class JobContext {
     )
   }
 
+  // For a service that a request and a job both call (the posting of the books, the checks of the ledger): inside a request the guard
+  // has opened the tenant transaction and the work joins it (a second one would be refused, and would not share its atomicity); in a
+  // job it is the context of the organization, joined when it is already open for the same one. Never opens inside a request.
+  async inOrganization<T>(
+    organizationId: string,
+    work: () => Promise<T>,
+    options?: TransactionOptions
+  ): Promise<T> {
+    return this.unit(organizationId, work, options, false)
+  }
+
+  // The same for the services that the api reaches TODAY from a request whose context names only the active store (the close guard of
+  // the books, the listeners): it joins any request context, as the service did before it had a context of its own. Debt of RLS
+  // phase 6 (F6-3): those routes become @NoTenantTransaction and open an organization context, and this method goes
+  async inOrganizationOrRequest<T>(
+    organizationId: string,
+    work: () => Promise<T>,
+    options?: TransactionOptions
+  ): Promise<T> {
+    return this.unit(organizationId, work, options, true)
+  }
+
+  private async unit<T>(
+    organizationId: string,
+    work: () => Promise<T>,
+    options: TransactionOptions | undefined,
+    joinAnyRequest: boolean
+  ): Promise<T> {
+    if (active.getStore() === undefined && this.prisma.hasTenantContext()) {
+      if (joinAnyRequest) return work()
+      // Joining a narrower context is a silent failure: the rows of the other stores of the organization would read as no rows. Join
+      // only a context that names this organization and every store of it; otherwise refuse (a route that needs the whole organization
+      // opens its own context, it does not join the one of the active store)
+      const open = this.prisma.currentTenantContext()
+      const stores = await this.prisma.client.store.findMany({
+        where: { organizationId },
+        select: { id: true }
+      })
+      const wide =
+        open !== undefined &&
+        open.organizationIds.length === 1 &&
+        open.organizationIds[0] === organizationId &&
+        stores.every(store => open.storeIds.includes(store.id))
+      if (!wide) {
+        throw new JobContextError('the open tenant context is narrower than the organization')
+      }
+      return work()
+    }
+    return this.forOrganization(organizationId, work, options)
+  }
+
   // The work of one person across the stores they belong to (notifications, digests, web push). A person with no membership
   // gets an empty context, which sees nothing: that is the answer, not an error.
   async forUser<T>(
