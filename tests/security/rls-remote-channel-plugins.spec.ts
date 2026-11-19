@@ -10,7 +10,7 @@ import {
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 
-// Row-Level Security, phase 5 (migration 20270122800000_rls_remote_channel_plugins): RemoteChannelSync, which the api AND the worker run,
+// Row-Level Security, phase 5 (migration 20270122900000_rls_remote_channel_plugins): RemoteChannelSync, which the api AND the worker run,
 // reads every remote channel plugin that has an active installation, across stores, with no context. With row security on for
 // plugin_installations a plain query sees nothing, and the registry would drop every adapter as if nobody had it installed, so the read
 // is a SECURITY DEFINER function. Proved here under the role of each process, with row security ON (one transaction of the owner, always
