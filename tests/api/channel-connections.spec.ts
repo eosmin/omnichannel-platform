@@ -1791,11 +1791,12 @@ describe('The channel connections of a store', () => {
         select: CONNECTION_ROW_SELECT
       })
       await asAdmin().post(ApiRoutes.channels.disconnect(made.id))
-      const health = await workerChannelHealth(app)
+      // record is not a round: it is what a request or a round calls with its own context, so it is not given the guarded worker here
+      const health = app.get(ChannelHealthService, { strict: false })
 
       await health.record(stale, { healthy: true })
       await health.record(stale, { healthy: false, error: 'late' })
-      await health.checkAll(() => plugin, 0)
+      await (await workerChannelHealth(app)).checkAll(() => plugin, 0)
 
       const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: made.id } })
       expect(row.status).toBe(ChannelConnectionStatus.DISCONNECTED)

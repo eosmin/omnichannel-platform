@@ -127,7 +127,9 @@ export class JobContext {
       // would answer none, or fail a WITH CHECK, with no error that says why
       const context = this.prisma.currentTenantContext()
       if (context?.storeIds.includes(storeId) !== true) {
-        throw new JobContextError('the context of the request is not the one of this store')
+        return Promise.reject(
+          new JobContextError('the context of the request is not the one of this store')
+        )
       }
       return work()
     }

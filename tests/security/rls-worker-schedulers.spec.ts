@@ -93,9 +93,10 @@ describe('row-level security, phase 5: the schedulers that go store by store', (
     )
     // The first store was gone (skipped silently), the second failed (reported), every other store was still read
     expect(failed).toHaveLength(1)
-    expect(rows).toEqual(expect.any(Array))
-    // The first store was gone, the second failed, and the rest were still read
-    expect(forStore.mock.calls.length).toBeGreaterThan(2)
+    // The gone store added no row and the failed one none either: one row for each of the others
+    expect(rows).toHaveLength(forStore.mock.calls.length - 2)
+    // Every store of the list was tried: the gone one and the failed one did not stop the walk
+    expect(forStore.mock.calls.length).toBe((await allStoreIds(prisma)).length)
     forStore.mockRestore()
   })
 
