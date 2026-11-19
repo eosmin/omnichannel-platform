@@ -4,13 +4,12 @@ import { PinoLogger } from 'nestjs-pino'
 import { CredentialCipher } from '@platform/core/crypto'
 import {
   isUniqueViolation,
-  JobContext,
-  JobContextGoneError,
   lockStoreForWrite,
   lockStoreScope,
   PrismaService,
   type PrismaTransaction,
-  type TransactionOptions
+  JobContext,
+  JobContextGoneError
 } from '@platform/core/database'
 import {
   BulkLabelLimits,
@@ -183,11 +182,11 @@ interface Batchable {
 export class ShippingService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly jobs: JobContext,
     private readonly cipher: CredentialCipher,
     private readonly writes: ShipmentWrites,
     private readonly labels: ShipmentLabels,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(ShippingService.name)
   }
@@ -328,30 +327,37 @@ export class ShippingService {
     let shipmentId = ''
     let stored: StoredLabel | null = null
     try {
-      const done = await this.tx(
+      const done = await this.jobContext.forStoreOrJoin(
         storeId,
-        async tx => {
-          await lockStoreForWrite(tx, storeId)
-          await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${request.orderId}`)
-          prepared = await prepareGuide(tx, store, request, caller, plugins, connectionId)
-          shipmentId = await this.writes.insertCreating(tx, prepared.row, caller.actor)
-          if (prepared.plugin.shipmentCreation !== ShipmentCreationModes.INTERNAL) return false
-          // The core makes the guide and the label, in the transaction that wrote the row: a failure gives the number back
-          const identity = { ...prepared.identity, shipmentId }
-          const guideNumber = await takeLocalGuideNumber(tx, storeId, connectionId)
-          stored = await this.drawLocalLabel(store, prepared, shipmentId, guideNumber)
-          await this.labels.record(tx, storeId, prepared.identity.orderId, caller.actor.id, stored)
-          await this.writes.move(
-            tx,
-            identity,
-            ShipmentStatus.CREATING,
-            ShipmentStatus.LABEL_CREATED,
-            { guideNumber, labelMediaId: stored.mediaId },
-            { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
-          )
-          await this.copyTrackingNumber(tx, prepared.identity, guideNumber, prepared.row.kind)
-          return true
-        },
+        () =>
+          this.prisma.transaction(async tx => {
+            await lockStoreForWrite(tx, storeId)
+            await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${request.orderId}`)
+            prepared = await prepareGuide(tx, store, request, caller, plugins, connectionId)
+            shipmentId = await this.writes.insertCreating(tx, prepared.row, caller.actor)
+            if (prepared.plugin.shipmentCreation !== ShipmentCreationModes.INTERNAL) return false
+            // The core makes the guide and the label, in the transaction that wrote the row: a failure gives the number back
+            const identity = { ...prepared.identity, shipmentId }
+            const guideNumber = await takeLocalGuideNumber(tx, storeId, connectionId)
+            stored = await this.drawLocalLabel(store, prepared, shipmentId, guideNumber)
+            await this.labels.record(
+              tx,
+              storeId,
+              prepared.identity.orderId,
+              caller.actor.id,
+              stored
+            )
+            await this.writes.move(
+              tx,
+              identity,
+              ShipmentStatus.CREATING,
+              ShipmentStatus.LABEL_CREATED,
+              { guideNumber, labelMediaId: stored.mediaId },
+              { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
+            )
+            await this.copyTrackingNumber(tx, prepared.identity, guideNumber, prepared.row.kind)
+            return true
+          }),
         LOCAL_GUIDE_TRANSACTION
       )
       if (done)
@@ -391,7 +397,7 @@ export class ShippingService {
     plugins: PluginLookup
   ): Promise<ShipmentOutcome> {
     const store = await this.storeFacts(storeId)
-    const owner = await this.read(storeId, () =>
+    const owner = await this.jobContext.forStoreOrJoin(storeId, () =>
       this.prisma.client.orderReturn.findFirst({
         where: { id: request.returnId, storeId },
         select: { orderId: true }
@@ -402,17 +408,19 @@ export class ShippingService {
     let prepared: PreparedGuide | undefined
     let shipmentId = ''
     try {
-      await this.tx(storeId, async tx => {
-        await lockStoreForWrite(tx, storeId)
-        await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${orderId}`)
-        await tx.$queryRaw`SELECT id FROM order_returns WHERE id = ${request.returnId} AND store_id = ${storeId} FOR UPDATE`
-        prepared = await prepareReturnGuide(tx, store, request, caller, plugins)
-        shipmentId = await this.writes.insertCreating(tx, prepared.row, caller.actor)
-        await tx.orderReturn.updateMany({
-          where: { id: request.returnId, storeId },
-          data: { returnShipmentId: shipmentId }
+      await this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.transaction(async tx => {
+          await lockStoreForWrite(tx, storeId)
+          await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${orderId}`)
+          await tx.$queryRaw`SELECT id FROM order_returns WHERE id = ${request.returnId} AND store_id = ${storeId} FOR UPDATE`
+          prepared = await prepareReturnGuide(tx, store, request, caller, plugins)
+          shipmentId = await this.writes.insertCreating(tx, prepared.row, caller.actor)
+          await tx.orderReturn.updateMany({
+            where: { id: request.returnId, storeId },
+            data: { returnShipmentId: shipmentId }
+          })
         })
-      })
+      )
     } catch (error) {
       return this.refused(orderId, this.refusalOf(error))
     }
@@ -536,31 +544,33 @@ export class ShippingService {
           ? result.providerShipmentId
           : null
       const recorded = stored
-      await this.tx(storeId, async tx => {
-        await lockStoreForWrite(tx, storeId)
-        await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${orderId}`)
-        if (recorded !== null)
-          await this.labels.record(tx, storeId, orderId, caller.actor.id, recorded)
-        await this.writes.move(
-          tx,
-          identity,
-          ShipmentStatus.CREATING,
-          ShipmentStatus.LABEL_CREATED,
-          {
-            guideNumber,
-            providerShipmentId,
-            trackingUrl: safeTrackingUrl(result.trackingUrl),
-            carrierCostCents: keepsCost ? cost.amountCents : null,
-            labelMediaId: recorded?.mediaId ?? null,
-            ...(label !== undefined && recorded === null
-              ? { lastError: ShipmentFailureReasons.LABEL_INVALID }
-              : {}),
-            ...(pickupId === null ? {} : { pickupId })
-          },
-          { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
-        )
-        await this.copyTrackingNumber(tx, identity, guideNumber, prepared.row.kind)
-      })
+      await this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.transaction(async tx => {
+          await lockStoreForWrite(tx, storeId)
+          await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${orderId}`)
+          if (recorded !== null)
+            await this.labels.record(tx, storeId, orderId, caller.actor.id, recorded)
+          await this.writes.move(
+            tx,
+            identity,
+            ShipmentStatus.CREATING,
+            ShipmentStatus.LABEL_CREATED,
+            {
+              guideNumber,
+              providerShipmentId,
+              trackingUrl: safeTrackingUrl(result.trackingUrl),
+              carrierCostCents: keepsCost ? cost.amountCents : null,
+              labelMediaId: recorded?.mediaId ?? null,
+              ...(label !== undefined && recorded === null
+                ? { lastError: ShipmentFailureReasons.LABEL_INVALID }
+                : {}),
+              ...(pickupId === null ? {} : { pickupId })
+            },
+            { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
+          )
+          await this.copyTrackingNumber(tx, identity, guideNumber, prepared.row.kind)
+        })
+      )
       if (stored !== null) await this.queueScan(stored)
       return {
         ok: true,
@@ -615,50 +625,52 @@ export class ShippingService {
     const rejected = error instanceof CarrierRejectedError
     const message = rejected ? clampCarrierMessage(error.message) : failureReasonOf(outcome)
     try {
-      await this.tx(identity.storeId, async tx => {
-        await lockStoreForWrite(tx, identity.storeId)
-        for (const entry of batch) {
-          await this.writes.move(
-            tx,
-            entry,
-            ShipmentStatus.CREATING,
-            ShipmentStatus.FAILED,
-            { lastError: message, pickupId: null },
-            { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
-          )
-        }
-        if (pickupId !== null) {
-          await this.writes.movePickup(
-            tx,
-            identity.storeId,
-            pickupId,
-            PickupStatus.PENDING,
-            PickupStatus.FAILED,
-            {
-              lastError: message
-            }
-          )
-        }
-        if (
-          error instanceof CarrierAuthError ||
-          error instanceof CarrierCredentialsUnreadableError
-        ) {
-          await tx.carrierConnection.updateMany({
-            where: {
-              id: identity.connectionId,
-              storeId: identity.storeId,
-              status: CarrierConnectionStatus.ACTIVE
-            },
-            data: {
-              status: CarrierConnectionStatus.ERROR,
-              lastError:
-                error instanceof CarrierAuthError
-                  ? CarrierHealthReasons.AUTH
-                  : CarrierHealthReasons.CREDENTIALS_UNREADABLE
-            }
-          })
-        }
-      })
+      await this.jobContext.forStoreOrJoin(identity.storeId, () =>
+        this.prisma.transaction(async tx => {
+          await lockStoreForWrite(tx, identity.storeId)
+          for (const entry of batch) {
+            await this.writes.move(
+              tx,
+              entry,
+              ShipmentStatus.CREATING,
+              ShipmentStatus.FAILED,
+              { lastError: message, pickupId: null },
+              { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
+            )
+          }
+          if (pickupId !== null) {
+            await this.writes.movePickup(
+              tx,
+              identity.storeId,
+              pickupId,
+              PickupStatus.PENDING,
+              PickupStatus.FAILED,
+              {
+                lastError: message
+              }
+            )
+          }
+          if (
+            error instanceof CarrierAuthError ||
+            error instanceof CarrierCredentialsUnreadableError
+          ) {
+            await tx.carrierConnection.updateMany({
+              where: {
+                id: identity.connectionId,
+                storeId: identity.storeId,
+                status: CarrierConnectionStatus.ACTIVE
+              },
+              data: {
+                status: CarrierConnectionStatus.ERROR,
+                lastError:
+                  error instanceof CarrierAuthError
+                    ? CarrierHealthReasons.AUTH
+                    : CarrierHealthReasons.CREDENTIALS_UNREADABLE
+              }
+            })
+          }
+        })
+      )
     } catch (writeError) {
       this.logger.error(
         { shipmentId: identity.shipmentId, err: writeError },
@@ -700,41 +712,43 @@ export class ShippingService {
     guide?: { guideNumber: string; providerShipmentId?: string | undefined }
   ): Promise<ShipmentOutcome> {
     try {
-      await this.tx(identity.storeId, async tx => {
-        await lockStoreForWrite(tx, identity.storeId)
-        for (const entry of batch) {
-          await this.writes.move(
-            tx,
-            entry,
-            ShipmentStatus.CREATING,
-            ShipmentStatus.REQUIRES_REVIEW,
-            {
-              lastError: reason,
-              ...(guide === undefined
-                ? {}
-                : {
-                    guideNumber: guide.guideNumber,
-                    providerShipmentId:
-                      typeof guide.providerShipmentId === 'string' &&
-                      guide.providerShipmentId.length <= 200
-                        ? guide.providerShipmentId
-                        : null
-                  })
-            },
-            { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
-          )
-        }
-        if (pickupId !== null) {
-          await this.writes.movePickup(
-            tx,
-            identity.storeId,
-            pickupId,
-            PickupStatus.PENDING,
-            PickupStatus.REQUIRES_REVIEW,
-            { lastError: reason }
-          )
-        }
-      })
+      await this.jobContext.forStoreOrJoin(identity.storeId, () =>
+        this.prisma.transaction(async tx => {
+          await lockStoreForWrite(tx, identity.storeId)
+          for (const entry of batch) {
+            await this.writes.move(
+              tx,
+              entry,
+              ShipmentStatus.CREATING,
+              ShipmentStatus.REQUIRES_REVIEW,
+              {
+                lastError: reason,
+                ...(guide === undefined
+                  ? {}
+                  : {
+                      guideNumber: guide.guideNumber,
+                      providerShipmentId:
+                        typeof guide.providerShipmentId === 'string' &&
+                        guide.providerShipmentId.length <= 200
+                          ? guide.providerShipmentId
+                          : null
+                    })
+              },
+              { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
+            )
+          }
+          if (pickupId !== null) {
+            await this.writes.movePickup(
+              tx,
+              identity.storeId,
+              pickupId,
+              PickupStatus.PENDING,
+              PickupStatus.REQUIRES_REVIEW,
+              { lastError: reason }
+            )
+          }
+        })
+      )
     } catch (error) {
       // The row stays CREATING, which blocks a second guide as REQUIRES_REVIEW does
       this.logger.error(
@@ -799,7 +813,7 @@ export class ShippingService {
     plugins: PluginLookup
   ): Promise<Map<number, ShipmentOutcome>> {
     const outcomes = new Map<number, ShipmentOutcome>()
-    const rules = await this.read(store.storeId, () =>
+    const rules = await this.jobContext.forStoreOrJoin(store.storeId, () =>
       this.prisma.client.carrierConnection.findFirst({
         where: { id: connectionId, storeId: store.storeId },
         select: { pickupDays: true, pickupCutoffTime: true }
@@ -861,70 +875,75 @@ export class ShippingService {
     const written: { index: number; prepared: PreparedGuide; identity: ShipmentIdentity }[] = []
     let pickupId = ''
     try {
-      await this.tx(
+      await this.jobContext.forStoreOrJoin(
         storeId,
-        async tx => {
-          await lockStoreForWrite(tx, storeId)
-          // In the same order for every batch, so two batches that share orders cannot wait for each other
-          const ordered = [...chunk].sort((a, b) =>
-            a.request.orderId.localeCompare(b.request.orderId)
-          )
-          for (const item of ordered) {
-            await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${item.request.orderId}`)
-          }
-          // The pickup first, and each shipment written as soon as it is judged: what the next one reads (the guides the order
-          // already has, which decide the amount to collect) must include this one
-          const pickup = await tx.pickupRequest.create({
-            data: {
-              storeId,
-              connectionId,
-              pickupDate: new Date(`${window.date}T00:00:00.000Z`),
-              status: PickupStatus.PENDING,
-              packageCount: chunk.length,
-              windowStart: window.from,
-              windowEnd: window.to,
-              requestedBy: caller.actor.id ?? 'system'
-            },
-            select: { id: true }
-          })
-          pickupId = pickup.id
-          for (const item of chunk) {
-            try {
-              const prepared = await prepareGuide(
+        () =>
+          this.prisma.transaction(async tx => {
+            await lockStoreForWrite(tx, storeId)
+            // In the same order for every batch, so two batches that share orders cannot wait for each other
+            const ordered = [...chunk].sort((a, b) =>
+              a.request.orderId.localeCompare(b.request.orderId)
+            )
+            for (const item of ordered) {
+              await lockStoreScope(
                 tx,
-                store,
-                item.request,
-                caller,
-                plugins,
-                connectionId
+                storeId,
+                `${ShipmentLockScopes.ORDER}:${item.request.orderId}`
               )
-              const shipmentId = await this.writes.insertCreating(
-                tx,
-                { ...prepared.row, pickupId },
-                caller.actor
-              )
-              written.push({
-                index: item.index,
-                prepared,
-                identity: { ...prepared.identity, shipmentId }
-              })
-            } catch (error) {
-              if (!(error instanceof PlatformException)) throw error
-              outcomes.set(item.index, this.refused(item.request.orderId, error))
             }
-          }
-          if (written.length === 0) {
-            // Nothing to ask the carrier for: no pickup either
-            await tx.pickupRequest.deleteMany({ where: { id: pickupId, storeId } })
-            return
-          }
-          if (written.length !== chunk.length) {
-            await tx.pickupRequest.updateMany({
-              where: { id: pickupId, storeId },
-              data: { packageCount: written.length }
+            // The pickup first, and each shipment written as soon as it is judged: what the next one reads (the guides the order
+            // already has, which decide the amount to collect) must include this one
+            const pickup = await tx.pickupRequest.create({
+              data: {
+                storeId,
+                connectionId,
+                pickupDate: new Date(`${window.date}T00:00:00.000Z`),
+                status: PickupStatus.PENDING,
+                packageCount: chunk.length,
+                windowStart: window.from,
+                windowEnd: window.to,
+                requestedBy: caller.actor.id ?? 'system'
+              },
+              select: { id: true }
             })
-          }
-        },
+            pickupId = pickup.id
+            for (const item of chunk) {
+              try {
+                const prepared = await prepareGuide(
+                  tx,
+                  store,
+                  item.request,
+                  caller,
+                  plugins,
+                  connectionId
+                )
+                const shipmentId = await this.writes.insertCreating(
+                  tx,
+                  { ...prepared.row, pickupId },
+                  caller.actor
+                )
+                written.push({
+                  index: item.index,
+                  prepared,
+                  identity: { ...prepared.identity, shipmentId }
+                })
+              } catch (error) {
+                if (!(error instanceof PlatformException)) throw error
+                outcomes.set(item.index, this.refused(item.request.orderId, error))
+              }
+            }
+            if (written.length === 0) {
+              // Nothing to ask the carrier for: no pickup either
+              await tx.pickupRequest.deleteMany({ where: { id: pickupId, storeId } })
+              return
+            }
+            if (written.length !== chunk.length) {
+              await tx.pickupRequest.updateMany({
+                where: { id: pickupId, storeId },
+                data: { packageCount: written.length }
+              })
+            }
+          }),
         BATCH_TRANSACTION
       )
     } catch (error) {
@@ -943,17 +962,19 @@ export class ShippingService {
       this.logger.error({ pickupId, err: error }, 'a pickup batch ended in a fault')
       // The pickup waits for a person too, unless the batch already settled it
       try {
-        await this.tx(store.storeId, async tx => {
-          await lockStoreForWrite(tx, store.storeId)
-          await this.writes.movePickup(
-            tx,
-            store.storeId,
-            pickupId,
-            PickupStatus.PENDING,
-            PickupStatus.REQUIRES_REVIEW,
-            { lastError: ShipmentFailureReasons.UNKNOWN_OUTCOME }
-          )
-        })
+        await this.jobContext.forStoreOrJoin(store.storeId, () =>
+          this.prisma.transaction(async tx => {
+            await lockStoreForWrite(tx, store.storeId)
+            await this.writes.movePickup(
+              tx,
+              store.storeId,
+              pickupId,
+              PickupStatus.PENDING,
+              PickupStatus.REQUIRES_REVIEW,
+              { lastError: ShipmentFailureReasons.UNKNOWN_OUTCOME }
+            )
+          })
+        )
       } catch {
         // It was settled (or is gone): nothing to move
       }
@@ -1081,22 +1102,24 @@ export class ShippingService {
       outcomes.set(entry.index, outcome)
     }
     try {
-      await this.tx(first.identity.storeId, async tx => {
-        await lockStoreForWrite(tx, first.identity.storeId)
-        // The carrier's own reference to the pickup is kept whatever became of the guides, so that a pickup that exists can be found
-        await this.writes.movePickup(
-          tx,
-          first.identity.storeId,
-          pickupId,
-          PickupStatus.PENDING,
-          made > 0
-            ? PickupStatus.REQUESTED
-            : inReview > 0
-              ? PickupStatus.REQUIRES_REVIEW
-              : PickupStatus.FAILED,
-          { providerPickupId: answer.pickupRef, packageCount: made, carrierPackageCount: made }
-        )
-      })
+      await this.jobContext.forStoreOrJoin(first.identity.storeId, () =>
+        this.prisma.transaction(async tx => {
+          await lockStoreForWrite(tx, first.identity.storeId)
+          // The carrier's own reference to the pickup is kept whatever became of the guides, so that a pickup that exists can be found
+          await this.writes.movePickup(
+            tx,
+            first.identity.storeId,
+            pickupId,
+            PickupStatus.PENDING,
+            made > 0
+              ? PickupStatus.REQUESTED
+              : inReview > 0
+                ? PickupStatus.REQUIRES_REVIEW
+                : PickupStatus.FAILED,
+            { providerPickupId: answer.pickupRef, packageCount: made, carrierPackageCount: made }
+          )
+        })
+      )
     } catch (error) {
       this.logger.error(
         { pickupId, providerPickupId: answer.pickupRef, err: error },
@@ -1115,84 +1138,86 @@ export class ShippingService {
     body: SetShipmentStatusBody,
     actor: ActorRef
   ): Promise<ShipmentChange> {
-    return this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      const row = await this.lockedShipment(tx, storeId, shipmentId)
-      const from = row.status as ShipmentStatus
-      const to = body.status
-      if (
-        from === ShipmentStatus.CREATING &&
-        Date.now() - row.updatedAt.getTime() < CREATING_STALE_MS
-      ) {
-        throw this.invalidTransition('the guide is still being made')
-      }
-      // The table first: a status the shipment cannot reach is a conflict, whatever else the body lacks
-      if (!isShipmentTransitionAllowed(from, to)) {
-        throw this.invalidTransition(`a shipment cannot go from ${from} to ${to}`)
-      }
-      // A moment before the guide existed is not a moment of its life
-      if (body.occurredAt !== undefined && new Date(body.occurredAt) < row.createdAt) {
-        throw new PlatformException(
-          ErrorCodes.VALIDATION_INVALID_INPUT,
-          'the moment is before the shipment was made',
-          HttpStatusCodes.BAD_REQUEST
-        )
-      }
-      // The same manual event again (same status, same moment) changes nothing, as for a carrier's event: a double click or a
-      // retry must not count a second failed attempt. Only a hand-made event is a twin: a carrier's event at that moment is
-      // another thing that happened. Without a moment each call is its own moment, as it always was.
-      if (from === to && body.occurredAt !== undefined) {
-        const twin = await tx.shipmentEvent.findFirst({
-          where: {
-            storeId,
-            shipmentId,
-            status: to,
-            source: ShipmentEventSource.MANUAL,
-            occurredAt: new Date(body.occurredAt)
-          },
-          select: { id: true }
-        })
-        if (twin !== null) return { shipmentId, orderId: row.orderId, from, to, repeated: true }
-      }
-      const data: Parameters<ShipmentWrites['move']>[4] = {}
-      if (to === ShipmentStatus.LABEL_CREATED) {
-        if (!isUsableGuideNumber(body.guideNumber)) {
+    return this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        const row = await this.lockedShipment(tx, storeId, shipmentId)
+        const from = row.status as ShipmentStatus
+        const to = body.status
+        if (
+          from === ShipmentStatus.CREATING &&
+          Date.now() - row.updatedAt.getTime() < CREATING_STALE_MS
+        ) {
+          throw this.invalidTransition('the guide is still being made')
+        }
+        // The table first: a status the shipment cannot reach is a conflict, whatever else the body lacks
+        if (!isShipmentTransitionAllowed(from, to)) {
+          throw this.invalidTransition(`a shipment cannot go from ${from} to ${to}`)
+        }
+        // A moment before the guide existed is not a moment of its life
+        if (body.occurredAt !== undefined && new Date(body.occurredAt) < row.createdAt) {
           throw new PlatformException(
             ErrorCodes.VALIDATION_INVALID_INPUT,
-            'a guide number is needed',
+            'the moment is before the shipment was made',
             HttpStatusCodes.BAD_REQUEST
           )
         }
-        data.guideNumber = body.guideNumber
-        data.lastError = null
-      }
-      if (to === ShipmentStatus.FAILED) {
-        data.lastError = ShipmentFailureReasons.MARKED_FAILED
-        data.pickupId = null
-      }
-      if (to === ShipmentStatus.FAILED_ATTEMPT) data.failedAttempts = { increment: 1 }
-      try {
-        await this.writes.move(tx, this.identityOf(row), from, to, data, {
-          actor,
-          source: ShipmentEventSource.MANUAL,
-          description: body.description,
-          occurredAt: body.occurredAt === undefined ? undefined : new Date(body.occurredAt)
-        })
-      } catch (error) {
-        if (isUniqueViolation(error)) {
-          throw new PlatformException(
-            ErrorCodes.SHIPPING_GUIDE_NUMBER_TAKEN,
-            'the guide number is already used',
-            HttpStatusCodes.CONFLICT
-          )
+        // The same manual event again (same status, same moment) changes nothing, as for a carrier's event: a double click or a
+        // retry must not count a second failed attempt. Only a hand-made event is a twin: a carrier's event at that moment is
+        // another thing that happened. Without a moment each call is its own moment, as it always was.
+        if (from === to && body.occurredAt !== undefined) {
+          const twin = await tx.shipmentEvent.findFirst({
+            where: {
+              storeId,
+              shipmentId,
+              status: to,
+              source: ShipmentEventSource.MANUAL,
+              occurredAt: new Date(body.occurredAt)
+            },
+            select: { id: true }
+          })
+          if (twin !== null) return { shipmentId, orderId: row.orderId, from, to, repeated: true }
         }
-        throw error
-      }
-      if (to === ShipmentStatus.LABEL_CREATED && body.guideNumber !== undefined) {
-        await this.copyTrackingNumber(tx, this.identityOf(row), body.guideNumber, row.kind)
-      }
-      return { shipmentId, orderId: row.orderId, from, to }
-    })
+        const data: Parameters<ShipmentWrites['move']>[4] = {}
+        if (to === ShipmentStatus.LABEL_CREATED) {
+          if (!isUsableGuideNumber(body.guideNumber)) {
+            throw new PlatformException(
+              ErrorCodes.VALIDATION_INVALID_INPUT,
+              'a guide number is needed',
+              HttpStatusCodes.BAD_REQUEST
+            )
+          }
+          data.guideNumber = body.guideNumber
+          data.lastError = null
+        }
+        if (to === ShipmentStatus.FAILED) {
+          data.lastError = ShipmentFailureReasons.MARKED_FAILED
+          data.pickupId = null
+        }
+        if (to === ShipmentStatus.FAILED_ATTEMPT) data.failedAttempts = { increment: 1 }
+        try {
+          await this.writes.move(tx, this.identityOf(row), from, to, data, {
+            actor,
+            source: ShipmentEventSource.MANUAL,
+            description: body.description,
+            occurredAt: body.occurredAt === undefined ? undefined : new Date(body.occurredAt)
+          })
+        } catch (error) {
+          if (isUniqueViolation(error)) {
+            throw new PlatformException(
+              ErrorCodes.SHIPPING_GUIDE_NUMBER_TAKEN,
+              'the guide number is already used',
+              HttpStatusCodes.CONFLICT
+            )
+          }
+          throw error
+        }
+        if (to === ShipmentStatus.LABEL_CREATED && body.guideNumber !== undefined) {
+          await this.copyTrackingNumber(tx, this.identityOf(row), body.guideNumber, row.kind)
+        }
+        return { shipmentId, orderId: row.orderId, from, to }
+      })
+    )
   }
 
   // "Check with the carrier" (TDD_17 §4.5 step 6): asks by the order number for a guide that never came back. Found, the
@@ -1203,10 +1228,12 @@ export class ShippingService {
     actor: ActorRef,
     plugins: PluginLookup
   ): Promise<{ found: boolean; change: ShipmentChange | null }> {
-    const row = await this.prisma.client.shipment.findFirst({
-      where: { id: shipmentId, storeId },
-      select: this.shipmentSelect()
-    })
+    const row = await this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.client.shipment.findFirst({
+        where: { id: shipmentId, storeId },
+        select: this.shipmentSelect()
+      })
+    )
     if (row === null) throw resourceNotFound('shipment')
     if (row.status !== String(ShipmentStatus.REQUIRES_REVIEW)) {
       throw this.invalidTransition('only a guide in review is checked with the carrier')
@@ -1274,15 +1301,17 @@ export class ShippingService {
       }
       // The guides the other shipments of the connection already hold are theirs (an order split between warehouses has one per
       // origin and the same order number)
-      const held = await this.prisma.client.shipment.findMany({
-        where: {
-          storeId,
-          connectionId: row.connectionId,
-          id: { not: shipmentId },
-          guideNumber: { not: null }
-        },
-        select: { guideNumber: true }
-      })
+      const held = await this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.client.shipment.findMany({
+          where: {
+            storeId,
+            connectionId: row.connectionId,
+            id: { not: shipmentId },
+            guideNumber: { not: null }
+          },
+          select: { guideNumber: true }
+        })
+      )
       for (const entry of held) {
         if (entry.guideNumber !== null) guides.delete(entry.guideNumber)
       }
@@ -1300,33 +1329,35 @@ export class ShippingService {
     const found = guide
     let change: ShipmentChange
     try {
-      change = await this.prisma.transaction(async tx => {
-        await lockStoreForWrite(tx, storeId)
-        await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${row.orderId}`)
-        await this.writes.move(
-          tx,
-          this.identityOf(row),
-          ShipmentStatus.REQUIRES_REVIEW,
-          ShipmentStatus.LABEL_CREATED,
-          {
-            guideNumber: found.guideNumber,
-            providerShipmentId: found.providerShipmentId ?? null,
-            lastError: null
-          },
-          {
-            actor,
-            source: ShipmentEventSource.MANUAL,
-            description: ShipmentEventNotes.FOUND_AT_CARRIER
+      change = await this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.transaction(async tx => {
+          await lockStoreForWrite(tx, storeId)
+          await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${row.orderId}`)
+          await this.writes.move(
+            tx,
+            this.identityOf(row),
+            ShipmentStatus.REQUIRES_REVIEW,
+            ShipmentStatus.LABEL_CREATED,
+            {
+              guideNumber: found.guideNumber,
+              providerShipmentId: found.providerShipmentId ?? null,
+              lastError: null
+            },
+            {
+              actor,
+              source: ShipmentEventSource.MANUAL,
+              description: ShipmentEventNotes.FOUND_AT_CARRIER
+            }
+          )
+          await this.copyTrackingNumber(tx, this.identityOf(row), found.guideNumber, row.kind)
+          return {
+            shipmentId,
+            orderId: row.orderId,
+            from: ShipmentStatus.REQUIRES_REVIEW,
+            to: ShipmentStatus.LABEL_CREATED
           }
-        )
-        await this.copyTrackingNumber(tx, this.identityOf(row), found.guideNumber, row.kind)
-        return {
-          shipmentId,
-          orderId: row.orderId,
-          from: ShipmentStatus.REQUIRES_REVIEW,
-          to: ShipmentStatus.LABEL_CREATED
-        }
-      })
+        })
+      )
     } catch (error) {
       // The guide the carrier named is already another shipment's: it is not ours to adopt
       if (isUniqueViolation(error)) {
@@ -1540,16 +1571,18 @@ export class ShippingService {
   }
 
   private async storeFacts(storeId: string): Promise<StoreFacts> {
-    // The context looks the store up first: a store that is gone is the 404 it always was, not a fault of the context
-    const store = await this.read(storeId, () =>
-      this.prisma.client.store.findUnique({
-        where: { id: storeId },
-        select: { organizationId: true, timezone: true, defaultLocale: true }
+    // A store that is gone is "not found", as it was before the context looked it up first
+    const store = await this.jobContext
+      .forStoreOrJoin(storeId, () =>
+        this.prisma.client.store.findUnique({
+          where: { id: storeId },
+          select: { organizationId: true, timezone: true, defaultLocale: true }
+        })
+      )
+      .catch((error: unknown) => {
+        if (error instanceof JobContextGoneError) return null
+        throw error
       })
-    ).catch((error: unknown) => {
-      if (error instanceof JobContextGoneError) throw resourceNotFound('store')
-      throw error
-    })
     if (store === null) throw resourceNotFound('store')
     return {
       storeId,
@@ -1565,26 +1598,23 @@ export class ShippingService {
     storeId: string,
     requests: readonly ShipmentRequest[]
   ): Promise<Map<string, string | null>> {
-    if (requests.length === 0) return new Map<string, string | null>()
-    return this.read(storeId, () => this.connectionsIn(storeId, requests))
-  }
-
-  private async connectionsIn(
-    storeId: string,
-    requests: readonly ShipmentRequest[]
-  ): Promise<Map<string, string | null>> {
     const result = new Map<string, string | null>()
+    if (requests.length === 0) return result
     // The default of the store is read only when some request leaves the carrier to it
     const settings = requests.some(request => request.connectionId === undefined)
-      ? await this.prisma.client.storeSettings.findUnique({
-          where: { storeId },
-          select: { defaultCarrierConnectionId: true }
-        })
+      ? await this.jobContext.forStoreOrJoin(storeId, () =>
+          this.prisma.client.storeSettings.findUnique({
+            where: { storeId },
+            select: { defaultCarrierConnectionId: true }
+          })
+        )
       : null
-    const orders = await this.prisma.client.order.findMany({
-      where: { storeId, id: { in: requests.map(request => request.orderId) } },
-      select: { id: true, carrierConnectionId: true }
-    })
+    const orders = await this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.client.order.findMany({
+        where: { storeId, id: { in: requests.map(request => request.orderId) } },
+        select: { id: true, carrierConnectionId: true }
+      })
+    )
     for (const order of orders) {
       result.set(
         order.id,
@@ -1595,28 +1625,12 @@ export class ShippingService {
   }
 
   private async carrierOf(storeId: string, connectionId: string): Promise<string | null> {
-    const row = await this.read(storeId, () =>
+    const row = await this.jobContext.forStoreOrJoin(storeId, () =>
       this.prisma.client.carrierConnection.findFirst({
         where: { id: connectionId, storeId },
         select: { carrierId: true }
       })
     )
     return row?.carrierId ?? null
-  }
-
-  // One unit of database work of one store, as short as the work: it joins the context of the request or of the job when one is
-  // open for this store (the interceptor, the worker) and opens its own otherwise. A guide is made at a carrier and may cost money,
-  // so the call to the carrier never sits inside a unit: the row is written and committed in one, the carrier is called, and what it
-  // answered is written in another (TDD_17 §4.5; the activation of RLS_CONTEXT, F6-3f).
-  private read<T>(storeId: string, work: () => Promise<T>): Promise<T> {
-    return this.jobs.forStoreOrJoin(storeId, work)
-  }
-
-  private tx<T>(
-    storeId: string,
-    work: (tx: PrismaTransaction) => Promise<T>,
-    options?: TransactionOptions
-  ): Promise<T> {
-    return this.jobs.forStoreOrJoin(storeId, () => this.prisma.transaction(work, options), options)
   }
 }
