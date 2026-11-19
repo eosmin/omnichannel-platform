@@ -1835,9 +1835,7 @@ describe('The channel connections of a store', () => {
       const { id, plugin } = register()
       await connect(id)
 
-      const result = await app
-        .get(ChannelHealthService, { strict: false })
-        .checkAll(() => plugin, 0)
+      const result = await (await workerChannelHealth(app)).checkAll(() => plugin, 0)
 
       expect(result).toEqual({ checked: 0, unhealthy: 0 })
     })
@@ -1846,7 +1844,7 @@ describe('The channel connections of a store', () => {
       const { id } = register()
       const made = (await connect(id)).body as ConnectionBody
 
-      await app.get(ChannelHealthService, { strict: false }).checkAll(() => undefined)
+      await (await workerChannelHealth(app)).checkAll(() => undefined)
 
       expect(
         (await owner.channelConnection.findUniqueOrThrow({ where: { id: made.id } })).status
@@ -1858,9 +1856,9 @@ describe('The channel connections of a store', () => {
       const made = (await connect(id)).body as ConnectionBody
       await asAdmin().post(ApiRoutes.channels.disconnect(made.id))
 
-      await app
-        .get(ChannelHealthService, { strict: false })
-        .checkAll(pluginId => (pluginId === id ? plugin : undefined))
+      await (
+        await workerChannelHealth(app)
+      ).checkAll(pluginId => (pluginId === id ? plugin : undefined))
 
       expect(
         (await owner.channelConnection.findUniqueOrThrow({ where: { id: made.id } })).status
