@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import { AppPaths, DigestFrequency, MembershipStatus } from '@platform/core/domain'
 import type { Locale } from '@platform/core/i18n'
 import { createTranslator, hasTranslation } from '@platform/core/i18n-server'
@@ -26,7 +26,11 @@ import {
   type SendEmailJob
 } from '@platform/core/queues'
 
+import { readInEachStore } from '../schedulers/store-sweep'
+
 import { messageParams, pushLocale } from './push-payload'
+
+// rls-context: the notifications are read inside JobContext.forStore (the scan and the stale marks) or JobContext.forUser (a person's batch)
 
 const HOUR_MS = 3_600_000
 // Rows one run reads for one person; what is left waits for the next run
@@ -85,6 +89,7 @@ interface DigestRow {
 export class EmailDigestService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobContext: JobContext,
     @InjectQueue(QueueNames.NOTIFICATIONS) private readonly digestQueue: Queue<SendEmailDigestJob>,
     @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
     @Inject(DIGEST_LINKS) private readonly links: DigestLinks,
@@ -100,24 +105,45 @@ export class EmailDigestService {
   ): Promise<ScanReport> {
     await this.dropStale(now)
 
-    const waiting = await this.prisma.client.notification.findMany({
-      // Only the people this pass can serve: the others would fill the batch and starve the rest
-      where: {
-        emailPendingAt: { not: null },
-        user: {
-          OR: [
-            { notificationSettings: { digestFrequency: frequency } },
-            ...(frequency === NotificationSettingsDefaults.digestFrequency
-              ? [{ notificationSettings: { is: null } }]
-              : [])
-          ]
-        }
+    // The notifications are rows of a store: each store is read in its own context, and the people are joined. A store that cannot be read
+    // is logged and left to the next run (queueing a digest is additive and each job is idempotent); a pool that is down throws.
+    let anyStoreFull = false
+    const waiting = await readInEachStore(
+      this.prisma,
+      this.jobContext,
+      async storeId => {
+        const rows = await this.prisma.client.notification.findMany({
+          // Only the people this pass can serve: the others would fill the batch and starve the rest
+          where: {
+            storeId,
+            emailPendingAt: { not: null },
+            // Only a person who can still read the store: the batch of a person is read in their own context, which does not see the
+            // marks of a store they left (they are dropped as stale)
+            user: {
+              memberships: { some: { storeId, status: MembershipStatus.ACTIVE } },
+              OR: [
+                { notificationSettings: { digestFrequency: frequency } },
+                ...(frequency === NotificationSettingsDefaults.digestFrequency
+                  ? [{ notificationSettings: { is: null } }]
+                  : [])
+              ]
+            }
+          },
+          distinct: ['userId'],
+          select: { userId: true },
+          take: DigestLimits.SCAN_BATCH
+        })
+        if (rows.length >= DigestLimits.SCAN_BATCH) anyStoreFull = true
+        return rows
       },
-      distinct: ['userId'],
-      select: { userId: true },
-      take: DigestLimits.SCAN_BATCH
-    })
-    const userIds = waiting.map(row => row.userId)
+      (storeId, error) =>
+        this.logger.error(
+          { storeId, err: String(error) },
+          'the notifications of a store could not be read for the digest'
+        )
+    )
+    const everyone = [...new Set(waiting.map(row => row.userId))]
+    const userIds = everyone.slice(0, DigestLimits.SCAN_BATCH)
     if (userIds.length === 0) return { queued: 0, full: false }
 
     const settings = await this.prisma.client.userNotificationSettings.findMany({
@@ -143,7 +169,7 @@ export class EmailDigestService {
         }))
       )
     }
-    return { queued: due.length, full: waiting.length >= DigestLimits.SCAN_BATCH }
+    return { queued: due.length, full: anyStoreFull || everyone.length > DigestLimits.SCAN_BATCH }
   }
 
   // A batch for one person. The frequency is read again: they may have changed it since the scan.
@@ -181,10 +207,25 @@ export class EmailDigestService {
 
   // Marks too old to be worth an email are cleared without sending (DigestLimits.MAX_AGE_HOURS)
   private async dropStale(now: Date): Promise<void> {
-    await this.prisma.client.notification.updateMany({
-      where: { emailPendingAt: { not: null, lt: this.cutoff(now) } },
-      data: { emailPendingAt: null }
-    })
+    const cutoff = this.cutoff(now)
+    // Per store, in its own context. A store that fails is logged and left to the next run: a stale mark that stays one more hour only
+    // delays its removal (the delivery drops it anyway when it is older than the limit)
+    await readInEachStore(
+      this.prisma,
+      this.jobContext,
+      async storeId => {
+        await this.prisma.client.notification.updateMany({
+          where: { storeId, emailPendingAt: { not: null, lt: cutoff } },
+          data: { emailPendingAt: null }
+        })
+        return []
+      },
+      (storeId, error) =>
+        this.logger.error(
+          { storeId, err: String(error) },
+          'the stale marks of a store could not be cleared'
+        )
+    )
   }
 
   // A time zone the runtime does not know is read as the default one: it must not stop the scan of everyone
@@ -200,12 +241,26 @@ export class EmailDigestService {
     return new Date(now.getTime() - DigestLimits.MAX_AGE_HOURS * HOUR_MS)
   }
 
+  private async unlessUserGone<T>(work: Promise<T>): Promise<T | null> {
+    try {
+      return await work
+    } catch (error) {
+      if (error instanceof JobContextGoneError) return null
+      throw error
+    }
+  }
+
   private async clear(userId: string, ids: string[]): Promise<void> {
     if (ids.length === 0) return
-    await this.prisma.client.notification.updateMany({
-      where: { id: { in: ids }, userId, emailPendingAt: { not: null } },
-      data: { emailPendingAt: null }
-    })
+    // A person deleted while the job waited has no marks left to clear
+    await this.unlessUserGone(
+      this.jobContext.forUser(userId, () =>
+        this.prisma.client.notification.updateMany({
+          where: { id: { in: ids }, userId, emailPendingAt: { not: null } },
+          data: { emailPendingAt: null }
+        })
+      )
+    )
   }
 
   private async deliver(
@@ -214,23 +269,28 @@ export class EmailDigestService {
     now: Date,
     countsAsDigest: boolean
   ): Promise<void> {
-    const pending = await this.prisma.client.notification.findMany({
-      where: { userId, emailPendingAt: { not: null }, ...only },
-      orderBy: { createdAt: 'desc' },
-      take: READ_BATCH,
-      select: {
-        id: true,
-        messageKey: true,
-        params: true,
-        actionPath: true,
-        resourceId: true,
-        readAt: true,
-        createdAt: true,
-        storeId: true,
-        store: { select: { name: true } }
-      }
-    })
-    if (pending.length === 0) return
+    // The notifications of the person, across the stores they belong to: one context of theirs for the read, and none while the email is built
+    const pending = await this.unlessUserGone(
+      this.jobContext.forUser(userId, () =>
+        this.prisma.client.notification.findMany({
+          where: { userId, emailPendingAt: { not: null }, ...only },
+          orderBy: { createdAt: 'desc' },
+          take: READ_BATCH,
+          select: {
+            id: true,
+            messageKey: true,
+            params: true,
+            actionPath: true,
+            resourceId: true,
+            readAt: true,
+            createdAt: true,
+            storeId: true,
+            store: { select: { name: true } }
+          }
+        })
+      )
+    )
+    if (pending === null || pending.length === 0) return
     const pendingIds = pending.map(row => row.id)
 
     const user = await this.prisma.client.user.findUnique({

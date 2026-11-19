@@ -18,11 +18,11 @@ const MEDIA_OBJECT_KEY = new RegExp(
 )
 
 // The inverse of `StorageKeys.message` and `messageUpload` (and of the variants, which sit under the
-// media id of their original): which area a key is in and which media it belongs to. null for any
+// media id of their original): which store and area a key is in and which media it belongs to. null for any
 // other key of the bucket.
 export function parseMediaObjectKey(
   key: string
-): { area: MediaObjectArea; mediaId: string } | null {
+): { storeId: string; area: MediaObjectArea; mediaId: string } | null {
   const match = MEDIA_OBJECT_KEY.exec(key)
   const storeId = match?.[1]
   const area = match?.[2]
@@ -30,7 +30,7 @@ export function parseMediaObjectKey(
   if (storeId === undefined || mediaId === undefined) return null
   if (isPathStep(storeId) || isPathStep(mediaId)) return null
   return area === MediaObjectAreas.UPLOADS || area === MediaObjectAreas.MESSAGES
-    ? { area, mediaId }
+    ? { storeId, area, mediaId }
     : null
 }
 

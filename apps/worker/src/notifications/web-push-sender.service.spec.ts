@@ -2,7 +2,7 @@ import { UnrecoverableError } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 import { WebPushError } from 'web-push'
 
-import type { PrismaService } from '@platform/core/database'
+import { JobContextGoneError, type JobContext, type PrismaService } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
 import { NotificationTypes, notificationMessageKey } from '@platform/core/notifications'
 
@@ -42,6 +42,7 @@ describe('WebPushSender', () => {
   const updateSubscription = jest.fn()
   const deleteSubscriptions = jest.fn()
   const send = jest.fn<Promise<void>, [{ endpoint: string }, string, boolean]>()
+  const forUser = jest.fn((_userId: string, work: () => Promise<unknown>) => work())
   const logger = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   let enabled = true
 
@@ -65,6 +66,7 @@ describe('WebPushSender', () => {
     }
     return new WebPushSender(
       prisma as unknown as PrismaService,
+      { forUser } as unknown as JobContext,
       gateway as unknown as WebPushGateway,
       logger as unknown as PinoLogger
     )
@@ -72,6 +74,7 @@ describe('WebPushSender', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
+    forUser.mockImplementation((_userId, work) => work())
     enabled = true
     findNotification.mockResolvedValue(notificationRow())
     findSubscriptions.mockResolvedValue([subscription('s1')])
@@ -98,6 +101,14 @@ describe('WebPushSender', () => {
       countMembers.mockResolvedValueOnce(0)
       await sender().send(USER, NOTIFICATION)
       expect(reasonsLogged()).toEqual(['notification_gone', 'already_read', 'not_a_member'])
+    })
+
+    it('reads in the context of the person and names a person who was deleted', async () => {
+      await sender().send(USER, NOTIFICATION)
+      expect(forUser).toHaveBeenCalledWith(USER, expect.any(Function))
+      forUser.mockRejectedValueOnce(new JobContextGoneError('the user of the job does not exist'))
+      await sender().send(USER, NOTIFICATION)
+      expect(reasonsLogged()).toEqual(['user_gone'])
     })
 
     it('names a person with no browser registered', async () => {
