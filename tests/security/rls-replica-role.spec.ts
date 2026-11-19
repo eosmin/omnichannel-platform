@@ -59,10 +59,11 @@ describe('the read only role of the replica', () => {
       [DatabaseRoles.REPLICA]
     )
     expect(tables.rows).toEqual([])
-    const sequences = await owner.query<{ relname: string }>(
-      `SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'public' AND c.relkind = 'S' AND has_sequence_privilege($1, c.oid, 'USAGE, UPDATE')
-        ORDER BY c.relname`,
+    const sequences = await owner.query<{ sequencename: string }>(
+      `SELECT sequencename FROM pg_sequences
+        WHERE schemaname = 'public'
+          AND has_sequence_privilege($1, format('%I.%I', schemaname, sequencename), 'USAGE, UPDATE')
+        ORDER BY sequencename`,
       [DatabaseRoles.REPLICA]
     )
     expect(sequences.rows).toEqual([])

@@ -345,13 +345,18 @@ describe('database roles', () => {
     })
   })
 
-  it('makes neither role a superuser, and only the worker bypasses RLS', async () => {
+  it('makes no role a superuser, and only the worker bypasses RLS', async () => {
     await withClient(urls.owner, async owner => {
       const { rows } = await owner.query(
         "SELECT rolname, rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname LIKE 'platform\\_%' ORDER BY rolname"
       )
-      expect(rows).toEqual([
+      // The read only role of the replica logs in only where DB_REPLICA_PASSWORD is set: its login is not what this case is about
+      const seen = rows.map((row: { rolname: string; rolcanlogin: boolean }) =>
+        row.rolname === 'platform_replica_ro' ? { ...row, rolcanlogin: true } : row
+      )
+      expect(seen).toEqual([
         { rolname: 'platform_app', rolsuper: false, rolbypassrls: false, rolcanlogin: true },
+        { rolname: 'platform_replica_ro', rolsuper: false, rolbypassrls: false, rolcanlogin: true },
         { rolname: 'platform_worker', rolsuper: false, rolbypassrls: true, rolcanlogin: true }
       ])
     })
