@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import {
   BulkLabelJobStatus,
   BulkOrderOutcomes,
@@ -36,6 +36,9 @@ import {
 } from '@platform/core/shipping'
 import { CarrierRegistry } from '@platform/plugins/runtime'
 import { ShipmentCreationModes } from '@platform/plugins/sdk'
+
+// rls-context: every read and write of a table of a store runs inside JobContext.forStore of the store of the run; the carrier and the
+// guide engine (ShippingService, MergedLabels) are called outside it; until C3 PR2 they open no context of their own (plan, C3 note)
 
 // The guides an earlier attempt of the run made, from the account it left (their shipment ids): the next attempt finds them
 // printable and must not take them for guides that already existed. A split order that lost a part keeps no such mark for the
@@ -81,7 +84,8 @@ export class BulkLabelsRunner {
     private readonly merged: MergedLabels,
     private readonly registry: CarrierRegistry,
     private readonly events: DomainEvents,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(BulkLabelsRunner.name)
   }
@@ -94,35 +98,46 @@ export class BulkLabelsRunner {
     options: BulkRunOptions = {}
   ): Promise<void> {
     const { storeId, jobId } = data
-    const job = await this.prisma.client.bulkLabelJob.findFirst({
-      where: { id: jobId, storeId },
-      select: {
-        id: true,
-        storeId: true,
-        status: true,
-        orderIds: true,
-        requestedBy: true,
-        results: true
-      }
-    })
+    const job = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.bulkLabelJob.findFirst({
+        where: { id: jobId, storeId },
+        select: {
+          id: true,
+          storeId: true,
+          status: true,
+          orderIds: true,
+          requestedBy: true,
+          results: true
+        }
+      })
+    )
     if (job === null) {
       this.logger.warn({ jobId }, 'a bulk run of labels names a job the store does not have')
       return
     }
     // A run that already ended (a repeated job) is not run again
-    const claimed = await this.prisma.client.bulkLabelJob.updateMany({
-      where: {
-        id: jobId,
-        storeId,
-        status: { in: [BulkLabelJobStatus.QUEUED, BulkLabelJobStatus.RUNNING] }
-      },
-      data: { status: BulkLabelJobStatus.RUNNING }
-    })
+    const claimed = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.bulkLabelJob.updateMany({
+        where: {
+          id: jobId,
+          storeId,
+          status: { in: [BulkLabelJobStatus.QUEUED, BulkLabelJobStatus.RUNNING] }
+        },
+        data: { status: BulkLabelJobStatus.RUNNING }
+      })
+    )
     if (claimed.count === 0) return
 
     const settled = new Map<string, BulkResultEntry>()
     const ledger = new PartsLedger()
-    const progress = new Progress(this.prisma, this.events, this.logger, job, settled)
+    const progress = new Progress(
+      this.prisma,
+      this.events,
+      this.logger,
+      this.jobContext,
+      job,
+      settled
+    )
     // The merged file, once it is stored: a fault after that must not hide it from the person who asked
     let storedMediaId: string | null = null
     try {
@@ -196,21 +211,25 @@ export class BulkLabelsRunner {
     createdBefore: ReadonlySet<string>
   ): Promise<void> {
     const { storeId } = data
-    const orders = await this.prisma.client.order.findMany({
-      where: { storeId, id: { in: job.orderIds } },
-      select: { id: true }
-    })
+    const orders = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.order.findMany({
+        where: { storeId, id: { in: job.orderIds } },
+        select: { id: true }
+      })
+    )
     const known = new Set(orders.map(order => order.id))
-    const active = await this.prisma.client.shipment.findMany({
-      where: {
-        storeId,
-        orderId: { in: job.orderIds },
-        kind: ShipmentKind.OUTBOUND,
-        status: { notIn: [...ShipmentInactiveStatuses] }
-      },
-      select: { id: true, orderId: true, status: true, originWarehouseId: true },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
-    })
+    const active = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.shipment.findMany({
+        where: {
+          storeId,
+          orderId: { in: job.orderIds },
+          kind: ShipmentKind.OUTBOUND,
+          status: { notIn: [...ShipmentInactiveStatuses] }
+        },
+        select: { id: true, orderId: true, status: true, originWarehouseId: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+      })
+    )
     const origins = await this.originsOf(storeId, [...known])
     const isPrintable = (status: string): boolean =>
       ShipmentPrintableStatuses.includes(status as ShipmentStatus)
@@ -381,18 +400,22 @@ export class BulkLabelsRunner {
   ): Promise<Map<string, string[]>> {
     const result = new Map<string, string[]>()
     if (orderIds.length === 0) return result
-    const rows = await this.prisma.client.orderItemAllocation.findMany({
-      where: { storeId, orderItem: { orderId: { in: [...orderIds] } } },
-      select: { warehouseId: true, orderItem: { select: { orderId: true } } }
-    })
+    const rows = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.orderItemAllocation.findMany({
+        where: { storeId, orderItem: { orderId: { in: [...orderIds] } } },
+        select: { warehouseId: true, orderItem: { select: { orderId: true } } }
+      })
+    )
     const warehouseIds = [...new Set(rows.map(row => row.warehouseId))]
     const links =
       warehouseIds.length === 0
         ? []
-        : await this.prisma.client.storeWarehouse.findMany({
-            where: { storeId, warehouseId: { in: warehouseIds } },
-            select: { warehouseId: true, priority: true }
-          })
+        : await this.jobContext.forStore(storeId, () =>
+            this.prisma.client.storeWarehouse.findMany({
+              where: { storeId, warehouseId: { in: warehouseIds } },
+              select: { warehouseId: true, priority: true }
+            })
+          )
     const priority = new Map(links.map(link => [link.warehouseId, link.priority]))
     for (const row of rows) {
       const list = result.get(row.orderItem.orderId) ?? []
@@ -410,15 +433,17 @@ export class BulkLabelsRunner {
   }
 
   private async mayStillPrint(storeId: string, userId: string): Promise<boolean> {
-    const member = await this.prisma.client.membership.count({
-      where: {
-        userId,
-        storeId,
-        status: MembershipStatus.ACTIVE,
-        revokedAt: null,
-        role: { permissions: { some: { name: Permissions.SHIPPING_MANAGE } } }
-      }
-    })
+    const member = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.membership.count({
+        where: {
+          userId,
+          storeId,
+          status: MembershipStatus.ACTIVE,
+          revokedAt: null,
+          role: { permissions: { some: { name: Permissions.SHIPPING_MANAGE } } }
+        }
+      })
+    )
     return member > 0
   }
 
@@ -461,28 +486,30 @@ export class BulkLabelsRunner {
     counts: { succeeded: number; failed: number },
     mergedMediaId: string | null
   ): Promise<void> {
-    await this.prisma.transaction(async tx => {
-      // Only a run that is still running ends: one that was already closed (by a repeated job) is not announced twice
-      const closed = await tx.bulkLabelJob.updateMany({
-        where: { id: job.id, storeId: job.storeId, status: BulkLabelJobStatus.RUNNING },
-        data: {
+    await this.jobContext.forStore(job.storeId, () =>
+      this.prisma.transaction(async tx => {
+        // Only a run that is still running ends: one that was already closed (by a repeated job) is not announced twice
+        const closed = await tx.bulkLabelJob.updateMany({
+          where: { id: job.id, storeId: job.storeId, status: BulkLabelJobStatus.RUNNING },
+          data: {
+            status,
+            succeeded: counts.succeeded,
+            failed: counts.failed,
+            results: entries.map(entry => ({ ...entry })),
+            mergedMediaId,
+            finishedAt: new Date()
+          }
+        })
+        if (closed.count === 0) return
+        this.events.publish(tx, Events.BULK_LABELS_DONE, {
+          storeId: job.storeId,
+          jobId: job.id,
+          requestedBy: job.requestedBy,
           status,
-          succeeded: counts.succeeded,
-          failed: counts.failed,
-          results: entries.map(entry => ({ ...entry })),
-          mergedMediaId,
-          finishedAt: new Date()
-        }
+          mergedMediaId
+        })
       })
-      if (closed.count === 0) return
-      this.events.publish(tx, Events.BULK_LABELS_DONE, {
-        storeId: job.storeId,
-        jobId: job.id,
-        requestedBy: job.requestedBy,
-        status,
-        mergedMediaId
-      })
-    })
+    )
   }
 }
 
@@ -498,6 +525,7 @@ class Progress {
     private readonly prisma: PrismaService,
     private readonly events: DomainEvents,
     private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext,
     private readonly job: RunningJob,
     private readonly settled: Map<string, BulkResultEntry>
   ) {}
@@ -529,25 +557,27 @@ class Progress {
     const entries = [...this.settled.values()]
     const { succeeded, failed } = tallyOf(entries)
     try {
-      await this.prisma.transaction(async tx => {
-        const written = await tx.bulkLabelJob.updateMany({
-          where: {
-            id: this.job.id,
+      await this.jobContext.forStore(this.job.storeId, () =>
+        this.prisma.transaction(async tx => {
+          const written = await tx.bulkLabelJob.updateMany({
+            where: {
+              id: this.job.id,
+              storeId: this.job.storeId,
+              status: BulkLabelJobStatus.RUNNING
+            },
+            data: { succeeded, failed, results: entries.map(entry => ({ ...entry })) }
+          })
+          if (written.count === 0) return
+          this.events.publish(tx, Events.BULK_LABELS_PROGRESS, {
             storeId: this.job.storeId,
-            status: BulkLabelJobStatus.RUNNING
-          },
-          data: { succeeded, failed, results: entries.map(entry => ({ ...entry })) }
+            jobId: this.job.id,
+            requestedBy: this.job.requestedBy,
+            done: entries.length,
+            total: this.job.orderIds.length,
+            failed
+          })
         })
-        if (written.count === 0) return
-        this.events.publish(tx, Events.BULK_LABELS_PROGRESS, {
-          storeId: this.job.storeId,
-          jobId: this.job.id,
-          requestedBy: this.job.requestedBy,
-          done: entries.length,
-          total: this.job.orderIds.length,
-          failed
-        })
-      })
+      )
     } catch (error) {
       this.logger.warn(
         { jobId: this.job.id, errorName: errorName(error) },
