@@ -8,7 +8,7 @@ import { PDFDocument } from 'pdf-lib'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   BulkLabelJobStatus,
@@ -145,7 +145,13 @@ describe('Bulk labels and "print labels" (TDD_17 §4.6)', () => {
       domainEvents,
       quietLogger
     )
-    cleaner = new BulkLabelsCleaner(prisma, storage, domainEvents, quietLogger)
+    cleaner = new BulkLabelsCleaner(
+      prisma,
+      new JobContext(prisma),
+      storage,
+      domainEvents,
+      quietLogger
+    )
 
     await owner.warehouse.update({
       where: { id: ctx.warehouseA.id },

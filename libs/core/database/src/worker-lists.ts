@@ -38,6 +38,38 @@ export interface ChannelConnectionFilter {
   pluginStatus: string
 }
 
+export interface AvatarMediaRef {
+  id: string
+  key: string
+  status: string
+  createdAt: Date
+  uploadedBy: string | null
+}
+export interface AvatarMediaFilter {
+  statuses?: readonly string[]
+  createdBefore?: Date
+  scannedAfter?: Date
+  userIds?: readonly string[]
+}
+export interface OrphanAvatarRef {
+  id: string
+  key: string
+}
+// A row of the audit log as the cold export writes it: the same fields, in the order of the model
+export interface AuditLogEntry {
+  id: string
+  action: string
+  userId: string | null
+  storeId: string | null
+  organizationId: string | null
+  resourceType: string | null
+  resourceId: string | null
+  metadata: unknown
+  ipAddress: string | null
+  userAgent: string | null
+  timestamp: Date
+}
+
 @Injectable()
 export class WorkerLists {
   constructor(private readonly prisma: PrismaService) {}
@@ -114,5 +146,117 @@ export class WorkerLists {
       },
       id => id
     )
+  }
+
+  // The audit log (cold export): definers of read only; the only delete is purge_audit_logs
+  async auditOldestBefore(before: Date): Promise<Date | null> {
+    const rows = await this.prisma.client.$queryRaw<{ oldest: Date | null }[]>`
+      SELECT rls_audit_oldest_before(${before}) AS oldest`
+    return rows[0]?.oldest ?? null
+  }
+
+  async auditCountBetween(start: Date, end: Date): Promise<number> {
+    const rows = await this.prisma.client.$queryRaw<{ total: bigint }[]>`
+      SELECT rls_audit_count_between(${start}, ${end}) AS total`
+    return Number(rows[0]?.total ?? 0)
+  }
+
+  // One page of a month by (timestamp, id); the caller walks it until a page is shorter than `size`
+  async auditColdPage(
+    start: Date,
+    end: Date,
+    after: { timestamp: Date; id: string } | undefined,
+    size: number
+  ): Promise<AuditLogEntry[]> {
+    const afterTimestamp = after?.timestamp ?? null
+    const afterId = after?.id ?? null
+    const rows = await this.prisma.client.$queryRaw<
+      {
+        id: string
+        action: string
+        user_id: string | null
+        store_id: string | null
+        organization_id: string | null
+        resource_type: string | null
+        resource_id: string | null
+        metadata: unknown
+        ip_address: string | null
+        user_agent: string | null
+        timestamp: Date
+      }[]
+    >`SELECT * FROM rls_audit_logs_for_cold_export(${start}, ${end}, ${afterTimestamp}::timestamp, ${afterId}::text, ${size}::integer)`
+    return rows.map(row => ({
+      id: row.id,
+      action: row.action,
+      userId: row.user_id,
+      storeId: row.store_id,
+      organizationId: row.organization_id,
+      resourceType: row.resource_type,
+      resourceId: row.resource_id,
+      metadata: row.metadata,
+      ipAddress: row.ip_address,
+      userAgent: row.user_agent,
+      timestamp: row.timestamp
+    }))
+  }
+
+  // Avatar media (the one media with no store), by the filters given
+  avatarMedia(filter: AvatarMediaFilter): Promise<AvatarMediaRef[]> {
+    const statuses = filter.statuses === undefined ? null : [...filter.statuses]
+    const userIds = filter.userIds === undefined ? null : [...filter.userIds]
+    const createdBefore = filter.createdBefore ?? null
+    const scannedAfter = filter.scannedAfter ?? null
+    return readAllPages(
+      async (after, size) => {
+        const rows = await this.prisma.client.$queryRaw<
+          {
+            id: string
+            key: string
+            status: string
+            created_at: Date
+            uploaded_by: string | null
+          }[]
+        >`SELECT id, key, status, created_at, uploaded_by FROM rls_list_avatar_media(${statuses}::text[], ${createdBefore}::timestamp, ${scannedAfter}::timestamp, ${userIds}::text[], ${after}::text, ${size}::integer)`
+        return rows.map(row => ({
+          id: row.id,
+          key: row.key,
+          status: row.status,
+          createdAt: row.created_at,
+          uploadedBy: row.uploaded_by
+        }))
+      },
+      row => row.id
+    )
+  }
+
+  orphanAvatars(
+    cutoff: Date,
+    refusedStatuses: readonly string[],
+    userIds?: readonly string[]
+  ): Promise<OrphanAvatarRef[]> {
+    const users = userIds === undefined ? null : [...userIds]
+    return readAllPages(
+      async (after, size) =>
+        this.prisma.client.$queryRaw<OrphanAvatarRef[]>`
+          SELECT id, key FROM rls_list_orphan_avatars(${cutoff}::timestamp, ${[...refusedStatuses]}::text[], ${users}::text[], ${after}::text, ${size}::integer)`,
+      row => row.id
+    )
+  }
+
+  // The key of the object to delete, or null when the row stayed (it is held, attached, or no longer an avatar)
+  async clearOrphanAvatar(
+    mediaId: string,
+    cutoff: Date,
+    refusedStatuses: readonly string[]
+  ): Promise<string | null> {
+    const rows = await this.prisma.client.$queryRaw<{ key: string | null }[]>`
+      SELECT rls_clear_orphan_avatar(${mediaId}::text, ${cutoff}::timestamp, ${[...refusedStatuses]}::text[]) AS key`
+    return rows[0]?.key ?? null
+  }
+
+  async avatarMediaKeys(ids: readonly string[]): Promise<{ id: string; key: string }[]> {
+    if (ids.length === 0) return []
+    return this.prisma.client.$queryRaw<{ id: string; key: string }[]>`
+      SELECT id, key FROM rls_avatar_media_keys(${[...ids]}::text[])`
   }
 }

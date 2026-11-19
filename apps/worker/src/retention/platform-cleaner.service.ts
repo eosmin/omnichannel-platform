@@ -2,11 +2,15 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { DataRetentionPolicies, PlatformCleanup } from '@platform/core/compliance'
-import { PrismaService, assertSeesEveryRow } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { DAY_MS } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
-import { categoryRunner, inBatches } from './retention-batches'
+import { inEachStoreStrict } from '../schedulers/store-sweep'
+
+import { type BatchOutcome, categoryRunner, inBatches, PartialRunError } from './retention-batches'
+
+// rls-context: sessions and verification_tokens are global tables; every other table runs inside JobContext.forStore of its store
 
 export interface PlatformCleanupReport {
   sessions: number
@@ -30,18 +34,13 @@ type Category = Exclude<keyof PlatformCleanupReport, 'more'>
 export class PlatformCleaner {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobContext: JobContext,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(PlatformCleaner.name)
   }
 
   async run(now: Date = new Date()): Promise<PlatformCleanupReport> {
-    await assertSeesEveryRow(this.prisma, [
-      'webhook_deliveries',
-      'metrics_hourly',
-      'customer_merges',
-      'customers'
-    ])
     const stamp = now.toISOString()
     const report: PlatformCleanupReport = {
       sessions: 0,
@@ -95,8 +94,10 @@ export class PlatformCleaner {
       )
       return { deleted: expired.deleted + used.deleted, more: expired.more || used.more }
     })
+    // The rows of a store are deleted in the context of that store (the policies answer nothing else); a store that cannot be
+    // entered stops the category, which the run reports as failed
     await run('webhookDeliveries', () =>
-      this.batches(
+      this.perStore(
         () => this.prisma.client.$executeRaw`
           DELETE FROM webhook_deliveries WHERE id IN (
             SELECT id FROM webhook_deliveries
@@ -105,11 +106,11 @@ export class PlatformCleaner {
       )
     )
     await run('metricsHourly', () =>
-      this.batches(
-        () => this.prisma.client.$executeRaw`
+      this.perStore(
+        storeId => this.prisma.client.$executeRaw`
           DELETE FROM metrics_hourly WHERE id IN (
             SELECT id FROM metrics_hourly
-            WHERE hour < (${hourlyCutoff}::timestamptz AT TIME ZONE 'UTC')
+            WHERE store_id = ${storeId} AND hour < (${hourlyCutoff}::timestamptz AT TIME ZONE 'UTC')
             ORDER BY hour LIMIT ${PlatformCleanup.BATCH_SIZE})`
       )
     )
@@ -130,40 +131,76 @@ export class PlatformCleaner {
     })
   }
 
+  // One category, store by store: each store's batches run in its own context, and the sum is the category's outcome. A store that
+  // fails stops the category (what was deleted so far stays in the report).
+  private async perStore(deleteBatch: (storeId: string) => Promise<number>): Promise<BatchOutcome> {
+    let deleted = 0
+    let more = false
+    try {
+      await inEachStoreStrict(this.prisma, async storeId => {
+        const outcome = await inBatches(
+          PlatformCleanup.BATCH_SIZE,
+          PlatformCleanup.MAX_BATCHES,
+          async () => {
+            const removed = await this.jobContext.forStore(storeId, () => deleteBatch(storeId))
+            return { taken: removed, deleted: removed }
+          }
+        )
+        deleted += outcome.deleted
+        more = more || outcome.more
+      })
+    } catch (error) {
+      throw deleted > 0 ? new PartialRunError(deleted, error) : error
+    }
+    return { deleted, more }
+  }
+
   // A merge past its window: the absorbed customer goes, then the row of the merge. Only a customer that is still
   // absorbed (`mergedIntoId` set) is deleted: one that an undo brought back, or that nobody absorbed, is a live
   // customer and stays, and its merge row (already `unmergedAt`) is only history. A customer the database will not
   // delete (a conversation or an order still points to it) is left, said in the log, and tried again tomorrow; the
   // walk by id lets the rest of the batch go on past it.
-  private async mergedCustomers(now: Date) {
+  private async mergedCustomers(now: Date): Promise<BatchOutcome> {
+    let deleted = 0
+    let more = false
+    try {
+      await inEachStoreStrict(this.prisma, async storeId => {
+        const outcome = await this.mergedCustomersOfStore(storeId, now)
+        deleted += outcome.deleted
+        more = more || outcome.more
+      })
+    } catch (error) {
+      throw deleted > 0 ? new PartialRunError(deleted, error) : error
+    }
+    return { deleted, more }
+  }
+
+  private async mergedCustomersOfStore(storeId: string, now: Date): Promise<BatchOutcome> {
     let after = ''
     let deleted = 0
     let more = false
     for (let batch = 0; batch < PlatformCleanup.MAX_BATCHES; batch += 1) {
-      const merges = await this.prisma.client.customerMerge.findMany({
-        where: { unmergeUntil: { lt: now }, id: { gt: after } },
-        select: { id: true, storeId: true, absorbedId: true, unmergedAt: true },
-        orderBy: { id: 'asc' },
-        take: PlatformCleanup.BATCH_SIZE
-      })
+      const merges = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.customerMerge.findMany({
+          where: { storeId, unmergeUntil: { lt: now }, id: { gt: after } },
+          select: { id: true, storeId: true, absorbedId: true, unmergedAt: true },
+          orderBy: { id: 'asc' },
+          take: PlatformCleanup.BATCH_SIZE
+        })
+      )
       for (const merge of merges) {
         try {
-          // What the cleanup removed: the customer it deleted, or the row of a merge it closed. A customer that is
-          // already gone, or live, adds nothing
-          deleted += await this.prisma.transaction(async tx => {
+          // One context for each merge: a customer the database refuses to delete fails its own transaction, and the rest go on
+          deleted += await this.jobContext.forStore(storeId, async () => {
             let removed = 0
             if (merge.unmergedAt === null) {
-              const customers = await tx.customer.deleteMany({
-                where: {
-                  id: merge.absorbedId,
-                  storeId: merge.storeId,
-                  mergedIntoId: { not: null }
-                }
+              const customers = await this.prisma.client.customer.deleteMany({
+                where: { id: merge.absorbedId, storeId, mergedIntoId: { not: null } }
               })
               removed = customers.count
             }
-            const rows = await tx.customerMerge.deleteMany({
-              where: { id: merge.id, storeId: merge.storeId }
+            const rows = await this.prisma.client.customerMerge.deleteMany({
+              where: { id: merge.id, storeId }
             })
             return merge.unmergedAt === null ? removed : rows.count
           })
