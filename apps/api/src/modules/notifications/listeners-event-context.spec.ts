@@ -8,8 +8,7 @@ import * as ts from 'typescript'
 // (EventContext, #745: @InEventStore / @InEventOrganization). This reads the source of EVERY listener of apps/ and libs/ (it needs no
 // database). A listener of the notifications module must be fully wrapped. The others are listed in PENDING with the number of bare
 // handlers each still has: the list can only SHRINK (a new bare handler, or a bigger number, fails; a smaller count fails too until the
-// entry is lowered or removed), so nobody adds a listener with no context and each PR that wraps one closes its line. A handler that
-// opens its context in its body (`this.events.inStore(...)`) is not seen by this check: wrap it with the decorator or keep it listed.
+// entry is lowered or removed), so nobody adds a listener with no context and each PR that wraps one closes its line.
 // A handler counts as wrapped with the decorator OR when its own body REACHES a call `x.inStore(` / `inEventStore(` / `inOrganization(` /
 // `inOrganizationOfStore(` / `inUser(` / `forStore(` / `forOrganization(` (read from the TypeScript syntax tree: a comment, a string,
 // a branch that never runs (`if (false)`) or the code after a `return` / `throw` does not count). It cannot see a context opened by
