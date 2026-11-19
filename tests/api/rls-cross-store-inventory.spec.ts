@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
+import { AuditAction } from '@platform/core/audit'
 import { RoleNames } from '@platform/core/auth'
 import { PrismaService, RLS_CONTEXT_ENABLED } from '@platform/core/database'
 import { connectionUrls, ensureMembership, type OwnerClient } from '@platform/core/database-testing'
@@ -22,6 +23,7 @@ import {
   uniqueTransferNumber
 } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api, type Actor } from '../helpers/http'
@@ -205,6 +207,19 @@ describe('RLS phase 6: transfers and counts with lines of several stores of one 
           }
         })
       ).toBe(2)
+    })
+
+    it('writes the audit entry of a dispatch of both stores in the store of the header', async () => {
+      const { transfer } = await mixedTransfer()
+      expect((await asBoth().post(ApiRoutes.transfers.dispatch(transfer.id))).status).toBe(OK)
+
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.TRANSFER_DISPATCHED,
+        resourceId: transfer.id
+      })
+
+      expect(entries).toHaveLength(1)
+      expect(entries[0]).toMatchObject({ userId: both.id, storeId: ctx.storeA.id })
     })
 
     it('is received in the destination for the lines of both stores', async () => {
