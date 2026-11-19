@@ -34,6 +34,9 @@ export async function visibleStoreIds(
   return rows.map(row => row.storeId)
 }
 
+// PRECONDITION of `lines: { none: {} }` below: it means "no line at all" only when every line is visible to the query. With Row-Level Security
+// on, the routes of a person run in a context that holds every store of the organization (@TenantOfOrganizationStores on TransfersController);
+// in the context of one store the lines of the other stores would be invisible and a transfer made only of them would read as empty.
 // A transfer the caller may know exists: one they made, one with no line yet, or one with a line of a store they see.
 // What is made only of other stores' lines is not theirs: not even its header (number, note, warehouses) is shown.
 // A plugin is bound to ONE store and has no person: it reaches only a transfer with a line of its store (a transfer with no

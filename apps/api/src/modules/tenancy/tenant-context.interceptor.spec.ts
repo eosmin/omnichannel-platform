@@ -5,7 +5,12 @@ import { firstValueFrom, of } from 'rxjs'
 import type { PrismaService, TenantContext } from '@platform/core/database'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { NO_TENANT_TRANSACTION_KEY, NoTenantTransaction } from './decorators'
+import {
+  NO_TENANT_TRANSACTION_KEY,
+  NoTenantTransaction,
+  TENANT_ORGANIZATION_STORES_KEY,
+  TenantOfOrganizationStores
+} from './decorators'
 import { TenantContextInterceptor, tenantContextOf } from './tenant-context.interceptor'
 
 const STORE = { id: 'store-1', organizationId: 'org-1', name: 'Store' }
@@ -26,12 +31,19 @@ class Marked {
   }
 }
 
+class Wide {
+  @TenantOfOrganizationStores('lines of several stores')
+  handler(): string {
+    return 'wide'
+  }
+}
+
 // The method as a value, read from the descriptor so that the spec never holds an unbound method
-const handlerOf = (target: typeof Plain | typeof Marked): (() => string) =>
+const handlerOf = (target: typeof Plain | typeof Marked | typeof Wide): (() => string) =>
   Object.getOwnPropertyDescriptor(target.prototype, 'handler')?.value as () => string
 
 function contextFor(
-  target: typeof Plain | typeof Marked,
+  target: typeof Plain | typeof Marked | typeof Wide,
   request: AuthenticatedRequest,
   type = 'http'
 ): ExecutionContext {
@@ -43,18 +55,35 @@ function contextFor(
   } as unknown as ExecutionContext
 }
 
-function build(enabled: boolean): {
+function build(
+  enabled: boolean,
+  storesOfOrganization: string[] = []
+): {
   interceptor: TenantContextInterceptor
   opened: TenantContext[]
+  reads: unknown[]
 } {
   const opened: TenantContext[] = []
+  const reads: unknown[] = []
   const prisma = {
+    client: {
+      store: {
+        findMany: (args: unknown) => {
+          reads.push(args)
+          return Promise.resolve(storesOfOrganization.map(id => ({ id })))
+        }
+      }
+    },
     tenantTransaction: async (context: TenantContext, fn: () => Promise<unknown>) => {
       opened.push(context)
       return fn()
     }
   } as unknown as PrismaService
-  return { interceptor: new TenantContextInterceptor(new Reflector(), prisma, enabled), opened }
+  return {
+    interceptor: new TenantContextInterceptor(new Reflector(), prisma, enabled),
+    opened,
+    reads
+  }
 }
 
 const next = (value: unknown): CallHandler => ({ handle: () => of(value) })
@@ -156,5 +185,46 @@ describe('TenantContextInterceptor', () => {
     await expect(
       firstValueFrom(interceptor.intercept(contextFor(Plain, request), failing))
     ).rejects.toThrow('boom')
+  })
+})
+
+describe('@TenantOfOrganizationStores', () => {
+  const request = requestOf({ store: STORE, user: { id: 'u-1' } as never })
+
+  it('opens the context with every store of the organization of the request, the store of the header first', async () => {
+    const { interceptor, opened, reads } = build(true, ['store-0', 'store-1', 'store-2'])
+
+    await firstValueFrom(interceptor.intercept(contextFor(Wide, request), next('ok')))
+
+    expect(opened).toEqual([
+      { storeIds: ['store-1', 'store-0', 'store-2'], organizationIds: ['org-1'], userId: 'u-1' }
+    ])
+    // Read by the organization the guard resolved, never by anything the request said
+    expect(reads).toEqual([
+      { where: { organizationId: { in: ['org-1'] } }, select: { id: true }, orderBy: { id: 'asc' } }
+    ])
+  })
+
+  it('keeps the store of the header when the read comes back empty, and does not read for a plain route', async () => {
+    const { interceptor, opened, reads } = build(true, [])
+
+    await firstValueFrom(interceptor.intercept(contextFor(Wide, request), next('ok')))
+    await firstValueFrom(interceptor.intercept(contextFor(Plain, request), next('ok')))
+
+    expect(opened.map(context => context.storeIds)).toEqual([['store-1'], ['store-1']])
+    expect(reads).toHaveLength(1)
+  })
+
+  it('reads nothing while the switch is off, and the mark needs a reason', async () => {
+    const { interceptor, opened, reads } = build(false, ['store-2'])
+
+    await firstValueFrom(interceptor.intercept(contextFor(Wide, request), next('ok')))
+
+    expect(opened).toEqual([])
+    expect(reads).toEqual([])
+    expect(Reflect.getMetadata(TENANT_ORGANIZATION_STORES_KEY, handlerOf(Wide))).toBe(
+      'lines of several stores'
+    )
+    expect(() => TenantOfOrganizationStores(' ')).toThrow('needs a reason')
   })
 })
