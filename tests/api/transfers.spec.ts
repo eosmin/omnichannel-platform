@@ -101,17 +101,20 @@ describe('Transfers between warehouses', () => {
   }) {
     const storeId = options.storeId ?? ctx.storeA.id
     const product = await createProduct(owner, { storeId })
-    await inStoreContext(prisma, { storeId, organizationId: ctx.orgA.id }, () =>
-      inventory.move({
-        storeId,
-        productId: product.id,
-        warehouseId: options.warehouseId ?? ctx.warehouseA.id,
-        type: Type.RECEIPT,
-        quantity: options.quantity ?? 10,
-        reason: InventoryAdjustmentReason.OPENING_STOCK,
-        idempotencyKey: randomUUID(),
-        ...(options.unitCostCents === undefined ? {} : { unitCostCents: options.unitCostCents })
-      })
+    await inStoreContext(
+      prisma,
+      { storeId, organizationId: storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id },
+      () =>
+        inventory.move({
+          storeId,
+          productId: product.id,
+          warehouseId: options.warehouseId ?? ctx.warehouseA.id,
+          type: Type.RECEIPT,
+          quantity: options.quantity ?? 10,
+          reason: InventoryAdjustmentReason.OPENING_STOCK,
+          idempotencyKey: randomUUID(),
+          ...(options.unitCostCents === undefined ? {} : { unitCostCents: options.unitCostCents })
+        })
     )
     return { storeId, productId: product.id }
   }

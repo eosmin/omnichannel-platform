@@ -71,6 +71,13 @@ describe('Physical counts', () => {
   let ctx: TestContext
   let inventory: InventoryService
   let prisma: PrismaService
+  // A fixture by hand, in the context a request of that store opens: the store and its organization, nothing wider
+  const scoped = <T>(storeId: string, work: () => Promise<T>) =>
+    inStoreContext(
+      prisma,
+      { storeId, organizationId: storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id },
+      work
+    )
   const pushQueue = new CapturedQueue()
   // Counts storeA: counts and approves; two people in storeA that hold only one of the two permissions
   let both: Awaited<ReturnType<typeof actorWithPermissions>>
@@ -137,7 +144,7 @@ describe('Physical counts', () => {
   }
   async function stocked(warehouseId: string, quantity: number, storeId = ctx.storeA.id) {
     const product = await createProduct(owner, { storeId })
-    await inStoreContext(prisma, { storeId, organizationId: ctx.orgA.id }, () =>
+    await scoped(storeId, () =>
       inventory.move({
         storeId,
         productId: product.id,
@@ -164,8 +171,10 @@ describe('Physical counts', () => {
     n: number
   ) {
     const key = `${prefix}-sale-${randomUUID()}`
-    await inventory.reserve({ ...item, quantity: n, idempotencyKey: `${key}:r` })
-    await inventory.issue({ ...item, quantity: n, idempotencyKey: `${key}:i` })
+    await scoped(item.storeId, async () => {
+      await inventory.reserve({ ...item, quantity: n, idempotencyKey: `${key}:r` })
+      await inventory.issue({ ...item, quantity: n, idempotencyKey: `${key}:i` })
+    })
   }
   const countMovements = (countId: string) =>
     owner.inventoryMovement.findMany({
@@ -292,7 +301,7 @@ describe('Physical counts', () => {
 
       const response = await as(both).post(ApiRoutes.counts.start(first.id))
       expect(countOf(response).status).toBe(CountStatus.COUNTING)
-      await inStoreContext(prisma, { storeId: item.storeId, organizationId: ctx.orgA.id }, () =>
+      await scoped(item.storeId, () =>
         inventory.move({
           ...item,
           type: Type.RECEIPT,
@@ -493,11 +502,13 @@ describe('Physical counts', () => {
       const item = await stocked(warehouse.id, 5)
       const count = await started(warehouse.id)
       const line = await lineOf(count.id, item.productId)
-      await inventory.reserve({
-        ...item,
-        quantity: 4,
-        idempotencyKey: `${prefix}-hold-${randomUUID()}`
-      })
+      await scoped(item.storeId, () =>
+        inventory.reserve({
+          ...item,
+          quantity: 4,
+          idempotencyKey: `${prefix}-hold-${randomUUID()}`
+        })
+      )
       await enter(count.id, [{ lineId: line.id, countedQuantity: 2 }])
       await as(both).post(ApiRoutes.counts.submit(count.id))
 

@@ -59,7 +59,7 @@ describe('The sale of an order with nothing to collect (an exchange, a full disc
       check: (organizationId, options) =>
         inStoreContext(
           app.get(PrismaService, { strict: false }),
-          { storeId: ctx.storeA.id, organizationId },
+          { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
           () => realGuard.check(organizationId, options)
         )
     }
