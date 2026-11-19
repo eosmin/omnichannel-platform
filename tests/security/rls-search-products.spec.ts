@@ -1,7 +1,7 @@
 import pg from 'pg'
 
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
-import { ProductMatchKinds, SearchDatabaseErrors } from '@platform/core/domain'
+import { ProductMatchKinds, ProductSearchConfig, SearchDatabaseErrors } from '@platform/core/domain'
 
 import { createProduct, createProductVariant } from '../builders'
 import { createTestApp } from '../helpers/app'
@@ -250,6 +250,15 @@ describe('the product search functions of row-level security', () => {
     expect(rows.matches).toContain(own.id)
     expect(rows.matches).not.toEqual(expect.arrayContaining(['fake', 'fake-variant', foreign.id]))
     for (const fake of ['fake', 'fake-variant']) expect(rows.matches).not.toContain(fake)
+  })
+
+  it('accepts the biggest limits the api asks for (the bounds of the functions cover the constants of the callers)', async () => {
+    await expect(
+      productsIn([ctx.storeA.id], tag, false, ProductSearchConfig.MAX_LIMIT)
+    ).resolves.toBeDefined()
+    await expect(
+      matchesIn([ctx.storeA.id], tag, ProductSearchConfig.MAX_FILTER_MATCHES + 1)
+    ).resolves.toBeDefined()
   })
 
   it('refuses a limit that is NULL, zero or too big, instead of answering with no limit', async () => {

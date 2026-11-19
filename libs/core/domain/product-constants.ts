@@ -58,9 +58,6 @@ export const ProductLockScopes = {
 // trimming) is not a search: it answers an empty list without touching the database (one letter would match half
 // the catalog, and a wildcard typed alone is never a name). The text itself is required (a request with none is a
 // 400), and one longer than the maximum is refused (400), not cut. The ceiling keeps the answer small and fast.
-// What a match of the text filter of the stock levels is: a product or a variant (the words the search function answers with)
-export const ProductMatchKinds = { PRODUCT: 'product', VARIANT: 'variant' } as const
-
 export const ProductSearchConfig = {
   MIN_QUERY_LENGTH: 2,
   MAX_QUERY_LENGTH: 100,
@@ -70,3 +67,6 @@ export const ProductSearchConfig = {
   // be passed on as a list, and the person is asked to refine it (never answered with a truncated list)
   MAX_FILTER_MATCHES: 2000
 } as const
+
+// What a match of the text filter of the stock levels is: a product or a variant (the words the search function answers with)
+export const ProductMatchKinds = { PRODUCT: 'product', VARIANT: 'variant' } as const
