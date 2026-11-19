@@ -172,7 +172,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   // settings as tenantTransaction): with Row-Level Security on, a read with no context sees no row, so there is no way to read the
   // replica without one. Without DATABASE_REPLICA_URL this is the primary. It sits outside the tenant transaction, so a read here
   // never sees a row the request wrote in it. A write through it is refused by a real standby; with no replica (development, CI) nothing
-  // refuses it, which is a debt of Step 7.1 (the plan): never call it in a path that writes (or that reads what it is about to write, or what
+  // refuses it unless DATABASE_REPLICA_URL names platform_replica_ro, a role that can only SELECT (the plan, Step 7.1, F6-1 and F6-5): never call it in a path that writes (or that reads what it is about to write, or what
   // the person just changed), and never from a guard. The same rule is enforced by `pnpm validate:replica`
   // (scripts/check-replica-routing.ts), which lists the only files that may call it.
   replicaTenantRead<T>(

@@ -10,7 +10,7 @@ import { parseEncryptionKey } from '@platform/core/crypto'
 import { WebhookSources } from '@platform/core/domain'
 
 import { PrismaClient } from '../generated/client/client'
-import { connectionUrls } from '../testing/connection-urls'
+import { connectionUrls, replicaConnectionUrl } from '../testing/connection-urls'
 
 import { bootstrapOwner, ensureSystemRoles } from './bootstrap-owner'
 import { loadDevFixtures } from './dev-fixtures'
@@ -411,6 +411,41 @@ describe('PrismaService', () => {
                  current_setting('app.user_id') AS person`
     )
     expect(rows[0]).toEqual({ stores: 's-1,s-2', organizations: 'o-1', person: 'u-1' })
+  })
+
+  it('answers replicaTenantRead() as the read only role when DATABASE_REPLICA_URL names it, and refuses a write through the handle', async () => {
+    const withReplica = new PrismaService({
+      databaseUrl: urls.app,
+      replicaUrl: replicaConnectionUrl(),
+      poolSize: 2
+    })
+    await withReplica.onModuleInit()
+    try {
+      const context = { storeIds: ['s-1'], organizationIds: ['o-1'], userId: 'u-1' }
+      const read = await withReplica.replicaTenantRead(
+        context,
+        db => db.$queryRaw<{ who: string; stores: string }[]>`
+          SELECT current_user AS who, current_setting('app.store_ids') AS stores`
+      )
+      expect(read[0]).toEqual({ who: 'platform_replica_ro', stores: 's-1' })
+      // A read of a table the replica readers use (the rollups of the analytics) is allowed ...
+      await expect(
+        withReplica.replicaTenantRead(
+          context,
+          db => db.$queryRaw`SELECT count(*) FROM metrics_hourly WHERE false`
+        )
+      ).resolves.toBeDefined()
+      // ... and a write through the handle is refused by the database, with no standby behind it. Here the session default of the role
+      // (read only) answers first; the missing privilege is proven on a connection of its own in tests/security/rls-replica-role.spec.ts
+      await expect(
+        withReplica.replicaTenantRead(
+          context,
+          db => db.$executeRaw`UPDATE metrics_hourly SET store_id = store_id WHERE false`
+        )
+      ).rejects.toThrow(/read-only transaction/)
+    } finally {
+      await withReplica.onModuleDestroy()
+    }
   })
 
   it('runs the callback of replicaTenantRead and of tenantTransaction on the one connection and transaction that got the context', async () => {
