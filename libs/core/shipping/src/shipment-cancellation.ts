@@ -6,7 +6,8 @@ import {
   lockStoreForWrite,
   lockStoreScope,
   PrismaService,
-  type PrismaTransaction
+  type PrismaTransaction,
+  JobContext
 } from '@platform/core/database'
 import {
   CarrierCapability,
@@ -164,7 +165,8 @@ export class ShipmentCancellation {
     private readonly prisma: PrismaService,
     private readonly cipher: CredentialCipher,
     private readonly writes: ShipmentWrites,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(ShipmentCancellation.name)
   }
@@ -177,10 +179,12 @@ export class ShipmentCancellation {
     actor: ActorRef,
     plugins: PluginLookup
   ): Promise<VoidStart> {
-    return this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      return this.start(tx, storeId, shipmentId, actor, plugins, { refusePending: true })
-    })
+    return this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        return this.start(tx, storeId, shipmentId, actor, plugins, { refusePending: true })
+      })
+    )
   }
 
   // Starts the void inside the transaction of the caller (an order that is cancelled or edited takes the store and order locks
@@ -293,10 +297,12 @@ export class ShipmentCancellation {
     plugins: PluginLookup,
     options: VoidSettleOptions
   ): Promise<VoidSettlement> {
-    const row = await this.prisma.client.shipment.findFirst({
-      where: { id: shipmentId, storeId },
-      select: SELECT
-    })
+    const row = await this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.client.shipment.findFirst({
+        where: { id: shipmentId, storeId },
+        select: SELECT
+      })
+    )
     if (row === null || row.status !== String(ShipmentStatus.CANCEL_PENDING)) {
       return VoidSettlements.SKIPPED
     }
@@ -397,19 +403,21 @@ export class ShipmentCancellation {
   // The void could not be handed to the queue (it was down): the guide is left CANCEL_FAILED, which tells the team, and an
   // agent asks again from there (a retry moves it back to CANCEL_PENDING and queues the job)
   async markNotQueued(storeId: string, shipmentId: string, actor: ActorRef): Promise<void> {
-    await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      const row = await this.lockedRow(tx, storeId, shipmentId)
-      if (row.status !== String(ShipmentStatus.CANCEL_PENDING)) return
-      await this.writes.move(
-        tx,
-        identityOf(row),
-        ShipmentStatus.CANCEL_PENDING,
-        ShipmentStatus.CANCEL_FAILED,
-        { lastError: ShipmentFailureReasons.NOT_QUEUED },
-        { actor, source: ShipmentEventSource.SYSTEM }
-      )
-    })
+    await this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        const row = await this.lockedRow(tx, storeId, shipmentId)
+        if (row.status !== String(ShipmentStatus.CANCEL_PENDING)) return
+        await this.writes.move(
+          tx,
+          identityOf(row),
+          ShipmentStatus.CANCEL_PENDING,
+          ShipmentStatus.CANCEL_FAILED,
+          { lastError: ShipmentFailureReasons.NOT_QUEUED },
+          { actor, source: ShipmentEventSource.SYSTEM }
+        )
+      })
+    )
   }
 
   // The agent voided the guide at the carrier herself: HIGH-tier, audited (TDD_17 §4.8)
@@ -419,24 +427,26 @@ export class ShipmentCancellation {
     actor: ActorRef,
     plugins: PluginLookup
   ): Promise<VoidChange> {
-    const done = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      const row = await this.lockedRow(tx, storeId, shipmentId)
-      const from = row.status as ShipmentStatus
-      await this.writes.move(
-        tx,
-        identityOf(row),
-        from,
-        ShipmentStatus.CANCELLED,
-        { cancelledAt: new Date(), lastError: null, pickupId: null },
-        { actor, source: ShipmentEventSource.MANUAL }
-      )
-      const left = await this.leavePickup(tx, row)
-      return {
-        left,
-        change: { shipmentId, orderId: row.orderId, from, to: ShipmentStatus.CANCELLED }
-      }
-    })
+    const done = await this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        const row = await this.lockedRow(tx, storeId, shipmentId)
+        const from = row.status as ShipmentStatus
+        await this.writes.move(
+          tx,
+          identityOf(row),
+          from,
+          ShipmentStatus.CANCELLED,
+          { cancelledAt: new Date(), lastError: null, pickupId: null },
+          { actor, source: ShipmentEventSource.MANUAL }
+        )
+        const left = await this.leavePickup(tx, row)
+        return {
+          left,
+          change: { shipmentId, orderId: row.orderId, from, to: ShipmentStatus.CANCELLED }
+        }
+      })
+    )
     await this.tellCarrierOfPickup(storeId, done.left, plugins).catch(() => undefined)
     return done.change
   }
@@ -465,27 +475,29 @@ export class ShipmentCancellation {
       tellTeam?: boolean
     }
   ): Promise<PickupLeft | null> {
-    return this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      // Locked before it is read again: a hand that voided it meanwhile is seen
-      await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${row.orderId}`)
-      if (from === to) {
-        // Nothing moves: the guide stays CANCEL_PENDING for the agent, who is told
-        const moved = await tx.shipment.updateMany({
-          where: { id: row.id, storeId, status: from },
-          data: result.data
-        })
-        if (moved.count > 0 && result.tellTeam === true) {
-          this.writes.announceCancelByHand(tx, identityOf(row), result.actor)
+    return this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        // Locked before it is read again: a hand that voided it meanwhile is seen
+        await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${row.orderId}`)
+        if (from === to) {
+          // Nothing moves: the guide stays CANCEL_PENDING for the agent, who is told
+          const moved = await tx.shipment.updateMany({
+            where: { id: row.id, storeId, status: from },
+            data: result.data
+          })
+          if (moved.count > 0 && result.tellTeam === true) {
+            this.writes.announceCancelByHand(tx, identityOf(row), result.actor)
+          }
+          return null
         }
-        return null
-      }
-      await this.writes.move(tx, identityOf(row), from, to, result.data, {
-        actor: result.actor,
-        source: ShipmentEventSource.MANUAL
+        await this.writes.move(tx, identityOf(row), from, to, result.data, {
+          actor: result.actor,
+          source: ShipmentEventSource.MANUAL
+        })
+        return to === ShipmentStatus.CANCELLED ? this.leavePickup(tx, row) : null
       })
-      return to === ShipmentStatus.CANCELLED ? this.leavePickup(tx, row) : null
-    })
+    )
   }
 
   private async lockedRow(
@@ -569,15 +581,19 @@ export class ShipmentCancellation {
       return
     }
     const note = (lastError: string): Promise<unknown> =>
-      this.prisma.client.pickupRequest.updateMany({
-        where: { id: left.pickupId, storeId },
-        data: { lastError }
-      })
+      this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.client.pickupRequest.updateMany({
+          where: { id: left.pickupId, storeId },
+          data: { lastError }
+        })
+      )
     try {
-      const connection = await this.prisma.client.carrierConnection.findFirst({
-        where: { id: left.connectionId, storeId },
-        select: { id: true, carrierId: true, status: true, credentials: true, contact: true }
-      })
+      const connection = await this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.client.carrierConnection.findFirst({
+          where: { id: left.connectionId, storeId },
+          select: { id: true, carrierId: true, status: true, credentials: true, contact: true }
+        })
+      )
       const plugin = connection === null ? undefined : plugins(connection.carrierId)
       const empty = left.remaining === 0
       const wanted = empty ? CarrierCapability.PICKUP_CANCEL : CarrierCapability.PICKUP_MODIFY
@@ -604,18 +620,20 @@ export class ShipmentCancellation {
         const cancelPickup = plugin.cancelPickup.bind(plugin)
         await withDeadline(() => cancelPickup(context, { pickupRef }))
         // The carrier did cancel it: a pickup that moved meanwhile is not a reason to tell the agent otherwise
-        await this.prisma
-          .transaction(async tx => {
-            await lockStoreForWrite(tx, storeId)
-            await this.writes.movePickup(
-              tx,
-              storeId,
-              left.pickupId,
-              left.status,
-              PickupStatus.CANCELLED,
-              { lastError: null }
-            )
-          })
+        await this.jobContext
+          .forStoreOrJoin(storeId, () =>
+            this.prisma.transaction(async tx => {
+              await lockStoreForWrite(tx, storeId)
+              await this.writes.movePickup(
+                tx,
+                storeId,
+                left.pickupId,
+                left.status,
+                PickupStatus.CANCELLED,
+                { lastError: null }
+              )
+            })
+          )
           .catch((error: unknown) => {
             this.logger.warn(
               { pickupId: left.pickupId, errorName: errorName(error) },
@@ -627,10 +645,12 @@ export class ShipmentCancellation {
         await withDeadline(() => modifyPickup(context, { pickupRef, packageCount: left.remaining }))
         // What the carrier now holds is what it was told, whatever the guides hold by the time this lands: a pickup told out of
         // order is told again by the resync (`PickupSync`)
-        await this.prisma.client.pickupRequest.updateMany({
-          where: { id: left.pickupId, storeId },
-          data: { carrierPackageCount: left.remaining }
-        })
+        await this.jobContext.forStoreOrJoin(storeId, () =>
+          this.prisma.client.pickupRequest.updateMany({
+            where: { id: left.pickupId, storeId },
+            data: { carrierPackageCount: left.remaining }
+          })
+        )
       } else {
         await note(empty ? PickupLeaveNotes.EMPTY_NOT_CANCELLED : PickupLeaveNotes.NOT_UPDATED)
       }
