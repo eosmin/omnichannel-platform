@@ -7,7 +7,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import {
   ChainIncidentChange,
@@ -116,7 +116,8 @@ describe('The weekly check of the chain, its incident and the guard of the close
       app.get(FinanceChainVerifier),
       workerEvents,
       { set: () => undefined } as never,
-      logger
+      logger,
+      new JobContext(workerDb)
     )
     guard = app.get(FinanceCloseGuard)
     for (const [user, store] of [
@@ -285,7 +286,8 @@ describe('The weekly check of the chain, its incident and the guard of the close
         {
           set: (labels: Record<string, string>, value: number) => values.push({ labels, value })
         } as never,
-        logger
+        logger,
+        new JobContext(workerDb)
       )
       const checker = new FinanceChainChecker(
         counting,
@@ -311,7 +313,13 @@ describe('The weekly check of the chain, its incident and the guard of the close
           return true
         }
       } as never
-      const scheduler = new FinanceChainScheduler(locks, heavy as never, workerDb, logger)
+      const scheduler = new FinanceChainScheduler(
+        locks,
+        heavy as never,
+        workerDb,
+        logger,
+        new JobContext(workerDb)
+      )
       await scheduler.enqueueAll(new Date('2026-11-15T05:00:00.000Z'), { pageSize: 1 })
       const mine = heavy.jobs.filter(
         job => (job.data as { organizationId: string }).organizationId === ctx.orgA.id
@@ -343,7 +351,8 @@ describe('The weekly check of the chain, its incident and the guard of the close
         } as never,
         broken as never,
         workerDb,
-        logger
+        logger,
+        new JobContext(workerDb)
       )
       await expect(failing.run()).resolves.toBeUndefined()
     })

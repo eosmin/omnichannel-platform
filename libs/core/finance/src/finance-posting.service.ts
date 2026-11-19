@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { type PrismaTransaction, PrismaService } from '@platform/core/database'
+import { JobContext, type PrismaTransaction, PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   CodStatus,
@@ -183,29 +183,49 @@ export class FinancePostingService {
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
     private readonly events: DomainEvents,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(FinancePostingService.name)
+  }
+
+  // One unit of the books is one transaction in ONE context of the organization (a request joins its own): the entry, its failure row and
+  // the triggers that advance the head and the balances of the ledger commit together, and the next unit opens its own context, so
+  // an entry is never split between two
+  private inTransaction<T>(
+    organizationId: string,
+    work: (tx: PrismaTransaction) => Promise<T>,
+    options: { maxWait: number; timeout: number }
+  ): Promise<T> {
+    return this.jobContext.inOrganizationOrRequest(
+      organizationId,
+      () => this.prisma.transaction(work, options),
+      options
+    )
   }
 
   async post(input: PostSourceInput): Promise<PostSourceResult> {
     let result: PostSourceResult
     try {
-      result = await this.prisma.transaction(async tx => {
-        await this.lockSource(tx, input)
-        // Read under the lock: a close or a change of `recognizeSaleOn` that happened while this job waited is the one decided on
-        const settings = await tx.financeSettings.findUnique({
-          where: { organizationId: input.organizationId },
-          select: { accountingStartDate: true, lockedThrough: true, recognizeSaleOn: true }
-        })
-        // An organization that has not set the books up has nothing to post to
-        if (settings === null) return this.done(FinancePostingOutcome.NOTHING_TO_POST)
-        const outcome = await this.decide(tx, input, settings)
-        // The failure row moves in the same transaction and under the same lock as the entry: a stale answer of a slower job can
-        // neither reopen what another one just posted nor close what it did not
-        await this.settle(tx, input, outcome)
-        return outcome
-      }, POST_TRANSACTION)
+      result = await this.inTransaction(
+        input.organizationId,
+        async tx => {
+          await this.lockSource(tx, input)
+          // Read under the lock: a close or a change of `recognizeSaleOn` that happened while this job waited is the one decided on
+          const settings = await tx.financeSettings.findUnique({
+            where: { organizationId: input.organizationId },
+            select: { accountingStartDate: true, lockedThrough: true, recognizeSaleOn: true }
+          })
+          // An organization that has not set the books up has nothing to post to
+          if (settings === null) return this.done(FinancePostingOutcome.NOTHING_TO_POST)
+          const outcome = await this.decide(tx, input, settings)
+          // The failure row moves in the same transaction and under the same lock as the entry: a stale answer of a slower job can
+          // neither reopen what another one just posted nor close what it did not
+          await this.settle(tx, input, outcome)
+          return outcome
+        },
+        POST_TRANSACTION
+      )
     } catch (error) {
       // The ledger's own refusal (a period closed a moment ago, a dimension that is gone) is a failure a person sees; anything else
       // is the job's to retry (the database was down), so it travels up
@@ -225,14 +245,18 @@ export class FinancePostingService {
     // another job posted the entry while this one was out of the lock (a period reopened and a retry that got through)
     if (result.reason === FinancePostingFailureReason.LEDGER_REFUSED) {
       const refused = result
-      result = await this.prisma.transaction(async tx => {
-        await this.lockSource(tx, input)
-        const existsId = await this.entryUnderKey(tx, input)
-        const settled =
-          existsId === null ? refused : this.done(FinancePostingOutcome.REPLAYED, existsId)
-        await this.settle(tx, input, settled)
-        return settled
-      }, POST_TRANSACTION)
+      result = await this.inTransaction(
+        input.organizationId,
+        async tx => {
+          await this.lockSource(tx, input)
+          const existsId = await this.entryUnderKey(tx, input)
+          const settled =
+            existsId === null ? refused : this.done(FinancePostingOutcome.REPLAYED, existsId)
+          await this.settle(tx, input, settled)
+          return settled
+        },
+        POST_TRANSACTION
+      )
     }
     // E1 is what a prepaid sale waits for: once the advance is there the sale is posted now, not left until someone asks (it posts
     // nothing when the order is not delivered yet)
@@ -269,36 +293,44 @@ export class FinancePostingService {
   // this before it queues a source, so that what it counts as unposted is exactly what a job would post or fail on. It takes no lock and
   // records nothing: it never touches a failure row either.
   async preview(input: PostSourceInput): Promise<PostSourceResult> {
-    return this.prisma.transaction(async tx => {
-      const settings = await tx.financeSettings.findUnique({
-        where: { organizationId: input.organizationId },
-        select: { accountingStartDate: true, lockedThrough: true, recognizeSaleOn: true }
-      })
-      if (settings === null) return this.done(FinancePostingOutcome.NOTHING_TO_POST)
-      return this.decide(tx, input, settings, true)
-    }, POST_TRANSACTION)
+    return this.inTransaction(
+      input.organizationId,
+      async tx => {
+        const settings = await tx.financeSettings.findUnique({
+          where: { organizationId: input.organizationId },
+          select: { accountingStartDate: true, lockedThrough: true, recognizeSaleOn: true }
+        })
+        if (settings === null) return this.done(FinancePostingOutcome.NOTHING_TO_POST)
+        return this.decide(tx, input, settings, true)
+      },
+      POST_TRANSACTION
+    )
   }
 
   // For a job that ran out of attempts on an error of the infrastructure: the source is put on the list of failures, so that it is not
   // lost in the dead-letter queue where no person looks
   async markUnposted(input: PostSourceInput): Promise<void> {
-    await this.prisma.transaction(async tx => {
-      await this.lockSource(tx, input)
-      // A failure that is open says more than this does (its reason, its date), and a source that was posted meanwhile is not a failure
-      const open = await tx.financePostingFailure.findFirst({
-        where: {
-          organizationId: input.organizationId,
-          sourceType: input.sourceType,
-          sourceId: input.sourceId,
-          eventKind: input.kind,
-          resolvedAt: null
-        },
-        select: { id: true }
-      })
-      const posted = await this.entryUnderKey(tx, input)
-      if (open !== null || posted !== null) return
-      await this.recordFailure(tx, input, FinancePostingFailureReason.NOT_QUEUED)
-    }, POST_TRANSACTION)
+    await this.inTransaction(
+      input.organizationId,
+      async tx => {
+        await this.lockSource(tx, input)
+        // A failure that is open says more than this does (its reason, its date), and a source that was posted meanwhile is not a failure
+        const open = await tx.financePostingFailure.findFirst({
+          where: {
+            organizationId: input.organizationId,
+            sourceType: input.sourceType,
+            sourceId: input.sourceId,
+            eventKind: input.kind,
+            resolvedAt: null
+          },
+          select: { id: true }
+        })
+        const posted = await this.entryUnderKey(tx, input)
+        if (open !== null || posted !== null) return
+        await this.recordFailure(tx, input, FinancePostingFailureReason.NOT_QUEUED)
+      },
+      POST_TRANSACTION
+    )
   }
 
   private async decide(
@@ -1867,19 +1899,21 @@ export class FinancePostingService {
   private async repostRemittancesOf(input: PostSourceInput): Promise<void> {
     let lines: { remittanceId: string }[]
     try {
-      lines = await this.prisma.client.codRemittanceLine.findMany({
-        where: {
-          // E4 is the source of a guide, E3 the one of an order: the remittances of the guides of that order
-          ...(input.kind === FinanceEventKind.SALE
-            ? { shipment: { orderId: input.sourceId } }
-            : { shipmentId: input.sourceId }),
-          remittance: {
-            status: RemittanceStatus.CONFIRMED,
-            store: { organizationId: input.organizationId }
-          }
-        },
-        select: { remittanceId: true }
-      })
+      lines = await this.jobContext.inOrganizationOrRequest(input.organizationId, () =>
+        this.prisma.client.codRemittanceLine.findMany({
+          where: {
+            // E4 is the source of a guide, E3 the one of an order: the remittances of the guides of that order
+            ...(input.kind === FinanceEventKind.SALE
+              ? { shipment: { orderId: input.sourceId } }
+              : { shipmentId: input.sourceId }),
+            remittance: {
+              status: RemittanceStatus.CONFIRMED,
+              store: { organizationId: input.organizationId }
+            }
+          },
+          select: { remittanceId: true }
+        })
+      )
     } catch (error) {
       // The entry that asked is committed and stays the answer of its job: the sweep asks the waiting remittances again
       this.logger.warn(
