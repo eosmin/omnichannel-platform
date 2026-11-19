@@ -1158,3 +1158,33 @@ browsers refuse service workers elsewhere.
 
 To rotate the pair, generate a new one and replace all three. Browsers subscribed with the old public
 key drop that subscription and ask again the next time they open the app.
+
+---
+
+## 16. Rules for writing a spec that does not flake
+
+Each rule below comes from a red that was not a bug of the product. **Enforced by a gate:** rule 1 only (`shared-table-cleanup.spec.ts`, over the fixtures and helpers of the
+suites). **Advice only, today:** rules 2 to 7, including 5 (nothing compares the lists of `jest.config.cts` and
+`jest.latency.config.cts`); the task is in Step 7.3.
+
+1. **Clean up only what the suite made.** The suites of the api and the worker run at the same time over
+   one database. A fixture in SQL never runs `DELETE FROM <table>` without a filter by id, owner, store,
+   organization or the prefix of its own run (use `UPDATE`, `SELECT` or `WHERE id = $1`), and Prisma never
+   runs `deleteMany()` with no filter. `scripts/lib/shared-table-cleanup.spec.ts` refuses both.
+2. **Never mix a fixed date with `new Date()`.** A fixture dated in a fixed year and a rule that compares
+   it with "now" pass until the day the two cross (a period, a window, a retention). Take every date of
+   the case from one instant (`now`) and move it by offsets.
+3. **Never require a specific index of the planner on a shared table.** The plan depends on the
+   statistics and on the rows the other suites left: assert the result (rows, order, count), or read the
+   plan in a spec that runs alone (`jest.latency.config.cts`), not an index name in a shard.
+4. **Never search for a short number in a random string.** An id, a correlation id or a token written in
+   hex contains "5151" about one run in a few thousand. Assert by exact id or by prefix, or leave the
+   random keys out of what is searched.
+5. **A measure of time runs alone.** A spec with a limit in milliseconds goes in `jest.latency.config.cts`
+   and out of `jest.config.cts` (`pnpm test:latency`, a step of the last security shard in CI; it is not part of `validate:all`, so run it by
+   hand after a change to a measured query): after dozens of specs the heap of a shard is full
+   and its garbage collections land in the measure.
+6. **The first call of a native library is slow.** `sharp` loads its binary on the first call, so a spec
+   that uses it raises its timeout (`jest.setTimeout`) instead of lowering what it checks.
+7. **Exact ids in the specs of jobs.** `storeId`, `userId` and `organizationId` of the fixture, never
+   `expect.any(String)`.

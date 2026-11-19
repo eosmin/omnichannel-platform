@@ -13,6 +13,7 @@ module.exports = {
   testPathIgnorePatterns: [
     '/node_modules/',
     '<rootDir>/api/products-search-performance.spec.ts',
+    '<rootDir>/api/conversations-performance.spec.ts',
     '<rootDir>/api/rls-search-plan.spec.ts',
     '<rootDir>/api/rls-list-search-plan.spec.ts'
   ],
