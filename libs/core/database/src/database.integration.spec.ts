@@ -505,7 +505,6 @@ describe('PrismaService', () => {
     const otherOrgId = randomUUID()
     const olderId = randomUUID()
     const context = { storeIds: [], organizationIds: [orgId] }
-    let forced = false
 
     const appSetting = () =>
       service.client.$queryRaw<
@@ -529,16 +528,11 @@ describe('PrismaService', () => {
             [id, name, `it-${runId}-cs-${id.slice(0, 8)}`]
           )
         }
-        // An earlier transaction wrote this one, and it is made with the owner: under FORCE (rls-enforced) the policy refuses an INSERT
-        // of the app role with no context, and what is proved here is the refusal of withCreatedStore, not that of the policy
+        // Written by an earlier transaction (the owner connection), so its xmin is not the one of the transaction under test
         await owner.query(
           'INSERT INTO stores (id, organization_id, name, slug, updated_at) VALUES ($1, $2, $3, $4, now())',
           [olderId, orgId, 'Older', `${slug}-older`]
         )
-        const { rows } = await owner.query<{ forced: boolean }>(
-          `SELECT relforcerowsecurity AS forced FROM pg_class WHERE oid = 'stores'::regclass`
-        )
-        forced = rows[0]?.forced === true
       })
     })
 
@@ -602,13 +596,26 @@ describe('PrismaService', () => {
           select: { id: true }
         })
         const original = await appSetting()
-        await service
-          .withCreatedStore(store.id, () => Promise.reject(new Error('boom')))
-          .catch(() => undefined)
+        // The error of the work reaches the caller: the request must not go on after a failed settings write
+        await expect(
+          service.withCreatedStore(store.id, () => Promise.reject(new Error('boom')))
+        ).rejects.toThrow('boom')
         return { original, after: await appSetting(), memory: service.currentTenantContext() }
       })
       expect(seen.after).toBe(seen.original)
       expect(seen.memory?.storeIds).toEqual([])
+    })
+
+    it('needs the organization of the store in the context', async () => {
+      const message = await service
+        .tenantTransaction({ storeIds: [], organizationIds: [] }, () =>
+          service.withCreatedStore(olderId, () => Promise.resolve())
+        )
+        .then(
+          () => 'accepted',
+          (error: unknown) => (error instanceof Error ? error.message : String(error))
+        )
+      expect(message).toMatch(/needs the organization/)
     })
 
     it('refuses a store of the organization that an earlier transaction wrote, and its work does not run', async () => {
@@ -623,9 +630,8 @@ describe('PrismaService', () => {
       expect(ran).toBe(false)
     })
 
-    // The organization half of the predicate: the store is written by THIS transaction (xmin matches), so only `organization_id =
-    // ANY(context)` can refuse it. Under FORCE the policy of stores refuses the INSERT before that: either way no store of another
-    // organization is opened and the work does not run
+    // The organization half of the predicate: the store is written by THIS transaction (xmin matches), and `stores` has no policy, so
+    // only `organization_id = ANY(context)` can refuse it
     it('refuses a store of ANOTHER organization created in the same transaction, and its work does not run', async () => {
       let ran = false
       const message = await outcome(async () => {
@@ -638,7 +644,7 @@ describe('PrismaService', () => {
           return Promise.resolve()
         })
       })
-      expect(message).toMatch(forced ? /row-level security|42501/i : /was not created/)
+      expect(message).toMatch(/was not created/)
       expect(ran).toBe(false)
     })
 
