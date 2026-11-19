@@ -18,6 +18,12 @@ import * as ts from 'typescript'
 // during the provider, the e-mail or the retry sleeps; they are not debt of B3).
 // A handler marked `@EventContextNotNeeded('reason')` (it only moves a socket or Redis) counts as declared when the reason is not empty and
 // its own body names no prisma / tenantTransaction / transaction / client; the decorator itself is added by the PR that needs it.
+// Limits of the walk, to be read in review (it proves a context CAN be opened, not that every path opens it): a call needs a receiver
+// (`x.inStore(`; a bare imported helper is not seen); any branch that opens counts, even if another branch reads the database bare;
+// only `if (true/false/0/null/undefined)` and the code after a `return` / `throw` / `break` / `continue` in a block are cut: `false && x`,
+// `cond ? a : x`, `while (false)`, code after an `if` whose branches all return, a `case` clause, and a closure that is defined and never
+// called still count. The marker is a declaration checked by name only (the four names above): a handler marked as socket-only that reads
+// the database through another member (`this.orders.findMany()`) passes, so a reviewer reads every marked handler.
 // NOT covered by this check: a listener registered with `emitter.on(...)` / `onAny(...)` (WebhookDispatcher), tracked in the plan.
 // Debt with owners: docs/IMPLEMENTATION_PLAN.md, "Event listeners with no context".
 const ROOT = join(__dirname, '..', '..', '..', '..', '..')
