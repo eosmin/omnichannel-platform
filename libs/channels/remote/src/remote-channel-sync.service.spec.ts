@@ -1,7 +1,13 @@
 import type { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher, parseEncryptionKey } from '@platform/core/crypto'
-import type { PrismaService } from '@platform/core/database'
+import {
+  JobContextError,
+  JobContextGoneError,
+  type JobContext,
+  type PrismaService,
+  type WorkerLists
+} from '@platform/core/database'
 import { PLUGINS_CHANGED_CHANNEL, RemoteChannelLimits } from '@platform/core/domain'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
@@ -51,15 +57,24 @@ function setup(initial: Row[] = []) {
     },
     reads: 0,
     secretReads: 0,
-    failList: false
+    failList: false,
+    storeGone: false,
+    contextError: null as Error | null,
+    requestStores: [] as string[],
+    filters: [] as unknown[],
+    contexts: [] as string[]
   }
   const prisma = {
+    currentTenantContext: jest.fn(() =>
+      state.requestStores.length === 0 ? undefined : { storeIds: state.requestStores }
+    ),
     client: {
       plugin: {
-        findMany: jest.fn(() => {
-          state.reads += 1
-          return state.failList ? Promise.reject(new Error('db down')) : Promise.resolve(state.rows)
-        })
+        findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve({
+            manifest: state.rows.find(row => row.id === where.id)?.manifest ?? null
+          })
+        )
       },
       pluginInstallation: {
         findFirst: jest.fn(() => {
@@ -69,6 +84,28 @@ function setup(initial: Row[] = []) {
       }
     }
   } as unknown as PrismaService
+  // The list of the database (a definer: it sees every store with no context) and the context of the store a secret is read in
+  const lists = {
+    remoteChannelPlugins: jest.fn((filter: unknown) => {
+      state.reads += 1
+      state.filters.push(filter)
+      return state.failList
+        ? Promise.reject(new Error('db down'))
+        : Promise.resolve(
+            state.rows.map(row => ({
+              id: row.id ?? '',
+              storeIds: row.installations.map(installation => installation.storeId)
+            }))
+          )
+    })
+  } as unknown as WorkerLists
+  const jobs = {
+    forStoreOrJoin: jest.fn(<T>(storeId: string, work: () => Promise<T>) => {
+      state.contexts.push(storeId)
+      if (state.contextError !== null) return Promise.reject(state.contextError)
+      return state.storeGone ? Promise.reject(new JobContextGoneError('gone')) : work()
+    })
+  } as unknown as JobContext
   const published: string[] = []
   const handlers: Record<string, (channel: string) => void> = {}
   const subscriber = {
@@ -88,9 +125,11 @@ function setup(initial: Row[] = []) {
   const registry = new PluginRegistry(logger)
   const sync = new RemoteChannelSync(
     prisma,
+    lists,
+    jobs,
     cipher,
     registry,
-    redis as unknown as ConstructorParameters<typeof RemoteChannelSync>[3],
+    redis as unknown as ConstructorParameters<typeof RemoteChannelSync>[5],
     logger
   )
   return { sync, registry, state, published, handlers, subscriber, redis }
@@ -348,5 +387,91 @@ describe('RemoteChannelSync: the secrets of the commands', () => {
         plugin: { status: 'approved' }
       }
     })
+  })
+  it('lists the plugins through the definer with the filters of the registry, not through a query that row security would empty', async () => {
+    const { sync, state } = setup([
+      { id: 'acme_chat', manifest: manifestOf('acme_chat'), installations: [{ storeId: 's1' }] }
+    ])
+    await sync.refresh()
+    expect(state.filters).toEqual([
+      { type: 'channel', status: 'approved', installationStatus: 'active' }
+    ])
+  })
+
+  it('reads the secrets of a store in the context of THAT store, and answers null when the store is gone', async () => {
+    const { sync, state } = setup()
+    state.installation = {
+      commandSecret: seal('s3cret'),
+      commandSecretPrevious: null,
+      commandSecretRotatedAt: null
+    }
+    await expect(sync.secretsOf('store-b', 'acme_chat')).resolves.toMatchObject({
+      current: 's3cret'
+    })
+    await expect(sync.secretsForDisconnect('store-c', 'acme_chat')).resolves.toMatchObject({
+      current: 's3cret'
+    })
+    expect(state.contexts).toEqual(['store-b', 'store-c'])
+    state.storeGone = true
+    await expect(sync.secretsForDisconnect('store-d', 'acme_chat')).resolves.toBeNull()
+  })
+
+  it('does not hide a refusal of the context behind "not installed": only a deleted store answers null', async () => {
+    const { sync, state } = setup()
+    state.contextError = new JobContextError('a context of another store is already open')
+    await expect(sync.secretsOf('store-b', 'acme_chat')).rejects.toThrow(/another store/)
+    await expect(sync.secretsForDisconnect('store-b', 'acme_chat')).rejects.toThrow(/another store/)
+  })
+
+  it('reads the manifest of a plugin in the context of one of its stores, and keeps the adapter when that context refuses', async () => {
+    const { sync, registry } = setup([
+      {
+        id: 'acme_chat',
+        manifest: manifestOf('acme_chat'),
+        installations: [{ storeId: 's2' }, { storeId: 's1' }]
+      }
+    ])
+    const jobs = (sync as unknown as { jobs: { forStoreOrJoin: jest.Mock } }).jobs
+    await sync.refresh()
+    expect((jobs.forStoreOrJoin.mock.calls[0] as string[] | undefined)?.[0]).toBe('s1')
+    const first = registry.get('acme_chat')
+    jobs.forStoreOrJoin.mockImplementationOnce(() =>
+      Promise.reject(new JobContextError('a context of another store is already open'))
+    )
+    await sync.refresh()
+    expect(registry.get('acme_chat')).toBe(first)
+  })
+
+  it('reads the manifest in the store of the request that asked for the refresh, so the new channel is registered at once', async () => {
+    const { sync, registry, state } = setup([
+      {
+        id: 'acme_chat',
+        manifest: manifestOf('acme_chat'),
+        installations: [{ storeId: 's1' }, { storeId: 's2' }]
+      }
+    ])
+    state.requestStores = ['s2']
+    await sync.refresh()
+    expect(state.contexts).toContain('s2')
+    expect(registry.has('acme_chat')).toBe(true)
+  })
+
+  it('leaves a trace when the manifest of a plugin is hidden from its store, and keeps what it had', async () => {
+    const { sync, registry, state } = setup([
+      { id: 'acme_chat', manifest: manifestOf('acme_chat'), installations: [{ storeId: 's1' }] }
+    ])
+    await sync.refresh()
+    const prisma = (
+      sync as unknown as { prisma: { client: { plugin: { findUnique: jest.Mock } } } }
+    ).prisma
+    prisma.client.plugin.findUnique.mockResolvedValueOnce(null)
+    state.rows = [...state.rows]
+    await sync.refresh()
+    expect(registry.has('acme_chat')).toBe(true)
+    const warn = (sync as unknown as { logger: { warn: jest.Mock } }).logger.warn
+    expect(warn).toHaveBeenCalledWith(
+      { pluginId: 'acme_chat', storeId: 's1' },
+      expect.stringContaining('no manifest')
+    )
   })
 })
