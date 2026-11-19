@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { EventContext, PrismaService } from '@platform/core/database'
 import {
   FinanceEventKind,
   FinanceSourceType,
@@ -39,6 +39,7 @@ import { FinancePostingQueue } from './finance-posting.queue'
 export class FinancePostingListener {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly events: EventContext,
     private readonly logger: PinoLogger,
     private readonly queue: FinancePostingQueue,
     private readonly posting: FinancePostingService
@@ -191,14 +192,16 @@ export class FinancePostingListener {
     if (payload.status !== TransferStatus.RECEIVED) return
     let lines: { id: string }[]
     try {
-      lines = await this.prisma.client.stockTransferLine.findMany({
-        where: {
-          transferId: payload.transferId,
-          shortageAction: TransferShortageAction.WRITE_OFF,
-          transfer: { organizationId: payload.organizationId }
-        },
-        select: { id: true }
-      })
+      lines = await this.events.inOrganization(payload.organizationId, () =>
+        this.prisma.client.stockTransferLine.findMany({
+          where: {
+            transferId: payload.transferId,
+            shortageAction: TransferShortageAction.WRITE_OFF,
+            transfer: { organizationId: payload.organizationId }
+          },
+          select: { id: true }
+        })
+      )
     } catch (error) {
       this.logger.error(
         { transferId: payload.transferId, errorName: errorName(error) },
@@ -286,7 +289,7 @@ export class FinancePostingListener {
 
   private async markNotQueued(job: PostFinanceEventJob): Promise<void> {
     try {
-      await this.posting.markUnposted(job)
+      await this.events.inOrganization(job.organizationId, () => this.posting.markUnposted(job))
     } catch (error) {
       this.logger.error(
         { errorName: errorName(error) },

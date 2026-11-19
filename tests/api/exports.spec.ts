@@ -133,7 +133,7 @@ describe('Exports', () => {
       new JobContext(prisma),
       subjectMissing
     )
-    cleaner = new ExpiredExportsCleaner(prisma, storage, events, logger)
+    cleaner = new ExpiredExportsCleaner(prisma, new JobContext(prisma), storage, events, logger)
   })
   afterAll(async () => {
     for (const key of keys) await storage.delete(key)
