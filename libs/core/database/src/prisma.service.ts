@@ -128,6 +128,9 @@ interface TransactionOptions {
 interface UnitOfWork {
   state: 'open' | 'committed' | 'rolledBack'
   hooks: Array<() => void>
+  // Work queued to run, one at a time, once the callback of the transaction has finished and before it commits (the audit entry of a
+  // request). It is dropped when the transaction rolls back.
+  beforeCommit: Array<(tx: PrismaTransaction) => Promise<void>>
 }
 
 // The transaction that a unit of work runs in, once there is one. Prisma queries are lazy: they run
@@ -301,6 +304,42 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.tenantTransaction({ storeIds: [storeId], organizationIds: [], userId }, work)
   }
 
+  // A store that this very transaction just created: its context did not hold it, so the rows of the store (its settings) would be
+  // refused. `work` runs with the context widened by that one id and the context of the request is put back when it ends (the audit and
+  // the rest of the request see what they saw before). The store must be of an organization of the context AND a row written by THIS
+  // transaction (xmin is its id): a sibling store, or any older one, is refused, so no id picked by the caller opens another store.
+  // xmin proves "written by this transaction" (an UPDATE of this transaction also leaves its id there), not "created": the caller passes
+  // the id of the row it just inserted. Inside inSavepoint the row carries the id of the SUBtransaction, so the proof fails closed for a store created there (calling this inside a savepoint on an earlier store is not guarded).
+  // Not for use inside inSavepoint (a rolled-back savepoint reverts the setting but not the scope).
+  async withCreatedStore<T>(storeId: string, work: () => Promise<T>): Promise<T> {
+    const scope = tenantScope.getStore()
+    // With no tenant transaction (RLS_CONTEXT off) there is no context to widen: the rows are not filtered by the database
+    if (scope === undefined) return work()
+    const original = scope.context
+    if (original.organizationIds.length === 0) {
+      throw new Error('withCreatedStore needs the organization of the store in the context')
+    }
+    const owned = await scope.tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM stores
+      WHERE id = ${storeId} AND organization_id = ANY (${[...original.organizationIds]}::text[])
+        AND xmin::text = (txid_current() % 4294967296)::text`
+    if (owned.length === 0) {
+      throw new Error(
+        'withCreatedStore: the store was not created by this transaction in the organization of the context'
+      )
+    }
+    const widened: TenantContext = { ...original, storeIds: [...original.storeIds, storeId] }
+    await applyTenantContext(scope.tx, widened)
+    scope.context = widened
+    try {
+      return await work()
+    } finally {
+      scope.context = original
+      // If the work broke the transaction this fails too, and the error that matters is the work's
+      await applyTenantContext(scope.tx, original).catch(() => undefined)
+    }
+  }
+
   // For the work of ONE person that has no store to name (their avatar, which belongs to them and to no store): the context holds the
   // person alone, which is what the policy of the rows of a person reads (`app.user_id`). The context of the request when the interceptor
   // opened it, which must then be this person's, or its own. It sees no store row: keep it to the person's own rows.
@@ -353,17 +392,53 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     // After a rollback it is dropped: what it would announce did not happen
   }
 
+  // Queues `work` to run just before the transaction `db` commits, after the callback of the unit of work has finished and with the
+  // connection to itself (the audit entry of a request: it cannot be started earlier without racing the rest of the request, and
+  // later it would find the transaction closed). It gets the transaction; a failure must be handled by the work itself (a throw
+  // is logged and does not stop the commit). If the transaction rolls back it never runs. With no transaction of ours behind
+  // `db` (the base client) it returns false and the caller does the work some other way.
+  beforeCommit(
+    db: PrismaService['client'],
+    work: (tx: PrismaTransaction) => Promise<void>
+  ): boolean {
+    const unit = units.get(db)
+    if (unit === undefined || unit.state !== 'open') return false
+    unit.beforeCommit.push(work)
+    return true
+  }
+
+  private async runBeforeCommit(unit: UnitOfWork, tx: PrismaTransaction): Promise<void> {
+    for (
+      let next = unit.beforeCommit.shift();
+      next !== undefined;
+      next = unit.beforeCommit.shift()
+    ) {
+      try {
+        await next(tx)
+      } catch (error) {
+        this.logger.error(
+          'work queued before a commit failed',
+          error instanceof Error ? error.stack : String(error)
+        )
+      }
+    }
+  }
+
   // One real transaction, whose commit hooks run after it commits
   private async open<T>(
     fn: (tx: PrismaTransaction) => Promise<T>,
     options: TransactionOptions | undefined
   ): Promise<T> {
-    const unit: UnitOfWork = { state: 'open', hooks: [] }
+    const unit: UnitOfWork = { state: 'open', hooks: [], beforeCommit: [] }
     let result: T
     try {
       result = await this.base.$transaction(async (tx: PrismaTransaction) => {
         units.set(tx, unit)
-        return fn(tx)
+        const out = await fn(tx)
+        // After the callback and before the COMMIT, when nothing else of the request is using the connection: what was queued runs
+        // here. A callback that throws rolls back, and what was queued with it is dropped.
+        await this.runBeforeCommit(unit, tx)
+        return out
       }, options)
     } catch (error) {
       unit.state = 'rolledBack'
@@ -405,7 +480,14 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         await applyTenantContext(tx, context)
         // `fn` is awaited INSIDE the scope: a Prisma query is lazy, and one that is only started after run() returns (a callback that
         // returns `client.model.findMany()` as it is) would run its hooks with no scope
-        return tenantScope.run({ tx, context }, async () => await fn())
+        return tenantScope.run({ tx, context }, async () => {
+          const out = await fn()
+          // What was queued for the commit (the audit entry of a request) runs here, still in the scope: a query outside it is
+          // refused by the guard of the context
+          const unit = units.get(tx)
+          if (unit !== undefined) await this.runBeforeCommit(unit, tx)
+          return out
+        })
       },
       { ...TENANT_TRANSACTION, ...options }
     )

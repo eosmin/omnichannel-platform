@@ -496,6 +496,194 @@ describe('PrismaService', () => {
     expect(replica[0]?.txid).not.toBe(tenant[0]?.txid)
   })
 
+  // withCreatedStore proves the store with `xmin = txid_current()` and the organization of the context: the unit spec mocks that SQL, so
+  // this runs it on the real database. The real createStore of the API (201 with its store_settings and retention_settings rows, under
+  // the rls-enforced job) is the `creating a store` case of tests/api/organizations.spec.ts.
+  describe('withCreatedStore', () => {
+    const slug = `it-${runId}-store`
+    const orgId = randomUUID()
+    const otherOrgId = randomUUID()
+    const olderId = randomUUID()
+    const context = { storeIds: [], organizationIds: [orgId] }
+
+    const appSetting = () =>
+      service.client.$queryRaw<
+        { value: string | null }[]
+      >`SELECT current_setting('app.store_ids', true) AS value`.then(rows => rows[0]?.value ?? null)
+    // The message of the refusal (the transaction is rolled back), or 'accepted'
+    const outcome = (run: () => Promise<void>) =>
+      service.tenantTransaction(context, run).then(
+        () => 'accepted',
+        (error: unknown) => (error instanceof Error ? error.message : String(error))
+      )
+
+    beforeAll(async () => {
+      await withClient(urls.owner, async owner => {
+        for (const [id, name] of [
+          [orgId, 'Created store'],
+          [otherOrgId, 'Other organization']
+        ] as const) {
+          await owner.query(
+            'INSERT INTO organizations (id, name, slug, updated_at) VALUES ($1, $2, $3, now())',
+            [id, name, `it-${runId}-cs-${id.slice(0, 8)}`]
+          )
+        }
+        // Written by an earlier transaction (the owner connection), so its xmin is not the one of the transaction under test
+        await owner.query(
+          'INSERT INTO stores (id, organization_id, name, slug, updated_at) VALUES ($1, $2, $3, $4, now())',
+          [olderId, orgId, 'Older', `${slug}-older`]
+        )
+      })
+    })
+
+    afterAll(async () => {
+      await withClient(urls.owner, async owner => {
+        // The settings rows go with the store (ON DELETE CASCADE)
+        await owner.query('DELETE FROM stores WHERE organization_id = ANY ($1::text[])', [
+          [orgId, otherOrgId]
+        ])
+      })
+    })
+
+    it('accepts a store written by this transaction: its settings rows are written, and the context is put back', async () => {
+      let created = ''
+      const before = await service.tenantTransaction(context, async () => appSetting())
+      const seen = await service.tenantTransaction(context, async () => {
+        const store = await service.client.store.create({
+          data: { organizationId: orgId, name: 'Fresh', slug: `${slug}-fresh` },
+          select: { id: true }
+        })
+        created = store.id
+        const original = await appSetting()
+        const inside = await service.withCreatedStore(store.id, async () => {
+          await service.client.storeSettings.create({ data: { storeId: store.id } })
+          await service.client.retentionSettings.create({ data: { storeId: store.id } })
+          return {
+            memory: service.currentTenantContext()?.storeIds.slice(),
+            setting: await appSetting()
+          }
+        })
+        return {
+          original,
+          inside,
+          memory: service.currentTenantContext()?.storeIds.slice(),
+          setting: await appSetting()
+        }
+      })
+      expect(seen.inside.memory).toEqual([created])
+      expect(seen.inside.setting).toBe(created)
+      // Back to what the request saw, in the memory of the scope AND in the setting of the database
+      expect(seen.memory).toEqual([])
+      expect(seen.setting).toBe(seen.original)
+      expect(seen.original).toBe(before)
+      const rows = await withClient(urls.owner, async owner => {
+        const settings = await owner.query('SELECT 1 FROM store_settings WHERE store_id = $1', [
+          created
+        ])
+        const retention = await owner.query(
+          'SELECT 1 FROM retention_settings WHERE store_id = $1',
+          [created]
+        )
+        return { settings: settings.rowCount, retention: retention.rowCount }
+      })
+      expect(rows).toEqual({ settings: 1, retention: 1 })
+    })
+
+    it('puts the context back when the work throws', async () => {
+      const seen = await service.tenantTransaction(context, async () => {
+        const store = await service.client.store.create({
+          data: { organizationId: orgId, name: 'Boom', slug: `${slug}-boom` },
+          select: { id: true }
+        })
+        const original = await appSetting()
+        // The error of the work reaches the caller: the request must not go on after a failed settings write
+        await expect(
+          service.withCreatedStore(store.id, () => Promise.reject(new Error('boom')))
+        ).rejects.toThrow('boom')
+        return { original, after: await appSetting(), memory: service.currentTenantContext() }
+      })
+      expect(seen.after).toBe(seen.original)
+      expect(seen.memory?.storeIds).toEqual([])
+    })
+
+    it('needs the organization of the store in the context', async () => {
+      const message = await service
+        .tenantTransaction({ storeIds: [], organizationIds: [] }, () =>
+          service.withCreatedStore(olderId, () => Promise.resolve())
+        )
+        .then(
+          () => 'accepted',
+          (error: unknown) => (error instanceof Error ? error.message : String(error))
+        )
+      expect(message).toMatch(/needs the organization/)
+    })
+
+    it('refuses a store of the organization that an earlier transaction wrote, and its work does not run', async () => {
+      let ran = false
+      const message = await outcome(async () => {
+        await service.withCreatedStore(olderId, () => {
+          ran = true
+          return Promise.resolve()
+        })
+      })
+      expect(message).toMatch(/was not created/)
+      expect(ran).toBe(false)
+    })
+
+    // The organization half of the predicate: the store is written by THIS transaction (xmin matches), and `stores` has no policy, so
+    // only `organization_id = ANY(context)` can refuse it
+    it('refuses a store of ANOTHER organization created in the same transaction, and its work does not run', async () => {
+      let ran = false
+      const message = await outcome(async () => {
+        const other = await service.client.store.create({
+          data: { organizationId: otherOrgId, name: 'Foreign', slug: `${slug}-foreign` },
+          select: { id: true }
+        })
+        await service.withCreatedStore(other.id, () => {
+          ran = true
+          return Promise.resolve()
+        })
+      })
+      expect(message).toMatch(/was not created/)
+      expect(ran).toBe(false)
+    })
+
+    // Documented limit: inside a savepoint the row carries the id of the SUBtransaction in xmin, which is not the one of
+    // txid_current(), so the proof fails CLOSED. The code of createStore does not use a savepoint (its `writing` only catches the
+    // unique violation after the transaction)
+    it('fails closed for a store created inside a savepoint, and leaves the context as it was', async () => {
+      let ran = false
+      const seen = await service.tenantTransaction(context, async () => {
+        const original = await appSetting()
+        const store = await inSavepoint(() =>
+          service.client.store.create({
+            data: { organizationId: orgId, name: 'Saved', slug: `${slug}-saved` },
+            select: { id: true }
+          })
+        )
+        const refused = await service
+          .withCreatedStore(store.id, () => {
+            ran = true
+            return Promise.resolve()
+          })
+          .then(
+            () => 'accepted',
+            (error: unknown) => (error instanceof Error ? error.message : String(error))
+          )
+        return {
+          original,
+          refused,
+          after: await appSetting(),
+          memory: service.currentTenantContext()
+        }
+      })
+      expect(seen.refused).toMatch(/was not created/)
+      expect(ran).toBe(false)
+      expect(seen.after).toBe(seen.original)
+      expect(seen.memory?.storeIds).toEqual([])
+    })
+  })
+
   // A request is ONE transaction under RLS_CONTEXT: a statement that fails aborts it (25P02) even when the code caught the error
   describe('a unique violation that the code catches', () => {
     const context = { storeIds: [], organizationIds: [] }
@@ -579,6 +767,41 @@ describe('PrismaService', () => {
         service.afterCommit(service.client, () => ran.push('after'))
       })
       expect(ran).toEqual(['before', 'after'])
+    })
+
+    it('runs what was queued before the commit, one at a time, and drops it when the transaction rolls back', async () => {
+      const ran: string[] = []
+      const queue = (name: string, fail = false) =>
+        service.beforeCommit(service.client, async tx => {
+          await tx.organization.create({ data: { name, slug: `${slug}-${name}` } })
+          ran.push(name)
+          if (fail) throw new Error('queued work failed')
+        })
+      await service.tenantTransaction(context, () => {
+        // Queued while the handler is still running: nothing has been written yet
+        expect(queue('q1')).toBe(true)
+        expect(queue('q2', true)).toBe(true)
+        expect(queue('q3')).toBe(true)
+        expect(ran).toEqual([])
+        return Promise.resolve()
+      })
+      // All three ran in order, the failure of the second did not stop the commit, and what they wrote is there
+      expect(ran).toEqual(['q1', 'q2', 'q3'])
+      expect(
+        await service.client.organization.count({
+          where: { slug: { in: [`${slug}-q1`, `${slug}-q3`] } }
+        })
+      ).toBe(2)
+
+      await service
+        .tenantTransaction(context, () => {
+          queue('lost')
+          return Promise.reject(new Error('the request failed'))
+        })
+        .catch(() => undefined)
+      expect(ran).toEqual(['q1', 'q2', 'q3'])
+      // No transaction of ours behind the base client: nothing is queued
+      expect(service.beforeCommit(service.client, () => Promise.resolve())).toBe(false)
     })
 
     it('runs the attempt as it is when there is no transaction to protect', async () => {
