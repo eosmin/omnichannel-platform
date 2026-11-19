@@ -3,9 +3,14 @@ import type { JobContext, PrismaService } from '@platform/core/database'
 import { CustomerFigureOrderStatuses, customerOrderFigures } from '@platform/core/domain'
 import { ExportLimits } from '@platform/core/exports'
 import {
+  countCustomerSearch,
+  CustomerSearchOrders,
+  customerSearchPatterns,
   customerSearchWhere,
   type CustomersExportFilters,
-  foldInDatabase
+  type CustomerSearchPatterns,
+  foldInDatabase,
+  searchCustomerIds
 } from '@platform/core/messaging'
 
 import type { CsvSource } from './csv-export-writer'
@@ -50,33 +55,53 @@ export function customersExportSource(
   storeId: string,
   filters: CustomersExportFilters
 ): CsvSource {
-  // The text is folded once, by the database, as the names it is compared with are
-  let folded: Promise<string> | undefined
-  const foldedText = (): Promise<string> => {
-    const { q } = filters
-    return (folded ??=
-      q === undefined
-        ? Promise.resolve('')
-        : jobContext.forStore(storeId, () => foldInDatabase(prisma.client, q)))
-  }
+  // The patterns of the text are made once: the text is folded by the database, as the names it is compared with are
+  let patterns: Promise<CustomerSearchPatterns | undefined> | undefined
+  const patternsOfText = (): Promise<CustomerSearchPatterns | undefined> =>
+    (patterns ??= (async () => {
+      const { q } = filters
+      return q === undefined
+        ? undefined
+        : customerSearchPatterns(
+            q,
+            await jobContext.forStore(storeId, () => foldInDatabase(prisma.client, q))
+          )
+    })())
   return {
     columns: CUSTOMER_COLUMNS,
     count: async () => {
-      const text = await foldedText()
+      const found = await patternsOfText()
+      // The functions of the database read the store from the context of the job, which the search joins
       return jobContext.forStore(storeId, () =>
-        prisma.client.customer.count({ where: customerSearchWhere(storeId, filters.q, text) })
+        found === undefined
+          ? prisma.client.customer.count({ where: customerSearchWhere(storeId) })
+          : countCustomerSearch(prisma, storeId, found)
       )
     },
     rows: async function* () {
       let after: string | undefined
-      for (;;) {
-        const text = await foldedText()
-        const customers = await jobContext.forStore(storeId, () =>
-          prisma.client.customer.findMany({
-            // Keyset: a row deleted meanwhile cannot end the file early, as a cursor on it would
+      let finished = false
+      const found = await patternsOfText()
+      while (!finished) {
+        // With a search text, the ids of the page come from the function of the database (one page after the last id: a row
+        // deleted meanwhile cannot end the file early); without one, the keyset is a condition of the read
+        const { ids, customers } = await jobContext.forStore(storeId, async () => {
+          const chosen =
+            found === undefined
+              ? undefined
+              : await searchCustomerIds(prisma, storeId, found, {
+                  order: CustomerSearchOrders.ID,
+                  after,
+                  limit: ExportLimits.ROW_PAGE_SIZE
+                })
+          const rows = await prisma.client.customer.findMany({
             where: {
-              ...customerSearchWhere(storeId, filters.q, text),
-              ...(after === undefined ? {} : { id: { gt: after } })
+              ...customerSearchWhere(storeId),
+              ...(chosen === undefined
+                ? after === undefined
+                  ? {}
+                  : { id: { gt: after } }
+                : { id: { in: chosen } })
             },
             orderBy: { id: 'asc' },
             take: ExportLimits.ROW_PAGE_SIZE,
@@ -110,10 +135,20 @@ export function customersExportSource(
               _count: { select: { notes: true, conversations: true } }
             }
           })
-        )
-        const last = customers.at(-1)
-        if (last === undefined) return
-        after = last.id
+          return { ids: chosen, customers: rows }
+        })
+        if (ids === undefined) {
+          const last = customers.at(-1)
+          if (last === undefined) return
+          after = last.id
+        } else {
+          // The keyset is the last id the database chose, not the last row that came back: rows merged or deleted between the two
+          // statements must not end the file while later pages exist. A page shorter than the size is the last one.
+          const lastId = ids.at(-1)
+          if (lastId === undefined) return
+          after = lastId
+          finished = ids.length < ExportLimits.ROW_PAGE_SIZE
+        }
 
         const spans = await jobContext.forStore(storeId, () =>
           prisma.client.conversation.groupBy({

@@ -1,7 +1,7 @@
 import type { Queue } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 
-import type { PrismaService } from '@platform/core/database'
+import type { JobContext, PrismaService } from '@platform/core/database'
 import { DigestFrequency, MembershipStatus } from '@platform/core/domain'
 import { TemplateRenderer } from '@platform/core/email'
 import { Locales } from '@platform/core/i18n'
@@ -21,6 +21,7 @@ import { EmailDigestService } from './email-digest.service'
 
 const USER = '11111111-1111-4111-8111-111111111111'
 const OTHER = '33333333-3333-4333-8333-333333333333'
+const STORE = '22222222-2222-4222-8222-222222222222'
 const NOW = new Date('2026-11-02T14:10:00.000Z') // 08:10 in El Salvador (UTC-6)
 const HOUR = 3_600_000
 
@@ -47,6 +48,8 @@ describe('EmailDigestService', () => {
   const addEmail = jest.fn<Promise<unknown>, [string, Record<string, unknown>, { jobId: string }]>()
   const warn = jest.fn()
   const findMemberships = jest.fn<Promise<unknown>, [unknown]>()
+  const forStore = jest.fn((_storeId: string, work: () => Promise<unknown>) => work())
+  const forUser = jest.fn((_userId: string, work: () => Promise<unknown>) => work())
 
   const service = (): EmailDigestService =>
     new EmailDigestService(
@@ -59,9 +62,13 @@ describe('EmailDigestService', () => {
             upsert: upsertSettings
           },
           user: { findUnique: findUser },
-          membership: { findMany: findMemberships }
+          membership: { findMany: findMemberships },
+          // The one store the sweeps of the digest walk
+          store: { findMany: () => Promise.resolve([{ id: STORE }]) }
         }
       } as unknown as PrismaService,
+      // The contexts only run the work here; that the work opens the right one is checked against a real database
+      { forStore: forStore, forUser: forUser } as unknown as JobContext,
       { addBulk } as unknown as Queue<SendEmailDigestJob>,
       { add: addEmail } as unknown as Queue<SendEmailJob>,
       { frontendUrl: 'https://app.example.com' },
@@ -70,6 +77,8 @@ describe('EmailDigestService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
+    forStore.mockImplementation((_storeId, work) => work())
+    forUser.mockImplementation((_userId, work) => work())
     updateNotifications.mockResolvedValue({ count: 1 })
     findMemberships.mockImplementation((args: unknown) => {
       const ids = (args as { where: { storeId: { in: string[] } } }).where.storeId.in
@@ -99,11 +108,22 @@ describe('EmailDigestService', () => {
       )
     })
 
+    it('reads the waiting notifications in the context of each store, never outside one', async () => {
+      findNotifications.mockResolvedValue([])
+      await service().scan(DigestFrequency.HOURLY, NOW)
+      expect(forStore).toHaveBeenCalledWith(STORE, expect.any(Function))
+      const asked = findNotifications.mock.calls[0]?.[0] as { where: { storeId: string } }
+      expect(asked.where.storeId).toBe(STORE)
+    })
+
     it('drops the marks older than the limit on every run', async () => {
       findNotifications.mockResolvedValue([])
       await service().scan(DigestFrequency.HOURLY, NOW)
       expect(updateNotifications).toHaveBeenCalledWith({
-        where: { emailPendingAt: { not: null, lt: new Date(NOW.getTime() - 48 * HOUR) } },
+        where: {
+          storeId: STORE,
+          emailPendingAt: { not: null, lt: new Date(NOW.getTime() - 48 * HOUR) }
+        },
         data: { emailPendingAt: null }
       })
       updateNotifications.mockClear()

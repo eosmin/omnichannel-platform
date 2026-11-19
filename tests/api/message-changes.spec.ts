@@ -128,6 +128,7 @@ describe('An agent editing and deleting a message', () => {
     purge = new DeletedMessagePurgeScheduler(
       undefined as never, // the lock is not what is tested
       prisma,
+      new JobContext(prisma),
       await app.resolve(PinoLogger)
     )
   })

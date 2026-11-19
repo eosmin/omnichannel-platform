@@ -1,7 +1,5 @@
 {
   "apps/worker/src/finance/fiscal-reconciler.service.ts": 2,
-  "apps/worker/src/notifications/email-digest.service.ts": 10,
-  "apps/worker/src/notifications/web-push-sender.service.ts": 5,
   "apps/worker/src/shipping/bulk-labels-runner.service.ts": 9,
   "apps/worker/src/shipping/pickup-evaluator.service.ts": 7
 }
