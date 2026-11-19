@@ -166,9 +166,11 @@ export class StoreRetentionEnforcer {
     cutoff: Date,
     report: RetentionReport
   ): Promise<number> {
-    const gone = await this.jobContext.forStore(storeId, () =>
-      this.prisma.transaction(
-        async tx => {
+    // The limit is the context's: a transaction inside it joins it and keeps none of its own
+    const gone = await this.jobContext.forStore(
+      storeId,
+      () =>
+        this.prisma.transaction(async tx => {
           // Read again under the lock: a conversation an agent reopened since the batch was read is left alone
           const eligible = await tx.$queryRaw<{ id: string }[]>`
           SELECT id FROM conversations
@@ -197,9 +199,8 @@ export class StoreRetentionEnforcer {
             where: { id: { in: eligibleIds }, storeId }
           })
           return { files, count: removed.count }
-        },
-        { timeout: RetentionRun.TRANSACTION_TIMEOUT_MS }
-      )
+        }),
+      { timeout: RetentionRun.TRANSACTION_TIMEOUT_MS }
     )
     report.filesLeft += await this.deleteFiles(storeId, gone.files)
     return gone.count

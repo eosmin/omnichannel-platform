@@ -80,9 +80,10 @@ export class ScheduledReportRunner {
       this.prisma.client.scheduledReport.findFirst({ where: { id: reportId, storeId } })
     )
     if (report === null) {
-      // Not a quiet skip: a report that its own store cannot see is a fault to look into (a deleted report is the usual cause)
+      // The owner may have deleted it after the dispatcher queued the job (an export row, in contrast, is made a moment before its
+      // job): a warning, and the metric still counts it, so a store that cannot see its own reports shows as a rate
       this.subjectMissing.inc({ job: JobNames.GENERATE_SCHEDULED_REPORT })
-      this.logger.error({ reportId, storeId }, 'the report of the job was not found for its store')
+      this.logger.warn({ reportId, storeId }, 'the report of the job was not found for its store')
       return ReportRunOutcomes.SKIPPED
     }
     if (!report.enabled) return ReportRunOutcomes.SKIPPED

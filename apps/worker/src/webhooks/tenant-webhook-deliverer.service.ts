@@ -120,7 +120,7 @@ export class TenantWebhookDeliverer {
         })
         // The count is written only when there is something to clear: a healthy webhook costs one insert
         await this.prisma.client.webhook.updateMany({
-          where: { id: webhookId, consecutiveFailures: { gt: 0 } },
+          where: { id: webhookId, storeId, consecutiveFailures: { gt: 0 } },
           data: { consecutiveFailures: 0 }
         })
       })
@@ -154,7 +154,7 @@ export class TenantWebhookDeliverer {
           })
           // Every try is a row of the log; only the end of a delivery counts toward turning the webhook off
           const updated = await tx.webhook.update({
-            where: { id: webhookId },
+            where: { id: webhookId, storeId },
             data: {
               lastFailureAt: new Date(),
               ...(final ? { consecutiveFailures: { increment: 1 } } : {})

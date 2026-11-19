@@ -100,6 +100,7 @@ describe('Exports', () => {
   let generator: ExportGenerator
   let cleaner: ExpiredExportsCleaner
   const keys: string[] = []
+  const subjectMissingInc = jest.fn()
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -114,7 +115,7 @@ describe('Exports', () => {
       error: jest.fn(),
       warn: jest.fn()
     } as unknown as PinoLogger
-    const subjectMissing = { inc: jest.fn() } as unknown as Counter<string>
+    const subjectMissing = { inc: subjectMissingInc } as unknown as Counter<string>
     generator = new ExportGenerator(
       prisma,
       new CsvExportWriter(storage),
@@ -323,6 +324,27 @@ describe('Exports', () => {
 
       const after = await owner.export.findUniqueOrThrow({ where: { id: view.id } })
       expect(after.completedAt).toEqual(before.completedAt)
+    })
+
+    it('counts a job whose export is not a row of its own store, and leaves the row as it is', async () => {
+      const row = await owner.export.create({
+        data: {
+          storeId: ctx.storeA.id,
+          requestedBy: ctx.adminA.id,
+          type: ExportTypes.CUSTOMERS,
+          format: ExportFormats.CSV,
+          filters: {},
+          expiresAt: new Date(Date.now() + 86_400_000)
+        }
+      })
+      subjectMissingInc.mockClear()
+
+      await generator.generate(ctx.storeB.id, row.id, false)
+
+      expect(subjectMissingInc).toHaveBeenCalledWith({ job: JobNames.GENERATE_EXPORT })
+      const after = await owner.export.findUniqueOrThrow({ where: { id: row.id } })
+      expect(after.status).toBe(ExportStatus.PENDING)
+      await owner.export.update({ where: { id: row.id }, data: { status: ExportStatus.FAILED } })
     })
 
     it('fails for good a row whose filters do not fit, and says which code', async () => {
