@@ -13,7 +13,15 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { customerSearchWhere, foldInDatabase, lockCustomerForWrite } from '@platform/core/messaging'
+import {
+  type CustomerSearchPage,
+  CustomerSearchOrders,
+  customerSearchPatterns,
+  customerSearchWhere,
+  foldInDatabase,
+  lockCustomerForWrite,
+  searchCustomerIds
+} from '@platform/core/messaging'
 
 import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
@@ -48,27 +56,41 @@ export class CustomersService {
 
   async list(storeId: string, query: ListCustomersQuery): Promise<CustomerPage> {
     const { cursor } = query
-    const folded = query.q === undefined ? '' : await foldInDatabase(this.prisma.client, query.q)
+    // With a search text the customers that match come from a function of the database, one page after the cursor (migration
+    // rls_search_customer_list: with row-level security on, only inside a definer function can the LIKE use its trigram
+    // indexes). Without one, the cursor is a condition of the read itself.
+    const found =
+      query.q === undefined
+        ? undefined
+        : await this.searchIds(storeId, query.q, {
+            order: CustomerSearchOrders.NEWEST,
+            after: cursor,
+            limit: query.limit + 1
+          })
     const rows = await this.prisma.client.customer.findMany({
       where: {
         AND: [
-          customerSearchWhere(storeId, query.q, folded),
-          // After the last row of the previous page in (createdAt, id) order, wherever that row is now
-          cursor === undefined
-            ? {}
-            : {
-                OR: [
-                  { createdAt: { lt: cursor.createdAt } },
-                  { createdAt: cursor.createdAt, id: { lt: cursor.id } }
-                ]
-              }
+          customerSearchWhere(storeId),
+          found !== undefined
+            ? { id: { in: found } }
+            : // After the last row of the previous page in (createdAt, id) order, wherever that row is now
+              cursor === undefined
+              ? {}
+              : {
+                  OR: [
+                    { createdAt: { lt: cursor.createdAt } },
+                    { createdAt: cursor.createdAt, id: { lt: cursor.id } }
+                  ]
+                }
         ]
       },
       select: LIST_SELECT,
       take: query.limit + 1,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
     })
-    const hasMore = rows.length > query.limit
+    // With a search text the page was chosen by the database in a separate statement: a row merged or deleted in between must not
+    // make the last page look like the last of the list, so there is more when the function found more than the page asks for
+    const hasMore = found === undefined ? rows.length > query.limit : found.length > query.limit
     const page = hasMore ? rows.slice(0, query.limit) : rows
     const last = page.at(-1)
     return {
@@ -76,6 +98,11 @@ export class CustomersService {
       nextCursor: hasMore && last !== undefined ? encodeCursor(last) : null,
       hasMore
     }
+  }
+
+  private async searchIds(storeId: string, q: string, page: CustomerSearchPage): Promise<string[]> {
+    const patterns = customerSearchPatterns(q, await foldInDatabase(this.prisma.client, q))
+    return searchCustomerIds(this.prisma, storeId, patterns, page)
   }
 
   get(storeId: string, customerId: string): Promise<CustomerDetail> {

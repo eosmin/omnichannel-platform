@@ -53,6 +53,8 @@ const TYPED_CALL = `SELECT * FROM public.rls_search_messages_typed($1, $2, $3::i
   $7::boolean, $8::boolean, $9::text[], $10, $11, $12, $13)`
 const CUSTOMERS_CALL = `SELECT * FROM public.rls_search_customers($1, $2, $3, $4, $5, $6::boolean, $7::boolean, $8::integer,
   $9::real, $10::real)`
+const CUSTOMER_LIST_CALL = `SELECT * FROM public.rls_search_customer_list($1, $2, $3, $4::boolean, $5, $6, $7::integer)`
+const CUSTOMER_COUNT_CALL = `SELECT public.rls_count_customer_list($1, $2, $3) AS n`
 const ORDERS_CALL = `SELECT * FROM public.rls_search_orders($1, $2, $3, $4, $5::boolean, $6::boolean, $7::integer)`
 
 describe('the search functions of row-level security', () => {
@@ -157,7 +159,9 @@ describe('the search functions of row-level security', () => {
         [MESSAGES_CALL, FUNCTION_ARGS.messages(tag)],
         [TYPED_CALL, typedArgs('%cuando%', true, true, true, true)],
         [CUSTOMERS_CALL, [tag, '%a%', 'a%', '%a%', '%1%', false, false, 5, 0.3, 0.6]],
-        [ORDERS_CALL, [tag, '%a%', 'a%', '%1%', true, false, 5]]
+        [ORDERS_CALL, [tag, '%a%', 'a%', '%1%', true, false, 5]],
+        [CUSTOMER_LIST_CALL, [null, '%a%', null, false, null, null, 5]],
+        [CUSTOMER_COUNT_CALL, [null, '%a%', null]]
       ] as const) {
         await appDb.query('SAVEPOINT s')
         await expect(appDb.query(call, [...args])).rejects.toThrow(
@@ -225,6 +229,71 @@ describe('the search functions of row-level security', () => {
       )
     expect(await byNumber([ctx.storeA.id])).toEqual([mine.id])
     expect(await byNumber([ctx.storeB.id])).toEqual([theirs.id])
+  })
+
+  it('lists the customers of a search text from the store of the context only, in the order of the list and of the export', async () => {
+    const mine = await createCustomer(owner, { storeId: ctx.storeA.id, name: `Wanda ${tag}` })
+    const second = await createCustomer(owner, { storeId: ctx.storeA.id, name: `Wanda ${tag} bis` })
+    const absorbed = await createCustomer(owner, {
+      storeId: ctx.storeA.id,
+      name: `Wanda ${tag} old`
+    })
+    await owner.customer.update({ where: { id: absorbed.id }, data: { mergedIntoId: mine.id } })
+    const alien = await createCustomer(owner, { storeId: ctx.storeB.id, name: `Wanda ${tag}` })
+    const pattern = `%wanda ${tag}%`
+    const page = (stores: string[], byId: boolean, afterId: string | null, limit: number) =>
+      inContext({ stores }, async () =>
+        (
+          await appDb.query<{ id: string }>(CUSTOMER_LIST_CALL, [
+            pattern,
+            pattern,
+            null,
+            byId,
+            null,
+            afterId,
+            limit
+          ])
+        ).rows.map(row => row.id)
+      )
+    // Another store never shows, an absorbed customer is left out, and the export order is by id with a keyset
+    const byId = await page([ctx.storeA.id], true, null, 25)
+    expect(byId).toEqual([mine.id, second.id].sort())
+    expect(byId).not.toContain(alien.id)
+    expect(byId).not.toContain(absorbed.id)
+    expect(await page([ctx.storeA.id], true, byId[0] ?? null, 25)).toEqual(byId.slice(1))
+    expect(await page([ctx.storeB.id], true, null, 25)).toEqual([alien.id])
+    // The list is newest first
+    expect(await page([ctx.storeA.id], false, null, 25)).toEqual([second.id, mine.id])
+    const count = await inContext({ stores: [ctx.storeA.id] }, async () =>
+      appDb.query<{ n: string }>(CUSTOMER_COUNT_CALL, [pattern, pattern, null])
+    )
+    expect(Number(count.rows[0]?.n)).toBe(2)
+  })
+
+  it('refuses a page of the customer list that has no limit, a limit past 1000 or no email pattern', async () => {
+    for (const args of [
+      [null, '%a%', null, false, null, null, null],
+      [null, '%a%', null, false, null, null, 1001],
+      [null, null, null, false, null, null, 5]
+    ]) {
+      await expect(
+        inContext({ stores: [ctx.storeA.id] }, async () => appDb.query(CUSTOMER_LIST_CALL, args))
+      ).rejects.toThrow()
+    }
+  })
+
+  it('lets the api and the worker run the customer list functions and nobody else', async () => {
+    const { rows } = await appDb.query<{ role: string; allowed: boolean }>(
+      `SELECT r AS role, has_function_privilege(r,
+         'public.rls_search_customer_list(text, text, text, boolean, text, text, integer)', 'EXECUTE') AS allowed
+       FROM unnest(ARRAY['platform_app', 'platform_worker', 'platform_replica_ro', 'public']) AS r`
+    )
+    expect(Object.fromEntries(rows.map(row => [row.role, row.allowed]))).toEqual({
+      platform_app: true,
+      platform_worker: true,
+      platform_replica_ro: false,
+      public: false
+    })
   })
 
   it('reads a text of stop words as typed, with the rules of the search by words, and never from another store', async () => {
