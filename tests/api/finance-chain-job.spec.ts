@@ -41,6 +41,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue, queueOf } from '../helpers/queue'
+import { inStoreContext } from '../helpers/tenant-context'
 
 const CREATED = 201
 const ACCEPTED = 202
@@ -63,7 +64,9 @@ describe('The weekly check of the chain, its incident and the guard of the close
   let apiMonitor: FinanceChainMonitor
   let workerDb: PrismaService
   let workerEvents: DomainEvents
-  let guard: FinanceCloseGuard
+  // The guard as the close of a period reaches it: inside the request of a person of a store, whose context is that store and
+  // its organization (the store of the organization asked about)
+  let guard: Pick<FinanceCloseGuard, 'check'>
   let published: { event: string; payload: unknown }[] = []
 
   const logger = {
@@ -119,7 +122,18 @@ describe('The weekly check of the chain, its incident and the guard of the close
       logger,
       new JobContext(workerDb)
     )
-    guard = app.get(FinanceCloseGuard)
+    const realGuard = app.get(FinanceCloseGuard)
+    guard = {
+      check: (organizationId, options) =>
+        inStoreContext(
+          app.get(PrismaService, { strict: false }),
+          {
+            storeId: organizationId === ctx.orgB.id ? ctx.storeB.id : ctx.storeA.id,
+            organizationId
+          },
+          () => realGuard.check(organizationId, options)
+        )
+    }
     for (const [user, store] of [
       [ctx.adminA, ctx.storeA],
       [ctx.adminB, ctx.storeB]

@@ -5,6 +5,7 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
+import { PrismaService } from '@platform/core/database'
 import { ensureMembership, type OwnerClient } from '@platform/core/database-testing'
 import {
   InventoryAdjustmentReason,
@@ -27,6 +28,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { inStoreContext } from '../helpers/tenant-context'
 
 interface ErrorBody {
   error: { code: string; metadata?: Record<string, unknown> }
@@ -65,6 +67,7 @@ describe('Transfers between warehouses', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let inventory: InventoryService
+  let prisma: PrismaService
   // A warehouse that stores A and A2 both sell from, so that a transfer can carry the products of both
   let shared: { id: string }
 
@@ -73,6 +76,7 @@ describe('Transfers between warehouses', () => {
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     inventory = app.get(InventoryService)
+    prisma = app.get(PrismaService, { strict: false })
     shared = await createWarehouse(owner, { organizationId: ctx.orgA.id, name: 'Shared' })
     for (const storeId of [ctx.storeA.id, ctx.storeA2.id]) {
       await linkWarehouse(owner, { organizationId: ctx.orgA.id, storeId, warehouseId: shared.id })
@@ -97,16 +101,18 @@ describe('Transfers between warehouses', () => {
   }) {
     const storeId = options.storeId ?? ctx.storeA.id
     const product = await createProduct(owner, { storeId })
-    await inventory.move({
-      storeId,
-      productId: product.id,
-      warehouseId: options.warehouseId ?? ctx.warehouseA.id,
-      type: Type.RECEIPT,
-      quantity: options.quantity ?? 10,
-      reason: InventoryAdjustmentReason.OPENING_STOCK,
-      idempotencyKey: randomUUID(),
-      ...(options.unitCostCents === undefined ? {} : { unitCostCents: options.unitCostCents })
-    })
+    await inStoreContext(prisma, { storeId, organizationId: ctx.orgA.id }, () =>
+      inventory.move({
+        storeId,
+        productId: product.id,
+        warehouseId: options.warehouseId ?? ctx.warehouseA.id,
+        type: Type.RECEIPT,
+        quantity: options.quantity ?? 10,
+        reason: InventoryAdjustmentReason.OPENING_STOCK,
+        idempotencyKey: randomUUID(),
+        ...(options.unitCostCents === undefined ? {} : { unitCostCents: options.unitCostCents })
+      })
+    )
     return { storeId, productId: product.id }
   }
   const onHand = async (

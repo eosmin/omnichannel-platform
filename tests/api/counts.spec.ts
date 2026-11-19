@@ -6,6 +6,7 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AppPaths,
@@ -31,6 +32,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
+import { inStoreContext } from '../helpers/tenant-context'
 
 interface ErrorBody {
   error: { code: string; metadata?: Record<string, unknown> }
@@ -68,6 +70,7 @@ describe('Physical counts', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let inventory: InventoryService
+  let prisma: PrismaService
   const pushQueue = new CapturedQueue()
   // Counts storeA: counts and approves; two people in storeA that hold only one of the two permissions
   let both: Awaited<ReturnType<typeof actorWithPermissions>>
@@ -84,6 +87,7 @@ describe('Physical counts', () => {
     )
     ctx = await seedTestContext(owner, app, prefix)
     inventory = app.get(InventoryService)
+    prisma = app.get(PrismaService, { strict: false })
     const member = (
       name: string,
       store: { id: string },
@@ -133,15 +137,17 @@ describe('Physical counts', () => {
   }
   async function stocked(warehouseId: string, quantity: number, storeId = ctx.storeA.id) {
     const product = await createProduct(owner, { storeId })
-    await inventory.move({
-      storeId,
-      productId: product.id,
-      warehouseId,
-      type: Type.RECEIPT,
-      quantity,
-      reason: InventoryAdjustmentReason.OPENING_STOCK,
-      idempotencyKey: randomUUID()
-    })
+    await inStoreContext(prisma, { storeId, organizationId: ctx.orgA.id }, () =>
+      inventory.move({
+        storeId,
+        productId: product.id,
+        warehouseId,
+        type: Type.RECEIPT,
+        quantity,
+        reason: InventoryAdjustmentReason.OPENING_STOCK,
+        idempotencyKey: randomUUID()
+      })
+    )
     return { storeId, productId: product.id, warehouseId }
   }
   const levelOf = async (item: { storeId: string; productId: string; warehouseId: string }) =>
@@ -286,13 +292,15 @@ describe('Physical counts', () => {
 
       const response = await as(both).post(ApiRoutes.counts.start(first.id))
       expect(countOf(response).status).toBe(CountStatus.COUNTING)
-      await inventory.move({
-        ...item,
-        type: Type.RECEIPT,
-        quantity: 5,
-        reason: InventoryAdjustmentReason.FOUND,
-        idempotencyKey: randomUUID()
-      })
+      await inStoreContext(prisma, { storeId: item.storeId, organizationId: ctx.orgA.id }, () =>
+        inventory.move({
+          ...item,
+          type: Type.RECEIPT,
+          quantity: 5,
+          reason: InventoryAdjustmentReason.FOUND,
+          idempotencyKey: randomUUID()
+        })
+      )
 
       const detail = await linesOf(first.id)
       expect(detail.totals).toEqual({ lines: 1, counted: 0, withVariance: 0 })

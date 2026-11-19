@@ -5,6 +5,7 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { DigestFrequency, MembershipStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -25,6 +26,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
+import { inStoreContext } from '../helpers/tenant-context'
 
 interface ErrorBody {
   error: { code: string }
@@ -67,7 +69,9 @@ describe('Notifications', () => {
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
-  let service: NotificationsService
+  // The service as the listeners of the api reach it: in the context of the store the notification belongs to (and its
+  // organization), opened from the store the call names and nothing wider
+  let service: Pick<NotificationsService, 'send' | 'sendToStore'>
   const pushQueue = new CapturedQueue()
 
   beforeAll(async () => {
@@ -76,7 +80,18 @@ describe('Notifications', () => {
       builder.overrideProvider(getQueueToken(QueueNames.NOTIFICATIONS)).useValue(pushQueue)
     )
     ctx = await seedTestContext(owner, app, prefix)
-    service = app.get(NotificationsService, { strict: false })
+    const real = app.get(NotificationsService, { strict: false })
+    const prisma = app.get(PrismaService, { strict: false })
+    const scoped = <T>(storeId: string, work: () => Promise<T>) =>
+      inStoreContext(
+        prisma,
+        { storeId, organizationId: storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id },
+        work
+      )
+    service = {
+      send: input => scoped(input.storeId, () => real.send(input)),
+      sendToStore: input => scoped(input.storeId, () => real.sendToStore(input))
+    }
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)
