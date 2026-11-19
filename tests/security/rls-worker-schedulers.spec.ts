@@ -1,5 +1,6 @@
 import {
   JobContext,
+  JobContextError,
   JobContextGoneError,
   TenantContextRequiredError
 } from '@platform/core/database'
@@ -93,6 +94,21 @@ describe('row-level security, phase 5: the schedulers that go store by store', (
     // The first store was gone (skipped silently), the second failed (reported), every other store was still read
     expect(failed).toHaveLength(1)
     expect(rows.length).toBeGreaterThan(0)
+    forStore.mockRestore()
+  })
+
+  it('throws instead of answering an empty list when every store fails', async () => {
+    const forStore = jest.spyOn(jobContext, 'forStore').mockRejectedValue(new Error('pool down'))
+    const failed: string[] = []
+    await expect(
+      readInEachStore(
+        prisma,
+        jobContext,
+        () => Promise.resolve([1]),
+        id => failed.push(id)
+      )
+    ).rejects.toBeInstanceOf(JobContextError)
+    expect(failed.length).toBeGreaterThanOrEqual(2)
     forStore.mockRestore()
   })
 })

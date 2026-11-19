@@ -1,4 +1,9 @@
-import { type JobContext, JobContextGoneError, type PrismaService } from '@platform/core/database'
+import {
+  type JobContext,
+  JobContextError,
+  JobContextGoneError,
+  type PrismaService
+} from '@platform/core/database'
 
 // rls-context: the stores, organizations and connections are listed from global tables or from a list of the database (WorkerLists);
 // every read or write of a table of a store runs inside JobContext.forStore / forOrganization
@@ -25,9 +30,12 @@ export async function allStoreIds(prisma: PrismaService): Promise<string[]> {
   }
 }
 
-// Reads from every store, one context at a time, and joins the answers
-// A store whose read fails (a timeout, a pool that is full) is reported to `onFailure` and the sweep goes on with the others: one
-// tenant must not stop the work of every store after it in the order of the list. The store that failed is swept in the next run.
+// Reads from every store, one context at a time, and joins the answers.
+// ONLY FOR ADDITIVE WORK (queueing, dispatching, polling, waking): a store whose read fails (a timeout, a full pool) is reported to
+// `onFailure`, which must log at error level, and the sweep goes on with the others; what that store lacks is swept in the next run.
+// NEVER for a sweep that decides by what it does not find or that deletes (orphan files, retention, purges): there a store that cannot
+// be read must abort the whole sweep. When every store fails, or more than half, it throws instead of answering an empty list: a pool
+// that is down must not look like "nothing to do".
 export async function readInEachStore<T>(
   prisma: PrismaService,
   jobContext: JobContext,
@@ -35,13 +43,19 @@ export async function readInEachStore<T>(
   onFailure: (storeId: string, error: unknown) => void
 ): Promise<T[]> {
   const rows: T[] = []
-  for (const storeId of await allStoreIds(prisma)) {
+  const storeIds = await allStoreIds(prisma)
+  let failed = 0
+  for (const storeId of storeIds) {
     try {
       rows.push(...(await jobContext.forStore(storeId, () => read(storeId))))
     } catch (error) {
       if (error instanceof JobContextGoneError) continue
+      failed += 1
       onFailure(storeId, error)
     }
+  }
+  if (failed > 0 && failed * 2 > storeIds.length) {
+    throw new JobContextError(`the sweep could not read ${failed} of ${storeIds.length} stores`)
   }
   return rows
 }
