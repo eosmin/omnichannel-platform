@@ -14,6 +14,12 @@
 -- platform_app (the list of the api) AND platform_worker (the export of orders, which runs in the worker with the context of the
 -- store of the export and is going to lose BYPASSRLS); PUBLIC and the replica role have none.
 
+-- The orders list compares the name AS TYPED (ILIKE on `name`, with its accents, as the list always did), and the only trigram index
+-- of the name today is on `name_search` (the folded column of the customers list): the one on `name` was dropped by search_unaccent.
+-- Without an index on `name` the OR of the three columns cannot be a BitmapOr and the function would read the whole store. It is
+-- created again here (the same definition as the init migration); the cost is a little more work on each write of a name.
+CREATE INDEX IF NOT EXISTS idx_customers_name_trgm ON public.customers USING GIN (name gin_trgm_ops);
+
 CREATE FUNCTION public.rls_search_order_customers(
   p_name text,
   p_email text,

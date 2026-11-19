@@ -4,5 +4,7 @@
 BEGIN;
 
 DROP FUNCTION IF EXISTS public.rls_search_order_customers(text, text, text, integer);
+-- The index of the name that the migration created again (search_unaccent had dropped it)
+DROP INDEX IF EXISTS public.idx_customers_name_trgm;
 
 COMMIT;

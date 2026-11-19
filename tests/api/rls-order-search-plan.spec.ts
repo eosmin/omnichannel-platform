@@ -155,7 +155,10 @@ describe('the plan of the customers of an orders search with row-level security 
       raw.off('notice', collect)
     }
     const plan = plans.join('\n')
+    // The three columns of the text, each through its own trigram index (a BitmapOr)
     expect(plan).toMatch(/idx_customers_name_trgm/)
+    expect(plan).toMatch(/idx_customers_email_trgm/)
+    expect(plan).toMatch(/idx_customers_phone_normalized_trgm/)
     expect(plan).not.toMatch(/Seq Scan on customers/)
   }, 60_000)
 })
