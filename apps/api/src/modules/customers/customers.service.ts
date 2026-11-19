@@ -102,9 +102,7 @@ export class CustomersService {
 
   private async searchIds(storeId: string, q: string, page: CustomerSearchPage): Promise<string[]> {
     const patterns = customerSearchPatterns(q, await foldInDatabase(this.prisma.client, q))
-    return this.prisma.inStoreContext(storeId, () =>
-      searchCustomerIds(this.prisma.client, patterns, page)
-    )
+    return searchCustomerIds(this.prisma, storeId, patterns, page)
   }
 
   get(storeId: string, customerId: string): Promise<CustomerDetail> {

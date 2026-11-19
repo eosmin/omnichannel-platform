@@ -68,9 +68,7 @@ export function customersExportSource(
       const found = await patternsOfText()
       // The search runs inside the context of the store of the export: the functions of the database read the store from it
       const matching =
-        found === undefined
-          ? undefined
-          : await prisma.inStoreContext(storeId, () => countCustomerSearch(prisma.client, found))
+        found === undefined ? undefined : await countCustomerSearch(prisma, storeId, found)
       return matching ?? prisma.client.customer.count({ where: customerSearchWhere(storeId) })
     },
     rows: async function* () {
@@ -83,13 +81,11 @@ export function customersExportSource(
         const ids =
           found === undefined
             ? undefined
-            : await prisma.inStoreContext(storeId, () =>
-                searchCustomerIds(prisma.client, found, {
-                  order: CustomerSearchOrders.ID,
-                  after,
-                  limit: ExportLimits.ROW_PAGE_SIZE
-                })
-              )
+            : await searchCustomerIds(prisma, storeId, found, {
+                order: CustomerSearchOrders.ID,
+                after,
+                limit: ExportLimits.ROW_PAGE_SIZE
+              })
         const customers = await prisma.client.customer.findMany({
           where: {
             ...customerSearchWhere(storeId),

@@ -1,4 +1,4 @@
-import type { SqlReader } from '@platform/core/database'
+import type { PrismaService, SqlReader } from '@platform/core/database'
 import { SearchConfig } from '@platform/core/domain'
 
 import { escapeLike } from '../customers/customers.support'
@@ -67,9 +67,18 @@ export type CustomerSearchPage =
     }
   | { order: typeof CustomerSearchOrders.ID; after: string | undefined; limit: number }
 
-// The ids of one page of the customers a search finds, in the order of the page. Runs inside the context of ONE store (the function
-// reads the store from it and raises without one): the caller opens it with `inStoreContext`.
-export async function searchCustomerIds(
+// The ids of one page of the customers a search finds, in the order of the page. It runs inside the context of ONE store (the
+// function reads the store from it and raises without one): the one of the request when it is open, or its own for the store
+export function searchCustomerIds(
+  prisma: PrismaService,
+  storeId: string,
+  patterns: CustomerSearchPatterns,
+  page: CustomerSearchPage
+): Promise<string[]> {
+  return prisma.inStoreContext(storeId, () => readCustomerIds(prisma.client, patterns, page))
+}
+
+async function readCustomerIds(
   db: SqlReader,
   patterns: CustomerSearchPatterns,
   page: CustomerSearchPage
@@ -90,13 +99,16 @@ export async function searchCustomerIds(
 }
 
 // How many customers a search finds, in the context of one store
-export async function countCustomerSearch(
-  db: SqlReader,
+export function countCustomerSearch(
+  prisma: PrismaService,
+  storeId: string,
   patterns: CustomerSearchPatterns
 ): Promise<number> {
-  const rows = await db.$queryRaw<{ n: bigint }[]>`
+  return prisma.inStoreContext(storeId, async () => {
+    const rows = await prisma.client.$queryRaw<{ n: bigint }[]>`
     SELECT public.rls_count_customer_list(
       ${patterns.name}::text, ${patterns.email}::text, ${patterns.phone}::text
     ) AS n`
-  return Number(rows[0]?.n ?? 0n)
+    return Number(rows[0]?.n ?? 0n)
+  })
 }
