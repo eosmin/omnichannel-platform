@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import { Counter, Registry } from '@prometheus-io/client'
 import type { PinoLogger } from 'nestjs-pino'
 
-import { JobContext, PrismaService } from '@platform/core/database'
+import { JobContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import { InventoryAdjustmentReason, InventoryMovementType as Type } from '@platform/core/domain'
 import { InventoryService } from '@platform/core/inventory'
@@ -351,15 +351,19 @@ describe('The reconciliation of the stock', () => {
       expect(await mismatches(ctx.storeB.id)).toBe(0)
     })
 
-    it('answers an empty report for a store that has no stock or does not exist', async () => {
-      for (const storeId of [(await aStore()).storeId, randomUUID()]) {
-        expect(await reconciler.reconcileStore(storeId)).toEqual({
-          levelsChecked: 0,
-          mismatches: 0,
-          negativeNotAllowed: 0,
-          failed: 0
-        })
-      }
+    it('answers an empty report for a store that has no stock', async () => {
+      expect(await reconciler.reconcileStore((await aStore()).storeId)).toEqual({
+        levelsChecked: 0,
+        mismatches: 0,
+        negativeNotAllowed: 0,
+        failed: 0
+      })
+    })
+
+    it('says gone for a store that does not exist, which ends the job as one whose subject was deleted', async () => {
+      await expect(reconciler.reconcileStore(randomUUID())).rejects.toBeInstanceOf(
+        JobContextGoneError
+      )
     })
   })
 
