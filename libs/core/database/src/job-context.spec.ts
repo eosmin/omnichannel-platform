@@ -143,6 +143,7 @@ describe('JobContext', () => {
       })
       return fakes
     }
+    const foreign = inRequest({ storeIds: [STORE, OTHER], organizationIds: [OTHER] })
     const wide = inRequest({ storeIds: [STORE, OTHER], organizationIds: [ORG] })
     const work = jest.fn().mockResolvedValue('joined')
     await expect(new JobContext(wide.prisma).inOrganization(ORG, work)).resolves.toBe('joined')
@@ -162,11 +163,14 @@ describe('JobContext', () => {
       'as-before'
     )
     expect(narrow.contexts).toHaveLength(0)
+    // ... but never the context of another organization: that would read the books as missing
+    await expect(
+      new JobContext(foreign.prisma).inOrganizationOrRequest(ORG, refused)
+    ).rejects.toBeInstanceOf(JobContextError)
     const job = fakePrisma({ organization: { id: ORG }, stores })
     await new JobContext(job.prisma).inOrganizationOrRequest(ORG, () => Promise.resolve(1))
     expect(job.contexts).toEqual([{ storeIds: [STORE, OTHER], organizationIds: [ORG] }])
 
-    const foreign = inRequest({ storeIds: [STORE, OTHER], organizationIds: [OTHER] })
     await expect(
       new JobContext(foreign.prisma).inOrganization(ORG, refused)
     ).rejects.toBeInstanceOf(JobContextError)

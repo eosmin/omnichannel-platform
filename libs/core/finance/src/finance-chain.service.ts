@@ -3,7 +3,12 @@ import type { Gauge } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
 import { isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
-import { ChainIncidentChange, ChainProblem, FinanceReportLimits } from '@platform/core/domain'
+import {
+  ChainIncidentChange,
+  ChainProblem,
+  FinanceReportLimits,
+  FinanceSweepLimits
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -88,7 +93,10 @@ export class FinanceChainVerifier {
   // Each read of the walk (the settings, a page of the journal, the closed periods) is its own context of the organization: the walk reads
   // the whole journal and a transaction that long would hit its time limit; the postings that land meanwhile are what the head check is for
   private unit<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
-    return this.jobContext.inOrganizationOrRequest(organizationId, work)
+    return this.jobContext.inOrganizationOrRequest(organizationId, work, {
+      maxWait: FinanceSweepLimits.CONTEXT_MAX_WAIT_MS,
+      timeout: FinanceSweepLimits.CONTEXT_TIMEOUT_MS
+    })
   }
 
   // A posting that commits while the walk runs moves the head. After the walk the settings are read again: a head AHEAD of the last entry
@@ -277,7 +285,10 @@ export class FinanceChainMonitor {
   }
 
   private unit<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
-    return this.jobContext.inOrganizationOrRequest(organizationId, work)
+    return this.jobContext.inOrganizationOrRequest(organizationId, work, {
+      maxWait: FinanceSweepLimits.CONTEXT_MAX_WAIT_MS,
+      timeout: FinanceSweepLimits.CONTEXT_TIMEOUT_MS
+    })
   }
 
   private async record(

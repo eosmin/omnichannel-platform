@@ -179,7 +179,15 @@ export class JobContext {
     joinAnyRequest: boolean
   ): Promise<T> {
     if (active.getStore() === undefined && this.prisma.hasTenantContext()) {
-      if (joinAnyRequest) return work()
+      const current = this.prisma.currentTenantContext()
+      if (joinAnyRequest) {
+        // Even the transitional join needs the right organization: a context of another one reads the settings as missing, and a
+        // posting reads "no books" as nothing to post
+        if (current === undefined || !current.organizationIds.includes(organizationId)) {
+          throw new JobContextError('the open tenant context is not the one of the organization')
+        }
+        return work()
+      }
       // Joining a narrower context is a silent failure: the rows of the other stores of the organization would read as no rows. Join
       // only a context that names this organization and every store of it; otherwise refuse (a route that needs the whole organization
       // opens its own context, it does not join the one of the active store)

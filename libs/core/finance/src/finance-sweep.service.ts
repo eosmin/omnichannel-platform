@@ -103,7 +103,10 @@ export class FinanceSweepService {
   // One read of the books in one context of the organization (a request joins its own). The sweep opens one per page of a table, so a
   // long run never holds a transaction (the preview of a source that cannot be read would abort every later statement of a shared one)
   private unit<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
-    return this.jobContext.inOrganizationOrRequest(organizationId, work)
+    return this.jobContext.inOrganizationOrRequest(organizationId, work, {
+      maxWait: FinanceSweepLimits.CONTEXT_MAX_WAIT_MS,
+      timeout: FinanceSweepLimits.CONTEXT_TIMEOUT_MS
+    })
   }
 
   async sweep(

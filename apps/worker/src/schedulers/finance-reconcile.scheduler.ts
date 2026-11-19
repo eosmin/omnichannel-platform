@@ -68,7 +68,18 @@ export class FinanceReconcileScheduler {
       })
       const settings: { organizationId: string }[] = []
       for (const organization of page) {
-        if (await this.hasBooks(organization.id)) settings.push({ organizationId: organization.id })
+        // One organization whose context fails must not leave the rest of the page without its night: it is queued anyway (the job
+        // itself ends when there are no books) and the failure is logged
+        let queue = true
+        try {
+          queue = await this.hasBooks(organization.id)
+        } catch (error) {
+          this.logger.warn(
+            { organizationId: organization.id, errorName: errorName(error) },
+            'the books of an organization could not be looked up: it is queued anyway'
+          )
+        }
+        if (queue) settings.push({ organizationId: organization.id })
       }
       if (settings.length > 0) {
         await this.heavyQueue.addBulk(

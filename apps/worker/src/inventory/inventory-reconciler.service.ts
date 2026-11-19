@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import type { Counter } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
-import { JobContext, PrismaService } from '@platform/core/database'
+import { JobContext, JobContextError, PrismaService } from '@platform/core/database'
 import { InventoryLimits } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { InventoryService, type LevelCheck } from '@platform/core/inventory'
@@ -132,6 +132,8 @@ export class InventoryReconciler {
         this.inventory.checkLevel({ storeId, ...item })
       )
     } catch (error) {
+      // The store of the job is gone (or a context is already open): that is the job's end, not one more item that failed
+      if (error instanceof JobContextError) throw error
       // One item that cannot be read must not hide the rest of the store: it is told, and counted apart
       report.failed += 1
       this.logger.error(
