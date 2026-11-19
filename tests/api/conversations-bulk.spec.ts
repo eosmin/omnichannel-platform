@@ -302,9 +302,13 @@ describe('Marking unread and acting on many conversations', () => {
         userId: agent2.id
       }).expect(OK)
 
+      // At least one more than before (the poll is not satisfied by an older entry); an entry of another test that lands late may make it
+      // two, so the content is looked for among them and not read from the last
       const entries = await waitForAuditEntries(owner, where, before + 1)
-      expect(entries).toHaveLength(before + 1)
-      expect(entries.at(-1)?.metadata).toMatchObject({ params: { userId: agent2.id } })
+      expect(entries.length).toBeGreaterThanOrEqual(before + 1)
+      expect(entries.map(entry => entry.metadata)).toContainEqual(
+        expect.objectContaining({ params: { userId: agent2.id } })
+      )
     })
 
     it('assigns to the caller, to someone, and releases', async () => {

@@ -679,9 +679,6 @@ describe('Bulk labels and "print labels" (TDD_17 §4.6)', () => {
 
     it('merges them in the order asked, with no call to the carrier', async () => {
       const [a, b, c] = await guides(3)
-      const where = { storeId: ctx.storeA.id, action: AuditAction.SHIPMENT_LABELS_MERGED }
-      // Other tests of the file merge labels too: wait for the one more entry this call makes, or the last one read is an older one
-      const before = await owner.auditLog.count({ where })
       const response = await merge([c?.id ?? '', a?.id ?? '', b?.id ?? ''])
       expect(response.status).toBe(OK)
       const body = response.body as MergeBody
@@ -701,9 +698,14 @@ describe('Bulk labels and "print labels" (TDD_17 §4.6)', () => {
       // Reprinting calls the carrier zero times
       expect(standalone.state.calls).toHaveLength(0)
       // Who printed how many labels is on the audit trail
-      const entries = await waitForAuditEntries(owner, where, before + 1)
-      expect(entries).toHaveLength(before + 1)
-      expect(entries.at(-1)?.metadata).toMatchObject({ asked: 3, merged: 3, leftOut: 0 })
+      // The entry of THIS call, by the file it names: other tests of the file merge labels too, and one of theirs may land late
+      const entries = await waitForAuditEntries(owner, {
+        storeId: ctx.storeA.id,
+        action: AuditAction.SHIPMENT_LABELS_MERGED,
+        metadata: { path: ['mediaId'], equals: file.id }
+      })
+      expect(entries).toHaveLength(1)
+      expect(entries[0]?.metadata).toMatchObject({ asked: 3, merged: 3, leftOut: 0 })
     })
 
     it('never merges a label that was voided, and says so', async () => {
