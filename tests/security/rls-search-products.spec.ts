@@ -100,26 +100,30 @@ describe('the product search functions of row-level security', () => {
         ).rows
     )
 
+  let seeded = 0
   async function seed() {
+    // Each call writes its own skus: the sku of a product is unique in its store
+    seeded += 1
+    const n = seeded
     const own = await createProduct(owner, {
       storeId: ctx.storeA.id,
       name: `Camisa ${tag}`,
-      sku: `SKU-${tag}-A`
+      sku: `SKU-${tag}-A${n}`
     })
     const foreign = await createProduct(owner, {
       storeId: ctx.storeB.id,
       name: `Camisa ${tag}`,
-      sku: `SKU-${tag}-B`
+      sku: `SKU-${tag}-B${n}`
     })
     const ownVariant = await createProductVariant(owner, {
       productId: own.id,
       name: `Talla ${tag} M`,
-      sku: `VAR-${tag}-A`
+      sku: `VAR-${tag}-A${n}`
     })
     const foreignVariant = await createProductVariant(owner, {
       productId: foreign.id,
       name: `Talla ${tag} M`,
-      sku: `VAR-${tag}-B`
+      sku: `VAR-${tag}-B${n}`
     })
     return { own, foreign, ownVariant, foreignVariant }
   }

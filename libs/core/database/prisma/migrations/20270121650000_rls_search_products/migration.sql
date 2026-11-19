@@ -31,8 +31,13 @@ CREATE FUNCTION public.rls_search_products(
   LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp SET plan_cache_mode = force_custom_plan SET standard_conforming_strings = on
   AS $$
   #variable_conflict use_column
+  DECLARE
+    -- The stores of the context are read ONCE into a variable: with a custom plan the planner sees the value, so the condition on
+    -- store_id is an index condition with the right estimate (a sub-select of the function would be an InitPlan of unknown size and
+    -- the planner would read the whole table)
+    v_stores text[] := public.app_store_ids();
   BEGIN
-    IF cardinality(public.app_store_ids()) = 0 THEN
+    IF cardinality(v_stores) = 0 THEN
       RAISE EXCEPTION 'SEARCH_CONTEXT_REQUIRED' USING ERRCODE = '42501';
     END IF;
     -- The size of the answer is bounded here, not only by the caller: NULL would be LIMIT NULL, which is no limit
@@ -45,14 +50,14 @@ CREATE FUNCTION public.rls_search_products(
       -- index condition (an OR with an EXISTS cannot: the planner would read the whole store)
       SELECT p.id
       FROM public.products p
-      WHERE p.store_id = ANY ((SELECT public.app_store_ids())::text[])
+      WHERE p.store_id = ANY (v_stores)
         AND (p_archived OR p.active)
         AND (p.name ILIKE p_contains ESCAPE '\' OR p.sku ILIKE p_contains ESCAPE '\')
       UNION
       SELECT v.product_id
       FROM public.product_variants v
       JOIN public.products p ON p.id = v.product_id
-      WHERE p.store_id = ANY ((SELECT public.app_store_ids())::text[])
+      WHERE p.store_id = ANY (v_stores)
         AND (p_archived OR p.active)
         AND (p_archived OR v.active)
         AND (v.name ILIKE p_contains ESCAPE '\' OR v.sku ILIKE p_contains ESCAPE '\')
@@ -121,8 +126,13 @@ CREATE FUNCTION public.rls_search_product_matches(
   LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp SET plan_cache_mode = force_custom_plan SET standard_conforming_strings = on
   AS $$
   #variable_conflict use_column
+  DECLARE
+    -- The stores of the context are read ONCE into a variable: with a custom plan the planner sees the value, so the condition on
+    -- store_id is an index condition with the right estimate (a sub-select of the function would be an InitPlan of unknown size and
+    -- the planner would read the whole table)
+    v_stores text[] := public.app_store_ids();
   BEGIN
-    IF cardinality(public.app_store_ids()) = 0 THEN
+    IF cardinality(v_stores) = 0 THEN
       RAISE EXCEPTION 'SEARCH_CONTEXT_REQUIRED' USING ERRCODE = '42501';
     END IF;
     IF p_limit IS NULL OR p_limit < 1 OR p_limit > 10001 THEN
@@ -132,7 +142,7 @@ CREATE FUNCTION public.rls_search_product_matches(
     (
       SELECT p_product_kind, p.id
       FROM public.products p
-      WHERE p.store_id = ANY ((SELECT public.app_store_ids())::text[])
+      WHERE p.store_id = ANY (v_stores)
         AND (p.name ILIKE p_contains ESCAPE '\' OR p.sku ILIKE p_contains ESCAPE '\')
       LIMIT p_limit
     )
@@ -141,7 +151,7 @@ CREATE FUNCTION public.rls_search_product_matches(
       SELECT p_variant_kind, v.id
       FROM public.product_variants v
       JOIN public.products p ON p.id = v.product_id
-      WHERE p.store_id = ANY ((SELECT public.app_store_ids())::text[])
+      WHERE p.store_id = ANY (v_stores)
         AND (v.name ILIKE p_contains ESCAPE '\' OR v.sku ILIKE p_contains ESCAPE '\')
       LIMIT p_limit
     );
