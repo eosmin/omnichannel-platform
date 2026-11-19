@@ -7,6 +7,7 @@ import { InjectMetric } from '@platform/core/metrics-module'
 
 import { workerRoleVerdict, WorkerRoleVerdicts } from './worker-role.policy'
 
+// rls-context: the one query reads pg_roles, a catalog of the server with no row of any store, inside withoutTenantContext
 // At start the worker asks the database whether the role it connects with skips row-level security (TDD_01 §3.2). Only the flag
 // WORKER_RLS_CONTEXT turns a bypassing role into a failed start; see workerRoleVerdict.
 export const WORKER_RLS_CONTEXT_ON = Symbol('WORKER_RLS_CONTEXT_ON')
@@ -25,8 +26,12 @@ export class WorkerRoleCheck implements OnApplicationBootstrap {
     let bypassesRls: boolean | undefined
     try {
       // A superuser skips row security too, with or without the flag
-      const rows = await this.prisma.client.$queryRaw<Array<{ bypass: boolean }>>`
+      const rows = await this.prisma.withoutTenantContext(
+        'pg_roles is a catalog of the server, not a table of a store',
+        () =>
+          this.prisma.client.$queryRaw<Array<{ bypass: boolean }>>`
         SELECT (rolsuper OR rolbypassrls) AS bypass FROM pg_roles WHERE rolname = current_user`
+      )
       bypassesRls = rows[0]?.bypass
     } catch (error) {
       // With the flag off this is only a diagnostic and must not stop the start; with it on, not knowing is not safe
