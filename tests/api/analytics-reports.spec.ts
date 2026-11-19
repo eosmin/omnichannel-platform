@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import type { Counter } from '@prometheus-io/client'
 import { UnrecoverableError } from 'bullmq'
 import { strFromU8, unzipSync } from 'fflate'
 import type { PinoLogger } from 'nestjs-pino'
@@ -93,18 +94,30 @@ describe('Analytics reports and export', () => {
     } as unknown as PinoLogger
     const csv = new CsvExportWriter(storage)
     const { events, audit } = await workerServices(app, prisma)
+    const subjectMissing = { inc: jest.fn() } as unknown as Counter<string>
     generator = new ExportGenerator(
       prisma,
       csv,
       new ZipExportWriter(storage, logger),
-      new AnalyticsExportWriter(prisma, storage, csv),
+      new AnalyticsExportWriter(prisma, storage, csv, new JobContext(prisma)),
       storage,
       audit,
       events,
-      logger
+      logger,
+      new JobContext(prisma),
+      subjectMissing
     )
     emails = emailsOf(app)
-    runner = new ScheduledReportRunner(prisma, generator, storage, audit, emails as never, logger)
+    runner = new ScheduledReportRunner(
+      prisma,
+      generator,
+      storage,
+      audit,
+      emails as never,
+      logger,
+      new JobContext(prisma),
+      subjectMissing
+    )
   })
   afterAll(async () => {
     for (const key of keys) await storage.delete(key)
@@ -151,7 +164,7 @@ describe('Analytics reports and export', () => {
     })
 
   async function fileOf(exportId: string): Promise<{ text: string; bytes: Buffer }> {
-    await generator.generate(exportId, false)
+    await generator.generate(ctx.storeA.id, exportId, false)
     const row = await owner.export.findUniqueOrThrow({ where: { id: exportId } })
     expect(row.status).toBe(ExportStatus.READY)
     keys.push(row.key ?? '')
@@ -392,7 +405,9 @@ describe('Analytics reports and export', () => {
           expiresAt: new Date(Date.now() + 24 * HOUR)
         }
       })
-      await expect(generator.generate(row.id, false)).rejects.toBeInstanceOf(UnrecoverableError)
+      await expect(generator.generate(ctx.storeA.id, row.id, false)).rejects.toBeInstanceOf(
+        UnrecoverableError
+      )
       expect((await owner.export.findUniqueOrThrow({ where: { id: row.id } })).status).toBe(
         ExportStatus.FAILED
       )
@@ -627,7 +642,7 @@ describe('Analytics reports and export', () => {
     it('makes the file as an export of the person, and sends one email for each address with the file attached', async () => {
       await day(ctx.storeA.id, '2026-11-09', AnalyticsMetrics.ORDERS_CREATED, 4)
       const report = await make()
-      expect(await runner.run(report.id, DAY, false, now)).toBe('sent')
+      expect(await runner.run(ctx.storeA.id, report.id, DAY, false, now)).toBe('sent')
       const made = await owner.export.findFirstOrThrow({
         where: { storeId: ctx.storeA.id, type: ExportTypes.ANALYTICS },
         orderBy: { createdAt: 'desc' }
@@ -665,21 +680,21 @@ describe('Analytics reports and export', () => {
       await day(ctx.storeA.id, '2026-11-07', AnalyticsMetrics.ORDERS_CREATED, 6)
       const report = await make()
       // Queued for the 8th (so it reports the 7th) and run on the 10th
-      expect(await runner.run(report.id, '2026-11-08', false, now)).toBe('sent')
+      expect(await runner.run(ctx.storeA.id, report.id, '2026-11-08', false, now)).toBe('sent')
       const first = emails.jobs[0] as unknown as { data: { from: string; to: string } }
       expect(first.data).toMatchObject({ from: '2026-11-07', to: '2026-11-08' })
     })
 
     it('does not send the same report twice in a day', async () => {
       const report = await make({ lastSentAt: new Date(now.getTime() - HOUR) })
-      expect(await runner.run(report.id, DAY, false, now)).toBe('skipped')
+      expect(await runner.run(ctx.storeA.id, report.id, DAY, false, now)).toBe('skipped')
       expect(emails.jobs).toHaveLength(0)
     })
 
     it('skips a report that is off or gone', async () => {
       const off = await make({ enabled: false })
-      expect(await runner.run(off.id, DAY, false, now)).toBe('skipped')
-      expect(await runner.run(randomUUID(), DAY, false, now)).toBe('skipped')
+      expect(await runner.run(ctx.storeA.id, off.id, DAY, false, now)).toBe('skipped')
+      expect(await runner.run(ctx.storeA.id, randomUUID(), DAY, false, now)).toBe('skipped')
       expect(emails.jobs).toHaveLength(0)
     })
 
@@ -696,7 +711,7 @@ describe('Analytics reports and export', () => {
         roleId: viewOnly.id
       })
       const report = await make({ createdBy: member.id })
-      expect(await runner.run(report.id, DAY, false, now)).toBe('disabled')
+      expect(await runner.run(ctx.storeA.id, report.id, DAY, false, now)).toBe('disabled')
       expect(emails.jobs).toHaveLength(0)
       expect(
         (await owner.scheduledReport.findUniqueOrThrow({ where: { id: report.id } })).enabled
@@ -714,7 +729,7 @@ describe('Analytics reports and export', () => {
         createdBy: member.id
       })
       // Off now: a later run skips it and says nothing more
-      expect(await runner.run(report.id, DAY, false, now)).toBe('skipped')
+      expect(await runner.run(ctx.storeA.id, report.id, DAY, false, now)).toBe('skipped')
       expect(
         await owner.auditLog.count({
           where: {
@@ -733,7 +748,7 @@ describe('Analytics reports and export', () => {
         data: { status: 'SUSPENDED' }
       })
       try {
-        expect(await runner.run(report.id, DAY, false, now)).toBe('disabled')
+        expect(await runner.run(ctx.storeA.id, report.id, DAY, false, now)).toBe('disabled')
       } finally {
         await owner.membership.updateMany({
           where: { userId: ctx.adminA.id, storeId: ctx.storeA.id },
@@ -751,7 +766,7 @@ describe('Analytics reports and export', () => {
 
     it('refuses to run a report whose stored metrics do not fit any more', async () => {
       const report = await make({ metrics: ['no.longer.a.metric'] })
-      await expect(runner.run(report.id, DAY, false, now)).rejects.toBeInstanceOf(
+      await expect(runner.run(ctx.storeA.id, report.id, DAY, false, now)).rejects.toBeInstanceOf(
         UnrecoverableError
       )
       expect(emails.jobs).toHaveLength(0)
@@ -760,7 +775,7 @@ describe('Analytics reports and export', () => {
     it('reads only the store of the report', async () => {
       await day(ctx.storeB.id, '2026-11-09', AnalyticsMetrics.ORDERS_CREATED, 888)
       const report = await make()
-      await runner.run(report.id, DAY, false, now)
+      await runner.run(ctx.storeA.id, report.id, DAY, false, now)
       const first = emails.jobs[0] as unknown as { data: { totals: { value: string }[] } }
       expect(first.data.totals[0]?.value).toBe('0')
       const made = await owner.export.findFirstOrThrow({

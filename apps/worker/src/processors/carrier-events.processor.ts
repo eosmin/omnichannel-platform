@@ -13,7 +13,11 @@ import {
 } from '@platform/core/queues'
 import { carrierEventSchema, type ProcessCarrierEventJob } from '@platform/plugins/runtime'
 
-import { CarrierEventApplier, CarrierEventHandled } from '../carriers/carrier-event-applier.service'
+import {
+  CarrierEventApplier,
+  CarrierEventHandled,
+  type CarrierEventHandledType
+} from '../carriers/carrier-event-applier.service'
 import { PluginWebhookDeliverer } from '../webhooks/plugin-webhook-deliverer.service'
 import { TenantWebhookDeliverer } from '../webhooks/tenant-webhook-deliverer.service'
 
@@ -90,7 +94,7 @@ export class CarrierEventsProcessor extends BaseProcessor<WebhooksQueueJob> {
     // BullMQ gives a job to any worker of the queue, not by name, so the processor dispatches by the name of the job
     switch (job.name) {
       case JobNames.PROCESS_CARRIER_EVENT:
-        await this.handleCarrierEvent(job.data)
+        await this.handleCarrierEvent(job)
         return
       case JobNames.TRIGGER_WEBHOOK:
         await this.handleWebhook(job)
@@ -108,9 +112,11 @@ export class CarrierEventsProcessor extends BaseProcessor<WebhooksQueueJob> {
     // The job crossed Redis: what does not fit now will not fit when it is tried again
     if (!parsed.success) throw new UnrecoverableError('the webhook job does not fit its schema')
     // A failure that may pass throws and BullMQ asks again; every attempt is a row of the delivery log
-    await this.webhooks.deliver(parsed.data, job.attemptsMade + 1, {
-      maxAttempts: job.opts.attempts ?? 1
-    })
+    await this.skipIfGone(job, () =>
+      this.webhooks.deliver(parsed.data, job.attemptsMade + 1, {
+        maxAttempts: job.opts.attempts ?? 1
+      })
+    )
   }
 
   private async handlePluginWebhook(job: Job<WebhooksQueueJob>): Promise<void> {
@@ -118,17 +124,25 @@ export class CarrierEventsProcessor extends BaseProcessor<WebhooksQueueJob> {
     if (!parsed.success) {
       throw new UnrecoverableError('the plugin webhook job does not fit its schema')
     }
-    await this.pluginWebhooks.deliver(parsed.data, job.attemptsMade + 1, {
-      maxAttempts: job.opts.attempts ?? 1
-    })
+    await this.skipIfGone(job, () =>
+      this.pluginWebhooks.deliver(parsed.data, job.attemptsMade + 1, {
+        maxAttempts: job.opts.attempts ?? 1
+      })
+    )
   }
 
-  private async handleCarrierEvent(data: unknown): Promise<void> {
-    const parsed = carrierEventJobSchema.safeParse(data)
+  private async handleCarrierEvent(job: Job<WebhooksQueueJob>): Promise<void> {
+    const parsed = carrierEventJobSchema.safeParse(job.data)
     // The job crossed Redis: what does not fit now will not fit when it is tried again
     if (!parsed.success)
       throw new UnrecoverableError('the carrier event job does not fit its schema')
-    const outcome = await this.applier.apply(parsed.data, ShipmentEventSource.WEBHOOK)
+    const applied: { outcome?: CarrierEventHandledType } = {}
+    await this.skipIfGone(job, async () => {
+      applied.outcome = await this.applier.apply(parsed.data, ShipmentEventSource.WEBHOOK)
+    })
+    // A store that was deleted meanwhile: the job is done, and nothing was applied
+    const { outcome } = applied
+    if (outcome === undefined) return
     // Not an error of the job but a thing that may change in a moment: the carrier's own books lag behind its webhook, and a
     // webhook can outrun the guide being stored. BullMQ asks again; what never resolves ends in the dead letter queue, where a
     // person sees it, and not as a success that hides a lost event

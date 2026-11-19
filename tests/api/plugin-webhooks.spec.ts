@@ -9,7 +9,7 @@ import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   PLUGIN_REVOKE_CONFIRMATION,
@@ -99,7 +99,8 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       cipher,
       app.get(DomainEvents),
       metric,
-      logger
+      logger,
+      new JobContext(app.get(PrismaService))
     )
   })
   afterAll(async () => {

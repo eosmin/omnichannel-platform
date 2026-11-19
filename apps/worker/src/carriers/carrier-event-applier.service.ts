@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the carrier is called outside of it
 import { Injectable } from '@nestjs/common'
 import type { Counter } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
@@ -7,7 +8,8 @@ import {
   lockStoreForWrite,
   lockStoreScope,
   type PrismaTransaction,
-  PrismaService
+  PrismaService,
+  JobContext
 } from '@platform/core/database'
 import {
   CarrierCapability,
@@ -81,7 +83,8 @@ export class CarrierEventApplier {
     private readonly cipher: CredentialCipher,
     @InjectMetric(MetricNames.SHIPMENT_UNKNOWN_STATUS_TOTAL)
     private readonly unknownStatus: Counter<string>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     // Not @InjectPinoLogger(name): see ProcessorSupport
     this.logger.setContext(CarrierEventApplier.name)
@@ -109,14 +112,16 @@ export class CarrierEventApplier {
       this.logger.warn({ connectionId }, 'a carrier event names no shipment at all: dropped')
       return CarrierEventHandled.IGNORED
     }
-    const lookup = await findShipmentOfEvent(
-      this.prisma.client,
-      { storeId, connectionId },
-      {
-        providerShipmentId: event.providerShipmentId,
-        guideNumber: event.guideNumber,
-        reference: event.reference
-      }
+    const lookup = await this.jobContext.forStore(storeId, () =>
+      findShipmentOfEvent(
+        this.prisma.client,
+        { storeId, connectionId },
+        {
+          providerShipmentId: event.providerShipmentId,
+          guideNumber: event.guideNumber,
+          reference: event.reference
+        }
+      )
     )
     if (lookup.kind !== ShipmentLookupKinds.FOUND) {
       // Kept nowhere, because a history line needs its shipment. Unknown may be a webhook that outran the guide being stored
@@ -146,16 +151,20 @@ export class CarrierEventApplier {
       if (!(await this.confirmed(job, meaning.carrierId, shipmentId, resolution.status, source))) {
         return CarrierEventHandled.UNCONFIRMED
       }
-      return this.engine.apply(
-        storeId,
-        shipmentId,
-        {
-          status: resolution.status,
-          rawStatus: textOf(event),
-          occurredAt,
-          ...(event.providerEventId === undefined ? {} : { providerEventId: event.providerEventId })
-        },
-        source
+      return this.jobContext.forStore(storeId, () =>
+        this.engine.apply(
+          storeId,
+          shipmentId,
+          {
+            status: resolution.status,
+            rawStatus: textOf(event),
+            occurredAt,
+            ...(event.providerEventId === undefined
+              ? {}
+              : { providerEventId: event.providerEventId })
+          },
+          source
+        )
       )
     }
     return this.keep(job, shipmentId, occurredAt, resolution, source, meaning.carrierId)
@@ -191,18 +200,22 @@ export class CarrierEventApplier {
       this.logger.error({ connectionId }, 'a shared-secret carrier cannot be asked: event dropped')
       return false
     }
-    const connection = await this.prisma.client.carrierConnection.findFirst({
-      where: { id: connectionId, storeId, status: String(CarrierConnectionStatus.ACTIVE) },
-      select: { id: true, storeId: true, credentials: true, contact: true }
-    })
-    const shipment = await this.prisma.client.shipment.findFirst({
-      where: { id: shipmentId, storeId, kind: ShipmentKind.OUTBOUND },
-      select: {
-        guideNumber: true,
-        providerShipmentId: true,
-        order: { select: { orderNumber: true } }
-      }
-    })
+    const connection = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.carrierConnection.findFirst({
+        where: { id: connectionId, storeId, status: String(CarrierConnectionStatus.ACTIVE) },
+        select: { id: true, storeId: true, credentials: true, contact: true }
+      })
+    )
+    const shipment = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.shipment.findFirst({
+        where: { id: shipmentId, storeId, kind: ShipmentKind.OUTBOUND },
+        select: {
+          guideNumber: true,
+          providerShipmentId: true,
+          order: { select: { orderNumber: true } }
+        }
+      })
+    )
     if (connection === null || shipment === null) return false
     const ctx = buildCarrierContext(connection, this.cipher)
     const asked = await withDeadline(
@@ -270,69 +283,76 @@ export class CarrierEventApplier {
     }
     // Most of a re-polled history is twins: they are found before the store is locked, and again under the lock
     if (
-      (await this.prisma.client.shipmentEvent.findFirst({
-        where: twinWhere,
-        select: { id: true }
-      })) !== null
+      (await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.shipmentEvent.findFirst({
+          where: twinWhere,
+          select: { id: true }
+        })
+      )) !== null
     ) {
       return CarrierEventHandled.DUPLICATE
     }
-    const outcome = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      const known = await tx.shipment.findFirst({
-        where: { id: shipmentId, storeId, kind: ShipmentKind.OUTBOUND },
-        select: { orderId: true }
-      })
-      if (known === null) return CarrierEventHandled.IGNORED
-      await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${known.orderId}`)
-      const row = await this.liveShipment(tx, storeId, shipmentId)
-      if (row === null) return CarrierEventHandled.IGNORED
-      // The same event again: by its id, or by its words and moment when the carrier sends no id
-      const twin = await tx.shipmentEvent.findFirst({ where: twinWhere, select: { id: true } })
-      if (twin !== null) return CarrierEventHandled.DUPLICATE
-      const actor: ActorRef = { type: 'system', id: null }
-      await this.writes.recordHistory(
-        tx,
-        {
-          shipmentId: row.id,
-          storeId: row.storeId,
-          orderId: row.orderId,
-          orderNumber: row.order.orderNumber,
-          connectionId: row.connectionId
-        },
-        null,
-        {
-          actor,
-          source,
-          occurredAt,
-          rawStatus: text,
-          ...(event.providerEventId === undefined
-            ? {}
-            : { providerEventId: event.providerEventId }),
-          // What a replay needs to give the line its meaning later: the normalized parts of the code
-          payload: keptEventPayload(resolution.code, { plainCode, reasonCode })
-        }
-      )
-      if (!unmapped) return CarrierEventHandled.STORED
-      const recorded = await recordUnmappedStatus(tx, {
-        storeId,
-        connectionId,
-        providerCode: resolution.code,
-        rawStatus: text
-      })
-      if (!recorded.recorded) {
-        this.logger.warn({ connectionId, carrierId }, 'an unmapped carrier status was not recorded')
-      }
-      if (recorded.firstSighting) {
-        // Published inside the transaction: the bus announces it once the transaction commits, and not at all if it rolls back
-        this.events.publish(tx, Events.CARRIER_STATUS_UNMAPPED, {
+    const outcome = await this.jobContext.forStore(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        const known = await tx.shipment.findFirst({
+          where: { id: shipmentId, storeId, kind: ShipmentKind.OUTBOUND },
+          select: { orderId: true }
+        })
+        if (known === null) return CarrierEventHandled.IGNORED
+        await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${known.orderId}`)
+        const row = await this.liveShipment(tx, storeId, shipmentId)
+        if (row === null) return CarrierEventHandled.IGNORED
+        // The same event again: by its id, or by its words and moment when the carrier sends no id
+        const twin = await tx.shipmentEvent.findFirst({ where: twinWhere, select: { id: true } })
+        if (twin !== null) return CarrierEventHandled.DUPLICATE
+        const actor: ActorRef = { type: 'system', id: null }
+        await this.writes.recordHistory(
+          tx,
+          {
+            shipmentId: row.id,
+            storeId: row.storeId,
+            orderId: row.orderId,
+            orderNumber: row.order.orderNumber,
+            connectionId: row.connectionId
+          },
+          null,
+          {
+            actor,
+            source,
+            occurredAt,
+            rawStatus: text,
+            ...(event.providerEventId === undefined
+              ? {}
+              : { providerEventId: event.providerEventId }),
+            // What a replay needs to give the line its meaning later: the normalized parts of the code
+            payload: keptEventPayload(resolution.code, { plainCode, reasonCode })
+          }
+        )
+        if (!unmapped) return CarrierEventHandled.STORED
+        const recorded = await recordUnmappedStatus(tx, {
           storeId,
           connectionId,
-          providerCode: resolution.code
+          providerCode: resolution.code,
+          rawStatus: text
         })
-      }
-      return CarrierEventHandled.STORED
-    })
+        if (!recorded.recorded) {
+          this.logger.warn(
+            { connectionId, carrierId },
+            'an unmapped carrier status was not recorded'
+          )
+        }
+        if (recorded.firstSighting) {
+          // Published inside the transaction: the bus announces it once the transaction commits, and not at all if it rolls back
+          this.events.publish(tx, Events.CARRIER_STATUS_UNMAPPED, {
+            storeId,
+            connectionId,
+            providerCode: resolution.code
+          })
+        }
+        return CarrierEventHandled.STORED
+      })
+    )
     if (unmapped && outcome === CarrierEventHandled.STORED) {
       this.unknownStatus.inc({ carrier: carrierId })
     }

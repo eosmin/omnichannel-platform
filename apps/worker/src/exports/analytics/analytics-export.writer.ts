@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the file is written to the bucket outside of it
 import { Injectable } from '@nestjs/common'
 
 import {
@@ -7,7 +8,7 @@ import {
   MetricUnits,
   ReportFormats
 } from '@platform/core/analytics'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { ExportContentTypes } from '@platform/core/exports'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -48,7 +49,8 @@ export class AnalyticsExportWriter {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
-    private readonly csv: CsvExportWriter
+    private readonly csv: CsvExportWriter,
+    private readonly jobContext: JobContext
   ) {}
 
   // The days and the row of totals
@@ -66,11 +68,13 @@ export class AnalyticsExportWriter {
     // A plugin has no profile: the file is in the default language
     const user = isPluginRequester(row.requestedBy)
       ? null
-      : await this.prisma.client.user.findUnique({
-          where: { id: row.requestedBy },
-          select: { locale: true }
-        })
-    const table = await readReportTable(this.prisma, row.storeId, filters)
+      : await this.jobContext.forStore(row.storeId, () =>
+          this.prisma.client.user.findUnique({
+            where: { id: row.requestedBy },
+            select: { locale: true }
+          })
+        )
+    const table = await readReportTable(this.prisma, this.jobContext, row.storeId, filters)
     const texts = reportTexts(localeOf(user?.locale), {
       ...(filters.reportName === undefined ? {} : { name: filters.reportName }),
       from: filters.from,

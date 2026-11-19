@@ -1,4 +1,5 @@
-import type { PrismaService } from '@platform/core/database'
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one page or count; the file is written to the bucket outside of it
+import type { JobContext, PrismaService } from '@platform/core/database'
 import { ExportLimits } from '@platform/core/exports'
 import { mediaGalleryWhere, type MediaZipFilters, viewerOf } from '@platform/core/messaging'
 import { GalleryLimits } from '@platform/core/storage'
@@ -39,22 +40,27 @@ export class ZipEmptyError extends Error {
 // since). Read in pages by id, so the list of a big customer is never held whole.
 export function mediaZipSource(
   prisma: PrismaService,
+  jobContext: JobContext,
   storeId: string,
   filters: MediaZipFilters
 ): ZipSource {
   const viewer = viewerOf(filters.viewer.userId, filters.viewer.held)
   return {
     count: () =>
-      prisma.client.media.count({
-        where: mediaGalleryWhere(storeId, filters.customerId, filters, viewer)
-      }),
+      jobContext.forStore(storeId, () =>
+        prisma.client.media.count({
+          where: mediaGalleryWhere(storeId, filters.customerId, filters, viewer)
+        })
+      ),
     entries: async function* () {
       // Before a byte is read from the bucket: a selection over the ceiling fails in one query
-      const total = await prisma.client.media.aggregate({
-        where: mediaGalleryWhere(storeId, filters.customerId, filters, viewer),
-        _count: { _all: true },
-        _sum: { fileSize: true }
-      })
+      const total = await jobContext.forStore(storeId, () =>
+        prisma.client.media.aggregate({
+          where: mediaGalleryWhere(storeId, filters.customerId, filters, viewer),
+          _count: { _all: true },
+          _sum: { fileSize: true }
+        })
+      )
       if (total._count._all === 0) throw new ZipEmptyError()
       if (
         total._count._all > GalleryLimits.ZIP_MAX_FILES ||
@@ -66,22 +72,24 @@ export function mediaZipSource(
       let files = 0
       let bytes = 0
       for (;;) {
-        const page = await prisma.client.media.findMany({
-          where: {
-            ...mediaGalleryWhere(storeId, filters.customerId, filters, viewer),
-            ...(after === undefined ? {} : { id: { gt: after } })
-          },
-          orderBy: { id: 'asc' },
-          take: ExportLimits.ROW_PAGE_SIZE,
-          select: {
-            id: true,
-            key: true,
-            filename: true,
-            contentType: true,
-            fileSize: true,
-            createdAt: true
-          }
-        })
+        const page = await jobContext.forStore(storeId, () =>
+          prisma.client.media.findMany({
+            where: {
+              ...mediaGalleryWhere(storeId, filters.customerId, filters, viewer),
+              ...(after === undefined ? {} : { id: { gt: after } })
+            },
+            orderBy: { id: 'asc' },
+            take: ExportLimits.ROW_PAGE_SIZE,
+            select: {
+              id: true,
+              key: true,
+              filename: true,
+              contentType: true,
+              fileSize: true,
+              createdAt: true
+            }
+          })
+        )
         for (const media of page) {
           files += 1
           bytes += media.fileSize

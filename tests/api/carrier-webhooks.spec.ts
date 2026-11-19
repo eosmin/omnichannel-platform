@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
+import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CarrierConnectionStatus,
@@ -417,7 +418,12 @@ describe('The webhook of a carrier', () => {
     const noise = { setContext: () => undefined, info: () => undefined, warn: () => undefined }
 
     beforeAll(() => {
-      resolver = new CarrierEventResolver(createWorkerPrisma(), noise as unknown as PinoLogger)
+      const workerPrisma = createWorkerPrisma()
+      resolver = new CarrierEventResolver(
+        workerPrisma,
+        noise as unknown as PinoLogger,
+        new JobContext(workerPrisma)
+      )
     })
 
     const job = (
