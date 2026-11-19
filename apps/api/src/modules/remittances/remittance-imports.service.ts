@@ -180,7 +180,7 @@ export class RemittanceImportsService {
       )
       drafted = true
       // A scan that was not queued waits for the hourly cleanup of pending files: it must not fail an import that was made
-      await this.queueScan(mediaId).catch(() => undefined)
+      await this.queueScan(storeId, mediaId).catch(() => undefined)
       this.audit.log({
         action: AuditAction.REMITTANCE_IMPORTED,
         actor: { userId: actor.userId },
@@ -209,10 +209,10 @@ export class RemittanceImportsService {
   }
 
   // After the draft exists: the worker scans the file like any that comes from outside
-  private async queueScan(mediaId: string): Promise<void> {
+  private async queueScan(storeId: string, mediaId: string): Promise<void> {
     await this.heavyQueue.add(
       JobNames.SCAN_FILE,
-      { mediaId },
+      { mediaId, storeId },
       { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
     )
   }

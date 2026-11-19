@@ -16,6 +16,8 @@ import { hasPdfSignature } from './shipment-labels.rules'
 // transaction that records the guide, and if that transaction fails the object is removed
 export interface StoredLabel {
   mediaId: string
+  // The store of the file: the scan job names it, because the worker's context is the one of a store
+  storeId: string
   key: string
   filename: string
   byteLength: number
@@ -56,7 +58,7 @@ export class ShipmentLabels {
     const filename = sanitizeFilename(`label-${guideNumber}.pdf`)
     const key = StorageKeys.shippingLabel(storeId, shipmentId, mediaId, filename)
     await this.storage.put(key, Buffer.from(data), CONTENT_TYPE)
-    return { mediaId, key, filename, byteLength: data.byteLength, needsScan: !drawn }
+    return { mediaId, storeId, key, filename, byteLength: data.byteLength, needsScan: !drawn }
   }
 
   // The row of the file, written with the guide. A drawn label is clean at once; a carrier's waits for the scan.
@@ -89,7 +91,7 @@ export class ShipmentLabels {
     if (!label.needsScan) return
     await this.heavyQueue.add(
       JobNames.SCAN_FILE,
-      { mediaId: label.mediaId },
+      { mediaId: label.mediaId, storeId: label.storeId },
       { jobId: `${JobNames.SCAN_FILE}-${label.mediaId}` }
     )
   }

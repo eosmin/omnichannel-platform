@@ -47,7 +47,8 @@ describe('MediaPipeline and financial evidence', () => {
       { scan } as unknown as ClamavClient,
       { publish: jest.fn() } as unknown as DomainEvents,
       { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
-      logger as unknown as PinoLogger
+      logger as unknown as PinoLogger,
+      { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
     )
     return { pipeline, storage, updateMany, logger }
   }
@@ -59,7 +60,9 @@ describe('MediaPipeline and financial evidence', () => {
       purpose,
       jest.fn().mockRejectedValue(new Error('the daemon is down'))
     )
-    await expect(pipeline.scan('media-1', true)).rejects.toThrow('the daemon is down')
+    await expect(pipeline.scan('media-1', { storeId: 'store-1' }, true)).rejects.toThrow(
+      'the daemon is down'
+    )
     expect(storage.delete).not.toHaveBeenCalled()
     // The row stays pending: never served, and the cleanup queues the scan again
     expect(updateMany).not.toHaveBeenCalled()
@@ -71,7 +74,7 @@ describe('MediaPipeline and financial evidence', () => {
       purpose,
       jest.fn().mockResolvedValue({ infected: true, viruses: ['x'] })
     )
-    await pipeline.scan('media-1')
+    await pipeline.scan('media-1', { storeId: 'store-1' })
     expect(updateMany.mock.calls[0]?.[0]).toMatchObject({ data: { status: 'infected' } })
     expect(storage.delete).not.toHaveBeenCalled()
     expect(logger.error).toHaveBeenCalled()
@@ -87,7 +90,7 @@ describe('MediaPipeline and financial evidence', () => {
       'image/png'
     )
     storage.read.mockResolvedValue(Buffer.from('this is not a picture'))
-    await pipeline.scan('media-1')
+    await pipeline.scan('media-1', { storeId: 'store-1' })
     expect(JSON.stringify(updateMany.mock.calls)).toContain('unscannable')
     expect(storage.delete.mock.calls.length > 0).toBe(deleted)
   })
@@ -97,7 +100,7 @@ describe('MediaPipeline and financial evidence', () => {
       MediaPurpose.MESSAGE,
       jest.fn().mockResolvedValue({ infected: true, viruses: ['x'] })
     )
-    await pipeline.scan('media-1')
+    await pipeline.scan('media-1', { storeId: 'store-1' })
     expect(storage.delete).toHaveBeenCalledWith('stores/s/finance/k.pdf')
   })
 
@@ -106,7 +109,7 @@ describe('MediaPipeline and financial evidence', () => {
       MediaPurpose.MESSAGE,
       jest.fn().mockRejectedValue(new Error('down'))
     )
-    await expect(pipeline.scan('media-1', true)).rejects.toThrow('down')
+    await expect(pipeline.scan('media-1', { storeId: 'store-1' }, true)).rejects.toThrow('down')
     expect(updateMany).toHaveBeenCalled()
     expect(storage.delete).toHaveBeenCalled()
   })

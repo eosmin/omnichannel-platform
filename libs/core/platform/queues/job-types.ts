@@ -114,18 +114,18 @@ export const ExportAuditActions: Record<ExportType, AuditActionType> = {
   [ExportTypes.MEDIA_ZIP]: AuditAction.MEDIA_BULK_DOWNLOADED
 }
 
+// The store of the row, for the context of the job: required, and never looked up (a job with no store fails). A report and an export
+// always belong to one store.
 export interface GenerateExportJob extends BaseJob {
   exportId: string // Everything else is on the Export row
-  // The store of the row, for the context of the job. Optional for one release (jobs already in Redis have none: the worker asks the
-  // database), then required
-  storeId?: string
+  storeId: string
 }
 // `day` is the calendar day of the zone of the report that the dispatcher queued it for: a job that waits or is retried reports
 // the period of that day, never the one of the moment it runs
 export interface GenerateScheduledReportJob extends BaseJob {
   reportId: string
   day: string
-  storeId?: string // As on GenerateExportJob
+  storeId: string // As on GenerateExportJob
 }
 export interface DsrExportJob extends BaseJob {
   requestId: string
@@ -138,14 +138,12 @@ export interface ExportAuditLogsJob extends BaseJob {
 }
 
 // heavy processing
-export interface ScanFileJob extends BaseJob {
-  mediaId: string
-  storeId?: string // As on GenerateExportJob; a user's avatar has none
-}
-export interface ProcessImageJob extends BaseJob {
-  mediaId: string
-  storeId?: string // As on ScanFileJob
-}
+// Whose database work a file job is: the store of a file, or the person of an avatar (a picture of a person has no store). Exactly one,
+// required, and never looked up by the worker: row security shows a job only the rows of its own context.
+export type MediaScope =
+  { storeId: string; userId?: undefined } | { userId: string; storeId?: undefined }
+export type ScanFileJob = BaseJob & { mediaId: string } & MediaScope
+export type ProcessImageJob = BaseJob & { mediaId: string } & MediaScope
 // The picture of an ad, fetched by the core from the link the provider sent; the link is read from
 // the origin row when the job runs, never carried in the job
 export interface FetchOriginMediaJob extends BaseJob {

@@ -62,7 +62,8 @@ describe('MediaPipeline announcements', () => {
       clamav as unknown as ClamavClient,
       { publish } as unknown as DomainEvents,
       { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
-      logger as unknown as PinoLogger
+      logger as unknown as PinoLogger,
+      { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
     )
   }
 
@@ -71,32 +72,32 @@ describe('MediaPipeline announcements', () => {
   })
 
   it('announces a clean file of a message', async () => {
-    await build(media(MESSAGE), false).scan('media-1')
+    await build(media(MESSAGE), false).scan('media-1', { storeId: 'store-1' })
     expect(publish).toHaveBeenCalledTimes(1)
     expect(publish.mock.calls[0]?.[1]).toBe(Events.MEDIA_PROCESSED)
   })
 
   it('announces an infected file of a message', async () => {
-    await build(media(MESSAGE), true).scan('media-1')
+    await build(media(MESSAGE), true).scan('media-1', { storeId: 'store-1' })
     expect(publish).toHaveBeenCalledTimes(1)
     expect(publish.mock.calls[0]?.[1]).toBe(Events.MEDIA_INFECTED)
   })
 
   it('announces the picture of an ad as the message that carried it', async () => {
-    await build(media(null, MESSAGE), false).scan('media-1')
+    await build(media(null, MESSAGE), false).scan('media-1', { storeId: 'store-1' })
     expect(publish).toHaveBeenCalledTimes(1)
     expect(publish.mock.calls[0]?.[1]).toBe(Events.MEDIA_PROCESSED)
     expect(publish.mock.calls[0]?.[2]).toMatchObject({ storeId: STORE, messageId: MESSAGE })
   })
 
   it('announces an infected picture of an ad too, so the card drops its placeholder', async () => {
-    await build(media(null, MESSAGE), true).scan('media-1')
+    await build(media(null, MESSAGE), true).scan('media-1', { storeId: 'store-1' })
     expect(publish).toHaveBeenCalledTimes(1)
     expect(publish.mock.calls[0]?.[1]).toBe(Events.MEDIA_INFECTED)
   })
 
   it('announces nothing for a file that belongs to no message', async () => {
-    await build(media(null), false).scan('media-1')
+    await build(media(null), false).scan('media-1', { storeId: 'store-1' })
     expect(publish).not.toHaveBeenCalled()
   })
 
@@ -127,7 +128,8 @@ describe('MediaPipeline announcements', () => {
         {} as unknown as ClamavClient,
         { publish } as unknown as DomainEvents,
         { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
-        logger as unknown as PinoLogger
+        logger as unknown as PinoLogger,
+        { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
       )
       return { pipeline, update }
     }
@@ -135,7 +137,9 @@ describe('MediaPipeline announcements', () => {
     it('settles the row, announces it once and still fails the job', async () => {
       const { pipeline, update } = buildRefusing(1)
 
-      await expect(pipeline.processImage('media-1')).rejects.toThrow('could not be processed')
+      await expect(pipeline.processImage('media-1', { storeId: 'store-1' })).rejects.toThrow(
+        'could not be processed'
+      )
 
       expect(update).toHaveBeenCalledTimes(1)
       const [args] = update.mock.calls[0] as [{ where: object; data: { processedAt: unknown } }]
@@ -148,7 +152,9 @@ describe('MediaPipeline announcements', () => {
     it('announces nothing when another attempt already settled it', async () => {
       const { pipeline } = buildRefusing(0)
 
-      await expect(pipeline.processImage('media-1')).rejects.toThrow('could not be processed')
+      await expect(pipeline.processImage('media-1', { storeId: 'store-1' })).rejects.toThrow(
+        'could not be processed'
+      )
 
       expect(publish).not.toHaveBeenCalled()
     })
@@ -191,7 +197,8 @@ describe('MediaPipeline announcements', () => {
         {} as unknown as ClamavClient,
         { publish } as unknown as DomainEvents,
         { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
-        logger as unknown as PinoLogger
+        logger as unknown as PinoLogger,
+        { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
       )
       return { pipeline, update, put, remove }
     }
@@ -199,7 +206,7 @@ describe('MediaPipeline announcements', () => {
     it('writes them under the keys of the row, guarded by the state of the row, and announces once', async () => {
       const { pipeline, update, put, remove } = await build({ settled: 1, rowGone: false })
 
-      await pipeline.processImage('media-1')
+      await pipeline.processImage('media-1', { storeId: 'store-1' })
 
       expect(put).toHaveBeenCalledTimes(3)
       const [args] = update.mock.calls[0] as [{ where: object; data: { variants: object } }]
@@ -214,7 +221,9 @@ describe('MediaPipeline announcements', () => {
     it('takes them out of the bucket when the file was removed while they were made', async () => {
       const { pipeline, put, remove } = await build({ settled: 0, rowGone: true })
 
-      await expect(pipeline.processImage('media-1')).resolves.toBeUndefined()
+      await expect(
+        pipeline.processImage('media-1', { storeId: 'store-1' })
+      ).resolves.toBeUndefined()
 
       const written = put.mock.calls.map(([key]) => key as string).sort()
       expect(written).toHaveLength(3)
@@ -225,7 +234,9 @@ describe('MediaPipeline announcements', () => {
     it('leaves them alone and says nothing when a second attempt had already settled the row', async () => {
       const { pipeline, remove } = await build({ settled: 0, rowGone: false })
 
-      await expect(pipeline.processImage('media-1')).resolves.toBeUndefined()
+      await expect(
+        pipeline.processImage('media-1', { storeId: 'store-1' })
+      ).resolves.toBeUndefined()
 
       // The keys are the same ones the other attempt wrote: deleting them would break its row
       expect(remove).not.toHaveBeenCalled()
@@ -236,7 +247,7 @@ describe('MediaPipeline announcements', () => {
       const failure = new Error('the bucket is down')
       const { pipeline, update } = await build({ settled: 1, rowGone: false, putFails: failure })
 
-      await expect(pipeline.processImage('media-1')).rejects.toBe(failure)
+      await expect(pipeline.processImage('media-1', { storeId: 'store-1' })).rejects.toBe(failure)
 
       // Not the image's fault: the row is not settled as refused
       expect(update).not.toHaveBeenCalled()

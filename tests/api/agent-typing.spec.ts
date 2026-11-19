@@ -5,7 +5,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelContextFactory } from '@platform/channels/connections'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { OutboundLimits } from '@platform/core/domain'
 import { OutboundQueue } from '@platform/core/messaging'
@@ -58,7 +58,8 @@ describe('Showing the customer that an agent is typing', () => {
       app.get(PrismaService, { strict: false }),
       registry,
       new ChannelContextFactory(cipher),
-      await app.resolve(PinoLogger)
+      await app.resolve(PinoLogger),
+      new JobContext(app.get(PrismaService, { strict: false }))
     )
   })
   afterAll(async () => {
@@ -444,8 +445,9 @@ describe('Showing the customer that an agent is typing', () => {
     it('lets go of a failure of the database too, so the job is not dead-lettered', async () => {
       const conversation = await conversationOf()
 
+      // The read of the conversation runs in the context of its store: the failure is the database's, at the transaction it opens
       const lookup = jest
-        .spyOn(app.get(PrismaService, { strict: false }).client.conversation, 'findFirst')
+        .spyOn(app.get(PrismaService, { strict: false }), 'tenantTransaction')
         .mockRejectedValueOnce(new Error('db down'))
 
       try {

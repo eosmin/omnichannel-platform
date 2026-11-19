@@ -10,6 +10,8 @@ type ProcessorJob = Parameters<HeavyProcessingProcessor['process']>[0]
 
 describe('HeavyProcessingProcessor', () => {
   const fetch = jest.fn().mockResolvedValue(undefined)
+  const scan = jest.fn().mockResolvedValue(undefined)
+  const processImage = jest.fn().mockResolvedValue(undefined)
   const reconcileStore = jest.fn().mockResolvedValue(undefined)
   const poll = jest.fn().mockResolvedValue(undefined)
   const clean = { read: 1, applied: 1, stored: 0, left: 0, unconfirmed: 0, failed: 0 }
@@ -32,7 +34,7 @@ describe('HeavyProcessingProcessor', () => {
   } as unknown as ProcessorSupport // test double: runs the work with no metrics
   const processor = new HeavyProcessingProcessor(
     support,
-    {} as never, // the pipeline is not what is tested
+    { scan, processImage } as never, // the pipeline: what it is handed (the file and its owner) is what is tested
     { fetch } as never, // the inbound fetcher: what it is handed is what is tested
     {} as never, // the origin fetcher is not what is tested
     { reconcileStore } as never, // the reconciler of the stock: what it is handed is what is tested
@@ -48,13 +50,7 @@ describe('HeavyProcessingProcessor', () => {
     { check: checkChain } as never, // the weekly check of the chain: what it is handed is what is tested
     { reconcile: reconcileFiscal } as never, // the daily check of the fiscal documents: what it is handed is what is tested
     { submit: submitFiscal } as never, // the fiscal documents: what it is handed is what is tested
-    { report: reportContingency, reportExhausted: reportContingencyExhausted } as never, // the contingency of the issuer: what it is handed is what is tested
-    // The context is not what is tested here: it runs the work (rls-worker-fail-closed.spec.ts and job-context.spec.ts test it)
-    {
-      forStore: (_id: string, work: () => Promise<unknown>) => work(),
-      forOrganization: (_id: string, work: () => Promise<unknown>) => work(),
-      anchor: () => Promise.resolve('visible')
-    } as never
+    { report: reportContingency, reportExhausted: reportContingencyExhausted } as never // the contingency of the issuer: what it is handed is what is tested
   )
 
   const base = {
@@ -696,6 +692,43 @@ describe('HeavyProcessingProcessor', () => {
         report({ organizationId: ORG_ID, contingencyId: CONTINGENCY_ID, ...patch })
       ).rejects.toBeInstanceOf(UnrecoverableError)
       expect(reportContingency).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('the files', () => {
+    const mediaId = '5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f607182'
+    const storeId = '0b1f5a63-8d2e-4c4d-9a41-0a1b2c3d4e5f'
+    const userId = '7a8b9c0d-1e2f-4a3b-8c4d-5e6f70819203'
+    const runMedia = (name: string, data: unknown): Promise<void> =>
+      processor.process({
+        name,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 5 }
+      } as unknown as ProcessorJob)
+
+    beforeEach(() => {
+      scan.mockClear()
+      processImage.mockClear()
+    })
+
+    it('hands the pipeline the store of the job as the owner of the work', async () => {
+      await runMedia(JobNames.SCAN_FILE, { mediaId, storeId })
+      expect(scan).toHaveBeenCalledWith(mediaId, { storeId }, false)
+      await runMedia(JobNames.PROCESS_IMAGE, { mediaId, storeId })
+      expect(processImage).toHaveBeenCalledWith(mediaId, { storeId })
+    })
+
+    it('hands it the person for an avatar, which has no store', async () => {
+      await runMedia(JobNames.SCAN_FILE, { mediaId, userId })
+      expect(scan).toHaveBeenCalledWith(mediaId, { userId }, false)
+    })
+
+    it('fails, for good, a job that names neither a store nor a person, or both', async () => {
+      for (const data of [{ mediaId }, { mediaId, storeId, userId }]) {
+        await expect(runMedia(JobNames.SCAN_FILE, data)).rejects.toBeInstanceOf(UnrecoverableError)
+      }
+      expect(scan).not.toHaveBeenCalled()
     })
   })
 })
