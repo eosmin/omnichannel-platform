@@ -60,6 +60,10 @@ export const MetricNames = {
   // An event a remote channel plugin reported and the platform dropped (TDD_10 §6.7.5), by reason
   PLUGIN_EVENT_REJECTED: 'platform_plugin_event_rejected_total',
 
+  // A job whose row (an export, a report) is not there for its own store when the job runs: the row was deleted, or a context that
+  // hides it from its own store hid it (RLS phase 5). By `job`
+  WORKER_JOB_SUBJECT_MISSING: 'worker_job_subject_missing_total',
+
   // Outbound webhooks and email
   WEBHOOK_DELIVERIES: 'platform_webhook_deliveries_total',
   EMAILS_SENT: 'platform_emails_sent_total',

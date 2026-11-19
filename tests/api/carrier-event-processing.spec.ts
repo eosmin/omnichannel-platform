@@ -7,7 +7,7 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CarrierConnectionStatus,
@@ -96,7 +96,11 @@ describe('What the worker makes of what a carrier says', () => {
     const events = app.get(DomainEvents, { strict: false })
     const writes = new ShipmentWrites(events)
     const engine = new ShipmentStatusEngine(prisma, writes)
-    const resolver = new CarrierEventResolver(prisma, noise as unknown as PinoLogger)
+    const resolver = new CarrierEventResolver(
+      prisma,
+      noise as unknown as PinoLogger,
+      new JobContext(prisma)
+    )
     unknown = new Counter({
       name: MetricNames.SHIPMENT_UNKNOWN_STATUS_TOTAL,
       help: 'test',
@@ -112,14 +116,16 @@ describe('What the worker makes of what a carrier says', () => {
       registry,
       app.get(CredentialCipher, { strict: false }),
       unknown,
-      noise as unknown as PinoLogger
+      noise as unknown as PinoLogger,
+      new JobContext(prisma)
     )
     replay = new CarrierEventReplay(
       prisma,
       resolver,
       applier,
       new ShipmentReplayer(prisma, writes),
-      noise as unknown as PinoLogger
+      noise as unknown as PinoLogger,
+      new JobContext(prisma)
     )
     const bus = app.get(EventEmitter2)
     bus.on(

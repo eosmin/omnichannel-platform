@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one batch; the bucket is called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
@@ -104,25 +105,27 @@ export class StoreRetentionEnforcer {
       RetentionRun.CONVERSATION_BATCH_SIZE,
       RetentionRun.CONVERSATION_MAX_BATCHES,
       async () => {
-        const batch = await this.prisma.client.conversation.findMany({
-          where: {
-            storeId,
-            status: { in: FINISHED_STATUSES },
-            OR: [
-              { lastMessageAt: { lt: cutoff } },
-              { lastMessageAt: null, createdAt: { lt: cutoff } }
-            ],
-            // Resolved or archived again after the cutoff is a person's work on it: it starts the window over
-            AND: [
-              { OR: [{ resolvedAt: null }, { resolvedAt: { lt: cutoff } }] },
-              { OR: [{ archivedAt: null }, { archivedAt: { lt: cutoff } }] }
-            ],
-            ...(skipped.length === 0 ? {} : { id: { notIn: skipped } })
-          },
-          select: { id: true },
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-          take: RetentionRun.CONVERSATION_BATCH_SIZE
-        })
+        const batch = await this.jobContext.forStore(storeId, () =>
+          this.prisma.client.conversation.findMany({
+            where: {
+              storeId,
+              status: { in: FINISHED_STATUSES },
+              OR: [
+                { lastMessageAt: { lt: cutoff } },
+                { lastMessageAt: null, createdAt: { lt: cutoff } }
+              ],
+              // Resolved or archived again after the cutoff is a person's work on it: it starts the window over
+              AND: [
+                { OR: [{ resolvedAt: null }, { resolvedAt: { lt: cutoff } }] },
+                { OR: [{ archivedAt: null }, { archivedAt: { lt: cutoff } }] }
+              ],
+              ...(skipped.length === 0 ? {} : { id: { notIn: skipped } })
+            },
+            select: { id: true },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take: RetentionRun.CONVERSATION_BATCH_SIZE
+          })
+        )
         if (batch.length === 0) return { taken: 0, deleted: 0 }
         const ids = batch.map(conversation => conversation.id)
         let deleted = 0
@@ -163,10 +166,11 @@ export class StoreRetentionEnforcer {
     cutoff: Date,
     report: RetentionReport
   ): Promise<number> {
-    const gone = await this.prisma.transaction(
-      async tx => {
-        // Read again under the lock: a conversation an agent reopened since the batch was read is left alone
-        const eligible = await tx.$queryRaw<{ id: string }[]>`
+    const gone = await this.jobContext.forStore(storeId, () =>
+      this.prisma.transaction(
+        async tx => {
+          // Read again under the lock: a conversation an agent reopened since the batch was read is left alone
+          const eligible = await tx.$queryRaw<{ id: string }[]>`
           SELECT id FROM conversations
           WHERE id = ANY(${ids}::text[]) AND store_id = ${storeId}
             AND status IN (${ConversationStatus.RESOLVED}, ${ConversationStatus.ARCHIVED})
@@ -174,27 +178,28 @@ export class StoreRetentionEnforcer {
             AND (resolved_at IS NULL OR resolved_at < (${cutoff.toISOString()}::timestamptz AT TIME ZONE 'UTC'))
             AND (archived_at IS NULL OR archived_at < (${cutoff.toISOString()}::timestamptz AT TIME ZONE 'UTC'))
           FOR UPDATE`
-        const eligibleIds = eligible.map(conversation => conversation.id)
-        if (eligibleIds.length === 0) return { files: [] as FileRow[], count: 0 }
-        // The files of its messages and of the picture of its ad: the rows of the messages go with the conversation
-        // and would leave these with no owner. The documents of an order sent in it are not among them: they belong to the
-        // order and keep their row and their objects (the same rule as the manual deletion, TDD_05 §10.4)
-        const files = await tx.media.findMany({
-          where: filesOfConversationsWhere(storeId, eligibleIds),
-          select: { id: true, key: true, variants: true }
-        })
-        await tx.media.deleteMany({ where: { id: { in: files.map(file => file.id) }, storeId } })
-        // An order made from the conversation keeps its own data and loses only the link (a plain column, no key)
-        // (raw: the update must not move the `updated_at` of orders that are years old)
-        await tx.$executeRaw`
+          const eligibleIds = eligible.map(conversation => conversation.id)
+          if (eligibleIds.length === 0) return { files: [] as FileRow[], count: 0 }
+          // The files of its messages and of the picture of its ad: the rows of the messages go with the conversation
+          // and would leave these with no owner. The documents of an order sent in it are not among them: they belong to the
+          // order and keep their row and their objects (the same rule as the manual deletion, TDD_05 §10.4)
+          const files = await tx.media.findMany({
+            where: filesOfConversationsWhere(storeId, eligibleIds),
+            select: { id: true, key: true, variants: true }
+          })
+          await tx.media.deleteMany({ where: { id: { in: files.map(file => file.id) }, storeId } })
+          // An order made from the conversation keeps its own data and loses only the link (a plain column, no key)
+          // (raw: the update must not move the `updated_at` of orders that are years old)
+          await tx.$executeRaw`
           UPDATE orders SET conversation_id = NULL
           WHERE store_id = ${storeId} AND conversation_id = ANY(${eligibleIds}::text[])`
-        const removed = await tx.conversation.deleteMany({
-          where: { id: { in: eligibleIds }, storeId }
-        })
-        return { files, count: removed.count }
-      },
-      { timeout: RetentionRun.TRANSACTION_TIMEOUT_MS }
+          const removed = await tx.conversation.deleteMany({
+            where: { id: { in: eligibleIds }, storeId }
+          })
+          return { files, count: removed.count }
+        },
+        { timeout: RetentionRun.TRANSACTION_TIMEOUT_MS }
+      )
     )
     report.filesLeft += await this.deleteFiles(storeId, gone.files)
     return gone.count
@@ -203,16 +208,20 @@ export class StoreRetentionEnforcer {
   // The files of messages older than mediaDays: the row and the objects. The message stays, without the file.
   private async media(storeId: string, cutoff: Date, report: RetentionReport) {
     return inBatches(RetentionRun.BATCH_SIZE, RetentionRun.MAX_BATCHES, async () => {
-      const batch = await this.prisma.client.media.findMany({
-        where: { storeId, purpose: MediaPurpose.MESSAGE, createdAt: { lt: cutoff } },
-        select: { id: true, key: true, variants: true },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-        take: RetentionRun.BATCH_SIZE
-      })
+      const batch = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.media.findMany({
+          where: { storeId, purpose: MediaPurpose.MESSAGE, createdAt: { lt: cutoff } },
+          select: { id: true, key: true, variants: true },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          take: RetentionRun.BATCH_SIZE
+        })
+      )
       if (batch.length === 0) return { taken: 0, deleted: 0 }
-      const removed = await this.prisma.client.media.deleteMany({
-        where: { id: { in: batch.map(file => file.id) }, storeId }
-      })
+      const removed = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.media.deleteMany({
+          where: { id: { in: batch.map(file => file.id) }, storeId }
+        })
+      )
       report.filesLeft += await this.deleteFiles(storeId, batch)
       return { taken: batch.length, deleted: removed.count }
     })
@@ -221,11 +230,15 @@ export class StoreRetentionEnforcer {
   private async analyticsEvents(storeId: string, cutoff: Date) {
     const day = cutoff.toISOString().slice(0, DATE_LENGTH)
     return inBatches(RetentionRun.BATCH_SIZE, RetentionRun.MAX_BATCHES, async () => {
-      const deleted = await this.prisma.client.$executeRaw`
+      const deleted = await this.jobContext.forStore(
+        storeId,
+        () =>
+          this.prisma.client.$executeRaw`
         DELETE FROM analytics_events WHERE id IN (
           SELECT id FROM analytics_events
           WHERE store_id = ${storeId} AND date < ${day}::date
           ORDER BY date LIMIT ${RetentionRun.BATCH_SIZE})`
+      )
       return { taken: deleted, deleted }
     })
   }
@@ -233,12 +246,16 @@ export class StoreRetentionEnforcer {
   // Read ones only: a notification nobody has opened is still news
   private async notifications(storeId: string, cutoff: Date) {
     return inBatches(RetentionRun.BATCH_SIZE, RetentionRun.MAX_BATCHES, async () => {
-      const deleted = await this.prisma.client.$executeRaw`
+      const deleted = await this.jobContext.forStore(
+        storeId,
+        () =>
+          this.prisma.client.$executeRaw`
         DELETE FROM notifications WHERE id IN (
           SELECT id FROM notifications
           WHERE store_id = ${storeId} AND read_at IS NOT NULL
             AND created_at < (${cutoff.toISOString()}::timestamptz AT TIME ZONE 'UTC')
           ORDER BY created_at LIMIT ${RetentionRun.BATCH_SIZE})`
+      )
       return { taken: deleted, deleted }
     })
   }

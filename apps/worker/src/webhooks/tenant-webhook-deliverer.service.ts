@@ -1,9 +1,10 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the POST to the endpoint is made outside of it
 import { Injectable } from '@nestjs/common'
 import type { Counter } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { WebhookLimits, WebhookStatus } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -39,7 +40,8 @@ export class TenantWebhookDeliverer {
     private readonly cipher: CredentialCipher,
     private readonly events: DomainEvents,
     @InjectMetric(MetricNames.WEBHOOK_DELIVERIES) private readonly deliveries: Counter<string>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(TenantWebhookDeliverer.name)
   }
@@ -52,10 +54,12 @@ export class TenantWebhookDeliverer {
     { post = pinnedHttpsPost, now = Date.now, maxAttempts = 1 }: DeliveryDeps = {}
   ): Promise<WebhookOutcome> {
     const { webhookId, storeId, event, payload, deliveryId } = job
-    const webhook = await this.prisma.client.webhook.findFirst({
-      where: { id: webhookId, storeId },
-      select: { url: true, secret: true, status: true, events: true }
-    })
+    const webhook = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.webhook.findFirst({
+        where: { id: webhookId, storeId },
+        select: { url: true, secret: true, status: true, events: true }
+      })
+    )
     if (webhook === null || webhook.status !== ACTIVE) return WebhookOutcome.SKIPPED
     // The store may have stopped following the event since it was queued (or between two tries of the delivery)
     if (!webhook.events.includes(event)) return WebhookOutcome.SKIPPED
@@ -89,7 +93,7 @@ export class TenantWebhookDeliverer {
     // Outside the try: the endpoint took the delivery, and a failure to write that down must not send it again nor count as one
     // that failed. A gap in the log is said in the logs of the worker; the delivery stands.
     try {
-      await this.recordSuccess(webhookId, event, statusCode, now() - startedAt, attempt)
+      await this.recordSuccess(storeId, webhookId, event, statusCode, now() - startedAt, attempt)
     } catch (error) {
       this.logger.error(
         { webhookId, err: String(error) },
@@ -100,6 +104,7 @@ export class TenantWebhookDeliverer {
   }
 
   private async recordSuccess(
+    storeId: string,
     webhookId: string,
     event: string,
     statusCode: number,
@@ -107,16 +112,19 @@ export class TenantWebhookDeliverer {
     attempt: number
   ): Promise<void> {
     this.deliveries.inc({ target: WebhookMetricTarget.TENANT, success: 'true' })
-    await this.guarded(webhookId, async () => {
-      await this.prisma.client.webhookDelivery.create({
-        data: { webhookId, event, statusCode, durationMs, success: true, attempt }
+    // The context is opened inside `guarded`: a webhook deleted meanwhile breaks the transaction, and that is read outside of it
+    await this.guarded(webhookId, () =>
+      this.jobContext.forStore(storeId, async () => {
+        await this.prisma.client.webhookDelivery.create({
+          data: { webhookId, event, statusCode, durationMs, success: true, attempt }
+        })
+        // The count is written only when there is something to clear: a healthy webhook costs one insert
+        await this.prisma.client.webhook.updateMany({
+          where: { id: webhookId, consecutiveFailures: { gt: 0 } },
+          data: { consecutiveFailures: 0 }
+        })
       })
-      // The count is written only when there is something to clear: a healthy webhook costs one insert
-      await this.prisma.client.webhook.updateMany({
-        where: { id: webhookId, consecutiveFailures: { gt: 0 } },
-        data: { consecutiveFailures: 0 }
-      })
-    })
+    )
   }
 
   // True when this failure was the one that turned the webhook off
@@ -130,44 +138,46 @@ export class TenantWebhookDeliverer {
     const { webhookId, storeId, event } = job
     this.deliveries.inc({ target: WebhookMetricTarget.TENANT, success: 'false' })
     let disabled = false
-    await this.guarded(webhookId, async () => {
-      disabled = await this.prisma.transaction(async tx => {
-        await tx.webhookDelivery.create({
-          data: {
+    await this.guarded(webhookId, () =>
+      this.jobContext.forStore(storeId, async () => {
+        disabled = await this.prisma.transaction(async tx => {
+          await tx.webhookDelivery.create({
+            data: {
+              webhookId,
+              event,
+              statusCode: failure.status,
+              durationMs,
+              success: false,
+              error: failure.code.slice(0, WebhookLimits.DELIVERY_ERROR_MAX_LENGTH),
+              attempt
+            }
+          })
+          // Every try is a row of the log; only the end of a delivery counts toward turning the webhook off
+          const updated = await tx.webhook.update({
+            where: { id: webhookId },
+            data: {
+              lastFailureAt: new Date(),
+              ...(final ? { consecutiveFailures: { increment: 1 } } : {})
+            },
+            select: { consecutiveFailures: true }
+          })
+          if (!final) return false
+          if (updated.consecutiveFailures < WebhookLimits.MAX_CONSECUTIVE_FAILURES) return false
+          // Only the one that changes it from active tells anybody: two deliveries that fail together say it once
+          const turnedOff = await tx.webhook.updateMany({
+            where: { id: webhookId, storeId, status: WebhookStatus.ACTIVE },
+            data: { status: WebhookStatus.DISABLED }
+          })
+          if (turnedOff.count === 0) return false
+          this.events.publish(tx, Events.WEBHOOK_AUTO_DISABLED, {
+            storeId,
             webhookId,
-            event,
-            statusCode: failure.status,
-            durationMs,
-            success: false,
-            error: failure.code.slice(0, WebhookLimits.DELIVERY_ERROR_MAX_LENGTH),
-            attempt
-          }
+            consecutiveFailures: updated.consecutiveFailures
+          })
+          return true
         })
-        // Every try is a row of the log; only the end of a delivery counts toward turning the webhook off
-        const updated = await tx.webhook.update({
-          where: { id: webhookId },
-          data: {
-            lastFailureAt: new Date(),
-            ...(final ? { consecutiveFailures: { increment: 1 } } : {})
-          },
-          select: { consecutiveFailures: true }
-        })
-        if (!final) return false
-        if (updated.consecutiveFailures < WebhookLimits.MAX_CONSECUTIVE_FAILURES) return false
-        // Only the one that changes it from active tells anybody: two deliveries that fail together say it once
-        const turnedOff = await tx.webhook.updateMany({
-          where: { id: webhookId, storeId, status: WebhookStatus.ACTIVE },
-          data: { status: WebhookStatus.DISABLED }
-        })
-        if (turnedOff.count === 0) return false
-        this.events.publish(tx, Events.WEBHOOK_AUTO_DISABLED, {
-          storeId,
-          webhookId,
-          consecutiveFailures: updated.consecutiveFailures
-        })
-        return true
       })
-    })
+    )
     if (disabled)
       this.logger.warn({ webhookId, storeId }, 'a webhook was turned off after repeated failures')
     return disabled

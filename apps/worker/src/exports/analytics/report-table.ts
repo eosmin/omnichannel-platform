@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around the reads of one report
 import {
   type AnalyticsExportFilters,
   daysOfPeriod,
@@ -7,7 +8,7 @@ import {
   TimeGranularity,
   type ReportMetric
 } from '@platform/core/analytics'
-import type { PrismaService } from '@platform/core/database'
+import type { JobContext, PrismaService } from '@platform/core/database'
 import { buildSeries, type BucketRow, readMetricBuckets } from '@platform/core/messaging'
 
 // The figures of a report: one row for each UTC day of the period and a column for each metric, then the figure of the whole period
@@ -56,24 +57,28 @@ export function buildReportTable(
 // Reads the rollup tables only. The store is the one of the row of the export, never a value of the filters.
 export async function readReportTable(
   prisma: PrismaService,
+  jobContext: JobContext,
   storeId: string,
   filters: Pick<AnalyticsExportFilters, 'metrics' | 'from' | 'to'>
 ): Promise<ReportTable> {
   const from = new Date(`${filters.from}T00:00:00.000Z`)
   const to = new Date(`${filters.to}T00:00:00.000Z`)
-  const entries = await Promise.all(
-    filters.metrics.map(
-      async metric =>
-        [
-          metric,
-          await readMetricBuckets(prisma.client, storeId, {
+  // One context for all the metrics: the reads are short and are of one store
+  const entries = await jobContext.forStore(storeId, () =>
+    Promise.all(
+      filters.metrics.map(
+        async metric =>
+          [
             metric,
-            granularity: TimeGranularity.DAY,
-            dimension: MetricDimensions.NONE,
-            from,
-            to
-          })
-        ] as const
+            await readMetricBuckets(prisma.client, storeId, {
+              metric,
+              granularity: TimeGranularity.DAY,
+              dimension: MetricDimensions.NONE,
+              from,
+              to
+            })
+          ] as const
+      )
     )
   )
   return buildReportTable(filters, new Map(entries))

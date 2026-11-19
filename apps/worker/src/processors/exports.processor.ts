@@ -61,7 +61,12 @@ export class ExportsProcessor extends BaseProcessor<
     if (job.name === JobNames.GENERATE_SCHEDULED_REPORT) {
       const parsed = reportJobSchema.safeParse(job.data)
       if (!parsed.success) throw new UnrecoverableError('the report job does not fit its schema')
-      await this.reports.run(parsed.data.reportId, parsed.data.day, isLastAttempt(job))
+      await this.reports.run(
+        parsed.data.storeId,
+        parsed.data.reportId,
+        parsed.data.day,
+        isLastAttempt(job)
+      )
       return
     }
     if (job.name !== JobNames.GENERATE_EXPORT) {
@@ -70,6 +75,6 @@ export class ExportsProcessor extends BaseProcessor<
     const parsed = exportJobSchema.safeParse(job.data)
     // The job crossed Redis: what does not fit now will not fit when it is tried again
     if (!parsed.success) throw new UnrecoverableError('the export job does not fit its schema')
-    return this.generator.generate(parsed.data.exportId, isLastAttempt(job))
+    return this.generator.generate(parsed.data.storeId, parsed.data.exportId, isLastAttempt(job))
   }
 }

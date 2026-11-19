@@ -2,13 +2,14 @@ import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import type { Counter } from '@prometheus-io/client'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
-import type { PrismaService } from '@platform/core/database'
+import { JobContext, type PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -113,15 +114,23 @@ describe('Exports', () => {
       error: jest.fn(),
       warn: jest.fn()
     } as unknown as PinoLogger
+    const subjectMissing = { inc: jest.fn() } as unknown as Counter<string>
     generator = new ExportGenerator(
       prisma,
       new CsvExportWriter(storage),
       new ZipExportWriter(storage, logger),
-      new AnalyticsExportWriter(prisma, storage, new CsvExportWriter(storage)),
+      new AnalyticsExportWriter(
+        prisma,
+        storage,
+        new CsvExportWriter(storage),
+        new JobContext(prisma)
+      ),
       storage,
       audit,
       events,
-      logger
+      logger,
+      new JobContext(prisma),
+      subjectMissing
     )
     cleaner = new ExpiredExportsCleaner(prisma, storage, events, logger)
   })
@@ -148,7 +157,7 @@ describe('Exports', () => {
   }
 
   async function made(exportId: string): Promise<string> {
-    await generator.generate(exportId, false)
+    await generator.generate(ctx.storeA.id, exportId, false)
     const row = await owner.export.findUniqueOrThrow({ where: { id: exportId } })
     expect(row.status).toBe(ExportStatus.READY)
     const key = row.key ?? ''
@@ -236,7 +245,27 @@ describe('Exports', () => {
       await make(OrderStatus.PENDING_CONFIRMATION, 7000, '2026-01-04T10:00:00.000Z')
       await make(OrderStatus.CANCELLED, 9000, '2026-01-05T10:00:00.000Z')
       await make(OrderStatus.RETURNED, 500, '2026-01-06T10:00:00.000Z')
-      const groupBy = jest.spyOn(workerPrisma.client.order, 'groupBy')
+      // Inside a job context the reads go through the client of its transaction: the spy is put on that one, in each context
+      let groupByCalls = 0
+      const realOpen = workerPrisma.tenantTransaction.bind(workerPrisma)
+      const opened = jest
+        .spyOn(workerPrisma, 'tenantTransaction')
+        .mockImplementation((...args: Parameters<typeof realOpen>) => {
+          const [context, work, options] = args
+          return realOpen(
+            context,
+            async () => {
+              const spy = jest.spyOn(workerPrisma.client.order, 'groupBy')
+              try {
+                return await work()
+              } finally {
+                groupByCalls += spy.mock.calls.length
+                spy.mockRestore()
+              }
+            },
+            options
+          )
+        })
 
       const view = await request(ApiRoutes.customers.export)
       const file = await made(view.id)
@@ -253,8 +282,8 @@ describe('Exports', () => {
       ])
       expect(orderCells(idle.id)).toEqual(['0', '0', '', '', ''])
       // One grouped read for the page, not one per customer
-      expect(groupBy).toHaveBeenCalledTimes(1)
-      groupBy.mockRestore()
+      expect(groupByCalls).toBe(1)
+      opened.mockRestore()
     })
 
     it('keeps the search text of the list, and audits the file with its row count', async () => {
@@ -290,7 +319,7 @@ describe('Exports', () => {
       await made(view.id)
       const before = await owner.export.findUniqueOrThrow({ where: { id: view.id } })
 
-      await generator.generate(view.id, false)
+      await generator.generate(ctx.storeA.id, view.id, false)
 
       const after = await owner.export.findUniqueOrThrow({ where: { id: view.id } })
       expect(after.completedAt).toEqual(before.completedAt)
@@ -308,7 +337,7 @@ describe('Exports', () => {
         }
       })
 
-      await expect(generator.generate(row.id, false)).rejects.toThrow('does not fit')
+      await expect(generator.generate(ctx.storeA.id, row.id, false)).rejects.toThrow('does not fit')
 
       const after = await owner.export.findUniqueOrThrow({ where: { id: row.id } })
       expect(after).toMatchObject({ status: ExportStatus.FAILED, error: ErrorCodes.EXPORT_FAILED })
@@ -568,8 +597,8 @@ describe('Exports', () => {
           expiresAt: new Date(Date.now() + 86_400_000)
         }
       })
-      await expect(generator.generate(row.id, false)).rejects.toThrow('does not fit')
-      await expect(generator.generate(row.id, false)).resolves.toBeUndefined()
+      await expect(generator.generate(ctx.storeA.id, row.id, false)).rejects.toThrow('does not fit')
+      await expect(generator.generate(ctx.storeA.id, row.id, false)).resolves.toBeUndefined()
 
       expect(failed).toHaveBeenCalledTimes(1)
       expect(failed).toHaveBeenCalledWith(expect.objectContaining({ exportId: row.id }))
