@@ -56,3 +56,17 @@ export function inTenantContext<T>(
     return work(tx as unknown as PrismaTransaction)
   })
 }
+
+// withTenantContext for ONE store and the organization it belongs to, and nothing wider: a fixture that stocks a product or reads a
+// service by hand must see what the store of the case sees, so a fault of isolation (a row of another store reached) still fails.
+export function inStoreContext<T>(
+  prisma: PrismaService,
+  scope: { storeId: string; organizationId: string },
+  work: () => Promise<T>
+): Promise<T> {
+  return withTenantContext(
+    prisma,
+    { storeIds: [scope.storeId], organizationIds: [scope.organizationId] },
+    work
+  )
+}

@@ -3,13 +3,15 @@ import { join } from 'node:path'
 
 import type { INestApplication } from '@nestjs/common'
 
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { NotificationTypes } from '@platform/core/notifications'
+import { NotificationTypes, type NotificationType } from '@platform/core/notifications'
 
 import { NotificationPreferencesService } from '../../apps/api/src/modules/notifications/notification-preferences.service'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { inStoreContext } from '../helpers/tenant-context'
 
 const MIGRATION = join(
   __dirname,
@@ -84,7 +86,15 @@ describe('Migration push_default_rows', () => {
   })
 
   it('leaves the removed row to the new default, and a chosen one to its owner', async () => {
-    const preferences = app.get(NotificationPreferencesService, { strict: false })
+    const real = app.get(NotificationPreferencesService, { strict: false })
+    const prisma = app.get(PrismaService, { strict: false })
+    // Read as the sending path reads it: in the context of the store and its organization
+    const preferences = {
+      resolve: (userId: string, storeId: string, type: NotificationType) =>
+        inStoreContext(prisma, { storeId, organizationId: ctx.orgA.id }, () =>
+          real.resolve(userId, storeId, type)
+        )
+    }
     const { MESSAGE_RECEIVED } = NotificationTypes
     await row(ctx.adminA.id, MESSAGE_RECEIVED, [true, false, false, true])
     await row(ctx.agentA.id, MESSAGE_RECEIVED, [true, false, true, true])
