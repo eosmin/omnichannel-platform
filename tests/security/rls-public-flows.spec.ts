@@ -202,6 +202,19 @@ describe('row-level security, the flows that find their store before there is a 
         api_key_hash: `ph-b-${run}`,
         status: 'disabled'
       })
+      // A plugin registered by ANOTHER organization, installed in store A: the policy of plugins hides it from the context of A
+      await insertFixture('plugins', {
+        id: `pl-b-${run}`,
+        organization_id: ORG_B,
+        status: 'approved'
+      })
+      await insertFixture('plugin_installations', {
+        id: `pi-c-${run}`,
+        store_id: A,
+        plugin_id: `pl-b-${run}`,
+        api_key_hash: `ph-c-${run}`,
+        status: 'active'
+      })
       await insertFixture('carrier_connections', { id: CARRIER_A, store_id: A, carrier_id: 'c' })
       for (const table of TABLES) {
         await owner.query(`CREATE TEMP TABLE ${table} AS SELECT * FROM public.${table}`)
@@ -344,6 +357,41 @@ describe('row-level security, the flows that find their store before there is a 
         ])
         expect(found).toEqual([{ id: `pi-b-${run}`, store_id: B, organization_id: ORG_B }])
         expect(await readAs(found[0] ?? null, 'plugin_installations')).toEqual([`pi-b-${run}`])
+      })
+    })
+
+    it('answers the status of the plugin of an installation whose plugin the policy hides from its store', async () => {
+      await inFlows(async () => {
+        const state = await owner.query('SET LOCAL ROLE platform_app').then(async () => {
+          try {
+            return (
+              await owner.query<{ plugin_status: string }>(
+                'SELECT * FROM resolve_plugin_installation_plugin_status($1)',
+                [`ph-c-${run}`]
+              )
+            ).rows
+          } finally {
+            await owner.query('RESET ROLE')
+          }
+        })
+        expect(state).toEqual([{ plugin_status: 'approved' }])
+      })
+    })
+
+    it('answers nothing for a key with no plugin row, for a hash of another kind of key and for one that does not exist', async () => {
+      await inFlows(async () => {
+        for (const hash of [`ph-a-${run}`, `h-a-${run}`, `nope-${run}`]) {
+          await owner.query('SET LOCAL ROLE platform_app')
+          try {
+            const rows = await owner.query(
+              'SELECT * FROM resolve_plugin_installation_plugin_status($1)',
+              [hash]
+            )
+            expect(rows.rows).toEqual([])
+          } finally {
+            await owner.query('RESET ROLE')
+          }
+        }
       })
     })
 

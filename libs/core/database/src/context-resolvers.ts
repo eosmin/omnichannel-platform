@@ -52,6 +52,19 @@ export async function resolvePluginInstallation(
   )
 }
 
+// The status of the plugin an installation points at, asked by the same key hash. The plugin row can be hidden by the policy of
+// `plugins` from the context of the store (a plugin registered by another organization), so it is not read inside that context.
+// null: no installation or no plugin row for that hash.
+export async function resolvePluginInstallationPluginStatus(
+  db: Reader,
+  keyHash: string
+): Promise<string | null> {
+  const rows = await db.$queryRaw<
+    { plugin_status: string }[]
+  >`SELECT * FROM resolve_plugin_installation_plugin_status(${keyHash})`
+  return rows[0]?.plugin_status ?? null
+}
+
 export async function resolveApiKey(db: Reader, keyHash: string): Promise<ResolvedRow | null> {
   return first(await db.$queryRaw<ResolvedRecord[]>`SELECT * FROM resolve_api_key(${keyHash})`)
 }
