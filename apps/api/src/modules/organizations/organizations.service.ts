@@ -172,12 +172,15 @@ export class OrganizationsService {
               timezone: body.timezone,
               currency: body.currency,
               defaultLocale: body.defaultLocale
-            }),
-            // A store always has both settings rows (TDD_01 §4)
-            settings: { create: {} },
-            retentionSettings: { create: {} }
+            })
           },
           select: STORE_FIELDS
+        })
+        // The context of the request does not hold the store it just created: widen it by that one id, only for these writes, so the
+        // rows of the store can be written. A store always has both settings rows (TDD_01 §4); the three writes stay in ONE transaction.
+        await this.prisma.withCreatedStore(created.id, async () => {
+          await tx.storeSettings.create({ data: { storeId: created.id } })
+          await tx.retentionSettings.create({ data: { storeId: created.id } })
         })
         await tx.membership.create({
           data: {

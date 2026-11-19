@@ -304,6 +304,42 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.tenantTransaction({ storeIds: [storeId], organizationIds: [], userId }, work)
   }
 
+  // A store that this very transaction just created: its context did not hold it, so the rows of the store (its settings) would be
+  // refused. `work` runs with the context widened by that one id and the context of the request is put back when it ends (the audit and
+  // the rest of the request see what they saw before). The store must be of an organization of the context AND a row written by THIS
+  // transaction (xmin is its id): a sibling store, or any older one, is refused, so no id picked by the caller opens another store.
+  // xmin proves "written by this transaction" (an UPDATE of this transaction also leaves its id there), not "created": the caller passes
+  // the id of the row it just inserted. Inside inSavepoint the row carries the id of the SUBtransaction, so the proof fails closed for a store created there (calling this inside a savepoint on an earlier store is not guarded).
+  // Not for use inside inSavepoint (a rolled-back savepoint reverts the setting but not the scope).
+  async withCreatedStore<T>(storeId: string, work: () => Promise<T>): Promise<T> {
+    const scope = tenantScope.getStore()
+    // With no tenant transaction (RLS_CONTEXT off) there is no context to widen: the rows are not filtered by the database
+    if (scope === undefined) return work()
+    const original = scope.context
+    if (original.organizationIds.length === 0) {
+      throw new Error('withCreatedStore needs the organization of the store in the context')
+    }
+    const owned = await scope.tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM stores
+      WHERE id = ${storeId} AND organization_id = ANY (${[...original.organizationIds]}::text[])
+        AND xmin::text = (txid_current() % 4294967296)::text`
+    if (owned.length === 0) {
+      throw new Error(
+        'withCreatedStore: the store was not created by this transaction in the organization of the context'
+      )
+    }
+    const widened: TenantContext = { ...original, storeIds: [...original.storeIds, storeId] }
+    await applyTenantContext(scope.tx, widened)
+    scope.context = widened
+    try {
+      return await work()
+    } finally {
+      scope.context = original
+      // If the work broke the transaction this fails too, and the error that matters is the work's
+      await applyTenantContext(scope.tx, original).catch(() => undefined)
+    }
+  }
+
   // For the work of ONE person that has no store to name (their avatar, which belongs to them and to no store): the context holds the
   // person alone, which is what the policy of the rows of a person reads (`app.user_id`). The context of the request when the interceptor
   // opened it, which must then be this person's, or its own. It sees no store row: keep it to the person's own rows.
