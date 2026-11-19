@@ -55,6 +55,7 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import {
   orderListWhere,
+  orderTextCustomerIds,
   type ResolvedOrderFilters,
   writeOrderSummaryLine
 } from '@platform/core/messaging'
@@ -195,6 +196,8 @@ export class OrdersService {
   // file made later holds what the screen showed; the caller has checked orders:view and orders:export.
   async requestExport(storeId: string, userId: string, filters: OrderFilters): Promise<ExportView> {
     const { where, scheduled } = await this.resolveFilters(storeId, filters)
+    // A text that names too many customers is refused now, not when the worker reads the file
+    await orderTextCustomerIds(this.prisma, storeId, where.q)
     return this.exports.request({
       storeId,
       userId,
@@ -232,9 +235,11 @@ export class OrdersService {
       { createdAt: { lt: position.createdAt } },
       { createdAt: position.createdAt, id: { lt: position.id } }
     ]
+    // The customers the text names come from a database function (migration rls_search_order_customers), before the read of the orders
+    const textCustomers = await orderTextCustomerIds(this.prisma, storeId, resolved.q)
     const rows = await this.prisma.client.order.findMany({
       where: {
-        ...orderListWhere(storeId, resolved),
+        ...orderListWhere(storeId, resolved, textCustomers),
         ...(range.from === null && range.to === null
           ? {}
           : {

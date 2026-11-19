@@ -65,25 +65,27 @@ export interface OrderListWhere {
 // the list and the file would hold the orders and the contact data of people the person never meant
 const ORDER_NUMBER_ONLY = /^#?\d{1,7}$/
 
-export function orderTextWhere(q: string): Record<string, unknown> {
-  if (ORDER_NUMBER_ONLY.test(q)) return { OR: orderNumberConditions(q) }
-  const text = escapeLike(q)
+// The patterns of a text for the customers it may name (name, e-mail, phone), as the database function reads them: contains-patterns,
+// escaped, bound as parameters. null when the text is an order number only: it names no customer (see ORDER_NUMBER_ONLY).
+export interface OrderTextCustomerPatterns {
+  name: string
+  email: string
+  phone: string | null
+}
+
+export function orderTextCustomerPatterns(q: string): OrderTextCustomerPatterns | null {
+  if (ORDER_NUMBER_ONLY.test(q)) return null
+  const text = `%${escapeLike(q)}%`
   const digits = PHONE_LIKE.test(q) ? q.replace(/\D/g, '') : ''
-  return {
-    OR: [
-      ...orderNumberConditions(q),
-      // The customer of the order, an absorbed one included: the order keeps pointing at who made it
-      {
-        customer: {
-          OR: [
-            { name: { contains: text, mode: 'insensitive' as const } },
-            { email: { contains: text, mode: 'insensitive' as const } },
-            ...(digits === '' ? [] : [{ phoneNormalized: { contains: digits } }])
-          ]
-        }
-      }
-    ]
-  }
+  return { name: text, email: text, phone: digits === '' ? null : `%${digits}%` }
+}
+
+// `customerIds` are the customers the text names, found by `orderTextCustomerIds` (a database function: with row-level security on,
+// only inside a definer function can the LIKE of a name use its trigram indexes). The customer of the order may be an absorbed one:
+// the order keeps pointing at who made it.
+export function orderTextWhere(q: string, customerIds: readonly string[]): Record<string, unknown> {
+  if (ORDER_NUMBER_ONLY.test(q)) return { OR: orderNumberConditions(q) }
+  return { OR: [...orderNumberConditions(q), { customerId: { in: [...customerIds] } }] }
 }
 
 // A live guide is an outbound one that is not cancelled, failed or returned: the statuses the one-active-guide index lists
@@ -105,7 +107,12 @@ export function pendingPriceWhere(): Record<string, unknown> {
   return { status: { in: [...OrderEditablePriceStatuses] } }
 }
 
-export function orderListWhere(storeId: string, filters: ResolvedOrderFilters): OrderListWhere {
+// `textCustomerIds`: the customers the text of `filters.q` names (`orderTextCustomerIds`), empty when there is no text
+export function orderListWhere(
+  storeId: string,
+  filters: ResolvedOrderFilters,
+  textCustomerIds: readonly string[] = []
+): OrderListWhere {
   return {
     storeId,
     ...(filters.status === undefined ? {} : { status: filters.status }),
@@ -131,7 +138,7 @@ export function orderListWhere(storeId: string, filters: ResolvedOrderFilters): 
       ? {}
       : {
           AND: [
-            ...(filters.q === undefined ? [] : [orderTextWhere(filters.q)]),
+            ...(filters.q === undefined ? [] : [orderTextWhere(filters.q, textCustomerIds)]),
             ...(filters.guide === undefined ? [] : [orderGuideWhere(filters.guide)]),
             ...(filters.priceApprovalStatus === PriceApprovalStatus.PENDING
               ? [pendingPriceWhere()]

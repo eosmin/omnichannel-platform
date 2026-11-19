@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   FinancePostingKey,
@@ -9,6 +9,7 @@ import {
   FiscalDocumentStatus,
   FiscalEntryMismatchField,
   FiscalIssueOn,
+  FiscalLimits,
   FiscalSweepKind,
   FiscalSweepLimits,
   OrderReturnStatus,
@@ -67,7 +68,10 @@ export interface FiscalSweepOptions {
 // for a history nobody asked to document. The sweep never reaches before the first sale document the organization made.
 @Injectable()
 export class FiscalSweepService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jobContext: JobContext
+  ) {}
 
   async find(
     organizationId: string,
@@ -80,16 +84,24 @@ export class FiscalSweepService {
     )
     const now = options.now ?? new Date()
     const reach = options.storeIds === undefined ? {} : { storeId: { in: [...options.storeIds] } }
-    switch (kind) {
-      case FiscalSweepKind.SALE_WITHOUT_DOCUMENT:
-        return this.salesWithoutDocument(organizationId, now, options.cursor, limit, reach)
-      case FiscalSweepKind.STALLED_DOCUMENT:
-        return this.stalledDocuments(organizationId, now, options.cursor, limit, reach)
-      case FiscalSweepKind.CREDIT_NOTE_MISSING:
-        return this.creditNotesMissing(organizationId, now, options.cursor, limit, reach)
-      case FiscalSweepKind.ENTRY_MISMATCH:
-        return this.entryMismatches(organizationId, now, options.cursor, limit, reach)
-    }
+    // One page is one read in one context of the organization (a request joins its own): the sweep of the worker asks page after page, so a
+    // long run never holds a transaction
+    return this.jobContext.inOrganizationOrRequest(
+      organizationId,
+      () => {
+        switch (kind) {
+          case FiscalSweepKind.SALE_WITHOUT_DOCUMENT:
+            return this.salesWithoutDocument(organizationId, now, options.cursor, limit, reach)
+          case FiscalSweepKind.STALLED_DOCUMENT:
+            return this.stalledDocuments(organizationId, now, options.cursor, limit, reach)
+          case FiscalSweepKind.CREDIT_NOTE_MISSING:
+            return this.creditNotesMissing(organizationId, now, options.cursor, limit, reach)
+          case FiscalSweepKind.ENTRY_MISMATCH:
+            return this.entryMismatches(organizationId, now, options.cursor, limit, reach)
+        }
+      },
+      { maxWait: FiscalLimits.CONTEXT_MAX_WAIT_MS, timeout: FiscalLimits.CONTEXT_TIMEOUT_MS }
+    )
   }
 
   // The earliest date a sale or a return is looked at, with the moment the issuer issues at, or null when the organization has no issuer or
