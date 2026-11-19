@@ -1,5 +1,7 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the file and the email are made outside of it
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
+import type { Counter } from '@prometheus-io/client'
 import { type Queue, UnrecoverableError } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
@@ -16,10 +18,12 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { Permissions } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
 import { ErrorCodes, errorName } from '@platform/core/errors'
 import { ExportContentTypes } from '@platform/core/exports'
+import { MetricNames } from '@platform/core/metrics'
+import { InjectMetric } from '@platform/core/metrics-module'
 import {
   EmailTemplates,
   ExportStatus,
@@ -57,28 +61,43 @@ export class ScheduledReportRunner {
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     @InjectQueue(QueueNames.EMAIL) private readonly email: Queue<SendEmailJob>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext,
+    @InjectMetric(MetricNames.WORKER_JOB_SUBJECT_MISSING)
+    private readonly subjectMissing: Counter<string>
   ) {
     this.logger.setContext(ScheduledReportRunner.name)
   }
 
   async run(
+    storeId: string,
     reportId: string,
     day: string,
     lastAttempt: boolean,
     now: Date = new Date()
   ): Promise<ReportRunOutcome> {
-    const report = await this.prisma.client.scheduledReport.findUnique({ where: { id: reportId } })
-    if (report === null || !report.enabled) return ReportRunOutcomes.SKIPPED
+    const report = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.scheduledReport.findFirst({ where: { id: reportId, storeId } })
+    )
+    if (report === null) {
+      // The owner may have deleted it after the dispatcher queued the job (an export row, in contrast, is made a moment before its
+      // job): a warning, and the metric still counts it, so a store that cannot see its own reports shows as a rate
+      this.subjectMissing.inc({ job: JobNames.GENERATE_SCHEDULED_REPORT })
+      this.logger.warn({ reportId, storeId }, 'the report of the job was not found for its store')
+      return ReportRunOutcomes.SKIPPED
+    }
+    if (!report.enabled) return ReportRunOutcomes.SKIPPED
     if (madeOnDay(report.lastSentAt, report.timezone, day)) return ReportRunOutcomes.SKIPPED
 
     // The report is made for a person: it is theirs while they still hold the right to take the figures out. When they lose it
     // (removed, suspended, a role without it) the report stops, and its row says so (it shows as off in the list).
     if (!(await this.stillAllowed(report.storeId, report.createdBy))) {
-      const { count } = await this.prisma.client.scheduledReport.updateMany({
-        where: { id: report.id, storeId: report.storeId, enabled: true },
-        data: { enabled: false }
-      })
+      const { count } = await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.scheduledReport.updateMany({
+          where: { id: report.id, storeId: report.storeId, enabled: true },
+          data: { enabled: false }
+        })
+      )
       this.logger.warn(
         { reportId: report.id },
         'a scheduled report was turned off: its person lost the right'
@@ -108,53 +127,65 @@ export class ScheduledReportRunner {
     if (!filters.success)
       throw new UnrecoverableError('the scheduled report does not fit its schema')
 
-    const made = await this.prisma.client.export.create({
-      data: {
-        storeId: report.storeId,
-        requestedBy: report.createdBy,
-        type: ExportTypes.ANALYTICS,
-        format: report.format,
-        filters: filters.data,
-        status: ExportStatus.PENDING,
-        expiresAt: new Date(now.getTime() + DataRetentionPolicies.EXPORTS.defaultDays * 86_400_000)
-      },
-      select: { id: true }
-    })
+    const made = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.export.create({
+        data: {
+          storeId: report.storeId,
+          requestedBy: report.createdBy,
+          type: ExportTypes.ANALYTICS,
+          format: report.format,
+          filters: filters.data,
+          status: ExportStatus.PENDING,
+          expiresAt: new Date(
+            now.getTime() + DataRetentionPolicies.EXPORTS.defaultDays * 86_400_000
+          )
+        },
+        select: { id: true }
+      })
+    )
     try {
-      await this.generator.generate(made.id, lastAttempt)
+      await this.generator.generate(storeId, made.id, lastAttempt)
     } catch (error) {
       // The retry makes a row of its own: this one would stay pending for good, and count as an export being made
-      await this.prisma.client.export.updateMany({
-        where: { id: made.id, storeId: report.storeId, status: ExportStatus.PENDING },
-        data: {
-          status: ExportStatus.FAILED,
-          error: ErrorCodes.EXPORT_FAILED,
-          completedAt: new Date()
-        }
-      })
+      await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.export.updateMany({
+          where: { id: made.id, storeId: report.storeId, status: ExportStatus.PENDING },
+          data: {
+            status: ExportStatus.FAILED,
+            error: ErrorCodes.EXPORT_FAILED,
+            completedAt: new Date()
+          }
+        })
+      )
       throw error
     }
-    const row = await this.prisma.client.export.findFirst({
-      where: { id: made.id, storeId: report.storeId },
-      select: { status: true, key: true }
-    })
+    const row = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.export.findFirst({
+        where: { id: made.id, storeId: report.storeId },
+        select: { status: true, key: true }
+      })
+    )
     if (row === null || row.status !== ExportStatus.READY || row.key === null) {
       // The generator failed the row or threw; whichever it was, the report is not sent
       throw new Error('the file of a scheduled report was not made')
     }
 
     const attachment = await this.attachment(row.key)
-    const store = await this.prisma.client.store.findUnique({
-      where: { id: report.storeId },
-      select: { name: true }
-    })
-    const user = await this.prisma.client.user.findUnique({
-      where: { id: report.createdBy },
-      select: { locale: true }
-    })
+    const store = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.store.findUnique({
+        where: { id: report.storeId },
+        select: { name: true }
+      })
+    )
+    const user = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.user.findUnique({
+        where: { id: report.createdBy },
+        select: { locale: true }
+      })
+    )
     const locale = localeOf(user?.locale)
     const texts = reportTexts(locale, { name: report.name, ...period })
-    const table = await readReportTable(this.prisma, report.storeId, filters.data)
+    const table = await readReportTable(this.prisma, this.jobContext, storeId, filters.data)
     const totals = table.metrics.map((metric: ReportMetric, index) => ({
       label: texts.metricLabel(metric),
       value: formatCell(table.totals[index] ?? null, RolledUpMetricUnits[metric])
@@ -182,10 +213,12 @@ export class ScheduledReportRunner {
         { jobId: `${JobNames.GENERATE_SCHEDULED_REPORT}-email-${report.id}-${day}-${index}` }
       )
     }
-    await this.prisma.client.scheduledReport.updateMany({
-      where: { id: report.id, storeId: report.storeId },
-      data: { lastSentAt: now }
-    })
+    await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.scheduledReport.updateMany({
+        where: { id: report.id, storeId: report.storeId },
+        data: { lastSentAt: now }
+      })
+    )
     this.audit.log({
       action: AuditAction.REPORT_SENT,
       actor: { userId: report.createdBy },
@@ -198,16 +231,18 @@ export class ScheduledReportRunner {
   }
 
   private async stillAllowed(storeId: string, userId: string): Promise<boolean> {
-    const count = await this.prisma.client.membership.count({
-      where: {
-        storeId,
-        userId,
-        status: MembershipStatus.ACTIVE,
-        AND: [Permissions.ANALYTICS_VIEW, Permissions.ANALYTICS_EXPORT].map(name => ({
-          role: { permissions: { some: { name } } }
-        }))
-      }
-    })
+    const count = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.membership.count({
+        where: {
+          storeId,
+          userId,
+          status: MembershipStatus.ACTIVE,
+          AND: [Permissions.ANALYTICS_VIEW, Permissions.ANALYTICS_EXPORT].map(name => ({
+            role: { permissions: { some: { name } } }
+          }))
+        }
+      })
+    )
     return count > 0
   }
 
