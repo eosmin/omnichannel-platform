@@ -302,10 +302,15 @@ describe('The legal books', () => {
       await expect(
         owner.financeBookLayout.deleteMany({ where: { organizationId: ctx.orgA.id } })
       ).rejects.toThrow(/never changed or deleted/)
-      const audit = await waitForAuditEntries(owner, {
-        organizationId: ctx.orgA.id,
-        action: AuditAction.FINANCE_BOOK_LAYOUT_CHANGED
-      })
+      // Two layouts were written above: wait for both entries (the helper returns as soon as it finds `expected`, one by default)
+      const audit = await waitForAuditEntries(
+        owner,
+        {
+          organizationId: ctx.orgA.id,
+          action: AuditAction.FINANCE_BOOK_LAYOUT_CHANGED
+        },
+        2
+      )
       expect(audit.length).toBeGreaterThanOrEqual(2)
     })
 
