@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import type { Gauge } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
-import { isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
 import {
   ChainIncidentChange,
   ChainProblem,
@@ -336,15 +336,17 @@ export class FinanceChainMonitor {
     try {
       // The row and the event commit together: an incident nobody was told about cannot exist
       await this.unit(organizationId, () =>
-        this.prisma.transaction(async tx => {
-          await tx.financeChainIncident.create({
-            data: { organizationId, ...details, detectedAt: now }
+        inSavepoint(() =>
+          this.prisma.transaction(async tx => {
+            await tx.financeChainIncident.create({
+              data: { organizationId, ...details, detectedAt: now }
+            })
+            this.events.publish(tx, Events.FINANCE_CHAIN_BROKEN, {
+              organizationId,
+              reason: PROBLEM_OF[broken.reason]
+            })
           })
-          this.events.publish(tx, Events.FINANCE_CHAIN_BROKEN, {
-            organizationId,
-            reason: PROBLEM_OF[broken.reason]
-          })
-        })
+        )
       )
     } catch (error) {
       // Another replica opened it between our update and our create: the partial unique index keeps it one

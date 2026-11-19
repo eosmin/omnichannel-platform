@@ -6,7 +6,12 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher } from '@platform/core/crypto'
-import { isUniqueViolation, PrismaService, type PrismaTransaction } from '@platform/core/database'
+import {
+  inSavepoint,
+  isUniqueViolation,
+  PrismaService,
+  type PrismaTransaction
+} from '@platform/core/database'
 import {
   FinancePostingKey,
   FiscalConflictReasons,
@@ -583,7 +588,7 @@ export class FiscalDocumentsService {
   // loses finds the note already made, which is the answer, not a fault
   private async onceOnly(make: () => Promise<string | null>): Promise<string | null> {
     try {
-      return await make()
+      return await inSavepoint(make)
     } catch (error) {
       if (isUniqueViolation(error)) {
         // Said, not swallowed: another unique rule of the table would be hidden here otherwise

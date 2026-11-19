@@ -6,7 +6,12 @@ import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher } from '@platform/core/crypto'
-import { DatabaseNull, isUniqueViolation, PrismaService } from '@platform/core/database'
+import {
+  DatabaseNull,
+  inSavepoint,
+  isUniqueViolation,
+  PrismaService
+} from '@platform/core/database'
 import {
   FiscalDocumentStatus,
   FiscalEvidenceContentType,
@@ -133,20 +138,22 @@ export class FiscalEvidenceService {
     const key = StorageKeys.fiscalEvidence(doc.storeId, doc.id, mediaId, filename)
     await this.storage.put(key, bytes, FiscalEvidenceContentType)
     try {
-      await this.prisma.client.media.create({
-        data: {
-          id: mediaId,
-          storeId: doc.storeId,
-          purpose: MediaPurpose.FISCAL_EVIDENCE,
-          fiscalDocumentId: doc.id,
-          fiscalEvidenceKind: kind,
-          key,
-          filename,
-          contentType: FiscalEvidenceContentType,
-          fileSize: bytes.byteLength,
-          status: MediaStatus.PENDING
-        }
-      })
+      await inSavepoint(() =>
+        this.prisma.client.media.create({
+          data: {
+            id: mediaId,
+            storeId: doc.storeId,
+            purpose: MediaPurpose.FISCAL_EVIDENCE,
+            fiscalDocumentId: doc.id,
+            fiscalEvidenceKind: kind,
+            key,
+            filename,
+            contentType: FiscalEvidenceContentType,
+            fileSize: bytes.byteLength,
+            status: MediaStatus.PENDING
+          }
+        })
+      )
     } catch (error) {
       // The object is not the file of any row: it goes, whatever the reason
       await this.storage.delete(key).catch(() => undefined)
