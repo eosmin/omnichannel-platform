@@ -34,6 +34,30 @@ describe('a replica reader got through another name', () => {
     ).toEqual([expect.stringContaining('another name')])
   })
 
+  it('refuses a computed key, a const key, a built key and Reflect.get', () => {
+    for (const body of [
+      `class S { go() { const { ['replicaTenantRead']: r } = this.prisma; return r } }`,
+      `class S { go() { return Reflect.get(this.prisma, 'replicaTenantRead') } }`,
+      `class S { go(k: string) { return this.prisma[k] } }`,
+      `class S { go() { return this.prisma['replica' + 'TenantRead'] } }`
+    ]) {
+      expect(messages(body)).not.toEqual([])
+    }
+  })
+
+  it('does not refuse a declaration, an array pattern or the plain direct call', () => {
+    expect(messages(`class P { replicaTenantRead(ctx: C, fn: F) { return fn } }`)).toEqual([])
+    expect(
+      messages(`class S { go() { const [replicaTenantRead] = [1]; return replicaTenantRead } }`)
+    ).toEqual([])
+  })
+
+  it('refuses it inside a listed reader too', () => {
+    expect(
+      check(`class S { go() { return this.prisma['replicaTenantRead'] } }`).violations
+    ).not.toEqual([])
+  })
+
   it('counts them as calls of the file, so a listed reader that only has one is not stale', () => {
     expect(check(`class S { go() { return this.prisma.replicaTenantRead } }`).calls).toBe(1)
   })

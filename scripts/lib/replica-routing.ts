@@ -53,13 +53,22 @@ function isIndirectReplicaReference(node: ts.Node): boolean {
     const parent = node.parent
     return !(ts.isCallExpression(parent) && parent.expression === node)
   }
-  if (ts.isElementAccessExpression(node)) {
-    const key = node.argumentExpression
-    return ts.isStringLiteralLike(key) && key.text === REPLICA_NAME
+  // The name as a string anywhere (`x['replicaTenantRead']`, a computed key, `Reflect.get(x, 'replicaTenantRead')`, a const key); the
+  // import of a module and a message that is not a code path are the only other places such a string can be
+  if (ts.isStringLiteralLike(node) && node.text === REPLICA_NAME) {
+    return !ts.isImportDeclaration(node.parent) && !ts.isExportDeclaration(node.parent)
   }
-  if (ts.isBindingElement(node)) {
+  // A key built at run time on the prisma service (`this.prisma[key]`, `this.prisma['replica' + 'TenantRead']`)
+  if (ts.isElementAccessExpression(node)) {
+    return (
+      /\bprisma$/i.test(node.expression.getText()) &&
+      !ts.isStringLiteralLike(node.argumentExpression)
+    )
+  }
+  // Only an object pattern names a property of the object (`const { replicaTenantRead } = x`); `const [replicaTenantRead] = list` does not
+  if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
     const name = node.propertyName ?? node.name
-    return (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) && name.text === REPLICA_NAME
+    return ts.isIdentifier(name) && name.text === REPLICA_NAME
   }
   return (
     ts.isCallExpression(node) &&
