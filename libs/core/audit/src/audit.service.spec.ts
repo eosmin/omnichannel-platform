@@ -24,12 +24,14 @@ interface Harness {
 // with createMany (no RETURNING): the double keeps the context it was asked for so the cases can see it
 let current: { storeIds: readonly string[]; organizationIds: readonly string[] } | undefined
 const contexts: Array<{ storeIds: readonly string[]; organizationIds: readonly string[] }> = []
-const held: Promise<unknown>[] = []
+// The work queued to run before the commit of the request, and the transaction it would get
+const queued: Array<(tx: unknown) => Promise<void>> = []
 function prismaOf(create: Create): PrismaService {
   return {
     currentTenantContext: () => current,
-    holdCommit: (_db: unknown, work: Promise<unknown>) => {
-      held.push(work)
+    beforeCommit: (_db: unknown, work: (tx: unknown) => Promise<void>) => {
+      queued.push(work)
+      return true
     },
     detachedTenantTransaction: (
       context: { storeIds: readonly string[]; organizationIds: readonly string[] },
@@ -162,28 +164,55 @@ describe('AuditService', () => {
     ])
   })
 
-  it('makes the commit of the request wait for the entries it wrote, and for no other', async () => {
-    held.length = 0
+  it('queues the entry of the request to run before its commit, and writes an entry of another store at once', async () => {
+    queued.length = 0
+    contexts.length = 0
     current = { storeIds: [STORE_ID], organizationIds: [] }
     try {
-      const { service } = build()
+      const { service, create } = build()
 
       service.log({
         action: AuditAction.USER_LOGOUT,
         actor: { userId: USER_ID },
         storeId: STORE_ID
       })
-      // An entry about a store the request is not in goes in a transaction of its own: nothing to hold
       service.log({ action: AuditAction.USER_LOGOUT, actor: { userId: USER_ID }, storeId: 'other' })
       await service.onModuleDestroy()
 
-      expect(held).toHaveLength(1)
+      // The one of the request waits for the commit; the other went in a transaction of its own
+      expect(queued).toHaveLength(1)
+      expect(contexts).toEqual([{ storeIds: ['other'], organizationIds: [] }])
+      expect(create).toHaveBeenCalledTimes(1)
+    } finally {
+      current = undefined
+    }
+  })
+
+  it('counts and logs an entry of the request that cannot be written, and does not throw', async () => {
+    queued.length = 0
+    current = { storeIds: [STORE_ID], organizationIds: [] }
+    try {
+      const { service, inc } = build()
+      service.log({
+        action: AuditAction.USER_LOGOUT,
+        actor: { userId: USER_ID },
+        storeId: STORE_ID
+      })
+      const failing = {
+        auditLog: { createMany: () => Promise.reject(new Error('refused')) },
+        $executeRaw: () => Promise.resolve(0)
+      }
+
+      await queued[0]?.(failing)
+
+      expect(inc).toHaveBeenCalledWith({ reason: 'write_failed' })
     } finally {
       current = undefined
     }
   })
 
   it('writes inside the transaction of the request when its context already holds the store of the entry', async () => {
+    queued.length = 0
     contexts.length = 0
     current = { storeIds: [STORE_ID], organizationIds: [] }
     try {
@@ -196,6 +225,16 @@ describe('AuditService', () => {
       })
       service.log({ action: AuditAction.USER_LOGOUT, actor: { userId: USER_ID } })
       await service.onModuleDestroy()
+      // Nothing is written until the commit is near; then both go in the transaction the request has, not in one of their own
+      expect(create).not.toHaveBeenCalled()
+      const tx = {
+        auditLog: {
+          createMany: (args: { data: Array<Record<string, unknown>> }) =>
+            create({ data: args.data[0] ?? {} })
+        },
+        $executeRaw: () => Promise.resolve(0)
+      }
+      for (const work of queued.splice(0)) await work(tx)
 
       expect(create).toHaveBeenCalledTimes(2)
       expect(contexts).toEqual([])

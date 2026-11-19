@@ -128,8 +128,9 @@ interface TransactionOptions {
 interface UnitOfWork {
   state: 'open' | 'committed' | 'rolledBack'
   hooks: Array<() => void>
-  // Work started inside the transaction that nobody awaits (the audit entry of a request): the commit waits for it
-  holds: Set<Promise<unknown>>
+  // Work queued to run, one at a time, once the callback of the transaction has finished and before it commits (the audit entry of a
+  // request). It is dropped when the transaction rolls back.
+  beforeCommit: Array<(tx: PrismaTransaction) => Promise<void>>
 }
 
 // The transaction that a unit of work runs in, once there is one. Prisma queries are lazy: they run
@@ -147,15 +148,6 @@ function hasQueryScope(): boolean {
 // attempt it rolls back
 const units = new WeakMap<object, UnitOfWork>()
 let savepointCounter = 0
-
-// Waits for the work a transaction was told to hold, including what that work holds in turn
-async function settleHolds(unit: UnitOfWork): Promise<void> {
-  while (unit.holds.size > 0) {
-    const batch = [...unit.holds]
-    await Promise.allSettled(batch)
-    for (const held of batch) unit.holds.delete(held)
-  }
-}
 
 // Asks the database to run, now, the check of a constraint trigger that is DEFERRABLE INITIALLY DEFERRED (it would run at the COMMIT),
 // and puts it back to deferred. Under RLS_CONTEXT the commit of a request is the interceptor's, outside the try/catch of the service
@@ -356,14 +348,36 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     // After a rollback it is dropped: what it would announce did not happen
   }
 
-  // Makes the commit of the transaction `db` wait for `work`, a promise that the caller does not await (the audit entry of a request is
-  // written without blocking the answer, but it must reach the connection before the transaction closes). Its failure is the
-  // caller's to handle: the commit only waits for it to finish. With no transaction of ours behind `db` (the base client) there is
-  // nothing to wait for.
-  holdCommit(db: PrismaService['client'], work: Promise<unknown>): void {
+  // Queues `work` to run just before the transaction `db` commits, after the callback of the unit of work has finished and with the
+  // connection to itself (the audit entry of a request: it cannot be started earlier without racing the rest of the request, and
+  // later it would find the transaction closed). It gets the transaction; a failure must be handled by the work itself (a throw
+  // is logged and does not stop the commit). If the transaction rolls back it never runs. With no transaction of ours behind
+  // `db` (the base client) it returns false and the caller does the work some other way.
+  beforeCommit(
+    db: PrismaService['client'],
+    work: (tx: PrismaTransaction) => Promise<void>
+  ): boolean {
     const unit = units.get(db)
-    if (unit === undefined || unit.state !== 'open') return
-    unit.holds.add(work)
+    if (unit === undefined || unit.state !== 'open') return false
+    unit.beforeCommit.push(work)
+    return true
+  }
+
+  private async runBeforeCommit(unit: UnitOfWork, tx: PrismaTransaction): Promise<void> {
+    for (
+      let next = unit.beforeCommit.shift();
+      next !== undefined;
+      next = unit.beforeCommit.shift()
+    ) {
+      try {
+        await next(tx)
+      } catch (error) {
+        this.logger.error(
+          'work queued before a commit failed',
+          error instanceof Error ? error.stack : String(error)
+        )
+      }
+    }
   }
 
   // One real transaction, whose commit hooks run after it commits
@@ -371,17 +385,16 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     fn: (tx: PrismaTransaction) => Promise<T>,
     options: TransactionOptions | undefined
   ): Promise<T> {
-    const unit: UnitOfWork = { state: 'open', hooks: [], holds: new Set() }
+    const unit: UnitOfWork = { state: 'open', hooks: [], beforeCommit: [] }
     let result: T
     try {
       result = await this.base.$transaction(async (tx: PrismaTransaction) => {
         units.set(tx, unit)
-        try {
-          return await fn(tx)
-        } finally {
-          // Before the COMMIT (or the ROLLBACK): a held query that reached the connection after it would fail on a closed transaction
-          await settleHolds(unit)
-        }
+        const out = await fn(tx)
+        // After the callback and before the COMMIT, when nothing else of the request is using the connection: what was queued runs
+        // here. A callback that throws rolls back, and what was queued with it is dropped.
+        await this.runBeforeCommit(unit, tx)
+        return out
       }, options)
     } catch (error) {
       unit.state = 'rolledBack'
