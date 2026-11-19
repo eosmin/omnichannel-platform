@@ -95,7 +95,11 @@ describe('Transfers between warehouses', () => {
   // A product of store A (or of the store given) with stock in the warehouse given
   // Work of a fixture, in the context of ONE store and the organization it belongs to (and nothing wider)
   const inStoreOf = <T>(storeId: string, work: () => Promise<T>): Promise<T> => {
-    const organizationId = { [ctx.storeA.id]: ctx.orgA.id, [ctx.storeB.id]: ctx.orgB.id }[storeId]
+    const organizationId = {
+      [ctx.storeA.id]: ctx.orgA.id,
+      [ctx.storeA2.id]: ctx.orgA.id,
+      [ctx.storeB.id]: ctx.orgB.id
+    }[storeId]
     if (organizationId === undefined) throw new Error(`the case has no organization for ${storeId}`)
     return inStoreContext(prisma, { storeId, organizationId }, work)
   }
