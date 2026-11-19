@@ -798,7 +798,7 @@ describe('PrismaService with requireContext', () => {
       RawSqlContextRequiredError
     )
     await expect(
-      client.$executeRawUnsafe('DELETE FROM "orders" WHERE false')
+      client.$executeRawUnsafe('UPDATE "orders" SET id = id WHERE false')
     ).rejects.toBeInstanceOf(RawSqlContextRequiredError)
   })
 

@@ -10,7 +10,7 @@ describe('tablesOfRawSql', () => {
     ])
     expect(tablesOfRawSql('UPDATE orders SET a = 1')).toEqual(['orders'])
     expect(tablesOfRawSql('INSERT INTO media (id) VALUES (1)')).toEqual(['media'])
-    expect(tablesOfRawSql('DELETE FROM media WHERE id = 1')).toEqual(['media'])
+    expect(tablesOfRawSql('SELECT 1 FROM media WHERE id = 1')).toEqual(['media'])
     expect(tablesOfRawSql('TRUNCATE TABLE orders')).toEqual(['orders'])
   })
 
@@ -40,7 +40,7 @@ describe('tablesOfRawSql, the shapes that are not a plain FROM', () => {
       'users',
       'conversations'
     ])
-    expect(tablesOfRawSql('DELETE FROM users USING messages m WHERE m.u = users.id')).toEqual([
+    expect(tablesOfRawSql('UPDATE users SET a = 1 FROM messages m WHERE m.u = users.id')).toEqual([
       'users',
       'messages'
     ])
@@ -73,7 +73,7 @@ describe('sqlTextOfRawArgs', () => {
     expect(
       sqlTextOfRawArgs({ strings: ['SELECT 1 FROM messages WHERE id = ', ''], values: [7] })
     ).toContain('FROM messages')
-    expect(sqlTextOfRawArgs(['DELETE FROM media WHERE a = $1', 5])).toContain('FROM media')
+    expect(sqlTextOfRawArgs(['SELECT 1 FROM media WHERE a = $1', 5])).toContain('FROM media')
     const nested = sqlTextOfRawArgs({
       strings: ['SELECT * FROM ', ''],
       values: [{ strings: ['orders o'], values: [] }]

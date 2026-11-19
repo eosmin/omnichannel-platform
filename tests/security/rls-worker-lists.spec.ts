@@ -52,25 +52,35 @@ describe('row-level security, phase 5: the lists of the worker', () => {
     await owner.$disconnect()
   })
 
+  const asWorker = <T>(work: (query: pg.Client['query']) => Promise<T>): Promise<T> =>
+    asRole('platform_worker', work)
+
   // One transaction: row security on for the tables of the lists, the role of the worker, NO context, the work, ROLLBACK
-  async function asWorker<T>(work: (query: pg.Client['query']) => Promise<T>): Promise<T> {
+  async function asRole<T>(
+    role: 'platform_app' | 'platform_worker',
+    work: (query: pg.Client['query']) => Promise<T>
+  ): Promise<T> {
     await raw.query('BEGIN')
     try {
       await raw.query("SET LOCAL lock_timeout = '20s'")
       for (const table of ['carrier_connections', 'channel_connections', 'notifications']) {
         await raw.query(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`)
       }
-      await raw.query('SET LOCAL ROLE platform_worker')
+      await raw.query(`SET LOCAL ROLE ${role}`)
       return await work(raw.query.bind(raw))
     } finally {
       await raw.query('ROLLBACK').catch(() => undefined)
     }
   }
 
-  it('answers no row to a plain query with no context, and the list still returns the stores', async () => {
-    await asWorker(async query => {
+  it('hides the rows from the role of the api with no context, and the list still returns every store to the worker', async () => {
+    // The worker still has BYPASSRLS (it loses it in the last PR of the phase), so "no row" is shown with the role of the api, which
+    // has none; the list is read as the worker, which is the only role that may call it
+    await asRole('platform_app', async query => {
       const plain = await query('SELECT id FROM carrier_connections WHERE id = ANY ($1)', [pickups])
       expect(plain.rows).toHaveLength(0)
+    })
+    await asWorker(async query => {
       const listed = await query(
         'SELECT id, store_id FROM rls_list_pickup_targets($1, NULL, 1000)',
         [CarrierConnectionStatus.ACTIVE]
