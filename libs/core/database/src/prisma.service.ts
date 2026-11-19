@@ -444,7 +444,14 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         await applyTenantContext(tx, context)
         // `fn` is awaited INSIDE the scope: a Prisma query is lazy, and one that is only started after run() returns (a callback that
         // returns `client.model.findMany()` as it is) would run its hooks with no scope
-        return tenantScope.run({ tx, context }, async () => await fn())
+        return tenantScope.run({ tx, context }, async () => {
+          const out = await fn()
+          // What was queued for the commit (the audit entry of a request) runs here, still in the scope: a query outside it is
+          // refused by the guard of the context
+          const unit = units.get(tx)
+          if (unit !== undefined) await this.runBeforeCommit(unit, tx)
+          return out
+        })
       },
       { ...TENANT_TRANSACTION, ...options }
     )
