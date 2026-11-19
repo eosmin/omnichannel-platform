@@ -93,7 +93,9 @@ describe('row-level security, phase 5: the schedulers that go store by store', (
     )
     // The first store was gone (skipped silently), the second failed (reported), every other store was still read
     expect(failed).toHaveLength(1)
-    expect(rows.length).toBeGreaterThan(0)
+    expect(rows).toEqual(expect.any(Array))
+    // The first store was gone, the second failed, and the rest were still read
+    expect(forStore.mock.calls.length).toBeGreaterThan(2)
     forStore.mockRestore()
   })
 
