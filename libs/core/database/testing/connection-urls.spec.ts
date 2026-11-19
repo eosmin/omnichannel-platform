@@ -1,4 +1,10 @@
-import { connectionUrls, poolerAdminUrl, PoolerAdmin, TEST_DATABASE_NAME } from './connection-urls'
+import {
+  connectionUrls,
+  poolerAdminUrl,
+  PoolerAdmin,
+  replicaConnectionUrl,
+  TEST_DATABASE_NAME
+} from './connection-urls'
 
 const DEV_URL = 'postgresql://platform:dev_password@localhost:5432/platform_dev'
 const NAMES = [
@@ -7,6 +13,7 @@ const NAMES = [
   'DIRECT_DATABASE_URL',
   'DB_APP_PASSWORD',
   'DB_WORKER_PASSWORD',
+  'DB_REPLICA_PASSWORD',
   'TEST_POOLER_URL',
   'PGBOUNCER_AUTH_PASSWORD'
 ] as const
@@ -151,5 +158,40 @@ describe('connectionUrls', () => {
       delete process.env['TEST_POOLER_URL']
       expect(() => poolerAdminUrl()).toThrow('TEST_POOLER_URL is required')
     })
+  })
+})
+
+describe('replicaConnectionUrl', () => {
+  const original = { ...process.env }
+
+  beforeEach(() => {
+    for (const name of ['CI', 'TEST_DATABASE_URL', 'DB_REPLICA_PASSWORD']) delete process.env[name]
+    process.env['DIRECT_DATABASE_URL'] = DEV_URL
+  })
+
+  afterEach(() => {
+    for (const name of Object.keys(process.env)) {
+      if (!(name in original)) delete process.env[name]
+    }
+    Object.assign(process.env, original)
+  })
+
+  it('connects as the read only role, straight to the test database', () => {
+    process.env['DB_REPLICA_PASSWORD'] = 'replica_password_1'
+    const url = new URL(replicaConnectionUrl())
+    expect(url.username).toBe('platform_replica_ro')
+    expect(url.password).toBe('replica_password_1')
+    expect(url.pathname).toBe(`/${TEST_DATABASE_NAME}`)
+    expect(url.port).toBe('5432')
+  })
+
+  it('needs the password of the role', () => {
+    expect(() => replicaConnectionUrl()).toThrow('DB_REPLICA_PASSWORD is required')
+  })
+
+  it('never points at the database development uses', () => {
+    process.env['DB_REPLICA_PASSWORD'] = 'replica_password_1'
+    process.env['TEST_DATABASE_URL'] = DEV_URL
+    expect(() => replicaConnectionUrl()).toThrow('development database')
   })
 })
