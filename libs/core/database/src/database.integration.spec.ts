@@ -804,31 +804,35 @@ describe('PrismaService', () => {
       expect(service.beforeCommit(service.client, () => Promise.resolve())).toBe(false)
     })
 
-    it('refuses what is queued after the last drain, so its caller writes it some other way', async () => {
-      // The last queued work arms a timer and finishes: the timer fires while the COMMIT is on the wire, after the final drain. Before
-      // the fix this was still "open", the entry went to a queue nobody emptied and was lost with no metric and no log.
-      const late: { queued?: boolean; hookRan: boolean } = { hookRan: false }
-      let fired: () => void = () => undefined
-      const timerFired = new Promise<void>(resolve => {
-        fired = resolve
-      })
-      await service.tenantTransaction(context, () => {
-        service.beforeCommit(service.client, () => {
-          setTimeout(() => {
-            late.queued = service.beforeCommit(service.client, () => Promise.resolve())
-            service.afterCommit(service.client, () => {
-              late.hookRan = true
-            })
-            fired()
-          }, 0)
-          return Promise.resolve()
+    it('refuses what is queued right after the last drain, and still holds its commit hooks', async () => {
+      // No timers: the window between the last drain and the COMMIT is built by hand. runBeforeCommit is wrapped so that, the moment a
+      // drain has finished and before the transaction goes on to commit, the case asks beforeCommit and afterCommit exactly as a late
+      // caller would. Before the fix the unit was still "open" there, beforeCommit answered true and the entry sat in a queue that
+      // nobody empties again.
+      const internals = service as unknown as {
+        runBeforeCommit: (unit: unknown, tx: unknown) => Promise<void>
+      }
+      const original = internals.runBeforeCommit.bind(service)
+      const answers: boolean[] = []
+      const hooks: string[] = []
+      const spy = jest
+        .spyOn(internals, 'runBeforeCommit')
+        .mockImplementation(async (unit: unknown, tx: unknown) => {
+          await original(unit, tx)
+          answers.push(service.beforeCommit(service.client, () => Promise.resolve()))
+          service.afterCommit(service.client, () => hooks.push('late'))
+          // The transaction has not committed: the hook waits
+          expect(hooks).toEqual([])
         })
-        return Promise.resolve()
-      })
-      await timerFired
-      expect(late.queued).toBe(false)
-      // A commit hook added in that window still runs: the transaction does commit
-      expect(late.hookRan).toBe(true)
+      try {
+        await service.tenantTransaction(context, () => Promise.resolve())
+      } finally {
+        spy.mockRestore()
+      }
+      expect(answers.length).toBeGreaterThan(0)
+      expect(answers.every(answer => !answer)).toBe(true)
+      // Held through the window and run once, after the COMMIT
+      expect(hooks).toEqual(Array(answers.length).fill('late'))
     })
 
     it('drains what was queued in a catalog transaction, inside its scope', async () => {
