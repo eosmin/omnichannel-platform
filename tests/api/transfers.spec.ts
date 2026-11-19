@@ -456,13 +456,21 @@ describe('Transfers between warehouses', () => {
     it('needs real available stock: reserved units cannot leave, and then nothing at all is dispatched', async () => {
       const ok = await stocked({ quantity: 10 })
       const reserved = await stocked({ quantity: 10 })
-      await inventory.reserve({
-        storeId: reserved.storeId,
-        productId: reserved.productId,
-        warehouseId: ctx.warehouseA.id,
-        quantity: 8,
-        idempotencyKey: randomUUID()
-      })
+      await inStoreContext(
+        prisma,
+        {
+          storeId: reserved.storeId,
+          organizationId: reserved.storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id
+        },
+        () =>
+          inventory.reserve({
+            storeId: reserved.storeId,
+            productId: reserved.productId,
+            warehouseId: ctx.warehouseA.id,
+            quantity: 8,
+            idempotencyKey: randomUUID()
+          })
+      )
       const made = await draft([
         { productId: ok.productId, quantity: 5 },
         { productId: reserved.productId, quantity: 5 }
