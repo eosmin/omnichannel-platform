@@ -6,7 +6,12 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { EventContext, JobContextGoneError, PrismaService } from '@platform/core/database'
+import {
+  EventContext,
+  inSavepoint,
+  JobContextGoneError,
+  PrismaService
+} from '@platform/core/database'
 import {
   isWebhookEvent,
   PluginInstallationStatus,
@@ -68,27 +73,89 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
       )
       return 0
     }
-    // Each side fails on its own: a store whose webhooks could not be read does not cost its plugins their delivery. One after the
-    // other, so an event takes one connection at a time for its short read and not two (it is heard for every store and event)
-    const tenants = await this.dispatchToTenants(event, storeId, body)
-    const plugins = await this.dispatchToPlugins(event, storeId, body)
+    // ONE short context per event (it is heard for every store and event) holds both reads. Each read is in its own savepoint, so a
+    // read that fails does not abort the transaction of the other: a store whose webhooks could not be read does not cost its plugins
+    // their delivery. The queue is asked after the context has closed.
+    let read: Reads
+    try {
+      read = await this.events.inStore(storeId, () => this.read(event, storeId))
+    } catch (error) {
+      // A store deleted after the event has nothing left to deliver
+      if (error instanceof JobContextGoneError) return 0
+      this.logger.error(
+        { event, storeId, err: String(error) },
+        'the webhooks of an event could not be read'
+      )
+      return 0
+    }
+    const tenants = await this.queueTenants(event, storeId, body, read.webhooks)
+    const plugins = await this.queuePlugins(event, storeId, body, read.installations)
     return tenants + plugins
   }
 
-  private async dispatchToTenants(
-    event: WebhookEvent,
-    storeId: string,
-    body: Record<string, unknown>
-  ): Promise<number> {
-    try {
-      // The read is the only work inside the context of the store; the queue is asked after it has closed
-      const webhooks = await this.events.inStore(storeId, () =>
+  private async read(event: WebhookEvent, storeId: string): Promise<Reads> {
+    const webhooks = await this.attempt(
+      event,
+      storeId,
+      'the webhooks of an event could not be read',
+      () =>
         this.prisma.client.webhook.findMany({
           where: { storeId, status: WebhookStatus.ACTIVE, events: { has: event } },
           select: { id: true }
         })
-      )
-      if (webhooks.length === 0) return 0
+    )
+    // An event no plugin is sent (the returns, until they have a scope) costs no query
+    const needed = PluginEventScopes[event]
+    // The installations of the store that follow the event: active, with the endpoint that passed the challenge and the secret
+    // that signs, not turned off, of a plugin that is still approved (a suspended plugin gets nothing)
+    const installations =
+      needed === undefined
+        ? []
+        : await this.attempt(
+            event,
+            storeId,
+            'the plugin installations of an event could not be read',
+            () =>
+              this.prisma.client.pluginInstallation.findMany({
+                where: {
+                  storeId,
+                  scopes: { has: needed },
+                  status: PluginInstallationStatus.ACTIVE,
+                  webhookEndpoint: { not: null },
+                  webhookSecret: { not: null },
+                  webhookDisabledAt: null,
+                  plugin: { status: PluginStatus.APPROVED }
+                },
+                select: { id: true, scopes: true, plugin: { select: { manifest: true } } }
+              })
+          )
+    return { webhooks, installations }
+  }
+
+  // One read in its own savepoint: a failure is logged and answers nothing, and the transaction stays usable for the next read
+  private async attempt<T>(
+    event: WebhookEvent,
+    storeId: string,
+    message: string,
+    read: () => Promise<T[]>
+  ): Promise<T[]> {
+    try {
+      return await inSavepoint(read)
+    } catch (error) {
+      if (error instanceof JobContextGoneError) throw error
+      this.logger.error({ event, storeId, err: String(error) }, message)
+      return []
+    }
+  }
+
+  private async queueTenants(
+    event: WebhookEvent,
+    storeId: string,
+    body: Record<string, unknown>,
+    webhooks: Reads['webhooks']
+  ): Promise<number> {
+    if (webhooks.length === 0) return 0
+    try {
       await this.queue.addBulk(
         webhooks.map(webhook => {
           const deliveryId = randomUUID()
@@ -109,8 +176,6 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
       )
       return webhooks.length
     } catch (error) {
-      // A store deleted after the event has nothing left to deliver
-      if (error instanceof JobContextGoneError) return 0
       this.logger.error(
         { event, storeId, err: String(error) },
         'the webhooks of an event could not be queued'
@@ -119,34 +184,25 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // The installations of the store that follow the event: active, with the endpoint that passed the challenge and the secret
-  // that signs, not turned off, of a plugin that is still approved (a suspended plugin gets nothing). What each one follows is
-  // read from its plugin's manifest and what it may be told from the scopes it was granted, never from the manifest.
-  private async dispatchToPlugins(
+  // What each installation follows is read from its plugin's manifest and what it may be told from the scopes it was granted,
+  // never from the manifest.
+  private async queuePlugins(
     event: WebhookEvent,
     storeId: string,
-    body: Record<string, unknown>
+    body: Record<string, unknown>,
+    installations: Reads['installations']
   ): Promise<number> {
-    // An event no plugin is sent (the returns, until they have a scope) costs no query
-    const needed = PluginEventScopes[event]
-    if (needed === undefined) return 0
     try {
-      const installations = await this.events.inStore(storeId, () =>
-        this.prisma.client.pluginInstallation.findMany({
-          where: {
-            storeId,
-            scopes: { has: needed },
-            status: PluginInstallationStatus.ACTIVE,
-            webhookEndpoint: { not: null },
-            webhookSecret: { not: null },
-            webhookDisabledAt: null,
-            plugin: { status: PluginStatus.APPROVED }
-          },
-          select: { id: true, scopes: true, plugin: { select: { manifest: true } } }
-        })
-      )
+      let hidden = 0
       const jobs = installations.flatMap(installation => {
-        if (manifestWebhookOf(installation.plugin.manifest)?.events.includes(event) !== true) {
+        // Row security may hide the plugin of an installation (the join reads `plugins` under the policy of the store): the row
+        // then comes with no plugin. That installation is skipped, never the whole dispatch.
+        const plugin: { manifest: unknown } | null = installation.plugin
+        if (plugin === null) {
+          hidden += 1
+          return []
+        }
+        if (manifestWebhookOf(plugin.manifest)?.events.includes(event) !== true) {
           return []
         }
         const data = redactForScopes(event, body, installation.scopes)
@@ -161,12 +217,16 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
         }
         return [{ name: JobNames.TRIGGER_PLUGIN_WEBHOOK, data: job, opts: { jobId: deliveryId } }]
       })
+      if (hidden > 0) {
+        this.logger.error(
+          { event, storeId, hidden },
+          'installations whose plugin is not visible were skipped'
+        )
+      }
       if (jobs.length === 0) return 0
       await this.queue.addBulk(jobs)
       return jobs.length
     } catch (error) {
-      // A store deleted after the event has nothing left to deliver
-      if (error instanceof JobContextGoneError) return 0
       this.logger.error(
         { event, storeId, err: String(error) },
         'the plugin webhooks of an event could not be queued'
@@ -174,6 +234,15 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
       return 0
     }
   }
+}
+
+interface Reads {
+  webhooks: { id: string }[]
+  installations: {
+    id: string
+    scopes: string[]
+    plugin: { manifest: unknown }
+  }[]
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

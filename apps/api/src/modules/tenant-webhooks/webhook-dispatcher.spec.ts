@@ -3,16 +3,29 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { type EventContext, JobContextGoneError } from '@platform/core/database'
-import { Events } from '@platform/core/events'
+import type { WebhookEvent } from '@platform/core/domain'
+import { type DomainEventPayloads, Events } from '@platform/core/events'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { WebhookDispatcher } from './webhook-dispatcher'
 
 const STORE = 'store-1'
 
+// Compiles only while every event of the catalog carries the store in its payload: the dispatcher reads nothing else, and an
+// event without it would be dropped with an error line each time
+type EventsWithoutStore = {
+  [E in WebhookEvent]: DomainEventPayloads[E] extends { storeId: string } ? never : E
+}[WebhookEvent]
+export const everyEventNamesItsStore: [EventsWithoutStore] extends [never] ? true : never = true
+
 // A stand-in for the row security of the database: a read answers only when it runs inside a context of the store it asks for
 function build(
-  options: { goneStore?: boolean; webhookReadFails?: boolean; installed?: boolean } = {}
+  options: {
+    goneStore?: boolean
+    webhookReadFails?: boolean
+    installed?: boolean
+    hiddenPlugin?: boolean
+  } = {}
 ) {
   const open = new AsyncLocalStorage<string>()
   const opened: string[] = []
@@ -44,11 +57,14 @@ function build(
                   {
                     id: 'installation-1',
                     scopes: [PluginScopes.ORDERS_READ],
-                    plugin: {
-                      manifest: {
-                        webhooks: { events: [Events.ORDER_CREATED], signatureHeader: 'X-Sig' }
-                      }
-                    }
+                    plugin:
+                      options.hiddenPlugin === true
+                        ? null
+                        : {
+                            manifest: {
+                              webhooks: { events: [Events.ORDER_CREATED], signatureHeader: 'X-Sig' }
+                            }
+                          }
                   }
                 ]
               : []
@@ -83,7 +99,8 @@ describe('WebhookDispatcher under row security', () => {
     const { dispatcher, opened, queued } = build()
     const count = await dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE, orderId: 'o1' })
     expect(count).toBe(1)
-    expect(opened).toContain(STORE)
+    // One context for the event, whatever the sides that read in it
+    expect(opened).toEqual([STORE])
     expect(queued).toHaveLength(1)
   })
 
@@ -133,6 +150,14 @@ describe('WebhookDispatcher under row security', () => {
 
   it('keeps the plugin side when the webhooks of the store could not be read', async () => {
     const { dispatcher, errors } = build({ webhookReadFails: true, installed: true })
+    expect(await dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE, orderId: 'o1' })).toBe(
+      1
+    )
+    expect(errors).toHaveLength(1)
+  })
+
+  it('skips an installation whose plugin is hidden, says so, and keeps the rest', async () => {
+    const { dispatcher, errors } = build({ installed: true, hiddenPlugin: true })
     expect(await dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE, orderId: 'o1' })).toBe(
       1
     )
