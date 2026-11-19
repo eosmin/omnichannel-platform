@@ -3,7 +3,6 @@ import {
   JobContext,
   JobContextError,
   JobContextGoneError,
-  JobContextMismatchError,
   forgetOrganizationsOfStores
 } from './job-context'
 import type { PrismaService } from './prisma.service'
@@ -166,51 +165,6 @@ describe('JobContext', () => {
     await expect(
       new JobContext(missing.prisma).forUser('u', () => Promise.resolve(undefined))
     ).rejects.toBeInstanceOf(JobContextError)
-  })
-})
-
-describe('JobContext.anchor', () => {
-  it('says gone for a row that does not exist, without opening a context', async () => {
-    const { prisma, queryRaw, contexts } = fakePrisma()
-    queryRaw.mockResolvedValueOnce([])
-    await expect(new JobContext(prisma).anchor('export', 'x')).resolves.toBe('gone')
-    expect(contexts).toEqual([])
-  })
-
-  it('says unowned for a row with no store, and visible when its own context reads it', async () => {
-    const unowned = fakePrisma()
-    unowned.queryRaw.mockResolvedValueOnce([{ store_id: null }])
-    await expect(new JobContext(unowned.prisma).anchor('media', 'x')).resolves.toBe('unowned')
-
-    const visible = fakePrisma({ store: { organizationId: ORG } })
-    visible.queryRaw.mockResolvedValueOnce([{ store_id: STORE }]).mockResolvedValueOnce([{}])
-    await expect(new JobContext(visible.prisma).anchor('media', 'x', STORE)).resolves.toBe(
-      'visible'
-    )
-  })
-
-  it('fails closed when the row exists but its own context cannot read it', async () => {
-    const { prisma, queryRaw } = fakePrisma({ store: { organizationId: ORG } })
-    queryRaw.mockResolvedValueOnce([{ store_id: STORE }]).mockResolvedValueOnce([])
-    await expect(new JobContext(prisma).anchor('scheduled_report', 'x')).rejects.toBeInstanceOf(
-      JobContextError
-    )
-  })
-
-  it('refuses a payload that names a store for a row that has none', async () => {
-    const { prisma, queryRaw } = fakePrisma()
-    queryRaw.mockResolvedValueOnce([{ store_id: null }])
-    await expect(new JobContext(prisma).anchor('media', 'x', STORE)).rejects.toBeInstanceOf(
-      JobContextMismatchError
-    )
-  })
-
-  it('refuses a payload whose store is not the store of the row', async () => {
-    const { prisma, queryRaw } = fakePrisma({ store: { organizationId: ORG } })
-    queryRaw.mockResolvedValueOnce([{ store_id: STORE }])
-    await expect(new JobContext(prisma).anchor('export', 'x', OTHER)).rejects.toBeInstanceOf(
-      JobContextError
-    )
   })
 })
 

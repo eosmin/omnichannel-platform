@@ -171,7 +171,7 @@ describe('A remote channel plugin, from its registration to the status of a repl
     const events = app.get(DomainEvents, { strict: false })
     const conversations = app.get(ConversationsService, { strict: false })
     const connections = new ChannelConnectionResolver(prisma)
-    const writer = new MessageStatusWriter(prisma, events)
+    const writer = new MessageStatusWriter(prisma, events, new JobContext(prisma))
     const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher: the plugin holds the credentials
     const contexts = new ChannelContextFactory(cipher)
     sender = new OutboundSender(
@@ -183,7 +183,8 @@ describe('A remote channel plugin, from its registration to the status of a repl
       app.get(MessagingWindowService, { strict: false }),
       events,
       app.get(StorageService, { strict: false }),
-      logger
+      logger,
+      new JobContext(prisma)
     )
     receipts = new ChannelReceipts(
       prisma,
@@ -197,7 +198,8 @@ describe('A remote channel plugin, from its registration to the status of a repl
         new JobContext(prisma),
         new WorkerLists(prisma)
       ),
-      logger
+      logger,
+      new JobContext(prisma)
     )
     inbound = new InboundMessageService(
       prisma,

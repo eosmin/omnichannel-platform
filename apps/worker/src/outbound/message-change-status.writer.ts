@@ -1,6 +1,7 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { Injectable } from '@nestjs/common'
 
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import {
   type ActorColumns,
   actorColumnsOf,
@@ -48,78 +49,81 @@ export interface CaptionSettlement {
 export class MessageChangeStatusWriter {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly events: DomainEvents
+    private readonly events: DomainEvents,
+    private readonly jobContext: JobContext
   ) {}
 
   async settleEdit(settlement: EditSettlement): Promise<void> {
     const { storeId, messageId, pendingContent, errorCode } = settlement
-    await this.prisma.transaction(async tx => {
-      await lockMessageRow(tx, messageId)
-      const current = await tx.message.findFirst({
-        where: {
-          id: messageId,
-          storeId,
-          editStatus: DeliveryStatus.QUEUED,
-          pendingContent
-        },
-        select: { content: true, authorId: true, pendingEditPluginId: true, deletedAt: true }
-      })
-      if (current === null) return
-      // A message deleted since the agent asked is not edited: the request is dropped
-      if (current.deletedAt !== null) {
+    await this.jobContext.forStore(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await lockMessageRow(tx, messageId)
+        const current = await tx.message.findFirst({
+          where: {
+            id: messageId,
+            storeId,
+            editStatus: DeliveryStatus.QUEUED,
+            pendingContent
+          },
+          select: { content: true, authorId: true, pendingEditPluginId: true, deletedAt: true }
+        })
+        if (current === null) return
+        // A message deleted since the agent asked is not edited: the request is dropped
+        if (current.deletedAt !== null) {
+          await tx.message.update({
+            where: { id: messageId },
+            data: {
+              pendingContent: null,
+              pendingEditPluginId: null,
+              editStatus: null,
+              changeRequestedAt: null
+            }
+          })
+          return
+        }
+        // The editor is the one that asked: a person is the author of the message (only the author edits), a plugin the one that
+        // was recorded with the request, whoever wrote the message
+        const by: ActorColumns =
+          current.pendingEditPluginId === null
+            ? { type: AuthorType.AGENT, id: current.authorId, pluginId: null }
+            : actorColumnsOf({ kind: ActorKinds.PLUGIN, pluginId: current.pendingEditPluginId })
+        if (errorCode === null) {
+          await addRevision(tx, {
+            storeId,
+            messageId,
+            content: current.content,
+            editedByType: by.type,
+            editedById: by.id,
+            editedByPluginId: by.pluginId
+          })
+        }
         await tx.message.update({
           where: { id: messageId },
-          data: {
-            pendingContent: null,
-            pendingEditPluginId: null,
-            editStatus: null,
-            changeRequestedAt: null
-          }
+          data:
+            errorCode === null
+              ? {
+                  content: pendingContent,
+                  pendingContent: null,
+                  pendingEditPluginId: null,
+                  editStatus: DeliveryStatus.SENT,
+                  editError: null,
+                  editedAt: new Date(),
+                  editedByType: by.type,
+                  editedById: by.id,
+                  editedByPluginId: by.pluginId,
+                  changeRequestedAt: null
+                }
+              : {
+                  pendingContent: null,
+                  pendingEditPluginId: null,
+                  editStatus: DeliveryStatus.FAILED,
+                  editError: errorCode,
+                  changeRequestedAt: null
+                }
         })
-        return
-      }
-      // The editor is the one that asked: a person is the author of the message (only the author edits), a plugin the one that
-      // was recorded with the request, whoever wrote the message
-      const by: ActorColumns =
-        current.pendingEditPluginId === null
-          ? { type: AuthorType.AGENT, id: current.authorId, pluginId: null }
-          : actorColumnsOf({ kind: ActorKinds.PLUGIN, pluginId: current.pendingEditPluginId })
-      if (errorCode === null) {
-        await addRevision(tx, {
-          storeId,
-          messageId,
-          content: current.content,
-          editedByType: by.type,
-          editedById: by.id,
-          editedByPluginId: by.pluginId
-        })
-      }
-      await tx.message.update({
-        where: { id: messageId },
-        data:
-          errorCode === null
-            ? {
-                content: pendingContent,
-                pendingContent: null,
-                pendingEditPluginId: null,
-                editStatus: DeliveryStatus.SENT,
-                editError: null,
-                editedAt: new Date(),
-                editedByType: by.type,
-                editedById: by.id,
-                editedByPluginId: by.pluginId,
-                changeRequestedAt: null
-              }
-            : {
-                pendingContent: null,
-                pendingEditPluginId: null,
-                editStatus: DeliveryStatus.FAILED,
-                editError: errorCode,
-                changeRequestedAt: null
-              }
+        await publishMessageChanged(this.events, tx, Events.MESSAGE_EDITED, storeId, messageId)
       })
-      await publishMessageChanged(this.events, tx, Events.MESSAGE_EDITED, storeId, messageId)
-    })
+    )
   }
 
   // The text under a file that an agent sent again: the channel took it (`sent`, with its id so that its
@@ -127,49 +131,53 @@ export class MessageChangeStatusWriter {
   // echo of the owner). It names the state it expects, so a late job never settles a request made again.
   async settleCaption(settlement: CaptionSettlement): Promise<void> {
     const { storeId, messageId, version, outcome } = settlement
-    await this.prisma.transaction(async tx => {
-      await lockMessageRow(tx, messageId)
-      const changed = await tx.message.updateMany({
-        where: { id: messageId, storeId, version, captionState: CaptionState.QUEUED },
-        data: {
-          captionState: outcome.state,
-          changeRequestedAt: null,
-          ...(outcome.state === CaptionState.SENT
-            ? { captionChannelMessageId: outcome.externalId }
-            : {})
-        }
+    await this.jobContext.forStore(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await lockMessageRow(tx, messageId)
+        const changed = await tx.message.updateMany({
+          where: { id: messageId, storeId, version, captionState: CaptionState.QUEUED },
+          data: {
+            captionState: outcome.state,
+            changeRequestedAt: null,
+            ...(outcome.state === CaptionState.SENT
+              ? { captionChannelMessageId: outcome.externalId }
+              : {})
+          }
+        })
+        if (changed.count === 0) return
+        await publishMessageChanged(this.events, tx, Events.MESSAGE_EDITED, storeId, messageId)
       })
-      if (changed.count === 0) return
-      await publishMessageChanged(this.events, tx, Events.MESSAGE_EDITED, storeId, messageId)
-    })
+    )
   }
 
   async settleDeletion(settlement: DeletionSettlement): Promise<void> {
     const { storeId, messageId, errorCode } = settlement
-    await this.prisma.transaction(async tx => {
-      await lockMessageRow(tx, messageId)
-      const changed = await tx.message.updateMany({
-        where: { id: messageId, storeId, deleteStatus: DeliveryStatus.QUEUED },
-        data:
-          errorCode === null
-            ? {
-                deletedAt: new Date(),
-                deleteStatus: DeliveryStatus.SENT,
-                deleteError: null,
-                changeRequestedAt: null
-              }
-            : {
-                changeRequestedAt: null,
-                deleteStatus: DeliveryStatus.FAILED,
-                deleteError: errorCode,
-                // Nobody deleted it
-                deletedByType: null,
-                deletedById: null,
-                deletedByPluginId: null
-              }
+    await this.jobContext.forStore(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await lockMessageRow(tx, messageId)
+        const changed = await tx.message.updateMany({
+          where: { id: messageId, storeId, deleteStatus: DeliveryStatus.QUEUED },
+          data:
+            errorCode === null
+              ? {
+                  deletedAt: new Date(),
+                  deleteStatus: DeliveryStatus.SENT,
+                  deleteError: null,
+                  changeRequestedAt: null
+                }
+              : {
+                  changeRequestedAt: null,
+                  deleteStatus: DeliveryStatus.FAILED,
+                  deleteError: errorCode,
+                  // Nobody deleted it
+                  deletedByType: null,
+                  deletedById: null,
+                  deletedByPluginId: null
+                }
+        })
+        if (changed.count === 0) return
+        await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, messageId)
       })
-      if (changed.count === 0) return
-      await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, messageId)
-    })
+    )
   }
 }

@@ -87,8 +87,9 @@ describe('An agent reacting to a message', () => {
       prisma,
       registry,
       new ChannelContextFactory(cipher),
-      new ReactionStatusWriter(prisma, events),
-      await app.resolve(PinoLogger)
+      new ReactionStatusWriter(prisma, events, new JobContext(prisma)),
+      await app.resolve(PinoLogger),
+      new JobContext(prisma)
     )
     const support = {
       run: (_queue: string, current: unknown, work: (job: unknown) => Promise<void>) =>
@@ -119,8 +120,8 @@ describe('An agent reacting to a message', () => {
       createGuardedWorkerPrisma(),
       new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never),
       undefined as never, // the replies are not what is tested
-      new ReactionStatusWriter(prisma, events),
-      new MessageChangeStatusWriter(prisma, events),
+      new ReactionStatusWriter(prisma, events, new JobContext(prisma)),
+      new MessageChangeStatusWriter(prisma, events, new JobContext(prisma)),
       await app.resolve(PinoLogger),
       new JobContext(createGuardedWorkerPrisma())
     )

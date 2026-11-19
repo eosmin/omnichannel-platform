@@ -1,3 +1,4 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
@@ -7,7 +8,7 @@ import {
   errorName,
   withTimeout
 } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   DeliveryStatus,
@@ -32,7 +33,8 @@ export class ReactionSender {
     private readonly registry: PluginRegistry,
     private readonly contexts: ChannelContextFactory,
     private readonly status: ReactionStatusWriter,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(ReactionSender.name)
   }
@@ -42,10 +44,12 @@ export class ReactionSender {
     const { storeId, messageId } = job
     // The file of an album the reaction is under; null: the message itself
     const mediaId = job.mediaId ?? null
-    const reaction = await this.prisma.client.messageReaction.findFirst({
-      where: { ...reactionWhereOf(reactorOfJob(job)), storeId, messageId, mediaId },
-      select: { emoji: true, deliveryStatus: true, updatedAt: true }
-    })
+    const reaction = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.messageReaction.findFirst({
+        where: { ...reactionWhereOf(reactorOfJob(job)), storeId, messageId, mediaId },
+        select: { emoji: true, deliveryStatus: true, updatedAt: true }
+      })
+    )
     // A reaction that is there and is not waiting was sent or failed already; one changed since this job
     // was made has a job of its own
     if (
@@ -65,32 +69,36 @@ export class ReactionSender {
         expectedVersion: reaction?.updatedAt ?? null
       })
 
-    const message = await this.prisma.client.message.findFirst({
-      where: { id: messageId, storeId },
-      select: {
-        channelMessageId: true,
-        conversation: {
-          select: {
-            customerIdentity: { select: { channelIdentity: true } },
-            channelConnection: {
-              select: {
-                ...CONNECTION_ROW_SELECT,
-                installation: { select: { status: true, plugin: { select: { status: true } } } }
+    const message = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.message.findFirst({
+        where: { id: messageId, storeId },
+        select: {
+          channelMessageId: true,
+          conversation: {
+            select: {
+              customerIdentity: { select: { channelIdentity: true } },
+              channelConnection: {
+                select: {
+                  ...CONNECTION_ROW_SELECT,
+                  installation: { select: { status: true, plugin: { select: { status: true } } } }
+                }
               }
             }
           }
         }
-      }
-    })
+      })
+    )
     // The id the provider knows the target by: the file's own when the reaction is under a file of an album
     const targetExternalId =
       mediaId === null
         ? message?.channelMessageId
         : (
-            await this.prisma.client.media.findFirst({
-              where: { id: mediaId, storeId, messageId },
-              select: { channelMessageId: true }
-            })
+            await this.jobContext.forStore(storeId, () =>
+              this.prisma.client.media.findFirst({
+                where: { id: mediaId, storeId, messageId },
+                select: { channelMessageId: true }
+              })
+            )
           )?.channelMessageId
     if (message === null || targetExternalId == null) {
       await settle(ErrorCodes.CHANNEL_MESSAGE_FAILED)

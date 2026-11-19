@@ -60,25 +60,12 @@ describe('the worker fails closed when row security hides rows', () => {
     expect(await rowsLeft()).toBe(2)
   })
 
-  it('answers a file, an export and a report that do not exist with no row, for the worker', async () => {
-    const none = randomUUID()
-    const q = asWorker.client
-    expect(await q.$queryRaw<unknown[]>`SELECT * FROM rls_store_of_media(${none})`).toEqual([])
-    expect(await q.$queryRaw<unknown[]>`SELECT * FROM rls_store_of_export(${none})`).toEqual([])
-    expect(
-      await q.$queryRaw<unknown[]>`SELECT * FROM rls_store_of_scheduled_report(${none})`
-    ).toEqual([])
-  })
-
-  it('does not let the api role ask which store owns an arbitrary id', async () => {
-    const none = randomUUID()
-    for (const lookup of [
-      () => asApp.client.$queryRaw`SELECT * FROM rls_store_of_media(${none})`,
-      () => asApp.client.$queryRaw`SELECT * FROM rls_store_of_export(${none})`,
-      () => asApp.client.$queryRaw`SELECT * FROM rls_store_of_scheduled_report(${none})`
-    ]) {
-      await expect(lookup()).rejects.toThrow(/permission denied/)
-    }
+  it('no longer has a function that tells the store of a file, an export or a report from its id', async () => {
+    // Every job of these carries its store (or, for an avatar, its person): no role may ask which store owns an arbitrary id
+    const { rows } = await owner.query<{ proname: string }>(
+      `SELECT proname FROM pg_proc WHERE proname IN ('rls_store_of_media', 'rls_store_of_export', 'rls_store_of_scheduled_report')`
+    )
+    expect(rows).toEqual([])
   })
 
   it('answers the lookup of a channel connection that does not exist with no row, for both roles', async () => {
@@ -88,20 +75,6 @@ describe('the worker fails closed when row security hides rows', () => {
         await role.client.$queryRaw<unknown[]>`
           SELECT * FROM rls_resolve_channel_connection(${none}, ${none})`
       ).toEqual([])
-    }
-  })
-
-  it('reads the real table and not a temporary table of the caller with the same name', async () => {
-    // A role may create temporary tables; a function that runs as the owner must not read one of them in place of the real table
-    const worker = new pg.Client({ connectionString: urls.worker })
-    await worker.connect()
-    try {
-      await worker.query('CREATE TEMP TABLE media (id text, store_id text, key text)')
-      await worker.query("INSERT INTO media VALUES ('forged', 'a-store-of-the-attacker', 'k')")
-      const forged = await worker.query('SELECT * FROM rls_store_of_media($1)', ['forged'])
-      expect(forged.rows).toEqual([])
-    } finally {
-      await worker.end()
     }
   })
 

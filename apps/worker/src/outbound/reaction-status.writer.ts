@@ -1,6 +1,7 @@
+// rls-context: every database access of this file runs inside a JobContext (forStore) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { Injectable } from '@nestjs/common'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { DeliveryStatus } from '@platform/core/domain'
 import type { ErrorCode } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -27,7 +28,8 @@ export interface ReactionSettlement {
 export class ReactionStatusWriter {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly events: DomainEvents
+    private readonly events: DomainEvents,
+    private readonly jobContext: JobContext
   ) {}
 
   async settle(settlement: ReactionSettlement): Promise<void> {
@@ -36,41 +38,43 @@ export class ReactionStatusWriter {
     const mediaId = settlement.mediaId ?? null
     // A reaction taken back has no row to mark: the team already saw it go
     if (expectedVersion === null) return
-    await this.prisma.transaction(async tx => {
-      const changed = await tx.messageReaction.updateMany({
-        where: {
-          ...reactionWhereOf(reactor),
+    await this.jobContext.forStore(storeId, () =>
+      this.prisma.transaction(async tx => {
+        const changed = await tx.messageReaction.updateMany({
+          where: {
+            ...reactionWhereOf(reactor),
+            storeId,
+            messageId,
+            mediaId,
+            deliveryStatus: DeliveryStatus.QUEUED,
+            updatedAt: expectedVersion
+          },
+          data: {
+            deliveryStatus: errorCode === null ? DeliveryStatus.SENT : DeliveryStatus.FAILED,
+            deliveryError: errorCode,
+            // The version stays: no job is waiting for this state to change
+            updatedAt: expectedVersion
+          }
+        })
+        if (changed.count === 0) return
+        const message = await tx.message.findFirst({
+          where: { id: messageId, storeId },
+          select: {
+            conversationId: true,
+            conversation: { select: { status: true, assignedTo: true } }
+          }
+        })
+        if (message === null) return
+        this.events.publish(tx, Events.MESSAGE_REACTION, {
           storeId,
+          conversationId: message.conversationId,
           messageId,
-          mediaId,
-          deliveryStatus: DeliveryStatus.QUEUED,
-          updatedAt: expectedVersion
-        },
-        data: {
-          deliveryStatus: errorCode === null ? DeliveryStatus.SENT : DeliveryStatus.FAILED,
-          deliveryError: errorCode,
-          // The version stays: no job is waiting for this state to change
-          updatedAt: expectedVersion
-        }
+          visibility: {
+            hidden: isHiddenStatus(message.conversation.status),
+            assignedTo: message.conversation.assignedTo
+          }
+        })
       })
-      if (changed.count === 0) return
-      const message = await tx.message.findFirst({
-        where: { id: messageId, storeId },
-        select: {
-          conversationId: true,
-          conversation: { select: { status: true, assignedTo: true } }
-        }
-      })
-      if (message === null) return
-      this.events.publish(tx, Events.MESSAGE_REACTION, {
-        storeId,
-        conversationId: message.conversationId,
-        messageId,
-        visibility: {
-          hidden: isHiddenStatus(message.conversation.status),
-          assignedTo: message.conversation.assignedTo
-        }
-      })
-    })
+    )
   }
 }

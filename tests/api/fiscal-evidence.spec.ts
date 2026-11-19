@@ -163,7 +163,7 @@ describe('The evidence and the second thoughts of the fiscal documents (Step 4B.
         expect(await storage.head(file.key)).not.toBeNull()
         // Scanned like any file before anybody is given a link
         const job = jobs().find(entry => entry.opts?.jobId === `${JobNames.SCAN_FILE}-${file.id}`)
-        expect(job?.data).toEqual({ mediaId: file.id })
+        expect(job?.data).toEqual({ mediaId: file.id, storeId: ctx.storeA.id })
       }
       // Asked again, it is the same files: one of each kind for ever
       await expect(

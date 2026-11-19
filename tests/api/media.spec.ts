@@ -262,7 +262,7 @@ describe('Media upload', () => {
         status: MediaStatus.PENDING
       })
       expect(scans()).toHaveLength(before + 1)
-      expect(scans().at(-1)?.data).toEqual({ mediaId: upload.mediaId })
+      expect(scans().at(-1)?.data).toEqual({ mediaId: upload.mediaId, storeId: ctx.storeA.id })
     })
 
     it('keeps the file at a key the uploader has no URL for, and removes the one it uploaded to', async () => {

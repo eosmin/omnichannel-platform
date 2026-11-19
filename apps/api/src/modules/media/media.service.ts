@@ -198,7 +198,7 @@ export class MediaService {
     // queued again (under the same job id, so never twice): the first attempt may have died between
     // writing the row and queueing it.
     const existing = await this.find(storeId, body.mediaId)
-    if (existing !== null) return this.again(existing, keys, userId, body)
+    if (existing !== null) return this.again(existing, keys, userId, body, storeId)
 
     // The parent is checked again: the request that signed the url was another one. After the retry
     // above, so a retry of a file that was kept is not refused because its product went away since.
@@ -259,10 +259,10 @@ export class MediaService {
       // Two confirmations at once: the other one won
       const winner = await this.find(storeId, body.mediaId)
       if (winner === null) throw uploadVerificationFailed()
-      return this.again(winner, keys, userId, body)
+      return this.again(winner, keys, userId, body, storeId)
     }
 
-    await this.queueScan(media.id)
+    await this.queueScan(storeId, media.id)
     await this.dropStaging(keys.upload)
     await this.redis.del(CacheKeys.upload.requester(storeId, body.mediaId))
     return view(media)
@@ -371,7 +371,8 @@ export class MediaService {
     media: MediaRow,
     keys: UploadKeys,
     userId: string,
-    body: ConfirmUploadBody
+    body: ConfirmUploadBody,
+    storeId: string
   ): Promise<MediaView> {
     // The same file, member, purpose and parent: a retry never moves a picture to another product or kind
     const parent = parentColumnsOf(body)
@@ -386,7 +387,7 @@ export class MediaService {
       throw uploadVerificationFailed()
     }
     if (media.status === String(MediaStatus.PENDING)) {
-      await this.queueScan(media.id)
+      await this.queueScan(storeId, media.id)
       await this.dropStaging(keys.upload)
     }
     return view(media)
@@ -404,10 +405,10 @@ export class MediaService {
   }
 
   // Scan first; PROCESS_IMAGE is queued by the scan job only after a clean result
-  private async queueScan(mediaId: string): Promise<void> {
+  private async queueScan(storeId: string, mediaId: string): Promise<void> {
     await this.heavyQueue.add(
       JobNames.SCAN_FILE,
-      { mediaId },
+      { mediaId, storeId },
       { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
     )
   }

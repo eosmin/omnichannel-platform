@@ -95,7 +95,8 @@ function setup(options: {
     contexts as never,
     queue as never,
     marker as never,
-    logger as never
+    logger as never,
+    { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
   )
   return { fetcher, media, storage, queue, logger, marker }
 }
@@ -139,7 +140,7 @@ describe('InboundMediaFetcher', () => {
     })
     expect(queue.add).toHaveBeenCalledWith(
       'scan-file',
-      { mediaId },
+      { mediaId, storeId: STORE },
       { jobId: `scan-file-${mediaId}` }
     )
   })
@@ -602,7 +603,7 @@ describe('InboundMediaFetcher', () => {
       expect(storage.put).toHaveBeenCalledTimes(1)
       expect(queue.add).toHaveBeenCalledWith(
         'scan-file',
-        { mediaId: CHOSEN },
+        { mediaId: CHOSEN, storeId: STORE },
         { jobId: `scan-file-${CHOSEN}` }
       )
     })
