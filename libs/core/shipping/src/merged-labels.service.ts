@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, JobContext } from '@platform/core/database'
 import {
   type BulkLabelLeftOutReason,
   BulkLabelLeftOutReasons,
@@ -75,7 +75,8 @@ export class MergedLabels {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(MergedLabels.name)
   }
@@ -87,10 +88,12 @@ export class MergedLabels {
     shipmentIds: readonly string[],
     options: MergeOptions
   ): Promise<MergeOutcome> {
-    const rows = await this.prisma.client.shipment.findMany({
-      where: { storeId, id: { in: [...shipmentIds] } },
-      select: { id: true, status: true, labelMediaId: true }
-    })
+    const rows = await this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.client.shipment.findMany({
+        where: { storeId, id: { in: [...shipmentIds] } },
+        select: { id: true, status: true, labelMediaId: true }
+      })
+    )
     const byId = new Map<string, ShipmentLabelRow>(rows.map(row => [row.id, row]))
     const leftOut: LabelLeftOut[] = []
     const candidates: { shipmentId: string; mediaId: string }[] = []
@@ -169,10 +172,17 @@ export class MergedLabels {
     storeId: string,
     mediaId: string
   ): Promise<{ url: string; filename: string } | null> {
-    const row = await this.prisma.client.media.findFirst({
-      where: { id: mediaId, storeId, purpose: MediaPurpose.BULK_LABELS, status: MediaStatus.CLEAN },
-      select: { key: true, filename: true, contentType: true }
-    })
+    const row = await this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.client.media.findFirst({
+        where: {
+          id: mediaId,
+          storeId,
+          purpose: MediaPurpose.BULK_LABELS,
+          status: MediaStatus.CLEAN
+        },
+        select: { key: true, filename: true, contentType: true }
+      })
+    )
     if (row === null) return null
     const url = await this.storage.downloadUrl({
       key: row.key,
@@ -195,10 +205,12 @@ export class MergedLabels {
     const poll = options.scanPollMs ?? BulkLabelLimits.SCAN_POLL_MS
     let waiting = [...mediaIds]
     for (;;) {
-      const rows = await this.prisma.client.media.findMany({
-        where: { id: { in: waiting }, storeId, purpose: MediaPurpose.SHIPPING_LABEL },
-        select: { id: true, key: true, status: true }
-      })
+      const rows = await this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.client.media.findMany({
+          where: { id: { in: waiting }, storeId, purpose: MediaPurpose.SHIPPING_LABEL },
+          select: { id: true, key: true, status: true }
+        })
+      )
       for (const row of rows) {
         if (row.status === String(MediaStatus.CLEAN)) clean.set(row.id, row)
       }
@@ -229,22 +241,24 @@ export class MergedLabels {
     const key = StorageKeys.bulkLabels(storeId, mediaId, filename)
     await this.storage.put(key, Buffer.from(pdf), CONTENT_TYPE)
     try {
-      await this.prisma.client.media.create({
-        data: {
-          id: mediaId,
-          storeId,
-          purpose: MediaPurpose.BULK_LABELS,
-          uploadedBy,
-          key,
-          filename,
-          contentType: CONTENT_TYPE,
-          fileSize: pdf.byteLength,
-          // The platform made this file from files it had already scanned: nothing outside came in
-          status: MediaStatus.CLEAN,
-          scannedAt: new Date(),
-          processedAt: new Date()
-        }
-      })
+      await this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.client.media.create({
+          data: {
+            id: mediaId,
+            storeId,
+            purpose: MediaPurpose.BULK_LABELS,
+            uploadedBy,
+            key,
+            filename,
+            contentType: CONTENT_TYPE,
+            fileSize: pdf.byteLength,
+            // The platform made this file from files it had already scanned: nothing outside came in
+            status: MediaStatus.CLEAN,
+            scannedAt: new Date(),
+            processedAt: new Date()
+          }
+        })
+      )
     } catch (error) {
       await this.storage.delete(key).catch(() => undefined)
       throw error

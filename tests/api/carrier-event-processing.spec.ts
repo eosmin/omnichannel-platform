@@ -123,7 +123,7 @@ describe('What the worker makes of what a carrier says', () => {
       prisma,
       resolver,
       applier,
-      new ShipmentReplayer(prisma, writes),
+      new ShipmentReplayer(prisma, writes, new JobContext(prisma)),
       noise as unknown as PinoLogger,
       new JobContext(prisma)
     )

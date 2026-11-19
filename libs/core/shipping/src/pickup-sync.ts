@@ -6,7 +6,8 @@ import {
   lockStoreForWrite,
   lockStoreScope,
   PrismaService,
-  type PrismaTransaction
+  type PrismaTransaction,
+  JobContext
 } from '@platform/core/database'
 import {
   CarrierCapability,
@@ -55,7 +56,8 @@ export class PickupSync {
     private readonly cipher: CredentialCipher,
     private readonly writes: ShipmentWrites,
     private readonly events: DomainEvents,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(PickupSync.name)
   }
@@ -67,14 +69,16 @@ export class PickupSync {
     lastAttempt: boolean
   ): Promise<PickupSyncOutcome> {
     for (let round = 0; round <= MAX_FOLLOW_UPS; round += 1) {
-      const pickup = await this.prisma.client.pickupRequest.findFirst({
-        where: { id: pickupId, storeId },
-        include: {
-          connection: {
-            select: { id: true, carrierId: true, status: true, credentials: true, contact: true }
+      const pickup = await this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.client.pickupRequest.findFirst({
+          where: { id: pickupId, storeId },
+          include: {
+            connection: {
+              select: { id: true, carrierId: true, status: true, credentials: true, contact: true }
+            }
           }
-        }
-      })
+        })
+      )
       if (pickup === null) return PickupSyncOutcomes.DONE
       const status = pickup.status as PickupStatus
       if (status === PickupStatus.PENDING) {
@@ -123,18 +127,20 @@ export class PickupSync {
       !plugin.capabilities.includes(CarrierCapability.PICKUP_REQUEST)
     ) {
       // The carrier lost the way to ask: a person arranges it
-      await this.prisma.transaction(async tx => {
-        await this.lock(tx, storeId, pickup.connectionId)
-        await this.writes.movePickup(
-          tx,
-          storeId,
-          pickup.id,
-          PickupStatus.PENDING,
-          PickupStatus.MANUAL_REQUIRED,
-          {}
-        )
-        this.announce(tx, storeId, pickup, PickupManualReasons.NO_API)
-      })
+      await this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.transaction(async tx => {
+          await this.lock(tx, storeId, pickup.connectionId)
+          await this.writes.movePickup(
+            tx,
+            storeId,
+            pickup.id,
+            PickupStatus.PENDING,
+            PickupStatus.MANUAL_REQUIRED,
+            {}
+          )
+          this.announce(tx, storeId, pickup, PickupManualReasons.NO_API)
+        })
+      )
       return PickupSyncOutcomes.DONE
     }
     const requestPickup = plugin.requestPickup.bind(plugin)
@@ -181,17 +187,19 @@ export class PickupSync {
     }
     // The carrier holds the pickup. Writing it down is outside the try of the call: a fault here is a fault of the database, not
     // of the carrier, and the job asks again with the same key (the carrier answers the same pickup)
-    await this.prisma.transaction(async tx => {
-      await this.lock(tx, storeId, pickup.connectionId)
-      await this.writes.movePickup(
-        tx,
-        storeId,
-        pickup.id,
-        PickupStatus.PENDING,
-        PickupStatus.REQUESTED,
-        { providerPickupId: ref, carrierPackageCount: sent, lastError: null }
-      )
-    })
+    await this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await this.lock(tx, storeId, pickup.connectionId)
+        await this.writes.movePickup(
+          tx,
+          storeId,
+          pickup.id,
+          PickupStatus.PENDING,
+          PickupStatus.REQUESTED,
+          { providerPickupId: ref, carrierPackageCount: sent, lastError: null }
+        )
+      })
+    )
     return PickupSyncOutcomes.DONE
   }
 
@@ -240,26 +248,28 @@ export class PickupSync {
     note: string,
     tellTeam = true
   ): Promise<void> {
-    await this.prisma.transaction(async tx => {
-      await this.lock(tx, storeId, pickup.connectionId)
-      await this.writes.movePickup(tx, storeId, pickup.id, PickupStatus.PENDING, to, {
-        lastError: note
-      })
-      if (to === PickupStatus.FAILED) {
-        await tx.shipment.updateMany({
-          where: { storeId, pickupId: pickup.id },
-          data: { pickupId: null }
+    await this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.transaction(async tx => {
+        await this.lock(tx, storeId, pickup.connectionId)
+        await this.writes.movePickup(tx, storeId, pickup.id, PickupStatus.PENDING, to, {
+          lastError: note
         })
-      }
-      if (tellTeam) {
-        this.announce(
-          tx,
-          storeId,
-          pickup,
-          to === PickupStatus.FAILED ? PickupManualReasons.FAILED : PickupManualReasons.REVIEW
-        )
-      }
-    })
+        if (to === PickupStatus.FAILED) {
+          await tx.shipment.updateMany({
+            where: { storeId, pickupId: pickup.id },
+            data: { pickupId: null }
+          })
+        }
+        if (tellTeam) {
+          this.announce(
+            tx,
+            storeId,
+            pickup,
+            to === PickupStatus.FAILED ? PickupManualReasons.FAILED : PickupManualReasons.REVIEW
+          )
+        }
+      })
+    )
   }
 
   // The same lock `PickupsService` takes: a pickup is never moved while a request joins a guide to it
@@ -295,10 +305,12 @@ export class PickupSync {
     const plugin = plugins(pickup.connection.carrierId)
     const pickupRef = pickup.providerPickupId
     const note = (lastError: string): Promise<unknown> =>
-      this.prisma.client.pickupRequest.updateMany({
-        where: { id: pickup.id, storeId },
-        data: { lastError }
-      })
+      this.jobContext.forStoreOrJoin(storeId, () =>
+        this.prisma.client.pickupRequest.updateMany({
+          where: { id: pickup.id, storeId },
+          data: { lastError }
+        })
+      )
     if (
       pickupRef === null ||
       plugin?.modifyPickup === undefined ||
@@ -338,14 +350,16 @@ export class PickupSync {
       return PickupSyncOutcomes.DONE
     }
     // What the carrier has now is what was sent, whatever the count is by the time this lands: a difference is told again
-    await this.prisma.client.pickupRequest.updateMany({
-      where: {
-        id: pickup.id,
-        storeId,
-        status: { in: [PickupStatus.REQUESTED, PickupStatus.CONFIRMED] }
-      },
-      data: { carrierPackageCount: sent, lastError: null }
-    })
+    await this.jobContext.forStoreOrJoin(storeId, () =>
+      this.prisma.client.pickupRequest.updateMany({
+        where: {
+          id: pickup.id,
+          storeId,
+          status: { in: [PickupStatus.REQUESTED, PickupStatus.CONFIRMED] }
+        },
+        data: { carrierPackageCount: sent, lastError: null }
+      })
+    )
     return MODIFIED
   }
 }
