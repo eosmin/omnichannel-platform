@@ -394,7 +394,8 @@ export class PluginInstallationsService {
       const entry = await this.jobs.forStoreOrJoin(storeId, () => this.entryOf(store, pluginId))
       return { ...entry, setup }
     }
-    // The rest makes no call outside the platform's own database: one context for it
+    // The built-in plugins make no challenge: one context for the rest. A reinstall that finds connections still open disconnects them
+    // in it, and that calls the provider or the carrier inside the unit (the limit of the 15 s unit, written in the plan, F6-3f (e))
     return this.jobs.forStoreOrJoin(storeId, () =>
       this.installBuiltIn(store, pluginId, plugin.type, scopes, actor)
     )

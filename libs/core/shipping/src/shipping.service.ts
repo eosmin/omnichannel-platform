@@ -5,6 +5,7 @@ import { CredentialCipher } from '@platform/core/crypto'
 import {
   isUniqueViolation,
   JobContext,
+  JobContextGoneError,
   lockStoreForWrite,
   lockStoreScope,
   PrismaService,
@@ -1539,12 +1540,16 @@ export class ShippingService {
   }
 
   private async storeFacts(storeId: string): Promise<StoreFacts> {
+    // The context looks the store up first: a store that is gone is the 404 it always was, not a fault of the context
     const store = await this.read(storeId, () =>
       this.prisma.client.store.findUnique({
         where: { id: storeId },
         select: { organizationId: true, timezone: true, defaultLocale: true }
       })
-    )
+    ).catch((error: unknown) => {
+      if (error instanceof JobContextGoneError) throw resourceNotFound('store')
+      throw error
+    })
     if (store === null) throw resourceNotFound('store')
     return {
       storeId,
