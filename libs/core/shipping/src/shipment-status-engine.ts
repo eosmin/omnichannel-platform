@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
 import {
+  inSavepoint,
   isUniqueViolation,
   lockStoreForWrite,
   lockStoreScope,
@@ -51,76 +52,79 @@ export class ShipmentStatusEngine {
     // Most of a re-polled history is twins: they are found before the store is locked, and again under the lock
     if (await this.isTwin(storeId, shipmentId, event)) return CarrierEventOutcomes.DUPLICATE
     try {
-      return await this.prisma.transaction(async tx => {
-        await lockStoreForWrite(tx, storeId)
-        const known = await tx.shipment.findFirst({
-          where: { id: shipmentId, storeId, kind: ShipmentKind.OUTBOUND },
-          select: { orderId: true }
-        })
-        if (known === null) return CarrierEventOutcomes.IGNORED
-        await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${known.orderId}`)
-        const row = await tx.shipment.findFirst({
-          where: { id: shipmentId, storeId },
-          select: {
-            id: true,
-            storeId: true,
-            orderId: true,
-            connectionId: true,
-            status: true,
-            createdAt: true,
-            order: { select: { orderNumber: true } },
-            connection: { select: { status: true } }
+      return await inSavepoint(() =>
+        this.prisma.transaction(async tx => {
+          await lockStoreForWrite(tx, storeId)
+          const known = await tx.shipment.findFirst({
+            where: { id: shipmentId, storeId, kind: ShipmentKind.OUTBOUND },
+            select: { orderId: true }
+          })
+          if (known === null) return CarrierEventOutcomes.IGNORED
+          await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${known.orderId}`)
+          const row = await tx.shipment.findFirst({
+            where: { id: shipmentId, storeId },
+            select: {
+              id: true,
+              storeId: true,
+              orderId: true,
+              connectionId: true,
+              status: true,
+              createdAt: true,
+              order: { select: { orderNumber: true } },
+              connection: { select: { status: true } }
+            }
+          })
+          // A disconnected connection has no say any more: its events are dropped (TDD_17 §4.9)
+          if (row === null || row.connection.status !== String(CarrierConnectionStatus.ACTIVE)) {
+            return CarrierEventOutcomes.IGNORED
           }
-        })
-        // A disconnected connection has no say any more: its events are dropped (TDD_17 §4.9)
-        if (row === null || row.connection.status !== String(CarrierConnectionStatus.ACTIVE)) {
-          return CarrierEventOutcomes.IGNORED
-        }
-        // The same event again changes nothing: by its id, or by its status and moment when the carrier sends none
-        if (await this.isTwin(storeId, shipmentId, event, tx)) return CarrierEventOutcomes.DUPLICATE
+          // The same event again changes nothing: by its id, or by its status and moment when the carrier sends none
+          if (await this.isTwin(storeId, shipmentId, event, tx))
+            return CarrierEventOutcomes.DUPLICATE
 
-        const identity = {
-          shipmentId: row.id,
-          storeId: row.storeId,
-          orderId: row.orderId,
-          orderNumber: row.order.orderNumber,
-          connectionId: row.connectionId
-        }
-        const actor: ActorRef = { type: 'system', id: null }
-        const meta = {
-          actor,
-          source,
-          occurredAt: event.occurredAt,
-          rawStatus: clampCarrierMessage(event.rawStatus),
-          ...(event.providerEventId === undefined
-            ? {}
-            : { providerEventId: event.providerEventId }),
-          ...(event.description === undefined
-            ? {}
-            : { description: clampCarrierMessage(event.description) })
-        }
-        const from = row.status as ShipmentStatus
-        // A moment before the guide existed is not a moment of its life: it is kept, it moves nothing
-        const movable =
-          CarrierMovableStatuses.includes(event.status) &&
-          event.occurredAt >= row.createdAt &&
-          isShipmentTransitionAllowed(from, event.status)
-        if (!movable) {
-          await this.writes.recordHistory(tx, identity, event.status, meta)
-          return CarrierEventOutcomes.STORED
-        }
-        await this.writes.move(
-          tx,
-          identity,
-          from,
-          event.status,
-          event.status === ShipmentStatus.FAILED_ATTEMPT
-            ? { failedAttempts: { increment: 1 } }
-            : {},
-          meta
-        )
-        return CarrierEventOutcomes.APPLIED
-      })
+          const identity = {
+            shipmentId: row.id,
+            storeId: row.storeId,
+            orderId: row.orderId,
+            orderNumber: row.order.orderNumber,
+            connectionId: row.connectionId
+          }
+          const actor: ActorRef = { type: 'system', id: null }
+          const meta = {
+            actor,
+            source,
+            occurredAt: event.occurredAt,
+            rawStatus: clampCarrierMessage(event.rawStatus),
+            ...(event.providerEventId === undefined
+              ? {}
+              : { providerEventId: event.providerEventId }),
+            ...(event.description === undefined
+              ? {}
+              : { description: clampCarrierMessage(event.description) })
+          }
+          const from = row.status as ShipmentStatus
+          // A moment before the guide existed is not a moment of its life: it is kept, it moves nothing
+          const movable =
+            CarrierMovableStatuses.includes(event.status) &&
+            event.occurredAt >= row.createdAt &&
+            isShipmentTransitionAllowed(from, event.status)
+          if (!movable) {
+            await this.writes.recordHistory(tx, identity, event.status, meta)
+            return CarrierEventOutcomes.STORED
+          }
+          await this.writes.move(
+            tx,
+            identity,
+            from,
+            event.status,
+            event.status === ShipmentStatus.FAILED_ATTEMPT
+              ? { failedAttempts: { increment: 1 } }
+              : {},
+            meta
+          )
+          return CarrierEventOutcomes.APPLIED
+        })
+      )
     } catch (error) {
       // Two deliveries of one event at the same instant: the index of the history says the second is a twin
       if (isUniqueViolation(error)) return CarrierEventOutcomes.DUPLICATE

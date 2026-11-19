@@ -8,7 +8,12 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher } from '@platform/core/crypto'
-import { isUniqueViolation, PrismaService, type PrismaTransaction } from '@platform/core/database'
+import {
+  inSavepoint,
+  isUniqueViolation,
+  PrismaService,
+  type PrismaTransaction
+} from '@platform/core/database'
 import {
   FiscalContingencyAlertKind,
   FiscalContingencyAttachResult,
@@ -966,20 +971,22 @@ export class FiscalContingencyService {
     userId: string | null
   ) {
     try {
-      return await client.fiscalContingency.create({
-        data: {
-          organizationId,
-          providerId: provider.id,
-          environment,
-          status: FiscalContingencyStatus.OPEN,
-          origin,
-          reason,
-          motive,
-          eventCode: randomUUID(),
-          startedAt: new Date(),
-          openedBy: userId
-        }
-      })
+      return await inSavepoint(() =>
+        client.fiscalContingency.create({
+          data: {
+            organizationId,
+            providerId: provider.id,
+            environment,
+            status: FiscalContingencyStatus.OPEN,
+            origin,
+            reason,
+            motive,
+            eventCode: randomUUID(),
+            startedAt: new Date(),
+            openedBy: userId
+          }
+        })
+      )
     } catch (error) {
       if (isUniqueViolation(error)) return null
       throw error

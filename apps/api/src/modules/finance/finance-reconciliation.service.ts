@@ -4,7 +4,12 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { isUniqueViolation, type PrismaTransaction, PrismaService } from '@platform/core/database'
+import {
+  inSavepoint,
+  isUniqueViolation,
+  type PrismaTransaction,
+  PrismaService
+} from '@platform/core/database'
 import {
   BankGroupRule,
   BankLineFilters,
@@ -580,89 +585,91 @@ export class FinanceReconciliationService {
     const requested = [...body.journalLineIds].sort()
     const groupId = randomUUID()
     try {
-      await this.prisma.transaction(async tx => {
-        const line = await this.requireLine(tx, organizationId, lineId)
-        const books = await tx.journalLine.findMany({
-          where: { id: { in: requested }, organizationId, accountId: line.accountId },
-          select: BOOK_WITH_REVERSAL_SELECT,
-          orderBy: [{ id: 'asc' }]
-        })
-        const byId = new Map(books.map(book => [book.id, book]))
-        // A line of another account or organization is not a candidate and does not exist for this request
-        if (byId.size !== new Set(requested).size) throw resourceNotFound('journal line')
-        const lines = requested.map(id => ({
-          id,
-          signedCents: (byId.get(id)?.debitCents ?? 0) - (byId.get(id)?.creditCents ?? 0)
-        }))
-        const problems = groupProblems({ statementCents: line.amountCents, lines })
-        // The shape of the group first (a line named twice, too few, too many): a sum that is wrong for a group that cannot be one is
-        // not the answer to give, because what the person has to change is the group and not an amount
-        if (problems.some(rule => rule !== BankGroupRule.SUM)) {
-          throw conflict('the lines cannot be one group', FinanceConflicts.BANK_GROUP_NOT_ALLOWED)
-        }
-        if (problems.includes(BankGroupRule.SUM)) {
-          throw resourceConflict('the lines do not add up to the statement line', {
-            conflict: FinanceConflicts.BANK_GROUP_SUM_MISMATCH,
-            statementCents: line.amountCents,
-            sumCents: lines.reduce((total, each) => total + each.signedCents, 0)
+      await inSavepoint(() =>
+        this.prisma.transaction(async tx => {
+          const line = await this.requireLine(tx, organizationId, lineId)
+          const books = await tx.journalLine.findMany({
+            where: { id: { in: requested }, organizationId, accountId: line.accountId },
+            select: BOOK_WITH_REVERSAL_SELECT,
+            orderBy: [{ id: 'asc' }]
           })
-        }
-        const dead = books.some(
-          book => book.entry.reversesEntryId !== null || book.entry.reversedBy !== null
-        )
-        if (problems.length > 0 || dead) {
-          throw conflict('the lines cannot be one group', FinanceConflicts.BANK_GROUP_NOT_ALLOWED)
-        }
-        const taken = await tx.reconciliationMatch.findFirst({
-          where: {
-            organizationId,
-            status: CONFIRMED,
-            OR: [{ statementLineId: lineId }, { journalLineId: { in: requested } }]
-          },
-          select: { statementLineId: true }
-        })
-        if (taken !== null) {
-          throw conflict(
-            taken.statementLineId === lineId
-              ? 'the statement line is matched already'
-              : 'a line of the books is matched already',
-            taken.statementLineId === lineId
-              ? FinanceConflicts.BANK_LINE_ALREADY_MATCHED
-              : FinanceConflicts.BANK_BOOK_LINE_ALREADY_MATCHED
-          )
-        }
-        // A rejection of one of these pairs is retired by choosing it, like for a pair
-        await tx.reconciliationMatch.updateMany({
-          where: {
-            organizationId,
-            statementLineId: lineId,
-            journalLineId: { in: requested },
-            status: REJECTED
-          },
-          data: {
-            status: ReconciliationMatchStatus.UNDONE,
-            undoneBy: actor.userId,
-            undoneAt: new Date()
+          const byId = new Map(books.map(book => [book.id, book]))
+          // A line of another account or organization is not a candidate and does not exist for this request
+          if (byId.size !== new Set(requested).size) throw resourceNotFound('journal line')
+          const lines = requested.map(id => ({
+            id,
+            signedCents: (byId.get(id)?.debitCents ?? 0) - (byId.get(id)?.creditCents ?? 0)
+          }))
+          const problems = groupProblems({ statementCents: line.amountCents, lines })
+          // The shape of the group first (a line named twice, too few, too many): a sum that is wrong for a group that cannot be one is
+          // not the answer to give, because what the person has to change is the group and not an amount
+          if (problems.some(rule => rule !== BankGroupRule.SUM)) {
+            throw conflict('the lines cannot be one group', FinanceConflicts.BANK_GROUP_NOT_ALLOWED)
           }
-        })
-        const ordered = [...books].sort(
-          (x, y) => x.entry.id.localeCompare(y.entry.id) || x.id.localeCompare(y.id)
-        )
-        // One statement per row, in that order: a single INSERT of many rows has no promised order
-        for (const [index, book] of ordered.entries()) {
-          await tx.reconciliationMatch.create({
-            data: {
+          if (problems.includes(BankGroupRule.SUM)) {
+            throw resourceConflict('the lines do not add up to the statement line', {
+              conflict: FinanceConflicts.BANK_GROUP_SUM_MISMATCH,
+              statementCents: line.amountCents,
+              sumCents: lines.reduce((total, each) => total + each.signedCents, 0)
+            })
+          }
+          const dead = books.some(
+            book => book.entry.reversesEntryId !== null || book.entry.reversedBy !== null
+          )
+          if (problems.length > 0 || dead) {
+            throw conflict('the lines cannot be one group', FinanceConflicts.BANK_GROUP_NOT_ALLOWED)
+          }
+          const taken = await tx.reconciliationMatch.findFirst({
+            where: {
+              organizationId,
+              status: CONFIRMED,
+              OR: [{ statementLineId: lineId }, { journalLineId: { in: requested } }]
+            },
+            select: { statementLineId: true }
+          })
+          if (taken !== null) {
+            throw conflict(
+              taken.statementLineId === lineId
+                ? 'the statement line is matched already'
+                : 'a line of the books is matched already',
+              taken.statementLineId === lineId
+                ? FinanceConflicts.BANK_LINE_ALREADY_MATCHED
+                : FinanceConflicts.BANK_BOOK_LINE_ALREADY_MATCHED
+            )
+          }
+          // A rejection of one of these pairs is retired by choosing it, like for a pair
+          await tx.reconciliationMatch.updateMany({
+            where: {
               organizationId,
               statementLineId: lineId,
-              journalLineId: book.id,
-              status: CONFIRMED,
-              decidedBy: actor.userId,
-              groupId,
-              isGroupLead: index === 0
+              journalLineId: { in: requested },
+              status: REJECTED
+            },
+            data: {
+              status: ReconciliationMatchStatus.UNDONE,
+              undoneBy: actor.userId,
+              undoneAt: new Date()
             }
           })
-        }
-      })
+          const ordered = [...books].sort(
+            (x, y) => x.entry.id.localeCompare(y.entry.id) || x.id.localeCompare(y.id)
+          )
+          // One statement per row, in that order: a single INSERT of many rows has no promised order
+          for (const [index, book] of ordered.entries()) {
+            await tx.reconciliationMatch.create({
+              data: {
+                organizationId,
+                statementLineId: lineId,
+                journalLineId: book.id,
+                status: CONFIRMED,
+                decidedBy: actor.userId,
+                groupId,
+                isGroupLead: index === 0
+              }
+            })
+          }
+        })
+      )
     } catch (error) {
       const refused = raceRefusal(error)
       if (refused !== null) throw refused
@@ -939,91 +946,93 @@ export class FinanceReconciliationService {
     actor: Actor
   ): Promise<{ id: string; created: boolean }> {
     try {
-      return await this.prisma.transaction(async tx => {
-        const line = await this.requireLine(tx, organizationId, lineId)
-        const book = await tx.journalLine.findFirst({
-          where: { id: journalLineId, organizationId, accountId: line.accountId },
-          select: BOOK_WITH_REVERSAL_SELECT
-        })
-        // A line of another account or organization is not a candidate and does not exist for this request
-        if (book === null) throw resourceNotFound('journal line')
-        const profile = await this.windowOf(tx, organizationId, line.importId)
-        const live = book.entry.reversesEntryId === null && book.entry.reversedBy === null
-        if (
-          !live ||
-          !canPair(
-            { postedOn: isoDay(line.postedOn), amountCents: line.amountCents },
-            {
-              entryDate: isoDay(book.entry.entryDate),
-              signedCents: book.debitCents - book.creditCents
-            },
-            profile
-          )
-        ) {
-          throw conflict(
-            'the lines cannot be the same movement',
-            FinanceConflicts.BANK_PAIR_NOT_ALLOWED
-          )
-        }
-        if (status === CONFIRMED) {
-          const taken = await tx.reconciliationMatch.findFirst({
-            where: {
-              organizationId,
-              status: CONFIRMED,
-              OR: [{ statementLineId: lineId }, { journalLineId }]
-            },
-            select: { statementLineId: true }
+      return await inSavepoint(() =>
+        this.prisma.transaction(async tx => {
+          const line = await this.requireLine(tx, organizationId, lineId)
+          const book = await tx.journalLine.findFirst({
+            where: { id: journalLineId, organizationId, accountId: line.accountId },
+            select: BOOK_WITH_REVERSAL_SELECT
           })
-          // A rejection of this pair is retired by choosing it: the history keeps it, and taking the choice back does not leave the pair hidden
-          await tx.reconciliationMatch.updateMany({
-            where: { organizationId, statementLineId: lineId, journalLineId, status: REJECTED },
-            data: {
-              status: ReconciliationMatchStatus.UNDONE,
-              undoneBy: actor.userId,
-              undoneAt: new Date()
+          // A line of another account or organization is not a candidate and does not exist for this request
+          if (book === null) throw resourceNotFound('journal line')
+          const profile = await this.windowOf(tx, organizationId, line.importId)
+          const live = book.entry.reversesEntryId === null && book.entry.reversedBy === null
+          if (
+            !live ||
+            !canPair(
+              { postedOn: isoDay(line.postedOn), amountCents: line.amountCents },
+              {
+                entryDate: isoDay(book.entry.entryDate),
+                signedCents: book.debitCents - book.creditCents
+              },
+              profile
+            )
+          ) {
+            throw conflict(
+              'the lines cannot be the same movement',
+              FinanceConflicts.BANK_PAIR_NOT_ALLOWED
+            )
+          }
+          if (status === CONFIRMED) {
+            const taken = await tx.reconciliationMatch.findFirst({
+              where: {
+                organizationId,
+                status: CONFIRMED,
+                OR: [{ statementLineId: lineId }, { journalLineId }]
+              },
+              select: { statementLineId: true }
+            })
+            // A rejection of this pair is retired by choosing it: the history keeps it, and taking the choice back does not leave the pair hidden
+            await tx.reconciliationMatch.updateMany({
+              where: { organizationId, statementLineId: lineId, journalLineId, status: REJECTED },
+              data: {
+                status: ReconciliationMatchStatus.UNDONE,
+                undoneBy: actor.userId,
+                undoneAt: new Date()
+              }
+            })
+            if (taken !== null) {
+              throw conflict(
+                taken.statementLineId === lineId
+                  ? 'the statement line is matched already'
+                  : 'the line of the books is matched already',
+                taken.statementLineId === lineId
+                  ? FinanceConflicts.BANK_LINE_ALREADY_MATCHED
+                  : FinanceConflicts.BANK_BOOK_LINE_ALREADY_MATCHED
+              )
             }
-          })
-          if (taken !== null) {
-            throw conflict(
-              taken.statementLineId === lineId
-                ? 'the statement line is matched already'
-                : 'the line of the books is matched already',
-              taken.statementLineId === lineId
-                ? FinanceConflicts.BANK_LINE_ALREADY_MATCHED
-                : FinanceConflicts.BANK_BOOK_LINE_ALREADY_MATCHED
-            )
+          } else {
+            // A line that is matched takes no rejection: the confirmation is taken back first
+            const matchedAlready = await tx.reconciliationMatch.findFirst({
+              where: { organizationId, statementLineId: lineId, status: CONFIRMED },
+              select: { id: true }
+            })
+            if (matchedAlready !== null) {
+              throw conflict(
+                'the statement line is matched already',
+                FinanceConflicts.BANK_LINE_ALREADY_MATCHED
+              )
+            }
+            // A pair that was rejected is rejected: the same request again finds the decision and writes nothing
+            const again = await tx.reconciliationMatch.findFirst({
+              where: { organizationId, statementLineId: lineId, journalLineId, status: REJECTED },
+              select: { id: true }
+            })
+            if (again !== null) return { id: again.id, created: false }
           }
-        } else {
-          // A line that is matched takes no rejection: the confirmation is taken back first
-          const matchedAlready = await tx.reconciliationMatch.findFirst({
-            where: { organizationId, statementLineId: lineId, status: CONFIRMED },
+          const created = await tx.reconciliationMatch.create({
+            data: {
+              organizationId,
+              statementLineId: lineId,
+              journalLineId,
+              status,
+              decidedBy: actor.userId
+            },
             select: { id: true }
           })
-          if (matchedAlready !== null) {
-            throw conflict(
-              'the statement line is matched already',
-              FinanceConflicts.BANK_LINE_ALREADY_MATCHED
-            )
-          }
-          // A pair that was rejected is rejected: the same request again finds the decision and writes nothing
-          const again = await tx.reconciliationMatch.findFirst({
-            where: { organizationId, statementLineId: lineId, journalLineId, status: REJECTED },
-            select: { id: true }
-          })
-          if (again !== null) return { id: again.id, created: false }
-        }
-        const created = await tx.reconciliationMatch.create({
-          data: {
-            organizationId,
-            statementLineId: lineId,
-            journalLineId,
-            status,
-            decidedBy: actor.userId
-          },
-          select: { id: true }
+          return { id: created.id, created: true }
         })
-        return { id: created.id, created: true }
-      })
+      )
     } catch (error) {
       // A trigger of the database refused a pair that the checks above had let through (an entry reversed in the same moment)
       const refused = raceRefusal(error)

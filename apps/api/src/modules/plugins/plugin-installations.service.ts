@@ -9,7 +9,12 @@ import { RemoteChannelSync } from '@platform/channels/remote'
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { isUniqueViolation, lockStoreForWrite, PrismaService } from '@platform/core/database'
+import {
+  inSavepoint,
+  isUniqueViolation,
+  lockStoreForWrite,
+  PrismaService
+} from '@platform/core/database'
 import {
   CarrierConnectionStatus,
   ChannelConnectionStatus,
@@ -449,11 +454,11 @@ export class PluginInstallationsService {
         }
       })
     try {
-      await write()
+      await inSavepoint(write)
     } catch (error) {
       // Two installs at once: the second one runs again and finds the first one's row
       if (!isUniqueViolation(error)) throw error
-      await write()
+      await inSavepoint(write)
     }
     const entry = await this.entryOf(store, pluginId)
     this.record(
