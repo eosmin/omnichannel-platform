@@ -4,10 +4,11 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { PrismaPg } from '@prisma/adapter-pg'
 import { readReplicas } from '@prisma/extension-read-replicas'
 
-import { RlsGlobalModels } from '@platform/core/domain'
+import { RlsGlobalModels, RlsPolicyTables } from '@platform/core/domain'
 
 import { PrismaClient } from '../generated/client/client'
 
+import { policyTablesOfRawSql, sqlTextOfRawArgs } from './raw-sql-tables'
 import type { TenantContext } from './tenant-context'
 
 export interface PrismaServiceOptions {
@@ -21,10 +22,11 @@ export interface PrismaServiceOptions {
   requireContext?: boolean
 }
 
-// The guard covers the model operations (findMany, create, ...). A raw statement ($queryRaw, $executeRaw) is not seen by it: on a
-// table with a policy it gets no rows from the database itself (RLS fails closed) and nothing throws; classifying the raw SQL of the
-// api is a debt of the RLS step (the plan). Inside replicaTenantRead and withoutTenantContext the guard is off for the whole
-// callback, so use the handle you were given and nothing else of this service in there.
+// The guard covers the model operations (findMany, create, ...) and the raw statements ($queryRaw, $executeRaw and their Unsafe forms):
+// a raw statement that names a table with a policy (RlsPolicyTables) outside a context throws too, because the database would answer
+// it with no row. The tables of a raw statement are read from its text (raw-sql-tables.ts), which is a net and not a parser. Inside
+// replicaTenantRead and withoutTenantContext the guard is off for the whole callback, so use the handle you were given and nothing
+// else of this service in there.
 // What the guard throws: a query that the database would answer with no row (RLS fails closed) is a bug in the code that
 // made it, and it is better to see it than to get an empty list or a write that matched nothing
 export class TenantContextRequiredError extends Error {
@@ -33,6 +35,16 @@ export class TenantContextRequiredError extends Error {
       `${model}.${operation} was queried with no tenant context: run it inside tenantTransaction, replicaTenantRead or withoutTenantContext`
     )
     this.name = 'TenantContextRequiredError'
+  }
+}
+
+// What a raw statement outside a context throws: the tables it names are the ones that would answer no row
+export class RawSqlContextRequiredError extends Error {
+  constructor(operation: string, tables: readonly string[]) {
+    super(
+      `${operation} on ${tables.join(', ')} was run with no tenant context: run it inside tenantTransaction, replicaTenantRead, a JobContext or withoutTenantContext`
+    )
+    this.name = 'RawSqlContextRequiredError'
   }
 }
 
@@ -46,8 +58,29 @@ function createClient({
     adapter: new PrismaPg({ connectionString: databaseUrl, max: poolSize })
   })
   // The guard of the context: it runs before every operation of every model (the ones inside a transaction too, which inherit it)
+  const refuseRaw = (operation: string, args: unknown): void => {
+    if (!requireContext || hasQueryScope()) return
+    const tables = policyTablesOfRawSql(sqlTextOfRawArgs(args), RlsPolicyTables)
+    if (tables.length > 0) throw new RawSqlContextRequiredError(operation, tables)
+  }
   const primary = unguarded.$extends({
     query: {
+      $queryRaw({ args, query }) {
+        refuseRaw('$queryRaw', args)
+        return query(args)
+      },
+      $executeRaw({ args, query }) {
+        refuseRaw('$executeRaw', args)
+        return query(args)
+      },
+      $queryRawUnsafe({ args, query }) {
+        refuseRaw('$queryRawUnsafe', args)
+        return query(args)
+      },
+      $executeRawUnsafe({ args, query }) {
+        refuseRaw('$executeRawUnsafe', args)
+        return query(args)
+      },
       $allModels: {
         $allOperations({ model, operation, args, query }) {
           if (requireContext && !RlsGlobalModels.includes(model) && !hasQueryScope()) {
