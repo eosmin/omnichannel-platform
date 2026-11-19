@@ -60,6 +60,7 @@ const PROVIDER_ID = 'contingency-test'
 const AUTHORITY_DOWN = 'authority_down'
 const REASONS = [AUTHORITY_DOWN, 'issuer_down', 'other']
 const WINDOW_HOURS = 72
+const HOUR_MS = 3_600_000
 const RESPONSIBLE = { name: 'Ana Pérez', idType: 'dui', idNumber: '012345678' }
 
 // What the provider under test does, set by each case: the authority is down (a submission is not answered), what the report answers
@@ -67,8 +68,10 @@ const control = {
   down: false,
   report: FiscalContingencyReportOutcome.ACCEPTED as FiscalContingencyReportOutcome,
   maxDocuments: 1000,
-  // The instant the authority "took" the event
-  receivedAt: '2026-11-18T12:00:00.000Z',
+  // The instant the authority "took" the event is the moment of the call, so the window it opens is the one of the real clock whatever
+  // day the suite runs (a fixed date would drift away from the real instants the service stamps, and a closing window would be judged
+  // against a different length each day); `answeredAt` is what it answered last, for the cases that read the window from it
+  answeredAt: '',
   // What the authority says when it refuses the event
   refusal: 'event_refused'
 }
@@ -125,9 +128,10 @@ function contingencyProvider(): FiscalDocumentProvider {
           reason: control.refusal
         })
       }
+      control.answeredAt = new Date().toISOString()
       return Promise.resolve({
         outcome: FiscalContingencyReportOutcome.ACCEPTED as const,
-        receivedAt: control.receivedAt,
+        receivedAt: control.answeredAt,
         providerData: { seal: 'event-seal' }
       })
     }
@@ -173,6 +177,7 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
     control.report = FiscalContingencyReportOutcome.ACCEPTED
     control.maxDocuments = 1000
     control.refusal = 'event_refused'
+    control.answeredAt = ''
     alerts.length = 0
   })
 
@@ -418,7 +423,11 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       expect(await contingencies.report(ctx.orgA.id, contingencyId)).toBe('reported')
       const taken = await contingencyRow(contingencyId)
       expect(taken.status).toBe(FiscalContingencyStatus.REPORTED)
-      expect(taken.windowEndsAt?.toISOString()).toBe('2026-11-21T12:00:00.000Z')
+      // The window is the one the provider declares, counted from the instant the authority took the event
+      expect(control.answeredAt).not.toBe('')
+      expect(taken.windowEndsAt?.toISOString()).toBe(
+        new Date(new Date(control.answeredAt).getTime() + WINDOW_HOURS * HOUR_MS).toISOString()
+      )
       expect(taken.providerData).toEqual({ seal: 'event-seal' })
       expect(reported).toHaveLength(1)
       expect(reported[0]).toMatchObject({
@@ -458,9 +467,19 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
     })
 
     it('tells a person once when the window is closing and a document is still waiting', async () => {
-      const early = new Date('2026-11-19T00:00:00.000Z')
+      // The instants come from the row, never from a calendar: the window was opened by the real clock of the run, so a fixed date would
+      // sit inside it one day and past it another. An hour after the report is far from closing; an hour before the end is closing.
+      const reported = await contingencyRow(contingencyId)
+      expect(reported.reportedAt).not.toBeNull()
+      expect(reported.windowEndsAt).not.toBeNull()
+      const opensAt = reported.reportedAt?.getTime() ?? Number.NaN
+      const endsAt = reported.windowEndsAt?.getTime() ?? Number.NaN
+      const early = new Date(opensAt + HOUR_MS)
       expect(await contingencies.warnWindows(ctx.orgA.id, early)).toBe(0)
-      const late = new Date('2026-11-21T00:00:00.000Z')
+      // Inside the closing part of the window, whatever its ratio: half of it
+      const late = new Date(
+        endsAt - ((endsAt - opensAt) * FiscalContingencyLimits.WARN_REMAINING_RATIO) / 2
+      )
       expect(await contingencies.warnWindows(ctx.orgA.id, late)).toBe(1)
       expect(alerts).toContainEqual({
         organizationId: ctx.orgA.id,
