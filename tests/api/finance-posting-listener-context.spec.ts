@@ -4,7 +4,8 @@ import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 
 import { ApiRoutes } from '@platform/core/api'
-import type { OwnerClient } from '@platform/core/database-testing'
+import { PrismaService, RLS_CONTEXT_ENABLED } from '@platform/core/database'
+import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import {
   FinanceCountryCodes,
   FinanceEventKind,
@@ -31,21 +32,37 @@ import { queueOf } from '../helpers/queue'
 const CREATED = 201
 
 // The listener of the books hears the events of the domain AFTER the commit of the operation, outside any request: there is no tenant
-// context open. With RLS_CONTEXT on and the policies enforced (the `rls-enforced` job of the CI) its database work must open the
-// context of the organization of the event by itself. Each case emits the event the way a service does, from outside any context, and
-// reads what the listener queued (one case per handler: E1, E2/E3, E4, E5, E6, E7, E8, E9 twice, E14, E15, E16). The two paths that read
-// or write a row of the books (the lines of a closed transfer, the list of a source that could not be queued) fail if their context is
-// taken away. `store.findUnique` of `organizationOf` needs none: `stores` has no row policy (neverPolicy, see the comment there).
+// context open. With the switch ON (RLS_CONTEXT) its database work must open the context of the organization of the event by itself.
+// The app of this file is built as the activation builds it (switch ON, a PrismaService that throws on a query with no context, the
+// role of the policies), so it enforces by itself in any job that runs the api suite; the precondition case proves it. Each case emits
+// the event the way a service does, from outside any context, and reads what the listener queued (E1, E2/E3, E4, E5, E6, E7, E8, E9
+// twice, E14, E15, E16). The two paths that read or write a row of the books (the lines of a closed transfer, the list of a source
+// that could not be queued) fail if their context is taken away: the guard throws and the listener logs it and queues nothing.
+// `store.findUnique` of `organizationOf` needs none: `stores` has no row policy (`neverPolicy` in scripts/rls-exceptions.ts).
 describe('The listener of the automatic entries opens its own context (RLS phase 6, B3a)', () => {
   const prefix = newRunPrefix()
   let app: INestApplication
+  let guarded: PrismaService
   let owner: OwnerClient
   let ctx: TestContext
   let emitter: EventEmitter2
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    // The api of the activation, whatever the environment says: the switch ON and the guard of PrismaService ON (a query of a table
+    // behind row security with no context open throws), on the role that is subject to the policies
+    guarded = new PrismaService({
+      databaseUrl: connectionUrls().worker,
+      poolSize: 8,
+      requireContext: true
+    })
+    app = await createTestApp([], builder =>
+      builder
+        .overrideProvider(PrismaService)
+        .useValue(guarded)
+        .overrideProvider(RLS_CONTEXT_ENABLED)
+        .useValue(true)
+    )
     ctx = await seedTestContext(owner, app, prefix)
     emitter = app.get(EventEmitter2)
     const setup = await api(app, ctx.adminA, ctx.storeA)
@@ -57,6 +74,11 @@ describe('The listener of the automatic entries opens its own context (RLS phase
     await cleanUp(owner, prefix)
     await app.close()
     await owner.$disconnect()
+  })
+
+  // The control that makes the cases below mean something: the same read the listener makes, with no context, is refused
+  it('precondition: a table behind row security cannot be read with no context open', async () => {
+    await expect(guarded.client.stockTransferLine.findMany({ take: 1 })).rejects.toThrow()
   })
 
   const system = { type: 'system', id: null } as const
@@ -107,6 +129,14 @@ describe('The listener of the automatic entries opens its own context (RLS phase
       notifyCustomer: null
     })
     expectQueued(id, [FinanceEventKind.SENT, FinanceEventKind.SALE], FinanceSourceType.ORDER)
+    const delivered = randomUUID()
+    await emitter.emitAsync(Events.ORDER_STATUS_CHANGED, {
+      ...order(delivered),
+      from: OrderStatus.SHIPPED,
+      to: OrderStatus.DELIVERED,
+      notifyCustomer: null
+    })
+    expectQueued(delivered, [FinanceEventKind.SENT, FinanceEventKind.SALE], FinanceSourceType.ORDER)
   })
 
   it('E8: an order returned as a whole asks for its return entry', async () => {
