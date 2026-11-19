@@ -141,8 +141,8 @@ describe('the plan of the searches with row-level security on', () => {
     values: unknown[],
     policiesOn: boolean
   ): Promise<string> {
-    await raw.query('BEGIN')
     try {
+      await raw.query('BEGIN')
       await raw.query("SET LOCAL lock_timeout = '20s'")
       if (policiesOn) {
         for (const table of ['conversations', 'messages']) {
@@ -195,8 +195,8 @@ describe('the plan of the searches with row-level security on', () => {
     const plans: string[] = []
     const collect = (notice: { message?: string }) => plans.push(notice.message ?? '')
     raw.on('notice', collect)
-    await raw.query('BEGIN')
     try {
+      await raw.query('BEGIN')
       await raw.query("SET LOCAL lock_timeout = '20s'")
       // The deployment: the function belongs to a role that is NOT a superuser and does not bypass row security, and the tables it reads
       // are FORCED, so what lets it read is the `<table>_owner` policy of its owner, exactly as in production. Everything here is

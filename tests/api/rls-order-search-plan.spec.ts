@@ -86,8 +86,8 @@ describe('the plan of the customers of an orders search with row-level security 
   const rawPlan = (policyOn: boolean): Promise<PlanNode> =>
     retryOnDeadlock(() => rawPlanOnce(policyOn))
   async function rawPlanOnce(policyOn: boolean): Promise<PlanNode> {
-    await setUpPlanTransaction()
     try {
+      await setUpPlanTransaction()
       if (policyOn) {
         await raw.query('ALTER TABLE customers ENABLE ROW LEVEL SECURITY')
         await raw.query('DROP POLICY IF EXISTS order_plan ON customers')
@@ -127,8 +127,8 @@ describe('the plan of the customers of an orders search with row-level security 
         plans.push(notice.message ?? '')
       }
       raw.on('notice', collect)
-      await setUpPlanTransaction()
       try {
+        await setUpPlanTransaction()
         const role = `plan_owner_${prefix.replaceAll(/[^a-z0-9]/gi, '_')}`.slice(0, 60)
         await raw.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`)
         await raw.query(`GRANT USAGE, CREATE ON SCHEMA public TO ${role}`)

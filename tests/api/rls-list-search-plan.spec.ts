@@ -81,8 +81,8 @@ describe('the plan of the searches of the lists with row-level security on', () 
     tables: string[],
     policiesOn: boolean
   ): Promise<PlanNode> {
-    await raw.query('BEGIN')
     try {
+      await raw.query('BEGIN')
       await raw.query("SET LOCAL lock_timeout = '20s'")
       if (policiesOn) {
         for (const table of tables) {
@@ -166,8 +166,8 @@ describe('the plan of the searches of the lists with row-level security on', () 
         plans.push(notice.message ?? '')
       }
       raw.on('notice', collect)
-      await raw.query('BEGIN')
       try {
+        await raw.query('BEGIN')
         await raw.query("SET LOCAL lock_timeout = '20s'")
         const role = `plan_owner_${prefix.replaceAll(/[^a-z0-9]/gi, '_')}`.slice(0, 60)
         await raw.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`)
