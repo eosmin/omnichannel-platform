@@ -8,12 +8,14 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { AuditColdExport, auditColdExportLockKey } from '@platform/core/compliance'
-import { PrismaService, assertSeesEveryRow } from '@platform/core/database'
+import { PrismaService, WorkerLists } from '@platform/core/database'
 import { DAY_MS } from '@platform/core/domain'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { startOfNextUtcMonth, startOfUtcMonth } from './retention-clock'
+
+// rls-context: the audit log is read through the definers of WorkerLists (read only) and deleted only by purge_audit_logs; no table with a policy is touched
 
 export interface AuditColdExportReport {
   months: { year: number; month: number; rows: number; key: string }[]
@@ -42,6 +44,7 @@ const NEWLINE = 0x0a
 export class AuditColdExporter {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly lists: WorkerLists,
     private readonly storage: StorageService,
     private readonly logger: PinoLogger
   ) {
@@ -50,7 +53,6 @@ export class AuditColdExporter {
 
   // `before`: the entries older than this instant may leave the database (the caller says now minus the hot window)
   async run(before: Date, now: Date = new Date()): Promise<AuditColdExportReport> {
-    await assertSeesEveryRow(this.prisma, ['audit_logs'])
     // The window is held here, where the delete is, and not only by the scheduler that queues the job: a job that
     // names a later instant (a hand-added or retried one) is held to the end of the hot window
     const hotEnd = new Date(now.getTime() - AuditColdExport.HOT_DAYS * DAY_MS)
@@ -59,22 +61,14 @@ export class AuditColdExporter {
     const bound = startOfUtcMonth(limit)
     const report: AuditColdExportReport = { months: [], more: false, busy: null }
     for (let done = 0; done < AuditColdExport.MAX_MONTHS_PER_RUN; done += 1) {
-      const oldest = await this.prisma.client.auditLog.findFirst({
-        where: { timestamp: { lt: bound } },
-        orderBy: { timestamp: 'asc' },
-        select: { timestamp: true }
-      })
+      const oldest = await this.lists.auditOldestBefore(bound)
       if (oldest === null) return report
-      const start = startOfUtcMonth(oldest.timestamp)
+      const start = startOfUtcMonth(oldest)
       const end = startOfNextUtcMonth(start)
       const exported = await this.withMonthLock(start, async held => {
         // The oldest month was read before the lock: a run that had it may have finished since, and an empty month
         // must not become an empty part in the bucket
-        if (
-          (await this.prisma.client.auditLog.count({
-            where: { timestamp: { gte: start, lt: end } }
-          })) === 0
-        ) {
+        if ((await this.lists.auditCountBetween(start, end)) === 0) {
           return undefined
         }
         return this.exportMonth(start, end, held)
@@ -89,11 +83,7 @@ export class AuditColdExporter {
       }
       report.months.push(exported)
     }
-    report.more =
-      (await this.prisma.client.auditLog.findFirst({
-        where: { timestamp: { lt: bound } },
-        select: { id: true }
-      })) !== null
+    report.more = (await this.lists.auditOldestBefore(bound)) !== null
     return report
   }
 
@@ -122,8 +112,7 @@ export class AuditColdExporter {
   private async exportMonth(start: Date, end: Date, held: () => Promise<void>) {
     const year = start.getUTCFullYear()
     const month = start.getUTCMonth() + 1
-    const where = { timestamp: { gte: start, lt: end } }
-    const expected = await this.prisma.client.auditLog.count({ where })
+    const expected = await this.lists.auditCountBetween(start, end)
     const key = await this.freeKey(year, month)
 
     const gzip = createGzip()
@@ -153,20 +142,9 @@ export class AuditColdExporter {
     try {
       let cursor: { timestamp: Date; id: string } | undefined
       for (;;) {
-        const batch = await this.prisma.client.auditLog.findMany({
-          where:
-            cursor === undefined
-              ? where
-              : {
-                  ...where,
-                  OR: [
-                    { timestamp: { gt: cursor.timestamp } },
-                    { timestamp: cursor.timestamp, id: { gt: cursor.id } }
-                  ]
-                },
-          orderBy: [{ timestamp: 'asc' }, { id: 'asc' }],
-          take: AuditColdExport.READ_BATCH
-        })
+        // The page comes from a function of the database (the policy of the table answers a context, and a sweep of the whole
+        // log has none), in the order and window of purge_audit_logs: the bytes that are hashed are the rows that it deletes
+        const batch = await this.lists.auditColdPage(start, end, cursor, AuditColdExport.READ_BATCH)
         for (const entry of batch) {
           if (!gzip.write(`${JSON.stringify(entry)}\n`)) {
             await Promise.race([once(gzip, 'drain'), upload])
@@ -194,7 +172,7 @@ export class AuditColdExporter {
       ids = await this.verify(key, sha256, rows, expected)
       // Rows that reached the month after the count (a late writer) are not in this copy and must not be deleted
       // with it: they wait for the next run, which writes them in the next part
-      if ((await this.prisma.client.auditLog.count({ where })) !== rows) {
+      if ((await this.lists.auditCountBetween(start, end)) !== rows) {
         throw new Error('the month changed while it was exported; nothing was deleted')
       }
     } catch (error) {
