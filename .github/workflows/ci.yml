@@ -337,6 +337,8 @@ jobs:
         env:
           SECURITY_SHARD: ${{ matrix.shard }}
         run: |
+          # The legs of the matrix are the denominator of the shard: a leg removed would leave specs that no job runs
+          test "${{ strategy.job-total }}" = "${SECURITY_SHARD#*/}"
           # The peak of memory used on the whole runner (jest, services and tooling), in the summary: the suite
           # once ran out of heap and nothing measured it. A trap writes it even if the step is cancelled
           memory="$RUNNER_TEMP/memory.txt"
@@ -458,6 +460,8 @@ jobs:
       # Both guards ON, and the policies ENABLED and FORCED below: the code runs as it will once the owner turns it on
       RLS_CONTEXT: 'true'
       WORKER_RLS_CONTEXT: 'true'
+      # The suites that only run on a database that is enforced (rls-roles, the real tables of rls-finance-isolation) ask for it with this
+      TEST_RLS_ENFORCE: '1'
       # The replica of the api is the read only role. The suites of tests/ remove this variable (helpers/env.ts) and build their own handle
       # (rls-replica-role.spec, rls-replica-startup-check.spec): the variable here is read by the processes that start from the env
       DATABASE_REPLICA_URL: postgresql://platform_replica_ro:ci_replica_password@localhost:5432/platform_ci
@@ -534,6 +538,8 @@ jobs:
       # Both guards ON, and the policies ENABLED and FORCED below: the code runs as it will once the owner turns it on
       RLS_CONTEXT: 'true'
       WORKER_RLS_CONTEXT: 'true'
+      # The suites that only run on a database that is enforced (rls-roles, the real tables of rls-finance-isolation) ask for it with this
+      TEST_RLS_ENFORCE: '1'
       # The replica of the api is the read only role. The suites of tests/ remove this variable (helpers/env.ts) and build their own handle
       # (rls-replica-role.spec, rls-replica-startup-check.spec): the variable here is read by the processes that start from the env
       DATABASE_REPLICA_URL: postgresql://platform_replica_ro:ci_replica_password@localhost:5432/platform_ci
@@ -563,6 +569,8 @@ jobs:
         env:
           SECURITY_SHARD: ${{ matrix.shard }}
         run: |
+          # The legs of the matrix are the denominator of the shard: a leg removed would leave specs that no job runs
+          test "${{ strategy.job-total }}" = "${SECURITY_SHARD#*/}"
           # Same sampler as `security-shards`: the peak of memory of the runner, in the summary, to compare the two jobs
           memory="$RUNNER_TEMP/memory.txt"
           (while sleep 3; do free -m | awk '/^Mem:/ {print $3}'; done > "$memory") &
