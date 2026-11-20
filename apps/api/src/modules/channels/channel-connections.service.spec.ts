@@ -47,6 +47,7 @@ function build(connect: () => Promise<unknown>): {
   const registry = { isVisibleTo: () => true, isRemote: () => false, get: () => ({ connect }) }
   const service = new ChannelConnectionsService(
     prisma as never,
+    { forStoreOrJoin: <T>(_id: string, work: () => Promise<T>) => work() } as never,
     registry as never,
     {} as never,
     {} as never,

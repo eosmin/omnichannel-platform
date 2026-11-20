@@ -87,6 +87,14 @@ export class AuditService implements OnModuleDestroy {
     this.writeDetached(entry)
   }
 
+  // ONLY for the entry of a request that is going to FAIL (a 403, a refused key): written on a transaction of its own, outside the one
+  // of the request, so the rollback that follows the refusal does not take the record with it. Never for a success: what a request
+  // does goes through `log`, which commits or rolls back with it, so that a reverted action is never audited. Same row (`toRow`), the
+  // same bounded queue (MAX_PENDING) and the same wait at shutdown as every detached write.
+  logRefused(entry: AuditEntry): void {
+    this.writeDetached(entry)
+  }
+
   private writeDetached(entry: AuditEntry): void {
     if (this.pending.size >= MAX_PENDING) {
       this.fail(AUDIT_FAILURE_REASONS.QUEUE_FULL, entry.action)
