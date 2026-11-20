@@ -530,127 +530,138 @@ describe('The legal books', () => {
 
   // HC-106: the entry of a sale is dated by the day of the store, so the documents of the month must be read by that day too. A
   // document made the last evening of the month in a store west of UTC is stamped in the next month by the clock of the server
-  describe('the sales book of a store west of UTC (HC-106)', () => {
-    it('counts a document issued, or voided, the last local night of the month in that month', async () => {
+  describe('the sales book by the month of the store (HC-106)', () => {
+    const marchOf = async (): Promise<string> => {
       const existing = await owner.fiscalPeriod.findFirst({
         where: { organizationId: ctx.orgA.id, year: 2026, month: 3 },
         select: { id: true }
       })
-      const march = existing?.id ?? (await createPeriod(owner, ctx.orgA.id, 2026, 3))
+      return existing?.id ?? (await createPeriod(owner, ctx.orgA.id, 2026, 3))
+    }
+    const sale = async (march: string, day: string) => {
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      await owner.order.update({
+        where: { id: order.id },
+        data: { taxCents: 230, pricesIncludeTax: true }
+      })
+      await owner.orderItem.update({
+        where: { id: order.itemId },
+        data: { taxTreatment: 'taxed', taxRateBps: 1300, taxCents: 230 }
+      })
+      const entry = await postTestEntry(owner, {
+        organizationId: ctx.orgA.id,
+        periodId: march,
+        entryDate: day,
+        type: JournalEntryType.SALE,
+        sourceType: FinanceSourceType.ORDER,
+        sourceId: order.id,
+        idempotencyKey: FinancePostingKey.ORDER_SALE(order.id),
+        lines: [
+          { accountId: accountsA[CASH] ?? '', debitCents: 1999 },
+          { accountId: accountsA[SALES] ?? '', creditCents: 1999 }
+        ]
+      })
+      return { orderId: order.id, entryId: entry.id }
+    }
+    const document = (
+      made: { orderId: string; entryId: string },
+      external: string,
+      issuedAt: string,
+      voidedAt: string | null
+    ) =>
+      owner.fiscalDocument.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          orderId: made.orderId,
+          journalEntryId: made.entryId,
+          sequenceNumber: (sequence += 1),
+          kind: 'sale',
+          documentType: SimulatorDocumentTypes.CONSUMER,
+          status: 'accepted',
+          providerId: 'simulator',
+          environment: 'sandbox',
+          externalNumber: external,
+          issuerSnapshot: {},
+          linesSnapshot: { lines: [] },
+          receiverEncrypted: Buffer.from('suite'),
+          totalCents: 1999,
+          taxCents: 230,
+          issuedAt: new Date(issuedAt),
+          voidedAt: voidedAt === null ? null : new Date(voidedAt)
+        }
+      })
+    // The book of March with the zone of the store set to `zone`, put back whatever happens
+    const marchBook = async (march: string, zone: string): Promise<BookBody> => {
       const store = await owner.store.findUniqueOrThrow({
         where: { id: ctx.storeA.id },
         select: { timezone: true }
       })
-      await owner.store.update({
-        where: { id: ctx.storeA.id },
-        data: { timezone: 'America/El_Salvador' }
-      })
+      await owner.store.update({ where: { id: ctx.storeA.id }, data: { timezone: zone } })
       try {
-        const sale = async (day: string) => {
-          const order = await createOrder(owner, { storeId: ctx.storeA.id })
-          await owner.order.update({
-            where: { id: order.id },
-            data: { taxCents: 230, pricesIncludeTax: true }
-          })
-          await owner.orderItem.update({
-            where: { id: order.itemId },
-            data: { taxTreatment: 'taxed', taxRateBps: 1300, taxCents: 230 }
-          })
-          const entry = await postTestEntry(owner, {
-            organizationId: ctx.orgA.id,
-            periodId: march,
-            entryDate: day,
-            type: JournalEntryType.SALE,
-            sourceType: FinanceSourceType.ORDER,
-            sourceId: order.id,
-            idempotencyKey: FinancePostingKey.ORDER_SALE(order.id),
-            lines: [
-              { accountId: accountsA[CASH] ?? '', debitCents: 1999 },
-              { accountId: accountsA[SALES] ?? '', creditCents: 1999 }
-            ]
-          })
-          return { orderId: order.id, entryId: entry.id }
-        }
-        const document = (
-          made: { orderId: string; entryId: string },
-          external: string,
-          issuedAt: string,
-          voidedAt: string | null
-        ) =>
-          owner.fiscalDocument.create({
-            data: {
-              organizationId: ctx.orgA.id,
-              storeId: ctx.storeA.id,
-              orderId: made.orderId,
-              journalEntryId: made.entryId,
-              sequenceNumber: (sequence += 1),
-              kind: 'sale',
-              documentType: SimulatorDocumentTypes.CONSUMER,
-              status: 'accepted',
-              providerId: 'simulator',
-              environment: 'sandbox',
-              externalNumber: external,
-              issuerSnapshot: {},
-              linesSnapshot: { lines: [] },
-              receiverEncrypted: Buffer.from('suite'),
-              totalCents: 1999,
-              taxCents: 230,
-              issuedAt: new Date(issuedAt),
-              voidedAt: voidedAt === null ? null : new Date(voidedAt)
-            }
-          })
-        // 21:00 of 31 March in San Salvador is 03:00Z of 1 April
-        await document(await sale('2026-03-31'), 'MAR-1', '2026-04-01T03:00:00Z', null)
-        // Voided at 22:00 of 31 March local (04:00Z of 1 April): voided inside March, so the sale is a voided one of March
-        await document(
-          await sale('2026-03-30'),
-          'MAR-2',
-          '2026-03-30T15:00:00Z',
-          '2026-04-01T04:00:00Z'
-        )
-        // Issued at 00:30 of 1 April local is April: not in the book of March
-        await document(await sale('2026-03-29'), 'MAR-3', '2026-04-01T06:30:00Z', null)
-
         const response = await asAdminA().get(
           `${ApiRoutes.finance.books.byKind(LegalBookKind.SALES_CONSUMERS)}?periodId=${march}`
         )
         expect(response.status).toBe(OK)
-        const body = response.body as BookBody
-        const numbers = body.rows.map(row => row[body.header.indexOf('document_number')])
-        expect(numbers).toContain('MAR-1')
-        expect(numbers).not.toContain('MAR-2')
-        expect(body.warnings.voidedDocuments).toBe(1)
+        return response.body as BookBody
       } finally {
         await owner.store.update({
           where: { id: ctx.storeA.id },
           data: { timezone: store.timezone }
         })
       }
-    })
-  })
+    }
+    const numbersOf = (body: BookBody): unknown[] =>
+      body.rows.map(row => row[body.header.indexOf('document_number')])
 
-  describe('a store with a zone the database does not know', () => {
-    it('reads its documents as UTC and still answers the book', async () => {
-      const march = await owner.fiscalPeriod.findFirstOrThrow({
-        where: { organizationId: ctx.orgA.id, year: 2026, month: 3 },
-        select: { id: true }
-      })
-      const store = await owner.store.findUniqueOrThrow({
-        where: { id: ctx.storeA.id },
-        select: { timezone: true }
-      })
-      await owner.store.update({ where: { id: ctx.storeA.id }, data: { timezone: 'Mars/Phobos' } })
-      try {
-        const response = await asAdminA().get(
-          `${ApiRoutes.finance.books.byKind(LegalBookKind.SALES_CONSUMERS)}?periodId=${march.id}`
-        )
-        expect(response.status).toBe(OK)
-      } finally {
-        await owner.store.update({
-          where: { id: ctx.storeA.id },
-          data: { timezone: store.timezone }
-        })
-      }
+    it('counts a document issued, or voided, the last local night of the month in that month', async () => {
+      const march = await marchOf()
+      // 21:00 of 31 March in San Salvador is 03:00Z of 1 April
+      await document(await sale(march, '2026-03-31'), 'MAR-1', '2026-04-01T03:00:00Z', null)
+      // Voided at 22:00 of 31 March local (04:00Z of 1 April): voided inside March, so the sale is a voided one of March
+      await document(
+        await sale(march, '2026-03-30'),
+        'MAR-2',
+        '2026-03-30T15:00:00Z',
+        '2026-04-01T04:00:00Z'
+      )
+      // Issued at 00:30 of 1 April local is April: not in the book of March
+      await document(await sale(march, '2026-03-29'), 'MAR-3', '2026-04-01T06:30:00Z', null)
+
+      const body = await marchBook(march, 'America/El_Salvador')
+
+      const numbers = numbersOf(body)
+      expect(numbers).toContain('MAR-1')
+      expect(numbers).not.toContain('MAR-2')
+      expect(body.warnings.voidedDocuments).toBe(1)
+    })
+
+    // The other side of the same border (a residual limit of the fix): east of UTC the first local hours of April are still March by the
+    // clock of the server
+    it('leaves out of March a document issued the first local hour of April in a store east of UTC', async () => {
+      const march = await marchOf()
+      // 23:30 of 31 March in Dubai (UTC+4) is 19:30Z
+      await document(await sale(march, '2026-03-31'), 'EAST-1', '2026-03-31T19:30:00Z', null)
+      // 01:00 of 1 April in Dubai is 21:00Z of 31 March: April, although the clock of the server says March
+      await document(await sale(march, '2026-03-30'), 'EAST-2', '2026-03-31T21:00:00Z', null)
+
+      const numbers = numbersOf(await marchBook(march, 'Asia/Dubai'))
+
+      expect(numbers).toContain('EAST-1')
+      expect(numbers).not.toContain('EAST-2')
+    })
+
+    // The other residual limit: a zone the database does not know reads as UTC, as the entries of that store do, and the book still answers
+    // (the log says so: `splitStoreZones` is the unit spec of what it tells)
+    it('reads the documents of a store with a zone the database does not know as UTC, and still answers', async () => {
+      const march = await marchOf()
+      await document(await sale(march, '2026-03-31'), 'UTC-1', '2026-03-31T23:00:00Z', null)
+      await document(await sale(march, '2026-03-30'), 'UTC-2', '2026-04-01T00:30:00Z', null)
+
+      const numbers = numbersOf(await marchBook(march, 'Mars/Phobos'))
+
+      expect(numbers).toContain('UTC-1')
+      expect(numbers).not.toContain('UTC-2')
     })
   })
 
