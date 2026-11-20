@@ -17,6 +17,7 @@ import {
   checkOrderTransition,
   checkPaymentChange,
   checkPriceDecision,
+  dateToDay,
   isPriceApprovalBlocking,
   MediaStatus,
   OrderConfirmationChannel,
@@ -29,7 +30,8 @@ import {
   PaymentMethod,
   PaymentStatus,
   PriceApprovalStatus,
-  type RecordOrderPaymentInput
+  type RecordOrderPaymentInput,
+  SaleRecognition
 } from '@platform/core/domain'
 import {
   errorName,
@@ -40,6 +42,7 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { type ActorRef, Events } from '@platform/core/events'
+import { dayInZone } from '@platform/core/finance-ledger'
 import { writeOrderSummaryLine } from '@platform/core/messaging'
 import { MediaPurpose } from '@platform/core/storage'
 
@@ -178,6 +181,33 @@ export class OrdersStatusService {
       to: PaymentStatus.REFUNDED
     })
     return true
+  }
+
+  // The day of the store that a delivery moment falls on must not be before the day the books of its organization begin
+  private async assertDeliveredInTheBooks(
+    tx: PrismaTransaction,
+    storeId: string,
+    deliveredAt: Date
+  ): Promise<void> {
+    const store = await tx.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: { organizationId: true, timezone: true }
+    })
+    const books = await tx.financeSettings.findUnique({
+      where: { organizationId: store.organizationId },
+      select: { accountingStartDate: true, recognizeSaleOn: true }
+    })
+    // An organization with no books has no start to keep, and one that counts its sales on the shipping moves nothing with the delivery
+    if (books === null || (books.recognizeSaleOn as SaleRecognition) === SaleRecognition.SHIPPED)
+      return
+    if (dayInZone(deliveredAt, store.timezone) < dateToDay(books.accountingStartDate)) {
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_FAILED,
+        'an order cannot be delivered before the books begin',
+        HttpStatusCodes.BAD_REQUEST,
+        { conflict: OrderConflicts.DELIVERED_BEFORE_ACCOUNTING_START }
+      )
+    }
   }
 
   private async hasReturnsHoldingUnits(
@@ -370,6 +400,10 @@ export class OrdersStatusService {
               { conflict: OrderConflicts.DELIVERED_BEFORE_SHIPPED }
             )
           }
+          // A moment the agent names that falls before the books begin: the sale would never be posted (TDD_18 §6.1) and the VAT report
+          // leaves it out, so the date is refused instead of accepted and lost. Only a date the agent names: "now" is never refused
+          if (body.deliveredAt !== undefined)
+            await this.assertDeliveredInTheBooks(tx, storeId, deliveredAt)
           if (body.proofOfDeliveryMediaId !== undefined) {
             await this.assertOrderFile(tx, storeId, orderId, body.proofOfDeliveryMediaId)
             Object.assign(data, { proofOfDeliveryMediaId: body.proofOfDeliveryMediaId })
