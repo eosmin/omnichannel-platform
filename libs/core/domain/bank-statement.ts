@@ -467,6 +467,15 @@ export function parseBankStatement(
         fail(row, field, BankStatementErrors.MISSING_CELL, null)
         return null
       }
+      // Before the blank test: trim() takes the mark for a blank, and a cell with one is not empty, it is wrong (PUR-003)
+      if (value.includes(BYTE_ORDER_MARK)) {
+        const code =
+          field === BankStatementFields.DATE
+            ? BankStatementErrors.INVALID_DATE
+            : BankStatementErrors.INVALID_AMOUNT
+        fail(row, field, code, shown(value))
+        return null
+      }
       if (value.trim() === '') {
         fail(row, field, BankStatementErrors.EMPTY_VALUE, null)
         return null
@@ -477,9 +486,7 @@ export function parseBankStatement(
     let postedTime: string | null = null
     const dateCell = required(BankStatementFields.DATE)
     if (dateCell !== null) {
-      const moment = dateCell.includes(BYTE_ORDER_MARK)
-        ? null
-        : parseImportMoment(dateCell, profile.dateFormat)
+      const moment = parseImportMoment(dateCell, profile.dateFormat)
       postedOn = moment?.day ?? null
       postedTime = moment?.time ?? null
       if (moment === null) {
@@ -518,6 +525,11 @@ export function parseBankStatement(
           [BankStatementFields.CREDIT, cell(BankStatementFields.CREDIT), 1]
         ] as const
       ).map(([field, value, sign]) => {
+        // A mark in the cell is a fault even when what is left of it looks like nothing: trim() would take it for a blank (PUR-003)
+        if (value?.includes(BYTE_ORDER_MARK) === true) {
+          fail(row, field, BankStatementErrors.INVALID_AMOUNT, shown(value))
+          return { field, filled: true, cents: null, sign }
+        }
         // A bank that prints a dash in the column that does not apply says nothing there, like an empty cell (HC-125)
         const text = value?.trim() ?? ''
         if (value === undefined || text === '' || NOTHING_MARKS.has(text))
