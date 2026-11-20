@@ -6,6 +6,9 @@
 -- fail-closed checks, the fixed list of skipped tables) is the one of 20270121300000_rls_phase3_orders_inventory_shipping, unchanged.
 -- search_path ends in pg_temp (validate:definer); EXECUTE stays with platform_app alone. A migration of a function, no table: nothing for
 -- rls_extend_policies_to_replica() to extend.
+-- Trust: the context is two session settings, the same one every policy trusts. This check stops a missing or wrong context (a code path
+-- that forgot it, a request for another organization); it is not a barrier against a session that can run arbitrary SQL and set the
+-- settings itself (that is the debt of the context in general). Deploy order: the API that opens the context first, then this migration.
 -- Rollback: rollbacks/20270123200000_rls_store_tables_with_rows_context.rollback.sql (the code that opens the context goes first).
 
 CREATE OR REPLACE FUNCTION public.rls_store_tables_with_rows(p_store_id text)
