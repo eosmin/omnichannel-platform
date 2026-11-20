@@ -6,6 +6,7 @@ import { type FormEvent, type ReactElement, useState } from 'react'
 import type { BulkOperation } from '@platform/api-client'
 import { BulkActions, RoutingLimits } from '@platform/core/domain'
 
+import { isAwaiting } from '../../lib/auxiliary-reads'
 import { assignableOnly } from '../../lib/inbox/assignees'
 import { useMemberDirectory, useTags } from '../../lib/inbox/use-inbox-data'
 import { useStore } from '../providers/store-context'
@@ -65,7 +66,7 @@ function PickForm({
   const choices: Choice[] = isTag
     ? (tags.data ?? []).map(tag => ({ id: tag.id, label: tag.name }))
     : assignableOnly(members.data ?? []).map(member => ({ id: member.id, label: member.name }))
-  const isLoading = isTag ? tags.isPending : members.isPending
+  const isLoading = isAwaiting(isTag ? tags : members)
   const isFailed = isTag ? tags.isError : members.isError
 
   const minimum = isTeam ? RoutingLimits.MIN_USERS_FOR_ROUND_ROBIN : 1

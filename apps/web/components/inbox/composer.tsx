@@ -22,6 +22,7 @@ import {
   SlashCommand
 } from '@platform/core/domain'
 
+import { isAwaiting } from '../../lib/auxiliary-reads'
 import { isAssigneeRefusal } from '../../lib/inbox/assignees'
 import { captionMaxOf } from '../../lib/inbox/caption-max'
 import { publishDraft } from '../../lib/inbox/composer-draft-index'
@@ -500,7 +501,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const canEdit = (message: PendingMessage): EditState => {
     const isNoteMessage = message.type === MessageType.INTERNAL_NOTE
     // The people a note named come back from the directory: until it is read they cannot
-    if (message.mentions.length > 0 && members.isPending) return 'disabled'
+    if (message.mentions.length > 0 && isAwaiting(members)) return 'disabled'
     if (isNoteMessage ? !mayNote : !mayReply || windowState.kind === 'closed') return 'hidden'
     if (draft.trim() === '') return 'enabled'
     const isSameKind = isNoteMessage === (mode === MessageType.INTERNAL_NOTE)
@@ -648,7 +649,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
             menu.kind === 'products' &&
             (productText.length < SEARCH_MIN_CHARS || products.isPending || products.isError)
           ) &&
-          !((menu.kind === 'members' || menu.kind === 'mentions') && members.isPending) ? (
+          !((menu.kind === 'members' || menu.kind === 'mentions') && isAwaiting(members)) ? (
             <p role="status" className="text-muted-foreground px-2 text-xs">
               {tMenu('noMatches')}
             </p>

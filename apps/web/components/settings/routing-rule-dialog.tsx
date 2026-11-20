@@ -6,6 +6,7 @@ import { type FormEvent, type ReactElement, useId, useState } from 'react'
 import type { MemberDirectoryEntryView, TagView } from '@platform/api-client'
 import { RoutingActionTypes, RoutingLimits } from '@platform/core/domain'
 
+import { isAwaiting } from '../../lib/auxiliary-reads'
 import type { RuleView } from '../../lib/settings/routing-requests'
 import {
   type ActionType,
@@ -150,7 +151,7 @@ export function RuleDialog({
                   {channel.name}
                 </label>
               ))}
-              {channelOptions.length === 0 && !channels.isPending ? (
+              {channelOptions.length === 0 && !isAwaiting(channels) ? (
                 <p className="text-muted-foreground text-xs">{t('noChannels')}</p>
               ) : null}
             </div>

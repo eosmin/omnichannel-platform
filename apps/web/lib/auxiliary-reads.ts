@@ -13,5 +13,12 @@ export function mayRead(
   can: (permission: Permission) => boolean,
   read: readonly Permission[]
 ): boolean {
-  return read.every(permission => can(permission))
+  // An empty list asks for nothing, which would open the read to every role: it is refused instead
+  return read.length > 0 && read.every(permission => can(permission))
+}
+
+// Whether a screen has to WAIT for a read: it is on its way (or paused offline). A read that is not made (no permission) is `idle`, and
+// stays `isPending` forever because it has no data, so a screen must never wait on `isPending` alone
+export function isAwaiting(query: { isPending: boolean; fetchStatus: string }): boolean {
+  return query.isPending && query.fetchStatus !== 'idle'
 }
