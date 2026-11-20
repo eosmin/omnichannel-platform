@@ -493,7 +493,14 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       try {
         await step()
       } catch (error) {
-        failure ??= { error }
+        // The first failure is the one the caller hears of; the others are told here, so that no lost job goes without a trace
+        if (failure === undefined) failure = { error }
+        else {
+          this.logger.error(
+            'a step after a commit failed',
+            error instanceof Error ? error.stack : String(error)
+          )
+        }
       }
     }
     if (failure !== undefined) throw failure.error

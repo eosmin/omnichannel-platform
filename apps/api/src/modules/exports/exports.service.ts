@@ -145,11 +145,13 @@ export class ExportsService {
         )
       } catch (error) {
         // Nobody will run it: say so now and not an hour later. Its own context: the request's transaction is over
-        await this.prisma.tenantTransaction({ storeIds: [storeId], organizationIds: [] }, () =>
-          this.prisma.client.export.updateMany({
-            where: { id: created.id, storeId },
-            data: { status: ExportStatus.FAILED, error: ErrorCodes.EXPORT_FAILED }
-          })
+        await this.prisma.detachedTenantTransaction(
+          { storeIds: [storeId], organizationIds: [] },
+          () =>
+            this.prisma.client.export.updateMany({
+              where: { id: created.id, storeId },
+              data: { status: ExportStatus.FAILED, error: ErrorCodes.EXPORT_FAILED }
+            })
         )
         throw error
       }

@@ -198,11 +198,13 @@ export class BulkLabelsService {
           'a bulk run could not be queued'
         )
         // Its own context: the transaction of the request is over
-        await this.prisma.tenantTransaction({ storeIds: [storeId], organizationIds: [] }, () =>
-          this.prisma.client.bulkLabelJob.updateMany({
-            where: { id: row.id, storeId, status: BulkLabelJobStatus.QUEUED },
-            data: { status: BulkLabelJobStatus.FAILED, finishedAt: new Date() }
-          })
+        await this.prisma.detachedTenantTransaction(
+          { storeIds: [storeId], organizationIds: [] },
+          () =>
+            this.prisma.client.bulkLabelJob.updateMany({
+              where: { id: row.id, storeId, status: BulkLabelJobStatus.QUEUED },
+              data: { status: BulkLabelJobStatus.FAILED, finishedAt: new Date() }
+            })
         )
         throw error
       }
