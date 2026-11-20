@@ -792,7 +792,9 @@ describe('Analytics reports and export', () => {
     const REVENUE_FROM = '2026-11-02'
     const REVENUE_TO = '2026-11-04'
     async function seedRevenue(): Promise<void> {
-      const rollups = new AnalyticsRollupService(createWorkerPrisma())
+      const workerPrisma = createGuardedWorkerPrisma()
+      const rollups = new AnalyticsRollupService(workerPrisma)
+      const jobs = new JobContext(workerPrisma)
       // 1999 cents on the first day and one single cent on the second
       const first = await createOrder(owner, { storeId: ctx.storeA.id })
       const second = await createOrder(owner, { storeId: ctx.storeA.id })
@@ -806,10 +808,13 @@ describe('Analytics reports and export', () => {
       })
       for (const date of [REVENUE_FROM, '2026-11-03']) {
         const start = new Date(`${date}T00:00:00.000Z`)
-        await rollups.rollup(RollupGranularities.DAILY, ctx.storeA.id, {
-          start,
-          end: new Date(start.getTime() + 24 * HOUR)
-        })
+        // In the context of the store, as the processor of the rollup runs it
+        await jobs.forStore(ctx.storeA.id, () =>
+          rollups.rollup(RollupGranularities.DAILY, ctx.storeA.id, {
+            start,
+            end: new Date(start.getTime() + 24 * HOUR)
+          })
+        )
       }
     }
 
