@@ -5,7 +5,8 @@ import {
   lowercasedUuidSchema,
   PaginationLimits,
   singleLineText,
-  WarehouseLimits
+  WarehouseLimits,
+  queryIntSchema
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -37,7 +38,7 @@ const flag = z.enum(['true', 'false']).transform(value => value === 'true')
 
 export const listWarehousesQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   active: flag.optional()
 })
 

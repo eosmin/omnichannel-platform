@@ -10,7 +10,8 @@ import {
   MergeFieldSources,
   OrderStatus,
   PaginationLimits,
-  singleLineText
+  singleLineText,
+  queryIntSchema
 } from '@platform/core/domain'
 import { normalizePhone } from '@platform/core/messaging'
 import { galleryTypeSchema, GalleryTypes, gallerySearchSchema } from '@platform/core/storage'
@@ -49,27 +50,27 @@ const phone = z
 
 export const listCustomersQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   q: text().min(1).max(CustomerLimits.SEARCH_MAX_LENGTH).optional()
 })
 
 // The gallery of a customer (TDD_09 §7): a tab, a search by file name, a page
 export const listMediaQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   type: galleryTypeSchema.default(GalleryTypes.ALL),
   q: gallerySearchSchema.optional()
 })
 
 export const listTimelineQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   type: z.enum(Object.values(CustomerTimelineTypes)).optional()
 })
 
 export const listCustomerOrdersQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   status: z.enum(OrderStatus).optional()
 })
 

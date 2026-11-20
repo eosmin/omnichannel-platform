@@ -7,7 +7,8 @@ import {
   ProductLimits,
   ProductSearchConfig,
   singleLineText,
-  TaxTreatment
+  TaxTreatment,
+  queryIntSchema
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -42,7 +43,7 @@ const flag = z.enum(['true', 'false']).transform(value => value === 'true')
 
 export const listProductsQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   active: flag.optional()
 })
 
@@ -125,12 +126,9 @@ export const searchProductsQuerySchema = z.strictObject({
       message: `at most ${ProductSearchConfig.MAX_QUERY_LENGTH} characters`
     })
     .refine(value => !value.includes('\0'), { message: 'contains a NUL character' }),
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(ProductSearchConfig.MAX_LIMIT)
-    .default(ProductSearchConfig.DEFAULT_LIMIT),
+  limit: queryIntSchema(1, ProductSearchConfig.MAX_LIMIT).default(
+    ProductSearchConfig.DEFAULT_LIMIT
+  ),
   includeArchived: flag.default(false)
 })
 

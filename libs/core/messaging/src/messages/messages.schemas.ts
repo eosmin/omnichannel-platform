@@ -9,7 +9,8 @@ import {
   MisleadingTextPattern,
   PaginationLimits,
   uuidSchema,
-  ValidationMessages
+  ValidationMessages,
+  queryIntSchema
 } from '@platform/core/domain'
 import { MediaMessageLimits } from '@platform/core/storage'
 
@@ -139,7 +140,7 @@ export const createMessageSchema = z.discriminatedUnion('type', [
 
 export const listMessagesQuerySchema = z.strictObject({
   cursor: messageCursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 })
 
 // A null emoji takes the agent's reaction back

@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { lowercasedUuidSchema, PaginationLimits, uuidSchema } from '@platform/core/domain'
+import {
+  lowercasedUuidSchema,
+  PaginationLimits,
+  uuidSchema,
+  queryIntSchema
+} from '@platform/core/domain'
 
 import { kindSchema } from './order-templates.schemas'
 
@@ -63,6 +68,6 @@ export const orderMessageCursorSchema = z.string().transform((text, ctx): OrderM
 
 export const listOrderMessagesQuerySchema = z.strictObject({
   cursor: orderMessageCursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 })
 export type ListOrderMessagesQuery = z.output<typeof listOrderMessagesQuerySchema>

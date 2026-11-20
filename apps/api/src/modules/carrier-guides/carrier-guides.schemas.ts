@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { CarrierGuideLimits, uuidSchema } from '@platform/core/domain'
+import { CarrierGuideLimits, uuidSchema, queryIntSchema } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
 
@@ -11,11 +11,8 @@ export const movementIdSchema = uuidSchema
 // query (400), not an empty page.
 export const listGuideMovementsQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(CarrierGuideLimits.PAGE_SIZE_MAX)
-    .default(CarrierGuideLimits.PAGE_SIZE_DEFAULT)
+  limit: queryIntSchema(1, CarrierGuideLimits.PAGE_SIZE_MAX).default(
+    CarrierGuideLimits.PAGE_SIZE_DEFAULT
+  )
 })
 export type ListGuideMovementsQuery = z.output<typeof listGuideMovementsQuerySchema>

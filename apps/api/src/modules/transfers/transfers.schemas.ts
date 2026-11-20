@@ -7,7 +7,8 @@ import {
   singleLineText,
   TransferLimits,
   TransferShortageAction,
-  TransferStatus
+  TransferStatus,
+  queryIntSchema
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -35,7 +36,7 @@ const lines = z
 
 export const listTransfersQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   status: z.enum(Object.values(TransferStatus)).optional(),
   // A transfer that leaves or arrives at this warehouse
   warehouseId: idSchema.optional()

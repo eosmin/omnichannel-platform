@@ -9,7 +9,8 @@ import {
   ConversationStatus,
   PaginationLimits,
   RoutingLimits,
-  uuidSchema
+  uuidSchema,
+  queryIntSchema
 } from '@platform/core/domain'
 
 import { conversationCursorSchema } from './conversation-cursor'
@@ -34,12 +35,7 @@ export const conversationFilterSchema = z.strictObject({
 export const listConversationsQuerySchema = z
   .strictObject({
     cursor: conversationCursorSchema.optional(),
-    limit: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(PaginationLimits.MAX)
-      .default(PaginationLimits.DEFAULT),
+    limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
     assigned: assigned.optional(),
     status: z.enum(ConversationStatus).optional(),
     channelType: channelIdSchema.optional(),

@@ -11,7 +11,8 @@ import {
   orderSortShape,
   PaginationLimits,
   recordOrderPaymentSchema,
-  updateOrderSchema
+  updateOrderSchema,
+  queryIntSchema
 } from '@platform/core/domain'
 
 export const idSchema = lowercasedUuidSchema
@@ -56,7 +57,7 @@ export const orderCursorSchema = z.string().transform((text, ctx): OrderCursor =
 
 const orderPageShape = {
   cursor: orderCursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 }
 
 export const listOrdersQuerySchema = z

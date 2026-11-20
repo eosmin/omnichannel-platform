@@ -193,6 +193,33 @@ describe('parseBankStatement', () => {
       ])
     })
 
+    it.each([
+      [
+        'quotes around the header',
+        `${BOM}"Date","Description","Ref","Amount"\n2026-11-02,Deposit,R-1,100.00\n`
+      ],
+      ['CRLF line ends', `${BOM}Date,Description,Ref,Amount\r\n2026-11-02,Deposit,R-1,100.00\r\n`],
+      [
+        'a blank line before the header',
+        `\n${BOM}Date,Description,Ref,Amount\n2026-11-02,Deposit,R-1,100.00\n`
+      ],
+      // Two exports glued together: the header names are read trimmed, so the second mark costs nothing and no row is lost
+      [
+        'two marks at the start',
+        `${BOM}${BOM}Date,Description,Ref,Amount\n2026-11-02,Deposit,R-1,100.00\n`
+      ]
+    ])('reads the line of a file that opens with the mark, with %s', (_name, text) => {
+      const parsed = parseBankStatement(text, signed)
+      expect(parsed.errorCount).toBe(0)
+      expect(parsed.lines).toHaveLength(1)
+    })
+
+    it('says a file that is only the mark is empty', () => {
+      const parsed = parseBankStatement(BOM, signed)
+      expect(parsed.errors.map(error => error.code)).toEqual([BankStatementErrors.EMPTY_FILE])
+      expect(parsed.lines).toEqual([])
+    })
+
     it('does not touch the one that opens the file (the mark of a UTF-8 file)', () => {
       const parsed = parseBankStatement(
         `${BOM}Date,Description,Ref,Amount\n2026-11-02,Deposit,R-1,100.00\n`,

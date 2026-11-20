@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { PaginationLimits } from '@platform/core/domain'
+import { PaginationLimits, queryIntSchema } from '@platform/core/domain'
 import { ExportStatus, ExportTypes } from '@platform/core/exports'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -10,7 +10,7 @@ import { cursorSchema } from '../customers/list-cursor'
 // cleanup has not marked yet (see `exportStatusWhere`).
 export const listExportsQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   type: z.enum(Object.values(ExportTypes) as [string, ...string[]]).optional(),
   status: z.enum(Object.values(ExportStatus) as [string, ...string[]]).optional()
 })

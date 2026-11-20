@@ -5,7 +5,8 @@ import {
   PaginationLimits,
   PurchaseLimits,
   PurchaseOrderStatus,
-  singleLineText
+  singleLineText,
+  queryIntSchema
 } from '@platform/core/domain'
 import {
   closePurchaseOrderSchema,
@@ -38,12 +39,7 @@ export {
 
 export const idSchema = lowercasedUuidSchema
 
-const limit = z.coerce
-  .number()
-  .int()
-  .min(1)
-  .max(PaginationLimits.MAX)
-  .default(PaginationLimits.DEFAULT)
+const limit = queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 const flag = z.enum(['true', 'false']).transform(value => value === 'true')
 
 export const listSuppliersQuerySchema = z.strictObject({
