@@ -1566,8 +1566,11 @@ built once, by 4B.4b-1.
       organization, one read that writes nothing; the link written in the organization AND the one store of the ROW of the file, because the trigger
       `check_finance_transaction_row` is not SECURITY DEFINER and reads `media` under its store policy). Same parity: a user of A2 with the finance
       permissions attaches a file uploaded in A1 of the same organization, as with RLS off; the answers stay one 404 for a file that is not of this
-      transaction, purpose or organization. Debt: the sweep of non-definer triggers that read a table with a store policy (list sent to 4B) has no owner yet;
-      owner: RLS phase 6 residuals.
+      transaction, purpose or organization. Decisions: the audit entry is written after the unit closes (the route has no request transaction), so a crash between the COMMIT and
+      the insert loses the entry, a weaker guarantee than before; a file that turns infected between the read and the write answers the 404 of the
+      trigger, not the typed 409. Debts: (a) the sweep of non-definer triggers that read a table with a store policy (`check_bank_import_row`
+      reads `media`; the shipping, return and fiscal scope triggers read `orders`/`shipments`/`order_returns`), owner: RLS phase 6 residuals, assessed by 4B;
+      (b) both weaker points above, owner: the same residuals task.
 - [x] **4B.4b-2, bank file of the owner's first bank (PR `bank-import-datetime-thousands`):** a date with a time after the day
       (`dd/MM/yyyy hh:mm[:ss]`, an ISO day may use a T) is read on the bank route only (remittances still refuse a time); the time is part of the
       identity of the line (`bankLineKey`) when the row has one, so a statement that overlaps another never doubles a line and two equal
