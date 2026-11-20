@@ -3,7 +3,13 @@ import type { Redis } from 'ioredis'
 import { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextError,
+  JobContextGoneError,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import {
   PLUGINS_CHANGED_CHANNEL,
   PluginCatalogTypes,
@@ -50,6 +56,8 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly lists: WorkerLists,
+    private readonly jobs: JobContext,
     private readonly cipher: CredentialCipher,
     private readonly registry: PluginRegistry,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
@@ -173,16 +181,25 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
     pluginId: string,
     statuses: readonly string[]
   ): Promise<RemoteCommandSecrets | null> {
-    const row = await this.prisma.client.pluginInstallation.findFirst({
-      // The store is the one of the connection the call is for, read from the row by the core, never from a request
-      where: {
-        storeId,
-        pluginId,
-        status: { in: [...statuses] },
-        plugin: { status: PluginStatus.APPROVED }
-      },
-      select: { commandSecret: true, commandSecretPrevious: true, commandSecretRotatedAt: true }
-    })
+    // In the context of the store of the connection the call is for (the one of the request or the job when it already is that store's),
+    // read from the row by the core, never from a request
+    const row = await this.jobs
+      .forStoreOrJoin(storeId, () =>
+        this.prisma.client.pluginInstallation.findFirst({
+          where: {
+            storeId,
+            pluginId,
+            status: { in: [...statuses] },
+            plugin: { status: PluginStatus.APPROVED }
+          },
+          select: { commandSecret: true, commandSecretPrevious: true, commandSecretRotatedAt: true }
+        })
+      )
+      // A store deleted while the call was on its way has no installation left
+      .catch((error: unknown) => {
+        if (error instanceof JobContextGoneError) return null
+        throw error
+      })
     if (row?.commandSecret == null) return null
     try {
       const open = (sealed: Uint8Array): string => {
@@ -203,37 +220,69 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
     }
   }
 
+  // The manifest of a private plugin is the JSON its organization registered: it is read in the context of one of the stores that
+  // installed it (the policy of plugins lets that organization read it), never through the list. undefined: could not be read now.
+  // When a request opened the refresh (announceChange after an install), the store of that request is the one to read in: forStoreOrJoin
+  // joins its context, so the registry of this process is up to date when the request is answered.
+  private async manifestOf(pluginId: string, storeIds: readonly string[]): Promise<unknown> {
+    const inRequest = this.prisma.currentTenantContext()?.storeIds ?? []
+    const storeId = storeIds.find(id => inRequest.includes(id)) ?? storeIds[0]
+    if (storeId === undefined) return undefined
+    try {
+      const row = await this.jobs.forStoreOrJoin(storeId, () =>
+        this.prisma.client.plugin.findUnique({
+          where: { id: pluginId },
+          select: { manifest: true }
+        })
+      )
+      if (row === null) {
+        // Hidden from that store (or gone): a plugin that never registers must leave a trace
+        this.logger.warn(
+          { pluginId, storeId },
+          'a remote channel plugin has no manifest for its store'
+        )
+        return undefined
+      }
+      return row.manifest
+    } catch (error) {
+      if (error instanceof JobContextError) {
+        this.logger.warn(
+          { pluginId, storeId },
+          'the manifest of a remote channel plugin could not be read'
+        )
+        return undefined
+      }
+      throw error
+    }
+  }
+
   private async readAll(): Promise<void> {
     try {
-      const rows = await this.prisma.client.plugin.findMany({
-        where: {
-          type: PluginCatalogTypes.CHANNEL,
-          isOfficial: false,
-          status: PluginStatus.APPROVED,
-          installations: { some: { status: PluginInstallationStatus.ACTIVE } }
-        },
-        select: {
-          id: true,
-          manifest: true,
-          installations: {
-            where: { status: PluginInstallationStatus.ACTIVE },
-            select: { storeId: true }
-          }
-        }
+      // Across stores, with no context: the definer of the database lists them (a plain query would answer none under row security)
+      const rows = await this.lists.remoteChannelPlugins({
+        type: PluginCatalogTypes.CHANNEL,
+        status: PluginStatus.APPROVED,
+        installationStatus: PluginInstallationStatus.ACTIVE
       })
       const wanted = []
       const untouched = new Set<string>()
       const signatures = new Map<string, string>()
       for (const row of rows) {
-        const storeIds = row.installations.map(installation => installation.storeId).sort()
-        const signature = JSON.stringify([row.manifest, storeIds])
+        const storeIds = [...row.storeIds].sort()
+        const stored = await this.manifestOf(row.id, storeIds)
+        if (stored === undefined) {
+          // Not readable now (no store to read it in, a context that refuses): its previous adapter, if any, stays
+          untouched.add(row.id)
+          continue
+        }
+        const signature = JSON.stringify([stored, storeIds])
         // Unchanged since it was registered: its adapter stays, and nothing is built, validated or logged for it
         if (this.registered.get(row.id) === signature && this.registry.isRemote(row.id)) {
           untouched.add(row.id)
           signatures.set(row.id, signature)
           continue
         }
-        const manifest = pluginManifestSchema.safeParse(row.manifest)
+        const manifest = pluginManifestSchema.safeParse(stored)
         if (!manifest.success || manifest.data.channel === undefined) {
           // A stored manifest that no longer reads does not take down the adapter that works for the stores that installed it
           this.logger.error(

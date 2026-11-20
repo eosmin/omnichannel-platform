@@ -3,6 +3,10 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
 import { readAllPages } from './read-all-pages'
 
+// EXCEPTION: remoteChannelPlugins is the one list that the api runs too (RemoteChannelSync lives in both processes), so its function is
+// granted to platform_app as well as platform_worker: an exception to the design (lists to the worker alone), approved on the condition that it
+// returns only plugin ids and store ids (no manifest: for a private plugin it is the JSON its organization registered), not a precedent.
+//
 // The lists that a scheduler of the worker walks before it can name a store (RLS phase 5). Each one is a SECURITY DEFINER function of
 // the database that returns ids and nothing else (migration 20270121800000_rls_worker_lists); the worker role has no policy-free
 // access to those tables once it loses BYPASSRLS. A list is read PAGE by PAGE until a page comes back short, and a page that fails
@@ -48,6 +52,18 @@ export interface ChannelConnectionFilter {
   statuses: readonly string[]
   installationStatus: string
   pluginStatus: string
+}
+
+export interface RemoteChannelPluginFilter {
+  type: string
+  status: string
+  installationStatus: string
+}
+// A private channel plugin with the stores that have it installed and active. NO manifest: that is the whole JSON that an organization
+// registered, and the caller reads it in the context of one of those stores
+export interface RemoteChannelPluginRef {
+  id: string
+  storeIds: string[]
 }
 
 export interface AvatarMediaRef {
@@ -157,6 +173,19 @@ export class WorkerLists {
           pluginId: row.plugin_id,
           updatedAt: row.updated_at
         }))
+      },
+      row => row.id
+    )
+  }
+
+  // Run by the api and the worker alike (RemoteChannelSync), so the function is granted to both roles
+  remoteChannelPlugins(filter: RemoteChannelPluginFilter): Promise<RemoteChannelPluginRef[]> {
+    return readAllPages(
+      async (after, size) => {
+        const rows = await this.prisma.client.$queryRaw<
+          { id: string; store_ids: string[] }[]
+        >`SELECT id, store_ids FROM rls_list_remote_channel_plugins(${filter.type}, ${filter.status}, ${filter.installationStatus}, ${after}, ${size})`
+        return rows.map(row => ({ id: row.id, storeIds: row.store_ids }))
       },
       row => row.id
     )
