@@ -395,6 +395,12 @@ export const ShipmentInactiveStatuses: readonly ShipmentStatus[] = [
   ShipmentStatus.RETURNED
 ]
 
+// A guide that is being voided, or whose void failed: it may still collect until the carrier says it is cancelled
+export const ShipmentVoidingStatuses: readonly ShipmentStatus[] = [
+  ShipmentStatus.CANCEL_PENDING,
+  ShipmentStatus.CANCEL_FAILED
+]
+
 // A guide may exist and nobody knows: nothing may be created again for the order
 export const ShipmentUnknownOutcomeStatuses: readonly ShipmentStatus[] = [
   ShipmentStatus.CREATING,
@@ -462,6 +468,8 @@ export const GuideAffectingFields = {
   RECIPIENT_PHONES: 'recipient_phones',
   PAYMENT_METHOD: 'payment_method',
   ITEMS: 'items',
+  // The warehouses the lines leave from: a guide is made from one origin, and what it collects depends on which guides are alive
+  ORIGINS: 'origins',
   COD_TOTAL: 'cod_total',
   CARRIER: 'carrier'
 } as const
