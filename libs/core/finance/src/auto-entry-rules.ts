@@ -298,7 +298,8 @@ export interface AdjustmentMovementRow {
   reason: string | null
   quantity: number
   unitCostCents: number | null
-  // The value the movement moved: the loss of units out is exactly what the stock lost (the units in keep the cost times the units)
+  // The value the movement moved: the loss of units out is exactly what the stock lost (the units in keep the cost times the units,
+  // except when they carry no cost, as the units of a count: then it is the value the movement recorded)
   valueCents?: bigint | null
 }
 
@@ -321,15 +322,21 @@ export function adjustmentLines(input: {
 }): AutoEntry {
   const { movement, storeId } = input
   if (!isAdjustmentType(movement.type)) return { ok: true, lines: [] }
+  const isOut = OUT_TYPES.has(movement.type)
   if (movement.unitCostCents === null) {
-    // Units out with nothing on hand to average carry no cost: there is nothing to write off. Units in with no cost cannot be valued
-    return OUT_TYPES.has(movement.type)
-      ? { ok: true, lines: [] }
-      : { ok: false, reason: FinancePostingFailureReason.COST_MISSING }
+    // Units out with nothing on hand to average carry no cost: there is nothing to write off
+    if (isOut) return { ok: true, lines: [] }
+    // Units in with no cost: a count never carries one, so the engine valued the units at the average of the level and wrote that
+    // value on the movement, and the books trust the movement (TDD_18 §4.2, E9). With neither a cost nor a value they cannot be valued
+    if (movement.valueCents === null || movement.valueCents === undefined) {
+      return { ok: false, reason: FinancePostingFailureReason.COST_MISSING }
+    }
   }
-  const cents = OUT_TYPES.has(movement.type)
-    ? movementCostCents(movement.quantity, movement.unitCostCents, movement.valueCents)
-    : movement.quantity * movement.unitCostCents
+  const cents = isOut
+    ? movementCostCents(movement.quantity, movement.unitCostCents ?? 0, movement.valueCents)
+    : movement.unitCostCents === null
+      ? movementCostCents(movement.quantity, 0, movement.valueCents)
+      : movement.quantity * movement.unitCostCents
   if (cents === 0) return { ok: true, lines: [] }
   if (OUT_TYPES.has(movement.type)) {
     return linesOf(

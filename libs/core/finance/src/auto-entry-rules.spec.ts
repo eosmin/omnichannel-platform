@@ -441,6 +441,61 @@ describe('adjustmentLines (E9)', () => {
     expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY_GAIN)).toBeUndefined()
   })
 
+  // RA-740-4: a count never carries a cost, so the engine values the units it counts in at the average of the level and records
+  // that value on the movement. The books trust the movement (TDD_18 §4.2, E9), so that value is what the entry posts
+  it('units counted in with no cost are posted at the value the movement carries', () => {
+    const result = adjustmentLines({
+      accounts,
+      movement: { ...movement(InventoryMovementType.COUNT_IN, 2, null), valueCents: 2000n },
+      storeId: STORE
+    })
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY)?.debitCents).toBe(2000)
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY_GAIN)?.creditCents).toBe(2000)
+  })
+
+  it('units found with no cost are posted at the value the movement carries, opening stock against the opening equity', () => {
+    const found = adjustmentLines({
+      accounts,
+      movement: {
+        ...movement(InventoryMovementType.ADJUSTMENT_IN, 3, null, InventoryAdjustmentReason.FOUND),
+        valueCents: 1501n
+      },
+      storeId: STORE
+    })
+    expect(found.ok && lineOf(found.lines, AccountRole.INVENTORY)?.debitCents).toBe(1501)
+    const opening = adjustmentLines({
+      accounts,
+      movement: {
+        ...movement(
+          InventoryMovementType.ADJUSTMENT_IN,
+          3,
+          null,
+          InventoryAdjustmentReason.OPENING_STOCK
+        ),
+        valueCents: 900n
+      },
+      storeId: STORE
+    })
+    expect(opening.ok && lineOf(opening.lines, AccountRole.OPENING_EQUITY)?.creditCents).toBe(900)
+  })
+
+  it('units in that no cost and no value can say are still a failure; a value of zero posts nothing', () => {
+    expect(
+      adjustmentLines({
+        accounts,
+        movement: { ...movement(InventoryMovementType.COUNT_IN, 2, null), valueCents: null },
+        storeId: STORE
+      })
+    ).toEqual({ ok: false, reason: FinancePostingFailureReason.COST_MISSING })
+    expect(
+      adjustmentLines({
+        accounts,
+        movement: { ...movement(InventoryMovementType.COUNT_IN, 2, null), valueCents: 0n },
+        storeId: STORE
+      })
+    ).toEqual({ ok: true, lines: [] })
+  })
+
   it('units in with no cost cannot be valued: a failure, not a zero', () => {
     expect(
       adjustmentLines({
