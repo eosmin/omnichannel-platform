@@ -56,4 +56,10 @@ describe('@TenantOfOrganizationStores', () => {
       expect(at).toBeLessThan(classAt)
     }
   })
+
+  it('has no plugin route in those controllers: a key is bound to one store and must never see the lines of a sibling', () => {
+    for (const file of ALLOWED) {
+      expect(readFileSync(join(ROOT, file), 'utf8')).not.toContain('@PluginApi(')
+    }
+  })
 })
