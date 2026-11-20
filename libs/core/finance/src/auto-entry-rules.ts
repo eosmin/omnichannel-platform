@@ -298,7 +298,8 @@ export interface AdjustmentMovementRow {
   reason: string | null
   quantity: number
   unitCostCents: number | null
-  // The value the movement moved: the loss of units out is exactly what the stock lost (the units in keep the cost times the units)
+  // The value the movement moved: the loss of units out is exactly what the stock lost (the units in keep the cost times the units,
+  // except when they carry no cost, as the units of a count: then it is the value the movement recorded)
   valueCents?: bigint | null
 }
 
@@ -321,17 +322,27 @@ export function adjustmentLines(input: {
 }): AutoEntry {
   const { movement, storeId } = input
   if (!isAdjustmentType(movement.type)) return { ok: true, lines: [] }
-  if (movement.unitCostCents === null) {
-    // Units out with nothing on hand to average carry no cost: there is nothing to write off. Units in with no cost cannot be valued
-    return OUT_TYPES.has(movement.type)
-      ? { ok: true, lines: [] }
-      : { ok: false, reason: FinancePostingFailureReason.COST_MISSING }
+  const isOut = OUT_TYPES.has(movement.type)
+  let cents: number
+  if (movement.unitCostCents !== null) {
+    cents = isOut
+      ? movementCostCents(movement.quantity, movement.unitCostCents, movement.valueCents)
+      : movement.quantity * movement.unitCostCents
+  } else if (isOut) {
+    // Units out with nothing on hand to average carry no cost: there is nothing to write off
+    return { ok: true, lines: [] }
+  } else {
+    // Units in with no cost: a count never carries one, so the engine valued the units at the average of the level and wrote that
+    // value on the movement, and the books trust the movement (TDD_18 §4.2, E9). With neither a cost nor a value (or a value that
+    // is not one) they cannot be valued: a failure a person can see, never a quiet zero
+    const { valueCents } = movement
+    if (valueCents === null || valueCents === undefined || valueCents < 0n) {
+      return { ok: false, reason: FinancePostingFailureReason.COST_MISSING }
+    }
+    cents = movementCostCents(movement.quantity, 0, valueCents)
   }
-  const cents = OUT_TYPES.has(movement.type)
-    ? movementCostCents(movement.quantity, movement.unitCostCents, movement.valueCents)
-    : movement.quantity * movement.unitCostCents
   if (cents === 0) return { ok: true, lines: [] }
-  if (OUT_TYPES.has(movement.type)) {
+  if (isOut) {
     return linesOf(
       input.accounts,
       [{ role: AccountRole.INVENTORY_LOSS, cents }],

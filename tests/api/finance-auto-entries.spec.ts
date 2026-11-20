@@ -687,7 +687,8 @@ describe('The automatic entries (Step 4B.6a)', () => {
       type: string,
       quantity: number,
       unitCostCents: number | null,
-      reason: string | null = null
+      reason: string | null = null,
+      valueCents: bigint | null = null
     ): Promise<string> {
       const made = await createOrder(owner, { storeId: ctx.storeA.id })
       const item = await owner.orderItem.findFirstOrThrow({
@@ -704,6 +705,7 @@ describe('The automatic entries (Step 4B.6a)', () => {
           reason,
           idempotencyKey: `adj-${randomUUID()}`,
           unitCostCents,
+          valueCents,
           onHandAfter: 0,
           reservedAfter: 0
         },
@@ -756,6 +758,52 @@ describe('The automatic entries (Step 4B.6a)', () => {
           [code(AccountRole.OPENING_EQUITY), 0, 400]
         ])
       )
+    })
+
+    // RA-740-4: a count carries no cost, the engine values the units it counts in at the average of the level and records that on the
+    // movement; before, the entry refused them (cost_missing), the stock rose with no entry and the month could not close
+    it('units counted in with no cost are posted at the value the movement carries, and leave no failure behind', async () => {
+      const id = await movement(InventoryMovementType.COUNT_IN, 2, null, null, 2000n)
+      expect((await adjust(id)).outcome).toBe(FinancePostingOutcome.POSTED)
+      const entry = await entryOf(FinancePostingKey.MOVEMENT_ADJUST(id))
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.INVENTORY), 2000, 0],
+          [code(AccountRole.INVENTORY_GAIN), 0, 2000]
+        ])
+      )
+      expect(
+        await owner.financePostingFailure.count({
+          where: { organizationId: ctx.orgA.id, sourceId: id, resolvedAt: null }
+        })
+      ).toBe(0)
+    })
+
+    it('a failure left open by units counted in with no cost closes when they are posted again', async () => {
+      const id = await movement(InventoryMovementType.COUNT_IN, 3, null, null, 3000n)
+      const failure = await owner.financePostingFailure.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          sourceType: FinanceSourceType.INVENTORY_MOVEMENT,
+          sourceId: id,
+          eventKind: FinanceEventKind.ADJUST,
+          reason: FinancePostingFailureReason.COST_MISSING
+        }
+      })
+      expect((await adjust(id)).outcome).toBe(FinancePostingOutcome.POSTED)
+      expect(
+        (await owner.financePostingFailure.findUniqueOrThrow({ where: { id: failure.id } }))
+          .resolvedAt
+      ).not.toBeNull()
+    })
+
+    it('units in with neither a cost nor a value are still a failure naming the cause, never a zero', async () => {
+      const id = await movement(InventoryMovementType.COUNT_IN, 2, null)
+      expect(await adjust(id)).toMatchObject({
+        outcome: FinancePostingOutcome.FAILED,
+        reason: FinancePostingFailureReason.COST_MISSING
+      })
+      expect(await entryOf(FinancePostingKey.MOVEMENT_ADJUST(id))).toBeNull()
     })
 
     it('a transfer posts nothing: the same asset moves inside the organization', async () => {
