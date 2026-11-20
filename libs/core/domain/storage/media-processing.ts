@@ -119,5 +119,20 @@ export const ImageSanitizing = {
 // Media.scanResult.reason of a file that was refused before the scan because it cannot be decoded and
 // so cannot be cleaned of its metadata: it is never stored, never served
 export const MediaRejectionReasons = {
-  IMAGE_NOT_SANITIZABLE: 'image_not_sanitizable'
+  IMAGE_NOT_SANITIZABLE: 'image_not_sanitizable',
+  // A PDF kept as financial evidence that carries something that runs when it is opened (TAX-436)
+  PDF_ACTIVE_CONTENT: 'pdf_active_content'
+} as const
+
+// What is looked for in a PDF that stays as the evidence of a transaction (TDD_18 §3, TAX-436): the names that make
+// a reader run code, open a program or send a form somewhere, in the clear. A PDF names them with a slash and may
+// spell a letter as `#` and two hex digits, so the match is made on the decoded name. `/OpenAction` and `/AA` are not
+// on the list: they carry an action, and the action is what is named (`/S /JavaScript`); a destination
+// (`[3 0 R /Fit]`, what Word, LaTeX and Acrobat write) is not refused. BEST EFFORT, NOT A SANDBOX: objects inside
+// compressed streams are not inspected (nothing is inflated, nothing is parsed). The defences that matter are that
+// the file is only ever served as a signed download from the bucket host (`Content-Disposition: attachment`) and the
+// ClamAV scan that runs before this.
+export const PdfInspection = {
+  CONTENT_TYPE: 'application/pdf',
+  ACTIVE_NAMES: ['JavaScript', 'JS', 'Launch', 'SubmitForm', 'ImportData', 'GoToR', 'RichMedia']
 } as const

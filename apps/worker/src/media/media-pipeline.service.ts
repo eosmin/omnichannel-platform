@@ -26,6 +26,7 @@ import {
   MediaPurpose,
   MediaRejectionReasons,
   parseAvatarKey,
+  PdfInspection,
   StorageKeys,
   UploadLimits,
   VARIANT_CONTENT_TYPE
@@ -33,6 +34,7 @@ import {
 import { StorageService } from '@platform/core/storage-module'
 
 import { ClamavClient } from './clamav.client'
+import { findActivePdfNames } from './pdf-active-content'
 
 // Media.scanResult of a pending picture that was already cleaned of its metadata
 const hasSanitizedMark = (scanResult: unknown): boolean =>
@@ -148,6 +150,13 @@ export class MediaPipeline {
     if (isSanitizedType(media.contentType) && media.purpose !== String(MediaPurpose.AVATAR)) {
       if (!(await this.sanitize(media, scope))) return
     }
+    // A PDF that stays as the receipt of a transaction must not run anything when it is opened (TAX-436)
+    if (
+      media.contentType === PdfInspection.CONTENT_TYPE &&
+      media.purpose === String(MediaPurpose.FINANCE_DOCUMENT)
+    ) {
+      if (!(await this.inspectPdf(media, scope))) return
+    }
 
     const marked = await this.within(scope, () =>
       this.prisma.client.media.updateMany({
@@ -201,6 +210,45 @@ export class MediaPipeline {
       })
     )
     return moved.count > 0
+  }
+
+  // Looks in the clear for the active names of a PDF of a financial document (see `findActivePdfNames`; best effort, not a
+  // sandbox). True when it has none and the scan goes on; false when it was refused. The file is the evidence of a
+  // transaction, so a refused one is never deleted: its row ends as `unscannable` (the gate for serving it and for
+  // attaching it) and it stays in the bucket as a quarantine. A document has no thread, so nobody is told by an event:
+  // the row and the log are the trace.
+  private async inspectPdf(
+    media: { id: string; key: string; storeId: string | null; purpose: string },
+    scope: MediaScope
+  ): Promise<boolean> {
+    const bytes = await this.storage.read(media.key, UploadLimits.MAX_FILE_SIZE_BYTES)
+    if (bytes === null) {
+      if (await this.isGone(media.id, scope)) return false
+      throw new Error('the file to inspect is not in the bucket')
+    }
+    const names = findActivePdfNames(bytes)
+    if (names.length === 0) return true
+    const marked = await this.within(scope, () =>
+      this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.PENDING },
+        data: {
+          status: MediaStatus.UNSCANNABLE,
+          scanResult: { reason: MediaRejectionReasons.PDF_ACTIVE_CONTENT, names },
+          scannedAt: new Date()
+        }
+      })
+    )
+    if (marked.count === 0) return false
+    this.logger.warn(
+      {
+        mediaId: media.id,
+        storeId: media.storeId,
+        reason: MediaRejectionReasons.PDF_ACTIVE_CONTENT,
+        names
+      },
+      'a PDF of a financial document carries active content and was refused'
+    )
+    return false
   }
 
   // A picture that cannot be decoded cannot be cleaned: it is never kept. The row is written first

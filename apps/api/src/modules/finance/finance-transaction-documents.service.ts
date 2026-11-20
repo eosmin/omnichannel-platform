@@ -11,7 +11,7 @@ import {
   MediaStatus
 } from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
-import { MediaPurpose, type MediaUrls } from '@platform/core/storage'
+import { MediaPurpose, MediaRejectionReasons, type MediaUrls } from '@platform/core/storage'
 
 import { MediaService } from '../media/media.service'
 import type { Actor } from '../tenancy'
@@ -25,6 +25,13 @@ import { type TransactionView, TRANSACTION_SELECT, transactionView } from './fin
 // file is made FOR a transaction (the parent check of the upload), and the transaction then points at it ONCE: the books are never
 // edited, so another file is a new transaction. The organization is the guard's, never the body's, and a file of another
 // organization is a file that does not exist.
+// A row the scan ended as `unscannable` with one of the reasons of a refused PDF
+function isRefusedPdf(status: string, scanResult: unknown): boolean {
+  if (status !== String(MediaStatus.UNSCANNABLE)) return false
+  const reason = (scanResult as { reason?: unknown } | null)?.reason
+  return reason === MediaRejectionReasons.PDF_ACTIVE_CONTENT
+}
+
 @Injectable()
 export class FinanceTransactionDocumentsService {
   constructor(
@@ -81,12 +88,18 @@ export class FinanceTransactionDocumentsService {
             financeTransactionId: transactionId,
             store: { organizationId }
           },
-          select: { id: true, status: true, storeId: true }
+          select: { id: true, status: true, storeId: true, scanResult: true }
         })
     )
     if (file === null || file.storeId === null) throw resourceNotFound('receipt')
     // Set once: only a file the scan found clean is worth being the receipt for ever
     if (file.status !== String(MediaStatus.CLEAN)) {
+      // A PDF refused for what it carries will never be clean: say so, not "wait"
+      if (isRefusedPdf(file.status, file.scanResult)) {
+        throw resourceConflict('the file was refused: it carries active content', {
+          conflict: FinanceConflicts.TRANSACTION_DOCUMENT_REFUSED
+        })
+      }
       throw resourceConflict('the file is not clean yet', {
         conflict: FinanceConflicts.TRANSACTION_DOCUMENT_NOT_CLEAN
       })

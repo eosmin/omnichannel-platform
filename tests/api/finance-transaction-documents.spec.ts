@@ -169,7 +169,7 @@ describe('The receipt of a transaction of the books (Step 4B.4b)', () => {
   // A file the pipeline already found clean, made for a transaction (a row the owner writes: the upload itself is below)
   async function receipt(
     transactionId: string,
-    options: { storeId?: string; status?: string; purpose?: string } = {}
+    options: { storeId?: string; status?: string; purpose?: string; scanResult?: object } = {}
   ): Promise<string> {
     const id = randomUUID()
     await owner.media.create({
@@ -182,7 +182,8 @@ describe('The receipt of a transaction of the books (Step 4B.4b)', () => {
         filename: 'receipt.png',
         contentType: 'image/png',
         fileSize: PNG.length,
-        status: options.status ?? 'clean'
+        status: options.status ?? 'clean',
+        ...(options.scanResult === undefined ? {} : { scanResult: options.scanResult })
       }
     })
     return id
@@ -493,6 +494,26 @@ describe('The receipt of a transaction of the books (Step 4B.4b)', () => {
       expect((await attach(treasurer, ctx.storeA, transferA.id, toTransfer)).status).toBe(CREATED)
     })
 
+    it('says a refused PDF will not be clean: active content gets its own conflict (TAX-436)', async () => {
+      const target = await registered(ctx.adminA, ctx.storeA, expense())
+      for (const reason of ['pdf_active_content']) {
+        const response = await attach(
+          bookkeeper,
+          ctx.storeA,
+          target.id,
+          await receipt(target.id, { status: 'unscannable', scanResult: { reason } })
+        )
+        expect(response.status).toBe(CONFLICT)
+        expect(
+          ((response.body as ErrorBody).error.metadata as { conflict?: string }).conflict
+        ).toBe(FinanceConflicts.TRANSACTION_DOCUMENT_REFUSED)
+      }
+      expect(
+        (await owner.financeTransaction.findUniqueOrThrow({ where: { id: target.id } }))
+          .documentMediaId
+      ).toBeNull()
+    })
+
     it('waits for the scan: a file that is pending or infected is not the receipt', async () => {
       const target = await registered(ctx.adminA, ctx.storeA, expense())
       for (const status of ['pending', 'infected', 'unscannable']) {
@@ -621,7 +642,10 @@ describe('The receipt of a transaction of the books (Step 4B.4b)', () => {
       const id = await withReceipt('clean')
       const response = await urls(journalReader, ctx.storeA, id)
       expect(response.status).toBe(OK)
-      expect((response.body as { url: string }).url).toEqual(expect.any(String))
+      const { url } = response.body as { url: string }
+      expect(url).toEqual(expect.any(String))
+      // The original is always a download from the bucket host, never shown inline in the app (TAX-436 defence in depth)
+      expect(decodeURIComponent(url)).toMatch(/response-content-disposition=attachment/i)
     })
 
     it('is given through another store of the organization: the books are the organization`s', async () => {

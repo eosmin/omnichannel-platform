@@ -113,4 +113,63 @@ describe('MediaPipeline and financial evidence', () => {
     expect(updateMany).toHaveBeenCalled()
     expect(storage.delete).toHaveBeenCalled()
   })
+
+  // TAX-436: a PDF kept as the receipt of a transaction that runs code when it is opened is refused, and kept as a quarantine
+  describe('a PDF with active content', () => {
+    const ACTIVE = Buffer.from(
+      '%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >> endobj\n%%EOF\n',
+      'latin1'
+    )
+    const PLAIN = Buffer.from(
+      '%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction [3 0 R /Fit] >> endobj\n%%EOF\n',
+      'latin1'
+    )
+
+    it('refuses a finance document and keeps its file unserved', async () => {
+      const { pipeline, storage, updateMany, logger } = build(
+        MediaPurpose.FINANCE_DOCUMENT,
+        jest.fn().mockResolvedValue({ infected: false })
+      )
+      storage.read.mockResolvedValue(ACTIVE)
+      await pipeline.scan('media-1', { storeId: 'store-1' })
+      expect(updateMany).toHaveBeenCalledTimes(1)
+      expect(updateMany.mock.calls[0]?.[0]).toMatchObject({
+        data: { status: 'unscannable', scanResult: { reason: 'pdf_active_content' } }
+      })
+      expect(JSON.stringify(updateMany.mock.calls)).toContain('JavaScript')
+      expect(storage.delete).not.toHaveBeenCalled()
+      expect(logger.warn).toHaveBeenCalled()
+    })
+
+    it('lets a plain PDF of a finance document become clean (a destination is not an action)', async () => {
+      const { pipeline, storage, updateMany } = build(
+        MediaPurpose.FINANCE_DOCUMENT,
+        jest.fn().mockResolvedValue({ infected: false })
+      )
+      storage.read.mockResolvedValue(PLAIN)
+      await pipeline.scan('media-1', { storeId: 'store-1' })
+      expect(updateMany.mock.calls[0]?.[0]).toMatchObject({ data: { status: 'clean' } })
+    })
+
+    it('reads the bytes of a finance document only (a PDF of a conversation is not looked into)', async () => {
+      const { pipeline, storage, updateMany } = build(
+        MediaPurpose.MESSAGE,
+        jest.fn().mockResolvedValue({ infected: false })
+      )
+      storage.read.mockResolvedValue(ACTIVE)
+      await pipeline.scan('media-1', { storeId: 'store-1' })
+      expect(storage.read).not.toHaveBeenCalled()
+      expect(updateMany.mock.calls[0]?.[0]).toMatchObject({ data: { status: 'clean' } })
+    })
+
+    it('does not mark the file clean when the bucket has no bytes to look into: it is retried', async () => {
+      const { pipeline, storage, updateMany } = build(
+        MediaPurpose.FINANCE_DOCUMENT,
+        jest.fn().mockResolvedValue({ infected: false })
+      )
+      storage.read.mockResolvedValue(null)
+      await expect(pipeline.scan('media-1', { storeId: 'store-1' })).rejects.toThrow()
+      expect(updateMany).not.toHaveBeenCalled()
+    })
+  })
 })
