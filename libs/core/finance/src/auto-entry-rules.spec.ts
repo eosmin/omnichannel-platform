@@ -479,11 +479,18 @@ describe('adjustmentLines (E9)', () => {
     expect(opening.ok && lineOf(opening.lines, AccountRole.OPENING_EQUITY)?.creditCents).toBe(900)
   })
 
-  it('units in that no cost and no value can say are still a failure; a value of zero posts nothing', () => {
+  it('units in that no cost and no value can say are still a failure, so is a negative value; a value of zero posts nothing', () => {
     expect(
       adjustmentLines({
         accounts,
         movement: { ...movement(InventoryMovementType.COUNT_IN, 2, null), valueCents: null },
+        storeId: STORE
+      })
+    ).toEqual({ ok: false, reason: FinancePostingFailureReason.COST_MISSING })
+    expect(
+      adjustmentLines({
+        accounts,
+        movement: { ...movement(InventoryMovementType.COUNT_IN, 2, null), valueCents: -1n },
         storeId: STORE
       })
     ).toEqual({ ok: false, reason: FinancePostingFailureReason.COST_MISSING })

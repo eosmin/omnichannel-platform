@@ -779,6 +779,24 @@ describe('The automatic entries (Step 4B.6a)', () => {
       ).toBe(0)
     })
 
+    it('a failure left open by units counted in with no cost closes when they are posted again', async () => {
+      const id = await movement(InventoryMovementType.COUNT_IN, 3, null, null, 3000n)
+      const failure = await owner.financePostingFailure.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          sourceType: FinanceSourceType.INVENTORY_MOVEMENT,
+          sourceId: id,
+          eventKind: FinanceEventKind.ADJUST,
+          reason: FinancePostingFailureReason.COST_MISSING
+        }
+      })
+      expect((await adjust(id)).outcome).toBe(FinancePostingOutcome.POSTED)
+      expect(
+        (await owner.financePostingFailure.findUniqueOrThrow({ where: { id: failure.id } }))
+          .resolvedAt
+      ).not.toBeNull()
+    })
+
     it('units in with neither a cost nor a value are still a failure naming the cause, never a zero', async () => {
       const id = await movement(InventoryMovementType.COUNT_IN, 2, null)
       expect(await adjust(id)).toMatchObject({

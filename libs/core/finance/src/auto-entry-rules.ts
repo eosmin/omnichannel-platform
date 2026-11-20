@@ -323,22 +323,26 @@ export function adjustmentLines(input: {
   const { movement, storeId } = input
   if (!isAdjustmentType(movement.type)) return { ok: true, lines: [] }
   const isOut = OUT_TYPES.has(movement.type)
-  if (movement.unitCostCents === null) {
+  let cents: number
+  if (movement.unitCostCents !== null) {
+    cents = isOut
+      ? movementCostCents(movement.quantity, movement.unitCostCents, movement.valueCents)
+      : movement.quantity * movement.unitCostCents
+  } else if (isOut) {
     // Units out with nothing on hand to average carry no cost: there is nothing to write off
-    if (isOut) return { ok: true, lines: [] }
+    return { ok: true, lines: [] }
+  } else {
     // Units in with no cost: a count never carries one, so the engine valued the units at the average of the level and wrote that
-    // value on the movement, and the books trust the movement (TDD_18 §4.2, E9). With neither a cost nor a value they cannot be valued
-    if (movement.valueCents === null || movement.valueCents === undefined) {
+    // value on the movement, and the books trust the movement (TDD_18 §4.2, E9). With neither a cost nor a value (or a value that
+    // is not one) they cannot be valued: a failure a person can see, never a quiet zero
+    const { valueCents } = movement
+    if (valueCents === null || valueCents === undefined || valueCents < 0n) {
       return { ok: false, reason: FinancePostingFailureReason.COST_MISSING }
     }
+    cents = movementCostCents(movement.quantity, 0, valueCents)
   }
-  const cents = isOut
-    ? movementCostCents(movement.quantity, movement.unitCostCents ?? 0, movement.valueCents)
-    : movement.unitCostCents === null
-      ? movementCostCents(movement.quantity, 0, movement.valueCents)
-      : movement.quantity * movement.unitCostCents
   if (cents === 0) return { ok: true, lines: [] }
-  if (OUT_TYPES.has(movement.type)) {
+  if (isOut) {
     return linesOf(
       input.accounts,
       [{ role: AccountRole.INVENTORY_LOSS, cents }],
