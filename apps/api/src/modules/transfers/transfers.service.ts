@@ -246,7 +246,7 @@ export class TransfersService {
         select: LINE_FIELDS
       })
       // A plugin changes only a transfer whose every line is of its store (the stock of a sibling store is not its to move)
-      this.assertPluginOwnsEveryLine(actor, existing, visible)
+      await this.assertPluginOwnsEveryLine(tx, transferId, actor, existing, visible)
       // The lines of the stores the caller does not belong to are not theirs to change: they stay as they are
       const kept = existing.filter(line => !visible.includes(line.storeId))
       const replacement =
@@ -331,7 +331,7 @@ export class TransfersService {
       const locked = await lockTransfer(tx, organizationId, transferId)
       const lines = await this.linesOf(tx, transferId)
       // First of all for a plugin: a transfer it does not reach does not exist for it, and says nothing of its status
-      this.assertPluginOwnsEveryLine(actor, lines, visible)
+      await this.assertPluginOwnsEveryLine(tx, transferId, actor, lines, visible)
       this.assertMove(locked, TransferStatus.IN_TRANSIT)
       // The stock of every line leaves: the caller must belong to every store whose units travel
       assertSeesEveryLine(lines, visible)
@@ -400,7 +400,7 @@ export class TransfersService {
     const outcome = await this.prisma.transaction(async tx => {
       const locked = await lockTransfer(tx, organizationId, transferId)
       const lines = await this.linesOf(tx, transferId)
-      this.assertPluginOwnsEveryLine(actor, lines, visible)
+      await this.assertPluginOwnsEveryLine(tx, transferId, actor, lines, visible)
       // What the caller does not see does not exist for them
       const seen = new Set(
         lines.filter(line => visible.includes(line.storeId)).map(line => line.id)
@@ -515,7 +515,7 @@ export class TransfersService {
     const outcome = await this.prisma.transaction(async tx => {
       const locked = await lockTransfer(tx, organizationId, transferId)
       const lines = await this.linesOf(tx, transferId)
-      this.assertPluginOwnsEveryLine(actor, lines, visible)
+      await this.assertPluginOwnsEveryLine(tx, transferId, actor, lines, visible)
       this.assertMove(locked, TransferStatus.RECEIVED)
       const seen = new Set(
         lines.filter(line => visible.includes(line.storeId)).map(line => line.id)
@@ -606,7 +606,7 @@ export class TransfersService {
     const outcome = await this.prisma.transaction(async tx => {
       const locked = await lockTransfer(tx, organizationId, transferId)
       const lines = await this.linesOf(tx, transferId)
-      this.assertPluginOwnsEveryLine(actor, lines, visible)
+      await this.assertPluginOwnsEveryLine(tx, transferId, actor, lines, visible)
       this.assertMove(locked, TransferStatus.CANCELLED)
       const wasInTransit = locked.status === TransferStatus.IN_TRANSIT
       if (wasInTransit) {
@@ -658,16 +658,33 @@ export class TransfersService {
 
   // What a plugin writes is a transfer whose every line is of the store of its key: dispatching and cancelling move the stock of
   // every line, and a receipt or a closing decides for the units of every line. A person may write the lines of the stores they
-  // belong to; a plugin holds one store and no membership, so a transfer that spans a sibling store is read only to it
-  private assertPluginOwnsEveryLine(
+  // belong to; a plugin holds one store and no membership, so a transfer that spans a sibling store is read only to it.
+  // With Row-Level Security on, `lines` is what the context of the key lets it see (its store alone), not what the transfer holds: the
+  // stores of ALL the lines are asked of the database (ids alone, and only to refuse), after the header is locked and in the same
+  // transaction that moves the stock, so no line of a sibling store can be added between this check and the movement. With the switch
+  // off there is no context and `lines` is already every line.
+  private async assertPluginOwnsEveryLine(
+    tx: PrismaTransaction,
+    transferId: string,
     actor: Actor,
     lines: readonly { storeId: string }[],
     visible: readonly string[]
-  ): void {
+  ): Promise<void> {
     if (actor.pluginInstallationId === undefined) return
     // A transfer with no line of the store of the key does not exist for a plugin (what it cannot read it cannot write)
     if (!lines.some(line => visible.includes(line.storeId))) throw resourceNotFound('transfer')
     assertSeesEveryLine(lines, visible)
+    if (!this.prisma.hasTenantContext()) return
+    const rows = await tx.$queryRaw<
+      { stores: string[] | null }[]
+    >`SELECT public.rls_transfer_line_store_ids(${transferId}) AS stores`
+    const stores = rows[0]?.stores
+    // The header is of another organization, or is gone: the same answer as an unknown id
+    if (stores === null || stores === undefined) throw resourceNotFound('transfer')
+    assertSeesEveryLine(
+      stores.map(storeId => ({ storeId })),
+      visible
+    )
   }
 
   private assertPluginHasLines(actor: Actor, count: number): void {
