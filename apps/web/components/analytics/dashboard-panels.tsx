@@ -9,6 +9,7 @@ import { AnalyticsMetrics, MetricDimensions, TimeGranularity } from '@platform/c
 import { formatDuration } from '../../lib/analytics/duration'
 import { breakdownOf, dailyValues } from '../../lib/analytics/summary'
 import { useMetrics } from '../../lib/analytics/use-analytics-data'
+import { isAwaiting } from '../../lib/auxiliary-reads'
 import { useChannelDirectory, useMemberDirectory } from '../../lib/inbox/use-inbox-data'
 import { useStore } from '../providers/store-context'
 
@@ -172,6 +173,7 @@ export function AgentPanel({ range }: { range: Range }): ReactElement {
     storeId,
     request(AnalyticsMetrics.AGENT_FIRST_RESPONSE_TIME, range, MetricDimensions.AGENT)
   )
+  // `isAwaiting`, not `isPending`: without conversations:view the directory is never asked and would stay pending
   const members = useMemberDirectory(storeId)
   const rows = breakdownOf(resolved.data)
   const speedOf = new Map(breakdownOf(speed.data).map(row => [row.id, row.value]))
@@ -189,11 +191,11 @@ export function AgentPanel({ range }: { range: Range }): ReactElement {
       </h2>
       <PanelState
         isError={resolved.isError || speed.isError}
-        isPending={resolved.data === undefined || speed.data === undefined || members.isPending}
+        isPending={resolved.data === undefined || speed.data === undefined || isAwaiting(members)}
       />
       {resolved.data === undefined ||
       speed.data === undefined ||
-      members.isPending ? null : rows.length === 0 ? (
+      isAwaiting(members) ? null : rows.length === 0 ? (
         <p className="text-muted-foreground text-sm">{t('empty')}</p>
       ) : (
         <table className="w-full text-sm">

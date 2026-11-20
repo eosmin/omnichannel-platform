@@ -17,6 +17,7 @@ import { SelectConversation } from '../../components/inbox/select-conversation'
 import { useStore } from '../../components/providers/store-context'
 import { ShortcutsProvider, useShortcut } from '../../components/shortcuts/shortcuts-provider'
 import { useGoToShortcuts } from '../../components/shortcuts/use-go-to'
+import { isAwaiting } from '../../lib/auxiliary-reads'
 import {
   useChannelDirectory,
   useConversationCounts,
@@ -90,7 +91,7 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
           onlyDrafts={onlyDrafts}
           search={search}
           channels={channels.data ?? NO_CHANNELS}
-          areChannelsReady={!channels.isPending}
+          areChannelsReady={!isAwaiting(channels)}
         />
       </div>
       {/* On a phone with the list showing the section is hidden: the page still needs its heading */}

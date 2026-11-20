@@ -7,6 +7,7 @@ import { type ReactElement, useState } from 'react'
 import type { PendingConnectionView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 
+import { AuxiliaryReads, mayRead } from '../../lib/auxiliary-reads'
 import { formatCents } from '../../lib/products/money'
 import { isOverdue, pendingSummary } from '../../lib/remittances/remittance-rules'
 import { useOverdueThreshold, useRemittancePending } from '../../lib/remittances/use-remittances'
@@ -151,7 +152,11 @@ export function PendingPanel(): ReactElement | null {
   const { storeId, can } = useStore()
   const canView = can(ClientPermissions.REMITTANCES_VIEW)
   const query = useRemittancePending(storeId, null, canView)
-  const threshold = useOverdueThreshold(storeId, canView)
+  // The threshold is a store preference (settings:view): a role that reads remittances alone asks for no threshold and gets no warning
+  const threshold = useOverdueThreshold(
+    storeId,
+    canView && mayRead(can, AuxiliaryReads.STORE_PREFERENCES)
+  )
   if (query.isError) return <LoadFailed error={query.error} onRetry={() => void query.refetch()} />
   if (query.data === undefined) return <PageLoading />
   const summary = pendingSummary(query.data)
