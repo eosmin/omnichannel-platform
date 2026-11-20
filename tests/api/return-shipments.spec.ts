@@ -83,7 +83,11 @@ describe('The return leg of a return', () => {
     input: Parameters<ReturnsService['receiveFromScan']>[1],
     by: Parameters<ReturnsService['receiveFromScan']>[2]
   ) => {
-    const organizationId = storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id
+    const organizationId = {
+      [ctx.storeA.id]: ctx.orgA.id,
+      [ctx.storeB.id]: ctx.orgB.id
+    }[storeId]
+    if (organizationId === undefined) throw new Error(`the case has no organization for ${storeId}`)
     return inStoreContext(prisma, { storeId, organizationId }, () =>
       returns.receiveFromScan(storeId, input, by)
     )

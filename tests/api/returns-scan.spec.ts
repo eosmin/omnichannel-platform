@@ -22,7 +22,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { type CreatedBody, ordersKit, type OrdersKit } from '../helpers/orders'
-import { inStoreContext } from '../helpers/tenant-context'
+import { inStoreContext, withTenantContext } from '../helpers/tenant-context'
 
 // `ReturnsService.receiveFromScan` (Step 4.12 PR R1), the entry of the reception by scanner (PR R2): one package, one transaction.
 describe('Receiving a scanned package', () => {
@@ -42,7 +42,11 @@ describe('Receiving a scanned package', () => {
     input: Parameters<ReturnsService['receiveFromScan']>[1],
     by: Parameters<ReturnsService['receiveFromScan']>[2]
   ) => {
-    const organizationId = storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id
+    const organizationId = {
+      [ctx.storeA.id]: ctx.orgA.id,
+      [ctx.storeB.id]: ctx.orgB.id
+    }[storeId]
+    if (organizationId === undefined) throw new Error(`the case has no organization for ${storeId}`)
     return inStoreContext(prisma, { storeId, organizationId }, () =>
       returns.receiveFromScan(storeId, input, by)
     )
@@ -243,6 +247,24 @@ describe('Receiving a scanned package', () => {
           ctx.storeB.id,
           { shipmentId, reason: 'OTHER', condition: OrderReturnCondition.RESELLABLE },
           { userId: ctx.adminB.id, storeId: ctx.storeB.id }
+        )
+      )
+    ).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
+    // The filter of the service alone: a context that holds both stores (RLS hides nothing) still finds nothing of store A for store B
+    expect(
+      await failure(
+        withTenantContext(
+          prisma,
+          {
+            storeIds: [ctx.storeA.id, ctx.storeB.id],
+            organizationIds: [ctx.orgA.id, ctx.orgB.id]
+          },
+          () =>
+            returns.receiveFromScan(
+              ctx.storeB.id,
+              { shipmentId, reason: 'OTHER', condition: OrderReturnCondition.RESELLABLE },
+              { userId: ctx.adminB.id, storeId: ctx.storeB.id }
+            )
         )
       )
     ).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
