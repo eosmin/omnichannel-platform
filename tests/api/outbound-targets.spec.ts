@@ -94,7 +94,12 @@ describe('A reaction or a quote that points at a message the platform sent', () 
       logger,
       app.get(JobContext, { strict: false })
     )
-    const targets = new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS)
+    const targets = new InboundMessageTargets(
+      prisma,
+      connections,
+      TEST_IDENTITY_KINDS,
+      new JobContext(prisma)
+    )
     reactions = new MessageReactionsService(prisma, targets, events, logger)
     changes = new InboundMessageChangesService(prisma, targets, events)
   })

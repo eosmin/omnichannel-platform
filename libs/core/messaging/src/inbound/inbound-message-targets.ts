@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 
 import {
+  JobContext,
   lockStoreForWrite,
   lockStoreScope,
   PrismaService,
@@ -55,7 +56,8 @@ export class InboundMessageTargets {
   constructor(
     private readonly prisma: PrismaService,
     private readonly connections: ChannelConnectionResolver,
-    @Inject(CHANNEL_IDENTITY_KINDS) private readonly kinds: ChannelIdentityKindSource
+    @Inject(CHANNEL_IDENTITY_KINDS) private readonly kinds: ChannelIdentityKindSource,
+    private readonly jobs: JobContext
   ) {}
 
   // Runs `apply` inside the transaction that holds the locks of the store and of the handle, and
@@ -76,91 +78,96 @@ export class InboundMessageTargets {
       fromChannel: true
     })
     if (parsed === null) return false
-    const identity = await this.prisma.client.customerIdentity.findFirst({
-      where: { storeId, channelType: pluginId, channelIdentity: parsed.identity },
-      select: { id: true }
-    })
-    if (identity === null) {
-      // The message of that customer may be being stored right now, and makes the identity
-      if (!isLastAttempt) throw new Error(`the ${what} came before the customer it is from`)
-      return false
-    }
-    let missing = false
-    const applied = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      // Takes turns with the messages of the same handle: the event may follow its message closely
-      await lockStoreScope(tx, storeId, `inbound-${identity.id}`)
-      const target = await tx.message.findFirst({
-        where: {
-          storeId,
-          ...(event.namesFilesToo === true
-            ? { AND: [messageOfProviderId(storeId, event.targetExternalId)] }
-            : { channelMessageId: event.targetExternalId }),
-          conversation: { customerIdentityId: identity.id, channelConnectionId: connection.id }
-        },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: { id: true, channelMessageId: true, _count: { select: { media: true } } }
+    // The store is the one of the connection that was resolved (never one the event names): the reads and the transaction below
+    // run in its context, as a request's does, so the policies answer the same for the worker and for the api
+    // Cost: one transaction per event (the context's), around the identity read and the existing locked transaction, which nests as a savepoint
+    return this.jobs.forStoreOrJoin(storeId, async () => {
+      const identity = await this.prisma.client.customerIdentity.findFirst({
+        where: { storeId, channelType: pluginId, channelIdentity: parsed.identity },
+        select: { id: true }
       })
-      if (target === null) {
-        if (!isLastAttempt) throw new Error(`the ${what} came before the message it points at`)
-        missing = true
+      if (identity === null) {
+        // The message of that customer may be being stored right now, and makes the identity
+        if (!isLastAttempt) throw new Error(`the ${what} came before the customer it is from`)
         return false
       }
-      // Only a file the provider can tell apart is a target of its own (see `isTargetOfItsOwn`): the first file is the
-      // message, and files that share one id cannot be told apart. A message with one file (or none) is
-      // reacted to as a whole.
-      let mediaId: string | null = null
-      if (event.namesFilesToo === true && target._count.media > 1) {
-        // The order of the thread (the album's own, then arrival): the files that share an id must never be told
-        // apart by the order the database happens to return them in
-        const files = await tx.media.findMany({
-          where: { storeId, messageId: target.id },
-          orderBy: MEDIA_ORDER,
-          select: { id: true, channelMessageId: true }
-        })
-        const sharing = files.filter(item => item.channelMessageId === event.targetExternalId)
-        const named = sharing[0]
-        if (named !== undefined && isTargetOfItsOwn(target, files, named)) mediaId = named.id
-        // A removal finds the reaction where it was put even if the file cannot be told apart now (a later file
-        // shares its id): of the files that share the id, the row under the first one that has it is the one that goes
-        if (mediaId === null && sharing.length > 0 && event.removal === true) {
-          const held = await tx.messageReaction.findMany({
-            where: {
-              storeId,
-              messageId: target.id,
-              customerIdentityId: identity.id,
-              mediaId: { in: sharing.map(item => item.id) }
-            },
-            select: { mediaId: true }
-          })
-          mediaId = sharing.find(item => held.some(row => row.mediaId === item.id))?.id ?? null
-        }
-      }
-      await apply(tx, {
-        storeId,
-        customerIdentityId: identity.id,
-        messageId: target.id,
-        mediaId
-      })
-      return true
-    })
-    // The shape of the id that matched nothing is read once the transaction is over: a count that failed inside it
-    // would have aborted the transaction of the reaction
-    if (missing && onMissing) {
-      const shape = await missingTargetShapeOrNull({
-        targetId: event.targetExternalId,
-        now: new Date(),
-        count: countersOf(
-          this.prisma.client,
-          {
+      let missing = false
+      const applied = await this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        // Takes turns with the messages of the same handle: the event may follow its message closely
+        await lockStoreScope(tx, storeId, `inbound-${identity.id}`)
+        const target = await tx.message.findFirst({
+          where: {
             storeId,
+            ...(event.namesFilesToo === true
+              ? { AND: [messageOfProviderId(storeId, event.targetExternalId)] }
+              : { channelMessageId: event.targetExternalId }),
             conversation: { customerIdentityId: identity.id, channelConnectionId: connection.id }
           },
-          AuthorType.CUSTOMER
-        )
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          select: { id: true, channelMessageId: true, _count: { select: { media: true } } }
+        })
+        if (target === null) {
+          if (!isLastAttempt) throw new Error(`the ${what} came before the message it points at`)
+          missing = true
+          return false
+        }
+        // Only a file the provider can tell apart is a target of its own (see `isTargetOfItsOwn`): the first file is the
+        // message, and files that share one id cannot be told apart. A message with one file (or none) is
+        // reacted to as a whole.
+        let mediaId: string | null = null
+        if (event.namesFilesToo === true && target._count.media > 1) {
+          // The order of the thread (the album's own, then arrival): the files that share an id must never be told
+          // apart by the order the database happens to return them in
+          const files = await tx.media.findMany({
+            where: { storeId, messageId: target.id },
+            orderBy: MEDIA_ORDER,
+            select: { id: true, channelMessageId: true }
+          })
+          const sharing = files.filter(item => item.channelMessageId === event.targetExternalId)
+          const named = sharing[0]
+          if (named !== undefined && isTargetOfItsOwn(target, files, named)) mediaId = named.id
+          // A removal finds the reaction where it was put even if the file cannot be told apart now (a later file
+          // shares its id): of the files that share the id, the row under the first one that has it is the one that goes
+          if (mediaId === null && sharing.length > 0 && event.removal === true) {
+            const held = await tx.messageReaction.findMany({
+              where: {
+                storeId,
+                messageId: target.id,
+                customerIdentityId: identity.id,
+                mediaId: { in: sharing.map(item => item.id) }
+              },
+              select: { mediaId: true }
+            })
+            mediaId = sharing.find(item => held.some(row => row.mediaId === item.id))?.id ?? null
+          }
+        }
+        await apply(tx, {
+          storeId,
+          customerIdentityId: identity.id,
+          messageId: target.id,
+          mediaId
+        })
+        return true
       })
-      if (shape) onMissing(shape)
-    }
-    return applied
+      // The shape of the id that matched nothing is read once the transaction is over: a count that failed inside it
+      // would have aborted the transaction of the reaction
+      if (missing && onMissing) {
+        const shape = await missingTargetShapeOrNull({
+          targetId: event.targetExternalId,
+          now: new Date(),
+          count: countersOf(
+            this.prisma.client,
+            {
+              storeId,
+              conversation: { customerIdentityId: identity.id, channelConnectionId: connection.id }
+            },
+            AuthorType.CUSTOMER
+          )
+        })
+        if (shape) onMissing(shape)
+      }
+      return applied
+    })
   }
 }
