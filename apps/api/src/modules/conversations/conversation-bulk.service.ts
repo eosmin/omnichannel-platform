@@ -4,6 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
+import { inSavepoint, PrismaService } from '@platform/core/database'
 import {
   BulkActions,
   BulkLimits,
@@ -71,7 +72,8 @@ export class ConversationBulkService {
     private readonly widgetRead: WidgetReadNotifier,
     private readonly exports: ExportsService,
     private readonly audit: AuditService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly prisma: PrismaService
   ) {
     this.logger.setContext(ConversationBulkService.name)
   }
@@ -142,7 +144,9 @@ export class ConversationBulkService {
   }
 
   // One at a time: each change takes the locks of its conversation, and two that ran together on the
-  // same store would only wait for each other
+  // same store would only wait for each other. Each change runs in a SAVEPOINT: under RLS_CONTEXT the whole bulk is one
+  // transaction, and a database error in one conversation (deadlock, unique, lock timeout) would abort it (25P02) and every
+  // later conversation would fail too. The savepoint is rolled back, the ones before it stay, and the next one starts clean.
   private async applyEach(
     storeId: string,
     ids: readonly string[],
@@ -153,9 +157,13 @@ export class ConversationBulkService {
     const result: BulkResult = { succeeded: [], failed: [], truncated }
     for (const id of ids) {
       try {
-        await this.apply(storeId, id, body, viewer)
+        await inSavepoint(() => this.apply(storeId, id, body, viewer))
         result.succeeded.push(id)
       } catch (error) {
+        // Under RLS_CONTEXT the bulk is ONE transaction: if it is aborted or closed it cannot be told "one by one" (the rest would
+        // fail too and the commit of a transaction in that state is a silent rollback, so a 200 would name as done what did not
+        // persist): the request fails. Without a context each change has its own transaction and stays an item of its own.
+        if (this.prisma.hasTenantContext() && isBrokenTransaction(error)) throw error
         const code = codeOf(error)
         // What is ours (a deadlock, a timeout) is said here; the caller gets the code only
         if (code === ErrorCodes.INTERNAL_ERROR) {
@@ -311,4 +319,18 @@ export class ConversationBulkService {
 // error that was not ours
 function codeOf(error: unknown): string {
   return error instanceof PlatformException ? error.code : ErrorCodes.INTERNAL_ERROR
+}
+
+const ABORTED_TRANSACTION = '25P02'
+const TRANSACTION_CLOSED = 'P2028'
+
+// The error says that the transaction of the request is no longer usable (aborted by an earlier statement, or closed by a timeout)
+function isBrokenTransaction(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const { code, meta } = error as { code?: unknown; meta?: { code?: unknown } }
+  return (
+    code === TRANSACTION_CLOSED ||
+    code === ABORTED_TRANSACTION ||
+    meta?.code === ABORTED_TRANSACTION
+  )
 }
