@@ -1,6 +1,5 @@
 import type { Queue } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
-import { PDFDocument, PDFName, PDFString } from 'pdf-lib'
 
 import type { PrismaService } from '@platform/core/database'
 import type { DomainEvents } from '@platform/core/event-bus'
@@ -117,23 +116,14 @@ describe('MediaPipeline and financial evidence', () => {
 
   // TAX-436: a PDF kept as the receipt of a transaction that runs code when it is opened is refused, and kept as a quarantine
   describe('a PDF with active content', () => {
-    // Real documents, built with the library that reads them
-    let ACTIVE: Buffer
-    let PLAIN: Buffer
-    beforeAll(async () => {
-      const make = async (hostile: boolean): Promise<Buffer> => {
-        const doc = await PDFDocument.create()
-        doc.addPage([200, 200])
-        if (hostile)
-          doc.catalog.set(
-            PDFName.of('OpenAction'),
-            doc.context.obj({ S: 'JavaScript', JS: PDFString.of('app.alert(1)') })
-          )
-        return Buffer.from(await doc.save())
-      }
-      ACTIVE = await make(true)
-      PLAIN = await make(false)
-    })
+    const ACTIVE = Buffer.from(
+      '%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >> endobj\n%%EOF\n',
+      'latin1'
+    )
+    const PLAIN = Buffer.from(
+      '%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction [3 0 R /Fit] >> endobj\n%%EOF\n',
+      'latin1'
+    )
 
     it('refuses a finance document and keeps its file unserved', async () => {
       const { pipeline, storage, updateMany, logger } = build(
@@ -146,33 +136,12 @@ describe('MediaPipeline and financial evidence', () => {
       expect(updateMany.mock.calls[0]?.[0]).toMatchObject({
         data: { status: 'unscannable', scanResult: { reason: 'pdf_active_content' } }
       })
-      expect(JSON.stringify(updateMany.mock.calls)).toContain('OpenAction')
+      expect(JSON.stringify(updateMany.mock.calls)).toContain('JavaScript')
       expect(storage.delete).not.toHaveBeenCalled()
       expect(logger.warn).toHaveBeenCalled()
     })
 
-    it('refuses a finance document it cannot read to the end (an encrypted file), with its own reason', async () => {
-      const { pipeline, storage, updateMany } = build(
-        MediaPurpose.FINANCE_DOCUMENT,
-        jest.fn().mockResolvedValue({ infected: false })
-      )
-      storage.read.mockResolvedValue(
-        Buffer.from('%PDF-1.4\ntrailer << /Encrypt 9 0 R >>\n', 'latin1')
-      )
-      await pipeline.scan('media-1', { storeId: 'store-1' })
-      expect(updateMany.mock.calls[0]?.[0]).toMatchObject({
-        data: {
-          status: 'unscannable',
-          scanResult: {
-            reason: 'pdf_not_inspectable',
-            unreadable: expect.stringMatching(/^(encrypted|not_readable)$/) as string
-          }
-        }
-      })
-      expect(storage.delete).not.toHaveBeenCalled()
-    })
-
-    it('lets a plain PDF of a finance document become clean', async () => {
+    it('lets a plain PDF of a finance document become clean (a destination is not an action)', async () => {
       const { pipeline, storage, updateMany } = build(
         MediaPurpose.FINANCE_DOCUMENT,
         jest.fn().mockResolvedValue({ infected: false })

@@ -121,70 +121,18 @@ export const ImageSanitizing = {
 export const MediaRejectionReasons = {
   IMAGE_NOT_SANITIZABLE: 'image_not_sanitizable',
   // A PDF kept as financial evidence that carries something that runs when it is opened (TAX-436)
-  PDF_ACTIVE_CONTENT: 'pdf_active_content',
-  // A PDF of that kind that cannot be read to the end, so nothing can be said about what it carries: refused as well
-  PDF_NOT_INSPECTABLE: 'pdf_not_inspectable'
+  PDF_ACTIVE_CONTENT: 'pdf_active_content'
 } as const
 
-// What is looked for in a PDF that stays as the evidence of a transaction (TDD_18 §3): the names of the
-// dictionaries that make a reader run code, open a program, send a form somewhere or carry another file. The
-// file is read with the PDF library the worker already uses (objects, object streams and escapes in names are
-// resolved by a parser, not by a pattern over the bytes) and every name of every object is looked at; the data
-// of the streams (pictures, fonts, page content) is not. The rule of the whole check is fail closed: whatever
-// cannot be proven inert or cannot be read to the end (an encrypted file, a file the library does not read, a
-// stream that looks like an object stream without saying so, a reference to nothing, too much work for one
-// file) is refused, never let through. It is a best effort and not a sandbox: the file is only ever served as a
-// download from the bucket host (see the plan, Step 4B.4b-1).
+// What is looked for in a PDF that stays as the evidence of a transaction (TDD_18 §3, TAX-436): the names that make
+// a reader run code, open a program or send a form somewhere, in the clear. A PDF names them with a slash and may
+// spell a letter as `#` and two hex digits, so the match is made on the decoded name. `/OpenAction` and `/AA` are not
+// on the list: they carry an action, and the action is what is named (`/S /JavaScript`); a destination
+// (`[3 0 R /Fit]`, what Word, LaTeX and Acrobat write) is not refused. BEST EFFORT, NOT A SANDBOX: objects inside
+// compressed streams are not inspected (nothing is inflated, nothing is parsed). The defences that matter are that
+// the file is only ever served as a signed download from the bucket host (`Content-Disposition: attachment`) and the
+// ClamAV scan that runs before this.
 export const PdfInspection = {
   CONTENT_TYPE: 'application/pdf',
-  ACTIVE_NAMES: [
-    'JavaScript',
-    'JS',
-    'AA',
-    'Launch',
-    'EmbeddedFile',
-    'EF',
-    'EmbeddedFiles',
-    'FileAttachment',
-    'SubmitForm',
-    'ResetForm',
-    'ImportData',
-    'GoToR',
-    'GoToE',
-    'GoToDp',
-    'GoTo3DView',
-    'Named',
-    'Hide',
-    'SetOCGState',
-    'Thread',
-    'Screen',
-    'RichMedia',
-    'RichMediaContent',
-    'RichMediaActivation',
-    'XFA',
-    'AcroForm',
-    'Rendition',
-    'Movie',
-    'Sound',
-    '3D'
-  ],
-  // `/OpenAction` is active only when its value is an action, never when it is a destination (`[3 0 R /Fit]`, what
-  // Word, LaTeX and Acrobat write): an action that opens a link counts too, which a plain link annotation does not
-  CARRIER_NAMES: ['OpenAction'],
-  CARRIER_ACTIVE_NAMES: ['URI'],
-  CARRIER_DEPTH: 6,
-  OBJECT_STREAM_KEYS: { TYPE: 'Type', NAME: 'ObjStm', COUNT: 'N', FIRST: 'First' },
-  // The work on one file is bounded in objects, nodes and time
-  MAX_OBJECTS: 300_000,
-  MAX_NODES: 3_000_000,
-  TIME_BUDGET_MS: 5000,
-  UNREADABLE: {
-    ENCRYPTED: 'encrypted',
-    NOT_READABLE: 'not_readable',
-    UNDECLARED_OBJECT_STREAM: 'undeclared_object_stream',
-    DANGLING_REFERENCE: 'dangling_reference',
-    TOO_MANY_OBJECTS: 'too_many_objects',
-    TIME_BUDGET_EXCEEDED: 'time_budget_exceeded',
-    INSPECTION_FAILED: 'inspection_failed'
-  }
+  ACTIVE_NAMES: ['JavaScript', 'JS', 'Launch', 'SubmitForm', 'ImportData', 'GoToR', 'RichMedia']
 } as const

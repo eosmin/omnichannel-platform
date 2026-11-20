@@ -494,9 +494,9 @@ describe('The receipt of a transaction of the books (Step 4B.4b)', () => {
       expect((await attach(treasurer, ctx.storeA, transferA.id, toTransfer)).status).toBe(CREATED)
     })
 
-    it('says a refused PDF will not be clean: active content and unreadable files get their own conflict (TAX-436)', async () => {
+    it('says a refused PDF will not be clean: active content gets its own conflict (TAX-436)', async () => {
       const target = await registered(ctx.adminA, ctx.storeA, expense())
-      for (const reason of ['pdf_active_content', 'pdf_not_inspectable']) {
+      for (const reason of ['pdf_active_content']) {
         const response = await attach(
           bookkeeper,
           ctx.storeA,

@@ -29,10 +29,7 @@ import { type TransactionView, TRANSACTION_SELECT, transactionView } from './fin
 function isRefusedPdf(status: string, scanResult: unknown): boolean {
   if (status !== String(MediaStatus.UNSCANNABLE)) return false
   const reason = (scanResult as { reason?: unknown } | null)?.reason
-  return (
-    reason === MediaRejectionReasons.PDF_ACTIVE_CONTENT ||
-    reason === MediaRejectionReasons.PDF_NOT_INSPECTABLE
-  )
+  return reason === MediaRejectionReasons.PDF_ACTIVE_CONTENT
 }
 
 @Injectable()
@@ -99,12 +96,9 @@ export class FinanceTransactionDocumentsService {
     if (file.status !== String(MediaStatus.CLEAN)) {
       // A PDF refused for what it carries will never be clean: say so, not "wait"
       if (isRefusedPdf(file.status, file.scanResult)) {
-        throw resourceConflict(
-          'the file was refused: it carries active content or cannot be read',
-          {
-            conflict: FinanceConflicts.TRANSACTION_DOCUMENT_REFUSED
-          }
-        )
+        throw resourceConflict('the file was refused: it carries active content', {
+          conflict: FinanceConflicts.TRANSACTION_DOCUMENT_REFUSED
+        })
       }
       throw resourceConflict('the file is not clean yet', {
         conflict: FinanceConflicts.TRANSACTION_DOCUMENT_NOT_CLEAN
