@@ -8,7 +8,13 @@ import { ExportContentTypes, ExportFileExtensions } from '@platform/core/exports
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { actorOf, CurrentOrganization, CurrentStore, RequirePermissions } from '../tenancy'
+import {
+  actorOf,
+  CurrentOrganization,
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions
+} from '../tenancy'
 import type { ResolvedTenant } from '../tenancy'
 
 import {
@@ -78,6 +84,9 @@ export class FinanceStatementsController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS)
+  @NoTenantTransaction(
+    'reads carrier connections, which belong to a store, of every store of the organization: the service opens the context of the organization itself, because the one of the request holds the store of the header alone'
+  )
   @NoStore()
   @Get(ApiRoutes.finance.reports.aging)
   aging(
@@ -145,6 +154,9 @@ export class FinanceStatementsController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS, Permissions.FINANCE_EXPORT)
+  @NoTenantTransaction(
+    'reads carrier connections, which belong to a store, of every store of the organization: the service opens the context of the organization itself, because the one of the request holds the store of the header alone'
+  )
   @Get(ApiRoutes.finance.reports.agingCsv)
   async agingCsv(
     @CurrentOrganization() organization: Organization,

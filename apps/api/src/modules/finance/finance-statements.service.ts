@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import {
   AccountType,
   AgingBucketDays,
@@ -161,7 +161,8 @@ const isoDay = (date: Date): string => date.toISOString().slice(0, 10)
 export class FinanceStatementsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly jobContext: JobContext
   ) {}
 
   async incomeStatement(organizationId: string, query: FlowQuery): Promise<IncomeStatementView> {
@@ -216,7 +217,15 @@ export class FinanceStatementsService {
     return this.cashView(query, flow)
   }
 
+  // Names the carrier connections of every store of the organization: the route is @NoTenantTransaction and the read opens the context of the
+  // organization (a request holds the store of the header alone with RLS on, and the party would lose its name with the other header)
   async aging(organizationId: string, query: AgingQuery): Promise<AgingView> {
+    return this.jobContext.inOrganization(organizationId, () =>
+      this.readAging(organizationId, query)
+    )
+  }
+
+  private async readAging(organizationId: string, query: AgingQuery): Promise<AgingView> {
     await this.requireStore(organizationId, query.storeId)
     const storeId = query.storeId ?? null
     const roles = AgingRoles[query.kind]
@@ -375,7 +384,19 @@ export class FinanceStatementsService {
     return rows
   }
 
+  // Names the carrier connections of every store of the organization: the route is @NoTenantTransaction and the read opens the context of the
+  // organization (a request holds the store of the header alone with RLS on, and the party would lose its name with the other header)
   async agingCsvRows(
+    organizationId: string,
+    query: AgingQuery,
+    actor: Actor
+  ): Promise<AgingCsvRow[]> {
+    return this.jobContext.inOrganization(organizationId, () =>
+      this.readAgingCsvRows(organizationId, query, actor)
+    )
+  }
+
+  private async readAgingCsvRows(
     organizationId: string,
     query: AgingQuery,
     actor: Actor

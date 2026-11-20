@@ -8,7 +8,13 @@ import { ExportContentTypes, ExportFileExtensions } from '@platform/core/exports
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { actorOf, CurrentOrganization, CurrentStore, RequirePermissions } from '../tenancy'
+import {
+  actorOf,
+  CurrentOrganization,
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions
+} from '../tenancy'
 import type { ResolvedTenant } from '../tenancy'
 
 import { marginCsv } from './finance-margin.csv'
@@ -27,6 +33,9 @@ export class FinanceMarginController {
   constructor(private readonly margin: FinanceMarginService) {}
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS)
+  @NoTenantTransaction(
+    'reads the orders of every store of the organization: the service opens the context of the organization itself, because the one of the request holds the store of the header alone'
+  )
   @NoStore()
   @Get(ApiRoutes.finance.reports.margin)
   report(
@@ -37,6 +46,9 @@ export class FinanceMarginController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS, Permissions.FINANCE_EXPORT)
+  @NoTenantTransaction(
+    'reads the orders of every store of the organization: the service opens the context of the organization itself, because the one of the request holds the store of the header alone'
+  )
   @Get(ApiRoutes.finance.reports.marginCsv)
   async csv(
     @CurrentOrganization() organization: Organization,

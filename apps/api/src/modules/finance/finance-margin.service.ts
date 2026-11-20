@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   FinanceReport,
@@ -93,10 +93,19 @@ interface LedgerRow {
 export class FinanceMarginService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly jobContext: JobContext
   ) {}
 
+  // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
+  // (a request holds the store of the header alone with RLS on, and the report would change with the header)
   async margin(organizationId: string, query: FlowQuery): Promise<MarginView> {
+    return this.jobContext.inOrganization(organizationId, () =>
+      this.readMargin(organizationId, query)
+    )
+  }
+
+  private async readMargin(organizationId: string, query: FlowQuery): Promise<MarginView> {
     await this.requireStore(organizationId, query.storeId)
     const db = this.prisma.client
     const rows = new Map<string, MarginRow>()
@@ -249,7 +258,19 @@ export class FinanceMarginService {
     }
   }
 
+  // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
+  // (a request holds the store of the header alone with RLS on, and the report would change with the header)
   async marginCsvRows(
+    organizationId: string,
+    query: FlowQuery,
+    actor: Actor
+  ): Promise<MarginCsvRow[]> {
+    return this.jobContext.inOrganization(organizationId, () =>
+      this.readMarginCsvRows(organizationId, query, actor)
+    )
+  }
+
+  private async readMarginCsvRows(
     organizationId: string,
     query: FlowQuery,
     actor: Actor

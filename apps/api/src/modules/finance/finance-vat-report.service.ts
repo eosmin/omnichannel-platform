@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   FinanceCurrency,
@@ -47,14 +47,27 @@ interface Bucket {
 export class FinanceVatReportService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly jobContext: JobContext
   ) {}
 
   // The same report as a file taken out (TDD_18 §7, §10): held to the cap of every other file (never cut short, a cut file looks whole to
   // an accountant) and audited with the range and the row count, never the rows. The figures are cents and the texts go through the writer
   // of the other exports, so a text that starts like a formula is written as text. The audit row is written the way every finance audit
   // row is (not awaited, debt (k) of 4B.8a).
+  // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
+  // (a request holds the store of the header alone with RLS on, and the report would change with the header)
   async csv(organizationId: string, query: VatReportQuery, actor: Actor): Promise<string> {
+    return this.jobContext.inOrganization(organizationId, () =>
+      this.readCsv(organizationId, query, actor)
+    )
+  }
+
+  private async readCsv(
+    organizationId: string,
+    query: VatReportQuery,
+    actor: Actor
+  ): Promise<string> {
     const report = await this.report(organizationId, query)
     // One row for each line of the report, the balance of each month and each warning with a count
     const rows =
@@ -86,7 +99,15 @@ export class FinanceVatReportService {
     return vatReportCsv(report)
   }
 
+  // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
+  // (a request holds the store of the header alone with RLS on, and the report would change with the header)
   async report(organizationId: string, query: VatReportQuery): Promise<VatReportView> {
+    return this.jobContext.inOrganization(organizationId, () =>
+      this.readReport(organizationId, query)
+    )
+  }
+
+  private async readReport(organizationId: string, query: VatReportQuery): Promise<VatReportView> {
     const db = this.prisma.client
     const settings = await db.financeSettings.findUnique({
       where: { organizationId },

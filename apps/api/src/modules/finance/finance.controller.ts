@@ -26,6 +26,7 @@ import {
   actorOf,
   CurrentOrganization,
   CurrentStore,
+  NoTenantTransaction,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -299,6 +300,9 @@ export class FinanceController {
 
   // The VAT report (TDD_18 §7) of the organization for a range of days: the JSON, and the same rows as a CSV file
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoTenantTransaction(
+    'reads the orders of every store of the organization: the service opens the context of the organization itself, because the one of the request holds the store of the header alone'
+  )
   @NoStore()
   @Get(ApiRoutes.finance.reports.vat)
   vat(
@@ -310,6 +314,9 @@ export class FinanceController {
 
   // Taking the file out needs finance:export besides, like every other financial file, and leaves an audit row (FINANCE_EXPORTED)
   @RequirePermissions(Permissions.FINANCE_VIEW, Permissions.FINANCE_EXPORT)
+  @NoTenantTransaction(
+    'reads the orders of every store of the organization: the service opens the context of the organization itself, because the one of the request holds the store of the header alone'
+  )
   @Get(ApiRoutes.finance.reports.vatCsv)
   async vatCsv(
     @CurrentOrganization() organization: Organization,

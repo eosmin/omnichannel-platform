@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
 import {
   FinanceAutoMemo,
   FinancePostingKey,
@@ -227,7 +227,8 @@ export class FinanceBooksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly providers: FiscalProviderRegistry
+    private readonly providers: FiscalProviderRegistry,
+    private readonly jobContext: JobContext
   ) {}
 
   // The layout in force of each kind of book: the latest the organization wrote, or the proposal
@@ -319,7 +320,20 @@ export class FinanceBooksService {
   }
 
   // The book of a period as JSON. A closed period is served from its snapshot; the first request after the close takes it.
+  // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
+  // (a request holds the store of the header alone with RLS on, and the report would change with the header)
   async book(
+    organizationId: string,
+    kind: LegalBookKind,
+    query: BookQuery,
+    actor: Actor
+  ): Promise<BookView> {
+    return this.jobContext.inOrganization(organizationId, () =>
+      this.readBook(organizationId, kind, query, actor)
+    )
+  }
+
+  private async readBook(
     organizationId: string,
     kind: LegalBookKind,
     query: BookQuery,
@@ -332,7 +346,20 @@ export class FinanceBooksService {
 
   // The CSV of the same book, audited. A frozen book is served as the bytes that were frozen (stored with it), so the digest in the
   // header and in the audit row is the digest of the file that left.
+  // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
+  // (a request holds the store of the header alone with RLS on, and the report would change with the header)
   async csv(
+    organizationId: string,
+    kind: LegalBookKind,
+    query: BookQuery,
+    actor: Actor
+  ): Promise<{ book: BookView; csv: string; fileName: string }> {
+    return this.jobContext.inOrganization(organizationId, () =>
+      this.readCsv(organizationId, kind, query, actor)
+    )
+  }
+
+  private async readCsv(
     organizationId: string,
     kind: LegalBookKind,
     query: BookQuery,

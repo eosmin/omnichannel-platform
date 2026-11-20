@@ -15,6 +15,7 @@ import {
   CurrentOrganization,
   CurrentPermissions,
   CurrentStore,
+  NoTenantTransaction,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -107,6 +108,9 @@ export class FinanceBooksController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS, Permissions.FINANCE_EXPORT)
+  @NoTenantTransaction(
+    'reads the orders of every store of the organization: the service opens the context of the organization itself, because the one of the request holds the store of the header alone'
+  )
   @NoStore()
   @Get(ApiRoutes.finance.books.byKind(':kind'))
   book(
@@ -122,6 +126,9 @@ export class FinanceBooksController {
 
   // A file is an attachment and no shared cache keeps it
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS, Permissions.FINANCE_EXPORT)
+  @NoTenantTransaction(
+    'reads the orders of every store of the organization: the service opens the context of the organization itself, because the one of the request holds the store of the header alone'
+  )
   @NoStore()
   @Get(ApiRoutes.finance.books.csvByKind(':kind'))
   async bookCsv(
