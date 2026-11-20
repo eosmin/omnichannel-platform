@@ -1,5 +1,7 @@
 // PostgreSQL's SQLSTATE for "canceling statement due to lock timeout" (lock_not_available)
 const LOCK_NOT_AVAILABLE = '55P03'
+// PostgreSQL's SQLSTATE for "insufficient_privilege": what a row-level security policy answers (WITH CHECK or USING) when it refuses a row
+const INSUFFICIENT_PRIVILEGE = '42501'
 const MAX_DEPTH = 6
 // The places an error keeps the error that caused it, walked by both checks below
 const CAUSE_KEYS = ['cause', 'meta', 'driverAdapterError'] as const
@@ -38,4 +40,19 @@ export function isTransactionWaitError(error: unknown, depth = 0): boolean {
   const record = error as Record<string, unknown>
   if (record['code'] === TRANSACTION_API_ERROR) return true
   return CAUSE_KEYS.some(key => isTransactionWaitError(record[key], depth + 1))
+}
+
+// Whether a database error is the refusal of a row-level security policy (SQLSTATE 42501). Found in the same places and to the same
+// depth as the checks above, and the message is NOT read. It says only that a policy refused the statement: whether the row it was
+// meant for is still there is for the caller to look up, in a new unit of work (the refusal leaves the transaction aborted).
+export function isRowLevelSecurityError(error: unknown, depth = 0): boolean {
+  if (depth > MAX_DEPTH || typeof error !== 'object' || error === null) return false
+  const record = error as Record<string, unknown>
+  if (
+    record['code'] === INSUFFICIENT_PRIVILEGE ||
+    record['originalCode'] === INSUFFICIENT_PRIVILEGE
+  ) {
+    return true
+  }
+  return CAUSE_KEYS.some(key => isRowLevelSecurityError(record[key], depth + 1))
 }

@@ -10,7 +10,7 @@ import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService, JobContext } from '@platform/core/database'
-import type { OwnerClient } from '@platform/core/database-testing'
+import { type OwnerClient, rlsEnforcementRequested } from '@platform/core/database-testing'
 import {
   PLUGIN_REVOKE_CONFIRMATION,
   PluginCatalogTypes,
@@ -70,6 +70,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
   let deliverer: PluginWebhookDeliverer
   let cipher: CredentialCipher
   let counter = 0
+  const goneCounted: string[] = []
   const counted: Record<string, number> = {}
 
   beforeAll(async () => {
@@ -100,7 +101,10 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       app.get(DomainEvents),
       metric,
       logger,
-      new JobContext(app.get(PrismaService))
+      new JobContext(app.get(PrismaService)),
+      {
+        inc: (labels: { target: string }) => goneCounted.push(labels.target)
+      } as unknown as Counter<string>
     )
   })
   afterAll(async () => {
@@ -111,6 +115,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
   })
   afterEach(async () => {
     queue.jobs.length = 0
+    goneCounted.length = 0
     for (const key of Object.keys(counted)) delete counted[key]
     // Every test starts with no installation: what an event reaches depends on who is installed in the store
     await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: prefix } } })
@@ -487,6 +492,38 @@ describe('The webhooks of an integration plugin and its revocation', () => {
 
       expect(outcome).toBe(WebhookOutcome.SKIPPED)
       expect(post).not.toHaveBeenCalled()
+    })
+
+    it('ends without an error when the installation is deleted between the post and its log', async () => {
+      const { setup } = await setUp()
+      const post = jest.fn(async () => {
+        await owner.pluginInstallation.delete({ where: { id: setup.installationId } })
+        return 200
+      })
+
+      const outcome = await deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, {
+        post
+      })
+
+      expect(outcome).toBe(WebhookOutcome.DELIVERED)
+      // Under enforced row-level security the policy of the log refuses the row (42501) and the delivery says so; without it the
+      // foreign key does, and that case was never counted
+      expect(goneCounted).toEqual(rlsEnforcementRequested() ? ['plugin'] : [])
+    })
+
+    it('does not hide a refusal of the policy while the installation is still there', async () => {
+      const { setup } = await setUp()
+      const guarded = (
+        deliverer as unknown as {
+          guarded: (storeId: string, id: string, work: () => Promise<void>) => Promise<void>
+        }
+      ).guarded.bind(deliverer)
+      const refusal = Object.assign(new Error('refused'), { code: '42501' })
+
+      await expect(
+        guarded(ctx.storeA.id, setup.installationId, () => Promise.reject(refusal))
+      ).rejects.toBe(refusal)
+      expect(goneCounted).toEqual([])
     })
 
     it('reads the installation under the store of the job: a job that names another store delivers nothing', async () => {

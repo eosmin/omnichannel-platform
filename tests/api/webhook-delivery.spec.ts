@@ -8,7 +8,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { CredentialCipher, generateToken } from '@platform/core/crypto'
 import { PrismaService, JobContext } from '@platform/core/database'
-import type { OwnerClient } from '@platform/core/database-testing'
+import { type OwnerClient, rlsEnforcementRequested } from '@platform/core/database-testing'
 import {
   AppPaths,
   StoreSettingsSections,
@@ -17,6 +17,7 @@ import {
   WebhookLimits,
   WebhookStatus
 } from '@platform/core/domain'
+import { isRowLevelSecurityError } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { NotificationTypes } from '@platform/core/notifications'
@@ -56,6 +57,8 @@ describe('The delivery of a webhook', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let deliverer: TenantWebhookDeliverer
+  let jobContext: JobContext
+  const goneCounted: string[] = []
   let cipher: CredentialCipher
   const counted: Record<string, number> = {}
 
@@ -75,13 +78,17 @@ describe('The delivery of a webhook', () => {
       warn: () => undefined,
       error: () => undefined
     } as unknown as PinoLogger
+    jobContext = new JobContext(app.get(PrismaService))
     deliverer = new TenantWebhookDeliverer(
       app.get(PrismaService),
       cipher,
       app.get(DomainEvents),
       counter,
       logger,
-      new JobContext(app.get(PrismaService))
+      jobContext,
+      {
+        inc: (labels: { target: string }) => goneCounted.push(labels.target)
+      } as unknown as Counter<string>
     )
   })
   afterAll(async () => {
@@ -95,6 +102,7 @@ describe('The delivery of a webhook', () => {
     })
     await owner.notification.deleteMany({ where: { storeId: ctx.storeA.id } })
     for (const key of Object.keys(counted)) delete counted[key]
+    goneCounted.length = 0
   })
 
   const secretOf = () => `whsec_${generateToken(WebhookLimits.SECRET_BYTES)}`
@@ -467,6 +475,75 @@ describe('The delivery of a webhook', () => {
       WebhookPostFailed
     )
     expect(await owner.webhookDelivery.count({ where: { webhookId: row.id } })).toBe(0)
+  })
+
+  // Under enforced row-level security the insert of the log is refused by the policy of the parent (42501) and not by the foreign key
+  const itWhenEnforced = rlsEnforcementRequested() ? it : it.skip
+
+  itWhenEnforced(
+    'knows the refusal of the policy that a log row of a deleted webhook gets',
+    async () => {
+      const row = await webhook()
+      await owner.webhook.delete({ where: { id: row.id } })
+
+      const refused = await jobContext
+        .forStore(ctx.storeA.id, () =>
+          app.get(PrismaService).client.webhookDelivery.create({
+            data: { webhookId: row.id, event: Events.ORDER_CREATED, success: true, attempt: 1 }
+          })
+        )
+        .then(
+          () => null,
+          (error: unknown) => error
+        )
+
+      expect(refused).not.toBeNull()
+      expect(isRowLevelSecurityError(refused)).toBe(true)
+    }
+  )
+
+  itWhenEnforced(
+    'counts the webhook that was deleted behind the policy, and tells it by the target',
+    async () => {
+      const row = await webhook()
+      const post = jest.fn(async () => {
+        await owner.webhook.delete({ where: { id: row.id } })
+        return 200
+      })
+
+      await expect(deliverer.deliver(jobFor(row), 1, { post })).resolves.toBe(
+        WebhookOutcome.DELIVERED
+      )
+      expect(goneCounted).toEqual(['tenant'])
+      expect(await owner.webhookDelivery.count({ where: { webhookId: row.id } })).toBe(0)
+    }
+  )
+
+  it('ends without an error when the webhook is deleted between the post and its log', async () => {
+    const row = await webhook()
+    const post = jest.fn(async () => {
+      await owner.webhook.delete({ where: { id: row.id } })
+      return 200
+    })
+
+    await expect(deliverer.deliver(jobFor(row), 1, { post })).resolves.toBe(
+      WebhookOutcome.DELIVERED
+    )
+  })
+
+  it('does not hide a refusal of the policy while the webhook is still there', async () => {
+    const row = await webhook()
+    const guarded = (
+      deliverer as unknown as {
+        guarded: (storeId: string, webhookId: string, work: () => Promise<void>) => Promise<void>
+      }
+    ).guarded.bind(deliverer)
+    const refusal = Object.assign(new Error('refused'), { code: '42501' })
+
+    await expect(guarded(ctx.storeA.id, row.id, () => Promise.reject(refusal))).rejects.toBe(
+      refusal
+    )
+    expect(goneCounted).toEqual([])
   })
 
   it('has a route to read the log that the failures wrote', async () => {

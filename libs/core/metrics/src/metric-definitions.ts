@@ -228,6 +228,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'Outbound webhook deliveries, of a store or of a plugin',
     labels: ['target', 'success']
   },
+  [MetricNames.WEBHOOK_GONE_BEHIND_POLICY]: {
+    kind: 'counter',
+    help: 'Deliveries whose log row was refused by the policy because the webhook was deleted meanwhile',
+    labels: ['target']
+  },
   [MetricNames.EMAILS_SENT]: {
     kind: 'counter',
     help: 'Emails sent',

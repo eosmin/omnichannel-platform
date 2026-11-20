@@ -19,12 +19,12 @@ import type { TriggerPluginWebhookJob } from '@platform/core/queues'
 import { manifestMaxWebhooksPerDay, manifestWebhookOf } from '@platform/plugins/runtime'
 import { PluginEventScopes } from '@platform/plugins/sdk'
 
+import { GoneVerdict, judgeGone } from './gone-verdict'
 import { pinnedHttpsPost } from './pinned-https-post'
 import {
   type DeliveryDeps,
   type Failure,
   failureOf,
-  isGone,
   openSecret,
   sendSigned,
   WebhookOutcome
@@ -55,7 +55,9 @@ export class PluginWebhookDeliverer {
     private readonly events: DomainEvents,
     @InjectMetric(MetricNames.WEBHOOK_DELIVERIES) private readonly deliveries: Counter<string>,
     private readonly logger: PinoLogger,
-    private readonly jobContext: JobContext
+    private readonly jobContext: JobContext,
+    @InjectMetric(MetricNames.WEBHOOK_GONE_BEHIND_POLICY)
+    private readonly goneBehindPolicy: Counter<string>
   ) {
     this.logger.setContext(PluginWebhookDeliverer.name)
   }
@@ -126,7 +128,7 @@ export class PluginWebhookDeliverer {
       if (today >= cap) {
         // Said in the log the owner reads (`attempt: 0`, which the count above never takes for a delivery), so a capped event is
         // told from one the endpoint did not get
-        await this.guarded(installationId, async () => {
+        await this.guarded(storeId, installationId, async () => {
           await this.jobContext.forStore(storeId, () =>
             this.prisma.client.webhookDelivery.create({
               data: {
@@ -225,7 +227,7 @@ export class PluginWebhookDeliverer {
     attempt: number
   ): Promise<void> {
     this.deliveries.inc({ target: WebhookMetricTarget.PLUGIN, success: 'true' })
-    await this.guarded(installationId, async () => {
+    await this.guarded(storeId, installationId, async () => {
       await this.jobContext.forStore(storeId, () =>
         this.prisma.client.webhookDelivery.create({
           data: {
@@ -258,7 +260,7 @@ export class PluginWebhookDeliverer {
     const { failure, durationMs, attempt, over, final } = result
     this.deliveries.inc({ target: WebhookMetricTarget.PLUGIN, success: 'false' })
     let disabled = false
-    await this.guarded(installationId, async () => {
+    await this.guarded(storeId, installationId, async () => {
       disabled = await this.jobContext.forStore(storeId, () =>
         this.prisma.transaction(async tx => {
           await tx.webhookDelivery.create({
@@ -317,19 +319,40 @@ export class PluginWebhookDeliverer {
     return disabled
   }
 
-  // An installation deleted while its delivery ran has no log to write to: that is the end of it, not an error to retry
-  private async guarded(installationId: string, work: () => Promise<void>): Promise<void> {
+  // An installation deleted while its delivery ran has no log to write to: that is the end of it, not an error to retry. With the policy
+  // on, the insert is refused (42501) before the foreign key can fail, so the installation is looked up again in a new unit of work,
+  // outside the one that broke and in the store of the job, with no filter on its state (a revoked or disabled installation still
+  // exists): only its absence is a deletion, and a refusal with the installation still there is thrown as it came.
+  private async guarded(
+    storeId: string,
+    installationId: string,
+    work: () => Promise<void>
+  ): Promise<void> {
     try {
       await work()
     } catch (error) {
-      if (isGone(error)) {
-        this.logger.info(
-          { installationId },
-          'a plugin installation was deleted while its delivery ran'
+      const verdict = await judgeGone(error, async () => {
+        const row = await this.jobContext.forStore(storeId, () =>
+          this.prisma.client.pluginInstallation.findFirst({
+            where: { id: installationId, storeId },
+            select: { id: true }
+          })
+        )
+        return row !== null
+      })
+      if (verdict === GoneVerdict.NOT_GONE) throw error
+      if (verdict === GoneVerdict.DELETED_BEHIND_POLICY) {
+        this.goneBehindPolicy.inc({ target: WebhookMetricTarget.PLUGIN })
+        this.logger.warn(
+          { installationId, storeId, code: 'row_level_security' },
+          'a plugin installation was deleted while its delivery ran: the log row was refused by the policy'
         )
         return
       }
-      throw error
+      this.logger.info(
+        { installationId },
+        'a plugin installation was deleted while its delivery ran'
+      )
     }
   }
 }
