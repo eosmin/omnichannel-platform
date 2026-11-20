@@ -3,11 +3,12 @@ import { argv, exit } from 'node:process'
 
 import pg from 'pg'
 
-import { loadOwnerDatabaseUrl } from './db-role-env'
+import { loadOwnerDatabaseUrl, workerEnvForRoleScript } from './db-role-env'
 import {
   alreadyAsRequested,
   confirmationOf,
   confirmProblem,
+  flagProblem,
   reachedDatabasesWarning,
   WORKER_ROLE,
   WORKER_ROLE_MODES,
@@ -52,7 +53,7 @@ if (url === undefined) {
 
 async function readRole(client: pg.Client): Promise<WorkerRoleRow | undefined> {
   const { rows } = await client.query<WorkerRoleRow>(
-    'SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = $1',
+    'SELECT rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = $1',
     [WORKER_ROLE]
   )
   return rows[0]
@@ -86,10 +87,14 @@ async function run(selected: WorkerRoleMode): Promise<void> {
           database
         )
       )
-      const refused = confirmProblem(selected, confirmationOf(argv), database)
+      const refused =
+        flagProblem(selected, workerEnvForRoleScript()) ??
+        confirmProblem(selected, confirmationOf(argv), database)
       if (refused !== undefined) {
         console.error(`${refused}. Nothing changed.`)
-        exit(2)
+        // Not exit(): the finally below must close the connection of the owner
+        process.exitCode = 2
+        return
       }
       console.log(
         `about to change: host ${target.hostname}, database ${database}, role ${WORKER_ROLE}`
@@ -114,7 +119,7 @@ async function run(selected: WorkerRoleMode): Promise<void> {
     }
     const row = await readRole(client)
     console.log(
-      `${WORKER_ROLE}: bypassrls=${String(row?.rolbypassrls)} superuser=${String(row?.rolsuper)} (${
+      `${WORKER_ROLE}: bypassrls=${String(row?.rolbypassrls)} superuser=${String(row?.rolsuper)} canlogin=${String(row?.rolcanlogin)} (${
         workerRoleProblem(row) === undefined
           ? 'row security binds it'
           : 'row security does not bind it'

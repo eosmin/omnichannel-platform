@@ -20,8 +20,9 @@ export function workerRoleBoundInSuites(): boolean {
 }
 
 // Puts the database of `ownerUrl` in the state the run asked for: enforced with TEST_RLS_ENFORCE, not enforced without it, so that a
-// database a previous run left enforced does not stay so while the log says it is not. The script refuses `on` when platform_app
-// could skip row security (the script exits 1), so a database where the suites would prove nothing is an error and not a green run.
+// database a previous run left enforced does not stay so while the log says it is not. The script refuses `on` when platform_app OR
+// platform_worker could skip row security (the script exits 1, and its message says to run `pnpm db:rls:worker-role nobypass`, which
+// changes a role of the whole server: on a laptop the person decides that by hand), so a database where the suites would prove nothing is an error and not a green run.
 // Its own output is shown: it says which table it could not switch.
 export function applyRlsEnforcement(ownerUrl: string): 'on' | 'off' {
   const mode = rlsEnforcementRequested() ? 'on' : 'off'

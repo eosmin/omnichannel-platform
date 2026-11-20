@@ -17,6 +17,7 @@ export function workerRoleStatement(mode: WorkerRoleMode): string | null {
 export interface WorkerRoleRow {
   rolsuper: boolean
   rolbypassrls: boolean
+  rolcanlogin?: boolean
 }
 
 // Why row security would not bind the worker: what `rls-enforce on` checks before it enforces. A superuser skips it too, whatever the
@@ -45,10 +46,24 @@ export function confirmProblem(
 ): string | undefined {
   if (workerRoleStatement(mode) === null) return undefined
   if (confirm === undefined) {
-    return `${mode} changes the role ${WORKER_ROLE} of the database "${database}": run it again with --confirm=${database}`
+    // The name is NOT printed ready to paste: the person reads the host and the databases above and types the name on purpose
+    return `${mode} changes the role ${WORKER_ROLE}, which belongs to the whole server: run it again with --confirm=<the name of the database printed above>`
   }
   if (confirm !== database) {
     return `--confirm=${confirm} is not the database this command is connected to ("${database}")`
+  }
+  return undefined
+}
+
+// `bypass` is the way back and only valid once the workers run with the flag off: with WORKER_RLS_CONTEXT=true in the environment of the
+// command (the person copied the environment of the workers) it stops, because a worker with the flag ON refuses to start while its role
+// skips RLS (a crash loop on the next restart). The runbook order stays the real guard: flag off, restart, then `bypass`
+export function flagProblem(
+  mode: WorkerRoleMode,
+  env: Readonly<Record<string, string | undefined>>
+): string | undefined {
+  if (mode === 'bypass' && env['WORKER_RLS_CONTEXT'] === 'true') {
+    return `bypass with WORKER_RLS_CONTEXT=true: the workers would not start. Turn the flag off and restart them first`
   }
   return undefined
 }
@@ -61,12 +76,12 @@ export function alreadyAsRequested(mode: WorkerRoleMode, row: WorkerRoleRow): bo
 }
 
 // What the owner reads before a mode that changes the role: the role belongs to the whole server, so the change reaches every database
-// where it can connect, not only the one the command is pointed at
+// where it has the CONNECT privilege (the role may not even log in: `rolcanlogin` is printed with the result), not only the one the command is pointed at
 export function reachedDatabasesWarning(databases: readonly string[], current: string): string {
   const others = databases.filter(name => name !== current)
   const reach =
     others.length === 0
       ? 'no other database'
       : `${others.length} other database${others.length === 1 ? '' : 's'}: ${others.join(', ')}`
-  return `ALTER ROLE ${WORKER_ROLE} affects ALL the databases of this server where it can connect (${databases.length}: ${databases.join(', ') || 'none'}); besides "${current}" it reaches ${reach}`
+  return `ALTER ROLE ${WORKER_ROLE} affects ALL the databases of this server where it could connect (${databases.length}: ${databases.join(', ') || 'none'}); besides "${current}" it reaches ${reach}`
 }

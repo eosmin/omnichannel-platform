@@ -201,6 +201,17 @@ describe('roleViolations: the bypass of the worker', () => {
     expect(problems.map(p => p.split(':')[0])).toEqual(['a', 'b', 'c', 'g'])
     expect(problems[0]).toContain('pnpm db:rls:worker-role')
   })
+
+  it('refuses the other ways to make the worker skip row security', () => {
+    const problems = roleViolations([
+      { name: 'a', sql: 'ALTER ROLE platform_worker SUPERUSER;' },
+      { name: 'b', sql: 'ALTER ROLE platform_worker IN ROLE pg_write_all_data;' },
+      { name: 'c', sql: 'GRANT some_bypass_role TO platform_worker;' },
+      { name: 'd', sql: 'GRANT EXECUTE ON FUNCTION f() TO platform_worker;' },
+      { name: 'e', sql: "ALTER ROLE platform_worker WITH PASSWORD 'x' LOGIN;" }
+    ])
+    expect(problems.map(p => p.split(':')[0])).toEqual(['a', 'b', 'c'])
+  })
 })
 
 describe('sessionSettingViolations', () => {

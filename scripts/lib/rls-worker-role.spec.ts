@@ -6,6 +6,7 @@ import {
   alreadyAsRequested,
   confirmationOf,
   confirmProblem,
+  flagProblem,
   reachedDatabasesWarning,
   WORKER_ROLE,
   WORKER_ROLE_MODES,
@@ -63,8 +64,18 @@ describe('confirmProblem', () => {
 
   it('refuses to change the role with no confirmation, and says what to type', () => {
     for (const mode of ['nobypass', 'bypass'] as const) {
-      expect(confirmProblem(mode, undefined, 'platform_prod')).toContain('--confirm=platform_prod')
+      const problem = confirmProblem(mode, undefined, 'platform_prod')
+      expect(problem).toContain('--confirm=')
+      // Not ready to paste: the name of the database is not in the message
+      expect(problem).not.toContain('platform_prod')
     }
+  })
+
+  it('refuses the way back while the environment still has the flag of the worker ON', () => {
+    expect(flagProblem('bypass', { WORKER_RLS_CONTEXT: 'true' })).toContain('would not start')
+    expect(flagProblem('bypass', { WORKER_RLS_CONTEXT: 'false' })).toBeUndefined()
+    expect(flagProblem('bypass', {})).toBeUndefined()
+    expect(flagProblem('nobypass', { WORKER_RLS_CONTEXT: 'true' })).toBeUndefined()
   })
 
   it('refuses a confirmation that names another database, and accepts the right one', () => {

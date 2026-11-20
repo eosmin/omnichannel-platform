@@ -107,7 +107,7 @@ async function run(selected: Mode): Promise<void> {
         const problems = rows.filter(row => row.bad)
         if (!rows.some(row => row.kind === 'role') || problems.length > 0) {
           const fix =
-            role === WORKER_ROLE && rows.some(row => row.kind === 'role')
+            role === WORKER_ROLE && problems.some(row => row.kind === 'role')
               ? ' Take its bypass away first (the role belongs to the whole server): pnpm db:rls:worker-role nobypass --confirm=<database>.'
               : ''
           console.error(
