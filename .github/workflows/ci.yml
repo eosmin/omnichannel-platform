@@ -474,6 +474,11 @@ jobs:
         run: pnpm exec tsx scripts/wait-for-bucket.ts
       - name: Migrate an empty database and give the roles their passwords
         run: pnpm db:migrate
+      # The worker meets the same policies as the api (stage E-2): BYPASSRLS is taken from its role in THIS throwaway database only, by the
+      # owner and with the name of the database confirmed. `enforce on` below refuses while the worker still skips row security. Nothing
+      # in a migration or a deploy step runs this: in production the owner does it by hand (docs/RLS_ACTIVATION_RUNBOOK.md)
+      - name: Take BYPASSRLS from the worker role (throwaway database only)
+        run: pnpm db:rls:worker-role nobypass --confirm=platform_ci
       - name: Turn row level security ON (ENABLE and FORCE)
         run: pnpm db:rls:enforce on
       - name: Every table with a policy is enabled and forced
@@ -549,6 +554,11 @@ jobs:
         run: pnpm exec tsx scripts/wait-for-bucket.ts
       - name: Migrate an empty database and give the roles their passwords
         run: pnpm db:migrate
+      # The worker meets the same policies as the api (stage E-2): BYPASSRLS is taken from its role in THIS throwaway database only, by the
+      # owner and with the name of the database confirmed. `enforce on` below refuses while the worker still skips row security. Nothing
+      # in a migration or a deploy step runs this: in production the owner does it by hand (docs/RLS_ACTIVATION_RUNBOOK.md)
+      - name: Take BYPASSRLS from the worker role (throwaway database only)
+        run: pnpm db:rls:worker-role nobypass --confirm=platform_ci
       - name: Turn row level security ON (ENABLE and FORCE)
         run: pnpm db:rls:enforce on
       - name: Every table with a policy is enabled and forced
