@@ -117,7 +117,7 @@ describe('Echoes and reactions that a channel delivers', () => {
     )
     reactions = new MessageReactionsService(
       prisma,
-      new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS),
+      new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS, new JobContext(prisma)),
       events,
       await app.resolve(PinoLogger)
     )

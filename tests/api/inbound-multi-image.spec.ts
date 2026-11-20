@@ -92,7 +92,7 @@ describe('Several pictures that a customer sends in a row', () => {
     )
     reactions = new MessageReactionsService(
       prisma,
-      new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS),
+      new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS, new JobContext(prisma)),
       events,
       logger
     )
