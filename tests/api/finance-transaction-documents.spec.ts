@@ -477,6 +477,93 @@ describe('The receipt of a transaction of the books (Step 4B.4b)', () => {
       ).toBeNull()
     })
 
+    // The books are the organization's and a file belongs to ONE store: a file uploaded in store A1 is the receipt of a transaction
+    // attached from store A2 (the same answer as with the row filter off). Under RLS_CONTEXT the file of A1 is not visible to a
+    // request of A2, and the database trigger of the link reads it too, so the write has to run in the context of the store that owns it
+    describe('through another store of the organization', () => {
+      it('attaches a file uploaded in store A1 from store A2, with the same answer as in A1', async () => {
+        const target = await registered(ctx.adminA, ctx.storeA, expense())
+        const mediaId = await receipt(target.id, { storeId: ctx.storeA.id })
+        const response = await attach(ctx.adminA2, ctx.storeA2, target.id, mediaId)
+        expect(response.status).toBe(CREATED)
+        expect((response.body as TransactionBody).documentMediaId).toBe(mediaId)
+        expect(
+          (await owner.financeTransaction.findUniqueOrThrow({ where: { id: target.id } }))
+            .documentMediaId
+        ).toBe(mediaId)
+        // The same file again, from A2, is the same request: nothing is written twice
+        const again = await attach(ctx.adminA2, ctx.storeA2, target.id, mediaId)
+        expect(again.status).toBe(CREATED)
+        await waitForAuditEntries(owner, {
+          action: AuditAction.FINANCE_TRANSACTION_DOCUMENT_ATTACHED,
+          resourceId: target.id
+        })
+        expect(
+          await owner.auditLog.count({
+            where: {
+              action: AuditAction.FINANCE_TRANSACTION_DOCUMENT_ATTACHED,
+              resourceId: target.id
+            }
+          })
+        ).toBe(1)
+      })
+
+      it('still waits for the scan of a file of another store: one 409, and nothing is written', async () => {
+        const target = await registered(ctx.adminA, ctx.storeA, expense())
+        const mediaId = await receipt(target.id, { storeId: ctx.storeA.id, status: 'pending' })
+        const response = await attach(ctx.adminA2, ctx.storeA2, target.id, mediaId)
+        expect(response.status).toBe(CONFLICT)
+        expect(
+          ((response.body as ErrorBody).error.metadata as { conflict?: string }).conflict
+        ).toBe(FinanceConflicts.TRANSACTION_DOCUMENT_NOT_CLEAN)
+        expect(
+          (await owner.financeTransaction.findUniqueOrThrow({ where: { id: target.id } }))
+            .documentMediaId
+        ).toBeNull()
+      })
+
+      it('gives one and the same 404 for a file of another transaction, another purpose, another organization or none, from A2', async () => {
+        const target = await registered(ctx.adminA, ctx.storeA, expense())
+        const other = await registered(ctx.adminA, ctx.storeA, expense())
+        const ofOther = await receipt(other.id, { storeId: ctx.storeA.id })
+        const foreignPurpose = await receipt(target.id, {
+          storeId: ctx.storeA.id,
+          purpose: 'message'
+        })
+        // A file of ANOTHER organization made for this very transaction (written by the owner: the pipeline would not)
+        const foreignOrg = await receipt(target.id, { storeId: ctx.storeB.id })
+        const answers = []
+        for (const mediaId of [ofOther, foreignPurpose, foreignOrg, randomUUID()]) {
+          const response = await attach(ctx.adminA2, ctx.storeA2, target.id, mediaId)
+          expect(response.status).toBe(NOT_FOUND)
+          answers.push((response.body as ErrorBody).error)
+        }
+        for (const answer of answers.slice(1)) expect(answer).toEqual(answers[0])
+        expect(
+          (await owner.financeTransaction.findUniqueOrThrow({ where: { id: target.id } }))
+            .documentMediaId
+        ).toBeNull()
+      })
+
+      it('refuses who may not attach, with nothing written', async () => {
+        const target = await registered(ctx.adminA, ctx.storeA, expense())
+        const mediaId = await receipt(target.id, { storeId: ctx.storeA.id })
+        const reader = await actorWithPermissions(owner, app, {
+          prefix,
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA2.id,
+          name: 'readerA2',
+          permissions: [Permissions.MEDIA_VIEW, Permissions.FINANCE_VIEW_JOURNAL]
+        })
+        const response = await attach(reader, ctx.storeA2, target.id, mediaId)
+        expect(response.status).toBe(FORBIDDEN)
+        expect(
+          (await owner.financeTransaction.findUniqueOrThrow({ where: { id: target.id } }))
+            .documentMediaId
+        ).toBeNull()
+      })
+    })
+
     it('does not attach to a transaction of another organization', async () => {
       const mine = await receipt(expenseA.id)
       const response = await attach(ctx.adminB, ctx.storeB, expenseA.id, mine)
