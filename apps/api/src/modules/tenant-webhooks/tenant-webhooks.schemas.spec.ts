@@ -1,4 +1,8 @@
-import { canonicalWebhookUrl, createWebhookSchema } from './tenant-webhooks.schemas'
+import {
+  canonicalWebhookUrl,
+  createWebhookSchema,
+  updateWebhookSchema
+} from './tenant-webhooks.schemas'
 
 const EVENTS = ['order.created']
 
@@ -11,6 +15,7 @@ describe('canonicalWebhookUrl', () => {
     ['https://Example.COM.:443/hook', 'https://example.com/hook'],
     ['https://example.com../hook', 'https://example.com/hook'],
     ['https://example.com.', 'https://example.com/'],
+    ['https://example.com.:8443/hook', 'https://example.com:8443/hook'],
     ['https://sub.example.com./a?b=1', 'https://sub.example.com/a?b=1']
   ])('writes %s as %s', (raw, expected) => {
     expect(canonicalWebhookUrl(raw)).toBe(expected)
@@ -29,5 +34,14 @@ describe('createWebhookSchema address', () => {
     const plain = createWebhookSchema.parse({ url: 'https://example.com/hook', events: EVENTS })
     const dotted = createWebhookSchema.parse({ url: 'https://example.com./hook', events: EVENTS })
     expect(dotted.url).toBe(plain.url)
+  })
+
+  it('reads the address of a change the same way', () => {
+    const changed = updateWebhookSchema.parse({ url: 'https://Example.com./hook' })
+    expect(changed.url).toBe('https://example.com/hook')
+  })
+
+  it.each(['https://./hook', 'https://../hook'])('refuses %s, a host made only of dots', raw => {
+    expect(createWebhookSchema.safeParse({ url: raw, events: EVENTS }).success).toBe(false)
   })
 })

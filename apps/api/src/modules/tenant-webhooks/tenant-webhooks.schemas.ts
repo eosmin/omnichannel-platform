@@ -32,6 +32,10 @@ const webhookUrl = z
   .refine(value => !isPlainHttpsUrl(value) || new URL(value).hash === '', {
     message: 'must not carry a fragment'
   })
+  // A host made only of dots names nothing: the final dots cannot be taken off it (`https://./` stays as it is)
+  .refine(value => !isPlainHttpsUrl(value) || new URL(value).hostname.replace(/\.+$/, '') !== '', {
+    message: 'must name a host'
+  })
   // The address as the URL standard writes it (host in lower case, no default port, a path): two spellings of one address
   // (and the host with no final dot) are one, for the rule that a store holds one webhook per address and set of events
   .transform(value => (isPlainHttpsUrl(value) ? canonicalWebhookUrl(value) : value))
