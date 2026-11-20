@@ -238,6 +238,13 @@ describe('RLS phase 6 (F6-3): the close of a month and the fiscal reconciliation
       }
     })
 
+    it('never lists the sales of another organization', async () => {
+      const foreign = await deliveredOrder(ctx.storeB.id)
+
+      expect(await found(both, ctx.storeA)).not.toContain(foreign.id)
+      expect(await found(both, ctx.storeA2)).not.toContain(foreign.id)
+    })
+
     it('lists only the stores a person reaches, whatever the header says', async () => {
       const fromA = await found(ctx.adminA, ctx.storeA)
       const fromA2 = await found(ctx.adminA2, ctx.storeA2)
