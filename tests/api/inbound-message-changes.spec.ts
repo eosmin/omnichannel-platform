@@ -1,9 +1,8 @@
 import type { INestApplication } from '@nestjs/common'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, DeliveryStatus, MessageType, ReactionActors } from '@platform/core/domain'
-import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import {
   ChannelConnectionResolver,
@@ -23,7 +22,8 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { TEST_IDENTITY_KINDS } from '../helpers/identity-kinds'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { createGuardedWorkerPrisma } from '../helpers/worker-db'
+import { workerServices } from '../helpers/worker-services'
 
 describe('Edits and deletions that a channel delivers', () => {
   const prefix = newRunPrefix()
@@ -36,14 +36,21 @@ describe('Edits and deletions that a channel delivers', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp([], onWorkerDatabase())
+    app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     app.get(PluginRegistry, { strict: false }).register(buildChannelPlugin())
-    const prisma = app.get(PrismaService, { strict: false })
-    const events = app.get(DomainEvents, { strict: false })
+    // As the worker has it: its own connection (no BYPASSRLS, a guard that refuses a query outside a context) and its own events.
+    // Nothing here opens a context: the service finds the store of the connection and opens it itself.
+    const prisma = createGuardedWorkerPrisma()
+    const { events } = await workerServices(app, prisma)
     changes = new InboundMessageChangesService(
       prisma,
-      new InboundMessageTargets(prisma, new ChannelConnectionResolver(prisma), TEST_IDENTITY_KINDS),
+      new InboundMessageTargets(
+        prisma,
+        new ChannelConnectionResolver(prisma),
+        TEST_IDENTITY_KINDS,
+        new JobContext(prisma)
+      ),
       events
     )
     jest.spyOn(events, 'publish').mockImplementation((_tx, event, payload) => {

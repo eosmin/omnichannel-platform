@@ -13,6 +13,7 @@ import {
   CurrentOrganization,
   CurrentPermissions,
   CurrentStore,
+  NoTenantTransaction,
   RequireAnyPermission,
   RequirePermissions,
   type ResolvedTenant
@@ -169,6 +170,9 @@ export class FinanceTransactionsController {
   // The signed links of the receipt: the journal's permission reads it, and the files are served only once clean
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
   @NoStore()
+  @NoTenantTransaction(
+    'the receipt is a file of ONE store of the organization, which may not be the store of the header: the service reads the transaction in the context of the organization, finds the store of the file and signs in the context of that store alone'
+  )
   @Get(ApiRoutes.finance.transactions.document(':id'))
   documentUrls(
     @CurrentOrganization() organization: Organization,
