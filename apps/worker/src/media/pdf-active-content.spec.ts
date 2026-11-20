@@ -55,12 +55,38 @@ describe('findActivePdfNames', () => {
     ).toEqual([])
   })
 
-  it('takes milliseconds for a file of 10 MB with no names, and for one made only of names', () => {
-    const quiet = Buffer.alloc(10 * 1024 * 1024, 0x20)
-    const names = Buffer.from('/a'.repeat(5 * 1024 * 1024))
-    const started = Date.now()
-    expect(findActivePdfNames(quiet)).toEqual([])
-    expect(findActivePdfNames(names)).toEqual([])
-    expect(Date.now() - started).toBeLessThan(3000)
+  // Linear, not quadratic: the time of a file eight times larger is about eight times the time, never sixty-four. An absolute limit in
+  // milliseconds flakes on a shared runner (3152 ms against 3000 once), so the cost is measured against the same function on a smaller
+  // file of the same kind, the best of three runs each, and the ratio is held to four times the linear one, and the large file has a loose absolute ceiling for a scan that is linear but uniformly slow.
+  describe('is linear in the size of the file', () => {
+    const SMALL = 1024 * 1024
+    const FACTOR = 8
+    const LINEAR_MARGIN = 4
+    const SLOWEST_LARGE_NS = 15_000_000_000
+    const bestOf = (bytes: Uint8Array): number => {
+      let best = Number.POSITIVE_INFINITY
+      for (let run = 0; run < 3; run += 1) {
+        const started = process.hrtime.bigint()
+        findActivePdfNames(bytes)
+        best = Math.min(best, Number(process.hrtime.bigint() - started))
+      }
+      return best
+    }
+
+    it.each([
+      ['no names at all', (size: number) => Buffer.alloc(size, 0x20)],
+      ['nothing but names', (size: number) => Buffer.from('/a'.repeat(size / 2))]
+    ])(
+      'for a file with %s',
+      (_name, make) => {
+        findActivePdfNames(make(SMALL)) // warm up the engine at the measured size before measuring
+        const small = bestOf(make(SMALL))
+        const large = bestOf(make(SMALL * FACTOR))
+        expect(findActivePdfNames(make(SMALL))).toEqual([])
+        expect(large / small).toBeLessThan(FACTOR * LINEAR_MARGIN)
+        expect(large).toBeLessThan(SLOWEST_LARGE_NS)
+      },
+      30_000
+    )
   })
 })
