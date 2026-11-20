@@ -20,6 +20,7 @@ import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { PLAN_SPEC_TABLES, quietTables } from '../helpers/quiet-tables'
 
 // The "done when" of Step 2.3: the list answers in under 300 ms (p95) over 10 000 conversations
 const ROWS = 10_000
@@ -143,16 +144,27 @@ describe('The list of conversations at the size of a real inbox', () => {
     for (let from = 0; from < messages.length; from += 10_000) {
       await owner.message.createMany({ data: messages.slice(from, from + 10_000) })
     }
-    // A real database has statistics; a table that was just filled has none until this runs
-    await owner.$executeRawUnsafe('ANALYZE conversations')
-    await owner.$executeRawUnsafe('ANALYZE messages')
+    // A real database has statistics; a table that was just filled has none until this runs. VACUUM ANALYZE, and not ANALYZE alone,
+    // leaves no work to the autovacuum (customers and customer_identities were never analyzed here): see helpers/quiet-tables.ts
+    await quietTables(owner, PLAN_SPEC_TABLES)
   }, 120_000)
 
   afterAll(async () => {
-    await cleanUp(owner, prefix)
-    await app.close()
-    await owner.$disconnect()
-  }, 120_000)
+    try {
+      await cleanUp(owner, prefix)
+    } finally {
+      await app.close()
+      await owner.$disconnect()
+      // cleanUp deleted the thousands of rows of the seed: their dead tuples are what wakes the autovacuum when the next spec starts.
+      // Vacuumed on a fresh client after the app and the pool are closed, so that no connection still holds counters of the deletes
+      const tidy = ownerClient()
+      try {
+        await quietTables(tidy, PLAN_SPEC_TABLES)
+      } finally {
+        await tidy.$disconnect()
+      }
+    }
+  }, 180_000)
 
   async function measure(request: () => Promise<{ status: number }>): Promise<number[]> {
     await request() // The first call warms the connection and the plan
