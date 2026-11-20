@@ -140,6 +140,76 @@ describe('bankProfileProblem', () => {
 })
 
 describe('parseBankStatement', () => {
+  // PUR-003: String.trim() takes U+FEFF as a blank, so a cell that began with one was read as a clean amount or date
+  describe('a byte order mark inside a cell', () => {
+    const BOM = String.fromCharCode(0xfeff)
+
+    it('is not an amount, in the cell of an amount', () => {
+      expect(
+        parseBankAmountCents(`${BOM}100.00`, '.', BankThousandsSeparators.NONE, false)
+      ).toBeNull()
+      expect(
+        parseBankAmountCents(`100.00${BOM}`, '.', BankThousandsSeparators.NONE, false)
+      ).toBeNull()
+    })
+
+    it('refuses the amount and the date of a row, with the code of each, and the file with them', () => {
+      const parsed = parseBankStatement(
+        `Date,Description,Ref,Amount\n2026-11-02,Deposit,R-1,${BOM}100.00\n${BOM}2026-11-03,Fee,,-1.50\n`,
+        signed
+      )
+      expect(parsed.errors.map(error => [error.row, error.field, error.code])).toEqual([
+        [2, 'amount', BankStatementErrors.INVALID_AMOUNT],
+        [3, 'date', BankStatementErrors.INVALID_DATE]
+      ])
+      expect(parsed.errorCount).toBe(2)
+    })
+
+    it('is refused in the debit and credit cells, alone or around a dash, and when it is all a date or an amount cell holds', () => {
+      const parsed = parseBankStatement(
+        [
+          'Date,Description,Ref,Debit,Credit',
+          `2026-11-02,A,,${BOM},50.00`,
+          `2026-11-02,B,,${BOM}-,50.00`,
+          `${BOM},C,,5.00,`
+        ].join('\n'),
+        split
+      )
+      expect(parsed.errors.map(error => [error.row, error.field, error.code])).toEqual([
+        [2, 'debit', BankStatementErrors.INVALID_AMOUNT],
+        [3, 'debit', BankStatementErrors.INVALID_AMOUNT],
+        [4, 'date', BankStatementErrors.INVALID_DATE]
+      ])
+      expect(parsed.lines).toEqual([])
+    })
+
+    it('is refused when a file opens with it and skips its first rows, in the rows that are read', () => {
+      const parsed = parseBankStatement(
+        `${BOM}Report of the bank\nDate,Description,Ref,Amount\n2026-11-02,Deposit,R-1,100.00\n2026-11-03,Fee,,${BOM}-1.50\n`,
+        { ...signed, skipRows: 1 }
+      )
+      expect(parsed.errors.map(error => [error.row, error.field, error.code])).toEqual([
+        [4, 'amount', BankStatementErrors.INVALID_AMOUNT]
+      ])
+    })
+
+    it('does not touch the one that opens the file (the mark of a UTF-8 file)', () => {
+      const parsed = parseBankStatement(
+        `${BOM}Date,Description,Ref,Amount\n2026-11-02,Deposit,R-1,100.00\n`,
+        signed
+      )
+      expect(parsed.errorCount).toBe(0)
+      expect(parsed.lines).toHaveLength(1)
+      const headerless = parseBankStatement(`${BOM}2026-11-02,Deposit,R-1,100.00\n`, {
+        ...signed,
+        hasHeader: false,
+        columns: { date: 0, description: 1, reference: 2, amount: 3 }
+      })
+      expect(headerless.errorCount).toBe(0)
+      expect(headerless.lines).toHaveLength(1)
+    })
+  })
+
   it('reads a signed column: money in positive, money out negative', () => {
     const parsed = parseBankStatement(
       'Date,Description,Ref,Amount\n2026-11-02,Deposit,R-1,100.00\n2026-11-03,Fee,,-1.50\n',

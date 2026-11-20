@@ -241,6 +241,9 @@ function amountPattern(
   return pattern
 }
 
+// U+FEFF opens a UTF-8 file, once: inside a cell it is a fault of the file, not a character of the data
+const BYTE_ORDER_MARK = String.fromCharCode(0xfeff)
+
 // An amount as a bank prints it, to whole cents: an optional sign (only when `allowSign`), digits with the thousands separator of the
 // profile, at most one decimal separator and at most two decimals. No currency symbol, no exponent, no parentheses, no spaces
 // inside (unless the separator is a space): "abc" is never 0 and "1,234.50" is never 1.23. Returns signed cents, or null.
@@ -250,6 +253,8 @@ export function parseBankAmountCents(
   thousands: BankThousandsSeparator,
   allowSign: boolean
 ): number | null {
+  // trim() takes a byte order mark for a blank, so a cell that held one would be read as clean (PUR-003)
+  if (cell.includes(BYTE_ORDER_MARK)) return null
   const match = amountPattern(decimal, thousands).exec(cell.trim())
   if (match === null) return null
   const sign = match[1]
@@ -299,7 +304,12 @@ export function parseBankStatement(
     openLine,
     strayRows,
     truncated
-  } = splitDelimited(text, profile.delimiter, BankStatementLimits.MAX_ROWS * 2 + 10)
+  } = splitDelimited(
+    // The mark that opens a UTF-8 file is the file's, not the first cell's
+    text.startsWith(BYTE_ORDER_MARK) ? text.slice(1) : text,
+    profile.delimiter,
+    BankStatementLimits.MAX_ROWS * 2 + 10
+  )
   if (truncated) {
     fail(openLine, null, BankStatementErrors.TOO_MANY_ROWS, null)
     return { ...empty, errorCount }
@@ -457,6 +467,15 @@ export function parseBankStatement(
         fail(row, field, BankStatementErrors.MISSING_CELL, null)
         return null
       }
+      // Before the blank test: trim() takes the mark for a blank, and a cell with one is not empty, it is wrong (PUR-003)
+      if (value.includes(BYTE_ORDER_MARK)) {
+        const code =
+          field === BankStatementFields.DATE
+            ? BankStatementErrors.INVALID_DATE
+            : BankStatementErrors.INVALID_AMOUNT
+        fail(row, field, code, shown(value))
+        return null
+      }
       if (value.trim() === '') {
         fail(row, field, BankStatementErrors.EMPTY_VALUE, null)
         return null
@@ -506,6 +525,11 @@ export function parseBankStatement(
           [BankStatementFields.CREDIT, cell(BankStatementFields.CREDIT), 1]
         ] as const
       ).map(([field, value, sign]) => {
+        // A mark in the cell is a fault even when what is left of it looks like nothing: trim() would take it for a blank (PUR-003)
+        if (value?.includes(BYTE_ORDER_MARK) === true) {
+          fail(row, field, BankStatementErrors.INVALID_AMOUNT, shown(value))
+          return { field, filled: true, cents: null, sign }
+        }
         // A bank that prints a dash in the column that does not apply says nothing there, like an empty cell (HC-125)
         const text = value?.trim() ?? ''
         if (value === undefined || text === '' || NOTHING_MARKS.has(text))
