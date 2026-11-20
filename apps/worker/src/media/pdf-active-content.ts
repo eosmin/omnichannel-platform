@@ -1,8 +1,8 @@
 import { PdfInspection } from '@platform/core/storage'
 
-// A PDF name: a slash and the regular characters after it, up to a space or a delimiter. `/JSON` is the name JSON,
+// A PDF name: a slash and the regular characters after it, up to a space (NUL is one) or a delimiter. `/JSON` is the name JSON,
 // never the name JS. One pass over the text, no backtracking.
-const NAME = /\/([^\s/[\]<>(){}%]+)/g
+const NAME = /\/([^\s\0/[\]<>(){}%]+)/g
 const HEX_ESCAPE = /#([0-9A-Fa-f]{2})/g
 const ACTIVE = new Set<string>(PdfInspection.ACTIVE_NAMES)
 

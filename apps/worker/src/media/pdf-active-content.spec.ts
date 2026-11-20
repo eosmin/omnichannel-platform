@@ -33,6 +33,13 @@ describe('findActivePdfNames', () => {
     expect(findActivePdfNames(pdf('1 0 obj << /#4A#53 (x) >> endobj'))).toEqual(['JS'])
   })
 
+  it('ends a name at a NUL, which is white space in a PDF', () => {
+    expect(findActivePdfNames(pdf('1 0 obj << /JS\u0000(code) >> endobj'))).toEqual(['JS'])
+    expect(findActivePdfNames(pdf('1 0 obj << /JavaScript\u0000 2 0 R >> endobj'))).toEqual([
+      'JavaScript'
+    ])
+  })
+
   it('does not take a longer name for a forbidden one', () => {
     expect(
       findActivePdfNames(pdf('1 0 obj << /JSON 1 /JavaScripts 2 /LaunchX 3 >> endobj'))
