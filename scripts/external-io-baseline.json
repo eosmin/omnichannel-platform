@@ -2,7 +2,6 @@
   "apps/api/src/modules/auth/account.controller.ts#AccountController.profile",
   "apps/api/src/modules/auth/account.controller.ts#AccountController.updateProfile",
   "apps/api/src/modules/carriers/carrier-connections.controller.ts#CarrierConnectionsController.test",
-  "apps/api/src/modules/channels/channel-connections.controller.ts#ChannelConnectionsController.connect",
   "apps/api/src/modules/channels/channel-connections.controller.ts#ChannelConnectionsController.test",
   "apps/api/src/modules/channels/channel-connections.controller.ts#ChannelConnectionsController.updateToken",
   "apps/api/src/modules/channels/channel-templates.controller.ts#ChannelTemplatesController.list",
