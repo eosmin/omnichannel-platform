@@ -13,7 +13,8 @@ import {
   CurrentStore,
   RequireAnyPermission,
   RequirePermissions,
-  type ResolvedTenant
+  type ResolvedTenant,
+  TenantOfOrganizationStores
 } from '../tenancy'
 
 import { CountsApplyService } from './counts-apply.service'
@@ -42,6 +43,9 @@ const id = () => new ZodValidationPipe(idSchema)
 // holds in that store, and the organization is the one TenantGuard resolved from it, never one from the request.
 // Counting is inventory:manage_counts; applying a count is inventory:apply_counts, which the approver holds without the
 // other, so the readings and the way back to counting accept either.
+@TenantOfOrganizationStores(
+  'a count carries lines of several stores of the organization and applying it moves the stock of all of them: the context holds every store of the organization, and the service decides which stores the caller may apply'
+)
 @Controller()
 export class CountsController {
   constructor(

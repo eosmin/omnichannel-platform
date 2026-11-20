@@ -11,6 +11,7 @@ export const PERMISSIONS_KEY = 'requiredPermissions'
 export const ANY_PERMISSION_KEY = 'requiredAnyPermission'
 export const MEMBER_ONLY_KEY = 'memberOnly'
 export const NO_TENANT_TRANSACTION_KEY = 'noTenantTransaction'
+export const TENANT_ORGANIZATION_STORES_KEY = 'tenantOrganizationStores'
 
 // For the routes that belong to a person and not to a store (the session, the account): they need a
 // logged-in user but no X-Store-Id. Both tenancy guards are global and refuse everything else, so
@@ -44,6 +45,17 @@ export const MemberOfStore = (): MethodDecorator & ClassDecorator =>
 export const NoTenantTransaction = (reason: string): MethodDecorator & ClassDecorator => {
   if (reason.trim() === '') throw new Error('NoTenantTransaction needs a reason')
   return SetMetadata(NO_TENANT_TRANSACTION_KEY, reason)
+}
+
+// For a route of a resource that belongs to the ORGANIZATION and carries rows of several of its stores (a transfer and a count between
+// stores, TDD_16 §1): the context of the request holds every store of the organization TenantGuard resolved, not only the store of the
+// header. Without it the lines of the other stores are invisible to the database, "the caller sees every line" is decided on what is
+// left, and a dispatch or an apply goes through for one store and skips the others. The organization comes from the guard, never from the
+// request; who may see or move the lines of each store stays decided by the service (the permissions of the caller in EACH store),
+// exactly as with the switch off. The reason is required and written in the code.
+export const TenantOfOrganizationStores = (reason: string): MethodDecorator & ClassDecorator => {
+  if (reason.trim() === '') throw new Error('TenantOfOrganizationStores needs a reason')
+  return SetMetadata(TENANT_ORGANIZATION_STORES_KEY, reason)
 }
 
 function tenantRequest(context: ExecutionContext): AuthenticatedRequest {
