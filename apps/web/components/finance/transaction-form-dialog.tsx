@@ -224,7 +224,9 @@ function TransactionForm({
         } catch (error) {
           // A refusal of the file itself says why; any other failure keeps the line that sends the person to the transaction
           toast.error(
-            receiptRefusalOf(error) === null ? t('form.receiptNotSaved') : receiptErrorText(error)
+            receiptRefusalOf(error) === null
+              ? t('form.receiptNotSaved')
+              : `${t('form.receiptNotSaved')} ${receiptErrorText(error)}`
           )
         }
       }

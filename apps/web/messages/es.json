@@ -6486,7 +6486,7 @@
           "transaction_document_refused": "Este PDF se rechazó porque contiene elementos que se ejecutan al abrirlo. Se conserva sin abrir y no se puede adjuntar. Adjunta otro archivo.",
           "transaction_document_not_clean": "El archivo todavía se está revisando. Espera un momento y vuelve a adjuntarlo.",
           "transaction_document_already_set": "Este movimiento ya tiene comprobante y no se puede reemplazar. Anula el movimiento y regístralo de nuevo para usar otro archivo.",
-          "file_unscannable": "No se aceptó el archivo: no se pudo revisar o contiene elementos que se ejecutan al abrirlo. Se conserva sin abrir y no se puede adjuntar. Adjunta otro archivo."
+          "file_unscannable": "No se pudo revisar el archivo, así que no se aceptó. Se conserva sin abrir. Inténtalo de nuevo o adjunta otro archivo."
         }
       }
     },

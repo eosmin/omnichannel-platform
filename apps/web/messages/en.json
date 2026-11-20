@@ -6486,7 +6486,7 @@
           "transaction_document_refused": "This PDF was refused because it carries content that runs when it is opened. It is kept, unopened, and cannot be attached. Attach another file.",
           "transaction_document_not_clean": "The file is still being checked. Wait a moment and attach it again.",
           "transaction_document_already_set": "This transaction already has a receipt, and it cannot be replaced. Void the transaction and register it again to use another file.",
-          "file_unscannable": "The file was not accepted: it could not be checked, or it carries content that runs when it is opened. It is kept, unopened, and cannot be attached. Attach another file."
+          "file_unscannable": "The file could not be checked, so it was not accepted. It is kept, unopened. Try again, or attach another file."
         }
       }
     },
