@@ -195,9 +195,10 @@ describe('roleViolations: the bypass of the worker', () => {
       { name: 'c', sql: 'ALTER USER IF EXISTS platform_worker WITH NOBYPASSRLS;' },
       { name: 'd', sql: 'CREATE ROLE platform_worker NOLOGIN BYPASSRLS;' },
       { name: 'e', sql: 'ALTER ROLE platform_worker IN DATABASE x SET lock_timeout = 5000;' },
-      { name: 'f', sql: '-- ALTER ROLE platform_worker NOBYPASSRLS;' }
+      { name: 'f', sql: '-- ALTER ROLE platform_worker NOBYPASSRLS;' },
+      { name: 'g', sql: 'SELECT 1;\nALTER ROLE platform_worker NOBYPASSRLS' }
     ])
-    expect(problems.map(p => p.split(':')[0])).toEqual(['a', 'b', 'c'])
+    expect(problems.map(p => p.split(':')[0])).toEqual(['a', 'b', 'c', 'g'])
     expect(problems[0]).toContain('pnpm db:rls:worker-role')
   })
 })

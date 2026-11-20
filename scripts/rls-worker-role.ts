@@ -20,6 +20,9 @@ import {
 // as the api. Run by the OWNER of the database, over DIRECT_DATABASE_URL, in the order of docs/RLS_ACTIVATION_RUNBOOK.md. It is not a
 // migration on purpose: a migration would run in the deploy and change what the worker sees in production without the owner.
 // PostgreSQL lets only a superuser change BYPASSRLS: with an owner that is not one, the statement is refused and nothing changes.
+// A ROLE BELONGS TO THE WHOLE SERVER, not to one database: the change reaches every database of the cluster that the role connects to
+// (the production one and any other beside it). --confirm names the database the command is connected to; the list of databases it
+// prints before changing anything is what the change reaches.
 //
 //   pnpm db:rls:worker-role status                         what the role is right now (default; it never changes anything)
 //   pnpm db:rls:worker-role nobypass --confirm=<database>  ALTER ROLE platform_worker NOBYPASSRLS
@@ -31,7 +34,7 @@ import {
 //
 // Idempotent. Stop the workers before `nobypass` and start them with WORKER_RLS_CONTEXT=true after it: a job with no context reads no
 // row once the role is bound. The way back is the inverse: flag off and restart first, `bypass` after, or the worker will not start.
-const requested = argv[2] ?? 'status'
+const requested = argv.slice(2).find(arg => !arg.startsWith('--')) ?? 'status'
 const mode: WorkerRoleMode | undefined = WORKER_ROLE_MODES.find(
   candidate => candidate === requested
 )
@@ -85,10 +88,11 @@ async function run(selected: WorkerRoleMode): Promise<void> {
           await client.query(statement)
           console.log(`${selected}: ${statement}`)
         } catch (error) {
+          const code = (error as { code?: string }).code
           console.error(
-            `${statement} was refused (only a superuser may change BYPASSRLS): ${
-              error instanceof Error ? error.message : String(error)
-            }. Nothing changed.`
+            `${statement} failed${code === undefined ? '' : ` (SQLSTATE ${code})`}${
+              code === '42501' ? ': only a superuser may change BYPASSRLS' : ''
+            }: ${error instanceof Error ? error.message : String(error)}. Nothing changed.`
           )
           process.exitCode = 1
           return
