@@ -85,8 +85,17 @@ const REFUSAL_STATUS: Partial<Record<ErrorCode, number>> = {
   [ErrorCodes.SHIPPING_SERVICE_INVALID]: HttpStatusCodes.BAD_REQUEST
 }
 
-export function shippingRefusal(code: ErrorCode, message: string): PlatformException {
-  return new PlatformException(code, message, REFUSAL_STATUS[code] ?? HttpStatusCodes.BAD_REQUEST)
+export function shippingRefusal(
+  code: ErrorCode,
+  message: string,
+  metadata?: Record<string, unknown>
+): PlatformException {
+  return new PlatformException(
+    code,
+    message,
+    REFUSAL_STATUS[code] ?? HttpStatusCodes.BAD_REQUEST,
+    metadata
+  )
 }
 
 // The pieces the `local` label is drawn from, already localized except for the words (the service adds those)
@@ -414,10 +423,9 @@ export async function prepareGuide(
   if (orphansVoiding.length > 0) {
     // The way out is in the code, not in the words: the screen says it (retry the cancellation of the guide, or mark it voided
     // when the carrier did cancel it) from the ids and the statuses
-    throw new PlatformException(
+    throw shippingRefusal(
       ErrorCodes.SHIPPING_ORIGIN_VOID_PENDING,
-      'a guide of a warehouse that no longer has lines of the order is still being voided: retry its cancellation or mark it voided, then create this one',
-      HttpStatusCodes.CONFLICT,
+      'a guide of a warehouse that no longer has lines of the order is still being voided: wait for it, or when it failed retry its cancellation or mark it voided, then create this one',
       {
         shipmentIds: orphansVoiding.map(entry => entry.id),
         statuses: orphansVoiding.map(entry => entry.status)
