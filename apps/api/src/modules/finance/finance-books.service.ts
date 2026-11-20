@@ -695,12 +695,18 @@ export class FinanceBooksService {
     const entries = await this.prisma.client.$queryRaw<SaleEntryRow[]>`
       SELECT e.number, e.entry_date, e.idempotency_key, o.id AS order_id, o.order_number,
              d.provider_id, d.document_type, d.external_number, d.sequence_number,
-             (d.voided_at IS NOT NULL AND d.voided_at < m.next_month) AS voided
+             (d.voided_at IS NOT NULL AND d.voided_at < m.month_end_utc) AS voided
       FROM journal_entries e
       JOIN orders o ON o.id = e.source_id
       JOIN stores s ON s.id = o.store_id AND s.organization_id = e.organization_id
+      -- The entry is dated by the day of the store, so the end of its month is the end of the month of the store: a document made the
+      -- last evening of the month west of UTC is stamped in the next month by the clock of the server (HC-106). The columns of the
+      -- documents hold UTC, so the end of the month is told in UTC too; a zone the database does not know reads as UTC, as the entry does
       CROSS JOIN LATERAL (
-        SELECT (date_trunc('month', e.entry_date::timestamp) + interval '1 month') AS next_month
+        SELECT (date_trunc('month', e.entry_date::timestamp) + interval '1 month') AS next_month,
+               (((date_trunc('month', e.entry_date::timestamp) + interval '1 month')
+                 AT TIME ZONE COALESCE((SELECT z.name FROM pg_timezone_names z WHERE z.name = s.timezone), 'UTC'))
+                 AT TIME ZONE 'UTC') AS month_end_utc
       ) m
       -- One document stands for the sale: a document of the sale (never the credit note of a return, which is not the sale's document),
       -- the one still alive at the end of the month, else the newest. A voided document that was replaced does not make the sale a
@@ -710,8 +716,8 @@ export class FinanceBooksService {
         FROM fiscal_documents f
         WHERE f.organization_id = e.organization_id AND f.order_id = o.id
           AND f.kind = ${FiscalDocumentKind.SALE}
-          AND f.issued_at IS NOT NULL AND f.issued_at < m.next_month
-        ORDER BY (f.voided_at IS NOT NULL AND f.voided_at < m.next_month) ASC,
+          AND f.issued_at IS NOT NULL AND f.issued_at < m.month_end_utc
+        ORDER BY (f.voided_at IS NOT NULL AND f.voided_at < m.month_end_utc) ASC,
                  f.issued_at DESC, f.created_at DESC, f.id DESC
         LIMIT 1
       ) d ON TRUE
