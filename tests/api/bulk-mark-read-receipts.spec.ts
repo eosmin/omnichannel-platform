@@ -68,8 +68,8 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
     })
     // Each lookup asks the database once (the unit specs of both classes pin that): counting the calls is counting the queries
     for (const [target, method] of [
-      [app.get(ReadReceipts), 'latestToMarkMany'],
-      [app.get(WidgetReadNotifier), 'targets']
+      [ReadReceipts.prototype, 'latestToMarkMany'],
+      [WidgetReadNotifier.prototype, 'targets']
     ] as const) {
       const original = (target as unknown as Record<string, (...a: unknown[]) => unknown>)[method]
       jest
@@ -79,12 +79,14 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
           return original?.apply(this, args)
         })
     }
-    jest.spyOn(app.get(OutboundQueue), 'enqueueReadReceipt').mockImplementation(job => {
+    // The prototype: OutboundQueue is provided by several modules, so there are several instances and the one ReadReceipts injects is not
+    // the one app.get() returns
+    jest.spyOn(OutboundQueue.prototype, 'enqueueReadReceipt').mockImplementation(job => {
       enqueued.push(job)
       return Promise.resolve()
     })
     jest
-      .spyOn(app.get(WidgetDelivery), 'readToVisitor')
+      .spyOn(WidgetDelivery.prototype, 'readToVisitor')
       .mockImplementation((connectionId, channelIdentity, messageId) => {
         emitted.push({ connectionId, channelIdentity, messageId })
       })
@@ -278,8 +280,8 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
   }, 120_000)
 
   it('never asks one conversation at a time', async () => {
-    const queueFor = jest.spyOn(app.get(ReadReceipts), 'queueFor')
-    const notify = jest.spyOn(app.get(WidgetReadNotifier), 'notify')
+    const queueFor = jest.spyOn(ReadReceipts.prototype, 'queueFor')
+    const notify = jest.spyOn(WidgetReadNotifier.prototype, 'notify')
     const rows = await seed(1)
     await bulk(
       rows.map(row => row.id),
