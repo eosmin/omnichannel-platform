@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
+import { FinanceSweepLimits } from '@platform/core/domain'
 
 import { FinanceSweepService, type SweepOptions } from './finance-sweep.service'
 
@@ -27,7 +28,8 @@ export interface CloseBlockers {
 export class FinanceCloseGuard {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly sweep: FinanceSweepService
+    private readonly sweep: FinanceSweepService,
+    private readonly jobContext: JobContext
   ) {}
 
   // `since` is the earliest date to look at: the sweep reaches back 120 days by itself, so the close of an older period names the
@@ -37,19 +39,30 @@ export class FinanceCloseGuard {
     organizationId: string,
     options: Pick<SweepOptions, 'since'> = {}
   ): Promise<CloseBlockers> {
-    const grouped = await this.prisma.client.financePostingFailure.groupBy({
-      by: ['reason'],
-      where: { organizationId, resolvedAt: null },
-      _count: { _all: true }
-    })
+    // The route of the close is @NoTenantTransaction: the reads of the books are one short unit of the organization (strict, so a context
+    // that holds the store of a request alone is refused), and the sweep below opens its own, one per page of a table
+    const { grouped, incidents } = await this.jobContext.inOrganization(
+      organizationId,
+      async () => ({
+        grouped: await this.prisma.client.financePostingFailure.groupBy({
+          by: ['reason'],
+          where: { organizationId, resolvedAt: null },
+          _count: { _all: true }
+        }),
+        incidents: await this.prisma.client.financeChainIncident.count({
+          where: { organizationId, resolvedAt: null }
+        })
+      }),
+      {
+        maxWait: FinanceSweepLimits.CONTEXT_MAX_WAIT_MS,
+        timeout: FinanceSweepLimits.CONTEXT_TIMEOUT_MS
+      }
+    )
     const failures = grouped
       .map(row => ({ reason: row.reason, count: row._count._all }))
       .sort((a, b) => a.reason.localeCompare(b.reason))
     const failureCount = failures.reduce((sum, row) => sum + row.count, 0)
-    const chainBroken =
-      (await this.prisma.client.financeChainIncident.count({
-        where: { organizationId, resolvedAt: null }
-      })) > 0
+    const chainBroken = incidents > 0
     // An altered chain refuses the close whatever else is pending, so the sweep (one preview transaction per source with no entry) is not paid
     if (chainBroken) {
       return {

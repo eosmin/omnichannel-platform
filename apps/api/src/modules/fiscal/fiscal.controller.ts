@@ -171,6 +171,9 @@ export class FiscalController {
   // entry. It reads only, by the organization of the store, and shows ids and statuses, never the receiver's data.
   @RequirePermissions(Permissions.FISCAL_VIEW)
   @NoStore()
+  @NoTenantTransaction(
+    'reads the sales and returns of every store the person reaches: the service opens the context of the organization itself, because the one of the request holds the store of the header alone'
+  )
   @Get(ApiRoutes.fiscal.reconciliation)
   async reconciliation(
     @CurrentOrganization() organization: Organization,
@@ -180,7 +183,7 @@ export class FiscalController {
     return this.sweep.find(organization.id, query.kind, {
       cursor: query.cursor,
       limit: query.limit,
-      storeIds: await this.reach.stores(organization.id, user.id, Permissions.FISCAL_VIEW)
+      storeIds: await this.reach.storesInUnit(organization.id, user.id, Permissions.FISCAL_VIEW)
     })
   }
 
