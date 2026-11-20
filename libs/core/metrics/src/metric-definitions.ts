@@ -92,6 +92,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'What the last daily check of the fiscal documents left, by kind: sales with no document or credit notes the lifecycle could not make, documents left in the queue and documents that disagree with their entry',
     labels: ['organization_id', 'kind']
   },
+  [MetricNames.WORKER_ROLE_BYPASSES_RLS]: {
+    kind: 'gauge',
+    help: 'One when the database role the worker connects with can skip row-level security, zero when it cannot: with WORKER_RLS_CONTEXT on, one stops the worker from starting',
+    labels: []
+  },
   [MetricNames.STORAGE_BUCKET_PROTECTION_GAP]: {
     kind: 'gauge',
     help: 'One for each protection (encryption at rest, versioning) the bucket does not show as on when the api starts, zero when it does: any non-zero value in a deployed environment is a configuration to fix',
