@@ -24,7 +24,11 @@ describe('no write inside inStoreContext', () => {
       'x.inStoreContext(s, async () => { await p.client.order.update({}) })',
       '1:update('
     ],
-    ['a deleteMany', 'x.inStoreContext(s, () => p.client.note.deleteMany({}))', '1:deleteMany('],
+    [
+      'a deleteMany',
+      'x.inStoreContext(s, () => p.client.note.deleteMany({ where: { id } }))',
+      '1:deleteMany('
+    ],
     ['an upsert', 'x.inStoreContext(s, () => p.client.note.upsert({}))', '1:upsert('],
     ['a createMany', 'x.inStoreContext(s, () => p.client.note.createMany({}))', '1:createMany('],
     ['an updateMany', 'x.inStoreContext(s, () => p.client.note.updateMany({}))', '1:updateMany('],
