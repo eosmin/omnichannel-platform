@@ -223,7 +223,8 @@ export interface FiscalVoidInput {
 }
 
 // The check of the reach of the person (HC-128) that the caller hands to the routes of a person. The service runs it INSIDE the unit that
-// writes (or reads what a write is decided from), so that a permission taken away between two units is seen by the unit that writes.
+// writes (or reads what a write is decided from). A void checks it before the authority is asked and in the unit that takes the claim; the
+// last unit (VOIDED) is deliberately not checked again: the authority has invalidated the document already and the write must record it.
 // It throws the not-found answer of a document out of reach.
 export type FiscalReachGuard = () => Promise<void>
 

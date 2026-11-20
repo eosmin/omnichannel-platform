@@ -108,6 +108,23 @@ export class FiscalController {
     return () => this.mayManage(organizationId, userId, ids)
   }
 
+  // The document is committed before it is queued (the route is not one transaction): a queue that blinked does not fail the request, which
+  // a repeat would refuse. The document stays QUEUED and the fiscal sweep queues it again; a person can also retry it from its route.
+  private async enqueueAfterCommit(
+    organizationId: string,
+    documentId: string,
+    submission: number
+  ): Promise<void> {
+    try {
+      await this.queue.enqueue(organizationId, documentId, submission)
+    } catch (error) {
+      this.logger.error(
+        { err: errorName(error), documentId },
+        'a fiscal document was committed and could not be queued'
+      )
+    }
+  }
+
   @RequirePermissions(Permissions.FISCAL_VIEW)
   @NoStore()
   @Get(ApiRoutes.fiscal.providers)
@@ -262,7 +279,7 @@ export class FiscalController {
       actorOf(user, store, req),
       this.manageGuard(organization.id, user.id, [documentId])
     )
-    await this.queue.enqueue(organization.id, documentId, retried.submission)
+    await this.enqueueAfterCommit(organization.id, documentId, retried.submission)
     return { data: { queued: true } }
   }
 
@@ -291,7 +308,7 @@ export class FiscalController {
       actorOf(user, store, req),
       this.manageGuard(organization.id, user.id, [documentId])
     )
-    await this.queue.enqueue(organization.id, documentId, confirmed.submission)
+    await this.enqueueAfterCommit(organization.id, documentId, confirmed.submission)
     return { data: { queued: true } }
   }
 
