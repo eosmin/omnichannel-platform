@@ -290,11 +290,11 @@ export class ConversationBulkService {
         return
       case BulkActions.MARK_READ:
         await this.conversations.markRead(storeId, conversationId, viewer)
-        // A plugin reads without telling the customer that a person saw it (as its route of one conversation); not awaited, as the
-        // route of one conversation does: queueFor logs its own failures
+        // A plugin reads without telling the customer that a person saw it (as its route of one conversation); both
+        // read in the context of this request, so they are awaited, as the route does, and log their own failures
         if (!viewer.userId.startsWith(PLUGIN_ACTOR_PREFIX)) {
-          void this.readReceipts.queueFor(storeId, conversationId)
-          void this.widgetRead.notify(storeId, conversationId)
+          await this.readReceipts.queueFor(storeId, conversationId)
+          await this.widgetRead.notify(storeId, conversationId)
         }
         return
       case BulkActions.MARK_UNREAD:
