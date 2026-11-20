@@ -9,7 +9,7 @@ This is run by the OWNER, never by a session or by the CI. It turns on, in this 
 
 ## Preconditions
 
-- Phase 5 (the worker loses `BYPASSRLS`), F6-3, F6-4 and F6-5 of the plan are merged, and so is E (the worker switch).
+- Phase 5, F6-3, F6-4 and F6-5 of the plan are merged, and so is E-2 (the owner script `pnpm db:rls:worker-role`). No migration changes the role of the worker: only step 3b does, by hand.
 - `rls-enforced-tests` is green on `main` and is a required check of the ruleset of `main` (the owner adds it, after a green run on
   GitHub: Settings, Rules, the ruleset of `main`, Require status checks, `rls-enforced-tests`).
 - A backup of the database taken and restored once somewhere else. A window with someone watching the logs.
@@ -24,34 +24,60 @@ This is run by the OWNER, never by a session or by the CI. It turns on, in this 
   1. Deploy the api first (it already sends `storeId`) with `RLS_CONTEXT=false`.
   2. Stop the old workers and let `heavy-processing`, `exports` and the scheduled reports drain (or accept that the orphan cleaner
      requeues the pending files, which now carry their owner).
-  3. Run `pnpm db:migrate`, with `DB_REPLICA_PASSWORD` set in its environment. The migration creates `platform_replica_ro` (NOLOGIN) and
-     brings `NOBYPASSRLS` for the worker; `db:migrate` then runs `scripts/set-db-role-passwords.ts`, which gives the role its login.
+  3. Run `pnpm db:migrate`, with `DB_REPLICA_PASSWORD` set in its environment. The migration creates `platform_replica_ro` (NOLOGIN); it
+     does NOT touch `BYPASSRLS` of the worker (that is step 3b); `db:migrate` then runs `scripts/set-db-role-passwords.ts`, which gives the role its login.
   4. Only now set `DATABASE_REPLICA_URL` to `platform_replica_ro` if the api reads a replica (before the migration the role does not
      exist, and an api whose url names a role that cannot log in does not start).
   5. Start the new workers with `WORKER_RLS_CONTEXT=false`, and restart the api.
 - Check: `/health` answers. `SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname IN ('platform_app','platform_worker','platform_replica_ro')`
-  gives `false` for the three. The worker log has no start error (with the flag off it only warns).
+  gives `false` for `platform_app` and `platform_replica_ro`, and `true` for `platform_worker` (it keeps the bypass until step 3b). The
+  worker log has no start error (with the flag off it only warns).
 - Back: revert the deploy; the rollback of `20270121850000` recreates the `rls_store_of_*` functions, but the old jobs that already failed are
-  lost. If the worker cannot work, `ALTER ROLE platform_worker BYPASSRLS` and restart the workers.
+  lost. If the worker cannot work, see the way back of step 3b.
 
 ## 2. Staging or a copy with synthetic data
 
-- Do: `RLS_CONTEXT=true`, `WORKER_RLS_CONTEXT=true`, then `pnpm db:rls:enforce on`.
+- Do: `RLS_CONTEXT=true`, then step 3b (the worker role and `WORKER_RLS_CONTEXT=true`), then `pnpm db:rls:enforce on`.
 - Check by hand: login, the inbox, a 4xx after a write (the write must not be lost where it matters), an upload and a download, an
   export (a large one: watch the pool), a route with outside I/O (a shipment with a carrier, a channel), the widget, the sockets, and
   one manual run of each family of crons. `pnpm db:rls:enforce status` shows every table with a policy as enabled and forced. Zero
   `RLS_CONTEXT_REQUIRED` and zero `42501` in the logs that you did not expect; watch one whole cycle of the crons.
-- Back: `pnpm db:rls:enforce off`, both flags to `false`.
+- Back: `pnpm db:rls:enforce off`, then the way back of step 3b, and `RLS_CONTEXT=false`.
 
 ## 3. Production, the flags first
 
-- Do: `RLS_CONTEXT=true` on the api and `WORKER_RLS_CONTEXT=true` on the workers; restart. The policies are still off, so the loud
-  guard shows every access without a context and the policies cannot hide a row. It is still a change of behavior: a request that
+- Do: `RLS_CONTEXT=true` on the api; restart. The worker flag waits for step 3b, because the worker refuses to start with it ON while its role
+  skips RLS. The policies are still off, so the loud guard shows every access without a context and the policies cannot hide a row. It is still a change of behavior: a request that
   writes and then answers 4xx loses its write (the transaction rolls back), so go in only after staging passed.
 - Check: one hour of traffic and one cycle of the crons. Zero `RLS_CONTEXT_REQUIRED`; 5xx and the p95 latency as in the baseline; a 4xx
-  after a write behaves as it did in staging. Alert on the counter `worker_job_subject_missing_total` (a worker job that ran without the
+  after a write behaves as it did in staging. Alert on the counter `worker_job_subject_missing_total` (after 3b) (a worker job that ran without the
   store or the organization it needed): any value above zero is a job that found nothing to do.
-- Back: both flags to `false` and restart (a write lost to a 4xx rollback is not recovered: tell the person who made it).
+- Back: `RLS_CONTEXT=false` and restart (a write lost to a 4xx rollback is not recovered: tell the person who made it).
+
+## 3b. Take `BYPASSRLS` from the worker (owner only, by hand, never by a migration or the CI of the real database)
+
+`platform_worker` is created with `BYPASSRLS` and keeps it. `WORKER_RLS_CONTEXT` stays `false` in every step above until here (#786: the
+worker refuses to start with the flag ON while its role still skips RLS; with the flag off it only warns, so a rollback does not crash-loop).
+The order is exact, and "step 4" inside this section means "start the workers", not section 4 below (enforce on):
+
+1. `pnpm db:rls:worker-role status` (reads only; shows host, database and the role). Rehearse the whole of 3b first in STAGING: some managed
+   providers do not let you change `BYPASSRLS` (error `42501`), and you need to know it before production.
+2. Stop the workers and let the queues drain.
+3. `pnpm db:rls:worker-role nobypass --confirm=<database name>`. The script prints the host, the database and the role before it acts,
+   and it is idempotent. `--confirm` is the ONLY guard: it must equal `current_database()` and the script does NOT refuse a host that is
+   not local, so read the host it prints.
+4. Start the workers with `WORKER_RLS_CONTEXT=true`.
+5. Check: the gauge `platform_worker_role_bypasses_rls` is `0`; `status` shows `rolbypassrls = false`; the worker log has no start error.
+
+A ROLE belongs to the whole SERVER, not to one database: the change reaches EVERY database of that server where `platform_worker` can
+connect. The script lists them (a query to `pg_database`) before it acts and in the refusal; read the list, and if it names a database that
+is not yours, stop.
+The credential that can run it (a superuser or a role with `CREATEROLE` admin on the role) is held by the owner or the provider. Put it only in the environment of
+that one run: never in `.env` or `.env.local`, never in the repository, never in a secret of the CI. `pnpm db:rls:enforce on` refuses to
+run while the worker still skips RLS, so this step comes before section 4 (enforce on).
+
+Back (in this order): `WORKER_RLS_CONTEXT=false`, restart the workers, then `pnpm db:rls:worker-role bypass --confirm=<database name>`.
+NEVER run `bypass` while the flag is ON: the worker would refuse to start (the only state the check rejects) .
 
 ## 4. Turn the policies on
 
@@ -72,8 +98,9 @@ when it runs) and, if a migration with an old timestamp brought policies, `SELEC
 
 1. `pnpm db:rls:enforce off` (or `SELECT rls_set_enforcement(false, ARRAY[]::text[])` as the owner of the database).
 2. Both flags to `false` and restart.
-3. Only if the problem is the worker: `ALTER ROLE platform_worker BYPASSRLS` and restart the workers (with `WORKER_RLS_CONTEXT=false`
-   the worker starts with a warning, not in a crash loop).
+3. Only if the problem is the worker: the way back of step 3b (`WORKER_RLS_CONTEXT=false`, restart, then
+   `pnpm db:rls:worker-role bypass --confirm=<database name>`; never `bypass` with the flag ON). With the flag off the worker starts with
+   a warning, not in a crash loop.
 
 Check after each step: `status` shows OFF, and the walk of step 2 passes.
 
