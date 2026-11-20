@@ -26,7 +26,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
-import { createWorkerPrisma, createGuardedWorkerPrisma } from '../helpers/worker-db'
+import { createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 // The rollups of the metrics (TDD_11 §7.2, TDD_08 §6, Step 5.2 PR A), the answer of a person apart from the one of an automation, the
 // event key and the route that reads the rollup tables. Every case works in a store of its own.
@@ -43,14 +43,12 @@ describe('The rollups of analytics', () => {
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
-  let prisma: PrismaService
   let rollups: Pick<AnalyticsRollupService, 'rollup'>
 
   beforeAll(async () => {
     owner = ownerClient()
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
-    prisma = createWorkerPrisma()
     // The processor rolls up inside the context of the store, so the suite does too
     // on the guarded connection, so a query of the rollup that leaves the context fails the suite
     const guarded = createGuardedWorkerPrisma()
@@ -501,18 +499,34 @@ describe('The rollups of analytics', () => {
 
   describe('recordReply', () => {
     let conversations: ConversationsService
+    let guarded: PrismaService
+    let jobs: JobContext
     beforeAll(() => {
       conversations = app.get(ConversationsService, { strict: false })
+      // The worker records the reply inside the context of the store (the sender does), on the guarded
+      // connection: an access outside any context fails the suite instead of touching no row
+      guarded = createGuardedWorkerPrisma()
+      jobs = new JobContext(guarded)
     })
 
-    const reply = (conversationId: string, storeId: string, when: Date, automated?: boolean) =>
-      prisma.transaction(tx =>
-        conversations.recordReply(
-          tx,
-          storeId,
-          conversationId,
-          when,
-          automated === undefined ? {} : { automated }
+    // `contextStoreId` is the store the job runs for; it differs from `storeId` only in the case that
+    // checks the filter by store of the write itself, which the policy alone would not show
+    const reply = (
+      conversationId: string,
+      storeId: string,
+      when: Date,
+      automated?: boolean,
+      contextStoreId: string = storeId
+    ) =>
+      jobs.forStore(contextStoreId, () =>
+        guarded.transaction(tx =>
+          conversations.recordReply(
+            tx,
+            storeId,
+            conversationId,
+            when,
+            automated === undefined ? {} : { automated }
+          )
         )
       )
 
@@ -556,7 +570,8 @@ describe('The rollups of analytics', () => {
       const theirs = await aStore()
       const { id } = await conversation(theirs.id, { createdAt: at(0) })
 
-      await reply(id, mine.id, at(2), true)
+      // In the context of the store that owns the row, so only the `storeId` of the write keeps it out
+      await reply(id, mine.id, at(2), true, theirs.id)
 
       const after = await owner.conversation.findUniqueOrThrow({ where: { id } })
       expect(after.firstAutomatedResponseAt).toBeNull()
@@ -588,10 +603,19 @@ describe('The rollups of analytics', () => {
       timestamp: '2026-11-10T09:15:00.000Z',
       ...(eventKey === undefined ? {} : { eventKey })
     })
-    let writer: AnalyticsEventWriter
+    // The processor writes inside the context of the store of the job (forStore), so the suite does too, on
+    // the guarded connection; the store is the one of the case, as the producer puts it in the job
+    let events: AnalyticsEventWriter
+    let eventJobs: JobContext
     beforeAll(() => {
-      writer = new AnalyticsEventWriter(prisma)
+      const guardedPrisma = createGuardedWorkerPrisma()
+      events = new AnalyticsEventWriter(guardedPrisma)
+      eventJobs = new JobContext(guardedPrisma)
     })
+    const writer = {
+      write: (job: ReturnType<typeof baseEvent>) =>
+        eventJobs.forStore(job.storeId, () => events.write(job))
+    }
 
     it('writes one row for a job delivered twice with the same key', async () => {
       const { id: storeId } = await aStore()
