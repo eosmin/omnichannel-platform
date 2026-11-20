@@ -187,6 +187,21 @@ describe('roleViolations', () => {
   })
 })
 
+describe('roleViolations: the bypass of the worker', () => {
+  it('refuses a migration that changes it either way, and still allows creating the role and other attributes', () => {
+    const problems = roleViolations([
+      { name: 'a', sql: 'ALTER ROLE platform_worker NOBYPASSRLS;' },
+      { name: 'b', sql: 'ALTER ROLE platform_worker BYPASSRLS;' },
+      { name: 'c', sql: 'ALTER USER IF EXISTS platform_worker WITH NOBYPASSRLS;' },
+      { name: 'd', sql: 'CREATE ROLE platform_worker NOLOGIN BYPASSRLS;' },
+      { name: 'e', sql: 'ALTER ROLE platform_worker IN DATABASE x SET lock_timeout = 5000;' },
+      { name: 'f', sql: '-- ALTER ROLE platform_worker NOBYPASSRLS;' }
+    ])
+    expect(problems.map(p => p.split(':')[0])).toEqual(['a', 'b', 'c'])
+    expect(problems[0]).toContain('pnpm db:rls:worker-role')
+  })
+})
+
 describe('sessionSettingViolations', () => {
   it('refuses a session-level setting and allows the transaction-local one', () => {
     const problems = sessionSettingViolations([

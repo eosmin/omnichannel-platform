@@ -11,6 +11,7 @@ import { WebhookSources } from '@platform/core/domain'
 
 import { PrismaClient } from '../generated/client/client'
 import { connectionUrls, replicaConnectionUrl } from '../testing/connection-urls'
+import { workerRoleBoundInSuites } from '../testing/rls-enforcement'
 
 import { bootstrapOwner, ensureSystemRoles } from './bootstrap-owner'
 import { loadDevFixtures } from './dev-fixtures'
@@ -358,7 +359,8 @@ describe('database roles', () => {
     })
   })
 
-  it('makes no role a superuser, and only the worker bypasses RLS', async () => {
+  // The worker bypasses RLS until stage E takes it away: where its flag (WORKER_RLS_CONTEXT) is on, the role is bound like the api
+  it('makes no role a superuser, and only the worker may bypass RLS, and not where its flag is on', async () => {
     await withClient(urls.owner, async owner => {
       const { rows } = await owner.query(
         "SELECT rolname, rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname LIKE 'platform\\_%' ORDER BY rolname"
@@ -370,7 +372,12 @@ describe('database roles', () => {
       expect(seen).toEqual([
         { rolname: 'platform_app', rolsuper: false, rolbypassrls: false, rolcanlogin: true },
         { rolname: 'platform_replica_ro', rolsuper: false, rolbypassrls: false, rolcanlogin: true },
-        { rolname: 'platform_worker', rolsuper: false, rolbypassrls: true, rolcanlogin: true }
+        {
+          rolname: 'platform_worker',
+          rolsuper: false,
+          rolbypassrls: !workerRoleBoundInSuites(),
+          rolcanlogin: true
+        }
       ])
     })
   })

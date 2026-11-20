@@ -70,8 +70,8 @@ vault write database/roles/api-role \
 ```
 
 Credentials rotate hourly. A leaked credential expires on its own. The generated role
-inherits `platform_app` (RLS-subject) or `platform_worker` (`BYPASSRLS`), never a
-superuser (`TDD_01` §3.2).
+inherits `platform_app` (RLS-subject) or `platform_worker` (created with `BYPASSRLS`, which stage E takes
+away: `TDD_01` §3.2, `TDD_03` §5), never a superuser.
 
 ```yaml
 # Injected via Vault Agent sidecar
