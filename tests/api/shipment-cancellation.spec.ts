@@ -570,6 +570,44 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
       expect((shares[0] ?? 0) + (shares[1] ?? 0)).toBe(total)
     })
 
+    it('does not make a prepaid split order wait for a guide that is being voided: there is no cod to share', async () => {
+      const split = await reserved()
+      const item = await owner.orderItem.findFirstOrThrow({ where: { orderId: split.id } })
+      const second = await owner.orderItem.create({
+        data: {
+          orderId: split.id,
+          productId: item.productId,
+          productName: 'second line',
+          quantity: 1,
+          unitPriceCents: 500
+        }
+      })
+      await owner.orderItemAllocation.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderItemId: second.id,
+          warehouseId: ctx.warehouseASecond.id,
+          quantity: 1
+        }
+      })
+      await owner.warehouse.update({
+        where: { id: ctx.warehouseASecond.id },
+        data: { address: { line1: 'Bodega 2', city: 'Soyapango', country: 'SV' } }
+      })
+      const first = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(split.id))
+        .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseA.id })
+      expect(first.status).toBe(CREATED)
+      const cancelled = await asAdmin().post(
+        ApiRoutes.shipments.cancel((first.body as { id: string }).id)
+      )
+      expect(cancelled.body).toMatchObject({ status: ShipmentStatus.CANCEL_PENDING })
+      const other = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(split.id))
+        .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseASecond.id })
+      expect(other.status).toBe(CREATED)
+    })
+
     it('waits while the guide of the other warehouse of a split order is stuck, and goes on once it is marked voided', async () => {
       const split = await reserved({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
       const item = await owner.orderItem.findFirstOrThrow({ where: { orderId: split.id } })
