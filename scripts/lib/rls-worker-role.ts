@@ -85,3 +85,112 @@ export function reachedDatabasesWarning(databases: readonly string[], current: s
       : `${others.length} other database${others.length === 1 ? '' : 's'}: ${others.join(', ')}`
   return `ALTER ROLE ${WORKER_ROLE} affects ALL the databases of this server where it could connect (${databases.length}: ${databases.join(', ') || 'none'}); besides "${current}" it reaches ${reach}`
 }
+
+// The sessions of the role, per database of the server (pg_stat_activity is the view of the whole cluster). `visible` is false when the
+// role that runs the command may not see the sessions of other roles (only a superuser or a member of pg_read_all_stats does): the
+// view then shows them with no name, a count of zero would be a guess and is never read as "no workers"
+export interface WorkerConnectionFacts {
+  visible: boolean
+  connections: { datname: string; count: number }[]
+}
+
+interface Queryable {
+  query: (text: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>
+}
+
+const CONNECTIONS_VISIBLE_SQL = `SELECT (rolsuper OR pg_has_role(current_user, 'pg_read_all_stats', 'member')) AS visible
+   FROM pg_roles WHERE rolname = current_user`
+// Not its own session, and client sessions only: the autovacuum and replication workers are not the worker of the application
+const CONNECTIONS_SQL = `SELECT datname, count(*)::text AS total FROM pg_stat_activity
+  WHERE usename = $1 AND pid <> pg_backend_pid() AND backend_type = 'client backend'
+  GROUP BY datname ORDER BY datname`
+
+export async function readWorkerConnections(db: Queryable): Promise<WorkerConnectionFacts> {
+  const visible = await db.query(CONNECTIONS_VISIBLE_SQL)
+  const rows = await db.query(CONNECTIONS_SQL, [WORKER_ROLE])
+  return {
+    visible: visible.rows[0]?.['visible'] === true,
+    connections: rows.rows.map(row => ({
+      datname: typeof row['datname'] === 'string' ? row['datname'] : '?',
+      count: Number(row['total'])
+    }))
+  }
+}
+
+function totalOf(facts: WorkerConnectionFacts): number {
+  return facts.connections.reduce((sum, row) => sum + row.count, 0)
+}
+
+function connectionsLine(facts: WorkerConnectionFacts): string {
+  const total = totalOf(facts)
+  const where = facts.connections.map(row => `${row.datname} (${row.count})`).join(', ')
+  return `${total} connection${total === 1 ? '' : 's'}${total === 0 ? '' : `: ${where}`}`
+}
+
+// What `status` and every mode print: how many sessions of the role are open right now, so the owner sees whether the workers are stopped
+export function connectionsSummary(facts: WorkerConnectionFacts): string {
+  if (!facts.visible) {
+    return `${WORKER_ROLE} sessions cannot be seen with this role (it is neither a superuser nor a member of pg_read_all_stats)`
+  }
+  return `${WORKER_ROLE} sessions open now: ${connectionsLine(facts)}`
+}
+
+export const FORCE_CONNECTED_FLAG = '--force-connected'
+
+// Only the flag typed out: for the rehearsal in staging, where the workers of another stack may stay connected
+export function forceConnectedOf(args: readonly string[]): boolean {
+  return args.includes(FORCE_CONNECTED_FLAG)
+}
+
+// `nobypass` is the one mode that changes what the running workers see: a worker started with WORKER_RLS_CONTEXT off has no guard, and
+// once the role is bound it reads no row and says nothing. So it runs only when no session of the role is open, and when the sessions
+// cannot be seen it does not take zero for an answer. Undefined when it may go on
+export function connectionsProblem(
+  mode: WorkerRoleMode,
+  facts: WorkerConnectionFacts,
+  force: boolean
+): string | undefined {
+  if (mode !== 'nobypass' || force) return undefined
+  if (!facts.visible) {
+    return `the sessions of ${WORKER_ROLE} cannot be seen: run it with a superuser or a member of pg_read_all_stats, or stop the workers, check by hand and use ${FORCE_CONNECTED_FLAG}`
+  }
+  if (totalOf(facts) === 0) return undefined
+  return `${connectionsLine(facts)} of ${WORKER_ROLE} are open: stop the workers and let their queues drain, then run it again (${FORCE_CONNECTED_FLAG} only to rehearse)`
+}
+
+const LOCAL_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+export const ALLOW_HOST_FLAG = '--allow-host='
+
+// `--allow-host=<host>` anywhere in the arguments
+export function allowedHostOf(args: readonly string[]): string | undefined {
+  const flag = args.find(arg => arg.startsWith(ALLOW_HOST_FLAG))
+  const value = flag?.slice(ALLOW_HOST_FLAG.length)
+  return value === undefined || value === '' ? undefined : value
+}
+
+// A mode that changes the role runs against a host that is not this machine only when the person typed that host out: `--confirm` names
+// a database, and a database of the same name exists in staging and in production. Undefined when it may go on
+export function hostProblem(
+  mode: WorkerRoleMode,
+  host: string,
+  allowed: string | undefined
+): string | undefined {
+  if (workerRoleStatement(mode) === null || LOCAL_HOSTS.has(host)) return undefined
+  if (allowed === undefined) {
+    return `the host ${host} is not this machine: run it again with ${ALLOW_HOST_FLAG}<the host printed above> after reading it`
+  }
+  if (allowed !== host)
+    return `${ALLOW_HOST_FLAG}${allowed} is not the host this command is connected to ("${host}")`
+  return undefined
+}
+
+// The databases of the server where the role has the CONNECT privilege (what `ALTER ROLE` reaches); the script and its integration spec
+// run this same query
+export async function readReachedDatabases(db: Queryable): Promise<string[]> {
+  const { rows } = await db.query(
+    `SELECT datname FROM pg_database
+      WHERE NOT datistemplate AND has_database_privilege($1, oid, 'CONNECT') ORDER BY datname`,
+    [WORKER_ROLE]
+  )
+  return rows.map(row => String(row['datname']))
+}

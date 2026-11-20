@@ -5,10 +5,17 @@ import pg from 'pg'
 
 import { loadOwnerDatabaseUrl, workerEnvForRoleScript } from './db-role-env'
 import {
+  allowedHostOf,
   alreadyAsRequested,
   confirmationOf,
   confirmProblem,
+  connectionsProblem,
+  connectionsSummary,
   flagProblem,
+  forceConnectedOf,
+  hostProblem,
+  readReachedDatabases,
+  readWorkerConnections,
   reachedDatabasesWarning,
   WORKER_ROLE,
   WORKER_ROLE_MODES,
@@ -33,6 +40,10 @@ import {
 // A mode that changes the role runs only with --confirm=<the name of the database the URL points at>, compared with current_database()
 // of the connection: a command pointed at the wrong database stops. It says host, database and role before it changes anything, and
 // does nothing (and says so) when the role already is as asked. No migration, `db:migrate` or deploy step runs it.
+//
+// `nobypass` also refuses while a session of the role is open (the workers are not stopped: one that runs with the flag off would read
+// no row and say nothing), and when the sessions cannot be seen; --force-connected is for the rehearsal. A host that is not this machine
+// needs --allow-host=<host>. The check is a snapshot: the workers must stay stopped until the command ends (the runbook, step 3b).
 //
 // Idempotent. Stop the workers before `nobypass` and start them with WORKER_RLS_CONTEXT=true after it: a job with no context reads no
 // row once the role is bound. The way back is the inverse: flag off and restart first, `bypass` after, or the worker will not start.
@@ -75,21 +86,17 @@ async function run(selected: WorkerRoleMode): Promise<void> {
     const current = await client.query<{ name: string }>('SELECT current_database() AS name')
     const database = current.rows[0]?.name ?? ''
     // Before the confirmation, so that a refusal shows it too: the databases of the server where the role can connect
-    const reached = await client.query<{ datname: string }>(
-      `SELECT datname FROM pg_database
-        WHERE NOT datistemplate AND has_database_privilege($1, oid, 'CONNECT') ORDER BY datname`,
-      [WORKER_ROLE]
-    )
-    console.log(
-      reachedDatabasesWarning(
-        reached.rows.map(row => row.datname),
-        database
-      )
-    )
+    const reached = await readReachedDatabases(client)
+    console.log(reachedDatabasesWarning(reached, database))
+    // Every mode says how many workers are connected right now (for `status`, that is the answer to "are they stopped?")
+    const connections = await readWorkerConnections(client)
+    console.log(connectionsSummary(connections))
     if (statement !== null) {
       const refused =
         flagProblem(selected, workerEnvForRoleScript()) ??
-        confirmProblem(selected, confirmationOf(argv), database)
+        hostProblem(selected, target.hostname, allowedHostOf(argv)) ??
+        confirmProblem(selected, confirmationOf(argv), database) ??
+        connectionsProblem(selected, connections, forceConnectedOf(argv))
       if (refused !== undefined) {
         console.error(`${refused}. Nothing changed.`)
         // Not exit(): the finally below must close the connection of the owner
