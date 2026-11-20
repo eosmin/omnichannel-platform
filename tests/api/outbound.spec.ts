@@ -91,6 +91,9 @@ const SIX_MINUTES_MS = 360_000
 // What the core may add to a message of ten files and ten texts, with a provider that answers at once
 const STEP_OVERHEAD_BUDGET_MS = 10_000
 
+// The size the worker side had when the whole app ran on its connection: some cases hold a transaction while a second send waits
+const WORKER_POOL = 8
+
 describe('Replies on their way to a channel', () => {
   const prefix = newRunPrefix()
   let app: INestApplication
@@ -144,7 +147,7 @@ describe('Replies on their way to a channel', () => {
     owner = ownerClient()
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
-    prisma = createGuardedWorkerPrisma()
+    prisma = createGuardedWorkerPrisma(WORKER_POOL)
     const registry = app.get(PluginRegistry, { strict: false })
     const pluginOf = (id: string): ReturnType<typeof buildChannelPlugin> =>
       buildChannelPlugin({ id, sendMessage: (c, p) => sendMessage(c, p) })
@@ -247,13 +250,13 @@ describe('Replies on their way to a channel', () => {
     outboundQueue = new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never)
     sweep = new OutboundRequeueScheduler(
       undefined as never, // the lock is not what is tested
-      createGuardedWorkerPrisma(),
+      prisma,
       outboundQueue,
       writer,
       new ReactionStatusWriter(prisma, events, new JobContext(prisma)),
       new MessageChangeStatusWriter(prisma, events, new JobContext(prisma)),
       logger,
-      new JobContext(createGuardedWorkerPrisma())
+      new JobContext(prisma)
     )
     app.get(EventEmitter2).onAny((event, payload) => {
       heard.push({ event: String(event), payload: payload as Record<string, unknown> })

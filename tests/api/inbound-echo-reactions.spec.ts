@@ -21,8 +21,6 @@ import { Events } from '@platform/core/events'
 import {
   AwayReplyService,
   ChannelConnectionResolver,
-  ConversationsService,
-  CustomerIdentityService,
   InboundMessageService,
   type InboundEvent,
   InboundOutcomes,
@@ -30,8 +28,7 @@ import {
   MessageReactionsService,
   MessagingWindowService,
   OutboundQueue,
-  ReactionOutcomes,
-  RoutingService
+  ReactionOutcomes
 } from '@platform/core/messaging'
 import { JobNames, QueueNames } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
@@ -50,7 +47,7 @@ import { api } from '../helpers/http'
 import { TEST_IDENTITY_KINDS } from '../helpers/identity-kinds'
 import { CapturedQueue, queueOf } from '../helpers/queue'
 import { createGuardedWorkerPrisma } from '../helpers/worker-db'
-import { workerServices } from '../helpers/worker-services'
+import { workerMessaging, workerServices } from '../helpers/worker-services'
 
 const OK = 200
 const NOT_FOUND = 404
@@ -96,15 +93,16 @@ describe('Echoes and reactions that a channel delivers', () => {
     prisma = createGuardedWorkerPrisma()
     const connections = new ChannelConnectionResolver(prisma)
     events = (await workerServices(app, prisma)).events
+    const messaging = await workerMessaging(app, prisma, events)
     inbound = new InboundMessageService(
       prisma,
       connections,
-      app.get(CustomerIdentityService, { strict: false }),
-      app.get(ConversationsService, { strict: false }),
-      app.get(RoutingService, { strict: false }),
+      messaging.identities,
+      messaging.conversations,
+      messaging.routing,
       new AwayReplyService(
         prisma,
-        app.get(ConversationsService, { strict: false }),
+        messaging.conversations,
         app.get(MessagingWindowService, { strict: false }),
         events,
         app.get(OutboundQueue, { strict: false }),
