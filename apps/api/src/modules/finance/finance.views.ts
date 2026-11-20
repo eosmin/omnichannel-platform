@@ -152,7 +152,8 @@ export const PERIOD_SELECT = {
   closedBy: true,
   reopenedAt: true,
   reopenedBy: true,
-  reopenReason: true
+  reopenReason: true,
+  closingHash: true
 } as const
 
 export interface PeriodRow {
@@ -167,6 +168,7 @@ export interface PeriodRow {
   reopenedAt: Date | null
   reopenedBy: string | null
   reopenReason: string | null
+  closingHash: string | null
 }
 
 export interface PeriodView {
@@ -181,6 +183,8 @@ export interface PeriodView {
   reopenedAt: string | null
   reopenedBy: string | null
   reopenReason: string | null
+  // The head of the entry chain frozen when the month was last closed, for the auditor (TDD_18 §5.1); null if it never was
+  closingHash: string | null
   // Against the day of the organization (see `organizationDay`): the last day is over / the first day has come
   hasEnded: boolean
   hasStarted: boolean
@@ -198,6 +202,7 @@ export const periodView = (row: PeriodRow, today: string): PeriodView => ({
   reopenedAt: row.reopenedAt === null ? null : row.reopenedAt.toISOString(),
   reopenedBy: row.reopenedBy,
   reopenReason: row.reopenReason,
+  closingHash: row.closingHash,
   hasEnded: periodEnded(isoDay(row.endsOn), today),
   hasStarted: isoDay(row.startsOn) <= today
 })

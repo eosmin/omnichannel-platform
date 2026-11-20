@@ -96,6 +96,7 @@ export const periodSchema = z.object({
   reopenedAt: z.string().nullable(),
   reopenedBy: z.string().nullable(),
   reopenReason: z.string().nullable(),
+  closingHash: z.string().nullable(),
   hasEnded: z.boolean(),
   hasStarted: z.boolean()
 })
