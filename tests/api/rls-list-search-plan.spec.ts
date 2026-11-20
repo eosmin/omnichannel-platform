@@ -6,6 +6,7 @@ import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/da
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { retryOnDeadlock } from '../helpers/deadlock-retry'
+import { PLAN_SPEC_TABLES, quietTables } from '../helpers/quiet-tables'
 
 // The searches of the LISTS (the customers list and its export, the orders list and its export) are Prisma `contains` / `startsWith`
 // filters, so they are LIKE / ILIKE statements on the same columns the search reads. The search of the inbox went through functions
@@ -60,6 +61,8 @@ describe('the plan of the searches of the lists with row-level security on', () 
       }
     }
     await raw.query('ANALYZE customers')
+    // Nothing left for the autovacuum to do while the DDL of the cases below takes its locks (helpers/quiet-tables.ts)
+    await quietTables(owner, PLAN_SPEC_TABLES)
   }, 180_000)
 
   afterAll(async () => {

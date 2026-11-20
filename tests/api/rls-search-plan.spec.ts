@@ -20,6 +20,7 @@ import {
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { retryOnDeadlock } from '../helpers/deadlock-retry'
+import { PLAN_SPEC_TABLES, quietTables } from '../helpers/quiet-tables'
 
 // The search under Row-Level Security (RLS audit, search section): Postgres evaluates the policy of a table before any condition of
 // the query whose operator is not LEAKPROOF, and `@@` of a tsvector, LIKE, ILIKE and the operators of pg_trgm are not. A condition that
@@ -123,6 +124,8 @@ describe('the plan of the searches with row-level security on', () => {
       }
     }
     await raw.query('ANALYZE messages')
+    // Nothing left for the autovacuum to do while the DDL of the cases below takes its locks (helpers/quiet-tables.ts)
+    await quietTables(owner, PLAN_SPEC_TABLES)
   }, 120_000)
 
   afterAll(async () => {
