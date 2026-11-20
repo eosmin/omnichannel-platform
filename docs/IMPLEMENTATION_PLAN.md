@@ -1558,6 +1558,11 @@ built once, by 4B.4b-1.
       kind narrowing, voided, a file of another organization or purpose), the signed links (clean, pending, other store, other
       organization), the trigger whoever writes, and the isolation of the receipt (no new table: `validate:isolation` keys its cases by model, so the proof is in `tests/api/finance-transaction-documents.spec.ts`: a file of another organization is never attached, a transaction of another organization is a 404 to attach to or to read the receipt of)
 - [x] **4B.4b-2 tests:** matching rules and every parser error, isolation cases of the new tables
+- [x] **4B.4b-2 note (receipt link across stores, RLS enforced):** `GET finance/transactions/:id/document` is `@NoTenantTransaction` and opens three
+      contexts (transaction in the organization; owner store of the file by its id in the stores of the organization, one read; signing in that one store).
+      A user of a sibling store with `finance:view_journal` sees the receipt of another store of the organization: the books are the organization's and
+      the permission is organization-level, the same as with RLS off. Debt: `attach()` reads the file with the store of the request (a file uploaded in
+      store A1 and attached from A2 reads as missing under enforcement); owner: RLS phase 6 residuals, next finance PR that touches `attach`.
 - [x] **4B.4b-2, bank file of the owner's first bank (PR `bank-import-datetime-thousands`):** a date with a time after the day
       (`dd/MM/yyyy hh:mm[:ss]`, an ISO day may use a T) is read on the bank route only (remittances still refuse a time); the time is part of the
       identity of the line (`bankLineKey`) when the row has one, so a statement that overlaps another never doubles a line and two equal
