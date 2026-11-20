@@ -642,7 +642,10 @@ describe('The receipt of a transaction of the books (Step 4B.4b)', () => {
       const id = await withReceipt('clean')
       const response = await urls(journalReader, ctx.storeA, id)
       expect(response.status).toBe(OK)
-      expect((response.body as { url: string }).url).toEqual(expect.any(String))
+      const { url } = response.body as { url: string }
+      expect(url).toEqual(expect.any(String))
+      // The original is always a download from the bucket host, never shown inline in the app (TAX-436 defence in depth)
+      expect(decodeURIComponent(url)).toMatch(/response-content-disposition=attachment/i)
     })
 
     it('is given through another store of the organization: the books are the organization`s', async () => {

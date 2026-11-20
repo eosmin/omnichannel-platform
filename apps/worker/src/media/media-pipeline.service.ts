@@ -225,7 +225,7 @@ export class MediaPipeline {
       if (await this.isGone(media.id, scope)) return false
       throw new Error('the file to inspect is not in the bucket')
     }
-    const { names, unreadable } = inspectPdf(bytes)
+    const { names, unreadable } = await inspectPdf(bytes)
     if (names.length === 0 && unreadable === null) return true
     const reason =
       names.length > 0

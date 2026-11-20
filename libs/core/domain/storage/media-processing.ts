@@ -127,13 +127,14 @@ export const MediaRejectionReasons = {
 } as const
 
 // What is looked for in a PDF that stays as the evidence of a transaction (TDD_18 §3): the names of the
-// dictionaries that make a reader run code, open a program, send a form somewhere or carry another file. A PDF
-// names them with a slash and may spell any of their letters as `#` and two hex digits, so the match is made
-// on the decoded name. The names live in the objects of the file: in the clear, or inside an object stream
-// (`/Type /ObjStm`, deflated). Other streams (pictures, fonts, page content) hold no objects and are not read.
-// The rule of the whole check is fail closed: whatever cannot be proven inert or cannot be read to the end
-// (an encrypted file, an object stream that is not plainly read, a stream that is not plainly recognised,
-// too much work for one file) is refused, never let through.
+// dictionaries that make a reader run code, open a program, send a form somewhere or carry another file. The
+// file is read with the PDF library the worker already uses (objects, object streams and escapes in names are
+// resolved by a parser, not by a pattern over the bytes) and every name of every object is looked at; the data
+// of the streams (pictures, fonts, page content) is not. The rule of the whole check is fail closed: whatever
+// cannot be proven inert or cannot be read to the end (an encrypted file, a file the library does not read, a
+// stream that looks like an object stream without saying so, a reference to nothing, too much work for one
+// file) is refused, never let through. It is a best effort and not a sandbox: the file is only ever served as a
+// download from the bucket host (see the plan, Step 4B.4b-1).
 export const PdfInspection = {
   CONTENT_TYPE: 'application/pdf',
   ACTIVE_NAMES: [
@@ -171,31 +172,18 @@ export const PdfInspection = {
   // Word, LaTeX and Acrobat write): an action that opens a link counts too, which a plain link annotation does not
   CARRIER_NAMES: ['OpenAction'],
   CARRIER_ACTIVE_NAMES: ['URI'],
-  MAX_CARRIERS: 20,
-  PEEK_BYTES: 1024,
-  OBJECT_STREAM_NAME: 'ObjStm',
-  ENCRYPT_NAME: 'Encrypt',
-  FILTER_NAME: 'Filter',
-  READABLE_FILTER: 'FlateDecode',
-  PARAMETER_NAMES: ['DecodeParms', 'DP'],
-  SYNTAX: { STREAM: 'stream', END_STREAM: 'endstream', OBJ: 'obj', END_OBJ: 'endobj' },
-  MAX_INFLATED_BYTES_PER_STREAM: 8 * 1024 * 1024,
-  MAX_INFLATED_BYTES_TOTAL: 32 * 1024 * 1024,
-  MAX_OBJECT_STREAMS: 50,
-  // The walk over the file is bounded in what it sees and in the time it takes
-  MAX_STREAM_KEYWORDS: 20_000,
-  MAX_NAMES: 1_000_000,
-  TIME_BUDGET_MS: 2000,
-  // How far back from `stream` its dictionary is looked for
-  DICTIONARY_WINDOW_BYTES: 4096,
+  CARRIER_DEPTH: 6,
+  OBJECT_STREAM_KEYS: { TYPE: 'Type', NAME: 'ObjStm', COUNT: 'N', FIRST: 'First' },
+  // The work on one file is bounded in objects, nodes and time
+  MAX_OBJECTS: 300_000,
+  MAX_NODES: 3_000_000,
+  TIME_BUDGET_MS: 5000,
   UNREADABLE: {
     ENCRYPTED: 'encrypted',
-    OBJECT_STREAM_UNREADABLE: 'object_stream_unreadable',
-    TOO_MANY_OBJECT_STREAMS: 'too_many_object_streams',
-    TOO_MANY_STREAM_KEYWORDS: 'too_many_stream_keywords',
-    TOO_MANY_NAMES: 'too_many_names',
-    UNSUPPORTED_FILTER: 'unsupported_filter',
-    UNRECOGNISED_STREAM: 'unrecognised_stream',
+    NOT_READABLE: 'not_readable',
+    UNDECLARED_OBJECT_STREAM: 'undeclared_object_stream',
+    DANGLING_REFERENCE: 'dangling_reference',
+    TOO_MANY_OBJECTS: 'too_many_objects',
     TIME_BUDGET_EXCEEDED: 'time_budget_exceeded',
     INSPECTION_FAILED: 'inspection_failed'
   }
