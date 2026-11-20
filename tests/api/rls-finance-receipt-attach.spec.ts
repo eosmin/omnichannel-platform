@@ -113,7 +113,9 @@ describe('RLS phase 6: the receipt of a file uploaded in a sibling store', () =>
         id,
         storeId: options.storeId ?? ctx.storeA.id,
         purpose: options.purpose ?? 'finance_document',
-        financeTransactionId: transactionId,
+        // Only a receipt has a parent transaction (chk_media_finance_parent)
+        financeTransactionId:
+          (options.purpose ?? 'finance_document') === 'finance_document' ? transactionId : null,
         key: `${prefix}/finance-document/${id}`,
         filename: 'receipt.png',
         contentType: 'image/png',
