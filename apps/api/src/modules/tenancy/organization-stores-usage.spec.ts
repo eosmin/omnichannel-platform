@@ -5,6 +5,13 @@ import { join, relative } from 'node:path'
 const ROOT = join(__dirname, '../../../../..')
 const SCANNED = ['apps/api/src', 'libs'].map(dir => join(ROOT, dir))
 const MARK = '@TenantOfOrganizationStores('
+// The metadata can also be set by hand (SetMetadata with the key): the key is searched for as well
+const KEY = 'TENANT_ORGANIZATION_STORES_KEY'
+// Where the key is declared and where the interceptor reads it
+const OWN = [
+  'apps/api/src/modules/tenancy/decorators.ts',
+  'apps/api/src/modules/tenancy/tenant-context.interceptor.ts'
+]
 
 // The files that may widen the context of a request to every store of the organization. It is a widening of tenancy: Row-Level Security
 // no longer separates sibling stores there, so who sees and moves what rests on the service alone. Adding a file to this list is a decision
@@ -28,10 +35,13 @@ function sources(dir: string): string[] {
 describe('@TenantOfOrganizationStores', () => {
   it('is used by exactly the controllers of transfers, counts and warehouses, and by no plugin route', () => {
     const users = SCANNED.flatMap(sources)
-      .filter(path => readFileSync(path, 'utf8').includes(MARK))
+      .filter(path => {
+        const text = readFileSync(path, 'utf8')
+        return text.includes(MARK) || text.includes(KEY)
+      })
       .map(path => relative(ROOT, path))
       // The decorator itself is declared in the tenancy module
-      .filter(path => path !== 'apps/api/src/modules/tenancy/decorators.ts')
+      .filter(path => !OWN.includes(path))
       .sort()
 
     expect(users).toEqual(ALLOWED)

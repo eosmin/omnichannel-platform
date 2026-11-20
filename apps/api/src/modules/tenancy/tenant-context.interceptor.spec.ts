@@ -215,6 +215,16 @@ describe('@TenantOfOrganizationStores', () => {
     expect(reads).toHaveLength(1)
   })
 
+  it('leaves the context as it is when the request has no organization to read the stores of', async () => {
+    const { interceptor, opened, reads } = build(true, ['store-2'])
+    const ofAPerson = requestOf({ user: { id: 'u-1' } as never })
+
+    await firstValueFrom(interceptor.intercept(contextFor(Wide, ofAPerson), next('ok')))
+
+    expect(opened).toEqual([{ storeIds: [], organizationIds: [], userId: 'u-1' }])
+    expect(reads).toEqual([])
+  })
+
   it('reads nothing while the switch is off, and the mark needs a reason', async () => {
     const { interceptor, opened, reads } = build(false, ['store-2'])
 
