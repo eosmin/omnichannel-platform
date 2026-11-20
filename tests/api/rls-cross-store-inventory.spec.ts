@@ -34,6 +34,7 @@ interface ErrorBody {
 
 const OK = 200
 const FORBIDDEN = 403
+const BAD_REQUEST = 400
 const NOT_FOUND = 404
 const CONFLICT = 409
 const STOCK = 10
@@ -367,6 +368,16 @@ describe('RLS phase 6: transfers and counts with lines of several stores of one 
       expect(response.status).toBe(NOT_FOUND)
       const ids = (listed.body as { data: { id: string }[] }).data.map(row => row.id)
       expect(ids).not.toContain(foreign.id)
+    })
+  })
+
+  describe('what the client says about stores', () => {
+    it('is refused in the list, whose schema takes no store or organization, and nothing is listed', async () => {
+      const response = await asBoth()
+        .get(ApiRoutes.transfers.list)
+        .query({ storeIds: ctx.storeB.id, organizationId: ctx.orgB.id })
+
+      expect(response.status).toBe(BAD_REQUEST)
     })
   })
 
