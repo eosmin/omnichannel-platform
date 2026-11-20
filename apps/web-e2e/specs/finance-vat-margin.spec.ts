@@ -110,7 +110,7 @@ test.describe('Finance → VAT and margin', () => {
     page
   }) => {
     await signIn(page, readerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.accounts)
     await expect(page.getByRole('link', { name: nav.vat, exact: true })).toHaveCount(1)
     await expect(page.getByRole('link', { name: nav.margin, exact: true })).toHaveCount(0)

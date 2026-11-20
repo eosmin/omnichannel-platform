@@ -254,7 +254,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     page
   }) => {
     await signIn(page, viewerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.accounts)
     await expect(
       page.getByRole('heading', { name: finance.accounts.title, level: 1 })

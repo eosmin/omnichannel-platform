@@ -195,7 +195,7 @@ test.describe('Finance → suppliers, purchases and payables', () => {
 
   test('a person who may only read the books cannot open the purchases', async ({ page }) => {
     await signIn(page, viewerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.suppliers)
     await expect(
       page.getByRole('heading', { name: en.emptyStates.permissionDenied.title, level: 1 })

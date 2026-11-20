@@ -232,7 +232,7 @@ test.describe('Finance → the month, from the first entry to the close', () => 
     page
   }) => {
     await signIn(page, viewerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.periods)
     await expect(page.getByRole('heading', { name: finance.periods.title, level: 1 })).toBeVisible()
     await expect(periodRow(page).getByTestId('finance-period-close')).toHaveCount(0)

@@ -137,7 +137,7 @@ test.describe('Finance → statements, aging and legal books', () => {
     page
   }) => {
     await signIn(page, readerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.accounts)
     await expect(page.getByRole('link', { name: nav.statements, exact: true })).toHaveCount(0)
     await expect(page.getByRole('link', { name: nav.aging, exact: true })).toHaveCount(0)

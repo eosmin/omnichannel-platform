@@ -95,7 +95,7 @@ test.describe('Finance → fiscal documents and issuer', () => {
 
   test('a person who may only read sees the issuer and cannot change it', async ({ page }) => {
     await signIn(page, viewerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.fiscalIssuer)
     await expect(page.getByRole('heading', { name: fiscal.issuer.title, level: 1 })).toBeVisible()
     const form = page.getByTestId('fiscal-issuer-form')
