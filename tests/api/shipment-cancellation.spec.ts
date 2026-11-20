@@ -53,9 +53,6 @@ async function until<T>(read: () => Promise<T>, done: (value: T) => boolean): Pr
   return value
 }
 
-// A priority of a store that no warehouse holds in the fixtures
-const PARKED_PRIORITY = 9999
-
 interface ErrorBody {
   error: { code: string; metadata?: { shipmentIds?: string[]; statuses?: string[] } }
 }
@@ -698,34 +695,23 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
         reserved: 0
       })
       const shipmentId = await guide(order.id, forzaId)
-      const links = await owner.storeWarehouse.findMany({
+      // The warehouses a line already has are kept only while they can still serve it: the stock of the first one is gone, so the
+      // lines are placed again by priority and land in the second
+      const level = await owner.inventoryLevel.findFirstOrThrow({
         where: {
           storeId: ctx.storeA.id,
-          warehouseId: { in: [ctx.warehouseA.id, ctx.warehouseASecond.id] }
+          productId: order.productId,
+          warehouseId: ctx.warehouseA.id
         }
       })
-      expect(links).toHaveLength(2)
-      const priorityOf = (warehouseId: string) =>
-        links.find(link => link.warehouseId === warehouseId)?.priority ?? 0
-      const first = priorityOf(ctx.warehouseA.id)
-      const secondPriority = priorityOf(ctx.warehouseASecond.id)
-      // The priority of a store is unique, and each statement is checked when it ends: the first warehouse is parked on a priority
-      // nobody holds while the two change places
-      const setPriority = (warehouseId: string, priority: number) =>
-        owner.storeWarehouse.updateMany({
-          where: { storeId: ctx.storeA.id, warehouseId },
-          data: { priority }
-        })
-      const swap = async (toFirst: number, toSecond: number) => {
-        await setPriority(ctx.warehouseA.id, PARKED_PRIORITY)
-        await setPriority(ctx.warehouseASecond.id, toSecond)
-        await setPriority(ctx.warehouseA.id, toFirst)
-      }
-      // The second warehouse is now the one the store reserves from first
-      await swap(secondPriority, first)
+      await owner.inventoryLevel.update({ where: { id: level.id }, data: { onHand: 0 } })
       try {
         const again = await edit(order.id, { items: [{ productId: order.productId, quantity: 1 }] })
         expect(again.status).toBe(OK)
+        const placed = await owner.orderItemAllocation.findMany({
+          where: { storeId: ctx.storeA.id, orderItem: { orderId: order.id } }
+        })
+        expect(placed.map(row => row.warehouseId)).toEqual([ctx.warehouseASecond.id])
         expect((await shipmentOf(shipmentId)).status).toBe(ShipmentStatus.CANCEL_PENDING)
         const entries = await waitForAuditEntries(owner, {
           storeId: ctx.storeA.id,
@@ -737,7 +723,10 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
           guideChanges: ['origins']
         })
       } finally {
-        await swap(first, secondPriority)
+        await owner.inventoryLevel.update({
+          where: { id: level.id },
+          data: { onHand: level.onHand }
+        })
       }
     })
 
