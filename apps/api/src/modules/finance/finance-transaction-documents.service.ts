@@ -40,31 +40,51 @@ export class FinanceTransactionDocumentsService {
     actor: Actor,
     granted: readonly Permission[]
   ): Promise<TransactionView> {
-    const transaction = await this.prisma.client.financeTransaction.findFirst({
-      where: { id: transactionId, organizationId },
-      select: { id: true, kind: true, documentMediaId: true, voidedByEntryId: true }
-    })
-    if (transaction === null) throw resourceNotFound('finance transaction')
-    requireTransactionPermission(transaction.kind as FinanceTransactionKind, granted)
-    // The same file again is the same request (a double click, a lost answer): it finds the receipt and writes nothing
-    if (transaction.documentMediaId === body.mediaId) return this.get(organizationId, transactionId)
-    if (transaction.documentMediaId !== null) throw this.alreadySet()
-    if (transaction.voidedByEntryId !== null) {
-      throw resourceConflict('the transaction was voided already', {
-        conflict: FinanceConflicts.TRANSACTION_ALREADY_VOIDED
+    // Three short units, because the books belong to the organization and a file to ONE store (the route is @NoTenantTransaction: the
+    // request has no context of its own):
+    //  1. the transaction and every check that needs only it, in the context of the organization of the guard;
+    //  2. the file, found by its id in a context of the stores of the organization: ONE read by primary key that writes nothing;
+    //  3. the write, in the context of the organization AND the one store that owns the file (the store of the ROW, never one the
+    //     client names): the trigger of the link reads the file under the same row policy, so it cannot see a file of another store.
+    const early = await this.inOrganization(organizationId, async () => {
+      const transaction = await this.prisma.client.financeTransaction.findFirst({
+        where: { id: transactionId, organizationId },
+        select: { id: true, kind: true, documentMediaId: true, voidedByEntryId: true }
       })
-    }
-    // A file made for THIS transaction, as a receipt, in a store of this organization: anything else is a file that is not there
-    const file = await this.prisma.client.media.findFirst({
-      where: {
-        id: body.mediaId,
-        purpose: MediaPurpose.FINANCE_DOCUMENT,
-        financeTransactionId: transactionId,
-        store: { organizationId }
-      },
-      select: { id: true, status: true }
+      if (transaction === null) throw resourceNotFound('finance transaction')
+      requireTransactionPermission(transaction.kind as FinanceTransactionKind, granted)
+      // The same file again is the same request (a double click, a lost answer): it finds the receipt and writes nothing
+      if (transaction.documentMediaId === body.mediaId) {
+        return this.get(organizationId, transactionId)
+      }
+      if (transaction.documentMediaId !== null) throw this.alreadySet()
+      if (transaction.voidedByEntryId !== null) {
+        throw resourceConflict('the transaction was voided already', {
+          conflict: FinanceConflicts.TRANSACTION_ALREADY_VOIDED
+        })
+      }
+      return null
     })
-    if (file === null) throw resourceNotFound('receipt')
+    if (early !== null) return early
+    // A file made for THIS transaction, as a receipt, in a store of this organization: anything else is a file that is not there
+    const stores = await this.prisma.client.store.findMany({
+      where: { organizationId },
+      select: { id: true }
+    })
+    const file = await this.prisma.tenantTransaction(
+      { storeIds: stores.map(store => store.id), organizationIds: [] },
+      () =>
+        this.prisma.client.media.findFirst({
+          where: {
+            id: body.mediaId,
+            purpose: MediaPurpose.FINANCE_DOCUMENT,
+            financeTransactionId: transactionId,
+            store: { organizationId }
+          },
+          select: { id: true, status: true, storeId: true }
+        })
+    )
+    if (file === null || file.storeId === null) throw resourceNotFound('receipt')
     // Set once: only a file the scan found clean is worth being the receipt for ever
     if (file.status !== String(MediaStatus.CLEAN)) {
       throw resourceConflict('the file is not clean yet', {
@@ -72,13 +92,24 @@ export class FinanceTransactionDocumentsService {
       })
     }
 
+    let view: TransactionView | null
     try {
-      const set = await this.prisma.client.financeTransaction.updateMany({
-        where: { id: transactionId, organizationId, documentMediaId: null, voidedByEntryId: null },
-        data: { documentMediaId: body.mediaId }
-      })
-      // Another request set it, or voided the transaction, between the read and the write
-      if (set.count === 0) return await this.settled(organizationId, transactionId, body.mediaId)
+      view = await this.prisma.tenantTransaction(
+        { storeIds: [file.storeId], organizationIds: [organizationId] },
+        async () => {
+          const set = await this.prisma.client.financeTransaction.updateMany({
+            where: {
+              id: transactionId,
+              organizationId,
+              documentMediaId: null,
+              voidedByEntryId: null
+            },
+            data: { documentMediaId: body.mediaId }
+          })
+          // Another request set it, or voided the transaction, between the read and the write: what is there now is read apart
+          return set.count === 0 ? null : await this.get(organizationId, transactionId)
+        }
+      )
     } catch (error) {
       // The same file cannot be the receipt of two transactions (unique), and it was made for only one
       if (isUniqueViolation(error)) throw this.alreadySet()
@@ -91,6 +122,12 @@ export class FinanceTransactionDocumentsService {
       if (text.includes('FINANCE_TRANSACTION_IMMUTABLE')) throw this.alreadySet()
       throw error
     }
+    if (view === null) {
+      return this.inOrganization(organizationId, () =>
+        this.settled(organizationId, transactionId, body.mediaId)
+      )
+    }
+    // After the unit is closed: the entry is written once the link is
     this.audit.log({
       action: AuditAction.FINANCE_TRANSACTION_DOCUMENT_ATTACHED,
       actor: { userId: actor.userId },
@@ -102,7 +139,11 @@ export class FinanceTransactionDocumentsService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    return this.get(organizationId, transactionId)
+    return view
+  }
+
+  private inOrganization<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
+    return this.prisma.tenantTransaction({ storeIds: [], organizationIds: [organizationId] }, work)
   }
 
   // The signed links of the receipt: short-lived, and only once the scan found the file clean (MediaService refuses an unscanned or an

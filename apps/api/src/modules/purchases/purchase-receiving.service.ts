@@ -48,7 +48,7 @@ import { lockScope } from '../finance/finance.support'
 import type { Actor } from '../tenancy'
 
 import { PurchaseOrdersService } from './purchase-orders.service'
-import { seesEveryLine, visibleStoreIds } from './purchases.reach'
+import { seesEveryLine, visibleStoreIdsIn } from './purchases.reach'
 import type { ReceivePurchaseOrderBody } from './purchases.schemas'
 import { invalidPurchase, invalidTransition, latestDay, roleAccount } from './purchases.support'
 import type { OrderView } from './purchases.views'
@@ -82,9 +82,8 @@ export class PurchaseReceivingService {
     body: ReceivePurchaseOrderBody,
     actor: Actor
   ): Promise<OrderView> {
-    const visible = await visibleStoreIds(this.prisma, organizationId, actor.userId)
     const received = await this.prisma.transaction(tx =>
-      this.receiveIn(tx, organizationId, orderId, body, actor, visible)
+      this.receiveIn(tx, organizationId, orderId, body, actor)
     )
     if (!received.replayed) {
       this.audit.log({
@@ -112,8 +111,7 @@ export class PurchaseReceivingService {
     organizationId: string,
     orderId: string,
     body: ReceivePurchaseOrderBody,
-    actor: Actor,
-    visible: readonly string[]
+    actor: Actor
   ): Promise<Received> {
     // Two requests with one key at once do not both pass: the second waits here until the first has committed, then finds it
     await lockScope(tx, `${organizationId}:purchase_receipt:${body.idempotencyKey}`)
@@ -157,7 +155,11 @@ export class PurchaseReceivingService {
     const sent = new Map(body.lines.map(line => [line.orderLineId, line.quantity]))
     const chosen = lines.filter(line => sent.has(line.id))
     if (chosen.length !== sent.size) throw resourceNotFound('purchase order line')
-    // A line is read and written by the members of its store only: a receipt must be wholly the caller's
+    // A line is read and written by the members of its store only: a receipt must be wholly the caller's. The stores the caller may write
+    // are read HERE, in this transaction and after the lock of the order, right before the stock moves: with the context of every store
+    // of the organization the database no longer refuses a write to a sibling store, so a permission revoked while this request waited
+    // for the lock is honored by this read and by nothing else
+    const visible = await visibleStoreIdsIn(tx, organizationId, actor.userId)
     if (!seesEveryLine(chosen, visible)) {
       throw resourceConflict('a line of the receipt is of a store the caller does not see', {
         conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE

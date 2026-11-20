@@ -535,6 +535,11 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       if (policy === null) throw new Error('no policy')
       return policy
     }
+    // The daily close of the worker judges each connection in the context of its store (`jobContext.forStore`)
+    const closeInStore = (policy: Awaited<ReturnType<typeof policyOf>>) =>
+      inStoreContext(prisma, { storeId: ctx.storeA.id, organizationId: ctx.orgA.id }, () =>
+        closeBenefitPeriods(prisma, policy, closeAt())
+      )
 
     it('gives back at the close the guides returned before the rate reached the threshold, once', async () => {
       const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
@@ -547,7 +552,7 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       // 1 of 12 is 8.3 %: close to the 10 % limit, still held; the second makes 16.7 %: lost
       const before = await balanceOf(id)
 
-      const closed = await closeBenefitPeriods(prisma, await policyOf(id), closeAt())
+      const closed = await closeInStore(await policyOf(id))
       expect(closed.length).toBeGreaterThan(0)
       const refunds = await movementsOf(id, GuideMovementKind.REFUND)
       expect(refunds.map(row => row.shipmentId)).toEqual([first])
@@ -562,7 +567,7 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       })
 
       // the same close again judges nothing and gives nothing back twice
-      const again = await closeBenefitPeriods(prisma, await policyOf(id), closeAt())
+      const again = await closeInStore(await policyOf(id))
       expect(again.every(period => period.refunded === 0)).toBe(true)
       expect(await movementsOf(id, GuideMovementKind.REFUND)).toHaveLength(1)
     })
@@ -574,7 +579,7 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       for (let index = 0; index < 12; index += 1) await deliveredGuide(id)
       await returnedGuide(id, new Date(Date.now() + 60_000))
       await returnedGuide(id, new Date(Date.now() + 61_000))
-      await closeBenefitPeriods(prisma, await policyOf(id), closeAt())
+      await closeInStore(await policyOf(id))
       expect(await movementsOf(id, GuideMovementKind.REFUND)).toHaveLength(0)
     })
 
@@ -601,7 +606,7 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
         baseCount: 0,
         returnCount: 0
       })
-      await closeBenefitPeriods(prisma, await policyOf(id), closeAt())
+      await closeInStore(await policyOf(id))
       expect(await movementsOf(id, GuideMovementKind.REFUND)).toHaveLength(0)
       const history = await admin().get(ApiRoutes.carriers.benefitPeriods(id))
       expect(history.body).toMatchObject([{ baseCount: 0, returnCount: 0, refundedCount: 0 }])

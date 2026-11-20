@@ -13,7 +13,8 @@ import {
   CurrentStore,
   RequireAnyPermission,
   RequirePermissions,
-  type ResolvedTenant
+  type ResolvedTenant,
+  TenantOfOrganizationStores
 } from '../tenancy'
 
 import { PurchaseOrdersService } from './purchase-orders.service'
@@ -47,6 +48,9 @@ const id = () => new ZodValidationPipe(idSchema)
 
 // The purchase orders of the organization (TDD_18 §2.7, §12): `finance:manage_purchases` writes and reads them; a payment is
 // `finance:move_money`. The organization is the guard's; the lines a caller sees are the ones of the stores it belongs to.
+@TenantOfOrganizationStores(
+  'a purchase order carries lines of several stores of the organization and receiving it raises the stock of each of them (inventory_levels and inventory_movements are tables of a store): the context holds every store of the organization, and the service decides which lines each caller sees and receives (visibleStoreIds, seesEveryLine, before any stock moves). The payment routes of this controller inherit the mark and write organization tables only: add NO new write to a table of a store in this controller without reviewing the wide context'
+)
 @Controller()
 export class PurchaseOrdersController {
   constructor(

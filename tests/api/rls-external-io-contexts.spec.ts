@@ -1,10 +1,16 @@
+import { randomUUID } from 'node:crypto'
+
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService, RLS_CONTEXT_ENABLED } from '@platform/core/database'
+import { AuditAction } from '@platform/core/audit'
+import { JobContext, PrismaService, RLS_CONTEXT_ENABLED } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import {
   CarrierId,
+  FinanceCountryCodes,
+  FinanceReportLimits,
+  JournalEntryType,
   OrderReturnStatus,
   PluginCatalogTypes,
   PluginInstallationStatus,
@@ -26,6 +32,7 @@ import {
   FakeCarrierBehaviors
 } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
@@ -34,6 +41,8 @@ import { type CreatedBody, ordersKit, type OrdersKit } from '../helpers/orders'
 const OK = 200
 const CREATED = 201
 const BAD_REQUEST = 400
+const RENT = '6105'
+const CASH = '1101'
 const ADDRESS = { line1: 'Calle 1 #23', city: 'San Salvador', state: 'San Salvador', country: 'SV' }
 
 // RLS phase 6, F6-3f: the three routes that call outside the platform (the guide of a carrier, the guide of the way back of a return, the
@@ -300,5 +309,151 @@ describe('RLS phase 6: the routes that call outside run in short contexts', () =
     expect(
       await owner.pluginInstallation.count({ where: { storeId: ctx.storeA.id, pluginId: id } })
     ).toBe(1)
+  })
+
+  // The CSV of the journal is the other route that reads outside the transaction of the request: the count and each page are a unit of
+  // the organization, so the file is cut at the highest entry number counted. Here it runs with the guard on and the switch on.
+  describe('the journal CSV, read in a unit of the organization per page', () => {
+    const FROM = '2026-01-01'
+    const TO = '2026-01-31'
+    let accountsA: Record<string, string> = {}
+    let accountsB: Record<string, string> = {}
+    const adminB = () => api(app, ctx.adminB, ctx.storeB)
+
+    async function accountIds(organizationId: string): Promise<Record<string, string>> {
+      const rows = await owner.ledgerAccount.findMany({
+        where: { organizationId },
+        select: { id: true, code: true }
+      })
+      return Object.fromEntries(rows.map(row => [row.code, row.id]))
+    }
+    async function post(
+      agent: () => ReturnType<typeof admin>,
+      accounts: Record<string, string>,
+      cents: number
+    ): Promise<string> {
+      const response = await agent()
+        .post(ApiRoutes.finance.entries.manual)
+        .send({
+          idempotencyKey: `k-${prefix}-${randomUUID()}`,
+          entryDate: '2026-01-15',
+          type: JournalEntryType.MANUAL,
+          memo: 'Entry of the suite',
+          lines: [
+            { accountId: accounts[RENT], debitCents: cents },
+            { accountId: accounts[CASH], creditCents: cents }
+          ]
+        })
+      expect(response.status).toBe(CREATED)
+      return (response.body as { id: string }).id
+    }
+    async function download(agent: () => ReturnType<typeof admin>): Promise<string[][]> {
+      const response = await agent()
+        .get(ApiRoutes.finance.reports.journalCsv)
+        .query({ from: FROM, to: TO })
+        .buffer(true)
+        .parse((res, done) => {
+          let data = ''
+          res.on('data', (chunk: Buffer) => (data += chunk.toString('utf8')))
+          res.on('end', () => done(null, data))
+        })
+      expect(response.status).toBe(OK)
+      // Plain fields (no quote, no comma): the entries of the case have none
+      return (response.body as string)
+        .replace(/^\uFEFF/, '')
+        .split(/\r?\n/)
+        .filter(line => line !== '')
+        .map(line => line.split(','))
+    }
+
+    beforeAll(async () => {
+      for (const agent of [admin, adminB]) {
+        await agent()
+          .post(ApiRoutes.finance.setup)
+          .send({ countryCode: FinanceCountryCodes.EL_SALVADOR, accountingStartDate: FROM })
+          .expect(CREATED)
+      }
+      accountsA = await accountIds(ctx.orgA.id)
+      accountsB = await accountIds(ctx.orgB.id)
+    })
+
+    it('cuts the file at the highest entry counted when an entry arrives between two pages, and the audit row counts the file', async () => {
+      const seeded = [await post(admin, accountsA, 1_000)]
+      seeded.push(await post(admin, accountsA, 250), await post(admin, accountsA, 75))
+      const exported = { organizationId: ctx.orgA.id, action: AuditAction.FINANCE_EXPORTED }
+      const before = await owner.auditLog.count({ where: exported })
+      // Two lines per page: the three entries take three pages, each a unit of its own
+      const limits: { CSV_PAGE_SIZE: number } = FinanceReportLimits
+      const pageSize = jest.replaceProperty(limits, 'CSV_PAGE_SIZE', 2)
+      // The count is the first unit and the first page the second: once that page is served, an entry is posted, so it takes a number
+      // above the one the count saw
+      const jobContext = app.get(JobContext)
+      const original = jobContext.inOrganization.bind(jobContext)
+      let units = 0
+      let late = ''
+      let lateFailure: unknown = null
+      let seeding = false
+      // Whether a tenant context was open as each unit of the file began: none may be, a connection is not held while the file goes out
+      const open: boolean[] = []
+      const spy = jest
+        .spyOn(jobContext, 'inOrganization')
+        .mockImplementation(async (organizationId, work, options) => {
+          if (seeding || organizationId !== ctx.orgA.id)
+            return original(organizationId, work, options)
+          open.push(guarded.hasTenantContext())
+          const result = await original(organizationId, work, options)
+          units += 1
+          if (units === 2) {
+            seeding = true
+            try {
+              late = await post(admin, accountsA, 40)
+            } catch (error) {
+              lateFailure = error
+            } finally {
+              seeding = false
+            }
+          }
+          return result
+        })
+      let rows: string[][]
+      try {
+        rows = await download(admin)
+      } finally {
+        spy.mockRestore()
+        pageSize.restore()
+      }
+
+      expect(lateFailure).toBeNull()
+      expect(late).not.toBe('')
+      // The count and four pages (the last empty): were the page size ignored, one page would hold the file and the cut would prove nothing
+      expect(units).toBe(5)
+      expect(open).toEqual([false, false, false, false, false])
+      const [header = [], ...lines] = rows
+      const entryIds = new Set(lines.map(line => line[header.indexOf('entry_id')]))
+      expect(lines).toHaveLength(6)
+      expect(entryIds).toEqual(new Set(seeded))
+      expect(entryIds.has(late)).toBe(false)
+      // The audit row of THIS request counts the rows of the file: wait for one more than before and read the newest
+      const audited = await waitForAuditEntries(owner, exported, before + 1)
+      expect(audited).toHaveLength(before + 1)
+      expect(audited.at(-1)?.metadata).toMatchObject({ report: 'journal', rows: lines.length })
+      // The next download has the late entry, as it was not lost
+      const next = await download(admin)
+      expect(next.slice(1)).toHaveLength(8)
+    })
+
+    it('gives an organization none of the rows of another', async () => {
+      const entryB = await post(adminB, accountsB, 500)
+
+      const rowsB = await download(adminB)
+      const rowsA = await download(admin)
+
+      const column = (rows: string[][]): Set<string | undefined> =>
+        new Set(rows.slice(1).map(line => line[(rows[0] ?? []).indexOf('entry_id')]))
+      expect(column(rowsB)).toEqual(new Set([entryB]))
+      expect(rowsB.slice(1)).toHaveLength(2)
+      expect(column(rowsA).size).toBeGreaterThan(0)
+      expect(column(rowsA).has(entryB)).toBe(false)
+    })
   })
 })
