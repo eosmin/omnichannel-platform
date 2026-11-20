@@ -11,10 +11,11 @@ import {
   ShipmentInactiveStatuses,
   ShipmentPastPickupStatuses,
   ShipmentUnknownOutcomeStatuses,
+  ShipmentVoidingStatuses,
   returnShipmentIdempotencyKey,
   shipmentIdempotencyKey
 } from './shipping-constants'
-import { ShipmentStatus, ShippingPayer } from './status-enums'
+import { CodStatus, ShipmentStatus, ShippingPayer } from './status-enums'
 
 const ID = '2b7f1c1e-5f0d-4c3e-9d3a-0f6f1d2a3b4c'
 
@@ -84,6 +85,27 @@ describe('the body that sets a status by hand', () => {
 })
 
 describe('the sets of statuses the engine reads', () => {
+  it('leaves no status of a shipment outside the sets the engine decides by', () => {
+    // A label made and not picked up yet is the only live status that none of the sets names: the guide can still be voided
+    const decided = new Set<ShipmentStatus>([
+      ShipmentStatus.LABEL_CREATED,
+      ...ShipmentInactiveStatuses,
+      ...ShipmentUnknownOutcomeStatuses,
+      ...ShipmentVoidingStatuses,
+      ...ShipmentPastPickupStatuses
+    ])
+    expect(Object.values(ShipmentStatus).filter(status => !decided.has(status))).toEqual([])
+  })
+
+  it('keeps what a remittance says about the cash apart from the status of the guide', () => {
+    // A guide whose cash was remitted or is in discrepancy is still `delivered`: the cash has its own status, so a package that
+    // has left is never read as one that can be voided
+    for (const status of [CodStatus.REMITTED, CodStatus.DISCREPANCY]) {
+      expect(Object.values<string>(ShipmentStatus)).not.toContain(status)
+    }
+    expect(ShipmentPastPickupStatuses).toContain(ShipmentStatus.DELIVERED)
+  })
+
   it('never overlap where they would contradict', () => {
     for (const status of ShipmentUnknownOutcomeStatuses) {
       expect(ShipmentInactiveStatuses).not.toContain(status)
