@@ -17,6 +17,7 @@ import {
   checkOrderTransition,
   checkPaymentChange,
   checkPriceDecision,
+  dateToDay,
   isPriceApprovalBlocking,
   MediaStatus,
   OrderConfirmationChannel,
@@ -29,7 +30,8 @@ import {
   PaymentMethod,
   PaymentStatus,
   PriceApprovalStatus,
-  type RecordOrderPaymentInput
+  type RecordOrderPaymentInput,
+  SaleRecognition
 } from '@platform/core/domain'
 import {
   errorName,
@@ -193,13 +195,12 @@ export class OrdersStatusService {
     })
     const books = await tx.financeSettings.findUnique({
       where: { organizationId: store.organizationId },
-      select: { accountingStartDate: true }
+      select: { accountingStartDate: true, recognizeSaleOn: true }
     })
-    // An organization with no books has no start to keep
-    if (books === null) return
-    if (
-      dayInZone(deliveredAt, store.timezone) < books.accountingStartDate.toISOString().slice(0, 10)
-    ) {
+    // An organization with no books has no start to keep, and one that counts its sales on the shipping moves nothing with the delivery
+    if (books === null || (books.recognizeSaleOn as SaleRecognition) === SaleRecognition.SHIPPED)
+      return
+    if (dayInZone(deliveredAt, store.timezone) < dateToDay(books.accountingStartDate)) {
       throw new PlatformException(
         ErrorCodes.VALIDATION_FAILED,
         'an order cannot be delivered before the books begin',

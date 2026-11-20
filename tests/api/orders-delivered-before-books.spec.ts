@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { FinanceCountryCodes } from '@platform/core/domain'
+import { FinanceCountryCodes, SaleRecognition } from '@platform/core/domain'
 
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -27,6 +27,11 @@ describe('The delivery moment of an order and the day the books begin', () => {
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     kit = ordersKit(owner, app, ctx)
+    // The edge cases below are by the day of this zone (UTC-6), so the spec names it instead of trusting the default
+    await owner.store.update({
+      where: { id: ctx.storeA.id },
+      data: { timezone: 'America/El_Salvador' }
+    })
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)
@@ -89,6 +94,37 @@ describe('The delivery moment of an order and the day the books begin', () => {
       }
       expect((await get(early)).status).toBe('SHIPPED')
       expect((await get(eve)).status).toBe('SHIPPED')
+    })
+
+    it('answers that it shipped later when the moment is before both the shipping and the start', async () => {
+      const id = await shipped()
+      await owner.order.update({
+        where: { id },
+        data: { shippedAt: new Date('2026-03-12T00:00:00Z') }
+      })
+
+      const response = await deliver(id, '2026-03-10T15:00:00Z')
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(JSON.stringify(response.body)).toContain('delivered_before_shipped')
+    })
+
+    it('takes a moment before the start when the sales count on the shipping, which the delivery does not move', async () => {
+      const id = await shipped()
+      await owner.financeSettings.update({
+        where: { organizationId: ctx.orgA.id },
+        data: { recognizeSaleOn: SaleRecognition.SHIPPED }
+      })
+      try {
+        const response = await deliver(id, '2026-03-10T15:00:00Z')
+
+        expect(response.status).toBe(OK)
+      } finally {
+        await owner.financeSettings.update({
+          where: { organizationId: ctx.orgA.id },
+          data: { recognizeSaleOn: SaleRecognition.DELIVERED }
+        })
+      }
     })
 
     it('takes the first day of the books, a later day, and no moment at all (now)', async () => {
