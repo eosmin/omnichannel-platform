@@ -26,6 +26,7 @@ import {
   actorOf,
   CurrentOrganization,
   CurrentStore,
+  NoTenantTransaction,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -208,6 +209,9 @@ export class FinanceReportsController {
 
   // One row per line of the journal, with what the hash of each entry covers, written as it is read
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL, Permissions.FINANCE_EXPORT)
+  @NoTenantTransaction(
+    'streams the file after the handler returns: its pages are read once the request transaction is closed, each in a short unit of the organization of its own'
+  )
   @Get(ApiRoutes.finance.reports.journalCsv)
   async journalCsv(
     @CurrentOrganization() organization: Organization,
@@ -223,7 +227,12 @@ export class FinanceReportsController {
       yield journalCsvHeader()
       for await (const page of pages) yield journalCsvRows(page)
     }
-    return new StreamableFile(Readable.from(chunks()))
+    // A page that fails after the headers went must not end the body as if it were whole: the connection is destroyed, so the client sees
+    // an aborted download and never a short file with a clean end
+    return new StreamableFile(Readable.from(chunks())).setErrorHandler((error, response) => {
+      // On Express the handler response is the ServerResponse: its connection is dropped, with no terminating chunk
+      ;(response as unknown as Response).destroy(error)
+    })
   }
 
   // Whether the weekly check left the chain flagged: the incident that stops a close, read without scanning the journal
