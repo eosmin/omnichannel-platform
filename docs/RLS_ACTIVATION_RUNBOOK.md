@@ -64,7 +64,12 @@ This is run by the OWNER, never by a session or by the CI. It turns on, in this 
 `pnpm db:rls:worker-role` runs over `DIRECT_DATABASE_URL`, never from a migration, `db:migrate`, a deploy step or the CI of production.
 PostgreSQL lets only a superuser change `BYPASSRLS`, so this one command needs a SUPERUSER connection (give it in the environment of that
 single run, not in the file of the app); with an owner that is not one the statement is refused with SQLSTATE `42501` and nothing
-changes. Do not make the application's owner a superuser to get around the refusal. A role belongs to the whole server: the command lists the databases where `platform_worker` can connect
+changes. Do not make the application's owner a superuser to get around the refusal. The superuser is the owner of the server or the provider's own
+superuser role (with its own name on a managed Postgres, and some providers let nobody change `BYPASSRLS`): pass its URL only in the
+environment of that one run (`DIRECT_DATABASE_URL=... pnpm db:rls:worker-role ...` in the shell of the owner; dotenv-flow does not override
+a variable already set), never in `.env`, `.env.local`, the repository or a CI secret of production, and close the shell or revoke the
+credential afterwards. Try `nobypass` and `bypass` in staging first (a provider that refuses gives the same SQLSTATE `42501`), before
+planning production. A role belongs to the whole server: the command lists the databases where `platform_worker` can connect
 before it changes anything, and the change reaches all of them. A mode that changes the role runs only with `--confirm=<the database the
 URL points at>` (compared with `current_database()`); `status` is the default and changes nothing.
 
@@ -73,12 +78,14 @@ URL points at>` (compared with `current_database()`); `status` is the default an
   2. Stop the workers and let their queues drain. A job that runs with no store in its context reads no row once the role is bound.
   3. `pnpm db:rls:worker-role nobypass --confirm=<database>`.
   4. Start the workers with `WORKER_RLS_CONTEXT=true`. A worker with the flag on and a role that still skips row security refuses to
-     start, and, once step 4 has the policies on, a worker with the flag off and the role bound finds nothing to do: the flag and the role change together.
+     start, and, once section 4 (`enforce on`) has the policies on, a worker with the flag off and the role bound finds nothing to do: the flag and the role change together.
 - Check: `status` says `bypassrls=false superuser=false (row security binds it)`; the worker log has no start error; the gauge
   `platform_worker_role_bypasses_rls` (the worker's own check of its role at start) is `0`; `worker_job_subject_missing_total` stays at zero over one cycle
-  of the crons. `pnpm db:rls:enforce on` refuses to run while the worker still skips row security, so step 4 cannot be reached by mistake.
-- Back, ONLY while the policies are still off (before step 4): set `WORKER_RLS_CONTEXT=false`, restart the workers, and only then `pnpm db:rls:worker-role bypass
-  --confirm=<database>`. once step 4 is done, start at section 6 step 1 (`enforce off`) instead. **NEVER give `BYPASS` back with the flag still on**, and never take it away with the flag off and the policies
+  of the crons. After EVERY restart of a worker read the flag in its environment and the gauge together: gauge `0` with the flag `false` is the
+  unsafe pair once section 4 has the policies on. `pnpm db:rls:enforce on` refuses to run while the worker still skips row security, so
+  section 4 cannot be reached by mistake.
+- Back, ONLY while the policies are still off (before section 4, `enforce on`): set `WORKER_RLS_CONTEXT=false`, restart the workers, and only then `pnpm db:rls:worker-role bypass
+  --confirm=<database>`. once section 4 is done, start at section 6 step 1 (`enforce off`) instead. **NEVER give `BYPASS` back with the flag still on**, and never take it away with the flag off and the policies
   on: the worker would read no row (while the policies are still off a bound role sees every row, but keep the same order so the way back is one habit). A worker started with the flag off and the role bound starts WITHOUT any warning (the start check only complains about a role that skips row security), so after every restart read the two together: the flag in the environment of the worker and the gauge `platform_worker_role_bypasses_rls`; `0` with the flag off is the unsafe pair once the policies are on.
 
 ## 4. Turn the policies on

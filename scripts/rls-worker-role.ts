@@ -31,7 +31,8 @@ import {
 //
 // A mode that changes the role runs only with --confirm=<the name of the database the URL points at>, compared with current_database()
 // of the connection: a command pointed at the wrong database stops. It says host, database and role before it changes anything, and
-// does nothing (and says so) when the role already is as asked. No migration, `db:migrate` or deploy step runs it.
+// does nothing (and says so) when the role already is as asked. The ONLY guard against a wrong target is that
+// confirmation: the script does not check that the host is local or that CI=true, so read the host, database and list it prints. No migration, `db:migrate` or deploy step runs it.
 //
 // Idempotent. Stop the workers before `nobypass` and start them with WORKER_RLS_CONTEXT=true after it: a job with no context reads no
 // row once the role is bound. The way back is the inverse: flag off and restart first, `bypass` after, or the worker will not start.
