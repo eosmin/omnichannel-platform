@@ -185,31 +185,32 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
     return expected
   }
 
-  const bulk = async (ids: string[]) => {
+  // The transaction of the request commits once the answer is sent, and the jobs are queued, in one pass, right after that commit.
+  // `jobs` is how many jobs the batch must queue: the case waits for them to show up (by that count, never by time), and
+  // everything the batch queues or emits is then in. A case that expects a conversation NOT to be told puts a sibling that IS told in
+  // the same batch, so that "not there" means "the commit ran and left it out", never "the commit has not run yet".
+  const bulk = async (ids: string[], jobs: number) => {
     const response = await api(app, ctx.adminA, ctx.storeA)
       .post(ApiRoutes.conversations.bulk)
       .send({ action: BulkActions.MARK_READ, conversationIds: ids })
-    // The transaction of the request commits once the answer is sent, and the jobs are queued after that commit: wait until the
-    // reads are in the database, then let the hooks of the commit run
-    const body = response.body as { succeeded?: string[] }
-    const done = body.succeeded ?? []
-    for (let attempt = 0; attempt < 200; attempt += 1) {
-      const unread = await owner.conversation.count({
-        where: { id: { in: done }, unreadCount: { gt: 0 } }
-      })
-      if (unread === 0) break
+    for (let attempt = 0; attempt < 200 && enqueued.length < jobs; attempt += 1) {
       await new Promise<void>(resolve => setTimeout(resolve, 50))
     }
-    await new Promise<void>(resolve => setImmediate(resolve))
-    await new Promise<void>(resolve => setTimeout(resolve, 50))
     // A lookup that failed is logged and the reads stand: say it here, or the case only sees a receipt that never came
     expect(JSON.stringify(warnings)).toBe('[]')
+    expect(enqueued.length).toBeGreaterThanOrEqual(jobs)
     return response
   }
 
+  const withChannelId = (rows: { channel: string | null }[]) =>
+    rows.filter(row => row.channel !== null).length
+
   it('tells what the lookups of one conversation would, and costs the same queries for 10 as for 40', async () => {
     const small = await seed(1)
-    const response = await bulk(small.map(row => row.id))
+    const response = await bulk(
+      small.map(row => row.id),
+      withChannelId(small)
+    )
     expect(response.status).toBe(HttpStatusCodes.OK)
     expect((response.body as BulkBody).failed).toEqual([])
     const lookupsOfSmall = batchLookups
@@ -223,7 +224,7 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
         )
       )
     )
-    expect(enqueued).toHaveLength(small.filter(row => row.channel !== null).length)
+    expect(enqueued).toHaveLength(withChannelId(small))
     expect(emitted.map(row => row.messageId).toSorted()).toEqual(
       small.flatMap(row => (row.widget === null ? [] : [row.widget])).toSorted()
     )
@@ -232,32 +233,42 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
     emitted = []
     batchLookups = 0
     const large = await seed(4)
-    await bulk(large.map(row => row.id))
+    await bulk(
+      large.map(row => row.id),
+      withChannelId(large)
+    )
     expect(lookupsOfSmall).toBe(2)
     expect(batchLookups).toBe(lookupsOfSmall)
-    expect(enqueued).toHaveLength(large.filter(row => row.channel !== null).length)
+    expect(enqueued).toHaveLength(withChannelId(large))
   }, 120_000)
 
   it('never asks one conversation at a time', async () => {
     const queueFor = jest.spyOn(app.get(ReadReceipts), 'queueFor')
     const notify = jest.spyOn(app.get(WidgetReadNotifier), 'notify')
     const rows = await seed(1)
-    await bulk(rows.map(row => row.id))
+    await bulk(
+      rows.map(row => row.id),
+      withChannelId(rows)
+    )
     expect(queueFor).not.toHaveBeenCalled()
     expect(notify).not.toHaveBeenCalled()
   }, 60_000)
 
   it('does not point a receipt at a message that arrived after the batch began', async () => {
-    const [row] = await seed(1)
-    const conversationId = row?.id as string
-    const early = row?.channel as string
-    // Newer than every clock of the batch: nobody read it
-    await message(ctx.storeA.id, conversationId, {
+    const rows = await seed(1)
+    const target = rows[0] as { id: string; channel: string | null }
+    // Newer than every clock of the batch: nobody read it. The other conversations of the batch are the control that the jobs ran
+    await message(ctx.storeA.id, target.id, {
       createdAt: new Date(Date.now() + 3_600_000),
       channelMessageId: `wamid-${randomUUID()}`
     })
-    await bulk([conversationId])
-    expect(enqueued).toEqual([{ storeId: ctx.storeA.id, conversationId, messageId: early }])
+    await bulk(
+      rows.map(row => row.id),
+      withChannelId(rows)
+    )
+    expect(enqueued.filter(job => job.conversationId === target.id)).toEqual([
+      { storeId: ctx.storeA.id, conversationId: target.id, messageId: target.channel }
+    ])
   })
 
   it('tells nothing for a conversation that failed, nor for one of another store', async () => {
@@ -266,22 +277,34 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
       createdAt: new Date(Date.now() - 1_000),
       channelMessageId: `wamid-${randomUUID()}`
     })
-    const mine = (await seed(1))[0] as { id: string }
-    const response = await bulk([mine.id, foreign.id])
+    const mine = await seed(1)
+    const response = await bulk([...mine.map(row => row.id), foreign.id], withChannelId(mine))
     const body = response.body as BulkBody
     expect(body.failed.map(row => row.id)).toEqual([foreign.id])
-    expect(enqueued.map(job => job.conversationId)).toEqual([mine.id])
+    expect(enqueued.map(job => job.conversationId)).not.toContain(foreign.id)
+    expect(enqueued).toHaveLength(withChannelId(mine))
 
-    // Even when the id of another store is forced into the batch, the store of the context keeps it out
+    // Even when the id of another store is forced into the batch, the store of the context keeps it out. Both calls queue their
+    // hooks when their own transaction commits, before they return, and a sibling of the store is the control that they ran
     enqueued = []
+    emitted = []
+    const sibling = mine.find(row => row.channel !== null && row.widget !== null) as {
+      id: string
+      channel: string
+      widget: string
+    }
     await guarded.inStoreContext(ctx.storeA.id, async () => {
-      await app.get(ReadReceipts).queueForMany(ctx.storeA.id, [foreign.id], '2999-01-01 00:00:00')
+      await app
+        .get(ReadReceipts)
+        .queueForMany(ctx.storeA.id, [foreign.id, sibling.id], '2999-01-01 00:00:00')
       await app
         .get(WidgetReadNotifier)
-        .notifyMany(ctx.storeA.id, [foreign.id], '2999-01-01 00:00:00')
+        .notifyMany(ctx.storeA.id, [foreign.id, sibling.id], '2999-01-01 00:00:00')
     })
-    expect(enqueued).toEqual([])
-    expect(emitted).toEqual([])
+    expect(enqueued).toEqual([
+      { storeId: ctx.storeA.id, conversationId: sibling.id, messageId: sibling.channel }
+    ])
+    expect(emitted.map(row => row.messageId)).toEqual([sibling.widget])
   })
 
   it('tells nothing when the store switched read receipts off', async () => {
@@ -289,9 +312,24 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
       where: { storeId: ctx.storeA.id },
       data: { preferences: { sendReadReceipts: false } }
     })
-    const rows = await seed(1)
-    await bulk(rows.map(row => row.id))
-    expect(enqueued).toEqual([])
-    expect(emitted).toEqual([])
+    const off = await seed(1)
+    const offResponse = await bulk(
+      off.map(row => row.id),
+      0
+    )
+    expect(offResponse.status).toBe(HttpStatusCodes.OK)
+    // The same store with the switch on, in the next batch: its jobs are the control that the first batch had its commit
+    await owner.storeSettings.updateMany({
+      where: { storeId: ctx.storeA.id },
+      data: { preferences: {} }
+    })
+    const on = await seed(1)
+    await bulk(
+      on.map(row => row.id),
+      withChannelId(on)
+    )
+    const offIds = new Set(off.map(row => row.id))
+    expect(enqueued.filter(job => offIds.has(job.conversationId))).toEqual([])
+    expect(enqueued).toHaveLength(withChannelId(on))
   })
 })
