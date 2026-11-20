@@ -492,7 +492,13 @@ describe('The delivery of a webhook', () => {
       const refused = await jobContext
         .forStore(ctx.storeA.id, () =>
           app.get(PrismaService).client.webhookDelivery.create({
-            data: { webhookId: row.id, event: Events.ORDER_CREATED, success: true, attempt: 1 }
+            data: {
+              webhookId: row.id,
+              event: Events.ORDER_CREATED,
+              durationMs: 1,
+              success: true,
+              attempt: 1
+            }
           })
         )
         .then(
