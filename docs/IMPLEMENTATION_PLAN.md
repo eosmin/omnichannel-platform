@@ -1561,8 +1561,17 @@ built once, by 4B.4b-1.
 - [x] **4B.4b-2 note (receipt link across stores, RLS enforced):** `GET finance/transactions/:id/document` is `@NoTenantTransaction` and opens three
       contexts (transaction in the organization; owner store of the file by its id in the stores of the organization, one read; signing in that one store).
       A user of a sibling store with `finance:view_journal` sees the receipt of another store of the organization: the books are the organization's and
-      the permission is organization-level, the same as with RLS off. Debt: `attach()` reads the file with the store of the request (a file uploaded in
-      store A1 and attached from A2 reads as missing under enforcement); owner: RLS phase 6 residuals, next finance PR that touches `attach`.
+      the permission is organization-level, the same as with RLS off. Closed by the PR `fix/finance-receipt-attach-cross-store`: `POST finance/transactions/:id/document`
+      is `@NoTenantTransaction` too and opens three contexts (transaction and checks in the organization; the file by its id in the stores of the
+      organization, one read that writes nothing; the link written in the organization AND the one store of the ROW of the file, because the trigger
+      `check_finance_transaction_row` is not SECURITY DEFINER and reads `media` under its store policy). Same parity: a user of A2 with the finance
+      permissions attaches a file uploaded in A1 of the same organization, as with RLS off; the answers stay one 404 for a file that is not of this
+      transaction, purpose or organization. Known limits (Hardening): the audit entry is written after the unit closes, the standard semantics of `AuditService` (the link is durable and
+      immutable; writing it inside the unit would take the detached path, which does not wait for the commit), so a crash between the COMMIT and the insert
+      loses the entry; a file that turns infected between the read and the write answers the 404 of the trigger, an equally safe refusal.
+      Debt: the sweep of non-definer triggers that read a table with a store policy, assessed by 4B, owner: RLS phase 6 residuals. Read by fc:
+      `check_bank_import_row` (reads `media`) is safe today because the service creates the file and the import row in the same call; it becomes a risk
+      the day the upload and the import are separated; the fiscal evidence and customer-data triggers and the automatic fiscal writes are safe.
 - [x] **4B.4b-2, bank file of the owner's first bank (PR `bank-import-datetime-thousands`):** a date with a time after the day
       (`dd/MM/yyyy hh:mm[:ss]`, an ISO day may use a T) is read on the bank route only (remittances still refuse a time); the time is part of the
       identity of the line (`bankLineKey`) when the row has one, so a statement that overlaps another never doubles a line and two equal
