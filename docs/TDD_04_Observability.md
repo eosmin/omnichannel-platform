@@ -201,6 +201,7 @@ export const MetricNames = {
 
   // Outbound webhooks & email
   WEBHOOK_DELIVERIES: 'platform_webhook_deliveries_total',
+  WEBHOOK_GONE_BEHIND_POLICY: 'platform_webhook_gone_behind_policy_total',
   EMAILS_SENT: 'platform_emails_sent_total',
 
   // Realtime

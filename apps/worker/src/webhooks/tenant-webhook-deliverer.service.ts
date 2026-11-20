@@ -6,18 +6,19 @@ import { PinoLogger } from 'nestjs-pino'
 import { CredentialCipher } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { WebhookLimits, WebhookStatus } from '@platform/core/domain'
+import { PostgresSqlStates } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { MetricNames, WebhookMetricTarget } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import type { TriggerWebhookJob } from '@platform/core/queues'
 
+import { GoneVerdict, judgeGone } from './gone-verdict'
 import { pinnedHttpsPost } from './pinned-https-post'
 import {
   type DeliveryDeps,
   failureOf,
   type Failure,
-  isGone,
   openSecret,
   sendSigned,
   WebhookOutcome
@@ -41,7 +42,9 @@ export class TenantWebhookDeliverer {
     private readonly events: DomainEvents,
     @InjectMetric(MetricNames.WEBHOOK_DELIVERIES) private readonly deliveries: Counter<string>,
     private readonly logger: PinoLogger,
-    private readonly jobContext: JobContext
+    private readonly jobContext: JobContext,
+    @InjectMetric(MetricNames.WEBHOOK_GONE_BEHIND_POLICY)
+    private readonly goneBehindPolicy: Counter<string>
   ) {
     this.logger.setContext(TenantWebhookDeliverer.name)
   }
@@ -113,7 +116,7 @@ export class TenantWebhookDeliverer {
   ): Promise<void> {
     this.deliveries.inc({ target: WebhookMetricTarget.TENANT, success: 'true' })
     // The context is opened inside `guarded`: a webhook deleted meanwhile breaks the transaction, and that is read outside of it
-    await this.guarded(webhookId, () =>
+    await this.guarded(storeId, webhookId, () =>
       this.jobContext.forStore(storeId, async () => {
         await this.prisma.client.webhookDelivery.create({
           data: { webhookId, event, statusCode, durationMs, success: true, attempt }
@@ -138,7 +141,7 @@ export class TenantWebhookDeliverer {
     const { webhookId, storeId, event } = job
     this.deliveries.inc({ target: WebhookMetricTarget.TENANT, success: 'false' })
     let disabled = false
-    await this.guarded(webhookId, () =>
+    await this.guarded(storeId, webhookId, () =>
       this.jobContext.forStore(storeId, async () => {
         disabled = await this.prisma.transaction(async tx => {
           await tx.webhookDelivery.create({
@@ -183,16 +186,36 @@ export class TenantWebhookDeliverer {
     return disabled
   }
 
-  // A webhook deleted while its delivery ran has no log to write to: that is the end of it, not an error to retry
-  private async guarded(webhookId: string, work: () => Promise<void>): Promise<void> {
+  // A webhook deleted while its delivery ran has no log to write to: that is the end of it, not an error to retry. With the policy on,
+  // the insert is refused (42501) before the foreign key can fail, so the webhook is looked up again, in a new unit of work and outside
+  // the one that broke: only its absence is a deletion, and a refusal with the webhook still there is thrown as it came.
+  private async guarded(
+    storeId: string,
+    webhookId: string,
+    work: () => Promise<void>
+  ): Promise<void> {
     try {
       await work()
     } catch (error) {
-      if (isGone(error)) {
-        this.logger.info({ webhookId }, 'a webhook was deleted while its delivery ran')
+      const verdict = await judgeGone(error, async () => {
+        const row = await this.jobContext.forStore(storeId, () =>
+          this.prisma.client.webhook.findFirst({
+            where: { id: webhookId, storeId },
+            select: { id: true }
+          })
+        )
+        return row !== null
+      })
+      if (verdict === GoneVerdict.NOT_GONE) throw error
+      if (verdict === GoneVerdict.DELETED_BEHIND_POLICY) {
+        this.goneBehindPolicy.inc({ target: WebhookMetricTarget.TENANT })
+        this.logger.warn(
+          { webhookId, storeId, code: PostgresSqlStates.INSUFFICIENT_PRIVILEGE },
+          'a webhook was deleted while its delivery ran: the log row was refused by the policy'
+        )
         return
       }
-      throw error
+      this.logger.info({ webhookId }, 'a webhook was deleted while its delivery ran')
     }
   }
 }

@@ -109,11 +109,3 @@ export function failureOf(error: unknown): Failure {
   }
   return { status: null, code: WebhookDeliveryErrors.UNEXPECTED, retryable: true }
 }
-
-// Prisma's "record not found" and "foreign key failed": the row was deleted while its delivery was running
-const GONE_CODES: ReadonlySet<string> = new Set(['P2025', 'P2003'])
-
-export function isGone(error: unknown): boolean {
-  const code = (error as { code?: unknown } | null)?.code
-  return typeof code === 'string' && GONE_CODES.has(code)
-}

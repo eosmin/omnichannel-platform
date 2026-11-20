@@ -20,9 +20,10 @@ import {
   WebhookHeaders,
   WebhookLimits
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, isRowLevelSecurityError } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
+import { WebhookMetricTarget } from '@platform/core/metrics'
 import { NotificationTypes } from '@platform/core/notifications'
 import { JobNames, QueueNames, type TriggerPluginWebhookJob } from '@platform/core/queues'
 import { PluginScopes } from '@platform/plugins/sdk'
@@ -70,6 +71,17 @@ describe('The webhooks of an integration plugin and its revocation', () => {
   let deliverer: PluginWebhookDeliverer
   let cipher: CredentialCipher
   let counter = 0
+  const goneCounted: string[] = []
+  // Which wall refuses the log row of a deleted installation depends on the role of the connection: a role that skips row-level
+  // security (BYPASSRLS or a superuser) reaches the foreign key (23503 → P2003, a deletion at once); one that does not is refused by
+  // the policy (42501) first and counted. The worker of the suites skips it until E-2 takes the bypass away, so the cases read the role.
+  const skipsPolicy = async (): Promise<boolean> => {
+    const rows = await app.get(PrismaService).client.$queryRaw<
+      { skips: boolean }[]
+    >`SELECT (rolbypassrls OR rolsuper) AS skips FROM pg_roles WHERE rolname = current_user`
+    return rows[0]?.skips === true
+  }
+  const errorLogged: unknown[][] = []
   const counted: Record<string, number> = {}
 
   beforeAll(async () => {
@@ -92,7 +104,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       setContext: () => undefined,
       info: () => undefined,
       warn: () => undefined,
-      error: () => undefined
+      error: (...args: unknown[]) => errorLogged.push(args)
     } as unknown as PinoLogger
     deliverer = new PluginWebhookDeliverer(
       app.get(PrismaService),
@@ -100,7 +112,10 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       app.get(DomainEvents),
       metric,
       logger,
-      new JobContext(app.get(PrismaService))
+      new JobContext(app.get(PrismaService)),
+      {
+        inc: (labels: { target: string }) => goneCounted.push(labels.target)
+      } as unknown as Counter<string>
     )
   })
   afterAll(async () => {
@@ -111,6 +126,8 @@ describe('The webhooks of an integration plugin and its revocation', () => {
   })
   afterEach(async () => {
     queue.jobs.length = 0
+    goneCounted.length = 0
+    errorLogged.length = 0
     for (const key of Object.keys(counted)) delete counted[key]
     // Every test starts with no installation: what an event reaches depends on who is installed in the store
     await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: prefix } } })
@@ -487,6 +504,101 @@ describe('The webhooks of an integration plugin and its revocation', () => {
 
       expect(outcome).toBe(WebhookOutcome.SKIPPED)
       expect(post).not.toHaveBeenCalled()
+    })
+
+    it('ends without an error when the installation is deleted between the post and its log', async () => {
+      const { setup } = await setUp()
+      const post = jest.fn(async () => {
+        await owner.pluginInstallation.delete({ where: { id: setup.installationId } })
+        return 200
+      })
+
+      const outcome = await deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, {
+        post
+      })
+
+      expect(outcome).toBe(WebhookOutcome.DELIVERED)
+      // Which wall answered tells in the counter: the foreign key (the worker skips the policy) leaves it empty, the policy counts it
+      expect(goneCounted).toEqual((await skipsPolicy()) ? [] : [WebhookMetricTarget.PLUGIN])
+      expect(errorLogged).toEqual([])
+    })
+
+    it('ends quietly when the installation is deleted while a failing delivery runs', async () => {
+      const { setup } = await setUp()
+      const post = jest.fn(async () => {
+        await owner.pluginInstallation.delete({ where: { id: setup.installationId } })
+        throw new WebhookPostFailed('bad_status', true, 500)
+      })
+
+      // The failure of the endpoint is the one BullMQ retries; the log row of a deleted installation must not replace it
+      await expect(
+        deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, { post })
+      ).rejects.toBeInstanceOf(WebhookPostFailed)
+      expect(goneCounted).toEqual((await skipsPolicy()) ? [] : [WebhookMetricTarget.PLUGIN])
+    })
+
+    it('gets from the database the refusal that the role of the worker is due for a deleted installation', async () => {
+      const { setup } = await setUp()
+      await owner.pluginInstallation.delete({ where: { id: setup.installationId } })
+      const skips = await skipsPolicy()
+
+      const refused = await new JobContext(app.get(PrismaService))
+        .forStore(ctx.storeA.id, () =>
+          app.get(PrismaService).client.webhookDelivery.create({
+            data: {
+              pluginInstallationId: setup.installationId,
+              event: Events.MESSAGE_RECEIVED,
+              durationMs: 1,
+              success: true,
+              attempt: 1
+            }
+          })
+        )
+        .then(
+          () => null,
+          (error: unknown) => error
+        )
+
+      // A role that skips row-level security reaches the foreign key (P2003); one that does not is refused by the policy (42501)
+      // first. The worker of the suites skips it until E-2: when that changes, this says so instead of passing without telling.
+      expect(refused).not.toBeNull()
+      if (skips) {
+        expect((refused as { code?: string }).code).toBe('P2003')
+        expect(isRowLevelSecurityError(refused)).toBe(false)
+      } else {
+        expect(isRowLevelSecurityError(refused)).toBe(true)
+      }
+    })
+
+    it('counts an installation that is gone when the policy refuses its log row', async () => {
+      const { setup } = await setUp()
+      await owner.pluginInstallation.delete({ where: { id: setup.installationId } })
+      const guarded = (
+        deliverer as unknown as {
+          guarded: (storeId: string, id: string, work: () => Promise<void>) => Promise<void>
+        }
+      ).guarded.bind(deliverer)
+      const refusal = Object.assign(new Error('refused'), { code: '42501' })
+
+      await expect(
+        guarded(ctx.storeA.id, setup.installationId, () => Promise.reject(refusal))
+      ).resolves.toBeUndefined()
+      expect(goneCounted).toEqual([WebhookMetricTarget.PLUGIN])
+    })
+
+    it('does not hide a refusal of the policy while the installation is still there', async () => {
+      const { setup } = await setUp()
+      const guarded = (
+        deliverer as unknown as {
+          guarded: (storeId: string, id: string, work: () => Promise<void>) => Promise<void>
+        }
+      ).guarded.bind(deliverer)
+      const refusal = Object.assign(new Error('refused'), { code: '42501' })
+
+      await expect(
+        guarded(ctx.storeA.id, setup.installationId, () => Promise.reject(refusal))
+      ).rejects.toBe(refusal)
+      expect(goneCounted).toEqual([])
     })
 
     it('reads the installation under the store of the job: a job that names another store delivers nothing', async () => {
