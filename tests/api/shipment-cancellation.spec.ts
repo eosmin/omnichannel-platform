@@ -663,6 +663,73 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
       expect(next.status).toBe(CREATED)
     })
 
+    it('leaves the guide alone when the same lines are sent again and they are placed where they were', async () => {
+      const order = await reserved({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+      const shipmentId = await guide(order.id, forzaId)
+      // No warehouse in the request: the lines are placed again from the stock, and land in the same one
+      const again = await edit(order.id, { items: [{ productId: order.productId, quantity: 1 }] })
+      expect(again.status).toBe(OK)
+      // Where they are placed is what decides, so it is read and not assumed
+      const placed = await owner.orderItemAllocation.findMany({
+        where: { storeId: ctx.storeA.id, orderItem: { orderId: order.id } }
+      })
+      expect(placed.map(row => row.warehouseId)).toEqual([ctx.warehouseA.id])
+      expect((await shipmentOf(shipmentId)).status).toBe(ShipmentStatus.LABEL_CREATED)
+      expect(voidJobs()).toHaveLength(0)
+    })
+
+    // Decision (TDD_17 §4.8): the guide follows where the stock really leaves from. Sending the same lines places them again, and
+    // if the stock now puts them in another warehouse the guide made from the first one is wrong, so it is voided like one of a
+    // changed address. Keeping it would send a package from a warehouse that does not hold it.
+    it('voids the guide when the same lines are sent again and the stock places them in another warehouse', async () => {
+      const order = await reserved({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+      await owner.warehouse.update({
+        where: { id: ctx.warehouseASecond.id },
+        data: { address: { line1: 'Bodega 2', city: 'Soyapango', country: 'SV' } }
+      })
+      await createInventoryLevel(owner, {
+        storeId: ctx.storeA.id,
+        productId: order.productId,
+        warehouseId: ctx.warehouseASecond.id,
+        onHand: 5,
+        reserved: 0
+      })
+      const shipmentId = await guide(order.id, forzaId)
+      // The warehouses a line already has are kept only while they can still serve it: the stock of the first one is gone, so the
+      // lines are placed again by priority and land in the second
+      const level = await owner.inventoryLevel.findFirstOrThrow({
+        where: {
+          storeId: ctx.storeA.id,
+          productId: order.productId,
+          warehouseId: ctx.warehouseA.id
+        }
+      })
+      await owner.inventoryLevel.update({ where: { id: level.id }, data: { onHand: 0 } })
+      try {
+        const again = await edit(order.id, { items: [{ productId: order.productId, quantity: 1 }] })
+        expect(again.status).toBe(OK)
+        const placed = await owner.orderItemAllocation.findMany({
+          where: { storeId: ctx.storeA.id, orderItem: { orderId: order.id } }
+        })
+        expect(placed.map(row => row.warehouseId)).toEqual([ctx.warehouseASecond.id])
+        expect((await shipmentOf(shipmentId)).status).toBe(ShipmentStatus.CANCEL_PENDING)
+        const entries = await waitForAuditEntries(owner, {
+          storeId: ctx.storeA.id,
+          action: AuditAction.ORDER_UPDATED,
+          resourceId: order.id
+        })
+        expect(entries[0]?.metadata).toMatchObject({
+          shipmentsVoided: [shipmentId],
+          guideChanges: ['origins']
+        })
+      } finally {
+        await owner.inventoryLevel.update({
+          where: { id: level.id },
+          data: { onHand: level.onHand }
+        })
+      }
+    })
+
     it('leaves the guide alone when the edit sends the lines again in the warehouse they already are', async () => {
       const order = await reserved({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
       const shipmentId = await guide(order.id, forzaId)
