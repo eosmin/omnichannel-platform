@@ -109,7 +109,10 @@ export class FiscalController {
   }
 
   // The document is committed before it is queued (the route is not one transaction): a queue that blinked does not fail the request, which
-  // a repeat would refuse. The document stays QUEUED and the fiscal sweep queues it again; a person can also retry it from its route.
+  // a repeat would refuse. `queued: true` in the answer is the STATE of the document (QUEUED), not a promise about the job: if the queue
+  // failed, the error below is the alarm and the document goes out in the next run of RECONCILE_FINANCE (FiscalSweepService.stalledDocuments,
+  // a QUEUED document untouched for QUEUED_STALL_MINUTES; the reconciler of the worker queues the same job id, so nothing is sent twice),
+  // which can take up to about a day.
   private async enqueueAfterCommit(
     organizationId: string,
     documentId: string,

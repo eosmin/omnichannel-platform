@@ -17,6 +17,7 @@ import {
   OrderStatus
 } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
+import { QueueNames } from '@platform/core/queues'
 import { FISCAL_PROVIDERS, FiscalDocumentsService } from '@platform/fiscal/runtime'
 import type { FiscalDocumentProvider } from '@platform/fiscal/sdk'
 import { SIMULATOR_PROVIDER_ID, simulatorProvider } from '@platform/fiscal/simulator'
@@ -26,6 +27,7 @@ import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { type Actor, api, type TestAgent } from '../helpers/http'
+import { queueOf } from '../helpers/queue'
 
 type Client = TestAgent
 
@@ -64,6 +66,9 @@ function asksProvider(): FiscalDocumentProvider {
 // document (`check_fiscal_document_scope`, not SECURITY DEFINER) reads the orders, returns and documents of the store of the DOCUMENT, so
 // the five routes of a person must open the context of the organization. The app is the real one, on the role of the api, with the switch
 // on and a context required for every query.
+// The provider the issuer uses, kept to count what the authority is asked
+const simulator = simulatorProvider()
+
 describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a sibling store', () => {
   const prefix = newRunPrefix()
   let app: INestApplication
@@ -90,7 +95,7 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
         .overrideProvider(RLS_CONTEXT_ENABLED)
         .useValue(true)
         .overrideProvider(FISCAL_PROVIDERS)
-        .useValue([simulatorProvider(), asksProvider()])
+        .useValue([simulator, asksProvider()])
     )
     ctx = await seedTestContext(owner, app, prefix)
     documents = app.get(FiscalDocumentsService)
@@ -298,6 +303,12 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
         await useIssuer(SIMULATOR_PROVIDER_ID)
         const id = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
         const before = await row(id)
+        // What the authority is asked and what is queued from here on: nothing, for a person who does not reach the document
+        const asked = (['build', 'submit', 'consult', 'void', 'consultVoid'] as const).map(method =>
+          jest.spyOn(simulator, method)
+        )
+        const queue = queueOf(app, QueueNames.HEAVY_PROCESSING)
+        const queued = queue.jobs.length
         const refused = await call(fromA2(onlyA2), id)
         expect(refused.status).toBe(NOT_FOUND)
         // The same answer as for a document that does not exist and for one of another organization
@@ -313,6 +324,9 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
           before.submission,
           before.updatedAt
         ])
+        expect(asked.map(spy => spy.mock.calls.length)).toEqual([0, 0, 0, 0, 0])
+        expect(queue.jobs).toHaveLength(queued)
+        asked.forEach(spy => spy.mockRestore())
         // Nothing was written, so nothing is on the trail
         expect(await owner.auditLog.count({ where: { userId: onlyA2.id, resourceId: id } })).toBe(0)
       }
