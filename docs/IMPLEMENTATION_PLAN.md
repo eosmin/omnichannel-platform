@@ -1558,16 +1558,20 @@ built once, by 4B.4b-1.
       kind narrowing, voided, a file of another organization or purpose), the signed links (clean, pending, other store, other
       organization), the trigger whoever writes, and the isolation of the receipt (no new table: `validate:isolation` keys its cases by model, so the proof is in `tests/api/finance-transaction-documents.spec.ts`: a file of another organization is never attached, a transaction of another organization is a 404 to attach to or to read the receipt of)
 - [x] **4B.4b-1, active content in a receipt PDF (PR `fix/finance-document-active-pdf`, QA finding TAX-436):** the worker's scan of a `finance_document`
-      PDF now reads the file (`apps/worker/src/media/pdf-active-content.ts`) for the names `/JavaScript`, `/JS`, `/OpenAction`, `/AA`, `/Launch` and
-      `/EmbeddedFile` (hex-escaped spellings decoded, longer names such as `/JSON` not taken for them), in the clear and inside the streams that inflate (an
-      object stream can hold the catalog; pictures and anything over 4 MiB inflated are not read). A hit ends the row as `unscannable` with
-      `scanResult.reason = pdf_active_content` and the names found, tells the team (`MEDIA_UNSCANNABLE`) and keeps the file unserved in the bucket as a
-      quarantine (financial evidence is never deleted); attaching already refuses a row that is not `clean` (409 `transaction_document_not_clean`). Debts
-      (rule 12), owner: Step 7.3 hardening backlog: (a) what the reader can build from a filter this does not read (an encrypted PDF, LZW or chained
-      filters) stays unseen; (b) PDFs of other purposes (a customer's message attachment, an order document) are not inspected: whether they should be is
-      the owner's decision; (c) a literal `/JavaScript` inside a text string is a false positive and the file is refused (fail closed); (d) no dedicated
-      error code at attach: the reason lives in `scanResult` as for an image that cannot be decoded; (e) the attach-side integration case (a refused PDF
-      cannot be attached) needs a transaction fixture of its own: the unit cases of the pipeline prove the row, the existing attach cases prove the 409.
+      PDF now reads the file (`apps/worker/src/media/pdf-active-content.ts`, `inspectPdf`) for the names `/JavaScript`, `/JS`, `/OpenAction`, `/AA`, `/Launch`,
+      `/EmbeddedFile`, `/SubmitForm`, `/ImportData`, `/GoToR`, `/GoToE`, `/RichMedia` and `/XFA` (hex-escaped spellings decoded, longer names such as `/JSON` not
+      taken for them), in the clear and inside its object streams (`/Type /ObjStm`, the one place a catalog can hide; pictures, fonts and page content hold
+      no objects and are not read). It fails closed: an encrypted file, an object stream that does not inflate, passes 8 MiB inflated or never ends, a file with
+      more than 200 of them, or an object stream announced whose marker was hidden from its dictionary, ends refused as well (`pdf_not_inspectable`). A hit ends
+      the row as `unscannable` with `scanResult.reason = pdf_active_content` and the names, and keeps the file unserved in the bucket as a quarantine
+      (financial evidence is never deleted); attaching already refuses a row that is not `clean` (409 `transaction_document_not_clean`). A finance document
+      has no thread, so nobody is told by an event (`announce` needs a message): the row and a WARN log are the trace. Debts (rule 12), owner: Step 7.3
+      hardening backlog: (a) the web does not explain a refused receipt (the file just never becomes attachable): owner 4B.9 web, with a notification or an
+      audit entry for the uploader; (b) PDFs of other purposes (a customer's message attachment, an order file) are not inspected: whether they should be is the
+      owner's decision, closed by Step 7.3; (c) `/EmbeddedFile` also refuses a PDF/A-3 e-invoice that carries its XML, and an encrypted receipt is refused too:
+      the owner may relax either by a rule that opens the attachment, never by skipping the check; (d) no dedicated error code at attach: the reason lives in
+      `scanResult`, as for an image that cannot be decoded; (e) the attach-side integration case (a refused PDF cannot be attached) needs a transaction
+      fixture of its own: the unit cases of the pipeline prove the row, the existing attach cases prove the 409.
 - [x] **4B.4b-2 tests:** matching rules and every parser error, isolation cases of the new tables
 - [x] **4B.4b-2 note (receipt link across stores, RLS enforced):** `GET finance/transactions/:id/document` is `@NoTenantTransaction` and opens three
       contexts (transaction in the organization; owner store of the file by its id in the stores of the organization, one read; signing in that one store).

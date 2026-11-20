@@ -138,6 +138,24 @@ describe('MediaPipeline and financial evidence', () => {
       expect(logger.warn).toHaveBeenCalled()
     })
 
+    it('refuses a finance document it cannot read to the end (an encrypted file), with its own reason', async () => {
+      const { pipeline, storage, updateMany } = build(
+        MediaPurpose.FINANCE_DOCUMENT,
+        jest.fn().mockResolvedValue({ infected: false })
+      )
+      storage.read.mockResolvedValue(
+        Buffer.from('%PDF-1.4\ntrailer << /Encrypt 9 0 R >>\n', 'latin1')
+      )
+      await pipeline.scan('media-1', { storeId: 'store-1' })
+      expect(updateMany.mock.calls[0]?.[0]).toMatchObject({
+        data: {
+          status: 'unscannable',
+          scanResult: { reason: 'pdf_not_inspectable', unreadable: 'encrypted' }
+        }
+      })
+      expect(storage.delete).not.toHaveBeenCalled()
+    })
+
     it('lets a plain PDF of a finance document become clean', async () => {
       const { pipeline, storage, updateMany } = build(
         MediaPurpose.FINANCE_DOCUMENT,

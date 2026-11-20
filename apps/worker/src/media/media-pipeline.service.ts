@@ -26,6 +26,7 @@ import {
   MediaPurpose,
   MediaRejectionReasons,
   parseAvatarKey,
+  PdfInspection,
   StorageKeys,
   UploadLimits,
   VARIANT_CONTENT_TYPE
@@ -33,7 +34,7 @@ import {
 import { StorageService } from '@platform/core/storage-module'
 
 import { ClamavClient } from './clamav.client'
-import { findPdfActiveContent } from './pdf-active-content'
+import { inspectPdf } from './pdf-active-content'
 
 // Media.scanResult of a pending picture that was already cleaned of its metadata
 const hasSanitizedMark = (scanResult: unknown): boolean =>
@@ -151,7 +152,7 @@ export class MediaPipeline {
     }
     // A PDF that stays as the receipt of a transaction must not run anything when it is opened (TAX-436)
     if (
-      media.contentType === 'application/pdf' &&
+      media.contentType === PdfInspection.CONTENT_TYPE &&
       media.purpose === String(MediaPurpose.FINANCE_DOCUMENT)
     ) {
       if (!(await this.inspectPdf(media, scope))) return
@@ -211,9 +212,10 @@ export class MediaPipeline {
     return moved.count > 0
   }
 
-  // Looks inside a PDF of a financial document for active content (see `findPdfActiveContent`). True when it has none and
-  // the scan goes on; false when it was refused. The file is the evidence of a transaction, so a refused one is never deleted:
-  // its row ends as `unscannable` (the gate for serving and for attaching it) and it stays in the bucket as a quarantine.
+  // Looks inside a PDF of a financial document (see `inspectPdf`). True when it carries nothing active and can be read to
+  // the end, and the scan goes on; false when it was refused. The file is the evidence of a transaction, so a refused one
+  // is never deleted: its row ends as `unscannable` (the gate for serving it and for attaching it) and it stays in the
+  // bucket as a quarantine. A document has no thread, so nobody is told by an event: the row and the log are the trace.
   private async inspectPdf(
     media: { id: string; key: string; storeId: string | null; purpose: string },
     scope: MediaScope
@@ -223,29 +225,27 @@ export class MediaPipeline {
       if (await this.isGone(media.id, scope)) return false
       throw new Error('the file to inspect is not in the bucket')
     }
-    const names = findPdfActiveContent(bytes)
-    if (names.length === 0) return true
+    const { names, unreadable } = inspectPdf(bytes)
+    if (names.length === 0 && unreadable === null) return true
+    const reason =
+      names.length > 0
+        ? MediaRejectionReasons.PDF_ACTIVE_CONTENT
+        : MediaRejectionReasons.PDF_NOT_INSPECTABLE
     const marked = await this.within(scope, () =>
       this.prisma.client.media.updateMany({
         where: { id: media.id, status: MediaStatus.PENDING },
         data: {
           status: MediaStatus.UNSCANNABLE,
-          scanResult: { reason: MediaRejectionReasons.PDF_ACTIVE_CONTENT, names },
+          scanResult: { reason, names, ...(unreadable === null ? {} : { unreadable }) },
           scannedAt: new Date()
         }
       })
     )
     if (marked.count === 0) return false
     this.logger.warn(
-      {
-        mediaId: media.id,
-        storeId: media.storeId,
-        reason: MediaRejectionReasons.PDF_ACTIVE_CONTENT,
-        names
-      },
-      'a PDF of a financial document has active content and was refused'
+      { mediaId: media.id, storeId: media.storeId, reason, names, unreadable },
+      'a PDF of a financial document was refused: it carries active content or cannot be read'
     )
-    await this.announce(media, Events.MEDIA_UNSCANNABLE, scope)
     return false
   }
 

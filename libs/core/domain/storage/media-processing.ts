@@ -121,17 +121,41 @@ export const ImageSanitizing = {
 export const MediaRejectionReasons = {
   IMAGE_NOT_SANITIZABLE: 'image_not_sanitizable',
   // A PDF kept as financial evidence that carries something that runs when it is opened (TAX-436)
-  PDF_ACTIVE_CONTENT: 'pdf_active_content'
+  PDF_ACTIVE_CONTENT: 'pdf_active_content',
+  // A PDF of that kind that cannot be read to the end, so nothing can be said about what it carries: refused as well
+  PDF_NOT_INSPECTABLE: 'pdf_not_inspectable'
 } as const
 
 // What is looked for in a PDF that stays as the evidence of a transaction (TDD_18 §3): the names of the
-// dictionaries that make a reader run code, open a program or carry another file. A PDF names them with
-// a slash and may spell any of their letters as `#` and two hex digits, so the match is made on the
-// decoded name.
+// dictionaries that make a reader run code, open a program, send the form somewhere or carry another file. A PDF
+// names them with a slash and may spell any of their letters as `#` and two hex digits, so the match is made on
+// the decoded name. The names live in the objects of the file: in the clear, or inside an object stream (a
+// `/Type /ObjStm` stream, which is deflated). Other streams (pictures, fonts, page content) hold no objects and
+// are not read. What cannot be read (an encrypted file, an object stream that does not inflate or is over the
+// limit, a stream that never ends) is refused, never let through.
 export const PdfInspection = {
-  ACTIVE_NAMES: ['JavaScript', 'JS', 'OpenAction', 'AA', 'Launch', 'EmbeddedFile'],
-  // The streams are inflated to look inside object streams (a catalog can hide there). A stream that
-  // would inflate past the limit is left unread: it is a picture or a bomb, and a bomb is never decoded whole.
-  MAX_INFLATED_BYTES_PER_STREAM: 4 * 1024 * 1024,
-  MAX_STREAMS: 2000
+  CONTENT_TYPE: 'application/pdf',
+  ACTIVE_NAMES: [
+    'JavaScript',
+    'JS',
+    'OpenAction',
+    'AA',
+    'Launch',
+    'EmbeddedFile',
+    'SubmitForm',
+    'ImportData',
+    'GoToR',
+    'GoToE',
+    'RichMedia',
+    'XFA'
+  ],
+  OBJECT_STREAM_NAME: 'ObjStm',
+  ENCRYPT_NAME: 'Encrypt',
+  MAX_INFLATED_BYTES_PER_STREAM: 8 * 1024 * 1024,
+  MAX_OBJECT_STREAMS: 200,
+  UNREADABLE: {
+    ENCRYPTED: 'encrypted',
+    OBJECT_STREAM_UNREADABLE: 'object_stream_unreadable',
+    TOO_MANY_OBJECT_STREAMS: 'too_many_object_streams'
+  }
 } as const
