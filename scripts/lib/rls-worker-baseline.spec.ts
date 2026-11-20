@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import {
   baselineGrowth,
   checkAgainstBaseline,
@@ -64,5 +67,16 @@ describe('the baseline', () => {
     expect(isScanned('apps/worker/src/media/x.service.ts')).toBe(true)
     expect(isScanned('apps/worker/src/media/x.service.spec.ts')).toBe(false)
     expect(isScanned('apps/api/src/x.ts')).toBe(false)
+  })
+})
+
+// Stage E takes BYPASSRLS away from the worker: from then on an access with no context reads no row, so none may be left. The file only
+// goes down (`validate:rls-worker --update-down`); this says that it has reached the bottom, and that it stays there
+describe('the baseline of the worker after stage E', () => {
+  it('is empty: no file of the worker is left with an access that runs with no context', () => {
+    const baseline: unknown = JSON.parse(
+      readFileSync(join(__dirname, '..', 'rls-worker-baseline.json'), 'utf8')
+    )
+    expect(baseline).toEqual({})
   })
 })

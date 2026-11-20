@@ -151,6 +151,9 @@ const ROLE_ALTER =
   /\b(?:ALTER|CREATE)\s+(?:ROLE|USER)\s+(?:IF\s+EXISTS\s+)?"?platform_app"?[^;]*;/gi
 const ROLE_GRANT = /\bGRANT\s+(?:(?!\bON\b)[^;])*\bTO\s+[^;]*\bplatform_app\b[^;]*;/gi
 const OWNER_TO = /\bOWNER\s+TO\s+"?platform_app"?/gi
+// The bypass of the worker is changed by the owner with `pnpm db:rls:worker-role` (stage E), never by a migration: a migration runs by
+// itself in the deploy and would change what the worker sees in production without the owner. Creating the role stays allowed
+const WORKER_ALTER = /\bALTER\s+(?:ROLE|USER)\s+(?:IF\s+EXISTS\s+)?"?platform_worker"?[^;]*;/gi
 export function roleViolations(migrations: readonly MigrationSql[]): string[] {
   const problems: string[] = []
   for (const { name, sql } of migrations) {
@@ -163,6 +166,13 @@ export function roleViolations(migrations: readonly MigrationSql[]): string[] {
       ) {
         problems.push(
           `${name}: platform_app must not be BYPASSRLS, SUPERUSER or a member of another role (${statement.trim()})`
+        )
+      }
+    }
+    for (const statement of text.match(WORKER_ALTER) ?? []) {
+      if (/BYPASSRLS/i.test(statement)) {
+        problems.push(
+          `${name}: the bypass of platform_worker changes with pnpm db:rls:worker-role, not in a migration (${statement.trim()})`
         )
       }
     }

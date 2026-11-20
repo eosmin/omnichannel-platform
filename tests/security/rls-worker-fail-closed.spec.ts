@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 
 import { assertSeesEveryRow, JobContextError, PrismaService } from '@platform/core/database'
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, workerRoleBoundInSuites } from '@platform/core/database-testing'
 
 // The worker with row security ON (RLS phase 0b). A sweep that decides by what it does not find must refuse to run when row security
 // hides rows from it: "no row" would then mean "a row I may not see", and the sweep would delete what it should keep. The probe table
@@ -44,8 +44,14 @@ describe('the worker fails closed when row security hides rows', () => {
     await expect(assertSeesEveryRow(asApp, [table])).rejects.toBeInstanceOf(JobContextError)
   })
 
-  it('lets the role that skips row security sweep', async () => {
-    await expect(assertSeesEveryRow(asWorker, [table])).resolves.toBeUndefined()
+  // The role that skips row security sweeps; once stage E binds it (its flag on) it is refused like the api, which is the point
+  it('lets the role that skips row security sweep, and refuses it once it is bound', async () => {
+    const check = expect(assertSeesEveryRow(asWorker, [table]))
+    if (workerRoleBoundInSuites()) {
+      await check.rejects.toBeInstanceOf(JobContextError)
+    } else {
+      await check.resolves.toBeUndefined()
+    }
   })
 
   it('does not delete a row when the guard refuses, even though the sweep sees an empty table', async () => {

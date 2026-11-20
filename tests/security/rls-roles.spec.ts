@@ -3,7 +3,8 @@ import pg from 'pg'
 import {
   connectionUrls,
   DatabaseRoles,
-  rlsEnforcementRequested
+  rlsEnforcementRequested,
+  workerRoleBoundInSuites
 } from '@platform/core/database-testing'
 
 // What the harness depends on, said once and checked against the database (TDD_01 section 3.2, layer 3). The suites seed and clean as
@@ -51,8 +52,11 @@ describe('the roles the suites rely on', () => {
     expect(rows).toEqual([])
   })
 
-  it('lets platform_worker skip row security without being a superuser', async () => {
-    expect(await role(DatabaseRoles.WORKER)).toEqual({ rolsuper: false, rolbypassrls: true })
+  // The worker is bound exactly where its flag is on (stage E; the startup check of the worker refuses the other two states): the jobs
+  // of the enforced run (WORKER_RLS_CONTEXT=true, the role without bypass) and the plain run (flag off, the role as it was created)
+  it('leaves platform_worker without BYPASSRLS where its flag is on, and with it where it is off, never a superuser', async () => {
+    const bound = workerRoleBoundInSuites()
+    expect(await role(DatabaseRoles.WORKER)).toEqual({ rolsuper: false, rolbypassrls: !bound })
   })
 
   it('lets the owner of the database set up and clean the suites: a superuser or BYPASSRLS', async () => {
