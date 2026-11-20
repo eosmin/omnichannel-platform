@@ -11,7 +11,7 @@ const ALLOWED = new Set([
   'libs/core/platform/config/env-schema.ts',
   'libs/core/domain/validation.ts'
 ])
-const COERCED_NUMBER = /z\s*\.coerce\s*\.number\(\)/
+const COERCED_NUMBER = /\bcoerce\s*\.\s*number\b/
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap(name => {

@@ -49,6 +49,9 @@ describe('the page size of the lists', () => {
       const response = await agent().get(`${route}?limit=${limit}`)
       expect([route, limit, response.status]).toEqual([route, limit, BAD_REQUEST])
     }
+    // Past the size a list may give
+    expect((await agent().get(`${route}?limit=101`)).status).toBe(BAD_REQUEST)
+    expect((await agent().get(`${route}?limit=0`)).status).toBe(BAD_REQUEST)
     for (const limit of ['1', '25', '100']) {
       const response = await agent().get(`${route}?limit=${limit}`)
       expect([route, limit, response.status]).toEqual([route, limit, OK])
