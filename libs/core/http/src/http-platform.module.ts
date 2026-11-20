@@ -51,6 +51,8 @@ export class HttpPlatformModule {
         DatabaseModule.forRoot({
           databaseUrl: env.DATABASE_URL,
           replicaUrl: env.DATABASE_REPLICA_URL,
+          // A replica handle that could write (a role other than platform_replica_ro on a server that is not a standby) stops the start
+          verifyReplicaRole: true,
           // With RLS_CONTEXT (api) or WORKER_RLS_CONTEXT (worker) on, a query with no tenant context throws instead of answering
           // no rows
           requireContext: isRequireContextOn()
