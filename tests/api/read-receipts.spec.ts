@@ -6,7 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { ChannelContextFactory } from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService, JobContext } from '@platform/core/database'
+import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -34,7 +34,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const OK = 200
 const NOT_FOUND = 404
@@ -52,9 +52,8 @@ describe('Telling the channel that an agent read a conversation', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp([], onWorkerDatabase())
+    app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
-    const prisma = app.get(PrismaService, { strict: false })
     const registry = app.get(PluginRegistry, { strict: false })
     registry.register(
       buildChannelPlugin({
@@ -74,6 +73,8 @@ describe('Telling the channel that an agent read a conversation', () => {
     })
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
     const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
+    // The sender is the worker's: its own connection, and a context for the store of each job (the app keeps the api's)
+    const prisma = createGuardedWorkerPrisma()
     sender = new ReadReceiptSender(
       prisma,
       registry,
