@@ -1,14 +1,15 @@
 import { PdfInspection } from '@platform/core/storage'
 
-// A PDF name: a slash and the regular characters after it, up to a space (NUL is one) or a delimiter. `/JSON` is the name JSON,
-// never the name JS. One pass over the text, no backtracking.
-const NAME = /\/([^\s\0/[\]<>(){}%]+)/g
-const HEX_ESCAPE = /#([0-9A-Fa-f]{2})/g
+// The rules of a name are in `PdfInspection`. One pass over the text, no backtracking.
+const NAME = new RegExp(PdfInspection.NAME_PATTERN, 'g')
+const HEX_ESCAPE = new RegExp(PdfInspection.HEX_ESCAPE_PATTERN, 'g')
 const ACTIVE = new Set<string>(PdfInspection.ACTIVE_NAMES)
 
 const decodeName = (raw: string): string =>
-  raw.includes('#')
-    ? raw.replace(HEX_ESCAPE, (_all, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
+  raw.includes(PdfInspection.HEX_ESCAPE_MARK)
+    ? raw.replace(HEX_ESCAPE, (_all, hex: string) =>
+        String.fromCharCode(Number.parseInt(hex, PdfInspection.HEX_RADIX))
+      )
     : raw
 
 // The active names a PDF carries IN THE CLEAR (TAX-436): one linear pass over the bytes of a file that is already
@@ -17,7 +18,9 @@ const decodeName = (raw: string): string =>
 // been scanned (see `PdfInspection`). It is deliberately NOT a PDF parser: a parser that is not the reader's own is
 // a race that does not end (two readers read one file in two ways) and inflating is a way to exhaust the worker.
 export function findActivePdfNames(bytes: Uint8Array): string[] {
-  const text = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('latin1')
+  const text = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString(
+    PdfInspection.TEXT_ENCODING
+  )
   const found = new Set<string>()
   for (const match of text.matchAll(NAME)) {
     const name = decodeName(match[1] ?? '')

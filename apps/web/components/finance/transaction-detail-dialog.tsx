@@ -20,6 +20,7 @@ import {
   useVoidFinanceTransaction
 } from '../../lib/finance/use-finance'
 import { useMoney } from '../../lib/finance/use-money'
+import { useReceiptErrorText } from '../../lib/finance/use-receipt-error-text'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
@@ -214,7 +215,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }): Reac
 // of transaction, the way to attach one. It is set once: the books are never edited, so another file is another transaction.
 function ReceiptPanel({ transaction }: { transaction: FinanceTransactionView }): ReactElement {
   const t = useTranslations('finance.transactions.receipt')
-  const errorText = useErrorText()
+  const errorText = useReceiptErrorText()
   const { storeId, can } = useStore()
   const hasReceipt = transaction.documentMediaId !== null
   const urls = useFinanceReceiptUrls(storeId, transaction.id, hasReceipt)
