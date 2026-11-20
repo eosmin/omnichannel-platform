@@ -220,8 +220,12 @@ export class FinanceStatementsService {
   // Names the carrier connections of every store of the organization: the route is @NoTenantTransaction and the read opens the context of the
   // organization (a request holds the store of the header alone with RLS on, and the party would lose its name with the other header)
   async aging(organizationId: string, query: AgingQuery): Promise<AgingView> {
-    return this.jobContext.inOrganization(organizationId, () =>
-      this.readAging(organizationId, query)
+    return this.jobContext.inOrganization(
+      organizationId,
+      () => this.readAging(organizationId, query),
+      {
+        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
+      }
     )
   }
 
@@ -391,8 +395,12 @@ export class FinanceStatementsService {
     query: AgingQuery,
     actor: Actor
   ): Promise<AgingCsvRow[]> {
-    return this.jobContext.inOrganization(organizationId, () =>
-      this.readAgingCsvRows(organizationId, query, actor)
+    return this.jobContext.inOrganization(
+      organizationId,
+      () => this.readAgingCsvRows(organizationId, query, actor),
+      {
+        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
+      }
     )
   }
 

@@ -24,14 +24,32 @@ const notRoutes: [string, string, string][] = [
   ['income statement', 'finance-statements.controller.ts', 'incomeStatement']
 ]
 
-// The decorators of a handler: what lies between the end of the previous handler and its own name
+// The decorators of a handler: the lines that stand right above its name (decorators, their arguments and comments), read upwards until
+// the first line that is none of them
 function decoratorsOf(file: string, handler: string): string {
-  const text = readFileSync(join(__dirname, file), 'utf8')
-  const at = text.search(new RegExp(`\\n  (async )?${handler}\\(`))
+  const lines = readFileSync(join(__dirname, file), 'utf8').split('\n')
+  const at = lines.findIndex(line => new RegExp(`^  (async )?${handler}\\(`).test(line))
   expect(at).toBeGreaterThan(-1)
-  const before = text.slice(0, at)
-  return before.slice(before.lastIndexOf('\n  }\n') + 1)
+  const found: string[] = []
+  for (let index = at - 1; index >= 0; index -= 1) {
+    const line = lines[index] ?? ''
+    if (!/^( {2}@| {4}| {2}\)| {2}\/\/)/.test(line)) break
+    found.push(line)
+  }
+  return found.join('\n')
 }
+
+// The services read inside the unit of the organization: the route does not open one, so a service that forgot would read nothing with RLS on
+const services: [string, string][] = [
+  ['finance-vat-report.service.ts', 'readReport'],
+  ['finance-vat-report.service.ts', 'readCsv'],
+  ['finance-margin.service.ts', 'readMargin'],
+  ['finance-margin.service.ts', 'readMarginCsvRows'],
+  ['finance-books.service.ts', 'readBook'],
+  ['finance-books.service.ts', 'readCsv'],
+  ['finance-statements.service.ts', 'readAging'],
+  ['finance-statements.service.ts', 'readAgingCsvRows']
+]
 
 describe('the reports of the books that read the orders of the organization', () => {
   it.each(routes)('%s opens its own context of the organization', (_name, file, handler) => {
@@ -40,5 +58,14 @@ describe('the reports of the books that read the orders of the organization', ()
 
   it.each(notRoutes)('%s stays in the context of the request', (_name, file, handler) => {
     expect(decoratorsOf(file, handler)).not.toContain(MARK)
+  })
+
+  it.each(services)('%s runs %s inside the unit of the organization', (file, inner) => {
+    const text = readFileSync(join(__dirname, file), 'utf8')
+    expect(text).toMatch(
+      new RegExp(
+        `jobContext\\.inOrganization\\(\\s*organizationId,\\s*\\(\\)\\s*=>\\s*this\\.${inner}\\(`
+      )
+    )
   })
 })

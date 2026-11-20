@@ -328,8 +328,12 @@ export class FinanceBooksService {
     query: BookQuery,
     actor: Actor
   ): Promise<BookView> {
-    return this.jobContext.inOrganization(organizationId, () =>
-      this.readBook(organizationId, kind, query, actor)
+    return this.jobContext.inOrganization(
+      organizationId,
+      () => this.readBook(organizationId, kind, query, actor),
+      {
+        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
+      }
     )
   }
 
@@ -354,8 +358,12 @@ export class FinanceBooksService {
     query: BookQuery,
     actor: Actor
   ): Promise<{ book: BookView; csv: string; fileName: string }> {
-    return this.jobContext.inOrganization(organizationId, () =>
-      this.readCsv(organizationId, kind, query, actor)
+    return this.jobContext.inOrganization(
+      organizationId,
+      () => this.readCsv(organizationId, kind, query, actor),
+      {
+        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
+      }
     )
   }
 

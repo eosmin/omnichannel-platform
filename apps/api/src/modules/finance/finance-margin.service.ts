@@ -100,8 +100,12 @@ export class FinanceMarginService {
   // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
   // (a request holds the store of the header alone with RLS on, and the report would change with the header)
   async margin(organizationId: string, query: FlowQuery): Promise<MarginView> {
-    return this.jobContext.inOrganization(organizationId, () =>
-      this.readMargin(organizationId, query)
+    return this.jobContext.inOrganization(
+      organizationId,
+      () => this.readMargin(organizationId, query),
+      {
+        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
+      }
     )
   }
 
@@ -265,8 +269,12 @@ export class FinanceMarginService {
     query: FlowQuery,
     actor: Actor
   ): Promise<MarginCsvRow[]> {
-    return this.jobContext.inOrganization(organizationId, () =>
-      this.readMarginCsvRows(organizationId, query, actor)
+    return this.jobContext.inOrganization(
+      organizationId,
+      () => this.readMarginCsvRows(organizationId, query, actor),
+      {
+        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
+      }
     )
   }
 

@@ -607,6 +607,10 @@ export type FinanceChainProblem = (typeof FinanceChainProblems)[number]
 
 // The reports and the auditor's files (TDD_18 §10, §11, Step 4B.8)
 export const FinanceReportLimits = {
+  // The unit of the organization in which a report that reads the orders of every store runs (VAT, margin, the books of sales, the
+  // aging): the default of a unit is 15 s, which a wide range of a large organization can pass, and before the unit these reports had no
+  // transaction at all with the switch off. Debt: page the long reads, one unit per page, as the CSV of the journal does
+  READ_UNIT_TIMEOUT_MS: 60_000,
   // Lines a CSV of the journal or the ledger carries: a file that would be larger is refused with the range to narrow (EXPORT_TOO_LARGE),
   // never cut short, because a cut file looks like a whole one to an auditor
   MAX_CSV_ROWS: 200_000,

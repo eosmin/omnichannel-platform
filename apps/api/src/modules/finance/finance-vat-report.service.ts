@@ -58,8 +58,12 @@ export class FinanceVatReportService {
   // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
   // (a request holds the store of the header alone with RLS on, and the report would change with the header)
   async csv(organizationId: string, query: VatReportQuery, actor: Actor): Promise<string> {
-    return this.jobContext.inOrganization(organizationId, () =>
-      this.readCsv(organizationId, query, actor)
+    return this.jobContext.inOrganization(
+      organizationId,
+      () => this.readCsv(organizationId, query, actor),
+      {
+        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
+      }
     )
   }
 
@@ -102,8 +106,12 @@ export class FinanceVatReportService {
   // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
   // (a request holds the store of the header alone with RLS on, and the report would change with the header)
   async report(organizationId: string, query: VatReportQuery): Promise<VatReportView> {
-    return this.jobContext.inOrganization(organizationId, () =>
-      this.readReport(organizationId, query)
+    return this.jobContext.inOrganization(
+      organizationId,
+      () => this.readReport(organizationId, query),
+      {
+        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
+      }
     )
   }
 
