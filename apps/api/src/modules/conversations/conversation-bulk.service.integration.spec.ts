@@ -1,3 +1,4 @@
+import { Permissions } from '@platform/core/auth'
 import { BulkActions } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import type { ConversationsService, Viewer } from '@platform/core/messaging'
@@ -6,7 +7,7 @@ import type { Actor } from '../tenancy'
 
 import { ConversationBulkService } from './conversation-bulk.service'
 
-const viewer = { userId: 'user-1', held: new Set<string>() } as unknown as Viewer
+const viewer = { userId: 'user-1', held: [Permissions.CONVERSATIONS_RESOLVE] } as unknown as Viewer
 const actor = { userId: 'user-1' } as unknown as Actor
 
 const closed = Object.assign(new Error('transaction closed'), { code: 'P2028' })
@@ -34,6 +35,7 @@ const run = (service: ConversationBulkService) =>
     actor
   )
 
+// An .integration spec because the service reaches the env module through its imports (the unit job has no environment)
 // With no transaction open (RLS_CONTEXT off) the savepoint has nothing to protect: each change runs as it did, and the answer keeps
 // its contract, one entry per conversation, even when one of them fails because its own transaction closed
 describe('ConversationBulkService without an open transaction', () => {
