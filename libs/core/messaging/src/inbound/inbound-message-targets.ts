@@ -79,9 +79,11 @@ export class InboundMessageTargets {
     })
     if (parsed === null) return false
     // The store is the one of the connection that was resolved (never one the event names): the reads and the transaction below
-    // run in its context, as a request's does, so the policies answer the same for the worker and for the api
-    // Cost: one transaction per event (the context's), around the identity read and the existing locked transaction, which nests as a savepoint
-    return this.jobs.forStoreOrJoin(storeId, async () => {
+    // run in its context, as a request's does, so the policies answer the same for the worker and for the api.
+    // Cost: one transaction per event (the context's) around the identity read and the locked transaction, which joins it (inside a
+    // context `prisma.transaction` is the context's own transaction, with no savepoint: its locks last until the context commits).
+    // Tracked in IMPLEMENTATION_PLAN.md (Row-Level Security, "Inbound targets under row security")
+    const outcome = await this.jobs.forStoreOrJoin(storeId, async () => {
       const identity = await this.prisma.client.customerIdentity.findFirst({
         where: { storeId, channelType: pluginId, channelIdentity: parsed.identity },
         select: { id: true }
@@ -89,7 +91,7 @@ export class InboundMessageTargets {
       if (identity === null) {
         // The message of that customer may be being stored right now, and makes the identity
         if (!isLastAttempt) throw new Error(`the ${what} came before the customer it is from`)
-        return false
+        return { applied: false, missingIdentityId: null }
       }
       let missing = false
       const applied = await this.prisma.transaction(async tx => {
@@ -150,24 +152,28 @@ export class InboundMessageTargets {
         })
         return true
       })
-      // The shape of the id that matched nothing is read once the transaction is over: a count that failed inside it
-      // would have aborted the transaction of the reaction
-      if (missing && onMissing) {
-        const shape = await missingTargetShapeOrNull({
+      return { applied, missingIdentityId: missing ? identity.id : null }
+    })
+    // The shape of the id that matched nothing is read once that transaction is over, in a context of its own: a count that failed
+    // inside it would have aborted the transaction of the reaction
+    if (outcome.missingIdentityId !== null && onMissing) {
+      const identityId = outcome.missingIdentityId
+      const shape = await this.jobs.forStoreOrJoin(storeId, () =>
+        missingTargetShapeOrNull({
           targetId: event.targetExternalId,
           now: new Date(),
           count: countersOf(
             this.prisma.client,
             {
               storeId,
-              conversation: { customerIdentityId: identity.id, channelConnectionId: connection.id }
+              conversation: { customerIdentityId: identityId, channelConnectionId: connection.id }
             },
             AuthorType.CUSTOMER
           )
         })
-        if (shape) onMissing(shape)
-      }
-      return applied
-    })
+      )
+      if (shape) onMissing(shape)
+    }
+    return outcome.applied
   }
 }
