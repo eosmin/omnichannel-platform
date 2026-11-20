@@ -279,7 +279,9 @@ export const OrderConflicts = {
   VARIANT_INACTIVE: 'variant_inactive',
   VARIANT_REQUIRED: 'variant_required',
   DELIVERED_IN_THE_FUTURE: 'delivered_in_the_future',
-  DELIVERED_BEFORE_SHIPPED: 'delivered_before_shipped'
+  DELIVERED_BEFORE_SHIPPED: 'delivered_before_shipped',
+  // A delivery moment the agent names that falls before the day the books of the organization begin
+  DELIVERED_BEFORE_ACCOUNTING_START: 'delivered_before_accounting_start'
 } as const
 
 // Who is told when the packing note changes on an order that is already confirmed: the members who may prepare or
