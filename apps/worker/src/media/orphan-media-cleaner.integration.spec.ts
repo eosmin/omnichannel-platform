@@ -35,13 +35,19 @@ describe('OrphanMediaCleaner', () => {
   let moduleRef: TestingModule
   let cleaner: OrphanMediaCleaner
   let storage: StorageService
-  let prisma: PrismaService
   let heavy: Queue
   let owner: pg.Client
   let redis: Redis
   const organizationId = randomUUID()
   const storeId = randomUUID()
   const keys: string[] = []
+
+  // How many rows the media table holds for the id, seen as the owner of the database and not through the connection of the worker:
+  // with the policies enforced that one sees a row only inside the context of its store, and what is checked here is the row
+  async function mediaRowCount(id: string): Promise<number> {
+    const { rowCount } = await owner.query('SELECT 1 FROM media WHERE id = $1', [id])
+    return rowCount ?? 0
+  }
   const later = () =>
     new Date(Date.now() + (UploadLimits.UNCONFIRMED_UPLOAD_TTL_HOURS + 1) * HOUR_MS)
   // The users a case makes files or rows for: its scope, with the store of the suite
@@ -72,7 +78,6 @@ describe('OrphanMediaCleaner', () => {
       .compile()
     cleaner = moduleRef.get(OrphanMediaCleaner, { strict: false })
     storage = moduleRef.get(StorageService, { strict: false })
-    prisma = moduleRef.get(PrismaService, { strict: false })
     heavy = moduleRef.get(getQueueToken(QueueNames.HEAVY_PROCESSING), { strict: false })
     redis = moduleRef.get<Redis>(REDIS_CLIENT, { strict: false })
     owner = new pg.Client({ connectionString: connectionUrls().owner })
@@ -454,7 +459,7 @@ describe('OrphanMediaCleaner', () => {
     expect(report.infectedFilesDeleted).toBeGreaterThanOrEqual(1)
     expect(await storage.head(key)).toBeNull()
     expect(await heavy.getJob(`${JobNames.SCAN_FILE}-${id}`)).toBeUndefined()
-    expect(await prisma.client.media.findUnique({ where: { id } })).not.toBeNull()
+    expect(await mediaRowCount(id)).toBe(1)
   })
 
   it('queues the scan again for a pending row that never got one', async () => {
@@ -473,10 +478,10 @@ describe('OrphanMediaCleaner', () => {
 
     // Young: a confirmation may be mid-way, the row stays
     await sweep()
-    expect(await prisma.client.media.findUnique({ where: { id } })).not.toBeNull()
+    expect(await mediaRowCount(id)).toBe(1)
 
     await sweep(later())
-    expect(await prisma.client.media.findUnique({ where: { id } })).toBeNull()
+    expect(await mediaRowCount(id)).toBe(0)
   })
 
   // A run limited to some stores and users, for the suites that share the database and the bucket with
