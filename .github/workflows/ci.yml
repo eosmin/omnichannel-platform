@@ -109,6 +109,9 @@ jobs:
       - run: pnpm validate:fiscal-agnostic --require-main
       # Everything a person can do must be reachable by a plugin through a scope, or say why not; what is not exposed yet only shrinks
       - run: pnpm validate:plugin-api --require-main
+      # inStoreContext is a read-only context (organizationIds: []); logRefused is for denials only: both lists only shrink
+      - run: pnpm validate:store-context-writes
+      - run: pnpm validate:refused-audit
       # TDD_08 §2.5: a read goes to the replica only from the files listed in scripts/replica-readers.ts, never in a write path or a guard
       - run: pnpm validate:replica
       # The image hosts of the CSP are written from what the plugins declare; a plugin that changes them must regenerate the file

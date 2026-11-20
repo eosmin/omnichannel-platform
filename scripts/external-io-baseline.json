@@ -12,7 +12,6 @@
   "apps/api/src/modules/exports/exports.controller.ts#ExportsController.download",
   "apps/api/src/modules/exports/plugin-exports.controller.ts#PluginExportsController.download",
   "apps/api/src/modules/finance/finance-bank.controller.ts#FinanceBankController.importFile",
-  "apps/api/src/modules/fiscal/fiscal.controller.ts#FiscalController.voidDocument",
   "apps/api/src/modules/media/avatar.controller.ts#AvatarController.confirm",
   "apps/api/src/modules/media/avatar.controller.ts#AvatarController.uploadUrl",
   "apps/api/src/modules/media/media.controller.ts#MediaController.confirmUpload",
