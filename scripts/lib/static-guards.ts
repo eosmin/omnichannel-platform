@@ -56,21 +56,53 @@ const WRITE_METHODS = new Set([
   'tenantTransaction'
 ])
 const RAW_QUERIES = new Set(['$queryRaw', '$queryRawUnsafe'])
-const WRITING_SQL =
-  /^\s*(insert|update|delete|truncate|merge|copy)\b|\b(insert\s+into|delete\s+from)\b/i
-// Functions of the database that write although they are called with SELECT
+// Anywhere in the statement, so a CTE (`WITH x AS (...) UPDATE ...`) is seen too. Column names such as updated_at do not match \bupdate\b.
+const WRITING_SQL = /\b(insert|update|delete|merge|truncate|copy)\b/i
+// Functions of the database that write although they are called with SELECT. A LIST: a writing function added later is not in it
+// (limit, read in review; debt in the plan)
 const WRITING_FUNCTIONS =
   /\b(rls_clear_orphan_avatar|rls_take_disconnected_connection|purge_audit_logs)\s*\(/i
 const writesSql = (text: string): boolean => WRITING_SQL.test(text) || WRITING_FUNCTIONS.test(text)
 
 const parse = (text: string, file: string): ts.SourceFile =>
-  ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  ts.createSourceFile(
+    file,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  )
+
+// The literal text of a statement: a string, a template (its fixed parts), or `Prisma.sql` / `sql` over one. Undefined when it is built
+// from something else (a variable), which cannot be read.
+function sqlTextOf(node: ts.Expression): string | undefined {
+  const at = unwrap(node)
+  if (ts.isStringLiteralLike(at)) return at.text
+  if (ts.isTemplateExpression(at)) {
+    return [at.head.text, ...at.templateSpans.map(span => span.literal.text)].join(' ')
+  }
+  if (ts.isTaggedTemplateExpression(at)) return sqlTextOf(at.template)
+  return undefined
+}
 
 const lineOf = (node: ts.Node): number =>
   node.getSourceFile().getLineAndCharacterOfPosition(node.getStart()).line + 1
 
+const unwrap = (node: ts.Expression): ts.Expression =>
+  ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)
+    ? unwrap(node.expression)
+    : node
+
 const calleeName = (call: ts.CallExpression): string | undefined => {
-  const callee = call.expression
+  const callee = unwrap(call.expression)
+  // `x.create.call(...)`, `.apply(...)`: the method is the one the call/apply/bind hangs from
+  if (
+    ts.isPropertyAccessExpression(callee) &&
+    ['call', 'apply', 'bind'].includes(callee.name.text) &&
+    ts.isPropertyAccessExpression(unwrap(callee.expression))
+  ) {
+    return (unwrap(callee.expression) as ts.PropertyAccessExpression).name.text
+  }
   if (ts.isPropertyAccessExpression(callee)) return callee.name.text
   if (ts.isIdentifier(callee)) return callee.text
   if (ts.isElementAccessExpression(callee) && ts.isStringLiteralLike(callee.argumentExpression)) {
@@ -179,7 +211,14 @@ function writesReachedFrom(
       const name = calleeName(node)
       if (name !== undefined && RAW_QUERIES.has(name)) {
         const first = node.arguments[0]
-        if (first !== undefined && ts.isStringLiteralLike(first) && writesSql(first.text)) {
+        const sql = first === undefined ? undefined : sqlTextOf(first)
+        if (sql === undefined) {
+          found.push({
+            file: node.getSourceFile().fileName,
+            line: lineOf(node),
+            reason: `${name}( with a statement that is not a literal: it cannot be read`
+          })
+        } else if (writesSql(sql)) {
           found.push({
             file: node.getSourceFile().fileName,
             line: lineOf(node),
@@ -242,6 +281,28 @@ export function findStoreContextWrites(text: string, file: string): Finding[] {
   const declared = declaredFunctions(source)
   const found: Finding[] = []
 
+  // A function or arrow held in a variable declared in a block that encloses `at` (the nearest one wins over the module level)
+  const localFunction = (name: string, at: ts.Node): ts.Node | undefined => {
+    for (let up = at.parent as ts.Node | undefined; up !== undefined; up = up.parent) {
+      if (!ts.isBlock(up)) continue
+      for (const statement of up.statements) {
+        if (ts.isFunctionDeclaration(statement) && statement.name?.text === name) return statement
+        if (!ts.isVariableStatement(statement)) continue
+        for (const declaration of statement.declarationList.declarations) {
+          if (
+            ts.isIdentifier(declaration.name) &&
+            declaration.name.text === name &&
+            declaration.initializer !== undefined &&
+            isFunctionLike(declaration.initializer)
+          ) {
+            return declaration.initializer
+          }
+        }
+      }
+    }
+    return undefined
+  }
+
   // The function-like (method, function, arrow) whose parameter `name` is, with its name, or undefined when `name` is no parameter
   const forwarder = (
     name: string,
@@ -253,6 +314,11 @@ export function findStoreContextWrites(text: string, file: string): Finding[] {
       if (index < 0) continue
       const fn = up.name !== undefined && ts.isIdentifier(up.name) ? up.name.text : undefined
       if (fn === undefined) return undefined
+      // Only a forward that nobody outside this file can call is read through its call sites in this file: a public method, or an
+      // exported function, could be called with a write from another file
+      const reach = ts.getCombinedModifierFlags(up)
+      if (ts.isMethodDeclaration(up) && (reach & ts.ModifierFlags.Private) === 0) return undefined
+      if (ts.isFunctionDeclaration(up) && (reach & ts.ModifierFlags.Export) !== 0) return undefined
       return { index, owner: ts.isMethodDeclaration(up) ? enclosingClass(up) : undefined, fn }
     }
     return undefined
@@ -269,7 +335,7 @@ export function findStoreContextWrites(text: string, file: string): Finding[] {
     if (expr === undefined || depth > 4) return undefined
     if (isFunctionLike(expr)) return [expr]
     if (ts.isIdentifier(expr)) {
-      const named = declared.functions.get(expr.text)
+      const named = localFunction(expr.text, at) ?? declared.functions.get(expr.text)
       if (named !== undefined) return [named]
       const through = forwarder(expr.text, at)
       if (through === undefined) return undefined
@@ -347,6 +413,14 @@ export function findLogRefusedUses(text: string, file: string): Finding[] {
       ts.isIdentifier(node.name) &&
       node.name.text === 'logRefused'
     ) {
+      add(node)
+    } else if (
+      ts.isBindingElement(node) &&
+      node.propertyName !== undefined &&
+      (ts.isIdentifier(node.propertyName) || ts.isStringLiteralLike(node.propertyName)) &&
+      node.propertyName.text === 'logRefused'
+    ) {
+      // const { logRefused: alias } = audit
       add(node)
     }
     ts.forEachChild(node, visit)

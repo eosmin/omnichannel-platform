@@ -92,7 +92,43 @@ describe('no write inside inStoreContext', () => {
     ],
     [
       'a write in the callback of a forward (a private method that passes its parameter on)',
-      'class A { ctx(w) { return this.p.inStoreContext(s, w) } run() { return this.ctx(() => t.order.update({})) } }',
+      'class A { private ctx(w) { return this.p.inStoreContext(s, w) } run() { return this.ctx(() => t.order.update({})) } }',
+      '1:update('
+    ],
+    [
+      'Prisma.sql with an INSERT',
+      'x.inStoreContext(s, () => p.$queryRaw(Prisma.sql`INSERT INTO t VALUES (1)`))',
+      '1:$queryRaw( with a writing statement'
+    ],
+    [
+      'a template with substitutions in $queryRawUnsafe',
+      'x.inStoreContext(s, () => p.$queryRawUnsafe(`UPDATE ${t} SET a = 1`))',
+      '1:$queryRawUnsafe( with a writing statement'
+    ],
+    [
+      'a statement held in a variable',
+      'x.inStoreContext(s, () => p.$queryRawUnsafe(sql))',
+      '1:$queryRawUnsafe( with a statement that is not a literal: it cannot be read'
+    ],
+    [
+      'a CTE that updates',
+      'x.inStoreContext(s, () => p.$queryRaw`WITH x AS (SELECT 1) UPDATE t SET a = 1`)',
+      '1:$queryRaw`...`'
+    ],
+    ['a parenthesized callee', 'x.inStoreContext(s, () => (t.order.create)({}))', '1:create('],
+    [
+      'a create through .call',
+      'x.inStoreContext(s, () => t.order.create.call(t, {}))',
+      '1:create('
+    ],
+    [
+      'a forward that is public: another file could call it with a write',
+      'class A { ctx(w) { return this.p.inStoreContext(s, w) } run() { return this.ctx(() => 1) } }',
+      '1:the callback is not written inline nor resolvable in this file: it cannot be read'
+    ],
+    [
+      'a write in a callback held in a local const',
+      'class A { async m() { const work = async () => t.order.update({}); return this.p.inStoreContext(s, work) } }',
       '1:update('
     ],
     [
@@ -113,16 +149,18 @@ describe('no write inside inStoreContext', () => {
   it('refuses a forward that is called with an imported callback, and one nobody calls', () => {
     expect(
       writes(
-        'class A { ctx(w) { return this.p.inStoreContext(s, w) } run() { return this.ctx(imported) } }'
+        'class A { private ctx(w) { return this.p.inStoreContext(s, w) } run() { return this.ctx(imported) } }'
       )
     ).toHaveLength(1)
-    expect(writes('class A { ctx(w) { return this.p.inStoreContext(s, w) } }')).toHaveLength(1)
+    expect(
+      writes('class A { private ctx(w) { return this.p.inStoreContext(s, w) } }')
+    ).toHaveLength(1)
   })
 
   it.each([
     [
       'a read through a forward',
-      'class A { ctx(w) { return this.p.inStoreContext(s, w) } run() { return this.ctx(() => t.order.findMany({})) } }'
+      'class A { private ctx(w) { return this.p.inStoreContext(s, w) } run() { return this.ctx(() => t.order.findMany({})) } }'
     ],
     ['a findMany', 'x.inStoreContext(s, () => p.client.order.findMany({}))'],
     [
@@ -145,7 +183,15 @@ describe('no write inside inStoreContext', () => {
       'a recursive read (no loop)',
       'class A { run() { return this.p.inStoreContext(s, () => this.walk()) } walk() { return this.walk() } }'
     ],
-    ['a file with no inStoreContext', 'const a = t.create({})']
+    ['a file with no inStoreContext', 'const a = t.create({})'],
+    [
+      'a local const callback that reads',
+      'class A { async m() { const work = async () => t.order.findMany({}); return this.p.inStoreContext(s, work) } }'
+    ],
+    [
+      'a statement that only reads, with updated_at',
+      'x.inStoreContext(s, () => p.$queryRaw`SELECT updated_at FROM t`)'
+    ]
   ])('accepts %s', (_label, code) => {
     expect(writes(code)).toEqual([])
   })
@@ -168,7 +214,9 @@ describe('AuditService.logRefused only for plugin denials', () => {
     ['an alias', 'const f = audit.logRefused'],
     ['a destructuring', 'const { logRefused } = audit'],
     ['an element access', "audit['logRefused'](entry)"],
-    ['a shorthand property', 'const o = { logRefused }']
+    ['a shorthand property', 'const o = { logRefused }'],
+    ['a renamed destructuring', 'const { logRefused: lr } = this.audit'],
+    ['a bind', 'const f = audit.logRefused.bind(audit)']
   ])('refuses %s', (_label, code) => {
     expect(uses(code)).toEqual([1])
   })
