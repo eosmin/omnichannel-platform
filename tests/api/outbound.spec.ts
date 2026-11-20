@@ -354,6 +354,13 @@ describe('Replies on their way to a channel', () => {
       conversationId: conversation.id
     }
   }
+  // What the api does when a request reaches it, called by hand by the suite: in the context of the store of the reply, as the interceptor opens it
+  const asRequest = <T>(reply: { storeId: string }, work: () => Promise<T>) =>
+    inStoreContext(
+      app.get(PrismaService, { strict: false }),
+      { storeId: reply.storeId, organizationId: ctx.orgA.id },
+      work
+    )
   const stored = (id: string) =>
     owner.message.findUniqueOrThrow({
       where: { id },
@@ -450,11 +457,13 @@ describe('Replies on their way to a channel', () => {
       const createdAt = new Date()
       const reply = await queuedReply({ createdAt, closing: resolvedBefore(createdAt) })
       sendMessage = async (channelContext, params) => {
-        await app
-          .get(ConversationsService, { strict: false })
-          .updateStatus(reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
-            actor: 'system'
-          })
+        await asRequest(reply, () =>
+          app
+            .get(ConversationsService, { strict: false })
+            .updateStatus(reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
+              actor: 'system'
+            })
+        )
         return accept(channelContext, params)
       }
 
@@ -496,12 +505,14 @@ describe('Replies on their way to a channel', () => {
 
     describe('when the Undo of the resolution comes', () => {
       const undo = (reply: { storeId: string; conversationId: string }, undoesResolution = true) =>
-        app
-          .get(ConversationsService, { strict: false })
-          .updateStatus(reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
-            actor: 'system',
-            ...(undoesResolution ? { undoesResolution: true } : {})
-          })
+        asRequest(reply, () =>
+          app
+            .get(ConversationsService, { strict: false })
+            .updateStatus(reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
+              actor: 'system',
+              ...(undoesResolution ? { undoesResolution: true } : {})
+            })
+        )
 
       it('takes the queued closing message off the thread at once, and the worker finds nothing', async () => {
         const createdAt = new Date()
@@ -559,12 +570,14 @@ describe('Replies on their way to a channel', () => {
         const reply = await queuedReply({ createdAt, closing: resolvedBefore(createdAt) })
         await owner.message.update({ where: { id: reply.id }, data: { authorId: ctx.agentA.id } })
 
-        await app
-          .get(ConversationsService, { strict: false })
-          .updateStatus(reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
-            actor: viewerOf(ctx.adminA.id, Object.values(Permissions)),
-            undoesResolution: true
-          })
+        await asRequest(reply, () =>
+          app
+            .get(ConversationsService, { strict: false })
+            .updateStatus(reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
+              actor: viewerOf(ctx.adminA.id, Object.values(Permissions)),
+              undoesResolution: true
+            })
+        )
 
         expect(await owner.message.count({ where: { id: reply.id } })).toBe(1)
         expect(eventsOf(Events.MESSAGE_DELETED)).toHaveLength(0)
@@ -2730,9 +2743,11 @@ describe('Replies on their way to a channel', () => {
           where: { id: conversation.customerIdentityId },
           data: { lastInboundAt: new Date() }
         })
-        await app
-          .get(MessagesService, { strict: false })
-          .resend(reply.storeId, reply.id, viewerOf(ctx.agentA.id, Object.values(Permissions)))
+        await asRequest(reply, () =>
+          app
+            .get(MessagesService, { strict: false })
+            .resend(reply.storeId, reply.id, viewerOf(ctx.agentA.id, Object.values(Permissions)))
+        )
         expect((await rowsOf(reply.id)).map(row => row.deliveryStatus)).toEqual([
           'sent',
           'queued',
@@ -2812,9 +2827,11 @@ describe('Replies on their way to a channel', () => {
           where: { id: conversation.customerIdentityId },
           data: { lastInboundAt: new Date() }
         })
-        await app
-          .get(MessagesService, { strict: false })
-          .resend(reply.storeId, reply.id, viewerOf(ctx.agentA.id, Object.values(Permissions)))
+        await asRequest(reply, () =>
+          app
+            .get(MessagesService, { strict: false })
+            .resend(reply.storeId, reply.id, viewerOf(ctx.agentA.id, Object.values(Permissions)))
+        )
         mediaFailure = () => null
         sentMedia = []
         await sender.send(job(reply), false)
