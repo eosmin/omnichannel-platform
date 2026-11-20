@@ -1,4 +1,4 @@
-import { chooseStartPath } from './start-path'
+import { chooseStartPath, storeRootTarget } from './start-path'
 
 const stores = [
   { storeId: 'a', permissions: ['conversations:view'] },
@@ -55,5 +55,43 @@ describe('chooseStartPath by the permissions of the person', () => {
 
   it('goes to the no-access screen when no store has a screen for the person', () => {
     expect(chooseStartPath([nothingOf('a')], 'a')).toBe('/no-access')
+  })
+})
+
+describe('the reason of a provider login that could not name its store', () => {
+  it('is told in the channels of the store of the person even when that store has no other screen', () => {
+    const memberships = [
+      { storeId: 'a', permissions: [] as string[] },
+      { storeId: 'b', permissions: ['customers:view'] }
+    ]
+    expect(chooseStartPath(memberships, 'a', '?oauth_error=oauth_expired')).toBe(
+      '/s/a/settings/channels?oauth_error=oauth_expired'
+    )
+  })
+})
+
+describe('the address of a store', () => {
+  const memberships = [
+    { storeId: 'a', permissions: ['remittances:view'] },
+    { storeId: 'b', permissions: [] as string[] },
+    { storeId: 'c', permissions: ['finance:view'] }
+  ]
+
+  it('goes to the landing of that store', () => {
+    expect(storeRootTarget('a', memberships)).toBe('/s/a/remittances')
+  })
+
+  it('goes to a store where there is a screen when this one has none, never back to itself', () => {
+    expect(storeRootTarget('b', memberships)).toBe('/s/a/remittances')
+  })
+
+  it('goes to the finance area when that is what the other store gives', () => {
+    expect(storeRootTarget('b', memberships.slice(1))).toBe('/finance')
+  })
+
+  it('goes to the no-access screen when no store has a screen', () => {
+    expect(storeRootTarget('b', [memberships[1] ?? { storeId: 'b', permissions: [] }])).toBe(
+      '/no-access'
+    )
   })
 })

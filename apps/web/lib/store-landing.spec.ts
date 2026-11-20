@@ -35,4 +35,22 @@ describe('storeLandingPath', () => {
       '/s/a/settings/general'
     )
   })
+
+  it('keeps the order of the navigation: the first screen it may open wins', () => {
+    const everything = [
+      ClientPermissions.ANALYTICS_VIEW,
+      ClientPermissions.INVENTORY_VIEW,
+      ClientPermissions.REMITTANCES_VIEW,
+      ClientPermissions.RETURNS_VIEW,
+      ClientPermissions.SHIPPING_VIEW,
+      ClientPermissions.ORDERS_VIEW,
+      ClientPermissions.PRODUCTS_VIEW
+    ]
+    expect(storeLandingPath('a', canOf(everything))).toBe('/s/a/products')
+    expect(storeLandingPath('a', canOf(everything.slice(0, 5)))).toBe('/s/a/shipments')
+  })
+
+  it('lands on the finance area for a role that only holds finance', () => {
+    expect(storeLandingPath('a', canOf([ClientPermissions.FINANCE_VIEW]))).toBe('/finance')
+  })
 })
