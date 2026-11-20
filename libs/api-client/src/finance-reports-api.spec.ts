@@ -43,6 +43,7 @@ const period = {
   reopenedAt: null,
   reopenedBy: null,
   reopenReason: null,
+  closingHash: 'd'.repeat(64),
   hasEnded: true,
   hasStarted: true
 }
