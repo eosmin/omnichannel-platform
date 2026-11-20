@@ -10,6 +10,15 @@ export function rlsEnforcementRequested(): boolean {
   return value !== undefined && ['1', 'true', 'on'].includes(value.toLowerCase())
 }
 
+// Whether the run binds the worker like the api (WORKER_RLS_CONTEXT=true, stage E): the role platform_worker has no BYPASSRLS and the
+// jobs open their contexts. The role is changed by `pnpm db:rls:worker-role nobypass`, never from here: a role belongs to the whole
+// server (not to one database), and `db:test:prepare` shares its server with platform_dev, whose worker would lose its bypass too. In CI
+// the step of the enforced jobs changes it on the server of the job; on a laptop the person runs it by hand, knowing that. The
+// enforced run sets this flag together with TEST_RLS_ENFORCE; the role specs read it from here
+export function workerRoleBoundInSuites(): boolean {
+  return process.env['WORKER_RLS_CONTEXT'] === 'true'
+}
+
 // Puts the database of `ownerUrl` in the state the run asked for: enforced with TEST_RLS_ENFORCE, not enforced without it, so that a
 // database a previous run left enforced does not stay so while the log says it is not. The script refuses `on` when platform_app
 // could skip row security (the script exits 1), so a database where the suites would prove nothing is an error and not a green run.

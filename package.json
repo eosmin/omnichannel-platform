@@ -45,6 +45,7 @@
     "validate:rls": "tsx scripts/check-rls-coverage.ts",
     "validate:definer": "tsx scripts/check-definer-search-path.ts",
     "db:rls:enforce": "tsx scripts/rls-enforce.ts",
+    "db:rls:worker-role": "tsx scripts/rls-worker-role.ts",
     "validate:frontend": "tsx scripts/check-frontend-coverage.ts",
     "validate:channel-agnostic": "tsx scripts/validate-channel-agnostic.ts",
     "validate:rls-worker": "tsx scripts/validate-rls-worker.ts",
