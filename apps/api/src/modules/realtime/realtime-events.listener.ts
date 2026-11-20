@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 
 import { Permissions } from '@platform/core/auth'
+import { EventContextNotNeeded } from '@platform/core/database'
 import {
   type BridgedPayloads,
   type BulkLabelsDonePayload,
@@ -81,6 +82,9 @@ export class RealtimeEventsListener {
   // The union of who could see the conversation before and after: who loses sight of it must hear
   // that it left, to drop it from the screen
   @OnEvent(Events.CONVERSATION_STATUS_CHANGED)
+  @EventContextNotNeeded(
+    'publishes to socket rooms; its one read (mayStay -> mayJoin) opens its own detached context from the authenticated socket'
+  )
   async onStatusChanged(payload: ConversationStatusChangedPayload): Promise<void> {
     const after = { hidden: isHiddenStatus(payload.status), assignedTo: payload.assignedTo }
     const states = [
@@ -107,6 +111,9 @@ export class RealtimeEventsListener {
 
   // The same, for the assignee: the one who had it and the one who has it both hear
   @OnEvent(Events.CONVERSATION_ASSIGNED)
+  @EventContextNotNeeded(
+    'publishes to socket rooms; its one read (mayStay -> mayJoin) opens its own detached context from the authenticated socket'
+  )
   async onAssigned(payload: ConversationAssignedPayload): Promise<void> {
     const states = [
       { hidden: payload.visibility.hidden, assignedTo: payload.previousAssignee },
@@ -133,6 +140,7 @@ export class RealtimeEventsListener {
   // The mark that raises a row in the list was put or taken off: everyone who can see the conversation
   // reads the row again. The reason only; the note of the agent never crosses.
   @OnEvent(Events.CONVERSATION_ATTENTION_CHANGED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   async onAttentionChanged(payload: ConversationAttentionChangedPayload): Promise<void> {
     await this.realtime.toStoreWhere(
       payload.storeId,
@@ -144,6 +152,7 @@ export class RealtimeEventsListener {
 
   // What a user has read is theirs alone: their other tabs of this store hear it, nobody else
   @OnEvent(Events.CONVERSATION_READ)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onRead(payload: ConversationReadPayload): void {
     this.realtime.toStoreUser(payload.storeId, payload.userId, RealtimeEvents.CONVERSATION_READ, {
       conversationId: payload.conversationId,
@@ -153,6 +162,7 @@ export class RealtimeEventsListener {
 
   // Marked unread by a user: the same audience as reading it, their own tabs
   @OnEvent(Events.CONVERSATION_UNREAD)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onUnread(payload: ConversationReadPayload): void {
     this.realtime.toStoreUser(payload.storeId, payload.userId, RealtimeEvents.CONVERSATION_UNREAD, {
       conversationId: payload.conversationId,
@@ -163,6 +173,7 @@ export class RealtimeEventsListener {
   // A conversation was deleted by hand: who could see it hears that it is gone, and every socket in its room is
   // taken out (nothing is left to join)
   @OnEvent(Events.CONVERSATION_DELETED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   async onDeleted(payload: ConversationDeletedPayload): Promise<void> {
     await together(
       this.realtime.toStoreWhere(
@@ -179,6 +190,7 @@ export class RealtimeEventsListener {
   // The id only; the page asks the api for the row, which applies the permissions of the kind.
   @OnEvent(Events.EXPORT_READY)
   @OnEvent(Events.EXPORT_FAILED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onExportSettled(payload: ExportSettledPayload): void {
     this.realtime.toStoreUser(payload.storeId, payload.requestedBy, RealtimeEvents.EXPORT_UPDATED, {
       exportId: payload.exportId
@@ -188,6 +200,7 @@ export class RealtimeEventsListener {
   // A bulk run of labels is the requester's alone (TDD_17 §4.6): their tabs of this store see the bar move and the file arrive. Counts
   // and ids; what became of each order is read from the run through the api, which asks for the permission.
   @OnEvent(Events.BULK_LABELS_PROGRESS)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onBulkLabelsProgress(payload: BulkLabelsProgressPayload): void {
     this.realtime.toStoreUser(
       payload.storeId,
@@ -203,6 +216,7 @@ export class RealtimeEventsListener {
   }
 
   @OnEvent(Events.BULK_LABELS_DONE)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onBulkLabelsDone(payload: BulkLabelsDonePayload): void {
     this.realtime.toStoreUser(
       payload.storeId,
@@ -219,6 +233,7 @@ export class RealtimeEventsListener {
   // An order was made: who may read orders hears its id and its customer's, nothing of what it holds (not the
   // conversation either: who may see the conversation is the inbox's rule, and the page reads the thread anyway)
   @OnEvent(Events.ORDER_CREATED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onOrderCreated(payload: OrderCreatedPayload): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
@@ -236,6 +251,7 @@ export class RealtimeEventsListener {
   @OnEvent(Events.ORDER_PAYMENT_STATUS_CHANGED)
   @OnEvent(Events.ORDER_PRICE_APPROVED)
   @OnEvent(Events.ORDER_PRICE_REJECTED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onOrderUpdated(payload: OrderEventPayload): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
@@ -247,6 +263,7 @@ export class RealtimeEventsListener {
 
   // The room of a conversation holds only the sockets that were let in, so it is the audience
   @OnEvent(Events.CUSTOMER_TYPING)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onCustomerTyping(payload: CustomerTypingPayload): void {
     this.realtime.toConversation(payload.conversationId, RealtimeEvents.CUSTOMER_TYPING, {
       conversationId: payload.conversationId
@@ -255,6 +272,7 @@ export class RealtimeEventsListener {
 
   // A conversation the customer started: who may see it hears it, as for any change of one
   @OnEvent(Events.CONVERSATION_CREATED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onCreated(payload: BridgedPayloads[typeof Events.CONVERSATION_CREATED]): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
@@ -270,6 +288,7 @@ export class RealtimeEventsListener {
 
   // A message of the customer: ids and the date, the text is read through the api
   @OnEvent(Events.MESSAGE_RECEIVED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onReceived(payload: BridgedPayloads[typeof Events.MESSAGE_RECEIVED]): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
@@ -287,6 +306,7 @@ export class RealtimeEventsListener {
   // A reply that waits for its channel carries the key of the client that wrote it, so that its
   // optimistic bubble matches; the one the channel took has no client to match
   @OnEvent(Events.MESSAGE_QUEUED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onQueued(payload: MessageQueuedPayload): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
@@ -301,6 +321,7 @@ export class RealtimeEventsListener {
   }
 
   @OnEvent(Events.MESSAGE_SENT)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onSent(payload: MessageStatusPayload): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
@@ -311,6 +332,7 @@ export class RealtimeEventsListener {
   }
 
   @OnEvent(Events.MESSAGE_DELIVERED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onDelivered(payload: MessageStatusPayload): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
@@ -321,6 +343,7 @@ export class RealtimeEventsListener {
   }
 
   @OnEvent(Events.MESSAGE_READ)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onMessageRead(payload: MessageStatusPayload): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
@@ -331,6 +354,7 @@ export class RealtimeEventsListener {
   }
 
   @OnEvent(Events.MESSAGE_REACTION)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onMessageReaction(payload: MessageStatusPayload): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
@@ -341,31 +365,37 @@ export class RealtimeEventsListener {
   }
 
   @OnEvent(Events.MESSAGE_EDITED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onMessageEdited(payload: MessageChangedPayload): Promise<void> {
     return this.toWhoMayRead(payload, RealtimeEvents.MESSAGE_EDITED)
   }
 
   @OnEvent(Events.MESSAGE_DELETED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onMessageDeleted(payload: MessageChangedPayload): Promise<void> {
     return this.toWhoMayRead(payload, RealtimeEvents.MESSAGE_DELETED)
   }
 
   @OnEvent(Events.MEDIA_PROCESSED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onMediaProcessed(payload: MessageChangedPayload): Promise<void> {
     return this.toWhoMayRead(payload, RealtimeEvents.MEDIA_PROCESSED)
   }
 
   @OnEvent(Events.MEDIA_INFECTED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onMediaInfected(payload: MessageChangedPayload): Promise<void> {
     return this.toWhoMayRead(payload, RealtimeEvents.MEDIA_INFECTED)
   }
 
   @OnEvent(Events.MEDIA_UNSCANNABLE)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onMediaUnscannable(payload: MessageChangedPayload): Promise<void> {
     return this.toWhoMayRead(payload, RealtimeEvents.MEDIA_UNSCANNABLE)
   }
 
   @OnEvent(Events.MEDIA_UNAVAILABLE)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onMediaUnavailable(payload: MessageChangedPayload): Promise<void> {
     return this.toWhoMayRead(payload, RealtimeEvents.MEDIA_UNAVAILABLE)
   }
@@ -392,6 +422,7 @@ export class RealtimeEventsListener {
   }
 
   @OnEvent(Events.MESSAGE_FAILED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onFailed(payload: MessageFailedPayload): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
@@ -407,6 +438,7 @@ export class RealtimeEventsListener {
 
   // A note is for who may read notes, and may see the conversation
   @OnEvent(Events.MESSAGE_NOTE_ADDED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
   onNoteAdded(payload: MessageNoteAddedPayload): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
