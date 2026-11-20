@@ -54,7 +54,7 @@ async function until<T>(read: () => Promise<T>, done: (value: T) => boolean): Pr
 }
 
 interface ErrorBody {
-  error: { code: string }
+  error: { code: string; metadata?: { shipmentIds?: string[]; statuses?: string[] } }
 }
 
 describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)', () => {
@@ -441,7 +441,7 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
         .post(ApiRoutes.shipments.forOrder(order.id))
         .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseASecond.id })
       expect(early.status).toBe(CONFLICT)
-      expect((early.body as ErrorBody).error.code).toBe(ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS)
+      expect((early.body as ErrorBody).error.code).toBe(ErrorCodes.SHIPPING_ORIGIN_VOID_PENDING)
       expect(await settle(first)).toBe(VoidSettlements.CANCELLED)
 
       const next = await asAdmin()
@@ -464,7 +464,9 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
     })
 
     // An order whose lines moved from the first warehouse to the second, with the guide of the first being voided in `status`
-    async function movedWithGuideIn(status: ShipmentStatus): Promise<string> {
+    async function movedWithGuideIn(
+      status: ShipmentStatus
+    ): Promise<{ orderId: string; guideId: string }> {
       const order = await reserved({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
       await owner.warehouse.update({
         where: { id: ctx.warehouseASecond.id },
@@ -489,20 +491,22 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
       })
       expect(moved.status).toBe(OK)
       await owner.shipment.update({ where: { id: first }, data: { status } })
-      return order.id
+      return { orderId: order.id, guideId: first }
     }
 
     it.each([ShipmentStatus.CANCEL_PENDING, ShipmentStatus.CANCEL_FAILED])(
       'makes the guide of the new warehouse wait while the guide of the old one is %s',
       async status => {
-        const orderId = await movedWithGuideIn(status)
+        const { orderId, guideId } = await movedWithGuideIn(status)
         const refused = await asAdmin()
           .post(ApiRoutes.shipments.forOrder(orderId))
           .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseASecond.id })
         expect(refused.status).toBe(CONFLICT)
-        expect((refused.body as ErrorBody).error.code).toBe(
-          ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS
-        )
+        // A code of its own, so that the screen can say how to leave it (retry the cancellation or mark it voided by hand), and
+        // the guide that is in the way
+        const { error } = refused.body as ErrorBody
+        expect(error.code).toBe(ErrorCodes.SHIPPING_ORIGIN_VOID_PENDING)
+        expect(error.metadata).toMatchObject({ shipmentIds: [guideId], statuses: [status] })
       }
     )
 
