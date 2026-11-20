@@ -651,6 +651,16 @@ describe('The legal books', () => {
       expect(numbers).not.toContain('EAST-2')
     })
 
+    // The database reads a zone name in any case (the VAT report does too), so a zone written in lower case is a zone, not UTC
+    it('reads a zone written in lower case as that zone, the way the database does', async () => {
+      const march = await marchOf()
+      await document(await sale(march, '2026-03-31'), 'LOW-1', '2026-04-01T03:00:00Z', null)
+
+      const numbers = numbersOf(await marchBook(march, 'america/el_salvador'))
+
+      expect(numbers).toContain('LOW-1')
+    })
+
     // The other residual limit: a zone the database does not know reads as UTC, as the entries of that store do, and the book still answers
     // (the log says so: `splitStoreZones` is the unit spec of what it tells)
     it('reads the documents of a store with a zone the database does not know as UTC, and still answers', async () => {

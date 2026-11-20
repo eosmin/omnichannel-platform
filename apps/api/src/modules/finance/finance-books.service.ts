@@ -46,7 +46,7 @@ import type { Actor } from '../tenancy'
 
 import { bookCsv, bookSha256 } from './finance-books.csv'
 import type { BookLayoutBody, BookQuery, FrozenBooksQuery } from './finance-books.schemas'
-import { splitStoreZones, type StoreZoneRow } from './finance-books.zones'
+import { reportUnknownZones, splitStoreZones, type StoreZoneRow } from './finance-books.zones'
 import { lockScope } from './finance.support'
 import { isoDay } from './finance.views'
 
@@ -702,16 +702,11 @@ export class FinanceBooksService {
     const zones = await this.prisma.client.$queryRaw<StoreZoneRow[]>`
       SELECT s.timezone AS name, (z.name IS NOT NULL) AS known
       FROM (SELECT DISTINCT timezone FROM stores WHERE organization_id = ${organizationId}) s
-      LEFT JOIN pg_timezone_names z ON z.name = s.timezone`
+      LEFT JOIN pg_timezone_names z ON lower(z.name) = lower(s.timezone)`
     const { known: knownZones, unknown: unknownZones } = splitStoreZones(zones)
     // Read as UTC, as the entries of that store are, but not in silence: the zone is validated when a store is saved, so this is data
     // written by hand (HC-106)
-    if (unknownZones.length > 0) {
-      this.logger.warn(
-        { organizationId, zones: unknownZones },
-        'a store of the organization has a time zone the database does not know; its books are read as UTC'
-      )
-    }
+    reportUnknownZones(this.logger, organizationId, unknownZones)
     const entries = await this.prisma.client.$queryRaw<SaleEntryRow[]>`
       SELECT e.number, e.entry_date, e.idempotency_key, o.id AS order_id, o.order_number,
              d.provider_id, d.document_type, d.external_number, d.sequence_number,
