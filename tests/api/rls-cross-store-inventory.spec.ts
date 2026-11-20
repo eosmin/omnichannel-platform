@@ -166,10 +166,10 @@ describe('RLS phase 6: transfers and counts with lines of several stores of one 
         organizationId: ctx.orgA.id,
         warehouseId: ctx.warehouseA.id,
         number: `CT-${randomUUID().replace(/\D/g, '').slice(0, 8).padEnd(4, '0')}`,
-        status: CountStatus.REVIEW,
+        // The lines are entered while the count is open (a trigger refuses them later): it moves to review below
+        status: CountStatus.COUNTING,
         createdBy: both.id,
         startedAt: new Date(),
-        submittedAt: new Date(),
         lines: {
           create: [
             { ...mine, expectedQuantity: STOCK, countedQuantity: STOCK + 3 },
@@ -183,6 +183,10 @@ describe('RLS phase 6: transfers and counts with lines of several stores of one 
         }
       },
       select: { id: true }
+    })
+    await owner.stockCount.update({
+      where: { id: count.id },
+      data: { status: CountStatus.REVIEW, submittedAt: new Date() }
     })
     return { mine, theirs, count }
   }
@@ -358,9 +362,7 @@ describe('RLS phase 6: transfers and counts with lines of several stores of one 
       const response = await asBoth()
         .get(ApiRoutes.transfers.byId(foreign.id))
         .query({ storeIds: ctx.storeB.id, storeId: ctx.storeB.id, organizationId: ctx.orgB.id })
-      const listed = await asBoth()
-        .get(ApiRoutes.transfers.list)
-        .query({ storeIds: ctx.storeB.id, organizationId: ctx.orgB.id, limit: 100 })
+      const listed = await asBoth().get(`${ApiRoutes.transfers.list}?limit=100`)
 
       expect(response.status).toBe(NOT_FOUND)
       const ids = (listed.body as { data: { id: string }[] }).data.map(row => row.id)
