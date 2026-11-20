@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { RemoteChannelSync } from '@platform/channels/remote'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
 import {
   isOfficialChannelId,
   PluginCatalogTypes,
@@ -78,6 +78,7 @@ function alreadyRegistered(message: string): PlatformException {
 export class PluginRegistrationService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly registry: PluginRegistry,
     private readonly carriers: CarrierRegistry,
     private readonly audit: AuditService,
@@ -106,15 +107,18 @@ export class PluginRegistrationService {
     // another organization holds is never written
     const icon = await this.iconToFetch(store, manifest)
 
-    const write = () => this.write(store, manifest)
+    // The route is @NoTenantTransaction: the row is one short unit of its own that commits before the picture is stored, so that a
+    // picture that cannot be kept (503) never takes the registration with it. A second attempt after a collision is another unit.
+    const write = () =>
+      this.jobs.forStoreOrJoin(store.id, () => inSavepoint(() => this.write(store, manifest)))
     let result: WriteResult
     try {
-      result = await inSavepoint(write)
+      result = await write()
     } catch (error) {
       // Two registrations of the same id at once: the second one finds the first one's row and decides again
       if (!isUniqueViolation(error)) throw error
       try {
-        result = await inSavepoint(write)
+        result = await write()
       } catch (second) {
         // The id is held by a row this organization cannot see (another organization's, hidden by row level security): the
         // existence check found nothing and the insert collided. Same answer as when the row is visible; nothing says it exists.
@@ -133,7 +137,7 @@ export class PluginRegistrationService {
     // Sent again as it is stored (a retry whose answer was lost): the same answer, and nothing written or audited. The
     // picture may still be missing (an earlier store failed): it is kept now.
     if (result.outcome === RegistrationOutcomes.UNCHANGED) {
-      if (icon !== null) await this.keepIcon(manifest.id, icon)
+      if (icon !== null) await this.keepIcon(store, manifest, icon)
       return view
     }
     this.audit.log({
@@ -155,10 +159,11 @@ export class PluginRegistrationService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    // After the audit: the row is committed and the registration happened, whatever becomes of the picture
-    if (icon !== null) await this.keepIcon(manifest.id, icon)
-    // A newer manifest of a remote channel replaces its adapter in every process (the installations that exist keep working)
+    // A newer manifest of a remote channel replaces its adapter in every process (the installations that exist keep working). Before the
+    // picture: the row is committed, and a picture that cannot be kept (503) must not leave the other processes with the old adapter
     if (manifest.type === PluginCatalogTypes.CHANNEL) await this.sync.announceChange()
+    // After the audit: the row is committed and the registration happened, whatever becomes of the picture
+    if (icon !== null) await this.keepIcon(store, manifest, icon)
     return view
   }
 
@@ -170,10 +175,19 @@ export class PluginRegistrationService {
     manifest: PluginManifest
   ): Promise<Buffer | null> {
     if (manifest.type !== PluginCatalogTypes.CHANNEL || manifest.icon === undefined) return null
-    const existing = await this.prisma.client.plugin.findUnique({
-      where: { id: manifest.id },
-      select: { organizationId: true, iconKey: true, manifest: true, status: true }
+    const lookup = await this.jobs.forStoreOrJoin(store.id, async () => {
+      // An id that another owner holds (another organization's, or an official one) is not visible to this context: the function
+      // answers only that it exists, so that no address is fetched for an id that this organization can never write
+      if (await this.heldByAnotherOwner(manifest.id)) return null
+      return {
+        existing: await this.prisma.client.plugin.findUnique({
+          where: { id: manifest.id },
+          select: { organizationId: true, iconKey: true, manifest: true, status: true }
+        })
+      }
     })
+    if (lookup === null) return null
+    const { existing } = lookup
     if (existing !== null && existing.organizationId !== store.organizationId) return null
     // An archived plugin is not registered again: nothing is fetched for it
     if (existing?.status === String(PluginStatus.ARCHIVED)) return null
@@ -184,10 +198,20 @@ export class PluginRegistrationService {
     return this.icons.fetch(manifest.icon)
   }
 
-  private async keepIcon(pluginId: string, png: Buffer): Promise<void> {
+  private async heldByAnotherOwner(pluginId: string): Promise<boolean> {
+    const rows = await this.prisma.client.$queryRaw<{ foreign: boolean }[]>`
+      SELECT public.rls_plugin_foreign_owner(${pluginId}::text) AS foreign`
+    return rows[0]?.foreign === true
+  }
+
+  private async keepIcon(
+    store: PluginStoreRef,
+    manifest: PluginManifest,
+    png: Buffer
+  ): Promise<void> {
     let key: string
     try {
-      key = await this.icons.store(pluginId, png)
+      key = await this.icons.store(manifest.id, png)
     } catch {
       throw new PlatformException(
         ErrorCodes.PLUGIN_ICON_INVALID,
@@ -195,7 +219,19 @@ export class PluginRegistrationService {
         HttpStatusCodes.SERVICE_UNAVAILABLE
       )
     }
-    await this.prisma.client.plugin.update({ where: { id: pluginId }, data: { iconKey: key } })
+    // The picture is already stored; the key is one short unit of its own, so the registration is not tied to it
+    await this.jobs.forStoreOrJoin(store.id, () =>
+      // Only while the plugin still has the manifest the picture was fetched for: a newer version with another address (which cleared the
+      // key) or a plugin archived in between is not given the key of an older picture
+      this.prisma.client.plugin.updateMany({
+        where: {
+          id: manifest.id,
+          status: { not: PluginStatus.ARCHIVED },
+          manifest: { path: ['icon'], equals: manifest.icon }
+        },
+        data: { iconKey: key }
+      })
+    )
   }
 
   private write(store: PluginStoreRef, manifest: PluginManifest): Promise<WriteResult> {
