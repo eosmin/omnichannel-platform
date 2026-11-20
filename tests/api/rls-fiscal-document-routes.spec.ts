@@ -29,6 +29,9 @@ import { type Actor, api, type TestAgent } from '../helpers/http'
 
 type Client = TestAgent
 
+// The answer without the id of the request, which is different every time
+const errorOf = (answer: { body: unknown }): unknown => (answer.body as { error: unknown }).error
+
 const OK = 200
 const FORBIDDEN = 403
 const NOT_FOUND = 404
@@ -300,10 +303,10 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
         // The same answer as for a document that does not exist and for one of another organization
         const missing = await call(fromA2(onlyA2), randomUUID())
         expect(missing.status).toBe(NOT_FOUND)
-        expect(refused.body).toEqual(missing.body)
+        expect(errorOf(refused)).toEqual(errorOf(missing))
         const foreign = await call(api(app, ctx.adminB, ctx.storeB), id)
         expect(foreign.status).toBe(NOT_FOUND)
-        expect(foreign.body).toEqual(missing.body)
+        expect(errorOf(foreign)).toEqual(errorOf(missing))
         const after = await row(id)
         expect([after.status, after.submission, after.updatedAt]).toEqual([
           before.status,
