@@ -19,6 +19,7 @@ import { CredentialCipher } from '@platform/core/crypto'
 import {
   inSavepoint,
   isUniqueViolation,
+  JobContext,
   lockStoreForWrite,
   PrismaService,
   type PrismaTransaction
@@ -192,6 +193,7 @@ const TOKEN_INFO_WAIT_MS = 4000
 export class ChannelConnectionsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly registry: PluginRegistry,
     private readonly contexts: ChannelContextFactory,
     private readonly health: ChannelHealthService,
@@ -238,10 +240,12 @@ export class ChannelConnectionsService {
         TOKEN_INFO_WAIT_MS
       )
       if (!written) return row
-      const fresh = await this.prisma.client.channelConnection.findFirst({
-        where: { id: row.id, storeId },
-        select: VIEW_SELECT
-      })
+      const fresh = await this.jobs.forStoreOrJoin(storeId, () =>
+        this.prisma.client.channelConnection.findFirst({
+          where: { id: row.id, storeId },
+          select: VIEW_SELECT
+        })
+      )
       return fresh ?? row
     } catch {
       return row
@@ -474,7 +478,10 @@ export class ChannelConnectionsService {
     const plugin = this.registry.get(pluginId)
     this.refuseIfRemote(pluginId, plugin)
     // Before the provider hears of it: connecting a plugin the store has not installed is refused
-    await this.installationOf(this.prisma.client, storeId, pluginId)
+    // A short unit of its own (the route does not hold a transaction across the provider): its FOR SHARE ends with it
+    await this.jobs.forStoreOrJoin(storeId, () =>
+      this.installationOf(this.prisma.client, storeId, pluginId)
+    )
 
     let result
     let sealed
@@ -600,13 +607,13 @@ export class ChannelConnectionsService {
     let connection
     try {
       try {
-        connection = await inSavepoint(store)
+        connection = await this.jobs.forStoreOrJoin(storeId, () => inSavepoint(store))
       } catch (error) {
         // The store lock is shared, so two connects of a new account can both find nothing: the
         // unique index decides, and the second one runs again to find what the first wrote (and
         // conflict, or update its own)
         if (!isUniqueViolation(error)) throw error
-        connection = await inSavepoint(store)
+        connection = await this.jobs.forStoreOrJoin(storeId, () => inSavepoint(store))
       }
     } catch (error) {
       // The plugin was uninstalled while the provider was answering: no row will ever hold this
@@ -616,17 +623,24 @@ export class ChannelConnectionsService {
       }
       throw error
     }
-    this.audit.log({
-      action: AuditAction.CHANNEL_CONNECTED,
-      actor: { userId: actor.userId },
-      storeId,
-      resourceType: 'channel_connection',
-      resourceId: connection.id,
-      metadata: authMethod === undefined ? { pluginId } : { pluginId, authMethod },
-      ipAddress: actor.ipAddress,
-      userAgent: actor.userAgent
+    const written = connection
+    // The audit is its own minimal unit: nothing that can fail shares its commit. The token check (a call to the provider) runs outside
+    // any unit and opens its own for what it reads and writes
+    await this.jobs.forStoreOrJoin(storeId, () => {
+      this.audit.log({
+        action: AuditAction.CHANNEL_CONNECTED,
+        actor: { userId: actor.userId },
+        storeId,
+        resourceType: 'channel_connection',
+        resourceId: written.id,
+        metadata: authMethod === undefined ? { pluginId } : { pluginId, authMethod },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent
+      })
+      return Promise.resolve()
     })
-    return this.viewAfterWrite(storeId, await this.withTokenInfo(storeId, connection))
+    const withToken = await this.withTokenInfo(storeId, written)
+    return this.jobs.forStoreOrJoin(storeId, () => this.viewAfterWrite(storeId, withToken))
   }
 
   // What the provider said may echo the credentials: it is not logged nor sent back.
@@ -889,7 +903,9 @@ export class ChannelConnectionsService {
   ): Promise<void> {
     try {
       // An account that a row holds, of this store or of another, is not ours to release
-      const holder = await findConnectionHolder(this.prisma.client, pluginId, result.connectionId)
+      const holder = await this.jobs.forStoreOrJoin(storeId, () =>
+        findConnectionHolder(this.prisma.client, pluginId, result.connectionId)
+      )
       if (holder !== null) return
       await withTimeout(
         plugin.disconnect(

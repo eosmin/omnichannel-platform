@@ -147,6 +147,9 @@ export class FinanceTransactionsController {
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_TRANSACTIONS, Permissions.FINANCE_MOVE_MONEY)
   @NoStore()
+  @NoTenantTransaction(
+    'the receipt is a file of ONE store of the organization, which may not be the store of the header: the service reads the transaction in the context of the organization, finds the file by its id in the stores of the organization and writes the link in the context of the organization and the store that owns the file'
+  )
   @Post(ApiRoutes.finance.transactions.document(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   attachDocument(
