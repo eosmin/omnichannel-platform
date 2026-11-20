@@ -358,7 +358,10 @@ describe('Replies on their way to a channel', () => {
   const asRequest = <T>(reply: { storeId: string }, work: () => Promise<T>) =>
     inStoreContext(
       app.get(PrismaService, { strict: false }),
-      { storeId: reply.storeId, organizationId: ctx.orgA.id },
+      {
+        storeId: reply.storeId,
+        organizationId: reply.storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id
+      },
       work
     )
   const stored = (id: string) =>
