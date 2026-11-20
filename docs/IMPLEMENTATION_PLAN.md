@@ -1558,24 +1558,30 @@ built once, by 4B.4b-1.
       kind narrowing, voided, a file of another organization or purpose), the signed links (clean, pending, other store, other
       organization), the trigger whoever writes, and the isolation of the receipt (no new table: `validate:isolation` keys its cases by model, so the proof is in `tests/api/finance-transaction-documents.spec.ts`: a file of another organization is never attached, a transaction of another organization is a 404 to attach to or to read the receipt of)
 - [x] **4B.4b-1, active content in a receipt PDF (PR `fix/finance-document-active-pdf`, QA finding TAX-436):** the worker's scan of a `finance_document`
-      PDF now reads the file (`apps/worker/src/media/pdf-active-content.ts`, `inspectPdf`) for the names `/JavaScript`, `/JS`, `/OpenAction`, `/AA`, `/Launch`,
-      `/EmbeddedFile`, `/SubmitForm`, `/ImportData`, `/GoToR`, `/GoToE`, `/RichMedia` and `/XFA` (hex-escaped spellings decoded, longer names such as `/JSON` not
-      taken for them), in the clear and inside its object streams (`/Type /ObjStm`, the one place a catalog can hide; pictures, fonts and page content hold
-      no objects and are not read; an object stream is undone only if it declares a single `/FlateDecode` with no `/DecodeParms`, or no filter). It fails
-      closed: an encrypted file, an object stream that does not inflate, passes 8 MiB inflated (32 MiB in all) or never ends, a filter chain or predictor, a file with
-      more than 50 of them or 20 000 `stream` keywords, or an object stream announced whose marker was hidden from its dictionary, ends refused as well (`pdf_not_inspectable`). A hit ends
-      the row as `unscannable` with `scanResult.reason = pdf_active_content` and the names, and keeps the file unserved in the bucket as a quarantine
-      (financial evidence is never deleted); attaching already refuses a row that is not `clean` (409 `transaction_document_not_clean`). A finance document
-      has no thread, so nobody is told by an event (`announce` needs a message): the row and a WARN log are the trace. Debts (rule 12), owner: Step 7.3
-      hardening backlog: (a) the web does not explain a refused receipt (the file just never becomes attachable): owner 4B.9 web, with a notification or an
-      audit entry for the uploader; (b) PDFs of other purposes (a customer's message attachment, an order file) are not inspected: whether they should be is the
-      owner's decision, closed by Step 7.3; (c) `/EmbeddedFile` also refuses a PDF/A-3 e-invoice that carries its XML, and an encrypted receipt is refused too:
-      the owner may relax either by a rule that opens the attachment, never by skipping the check; (d) no dedicated error code at attach: the reason lives in
-      `scanResult`, as for an image that cannot be decoded; (e) the attach-side integration case (a refused PDF cannot be attached) needs a transaction
-      fixture of its own: the unit cases of the pipeline prove the row, the existing attach cases prove the 409; (f) the bytes inspected are read from the
-      bucket a second time after the ClamAV read (as `sanitize` does for pictures): an object replaced in between is a TOCTOU window shared with the
-      sanitizer, to close for both together; (g) the names are matched on the text of the file, so `/JS` inside a literal string or a comment of a page is
-      a false positive (refused, fail closed), and `/URI` (a link, not an execution) is left out of the list on purpose.
+      PDF now reads the file (`apps/worker/src/media/pdf-active-content.ts`, `inspectPdf`) before it can be `clean`. It looks for the names `/JavaScript`, `/JS`,
+      `/AA`, `/Launch`, `/EmbeddedFile`, `/EF`, `/EmbeddedFiles`, `/FileAttachment`, `/SubmitForm`, `/ResetForm`, `/ImportData`, `/GoToR`, `/GoToE`, `/GoToDp`,
+      `/GoTo3DView`, `/Named`, `/Hide`, `/SetOCGState`, `/Thread`, `/Screen`, `/RichMedia*`, `/XFA`, `/AcroForm`, `/Rendition`, `/Movie`, `/Sound`, `/3D`
+      (hex-escaped spellings decoded, longer names such as `/JSON` not taken for them), and for an `/OpenAction` whose value is an action (a link included) or a
+      value it cannot follow: a destination (`[3 0 R /Fit]`, what Word, LaTeX and Acrobat write) is not refused. `/URI` alone is a link, not an execution, and is
+      left out on purpose. The names are read in the clear and inside the object streams (`/Type /ObjStm`), the one place a catalog can hide. The rule is
+      **fail closed**: an encrypted file, a file with too many names, `stream` keywords or object streams, one that goes past 2 s, and, once the file has an
+      object stream, any `stream` that is not recognised (its own `N G obj`, its own dictionary, no `endobj` in between, a line break after the keyword),
+      any object stream that is not a single `/FlateDecode` without `/DecodeParms` (or no filter) that inflates whole within 8 MiB (32 MiB in all) and
+      any announced `/ObjStm` marker that was never matched to a stream read, ends refused as well (`pdf_not_inspectable`, with the reason in `scanResult`).
+      Every walk is bounded (windows of 4 KiB, no scan back over the file). A hit ends the row as `unscannable` with `scanResult.reason = pdf_active_content`
+      and the names, and keeps the file unserved in the bucket as a quarantine (financial evidence is never deleted); attaching it answers 409
+      `transaction_document_refused` (a refused PDF never becomes clean; the other not-clean states keep `transaction_document_not_clean`). A finance
+      document has no thread, so nobody is told by an event: the row and a WARN log are the trace. Debts (rule 12), owner: Step 7.3 hardening backlog:
+      (a) the web does not explain `transaction_document_refused` (no copy exists for either conflict): owner 4B.9 web, with a notification or an audit entry
+      for the uploader; (b) PDFs of other purposes (a customer's message attachment, an order file) are not inspected: whether they should be is the owner's
+      decision, closed by Step 7.3; (c) refusals that may bite a legitimate receipt: `/EmbeddedFile` (a PDF/A-3 e-invoice with its XML), `/AcroForm`, an
+      encrypted receipt (a bank PDF with an empty user password), an `/OpenAction` that is an action, a literal `/JS` inside a text string: the owner may
+      relax them by a rule that opens the attachment, never by skipping the check; (d) the inspector is a bounded byte reader, not a PDF parser: the day a
+      parser library or a normaliser (qpdf `--object-streams=disable`) is accepted as a dependency it replaces it (an incremental update, a hybrid xref and a
+      reader's own tolerances are what the byte reader can only approximate, always towards refusing); (e) the bytes are read from the bucket a second time
+      after the ClamAV read (as `sanitize` does for pictures): an object replaced in between is a window shared with the sanitizer, to close for both
+      together; (f) the worker integration case with a real bucket and a refused PDF needs a finance transaction fixture of its own: the unit cases prove
+      the row, `tests/api/finance-transaction-documents.spec.ts` proves the 409.
 - [x] **4B.4b-2 tests:** matching rules and every parser error, isolation cases of the new tables
 - [x] **4B.4b-2 note (receipt link across stores, RLS enforced):** `GET finance/transactions/:id/document` is `@NoTenantTransaction` and opens three
       contexts (transaction in the organization; owner store of the file by its id in the stores of the organization, one read; signing in that one store).

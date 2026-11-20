@@ -45,16 +45,29 @@ describe('inspectPdf', () => {
   it.each([
     'JavaScript',
     'JS',
-    'OpenAction',
     'AA',
     'Launch',
     'EmbeddedFile',
+    'EF',
+    'EmbeddedFiles',
+    'FileAttachment',
     'SubmitForm',
+    'ResetForm',
     'ImportData',
     'GoToR',
     'GoToE',
+    'GoToDp',
+    'GoTo3DView',
+    'Named',
+    'Hide',
+    'SetOCGState',
+    'Thread',
+    'Screen',
     'RichMedia',
+    'RichMediaContent',
+    'RichMediaActivation',
     'XFA',
+    'AcroForm',
     'Rendition',
     'Movie',
     'Sound',
@@ -68,7 +81,28 @@ describe('inspectPdf', () => {
 
   it('finds a name written with hex escapes, which a PDF reader reads as the same name', () => {
     expect(names(pdf('1 0 obj << /J#61vaScript 2 0 R >> endobj'))).toEqual(['JavaScript'])
-    expect(names(pdf('1 0 obj << /#4Fpen#41ction 2 0 R >> endobj'))).toEqual(['OpenAction'])
+    expect(
+      names(pdf('1 0 obj << /#4Fpen#41ction << /S /URI /URI (http://x) >> >> endobj'))
+    ).toEqual(['OpenAction'])
+  })
+
+  it('does not refuse an /OpenAction that is a destination (Word, LaTeX and Acrobat write them)', () => {
+    expect(inspectPdf(pdf('1 0 obj << /Type /Catalog /OpenAction [3 0 R /Fit] >> endobj'))).toEqual(
+      CLEAN_RESULT
+    )
+    expect(
+      inspectPdf(
+        pdf('1 0 obj << /OpenAction 5 0 R >> endobj\n5 0 obj [3 0 R /XYZ 0 792 null] endobj')
+      )
+    ).toEqual(CLEAN_RESULT)
+  })
+
+  it('refuses an /OpenAction whose value is an action that opens a link, a reference it cannot find or something unknown', () => {
+    expect(names(pdf('1 0 obj << /OpenAction << /S /URI /URI (http://x) >> >> endobj'))).toEqual([
+      'OpenAction'
+    ])
+    expect(names(pdf('1 0 obj << /OpenAction 9 0 R >> endobj'))).toEqual(['OpenAction'])
+    expect(names(pdf('1 0 obj << /OpenAction (text) >> endobj'))).toEqual(['OpenAction'])
   })
 
   it('does not take a longer name for a forbidden one', () => {
@@ -165,10 +199,10 @@ describe('inspectPdf', () => {
       expect(names(bytes)).toContain('OpenAction')
     })
 
-    it('refuses a file that is nothing but the word stream, without walking it for ever', () => {
+    it('lets through a file that is nothing but the word stream when it holds no object stream, quickly', () => {
       const bytes = Buffer.from(`%PDF-1.5\n1 0 obj\n${'stream\n'.repeat(30_000)}`)
       const started = Date.now()
-      expect(inspectPdf(bytes)).toMatchObject({ unreadable: 'too_many_stream_keywords' })
+      expect(inspectPdf(bytes)).toEqual(CLEAN_RESULT)
       expect(Date.now() - started).toBeLessThan(2000)
     })
 
@@ -176,6 +210,83 @@ describe('inspectPdf', () => {
       const one = objectStream('<< /Type /Catalog >>').toString('latin1').replace('%PDF-1.5\n', '')
       const bytes = Buffer.from(`%PDF-1.5\n${one.repeat(51)}`, 'latin1')
       expect(inspectPdf(bytes)).toMatchObject({ unreadable: 'too_many_object_streams' })
+    })
+
+    it('is bounded in time when the file has no obj to find and thousands of stream keywords', () => {
+      const filler = ' '.repeat(5 * 1024 * 1024)
+      const bytes = Buffer.from(`%PDF-1.5\n/Type /ObjStm ${filler}${'stream\n'.repeat(19_000)}`)
+      const started = Date.now()
+      const result = inspectPdf(bytes)
+      expect(Date.now() - started).toBeLessThan(3000)
+      expect(result.unreadable).not.toBeNull()
+    })
+
+    it('is bounded in time when there are millions of endobj before the streams', () => {
+      const bytes = Buffer.from(
+        `%PDF-1.5\n/Type /ObjStm ${'endobj '.repeat(600_000)}${'stream\n'.repeat(15_000)}`
+      )
+      const started = Date.now()
+      expect(inspectPdf(bytes).unreadable).not.toBeNull()
+      expect(Date.now() - started).toBeLessThan(3000)
+    })
+
+    it('refuses a file with a decoy stream that tries to match the count of object streams', () => {
+      const data = deflateSync(Buffer.from(HOSTILE))
+      const real = Buffer.concat([
+        Buffer.from(
+          '%PDF-1.5\n1 0 obj << /Type /ObjStm /Filter /FlateDecode /N 1 /First 5 >> stream\r'
+        ),
+        data,
+        Buffer.from('\nendstream endobj\n')
+      ])
+      const decoy = Buffer.from(
+        '2 0 obj << /Foo 1 >> stream\n' + 'x'.repeat(8) + '\nendstream endobj\n%%EOF\n',
+        'latin1'
+      )
+      const inspected = inspectPdf(Buffer.concat([real, decoy]))
+      expect(inspected.names.includes('OpenAction') || inspected.unreadable !== null).toBe(true)
+    })
+
+    it('reads an object stream whose keyword is followed by a lone CR', () => {
+      const data = deflateSync(Buffer.from(HOSTILE))
+      const bytes = Buffer.concat([
+        Buffer.from(
+          '%PDF-1.5\n1 0 obj << /Type /ObjStm /Filter /FlateDecode /N 1 /First 5 >>\nstream\r'
+        ),
+        data,
+        Buffer.from('\nendstream endobj\n')
+      ])
+      expect(names(bytes)).toContain('OpenAction')
+    })
+
+    it('still reads the real object stream that lies inside the range another /Length declares', () => {
+      const real = deflateSync(Buffer.from(HOSTILE))
+      const inner = Buffer.concat([
+        Buffer.from('\n9 0 obj << /Type /ObjStm /Filter /FlateDecode /N 1 /First 5 >>\nstream\n'),
+        real,
+        Buffer.from('\nendstream endobj\n')
+      ])
+      const bytes = Buffer.concat([
+        Buffer.from(
+          `%PDF-1.5\n1 0 obj << /Type /ObjStm /N 0 /First 0 /Length ${inner.length} >>\nstream\n`
+        ),
+        inner,
+        Buffer.from('\nendstream endobj\n')
+      ])
+      const inspected = inspectPdf(bytes)
+      expect(inspected.names.includes('OpenAction') || inspected.unreadable !== null).toBe(true)
+    })
+
+    it('refuses a stream keyword it cannot recognise once the file has an object stream', () => {
+      const bytes = Buffer.from(
+        '%PDF-1.5\n1 0 obj << /Type /ObjStm /N 0 /First 0 >>\nstream\n\nendstream endobj\n garbage >> stream\n abc'
+      )
+      expect(inspectPdf(bytes)).toMatchObject({ unreadable: 'unrecognised_stream' })
+    })
+
+    it('refuses a file with more names than it will walk', () => {
+      const bytes = Buffer.from(`%PDF-1.4\n${'/a'.repeat(1_100_000)}`)
+      expect(inspectPdf(bytes)).toMatchObject({ unreadable: 'too_many_names' })
     })
 
     it('does not read a stream that is not an object stream (a big picture passes)', () => {

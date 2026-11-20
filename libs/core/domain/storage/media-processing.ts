@@ -127,49 +127,76 @@ export const MediaRejectionReasons = {
 } as const
 
 // What is looked for in a PDF that stays as the evidence of a transaction (TDD_18 §3): the names of the
-// dictionaries that make a reader run code, open a program, send the form somewhere or carry another file. A PDF
-// names them with a slash and may spell any of their letters as `#` and two hex digits, so the match is made on
-// the decoded name. The names live in the objects of the file: in the clear, or inside an object stream (a
-// `/Type /ObjStm` stream, which is deflated). Other streams (pictures, fonts, page content) hold no objects and
-// are not read. What cannot be read (an encrypted file, an object stream that does not inflate or is over the
-// limit, a stream that never ends) is refused, never let through.
+// dictionaries that make a reader run code, open a program, send a form somewhere or carry another file. A PDF
+// names them with a slash and may spell any of their letters as `#` and two hex digits, so the match is made
+// on the decoded name. The names live in the objects of the file: in the clear, or inside an object stream
+// (`/Type /ObjStm`, deflated). Other streams (pictures, fonts, page content) hold no objects and are not read.
+// The rule of the whole check is fail closed: whatever cannot be proven inert or cannot be read to the end
+// (an encrypted file, an object stream that is not plainly read, a stream that is not plainly recognised,
+// too much work for one file) is refused, never let through.
 export const PdfInspection = {
   CONTENT_TYPE: 'application/pdf',
   ACTIVE_NAMES: [
     'JavaScript',
     'JS',
-    'OpenAction',
     'AA',
     'Launch',
     'EmbeddedFile',
+    'EF',
+    'EmbeddedFiles',
+    'FileAttachment',
     'SubmitForm',
+    'ResetForm',
     'ImportData',
     'GoToR',
     'GoToE',
+    'GoToDp',
+    'GoTo3DView',
+    'Named',
+    'Hide',
+    'SetOCGState',
+    'Thread',
+    'Screen',
     'RichMedia',
+    'RichMediaContent',
+    'RichMediaActivation',
     'XFA',
+    'AcroForm',
     'Rendition',
     'Movie',
     'Sound',
     '3D'
   ],
+  // `/OpenAction` is active only when its value is an action, never when it is a destination (`[3 0 R /Fit]`, what
+  // Word, LaTeX and Acrobat write): an action that opens a link counts too, which a plain link annotation does not
+  CARRIER_NAMES: ['OpenAction'],
+  CARRIER_ACTIVE_NAMES: ['URI'],
+  MAX_CARRIERS: 20,
+  PEEK_BYTES: 1024,
   OBJECT_STREAM_NAME: 'ObjStm',
   ENCRYPT_NAME: 'Encrypt',
+  FILTER_NAME: 'Filter',
+  READABLE_FILTER: 'FlateDecode',
+  PARAMETER_NAMES: ['DecodeParms', 'DP'],
+  SYNTAX: { STREAM: 'stream', END_STREAM: 'endstream', OBJ: 'obj', END_OBJ: 'endobj' },
   MAX_INFLATED_BYTES_PER_STREAM: 8 * 1024 * 1024,
   MAX_INFLATED_BYTES_TOTAL: 32 * 1024 * 1024,
   MAX_OBJECT_STREAMS: 50,
-  // A walk over a file of nothing but the word `stream` is bounded: more than this many is refused
+  // The walk over the file is bounded in what it sees and in the time it takes
   MAX_STREAM_KEYWORDS: 20_000,
+  MAX_NAMES: 1_000_000,
+  TIME_BUDGET_MS: 2000,
   // How far back from `stream` its dictionary is looked for
   DICTIONARY_WINDOW_BYTES: 4096,
-  // The only filter an object stream may declare that is read (none at all is read as plain text)
-  READABLE_FILTER: 'FlateDecode',
-  PARAMETER_NAMES: ['DecodeParms', 'DP'],
   UNREADABLE: {
     ENCRYPTED: 'encrypted',
     OBJECT_STREAM_UNREADABLE: 'object_stream_unreadable',
     TOO_MANY_OBJECT_STREAMS: 'too_many_object_streams',
     TOO_MANY_STREAM_KEYWORDS: 'too_many_stream_keywords',
-    UNSUPPORTED_FILTER: 'unsupported_filter'
+    TOO_MANY_NAMES: 'too_many_names',
+    UNSUPPORTED_FILTER: 'unsupported_filter',
+    UNRECOGNISED_STREAM: 'unrecognised_stream',
+    TIME_BUDGET_EXCEEDED: 'time_budget_exceeded',
+    INSPECTION_FAILED: 'inspection_failed'
   }
 } as const

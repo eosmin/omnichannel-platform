@@ -520,6 +520,8 @@ export const FinanceConflicts = {
   TRANSACTION_DOCUMENT_ALREADY_SET: 'transaction_document_already_set',
   // Only a file the scan found clean is a receipt (the pointer is set once): wait for the scan, then attach
   TRANSACTION_DOCUMENT_NOT_CLEAN: 'transaction_document_not_clean',
+  // A PDF the scan refused for what it carries (active content) or because it cannot be read: it will never be clean, so waiting is no use (TAX-436)
+  TRANSACTION_DOCUMENT_REFUSED: 'transaction_document_refused',
   // The transaction changed between the read and the write and nothing says how: read it and try again
   TRANSACTION_CHANGED: 'transaction_changed',
   // A profile reads the file of ONE cash, bank or wallet account
