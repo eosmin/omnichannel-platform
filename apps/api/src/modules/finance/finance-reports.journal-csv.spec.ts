@@ -8,7 +8,7 @@ import { FinanceReportsService } from './finance-reports.service'
 
 const ORGANIZATION_ID = 'org-a'
 const QUERY = { from: '2026-01-01', to: '2026-01-31' }
-const ACTOR = { userId: 'user-a', storeId: 'store-a', ipAddress: null, userAgent: null }
+const ACTOR = { userId: 'user-a', storeId: 'store-a' }
 const MAX_NUMBER = 12n
 
 function line(number: bigint, lineNo: number) {
