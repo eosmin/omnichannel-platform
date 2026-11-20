@@ -14,7 +14,7 @@ export interface PdfInspectionResult {
 const NAME = /\/([^\s/[\]<>(){}%]+)/g
 const HEX_ESCAPE = /#([0-9A-Fa-f]{2})/g
 const ACTIVE = new Set<string>(PdfInspection.ACTIVE_NAMES)
-const LENGTH = /\/Length\s+(\d+)(?!\s+\d+\s+R)/
+const LENGTH = /\/Length\s+(\d+)\b(?!\s+\d+\s+R)/
 const END_MARK = 'endstream'
 
 const decodeName = (raw: string): string =>
@@ -24,10 +24,11 @@ const namesIn = (text: string): string[] =>
   [...text.matchAll(NAME)].map(match => decodeName(match[1] ?? ''))
 
 // The `obj` keyword that opens the object a stream belongs to (not the one inside `endobj`)
-function objectStart(text: string, before: number): number {
+function objectStart(text: string, before: number, floor: number): number {
+  const window = Math.max(floor, before - PdfInspection.DICTIONARY_WINDOW_BYTES)
   let at = text.lastIndexOf('obj', before)
   while (at > 2 && text.slice(at - 3, at) === 'end') at = text.lastIndexOf('obj', at - 1)
-  return Math.max(at, 0)
+  return Math.max(at, window)
 }
 
 // Where the data of a stream ends: by its /Length when that is a direct number that lands on `endstream`, and
@@ -66,10 +67,16 @@ export function inspectPdf(bytes: Uint8Array): PdfInspectionResult {
     return unreadable(PdfInspection.UNREADABLE.ENCRYPTED)
 
   let at = 0
+  let floor = 0
   let objectStreams = 0
+  let keywords = 0
+  let inflated = 0
   for (;;) {
     const open = text.indexOf('stream', at)
     if (open === -1) break
+    keywords += 1
+    if (keywords > PdfInspection.MAX_STREAM_KEYWORDS)
+      return unreadable(PdfInspection.UNREADABLE.TOO_MANY_STREAM_KEYWORDS)
     at = open + 'stream'.length
     // `endstream` holds the word too
     if (text.slice(Math.max(0, open - 3), open) === 'end') continue
@@ -77,23 +84,43 @@ export function inspectPdf(bytes: Uint8Array): PdfInspectionResult {
     if (text[from] === '\r') from += 1
     if (text[from] !== '\n') continue
     from += 1
-    const dictionary = text.slice(objectStart(text, open), open)
-    if (!namesIn(dictionary).includes(PdfInspection.OBJECT_STREAM_NAME)) continue
+    const dictionary = text.slice(objectStart(text, open, floor), open)
+    const dictionaryNames = namesIn(dictionary)
+    if (!dictionaryNames.includes(PdfInspection.OBJECT_STREAM_NAME)) continue
     objectStreams += 1
     if (objectStreams > PdfInspection.MAX_OBJECT_STREAMS)
       return unreadable(PdfInspection.UNREADABLE.TOO_MANY_OBJECT_STREAMS)
+    // Only a deflate stream (or none) is undone, and without parameters (no predictor): anything else is a chain this
+    // does not undo, and what a reader would build from it stays unseen
+    const filters = dictionaryNames.filter(name =>
+      PdfInspection.FILTER_NAMES.includes(name as never)
+    )
+    const plain = filters.length === 0
+    const flate =
+      filters.length === 2 &&
+      filters[0] === 'Filter' &&
+      filters[1] === PdfInspection.READABLE_FILTER
+    if (
+      (!plain && !flate) ||
+      dictionaryNames.some(name => PdfInspection.PARAMETER_NAMES.includes(name as never))
+    )
+      return unreadable(PdfInspection.UNREADABLE.UNSUPPORTED_FILTER)
     const end = dataEnd(text, dictionary, from)
     if (end === -1) return unreadable(PdfInspection.UNREADABLE.OBJECT_STREAM_UNREADABLE)
     try {
-      read(
-        inflateSync(buffer.subarray(from, end), {
-          maxOutputLength: PdfInspection.MAX_INFLATED_BYTES_PER_STREAM
-        }).toString('latin1')
-      )
+      const data = buffer.subarray(from, end)
+      const objects = plain
+        ? data
+        : inflateSync(data, { maxOutputLength: PdfInspection.MAX_INFLATED_BYTES_PER_STREAM })
+      inflated += objects.length
+      if (inflated > PdfInspection.MAX_INFLATED_BYTES_TOTAL)
+        return unreadable(PdfInspection.UNREADABLE.OBJECT_STREAM_UNREADABLE)
+      read(objects.toString('latin1'))
     } catch {
       return unreadable(PdfInspection.UNREADABLE.OBJECT_STREAM_UNREADABLE)
     }
     at = end
+    floor = end
   }
   // An object stream that was announced and never tied to a stream we read (its marker was hidden from
   // the dictionary we looked at): nothing can be said about what it holds

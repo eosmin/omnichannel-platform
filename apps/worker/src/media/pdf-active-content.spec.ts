@@ -54,7 +54,11 @@ describe('inspectPdf', () => {
     'GoToR',
     'GoToE',
     'RichMedia',
-    'XFA'
+    'XFA',
+    'Rendition',
+    'Movie',
+    'Sound',
+    '3D'
   ])('finds the name /%s', name => {
     expect(inspectPdf(pdf(`1 0 obj << /${name} 2 0 R >> endobj`))).toEqual({
       names: [name],
@@ -130,9 +134,47 @@ describe('inspectPdf', () => {
       expect(inspected.names.length > 0 || inspected.unreadable !== null).toBe(true)
     })
 
+    it('refuses a chain of filters or a predictor, which it does not undo', () => {
+      const chain = objectStream(HOSTILE, {
+        dictionary: '<< /Type /ObjStm /N 1 /First 5 /Filter [/FlateDecode /FlateDecode] >>'
+      })
+      expect(inspectPdf(chain)).toMatchObject({ unreadable: 'unsupported_filter' })
+      const predictor = objectStream(HOSTILE, {
+        dictionary:
+          '<< /Type /ObjStm /N 1 /First 5 /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 1 >> >>'
+      })
+      expect(inspectPdf(predictor)).toMatchObject({ unreadable: 'unsupported_filter' })
+    })
+
+    it('reads an object stream that is not compressed', () => {
+      const bytes = Buffer.from(
+        `%PDF-1.5\n7 0 obj << /Type /ObjStm /N 1 /First 5 >>\nstream\n${HOSTILE}\nendstream endobj\n`
+      )
+      expect(names(bytes)).toContain('OpenAction')
+    })
+
+    it('takes an indirect /Length for what it is (it is not the digits before the reference)', () => {
+      const data = deflateSync(Buffer.from(HOSTILE))
+      const bytes = Buffer.concat([
+        Buffer.from(
+          '%PDF-1.5\n7 0 obj << /Type /ObjStm /N 1 /First 5 /Filter /FlateDecode /Length 10 0 R >>\nstream\n'
+        ),
+        data,
+        Buffer.from('\nendstream endobj\n')
+      ])
+      expect(names(bytes)).toContain('OpenAction')
+    })
+
+    it('refuses a file that is nothing but the word stream, without walking it for ever', () => {
+      const bytes = Buffer.from(`%PDF-1.5\n1 0 obj\n${'stream\n'.repeat(30_000)}`)
+      const started = Date.now()
+      expect(inspectPdf(bytes)).toMatchObject({ unreadable: 'too_many_stream_keywords' })
+      expect(Date.now() - started).toBeLessThan(2000)
+    })
+
     it('refuses a file with too many of them', () => {
       const one = objectStream('<< /Type /Catalog >>').toString('latin1').replace('%PDF-1.5\n', '')
-      const bytes = Buffer.from(`%PDF-1.5\n${one.repeat(201)}`, 'latin1')
+      const bytes = Buffer.from(`%PDF-1.5\n${one.repeat(51)}`, 'latin1')
       expect(inspectPdf(bytes)).toMatchObject({ unreadable: 'too_many_object_streams' })
     })
 

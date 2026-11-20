@@ -147,15 +147,49 @@ export const PdfInspection = {
     'GoToR',
     'GoToE',
     'RichMedia',
-    'XFA'
+    'XFA',
+    'Rendition',
+    'Movie',
+    'Sound',
+    '3D'
   ],
   OBJECT_STREAM_NAME: 'ObjStm',
   ENCRYPT_NAME: 'Encrypt',
   MAX_INFLATED_BYTES_PER_STREAM: 8 * 1024 * 1024,
-  MAX_OBJECT_STREAMS: 200,
+  MAX_INFLATED_BYTES_TOTAL: 32 * 1024 * 1024,
+  MAX_OBJECT_STREAMS: 50,
+  // A walk over a file of nothing but the word `stream` is bounded: more than this many is refused
+  MAX_STREAM_KEYWORDS: 20_000,
+  // How far back from `stream` its dictionary is looked for
+  DICTIONARY_WINDOW_BYTES: 4096,
+  // The only filter an object stream may declare that is read (none at all is read as plain text)
+  READABLE_FILTER: 'FlateDecode',
+  FILTER_NAMES: [
+    'Filter',
+    'FlateDecode',
+    'Fl',
+    'LZWDecode',
+    'LZW',
+    'ASCII85Decode',
+    'A85',
+    'ASCIIHexDecode',
+    'AHx',
+    'RunLengthDecode',
+    'RL',
+    'CCITTFaxDecode',
+    'CCF',
+    'DCTDecode',
+    'DCT',
+    'JBIG2Decode',
+    'JPXDecode',
+    'Crypt'
+  ],
+  PARAMETER_NAMES: ['DecodeParms', 'DP'],
   UNREADABLE: {
     ENCRYPTED: 'encrypted',
     OBJECT_STREAM_UNREADABLE: 'object_stream_unreadable',
-    TOO_MANY_OBJECT_STREAMS: 'too_many_object_streams'
+    TOO_MANY_OBJECT_STREAMS: 'too_many_object_streams',
+    TOO_MANY_STREAM_KEYWORDS: 'too_many_stream_keywords',
+    UNSUPPORTED_FILTER: 'unsupported_filter'
   }
 } as const
