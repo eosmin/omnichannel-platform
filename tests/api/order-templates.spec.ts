@@ -4,6 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import { CredentialCipher } from '@platform/core/crypto'
+import { PrismaService } from '@platform/core/database'
 import { type OwnerClient } from '@platform/core/database-testing'
 import {
   DeliveryStatus,
@@ -30,6 +31,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { inStoreContext } from '../helpers/tenant-context'
 
 const OK = 200
 const NO_CONTENT = 204
@@ -546,7 +548,19 @@ describe('Settings → Order messages', () => {
 
   describe('finding the template of a message (what the sender reads)', () => {
     it('takes the language of the customer, then the default of the store, then none', async () => {
-      const service = app.get(OrderTemplatesService, { strict: false })
+      const templates = app.get(OrderTemplatesService, { strict: false })
+      const prisma = app.get(PrismaService, { strict: false })
+      // The sender reads a template in the context of the store it writes for (the listener opens it): each store of the case gets its own
+      const resolve = (
+        store: { id: string },
+        organizationId: string,
+        ...rest: Parameters<OrderTemplatesService['resolve']> extends [string, ...infer R]
+          ? R
+          : never
+      ) =>
+        inStoreContext(prisma, { storeId: store.id, organizationId }, () =>
+          templates.resolve(store.id, ...rest)
+        )
       const kind = OrderMessageKind.EXCHANGE_SHIPPED
       const before = await owner.store.findUniqueOrThrow({
         where: { id: ctx.storeA.id },
@@ -554,12 +568,12 @@ describe('Settings → Order messages', () => {
       })
       await owner.store.update({ where: { id: ctx.storeA.id }, data: { defaultLocale: 'es' } })
       await put(kind, Locales.ES, { body: 'Cambio enviado' })
-      expect((await service.resolve(ctx.storeA.id, kind, 'en'))?.body).toBe('Cambio enviado')
+      expect((await resolve(ctx.storeA, ctx.orgA.id, kind, 'en'))?.body).toBe('Cambio enviado')
       await put(kind, Locales.EN, { body: 'Exchange sent' })
-      expect((await service.resolve(ctx.storeA.id, kind, 'en'))?.body).toBe('Exchange sent')
-      expect((await service.resolve(ctx.storeA.id, kind, null))?.body).toBe('Cambio enviado')
-      expect((await service.resolve(ctx.storeA.id, kind, 'pt-BR'))?.body).toBe('Cambio enviado')
-      expect(await service.resolve(ctx.storeB.id, kind, 'es')).toBeNull()
+      expect((await resolve(ctx.storeA, ctx.orgA.id, kind, 'en'))?.body).toBe('Exchange sent')
+      expect((await resolve(ctx.storeA, ctx.orgA.id, kind, null))?.body).toBe('Cambio enviado')
+      expect((await resolve(ctx.storeA, ctx.orgA.id, kind, 'pt-BR'))?.body).toBe('Cambio enviado')
+      expect(await resolve(ctx.storeB, ctx.orgB.id, kind, 'es')).toBeNull()
       await owner.store.update({
         where: { id: ctx.storeA.id },
         data: { defaultLocale: before.defaultLocale }

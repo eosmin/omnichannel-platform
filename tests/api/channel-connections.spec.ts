@@ -11,6 +11,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { RoleNames } from '@platform/core/auth'
 import { CredentialCipher } from '@platform/core/crypto'
+import { PrismaService } from '@platform/core/database'
 import { ensureMembership, type OwnerClient } from '@platform/core/database-testing'
 import {
   ChannelConnectionListStates,
@@ -36,6 +37,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { inStoreContext } from '../helpers/tenant-context'
 import { workerChannelHealth } from '../helpers/worker-services'
 
 const OK = 200
@@ -961,9 +963,15 @@ describe('The channel connections of a store', () => {
       })
 
       await update(first.id, { token: NEW_SECRET })
-      await app
-        .get(ChannelHealthService, { strict: false })
-        .record(stale, { healthy: false, error: ChannelHealthErrors.TOKEN_REJECTED })
+      // record is what a round calls inside the context of the store of the connection (checkOne): the fixture gives it the same
+      await inStoreContext(
+        app.get(PrismaService, { strict: false }),
+        { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+        () =>
+          app
+            .get(ChannelHealthService, { strict: false })
+            .record(stale, { healthy: false, error: ChannelHealthErrors.TOKEN_REJECTED })
+      )
 
       const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: first.id } })
       expect(row.status).toBe(ChannelConnectionStatus.ACTIVE)
@@ -1810,8 +1818,14 @@ describe('The channel connections of a store', () => {
       // record is not a round: it is what a request or a round calls with its own context, so it is not given the guarded worker here
       const health = app.get(ChannelHealthService, { strict: false })
 
-      await health.record(stale, { healthy: true })
-      await health.record(stale, { healthy: false, error: 'late' })
+      await inStoreContext(
+        app.get(PrismaService, { strict: false }),
+        { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+        async () => {
+          await health.record(stale, { healthy: true })
+          await health.record(stale, { healthy: false, error: 'late' })
+        }
+      )
       await (await workerChannelHealth(app)).checkAll(() => plugin, 0)
 
       const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: made.id } })
