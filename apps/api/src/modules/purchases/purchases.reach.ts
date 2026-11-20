@@ -1,5 +1,5 @@
 import { Permissions } from '@platform/core/auth'
-import type { PrismaService } from '@platform/core/database'
+import type { PrismaService, PrismaTransaction } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
 
 // Which lines of a purchase a caller reaches (TDD_18 §2.1): the lines carry the store of their product, and only the members of
@@ -12,7 +12,17 @@ export async function visibleStoreIds(
   organizationId: string,
   userId: string
 ): Promise<string[]> {
-  const rows = await prisma.client.membership.findMany({
+  return visibleStoreIdsIn(prisma.client, organizationId, userId)
+}
+
+// The same read through a transaction: a write that moves stock reads it AFTER the lock of its order, in the transaction that writes, so
+// a permission revoked a moment ago is not honored on a membership read before the lock
+export async function visibleStoreIdsIn(
+  db: Pick<PrismaTransaction, 'membership'>,
+  organizationId: string,
+  userId: string
+): Promise<string[]> {
+  const rows = await db.membership.findMany({
     where: {
       userId,
       organizationId,
