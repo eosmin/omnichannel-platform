@@ -242,6 +242,44 @@ describe('The evidence and the second thoughts of the fiscal documents (Step 4B.
       expect(await evidenceOf(documentId)).toHaveLength(1)
     })
 
+    it('keeps the file a pending request made: asked again it is the same file, never two and never none', async () => {
+      const spy = jest.spyOn(storage, 'put').mockRejectedValue(new Error('bucket down'))
+      let documentId: string
+      try {
+        ;({ documentId } = await sale({ taxId: RECEIVER_TAX_ID, accept: true }))
+      } finally {
+        spy.mockRestore()
+      }
+      expect(await evidenceOf(documentId)).toHaveLength(0)
+      // The request makes the file and answers 409: the answer must not take the file with it
+      expect((await evidenceUrl(documentId, FiscalEvidenceKind.RESPONSE)).status).toBe(CONFLICT)
+      const [made, ...rest] = await evidenceOf(documentId)
+      expect(rest).toHaveLength(0)
+      expect(made?.fiscalEvidenceKind).toBe(FiscalEvidenceKind.RESPONSE)
+      expect((await evidenceUrl(documentId, FiscalEvidenceKind.RESPONSE)).status).toBe(CONFLICT)
+      const again = await evidenceOf(documentId)
+      expect(again.map(file => file.id)).toEqual([made?.id])
+    })
+
+    it('writes nothing for a person who cannot reach the document: a 404 and no file made', async () => {
+      const spy = jest.spyOn(storage, 'put').mockRejectedValue(new Error('bucket down'))
+      let documentId: string
+      try {
+        ;({ documentId } = await sale({ taxId: RECEIVER_TAX_ID, accept: true }))
+      } finally {
+        spy.mockRestore()
+      }
+      expect(await evidenceOf(documentId)).toHaveLength(0)
+      // Another organization, and a member of this one who reads fiscal documents only in another store (HC-128)
+      for (const as of [api(app, ctx.adminB, ctx.storeB), api(app, ctx.adminA2, ctx.storeA2)]) {
+        const refused = await as.get(
+          ApiRoutes.fiscal.documents.evidence(documentId, FiscalEvidenceKind.DOCUMENT)
+        )
+        expect(refused.status).toBe(NOT_FOUND)
+      }
+      expect(await evidenceOf(documentId)).toHaveLength(0)
+    })
+
     it('writes the file again from the row when the pipeline deleted it after a verdict, and scans it again', async () => {
       const { documentId } = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
       const [file] = await evidenceOf(documentId)
