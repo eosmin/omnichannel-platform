@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { FinanceReportLimits, FinanceResourceTypes, NormalSide } from '@platform/core/domain'
 import {
   ErrorCodes,
+  errorName,
   HttpStatusCodes,
   PlatformException,
   resourceNotFound
@@ -156,8 +158,12 @@ const tooLarge = (): PlatformException =>
 export class FinanceReportsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
-  ) {}
+    private readonly audit: AuditService,
+    private readonly jobContext: JobContext,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(FinanceReportsService.name)
+  }
 
   async trialBalance(organizationId: string, query: TrialBalanceQuery): Promise<TrialBalanceView> {
     const db = this.prisma.client
@@ -387,36 +393,54 @@ export class FinanceReportsService {
     return rows
   }
 
-  // The CSV of the journal: one row per line with everything the hash covers, so an auditor holding only the file can recompute the chain
+  // The CSV of the journal: one row per line with everything the hash covers, so an auditor holding only the file can recompute the chain.
+  // The route is @NoTenantTransaction: the file is read as it is sent, after the handler returned, so no transaction of the request is open
+  // then. The count (and the audit row that says it) is one short unit of the organization and each page another, never one held open for
+  // the whole download. The count also takes the highest entry number of the range: every page stops there, so the file holds exactly the
+  // rows that were counted and audited (the book is append-only with consecutive numbers: an entry that arrives meanwhile can only come
+  // after that number).
   async journalCsv(
     organizationId: string,
     query: JournalCsvQuery,
     actor: Actor
   ): Promise<AsyncGenerator<JournalCsvRow[]>> {
-    const [{ rows }] = await this.prisma.client.$queryRaw<[{ rows: bigint }]>`
-      SELECT COUNT(*)::bigint AS rows
-      FROM journal_lines l
-      JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
-      WHERE e.organization_id = ${organizationId}
-        AND e.entry_date >= ${query.from}::date AND e.entry_date <= ${query.to}::date`
-    if (rows > BigInt(FinanceReportLimits.MAX_CSV_ROWS)) throw tooLarge()
-    this.auditExport(organizationId, actor, 'journal', {
-      from: query.from,
-      to: query.to,
-      rows: Number(rows)
+    const { rows, maxNumber } = await this.jobContext.inOrganization(organizationId, async () => {
+      const [counted] = await this.prisma.client.$queryRaw<
+        [{ rows: bigint; max_number: bigint | null }]
+      >`
+        SELECT COUNT(*)::bigint AS rows, MAX(e.number) AS max_number
+        FROM journal_lines l
+        JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
+        WHERE e.organization_id = ${organizationId}
+          AND e.entry_date >= ${query.from}::date AND e.entry_date <= ${query.to}::date`
+      if (counted.rows > BigInt(FinanceReportLimits.MAX_CSV_ROWS)) throw tooLarge()
+      this.auditExport(organizationId, actor, 'journal', {
+        from: query.from,
+        to: query.to,
+        rows: Number(counted.rows)
+      })
+      return { rows: counted.rows, maxNumber: counted.max_number }
     })
-    return this.journalPages(organizationId, query)
+    // Nothing in the range: the file is the header alone
+    return this.journalPages(organizationId, query, rows === 0n ? null : maxNumber)
   }
 
   private async *journalPages(
     organizationId: string,
-    query: JournalCsvQuery
+    query: JournalCsvQuery,
+    maxNumber: bigint | null
   ): AsyncGenerator<JournalCsvRow[]> {
+    if (maxNumber === null) return
     let after: { number: bigint; lineNo: number } | null = null
     for (;;) {
       const lastNumber: bigint | null = after?.number ?? null
       const lastLine: number | null = after?.lineNo ?? null
-      const page: JournalRow[] = await this.prisma.client.$queryRaw<JournalRow[]>`
+      let page: JournalRow[]
+      try {
+        page = await this.jobContext.inOrganization(
+          organizationId,
+          () =>
+            this.prisma.client.$queryRaw<JournalRow[]>`
         SELECT e.id AS entry_id, e.number, e.entry_date, e.period_id, e.type, e.source_type, e.source_id, e.source_date,
                e.reverses_entry_id, e.idempotency_key, e.memo AS entry_memo, e.currency, e.total_cents, e.origin, e.created_by,
                e.prev_hash, e.hash, l.line_no, l.account_id, a.code AS account_code, a.name AS account_name, l.debit_cents,
@@ -426,9 +450,19 @@ export class FinanceReportsService {
         JOIN ledger_accounts a ON a.id = l.account_id AND a.organization_id = l.organization_id
         WHERE e.organization_id = ${organizationId}
           AND e.entry_date >= ${query.from}::date AND e.entry_date <= ${query.to}::date
+          AND e.number <= ${maxNumber}::bigint
           AND (${lastNumber}::bigint IS NULL OR (e.number, l.line_no) > (${lastNumber}::bigint, ${lastLine}::int))
         ORDER BY e.number, l.line_no
         LIMIT ${FinanceReportLimits.CSV_PAGE_SIZE}`
+        )
+      } catch (error) {
+        // The headers went already: the stream is cut (never a short file that looks whole) and the audit row stays what it was, a request
+        this.logger.error(
+          { organizationId, errorName: errorName(error) },
+          'a page of the journal file could not be read; the file was cut'
+        )
+        throw error
+      }
       if (page.length === 0) return
       yield page.map(row => ({
         number: Number(row.number),

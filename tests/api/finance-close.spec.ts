@@ -8,6 +8,7 @@ import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   FinanceCountryCodes,
+  FinanceReportLimits,
   JournalEntryType,
   PartyType,
   PeriodStatus
@@ -644,6 +645,34 @@ describe('Closing the months, the reports and the auditor files', () => {
         organizationId: ctx.orgA.id,
         action: AuditAction.FINANCE_EXPORTED
       })
+    })
+
+    it('writes the same rows when it reads the journal in several pages, and the audit row counts them', async () => {
+      // Two lines per page: the three entries of the case take three pages, each read in a unit of its own
+      const limits: { CSV_PAGE_SIZE: number } = FinanceReportLimits // the same object, typed to take another number
+      const pageSize = jest.replaceProperty(limits, 'CSV_PAGE_SIZE', 2)
+      const exported = { organizationId: ctx.orgA.id, action: AuditAction.FINANCE_EXPORTED }
+      const before = await owner.auditLog.count({ where: exported })
+      try {
+        const response = await asAdminA()
+          .get(ApiRoutes.finance.reports.journalCsv)
+          .query({ from: '2026-01-01', to: '2026-01-31' })
+          .buffer(true)
+          .parse((res, done) => {
+            let data = ''
+            res.on('data', (chunk: Buffer) => (data += chunk.toString('utf8')))
+            res.on('end', () => done(null, data))
+          })
+        expect(response.status).toBe(OK)
+        const rows = csvOf((response.body as string).replace(/^\uFEFF/, ''))
+        expect(rows).toHaveLength(7)
+        // Only the row of THIS request counts: wait for one more than before, and read the newest
+        const audited = await waitForAuditEntries(owner, exported, before + 1)
+        expect(audited).toHaveLength(before + 1)
+        expect(audited.at(-1)?.metadata).toMatchObject({ report: 'journal', rows: rows.length - 1 })
+      } finally {
+        pageSize.restore()
+      }
     })
 
     it('carries what the chain hashes, so the file alone verifies against it', async () => {

@@ -159,6 +159,9 @@ export class PluginsController {
   // The owner pastes the manifest of an integration plugin (D10): 201 when the id is new, 200 when a newer version of one of
   // the organization's own plugins replaced the older one, or the same manifest was sent again
   @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  @NoTenantTransaction(
+    'registering a channel plugin fetches its icon from the network (PluginIconService.fetch) and stores it in S3: the row is one short unit that commits before the picture is stored, so a picture that cannot be kept never takes the registration with it'
+  )
   @Post(ApiRoutes.plugins.register)
   async register(
     @CurrentStore() store: Store,
