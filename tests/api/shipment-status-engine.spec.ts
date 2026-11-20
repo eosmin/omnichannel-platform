@@ -57,12 +57,14 @@ describe('The status flow from the carrier: engine, poll and schedule (TDD_17 §
   let poller: ShipmentPoller
   let forza: FakeCarrier
   let prisma: PrismaService
+  let jobs: JobContext
 
   beforeAll(async () => {
     owner = ownerClient()
     app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     prisma = app.get(PrismaService, { strict: false })
+    jobs = new JobContext(prisma)
     const registry = app.get(CarrierRegistry, { strict: false })
     forza = buildFakeCarrier({ id: CarrierId.FORZA, fetchStatus: true, webhook: false })
     registry.register(forza.plugin)
@@ -111,18 +113,23 @@ describe('The status flow from the carrier: engine, poll and schedule (TDD_17 §
     shipmentId: string,
     status: ShipmentStatus,
     extra: { id?: string; at?: Date; storeId?: string } = {}
-  ) =>
-    engine.apply(
-      extra.storeId ?? ctx.storeA.id,
-      shipmentId,
-      {
-        status,
-        rawStatus: status,
-        occurredAt: extra.at ?? new Date(),
-        ...(extra.id === undefined ? {} : { providerEventId: extra.id })
-      },
-      ShipmentEventSource.WEBHOOK
+  ) => {
+    const storeId = extra.storeId ?? ctx.storeA.id
+    // The applier calls the engine inside the context of the store, so the suite does too
+    return jobs.forStore(storeId, () =>
+      engine.apply(
+        storeId,
+        shipmentId,
+        {
+          status,
+          rawStatus: status,
+          occurredAt: extra.at ?? new Date(),
+          ...(extra.id === undefined ? {} : { providerEventId: extra.id })
+        },
+        ShipmentEventSource.WEBHOOK
+      )
     )
+  }
 
   describe('the engine', () => {
     it('counts three failed attempts on three days, then a delivery, and a re-sent event counts once', async () => {

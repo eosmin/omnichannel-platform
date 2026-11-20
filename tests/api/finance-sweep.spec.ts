@@ -45,7 +45,8 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { inStoreContext, withTenantContext } from '../helpers/tenant-context'
+import { createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const CREATED = 201
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -62,10 +63,26 @@ describe('The sweep of the books and the guard of the close', () => {
   let sweep: FinanceSweepService
   let posting: FinancePostingService
   let guard: FinanceCloseGuard
+  // The close guard reads the failures of the books itself, so it needs the context of the organization that a request or a listener
+  // gives it: the stores of the organization of the case, and a throw for any other id
+  const guardCheck = (organizationId: string) => {
+    const storeIds: Record<string, string[]> = {
+      [ctx.orgA.id]: [ctx.storeA.id, ctx.storeA2.id],
+      [ctx.orgB.id]: [ctx.storeB.id]
+    }
+    const stores = storeIds[organizationId]
+    if (stores === undefined)
+      throw new Error(`no stores known for the organization ${organizationId}`)
+    return withTenantContext(
+      app.get(PrismaService),
+      { storeIds: stores, organizationIds: [organizationId] },
+      () => guard.check(organizationId)
+    )
+  }
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp([], onWorkerDatabase())
+    app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     sweep = app.get(FinanceSweepService)
     posting = app.get(FinancePostingService)
@@ -604,16 +621,22 @@ describe('The sweep of the books and the guard of the close', () => {
       quantity: number
       unitCostCents?: number
     }) =>
-      app.get(InventoryService, { strict: false }).move({
-        storeId: ctx.storeA.id,
-        warehouseId: ctx.warehouseA.id,
-        idempotencyKey: `${prefix}-${randomUUID()}`,
-        reason:
-          input.type === InventoryMovementType.RECEIPT
-            ? InventoryAdjustmentReason.OPENING_STOCK
-            : InventoryAdjustmentReason.DAMAGED,
-        ...input
-      })
+      // A service of the api that the suite calls by hand: in the context of the store, as a request has it
+      inStoreContext(
+        app.get(PrismaService),
+        { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+        () =>
+          app.get(InventoryService, { strict: false }).move({
+            storeId: ctx.storeA.id,
+            warehouseId: ctx.warehouseA.id,
+            idempotencyKey: `${prefix}-${randomUUID()}`,
+            reason:
+              input.type === InventoryMovementType.RECEIPT
+                ? InventoryAdjustmentReason.OPENING_STOCK
+                : InventoryAdjustmentReason.DAMAGED,
+            ...input
+          })
+      )
     const postAdjustment = (movementId: string) =>
       posting.post({
         organizationId: ctx.orgA.id,
@@ -702,7 +725,7 @@ describe('The sweep of the books and the guard of the close', () => {
     it('blocks while an entry failed and nobody fixed it, and opens when it is fixed', async () => {
       const id = await deliveredOrder()
       for (const job of await queuedOf(id)) await posting.post(job)
-      const blocked = await guard.check(ctx.orgA.id)
+      const blocked = await guardCheck(ctx.orgA.id)
       expect(blocked.blocked).toBe(true)
       expect(blocked.failureCount).toBeGreaterThan(0)
       expect(
@@ -733,7 +756,7 @@ describe('The sweep of the books and the guard of the close', () => {
     it('blocks while a source has no entry that a job would post, and counts it', async () => {
       const id = await deliveredOrder()
       await withCarrier(id)
-      const check = await guard.check(ctx.orgA.id)
+      const check = await guardCheck(ctx.orgA.id)
       expect(check.pendingSources).toBeGreaterThanOrEqual(2)
       expect(check.blocked).toBe(true)
     })
@@ -744,7 +767,7 @@ describe('The sweep of the books and the guard of the close', () => {
         select: { id: true }
       })
       expect(ids.length).toBe(0)
-      const check = await guard.check(ctx.orgB.id)
+      const check = await guardCheck(ctx.orgB.id)
       expect(check).toMatchObject({
         failureCount: 0,
         failures: [],
@@ -775,9 +798,9 @@ describe('The sweep of the books and the guard of the close', () => {
       const scheduler = new FinanceReconcileScheduler(
         locks,
         heavy as never,
-        app.get(PrismaService),
+        createGuardedWorkerPrisma(),
         logger,
-        new JobContext(app.get(PrismaService))
+        new JobContext(createGuardedWorkerPrisma())
       )
       await scheduler.enqueueAll(NOW, { pageSize: 1 })
       const mine = heavy.jobs.filter(
@@ -805,9 +828,9 @@ describe('The sweep of the books and the guard of the close', () => {
       const failing = new FinanceReconcileScheduler(
         locks,
         broken as never,
-        app.get(PrismaService),
+        createGuardedWorkerPrisma(),
         logger,
-        new JobContext(app.get(PrismaService))
+        new JobContext(createGuardedWorkerPrisma())
       )
       await expect(failing.run()).resolves.toBeUndefined()
     })
