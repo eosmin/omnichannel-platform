@@ -392,6 +392,11 @@ describe('Closing the months, the reports and the auditor files', () => {
       expect(response.status).toBe(OK)
       const second = await owner.fiscalPeriod.findUniqueOrThrow({ where: { id: february.id } })
       expect(second.closingHash).not.toBe(first.closingHash)
+      // The api offers the new head, never the old one that the reopened row kept, in the answer of the close and in the read of the period
+      expect((response.body as PeriodBody).closingHash).toBe(second.closingHash)
+      expect((response.body as PeriodBody).closingHash).not.toBe(first.closingHash)
+      const read = await asAdminA().get(ApiRoutes.finance.periods.byId(february.id))
+      expect((read.body as PeriodBody).closingHash).toBe(second.closingHash)
       expect(second.reopenReason).toBe('The bank corrected a payment')
     })
 
