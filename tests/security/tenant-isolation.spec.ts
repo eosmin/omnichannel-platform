@@ -5247,7 +5247,11 @@ describe('Tenant isolation', () => {
           manifest: {},
           pricingModel: PluginPricingModels.FREE,
           status: PluginStatus.APPROVED,
-          organizationId: ctx.orgA.id
+          // An official plugin (no organization): the three installations below are in stores of TWO organizations, and the product refuses to
+          // install the private plugin of one organization in a store of another (plugin-installations.service.ts). A private plugin of
+          // organization A is hidden by the row policy from a request of store B, so the key of B would be answered 401 before the
+          // isolation between the installations is ever tried
+          organizationId: null
         }
       })
       for (const [name, store] of [
