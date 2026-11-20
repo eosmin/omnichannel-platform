@@ -205,6 +205,41 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
   const withChannelId = (rows: { channel: string | null }[]) =>
     rows.filter(row => row.channel !== null).length
 
+  // The lookups on their own, in a context of the store, with the three cutoffs that say where the SQL stands: the clock of the
+  // database (the one the bulk reads), a far future (the cutoff does not exclude) and the epoch (it excludes everything)
+  it('finds the latest message with the cutoff of the clock of the database, and none before the epoch', async () => {
+    const [row] = await seed(1)
+    const conversationId = row?.id as string
+    const [clock] = await owner.$queryRaw<{ now: string }[]>`
+      SELECT (clock_timestamp() AT TIME ZONE 'UTC')::text AS now`
+    const stored = await owner.$queryRaw<{ created_at: string; zone: string }[]>`
+      SELECT created_at::text AS created_at, current_setting('TimeZone') AS zone
+      FROM messages WHERE conversation_id = ${conversationId} ORDER BY created_at DESC`
+    const found: Record<string, { queued: number; emitted: number }> = {}
+    for (const [name, cutoff] of [
+      ['clock', clock?.now as string],
+      ['future', '2999-01-01 00:00:00'],
+      ['epoch', '1970-01-01 00:00:00']
+    ] as const) {
+      enqueued = []
+      emitted = []
+      await guarded.inStoreContext(ctx.storeA.id, async () => {
+        await app.get(ReadReceipts).queueForMany(ctx.storeA.id, [conversationId], cutoff)
+        await app.get(WidgetReadNotifier).notifyMany(ctx.storeA.id, [conversationId], cutoff)
+      })
+      found[name] = { queued: enqueued.length, emitted: emitted.length }
+    }
+    const expected = {
+      clock: { queued: 1, emitted: 1 },
+      future: { queued: 1, emitted: 1 },
+      epoch: { queued: 0, emitted: 0 }
+    }
+    if (JSON.stringify(found) !== JSON.stringify(expected)) {
+      // The case says where the SQL stands: what each cutoff found, the clock, what is stored and what the services warned
+      throw new Error(`lookups: ${JSON.stringify({ found, clock: clock?.now, stored, warnings })}`)
+    }
+  })
+
   it('tells what the lookups of one conversation would, and costs the same queries for 10 as for 40', async () => {
     const small = await seed(1)
     const response = await bulk(
