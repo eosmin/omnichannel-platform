@@ -119,5 +119,19 @@ export const ImageSanitizing = {
 // Media.scanResult.reason of a file that was refused before the scan because it cannot be decoded and
 // so cannot be cleaned of its metadata: it is never stored, never served
 export const MediaRejectionReasons = {
-  IMAGE_NOT_SANITIZABLE: 'image_not_sanitizable'
+  IMAGE_NOT_SANITIZABLE: 'image_not_sanitizable',
+  // A PDF kept as financial evidence that carries something that runs when it is opened (TAX-436)
+  PDF_ACTIVE_CONTENT: 'pdf_active_content'
+} as const
+
+// What is looked for in a PDF that stays as the evidence of a transaction (TDD_18 §3): the names of the
+// dictionaries that make a reader run code, open a program or carry another file. A PDF names them with
+// a slash and may spell any of their letters as `#` and two hex digits, so the match is made on the
+// decoded name.
+export const PdfInspection = {
+  ACTIVE_NAMES: ['JavaScript', 'JS', 'OpenAction', 'AA', 'Launch', 'EmbeddedFile'],
+  // The streams are inflated to look inside object streams (a catalog can hide there). A stream that
+  // would inflate past the limit is left unread: it is a picture or a bomb, and a bomb is never decoded whole.
+  MAX_INFLATED_BYTES_PER_STREAM: 4 * 1024 * 1024,
+  MAX_STREAMS: 2000
 } as const
