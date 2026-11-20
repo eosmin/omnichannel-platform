@@ -8,6 +8,9 @@ import { readStorePreferences } from '@platform/core/store-preferences'
 
 import { WidgetDelivery } from './widget-delivery.service'
 
+// The one reference to the channel of this file (both lookups use it)
+const WIDGET_PLUGIN_ID = ChannelIds.WEB_WIDGET
+
 // Tells the visitor of the web widget that an agent read the conversation. The worker cannot reach a
 // visitor's socket, so this runs in the api next to the read itself (the other channels get theirs
 // through `ReadReceipts`). It follows the same switch of the store (`sendReadReceipts`), never changes
@@ -40,6 +43,67 @@ export class WidgetReadNotifier {
     }
   }
 
+  // The same as `notify` for the conversations of a bulk action that went through: the switch of the store is read once and the
+  // latest message of every conversation of the widget comes from one query. One emit per conversation with a target, with the
+  // same arguments as `notify`; `upTo` (the clock of the database when the batch began) keeps out a message that arrived while the
+  // batch ran, which nobody read. The query filters by the store of the request, so an id of another store finds nothing.
+  async notifyMany(
+    storeId: string,
+    conversationIds: readonly string[],
+    upTo: string
+  ): Promise<void> {
+    if (conversationIds.length === 0) return
+    try {
+      const targets = await inSavepoint(() => this.targets(storeId, conversationIds, upTo))
+      for (const target of targets) {
+        this.prisma.afterCommit(this.prisma.client, () => {
+          this.delivery.readToVisitor(target.connectionId, target.channelIdentity, target.messageId)
+        })
+      }
+    } catch (error) {
+      // One failure loses the notices of the whole batch (the reads stand): say how many
+      this.logger.warn(
+        { conversations: conversationIds.length, errorName: errorName(error) },
+        'the widget read receipts of a batch could not be sent'
+      )
+    }
+  }
+
+  private async targets(
+    storeId: string,
+    conversationIds: readonly string[],
+    upTo: string
+  ): Promise<{ connectionId: string; channelIdentity: string; messageId: string }[]> {
+    const settings = await this.prisma.client.storeSettings.findUnique({
+      where: { storeId },
+      select: { preferences: true }
+    })
+    if (!readStorePreferences(settings?.preferences ?? {}).sendReadReceipts) return []
+    // The same filters and tie-break as `target`
+    const rows = await this.prisma.client.$queryRaw<
+      { id: string; connection_id: string; channel_identity: string }[]
+    >`
+      SELECT DISTINCT ON (m.conversation_id) m.id, cc.connection_id, ci.channel_identity
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id AND c.store_id = ${storeId}
+      JOIN channel_connections cc ON cc.id = c.channel_connection_id AND cc.store_id = ${storeId}
+      JOIN customer_identities ci ON ci.id = c.customer_identity_id AND ci.store_id = ${storeId}
+      WHERE m.store_id = ${storeId}
+        AND m.conversation_id = ANY(${[...conversationIds]}::text[])
+        AND m.author_type = ${AuthorType.CUSTOMER}
+        AND m.deleted_at IS NULL
+        AND m.content IS NOT NULL
+        AND m.created_at <= ${upTo}::timestamp
+        AND cc.plugin_id = ${WIDGET_PLUGIN_ID}
+        AND cc.status = ${ChannelConnectionStatus.ACTIVE}
+      ORDER BY m.conversation_id, m.created_at DESC, m.id DESC`
+    return rows.map(row => ({
+      connectionId: row.connection_id,
+      channelIdentity: row.channel_identity,
+      messageId: row.id
+    }))
+  }
+
   private async target(
     storeId: string,
     conversationId: string
@@ -55,7 +119,7 @@ export class WidgetReadNotifier {
         content: { not: null },
         conversation: {
           channelConnection: {
-            pluginId: ChannelIds.WEB_WIDGET,
+            pluginId: WIDGET_PLUGIN_ID,
             status: ChannelConnectionStatus.ACTIVE
           }
         }
