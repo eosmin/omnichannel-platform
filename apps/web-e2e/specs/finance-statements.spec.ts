@@ -35,7 +35,7 @@ test.describe('Finance → statements, aging and legal books', () => {
 
   test('an owner sets the books up and opens a month', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.home)
     await expect(page.getByRole('heading', { name: finance.setup.title, level: 1 })).toBeVisible()
     await page.getByLabel(finance.setup.country, { exact: true }).selectOption({ index: 0 })
@@ -60,7 +60,7 @@ test.describe('Finance → statements, aging and legal books', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.statements)
     await expect(
       page.getByRole('heading', { name: finance.statements.title, level: 1 })
@@ -98,7 +98,7 @@ test.describe('Finance → statements, aging and legal books', () => {
 
   test('an owner reads the lists with age', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.aging)
     await expect(page.getByRole('heading', { name: finance.aging.title, level: 1 })).toBeVisible()
     const aging = page.getByTestId('finance-aging')
@@ -111,7 +111,7 @@ test.describe('Finance → statements, aging and legal books', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.books)
     await expect(page.getByRole('heading', { name: finance.books.title, level: 1 })).toBeVisible()
     const filters = page.getByTestId('finance-book-filters')
@@ -137,7 +137,7 @@ test.describe('Finance → statements, aging and legal books', () => {
     page
   }) => {
     await signIn(page, readerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.accounts)
     await expect(page.getByRole('link', { name: nav.statements, exact: true })).toHaveCount(0)
     await expect(page.getByRole('link', { name: nav.aging, exact: true })).toHaveCount(0)
@@ -152,7 +152,7 @@ test.describe('Finance → statements, aging and legal books', () => {
     page
   }) => {
     await signIn(page, noExportEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.statements)
     const form = page.getByRole('form', { name: finance.statementsCommon.formLabel })
     await form.getByRole('button', { name: finance.statementsCommon.show, exact: true }).click()

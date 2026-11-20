@@ -35,7 +35,7 @@ test.describe('Finance → VAT and margin', () => {
 
   test('an owner sets the books up', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.home)
     await expect(page.getByRole('heading', { name: finance.setup.title, level: 1 })).toBeVisible()
     await page.getByLabel(finance.setup.country, { exact: true }).selectOption({ index: 0 })
@@ -49,7 +49,7 @@ test.describe('Finance → VAT and margin', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.vat)
     await expect(page.getByRole('heading', { name: finance.vat.title, level: 1 })).toBeVisible()
 
@@ -77,7 +77,7 @@ test.describe('Finance → VAT and margin', () => {
 
   test('an owner reads the margin of the empty books next to the ledger', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.margin)
     await expect(page.getByRole('heading', { name: finance.margin.title, level: 1 })).toBeVisible()
 
@@ -97,7 +97,7 @@ test.describe('Finance → VAT and margin', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.periods)
     await expect(page.getByRole('heading', { name: finance.periods.title, level: 1 })).toBeVisible()
     await expect(page.getByTestId('finance-chain-incident')).toHaveCount(0)
@@ -110,7 +110,7 @@ test.describe('Finance → VAT and margin', () => {
     page
   }) => {
     await signIn(page, readerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.accounts)
     await expect(page.getByRole('link', { name: nav.vat, exact: true })).toHaveCount(1)
     await expect(page.getByRole('link', { name: nav.margin, exact: true })).toHaveCount(0)
@@ -133,7 +133,7 @@ test.describe('Finance → VAT and margin', () => {
     page
   }) => {
     await signIn(page, noExportEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.margin)
     const margin = page.getByTestId('finance-margin')
     await margin

@@ -49,7 +49,7 @@ test.describe('Finance → a long name with no spaces', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.home)
     await expect(page.getByRole('heading', { name: finance.setup.title, level: 1 })).toBeVisible()
     await page.getByLabel(finance.setup.country, { exact: true }).selectOption({ index: 0 })
@@ -85,7 +85,7 @@ test.describe('Finance → a long name with no spaces', () => {
 
   test('an account with a name of 150 letters stays in its row', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.accounts)
     await page.getByRole('button', { name: finance.accounts.new, exact: true }).click()
     const dialog = page.getByRole('dialog', { name: finance.accounts.dialog.createTitle })
@@ -104,7 +104,7 @@ test.describe('Finance → a long name with no spaces', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.periods)
     await page.getByRole('button', { name: finance.periods.open.action, exact: true }).click()
     const month = page.getByRole('dialog', { name: finance.periods.open.title })

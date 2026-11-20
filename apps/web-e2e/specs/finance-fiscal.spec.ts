@@ -34,7 +34,7 @@ test.describe('Finance → fiscal documents and issuer', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.fiscal)
     await expect(page.getByRole('heading', { name: fiscal.title, level: 1 })).toBeVisible()
     await expect(page.getByTestId('fiscal-caution')).toBeVisible()
@@ -95,7 +95,7 @@ test.describe('Finance → fiscal documents and issuer', () => {
 
   test('a person who may only read sees the issuer and cannot change it', async ({ page }) => {
     await signIn(page, viewerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.fiscalIssuer)
     await expect(page.getByRole('heading', { name: fiscal.issuer.title, level: 1 })).toBeVisible()
     const form = page.getByTestId('fiscal-issuer-form')

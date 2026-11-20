@@ -43,7 +43,7 @@ test.describe('Finance → the books of the organization', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.home)
 
     // The books are not set up: the wizard, which refuses a date that does not exist
@@ -138,7 +138,7 @@ test.describe('Finance → the books of the organization', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.reports)
     await expect(page.getByRole('heading', { name: finance.reports.title, level: 1 })).toBeVisible()
     await expect(page.getByTestId('finance-trial-balance')).toBeVisible()
@@ -167,7 +167,7 @@ test.describe('Finance → the books of the organization', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.transactions)
     await expect(
       page.getByRole('heading', { name: finance.transactions.title, level: 1 })
@@ -244,7 +244,7 @@ test.describe('Finance → the books of the organization', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.journal)
     await expect(page.getByRole('heading', { name: finance.journal.title, level: 1 })).toBeVisible()
     // The expense and the reversal of the void are already in it
@@ -292,7 +292,7 @@ test.describe('Finance → the books of the organization', () => {
 
   test('a posting setting survives a reload', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.settings)
     const shipping = page.getByRole('checkbox', {
       name: finance.settings.posting.shippingTaxed,
@@ -312,7 +312,7 @@ test.describe('Finance → the books of the organization', () => {
     page
   }) => {
     await signIn(page, viewerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.accounts)
     await expect(
       page.getByRole('heading', { name: finance.accounts.title, level: 1 })
@@ -336,7 +336,7 @@ test.describe('Finance → the books of the organization', () => {
     page
   }) => {
     await signIn(page, viewerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.reports)
     await expect(page.getByTestId('finance-trial-balance')).toBeVisible()
     await expect(page.getByTestId('finance-ledger')).toHaveCount(0)
@@ -352,7 +352,7 @@ test.describe('Finance → the books of the organization', () => {
     page
   }) => {
     await signIn(page, outsiderEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await expect(
       page
         .getByRole('navigation', { name: en.shell.nav.label })

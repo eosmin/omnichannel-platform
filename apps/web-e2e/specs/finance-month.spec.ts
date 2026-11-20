@@ -45,7 +45,7 @@ test.describe('Finance → the month, from the first entry to the close', () => 
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.home)
     await expect(page.getByRole('heading', { name: finance.setup.title, level: 1 })).toBeVisible()
     // The books start on the first day of the tested month: the default is this month, and an earlier month cannot be opened
@@ -89,7 +89,7 @@ test.describe('Finance → the month, from the first entry to the close', () => 
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.reports)
     await expect(page.getByRole('heading', { name: finance.reports.title, level: 1 })).toBeVisible()
     const trial = page.getByTestId('finance-trial-balance')
@@ -118,7 +118,7 @@ test.describe('Finance → the month, from the first entry to the close', () => 
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.periods)
     await periodRow(page).getByTestId('finance-period-close').click()
     const dialog = page.getByRole('dialog', {
@@ -150,7 +150,7 @@ test.describe('Finance → the month, from the first entry to the close', () => 
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.periods)
     await periodRow(page).getByTestId('finance-period-reopen').click()
     const dialog = page.getByRole('dialog', {
@@ -202,7 +202,7 @@ test.describe('Finance → the month, from the first entry to the close', () => 
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.transactions)
     const list = page.getByTestId('finance-transactions')
     const rows = list.getByTestId('finance-transaction-row')
@@ -232,7 +232,7 @@ test.describe('Finance → the month, from the first entry to the close', () => 
     page
   }) => {
     await signIn(page, viewerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.periods)
     await expect(page.getByRole('heading', { name: finance.periods.title, level: 1 })).toBeVisible()
     await expect(periodRow(page).getByTestId('finance-period-close')).toHaveCount(0)

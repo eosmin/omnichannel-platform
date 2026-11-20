@@ -43,7 +43,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
 
   test('an owner sets the books and the issuer up', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.home)
     await expect(page.getByRole('heading', { name: finance.setup.title, level: 1 })).toBeVisible()
     await page.getByLabel(finance.setup.startsOn, { exact: true }).fill('2026-01-01')
@@ -78,7 +78,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.store.order(storeId, sale.id))
     await expect(
       page.getByRole('heading', { name: detail.heading.replace('{number}', sale.orderNumber) })
@@ -102,7 +102,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.fiscal)
     // The listener makes the document and the worker sends it to the simulator: the page is read again until it is accepted
     const accepted = page.locator('[data-testid="fiscal-document-row"][data-status="accepted"]')
@@ -145,7 +145,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
 
   test('the list of documents narrows by the day the document was made', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.fiscal)
     const rows = page.getByTestId('fiscal-document-row')
     await expect(rows).toHaveCount(1)
@@ -175,7 +175,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.journal)
     const rows = page.getByTestId('finance-entries').getByTestId('finance-entry-row')
     // The worker posts the advance of the payment and then the sale: the page is read again until both entries are there
@@ -202,7 +202,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
 
   test('the VAT of the month holds the $2.60 of the sale', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.vat)
     await expect(page.getByRole('heading', { name: finance.vat.title, level: 1 })).toBeVisible()
     const vat = page.getByTestId('finance-vat')
@@ -215,7 +215,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
 
   test('the accepted document is voided with its reason and made again', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.fiscal)
     const row = (status: string) =>
       page.locator(`[data-testid="fiscal-document-row"][data-status="${status}"]`)
@@ -254,7 +254,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     page
   }) => {
     await signIn(page, viewerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.accounts)
     await expect(
       page.getByRole('heading', { name: finance.accounts.title, level: 1 })

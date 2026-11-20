@@ -44,7 +44,7 @@ test.describe('Finance → suppliers, purchases and payables', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.home)
     await expect(page.getByRole('heading', { name: finance.setup.title, level: 1 })).toBeVisible()
     await page.getByLabel(finance.setup.country, { exact: true }).selectOption({ index: 0 })
@@ -103,7 +103,7 @@ test.describe('Finance → suppliers, purchases and payables', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.purchases)
     await expect(
       page.getByRole('heading', { name: purchases.orders.title, level: 1 })
@@ -195,7 +195,7 @@ test.describe('Finance → suppliers, purchases and payables', () => {
 
   test('a person who may only read the books cannot open the purchases', async ({ page }) => {
     await signIn(page, viewerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.suppliers)
     await expect(
       page.getByRole('heading', { name: en.emptyStates.permissionDenied.title, level: 1 })
