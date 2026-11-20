@@ -11,6 +11,7 @@ import {
   WebhookHeaders,
   WebhookLimits
 } from '@platform/core/domain'
+import { PostgresSqlStates } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { MetricNames, WebhookMetricTarget } from '@platform/core/metrics'
@@ -344,7 +345,7 @@ export class PluginWebhookDeliverer {
       if (verdict === GoneVerdict.DELETED_BEHIND_POLICY) {
         this.goneBehindPolicy.inc({ target: WebhookMetricTarget.PLUGIN })
         this.logger.warn(
-          { installationId, storeId, code: 'row_level_security' },
+          { installationId, storeId, code: PostgresSqlStates.INSUFFICIENT_PRIVILEGE },
           'a plugin installation was deleted while its delivery ran: the log row was refused by the policy'
         )
         return

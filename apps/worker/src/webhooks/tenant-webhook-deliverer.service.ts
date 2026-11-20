@@ -6,6 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { CredentialCipher } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { WebhookLimits, WebhookStatus } from '@platform/core/domain'
+import { PostgresSqlStates } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { MetricNames, WebhookMetricTarget } from '@platform/core/metrics'
@@ -209,7 +210,7 @@ export class TenantWebhookDeliverer {
       if (verdict === GoneVerdict.DELETED_BEHIND_POLICY) {
         this.goneBehindPolicy.inc({ target: WebhookMetricTarget.TENANT })
         this.logger.warn(
-          { webhookId, storeId, code: 'row_level_security' },
+          { webhookId, storeId, code: PostgresSqlStates.INSUFFICIENT_PRIVILEGE },
           'a webhook was deleted while its delivery ran: the log row was refused by the policy'
         )
         return

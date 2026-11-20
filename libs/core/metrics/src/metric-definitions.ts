@@ -230,7 +230,7 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
   },
   [MetricNames.WEBHOOK_GONE_BEHIND_POLICY]: {
     kind: 'counter',
-    help: 'Deliveries whose log row was refused by the policy because the webhook was deleted meanwhile',
+    help: 'Deliveries of a webhook or plugin installation deleted meanwhile, whose log row the policy refused (row-level security on only; the foreign key case is not counted)',
     labels: ['target']
   },
   [MetricNames.EMAILS_SENT]: {

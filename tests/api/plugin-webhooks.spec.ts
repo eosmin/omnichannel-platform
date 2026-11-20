@@ -23,6 +23,7 @@ import {
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
+import { WebhookMetricTarget } from '@platform/core/metrics'
 import { NotificationTypes } from '@platform/core/notifications'
 import { JobNames, QueueNames, type TriggerPluginWebhookJob } from '@platform/core/queues'
 import { PluginScopes } from '@platform/plugins/sdk'
@@ -71,6 +72,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
   let cipher: CredentialCipher
   let counter = 0
   const goneCounted: string[] = []
+  const errorLogged: unknown[][] = []
   const counted: Record<string, number> = {}
 
   beforeAll(async () => {
@@ -93,7 +95,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       setContext: () => undefined,
       info: () => undefined,
       warn: () => undefined,
-      error: () => undefined
+      error: (...args: unknown[]) => errorLogged.push(args)
     } as unknown as PinoLogger
     deliverer = new PluginWebhookDeliverer(
       app.get(PrismaService),
@@ -116,6 +118,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
   afterEach(async () => {
     queue.jobs.length = 0
     goneCounted.length = 0
+    errorLogged.length = 0
     for (const key of Object.keys(counted)) delete counted[key]
     // Every test starts with no installation: what an event reaches depends on who is installed in the store
     await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: prefix } } })
@@ -508,7 +511,21 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       expect(outcome).toBe(WebhookOutcome.DELIVERED)
       // Under enforced row-level security the policy of the log refuses the row (42501) and the delivery says so; without it the
       // foreign key does, and that case was never counted
-      expect(goneCounted).toEqual(rlsEnforcementRequested() ? ['plugin'] : [])
+      expect(goneCounted).toEqual(rlsEnforcementRequested() ? [WebhookMetricTarget.PLUGIN] : [])
+      expect(errorLogged).toEqual([])
+    })
+
+    it('ends quietly when the installation is deleted while a failing delivery runs', async () => {
+      const { setup } = await setUp()
+      const post = jest.fn(async () => {
+        await owner.pluginInstallation.delete({ where: { id: setup.installationId } })
+        throw new WebhookPostFailed('bad_status', true, 500)
+      })
+
+      // The failure of the endpoint is the one BullMQ retries; the log row of a deleted installation must not replace it
+      await expect(
+        deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, { post })
+      ).rejects.toBeInstanceOf(WebhookPostFailed)
     })
 
     it('does not hide a refusal of the policy while the installation is still there', async () => {

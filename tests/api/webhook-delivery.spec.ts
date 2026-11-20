@@ -20,6 +20,7 @@ import {
 import { isRowLevelSecurityError } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
+import { WebhookMetricTarget } from '@platform/core/metrics'
 import { NotificationTypes } from '@platform/core/notifications'
 import type { TriggerWebhookJob } from '@platform/core/queues'
 import { UnsafeUrlError } from '@platform/core/url-safety'
@@ -59,6 +60,7 @@ describe('The delivery of a webhook', () => {
   let deliverer: TenantWebhookDeliverer
   let jobContext: JobContext
   const goneCounted: string[] = []
+  const errorLogged: unknown[][] = []
   let cipher: CredentialCipher
   const counted: Record<string, number> = {}
 
@@ -76,7 +78,7 @@ describe('The delivery of a webhook', () => {
       setContext: () => undefined,
       info: () => undefined,
       warn: () => undefined,
-      error: () => undefined
+      error: (...args: unknown[]) => errorLogged.push(args)
     } as unknown as PinoLogger
     jobContext = new JobContext(app.get(PrismaService))
     deliverer = new TenantWebhookDeliverer(
@@ -103,6 +105,7 @@ describe('The delivery of a webhook', () => {
     await owner.notification.deleteMany({ where: { storeId: ctx.storeA.id } })
     for (const key of Object.keys(counted)) delete counted[key]
     goneCounted.length = 0
+    errorLogged.length = 0
   })
 
   const secretOf = () => `whsec_${generateToken(WebhookLimits.SECRET_BYTES)}`
@@ -514,7 +517,8 @@ describe('The delivery of a webhook', () => {
       await expect(deliverer.deliver(jobFor(row), 1, { post })).resolves.toBe(
         WebhookOutcome.DELIVERED
       )
-      expect(goneCounted).toEqual(['tenant'])
+      expect(goneCounted).toEqual([WebhookMetricTarget.TENANT])
+      expect(errorLogged).toEqual([])
       expect(await owner.webhookDelivery.count({ where: { webhookId: row.id } })).toBe(0)
     }
   )
@@ -529,6 +533,8 @@ describe('The delivery of a webhook', () => {
     await expect(deliverer.deliver(jobFor(row), 1, { post })).resolves.toBe(
       WebhookOutcome.DELIVERED
     )
+    // The delivery logs an error when it could not write its row down: a refusal that leaked out of `guarded` shows here
+    expect(errorLogged).toEqual([])
   })
 
   it('does not hide a refusal of the policy while the webhook is still there', async () => {
