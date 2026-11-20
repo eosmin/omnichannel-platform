@@ -16,6 +16,7 @@ import { ErrorCodes } from '@platform/core/errors'
 import { FinanceDocumentUpload, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
+import { MediaService } from '../../apps/api/src/modules/media/media.service'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -625,8 +626,17 @@ describe('The receipt of a transaction of the books (Step 4B.4b)', () => {
 
     it('is given through another store of the organization: the books are the organization`s', async () => {
       const id = await withReceipt('clean')
-      const response = await urls(ctx.adminA2, ctx.storeA2, id)
-      expect(response.status).toBe(OK)
+      const media = app.get(MediaService, { strict: false })
+      const read = jest.spyOn(media, 'urlsFor')
+      try {
+        const response = await urls(ctx.adminA2, ctx.storeA2, id)
+        expect(response.status).toBe(OK)
+        expect((response.body as { url: string }).url).toEqual(expect.any(String))
+        // Positive control of the spies of the refusals below: the file is signed in ITS store, not the one of the header
+        expect(read).toHaveBeenCalledWith(ctx.storeA.id, expect.any(String), expect.anything())
+      } finally {
+        read.mockRestore()
+      }
     })
 
     it('is not given for a file that is pending the scan, or one that was found infected', async () => {
@@ -645,10 +655,45 @@ describe('The receipt of a transaction of the books (Step 4B.4b)', () => {
       expect((await urls(ctx.adminB, ctx.storeB, id)).status).toBe(NOT_FOUND)
     })
 
-    it('is refused to who does not read the journal', async () => {
+    it('is refused to who does not read the journal, before anything is read or signed', async () => {
       const id = await withReceipt('clean')
-      const response = await urls(ctx.viewerA, ctx.storeA, id)
-      expect(response.status).toBe(FORBIDDEN)
+      const storage = app.get(StorageService, { strict: false })
+      const media = app.get(MediaService, { strict: false })
+      const signed = jest.spyOn(storage, 'downloadUrl')
+      const read = jest.spyOn(media, 'urlsFor')
+      try {
+        const response = await urls(ctx.viewerA, ctx.storeA, id)
+        expect(response.status).toBe(FORBIDDEN)
+        expect(signed).not.toHaveBeenCalled()
+        expect(read).not.toHaveBeenCalled()
+      } finally {
+        signed.mockRestore()
+        read.mockRestore()
+      }
+    })
+
+    it('answers the same 404 for no transaction, another organization, no receipt, and signs nothing', async () => {
+      const id = await withReceipt('clean')
+      const storage = app.get(StorageService, { strict: false })
+      const signed = jest.spyOn(storage, 'downloadUrl')
+      try {
+        const answers = await Promise.all([
+          urls(journalReader, ctx.storeA, randomUUID()),
+          urls(ctx.adminB, ctx.storeB, id),
+          urls(journalReader, ctx.storeA, expenseA.id)
+        ])
+        for (const answer of answers) expect(answer.status).toBe(NOT_FOUND)
+        const shapes = answers.map(answer => {
+          const { code, message } = (answer.body as { error: { code: string; message: string } })
+            .error
+          return { code, message }
+        })
+        expect(shapes[1]).toEqual(shapes[0])
+        expect(shapes[2]).toEqual(shapes[0])
+        expect(signed).not.toHaveBeenCalled()
+      } finally {
+        signed.mockRestore()
+      }
     })
   })
 

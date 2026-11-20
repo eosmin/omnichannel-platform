@@ -106,20 +106,55 @@ export class FinanceTransactionDocumentsService {
   }
 
   // The signed links of the receipt: short-lived, and only once the scan found the file clean (MediaService refuses an unscanned or an
-  // infected one). The file is read in ITS store, whichever store the request names: the books belong to the organization.
+  // infected one). The books belong to the organization and a file to a store, so the file is read in ITS store, whichever store the
+  // request names (the route is @NoTenantTransaction: the request has no context of its own, and this opens three short ones):
+  //  1. the transaction, in the context of the organization of the guard: only the id of its receipt is read;
+  //  2. the store that owns the file, found by the id of the file alone, in a context of the stores of the organization (the only
+  //     place that is wide, and it holds ONE read by primary key that signs nothing);
+  //  3. the signed links, in a context of that one store (the one of the ROW, never one the client names).
+  // A transaction that does not exist, one of another organization, one with no receipt and a file that is not there are one and the
+  // same answer. Who may read the journal is decided by the guard before any of this opens.
   async urls(
     organizationId: string,
     transactionId: string,
     granted: readonly Permission[]
   ): Promise<MediaUrls> {
-    const transaction = await this.prisma.client.financeTransaction.findFirst({
-      where: { id: transactionId, organizationId },
-      select: { documentMedia: { select: { id: true, storeId: true } } }
+    const mediaId = await this.prisma.tenantTransaction(
+      { storeIds: [], organizationIds: [organizationId] },
+      async () => {
+        const transaction = await this.prisma.client.financeTransaction.findFirst({
+          where: { id: transactionId, organizationId },
+          select: { documentMediaId: true }
+        })
+        return transaction?.documentMediaId ?? null
+      }
+    )
+    if (mediaId === null) throw receiptNotFound()
+    // `stores` has no row policy (the guards read it with no context): the stores are those of the organization of the guard
+    const stores = await this.prisma.client.store.findMany({
+      where: { organizationId },
+      select: { id: true }
     })
-    if (transaction === null) throw resourceNotFound('finance transaction')
-    const receipt = transaction.documentMedia
-    if (receipt === null || receipt.storeId === null) throw resourceNotFound('receipt')
-    return this.media.urlsFor(receipt.storeId, receipt.id, granted)
+    const file = await this.prisma.tenantTransaction(
+      { storeIds: stores.map(store => store.id), organizationIds: [] },
+      () =>
+        this.prisma.client.media.findFirst({
+          where: {
+            id: mediaId,
+            purpose: MediaPurpose.FINANCE_DOCUMENT,
+            financeTransactionId: transactionId,
+            store: { organizationId }
+          },
+          select: { id: true, storeId: true }
+        })
+    )
+    const ownerStoreId = file?.storeId
+    if (file === null || ownerStoreId === null || ownerStoreId === undefined) {
+      throw receiptNotFound()
+    }
+    return this.prisma.inStoreContext(ownerStoreId, () =>
+      this.media.urlsFor(ownerStoreId, file.id, granted)
+    )
   }
 
   private async get(organizationId: string, id: string): Promise<TransactionView> {
@@ -157,6 +192,8 @@ export class FinanceTransactionDocumentsService {
     })
   }
 }
+
+const receiptNotFound = () => resourceNotFound('receipt')
 
 const FOREIGN_KEY_CONSTRAINT_FAILED = 'P2003'
 function isForeignKeyViolation(error: unknown): boolean {
