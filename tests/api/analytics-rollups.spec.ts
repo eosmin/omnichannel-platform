@@ -44,14 +44,22 @@ describe('The rollups of analytics', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let prisma: PrismaService
-  let rollups: AnalyticsRollupService
+  let rollups: Pick<AnalyticsRollupService, 'rollup'>
 
   beforeAll(async () => {
     owner = ownerClient()
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     prisma = createWorkerPrisma()
-    rollups = new AnalyticsRollupService(prisma)
+    // The processor rolls up inside the context of the store, so the suite does too
+    // on the guarded connection, so a query of the rollup that leaves the context fails the suite
+    const guarded = createGuardedWorkerPrisma()
+    const service = new AnalyticsRollupService(guarded)
+    const jobs = new JobContext(guarded)
+    rollups = {
+      rollup: (granularity, storeId, period) =>
+        jobs.forStore(storeId, () => service.rollup(granularity, storeId, period))
+    }
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)
