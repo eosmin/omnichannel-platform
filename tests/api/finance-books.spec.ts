@@ -308,7 +308,7 @@ describe('The legal books', () => {
         { organizationId: ctx.orgA.id, action: AuditAction.FINANCE_BOOK_LAYOUT_CHANGED },
         2
       )
-      expect(audit.length).toBeGreaterThanOrEqual(2)
+      expect(audit).toHaveLength(2)
     })
 
     it('need the permission of the settings to be written and one to be read', async () => {
