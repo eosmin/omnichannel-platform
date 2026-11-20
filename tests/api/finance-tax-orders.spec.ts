@@ -12,6 +12,7 @@ import {
   JournalEntryType,
   OrderStatus,
   PaymentMethod,
+  SaleRecognition,
   TaxRounding,
   TaxTreatment,
   VatLineKind,
@@ -961,6 +962,67 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
         ).toEqual([130])
         expect(april.rows.filter(row => row.side === (VatSide.OUTPUT as string))).toEqual([])
       })
+
+      // TDD_18 §6.1: a source dated before the start is never posted, and the report must not count what the books will not hold
+      // (INV-TAX-8). The day is the one of the store (UTC-6 here), so the instants sit on both sides of the edge. A year no other
+      // case of the file uses, so that the totals are only these orders
+      it.each([[SaleRecognition.DELIVERED], [SaleRecognition.SHIPPED]])(
+        'leaves out what was recognized before the accounting start date, by the day of the store, when sales count on %s (HC-126)',
+        async recognizedOn => {
+          const before = await owner.financeSettings.findUniqueOrThrow({
+            where: { organizationId: ctx.orgA.id },
+            select: { accountingStartDate: true, recognizeSaleOn: true }
+          })
+          await owner.financeSettings.update({
+            where: { organizationId: ctx.orgA.id },
+            data: {
+              accountingStartDate: new Date('2028-03-15T00:00:00Z'),
+              recognizeSaleOn: recognizedOn
+            }
+          })
+          const placed: string[] = []
+          try {
+            await setStorePrices(true)
+            const instants = [
+              // Well before the start
+              '2028-03-10T15:00:00Z',
+              // 02:00 UTC of the 15th is 20:00 of the 14th in the store: the day before the start
+              '2028-03-15T02:00:00Z',
+              // 07:00 UTC of the 15th is 01:00 of the 15th in the store: the first day
+              '2028-03-15T07:00:00Z',
+              '2028-03-20T15:00:00Z'
+            ]
+            for (const at of instants) {
+              const order = await place(1130, 1)
+              placed.push(order.id)
+              await delivered(order.id, at)
+            }
+            const taxOf = async (from: string, to: string): Promise<number> =>
+              ((await report(from, to)).body as ReportBody).rows
+                .filter(row => row.side === (VatSide.OUTPUT as string))
+                .reduce((sum, row) => sum + row.taxCents, 0)
+
+            // Only the first day and the day after count: 130 of tax each
+            expect(await taxOf('2028-03-01', '2028-03-14')).toBe(0)
+            expect(await taxOf('2028-03-15', '2028-03-15')).toBe(130)
+            expect(await taxOf('2028-03-20', '2028-03-20')).toBe(130)
+            expect(await taxOf('2028-03-01', '2028-03-31')).toBe(130 + 130)
+          } finally {
+            // The books of the case go back to what they were, and its orders leave every report
+            await owner.financeSettings.update({
+              where: { organizationId: ctx.orgA.id },
+              data: {
+                accountingStartDate: before.accountingStartDate,
+                recognizeSaleOn: before.recognizeSaleOn
+              }
+            })
+            await owner.order.updateMany({
+              where: { id: { in: placed } },
+              data: { status: OrderStatus.CANCELLED }
+            })
+          }
+        }
+      )
 
       it('reads the UTC day of a store whose zone the database does not know, and still answers (N-AA-02)', async () => {
         // The api refuses such a zone, so it is a value written around it: one store must not leave the organization with no report

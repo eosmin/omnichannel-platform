@@ -127,6 +127,8 @@ export class FinanceVatReportService {
     // in the time zone of its store, which only the database can say for all stores at once (the column holds a UTC instant without a
     // zone, so it is read as UTC first). A cancelled order is never a sale, and one never delivered (or never shipped) is not one yet.
     const shipped = recognizedOn === SaleRecognition.SHIPPED
+    // The first day the books post from: a sale recognized before it is never posted (TDD_18 §6.1), so the report does not count it either (INV-TAX-8)
+    const startDay = isoDay(settings.accountingStartDate)
     const recognized = await db.$queryRaw<{ id: string; month: string; status: string }[]>`
       WITH known AS MATERIALIZED (SELECT lower(name) AS name FROM pg_timezone_names),
       zones AS (
@@ -171,6 +173,8 @@ export class FinanceVatReportService {
           AND x.at >= (${query.from}::date - 1)::timestamp
           AND x.at < (${query.to}::date + 2)::timestamp
           AND ((x.at AT TIME ZONE 'UTC') AT TIME ZONE x.timezone)::date BETWEEN ${query.from}::date AND ${query.to}::date
+          -- By the day of the store, as the books date a source: the first day itself counts
+          AND ((x.at AT TIME ZONE 'UTC') AT TIME ZONE x.timezone)::date >= ${startDay}::date
           AND NOT EXISTS (
             SELECT 1 FROM journal_entries e
             WHERE e.organization_id = ${organizationId}
