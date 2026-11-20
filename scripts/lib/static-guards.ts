@@ -14,13 +14,15 @@
 //    tests/ and in specs, which are not scanned. Raw SQL: a `$queryRaw` / `$queryRawUnsafe` whose text is INSERT / UPDATE / DELETE /
 //    MERGE / TRUNCATE / COPY, or selects a function of the database known to write (WRITING_FUNCTIONS), counts as a write, as does
 //    `$executeRaw(Unsafe)`. A call through a dynamic key (`client[model][op](...)`) inside the callback is refused as suspect.
+//    `audit.log(...)` inside a callback is NOT a write for this guard on purpose: it queues the entry for the request transaction
+//    (beforeCommit), it does not write in the store context.
 //    The seven uses today are reads: product-search.service (rls_search_products), search.service (the search functions),
 //    agent-typing-relay.service (a findFirst of the conversation), inventory-queries.service (a read of levels), customer-search.ts
 //    (two: rls_search_customer_list reads), order-text-customers.ts (rls_search_order_customers).
 // 2. AuditService.logRefused only for denials. It writes on a transaction of its own and survives a rollback, so a success recorded
 //    through it would stay although its action was reverted. Only the listed files may reference it.
 import { readdirSync, readFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join } from 'node:path'
 
 import * as ts from 'typescript'
 
@@ -58,10 +60,14 @@ const WRITE_METHODS = new Set([
 const RAW_QUERIES = new Set(['$queryRaw', '$queryRawUnsafe'])
 // Anywhere in the statement, so a CTE (`WITH x AS (...) UPDATE ...`) is seen too. Column names such as updated_at do not match \bupdate\b.
 const WRITING_SQL = /\b(insert|update|delete|merge|truncate|copy)\b/i
-// Functions of the database that write although they are called with SELECT. A LIST: a writing function added later is not in it
-// (limit, read in review; debt in the plan)
-const WRITING_FUNCTIONS =
-  /\b(rls_clear_orphan_avatar|rls_take_disconnected_connection|purge_audit_logs)\s*\(/i
+// Functions of the database that write although they are called with SELECT. A LIST, but not one kept from memory: static-guards.spec
+// crosses it with the migrations (every non-trigger function whose body inserts, updates or deletes must be here).
+export const WRITING_FUNCTION_NAMES: readonly string[] = [
+  'rls_clear_orphan_avatar',
+  'rls_take_disconnected_connection',
+  'purge_audit_logs'
+]
+const WRITING_FUNCTIONS = new RegExp(`\\b(${WRITING_FUNCTION_NAMES.join('|')})\\s*\\(`, 'i')
 const writesSql = (text: string): boolean => WRITING_SQL.test(text) || WRITING_FUNCTIONS.test(text)
 
 const parse = (text: string, file: string): ts.SourceFile =>
@@ -188,7 +194,26 @@ function writesReachedFrom(
   followed: Set<ts.Node>
 ): Finding[] {
   const found: Finding[] = []
+  // A method or function of the file REACHED, called or only passed as a value (`rows.map(this.persist)`): `this.method` and a bare name
+  // that resolves to a declaration of the file are followed wherever they stand, not only as the callee of a call
+  const follow = (node: ts.Node): void => {
+    let target: ts.Node | undefined
+    if (ts.isPropertyAccessExpression(node) && node.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      const owner = enclosingClass(node)
+      target = owner === undefined ? undefined : declared.methods.get(owner)?.get(node.name.text)
+    } else if (
+      ts.isIdentifier(node) &&
+      !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node)
+    ) {
+      target = declared.functions.get(node.text)
+    }
+    if (target !== undefined && !followed.has(target)) {
+      followed.add(target)
+      walk(target)
+    }
+  }
   const walk = (node: ts.Node): void => {
+    follow(node)
     if (ts.isCallExpression(node)) {
       const reason = writeReasonOf(node)
       if (reason !== undefined) {
@@ -225,24 +250,6 @@ function writesReachedFrom(
             reason: `${name}( with a writing statement`
           })
         }
-      }
-      // this.method() -> the method of the class; helper() -> the function of the file
-      let target: ts.Node | undefined
-      if (
-        ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.expression.kind === ts.SyntaxKind.ThisKeyword
-      ) {
-        const owner = enclosingClass(node)
-        target =
-          owner === undefined
-            ? undefined
-            : declared.methods.get(owner)?.get(node.expression.name.text)
-      } else if (ts.isIdentifier(node.expression)) {
-        target = declared.functions.get(node.expression.text)
-      }
-      if (target !== undefined && !followed.has(target)) {
-        followed.add(target)
-        walk(target)
       }
     }
     if (ts.isTaggedTemplateExpression(node)) {
@@ -371,8 +378,49 @@ export function findStoreContextWrites(text: string, file: string): Finding[] {
     return undefined
   }
 
+  const isDirectCall = (node: ts.Node): boolean =>
+    ts.isCallExpression(node.parent) && node.parent.expression === node
+  const aliased = (node: ts.Node): boolean => {
+    if (ts.isPropertyAccessExpression(node)) {
+      return node.name.text === 'inStoreContext' && !isDirectCall(node)
+    }
+    if (ts.isElementAccessExpression(node)) {
+      return (
+        ts.isStringLiteralLike(node.argumentExpression) &&
+        node.argumentExpression.text === 'inStoreContext' &&
+        !isDirectCall(node)
+      )
+    }
+    if (ts.isBindingElement(node)) {
+      const names = [node.name, node.propertyName]
+      return names.some(
+        name => name !== undefined && ts.isIdentifier(name) && name.text === 'inStoreContext'
+      )
+    }
+    if (ts.isShorthandPropertyAssignment(node)) return node.name.text === 'inStoreContext'
+    // The bare name used as a value: `const f = inStoreContext`, `run(inStoreContext)`
+    return (
+      ts.isIdentifier(node) &&
+      node.text === 'inStoreContext' &&
+      ((ts.isVariableDeclaration(node.parent) && node.parent.initializer === node) ||
+        (ts.isCallExpression(node.parent) && node.parent.arguments.includes(node)))
+    )
+  }
   const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && calleeName(node) === 'inStoreContext') {
+    if (aliased(node)) {
+      found.push({
+        file,
+        line: lineOf(node),
+        reason:
+          'inStoreContext is aliased (bind, destructuring, a reference): its callback cannot be followed'
+      })
+    }
+    // `x.inStoreContext.bind(...)` is reported once, as the alias it is
+    const viaBind =
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ['call', 'apply', 'bind'].includes(node.expression.name.text)
+    if (ts.isCallExpression(node) && !viaBind && calleeName(node) === 'inStoreContext') {
       const bodies = bodiesOf(node.arguments[1], node, 0)
       if (bodies === undefined || bodies.includes(UNREADABLE)) {
         found.push({
@@ -430,17 +478,26 @@ export function findLogRefusedUses(text: string, file: string): Finding[] {
 }
 
 const SCANNED_DIRS = ['apps', 'libs']
-const SKIPPED_DIRS = new Set(['node_modules', 'generated', 'dist', '.next', '.nx'])
+// Skipped by EXACT place, never by a name at any depth (production code in a folder called `generated` must still be read: the
+// image hosts of the web are in apps/web/lib/generated). Scanned: .ts, .tsx, .mts, .cts (there is no .js in apps/ or libs/ outside
+// configuration files).
+const SKIPPED_PATHS = [
+  /(^|\/)node_modules$/,
+  /^apps\/[^/]+\/(\.next|dist)$/,
+  /^libs\/core\/database\/generated$/
+]
 
 // The production sources of apps/ and libs/ (specs are fixtures, not callers)
 export function productionSources(root: string): string[] {
   const walk = (dir: string): string[] =>
-    readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
-      const path = join(dir, entry.name)
-      if (entry.isDirectory()) return SKIPPED_DIRS.has(entry.name) ? [] : walk(path)
-      return /\.tsx?$/.test(entry.name) && !/\.(spec|test)\.tsx?$/.test(entry.name) ? [path] : []
+    readdirSync(join(root, dir), { withFileTypes: true }).flatMap(entry => {
+      const path = `${dir}/${entry.name}`
+      if (entry.isDirectory()) return SKIPPED_PATHS.some(skip => skip.test(path)) ? [] : walk(path)
+      return /\.[mc]?tsx?$/.test(entry.name) && !/\.(spec|test)\.[mc]?tsx?$/.test(entry.name)
+        ? [path]
+        : []
     })
-  return SCANNED_DIRS.flatMap(dir => walk(join(root, dir))).map(path => relative(root, path))
+  return SCANNED_DIRS.flatMap(walk)
 }
 
 export interface GuardReport {

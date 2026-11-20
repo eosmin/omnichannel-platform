@@ -12,6 +12,9 @@ if (failures.length > 0) {
   console.error(
     'Write in inStore / inOrganization / inOrganizationOfStore, or read with inStoreContext.'
   )
+  console.error(
+    'If it is a read the validator cannot follow (an imported callback, a dynamic key, a transaction, SQL with the words insert/update/delete/merge/truncate/copy, an alias of inStoreContext), write it inline and literal in the same file, or add the file to STORE_CONTEXT_WRITES_ALLOWED (scripts/lib/static-guards.ts) with the reviewed reason in the PR.'
+  )
   exit(1)
 }
 console.log(`store-context-writes: ${scanned} files scanned, no write inside inStoreContext`)

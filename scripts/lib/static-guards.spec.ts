@@ -1,8 +1,11 @@
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
   LOG_REFUSED_CALLERS,
   STORE_CONTEXT_WRITES_ALLOWED,
+  WRITING_FUNCTION_NAMES,
+  productionSources,
   checkRefusedAudit,
   checkStoreContextWrites,
   findLogRefusedUses,
@@ -132,6 +135,31 @@ describe('no write inside inStoreContext', () => {
       '1:update('
     ],
     [
+      'a method passed as a value inside the callback',
+      'class A { run() { return this.p.inStoreContext(s, () => rows.map(this.persist)) } persist = (r) => t.order.update(r) }',
+      '1:update('
+    ],
+    [
+      'a file function passed as a value inside the callback',
+      'function persist(r) { return t.order.create(r) }\nx.inStoreContext(s, () => Promise.all(rows.map(persist)))',
+      '1:create('
+    ],
+    [
+      'a bind of inStoreContext',
+      'const run = this.prisma.inStoreContext.bind(this.prisma)',
+      '1:inStoreContext is aliased (bind, destructuring, a reference): its callback cannot be followed'
+    ],
+    [
+      'a destructuring of inStoreContext',
+      'const { inStoreContext } = prisma',
+      '1:inStoreContext is aliased (bind, destructuring, a reference): its callback cannot be followed'
+    ],
+    [
+      'a reference kept in a variable',
+      'const f = prisma.inStoreContext',
+      '1:inStoreContext is aliased (bind, destructuring, a reference): its callback cannot be followed'
+    ],
+    [
       'a method passed as the callback',
       'class A { run() { return this.p.inStoreContext(s, this.save) } save = () => t.create({}) }',
       '1:create('
@@ -235,5 +263,46 @@ describe('AuditService.logRefused only for plugin denials', () => {
     })
     const report = checkRefusedAudit(ROOT)
     expect(report.failures).toEqual([])
+  })
+})
+
+describe('the list of writing functions of the database', () => {
+  // Every non-trigger function whose body inserts, updates or deletes (its LAST definition among the migrations), so that the list
+  // does not depend on anybody's memory: a function added later that writes must be listed here and in WRITING_FUNCTION_NAMES
+  const MIGRATIONS = join(ROOT, 'libs/core/database/prisma/migrations')
+  const DEFINITION =
+    /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?"?(\w+)"?\s*\(([\s\S]*?)\$(\w*)\$([\s\S]*?)\$\3\$/gi
+  const WRITES =
+    /\b(insert\s+into|delete\s+from)\b|\bupdate\s+(?:public\.)?"?\w+"?\s+(?:(?:as\s+)?\w+\s+)?set\b/i
+
+  it('holds every function of the migrations that writes', () => {
+    const writing = new Map<string, boolean>()
+    for (const dir of readdirSync(MIGRATIONS).sort()) {
+      let text: string
+      try {
+        text = readFileSync(join(MIGRATIONS, dir, 'migration.sql'), 'utf8')
+      } catch {
+        continue
+      }
+      for (const match of text.matchAll(DEFINITION)) {
+        const [, name = '', header = '', , body = ''] = match
+        const isTrigger = /\breturns\s+trigger\b/i.test(header)
+        writing.set(name, !isTrigger && WRITES.test(body))
+      }
+    }
+    const writers = [...writing].filter(([, writes]) => writes).map(([name]) => name)
+    expect(writers.filter(name => !WRITING_FUNCTION_NAMES.includes(name)).sort()).toEqual([])
+    // and the list holds no name that no longer writes or exists
+    expect(WRITING_FUNCTION_NAMES.filter(name => !writers.includes(name))).toEqual([])
+  })
+})
+
+describe('the files that are scanned', () => {
+  it('include production code in a folder called generated, and skip the prisma client and the build output', () => {
+    const files = productionSources(ROOT)
+    expect(files).toContain('apps/web/lib/generated/plugin-image-hosts.ts')
+    expect(files.filter(file => /(^|\/)node_modules\//.test(file))).toEqual([])
+    expect(files.filter(file => file.startsWith('libs/core/database/generated/'))).toEqual([])
+    expect(files.filter(file => /^apps\/[^/]+\/(\.next|dist)\//.test(file))).toEqual([])
   })
 })
