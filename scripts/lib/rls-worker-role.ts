@@ -59,3 +59,14 @@ export function alreadyAsRequested(mode: WorkerRoleMode, row: WorkerRoleRow): bo
   if (mode === 'bypass') return row.rolbypassrls
   return false
 }
+
+// What the owner reads before a mode that changes the role: the role belongs to the whole server, so the change reaches every database
+// where it can connect, not only the one the command is pointed at
+export function reachedDatabasesWarning(databases: readonly string[], current: string): string {
+  const others = databases.filter(name => name !== current)
+  const reach =
+    others.length === 0
+      ? 'no other database'
+      : `${others.length} other database${others.length === 1 ? '' : 's'}: ${others.join(', ')}`
+  return `ALTER ROLE ${WORKER_ROLE} affects ALL the databases of this server where it can connect (${databases.length}: ${databases.join(', ') || 'none'}); besides "${current}" it reaches ${reach}`
+}

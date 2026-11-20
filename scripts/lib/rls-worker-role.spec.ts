@@ -6,6 +6,7 @@ import {
   alreadyAsRequested,
   confirmationOf,
   confirmProblem,
+  reachedDatabasesWarning,
   WORKER_ROLE,
   WORKER_ROLE_MODES,
   workerRoleProblem,
@@ -120,5 +121,19 @@ describe('the deploy paths and the script that changes the bypass of the worker'
     for (const file of files) {
       expect([file, NAMES.test(readFileSync(join(root, file), 'utf8'))]).toEqual([file, false])
     }
+  })
+})
+
+describe('reachedDatabasesWarning', () => {
+  it('says that the change reaches every database where the role connects, and names the others', () => {
+    const text = reachedDatabasesWarning(['platform', 'platform_dev', 'platform_ci'], 'platform')
+    expect(text).toContain('ALL the databases')
+    expect(text).toContain('platform, platform_dev, platform_ci')
+    expect(text).toContain('2 other databases: platform_dev, platform_ci')
+  })
+
+  it('says so when the database is the only one, and handles the singular', () => {
+    expect(reachedDatabasesWarning(['platform'], 'platform')).toContain('no other database')
+    expect(reachedDatabasesWarning(['platform', 'b'], 'platform')).toContain('1 other database: b')
   })
 })
