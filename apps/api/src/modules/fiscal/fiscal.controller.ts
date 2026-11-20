@@ -37,6 +37,7 @@ import {
   CurrentOrganization,
   CurrentPermissions,
   CurrentStore,
+  NoTenantTransaction,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -186,6 +187,9 @@ export class FiscalController {
   // receiver's data: a short-lived link, clean files only, audited.
   @RequirePermissions(Permissions.FISCAL_VIEW)
   @NoStore()
+  @NoTenantTransaction(
+    'makes the evidence file and then answers 409 while its scan is pending: one transaction for the request would roll the file back and it would never exist; the service keeps it in units of its own and reads in others'
+  )
   @Get(ApiRoutes.fiscal.documents.evidence(':id', ':kind'))
   async evidence(
     @CurrentOrganization() organization: Organization,
@@ -196,7 +200,7 @@ export class FiscalController {
     @Param('kind', new ZodValidationPipe(evidenceKindSchema)) kind: FiscalEvidenceKind,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: MediaUrls }> {
-    await this.mayRead(organization.id, user.id, [documentId])
+    // The reach of the person (HC-128) is checked by `urls`, in a context of its own and before any file is made
     return {
       data: await this.evidenceUrls.urls(
         organization.id,
