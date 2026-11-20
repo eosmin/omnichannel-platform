@@ -337,6 +337,8 @@ jobs:
         env:
           SECURITY_SHARD: ${{ matrix.shard }}
         run: |
+          # The legs of the matrix are the denominator of the shard: a leg removed would leave specs that no job runs
+          test "${{ strategy.job-total }}" = "${SECURITY_SHARD#*/}"
           # The peak of memory used on the whole runner (jest, services and tooling), in the summary: the suite
           # once ran out of heap and nothing measured it. A trap writes it even if the step is cancelled
           memory="$RUNNER_TEMP/memory.txt"
@@ -359,6 +361,12 @@ jobs:
         if: startsWith(matrix.shard, format('{0}/', strategy.job-total))
         run: pnpm test:latency
 
+      # The specs that read the plan of a statement with row level security on take locks (some ACCESS EXCLUSIVE until their
+      # rollback): a process of their own, after the shard, like the latency spec (`tests/jest.rls-plan.config.cts`)
+      - name: Plan specs of row level security, in a fresh process
+        if: ${{ !cancelled() && startsWith(matrix.shard, format('{0}/', strategy.job-total)) }}
+        run: pnpm test:rls-plan
+
   # The required check. It keeps the name of the job that used to run the whole suite, and it runs whatever
   # happened upstream (`always()`): a shard that failed, was cancelled or was skipped can never read as a pass,
   # and only `success` of the matrix (every shard) is a green.
@@ -375,6 +383,232 @@ jobs:
           echo "security-shards=$SHARDS"
           if [ "$SHARDS" = "success" ]; then exit 0; fi
           echo "::error::The shards of the security suite did not all succeed ($SHARDS)"
+          exit 1
+
+  # The same suites as `integration-tests` and `security-shards`, but with row level security ENFORCED (ENABLE + FORCE on every table
+  # with a policy) and both context guards ON (`RLS_CONTEXT`, `WORKER_RLS_CONTEXT`), connecting as platform_app / platform_worker
+  # (no BYPASSRLS) and the api replica as platform_replica_ro. This is the proof the owner needs before turning enforcement on
+  # in production (docs/TDD_01 section 3.2, Step 7.1). The required check, once the owner adds it to the ruleset of `main` after a
+  # green run on GitHub, is `rls-enforced-tests`, below.
+  rls-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Docs, markdown at the root, the web app and the widget cannot change what the database sees (a markdown file under libs or apps may be read at run time)
+          relevant=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -Ev '^(docs/|apps/web/|apps/widget/)|^[^/]*\.md$' || true)
+          if [ -n "$relevant" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
+
+  rls-enforced-integration:
+    needs: rls-changes
+    if: needs.rls-changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: platform_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U platform -d platform_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:8.10.1-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      seaweedfs:
+        image: chrislusf/seaweedfs:4.48
+        ports: ['8333:8333']
+        env:
+          AWS_ACCESS_KEY_ID: dev_access_key
+          AWS_SECRET_ACCESS_KEY: dev_secret_key
+          S3_BUCKET: platform-dev
+        options: >-
+          --health-cmd "wget -qO- http://127.0.0.1:8333/healthz"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      # The email suites send through it and read what arrived over its HTTP API
+      mailpit:
+        image: axllent/mailpit:v1.28
+        ports: ['1025:1025', '8025:8025']
+        options: >-
+          --health-cmd "wget -qO- http://127.0.0.1:8025/readyz"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DIRECT_DATABASE_URL: postgresql://platform:ci_password@localhost:5432/platform_ci
+      DB_APP_PASSWORD: ci_app_password
+      DB_WORKER_PASSWORD: ci_worker_password
+      DB_REPLICA_PASSWORD: ci_replica_password
+      # Both guards ON, and the policies ENABLED and FORCED below: the code runs as it will once the owner turns it on
+      RLS_CONTEXT: 'true'
+      WORKER_RLS_CONTEXT: 'true'
+      # The suites that only run on a database that is enforced (rls-roles, the real tables of rls-finance-isolation) ask for it with this
+      TEST_RLS_ENFORCE: '1'
+      # The replica of the api is the read only role. The suites of tests/ remove this variable (helpers/env.ts) and build their own handle
+      # (rls-replica-role.spec, rls-replica-startup-check.spec): the variable here is read by the processes that start from the env
+      DATABASE_REPLICA_URL: postgresql://platform_replica_ro:ci_replica_password@localhost:5432/platform_ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: ./.github/actions/clamav-start
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Wait for the bucket
+        run: pnpm exec tsx scripts/wait-for-bucket.ts
+      - name: Migrate an empty database and give the roles their passwords
+        run: pnpm db:migrate
+      - name: Turn row level security ON (ENABLE and FORCE)
+        run: pnpm db:rls:enforce on
+      - name: Every table with a policy is enabled and forced
+        run: |
+          pnpm db:rls:enforce status
+          # rls_status is the view of the owner: zero rows that are not both enabled and forced, and at least one that is
+          total=$(psql "$DIRECT_DATABASE_URL" -Atc "SELECT count(*) FROM rls_status")
+          bad=$(psql "$DIRECT_DATABASE_URL" -Atc "SELECT count(*) FROM rls_status WHERE NOT (enabled AND forced)")
+          echo "tables with a policy: $total, not enabled and forced: $bad"
+          test "$total" -gt 0 && test "$bad" -eq 0
+      - uses: ./.github/actions/clamav-wait
+      - name: Integration suites under enforced row level security
+        run: pnpm exec nx run-many --target=test-integration --projects=core-database,core-redis,core-audit,worker,api --skip-nx-cache
+
+  rls-enforced-security:
+    name: rls-enforced-security (${{ matrix.shard }})
+    needs: rls-changes
+    if: needs.rls-changes.outputs.run == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        # The denominator must match the `--shard` of tests/project.json, like `security-shards`
+        shard: ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: platform_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U platform -d platform_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:8.10.1-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      seaweedfs:
+        image: chrislusf/seaweedfs:4.48
+        ports: ['8333:8333']
+        env:
+          AWS_ACCESS_KEY_ID: dev_access_key
+          AWS_SECRET_ACCESS_KEY: dev_secret_key
+          S3_BUCKET: platform-dev
+        options: >-
+          --health-cmd "wget -qO- http://127.0.0.1:8333/healthz"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DIRECT_DATABASE_URL: postgresql://platform:ci_password@localhost:5432/platform_ci
+      DB_APP_PASSWORD: ci_app_password
+      DB_WORKER_PASSWORD: ci_worker_password
+      DB_REPLICA_PASSWORD: ci_replica_password
+      # Both guards ON, and the policies ENABLED and FORCED below: the code runs as it will once the owner turns it on
+      RLS_CONTEXT: 'true'
+      WORKER_RLS_CONTEXT: 'true'
+      # The suites that only run on a database that is enforced (rls-roles, the real tables of rls-finance-isolation) ask for it with this
+      TEST_RLS_ENFORCE: '1'
+      # The replica of the api is the read only role. The suites of tests/ remove this variable (helpers/env.ts) and build their own handle
+      # (rls-replica-role.spec, rls-replica-startup-check.spec): the variable here is read by the processes that start from the env
+      DATABASE_REPLICA_URL: postgresql://platform_replica_ro:ci_replica_password@localhost:5432/platform_ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Wait for the bucket
+        run: pnpm exec tsx scripts/wait-for-bucket.ts
+      - name: Migrate an empty database and give the roles their passwords
+        run: pnpm db:migrate
+      - name: Turn row level security ON (ENABLE and FORCE)
+        run: pnpm db:rls:enforce on
+      - name: Every table with a policy is enabled and forced
+        run: |
+          pnpm db:rls:enforce status
+          # rls_status is the view of the owner: zero rows that are not both enabled and forced, and at least one that is
+          total=$(psql "$DIRECT_DATABASE_URL" -Atc "SELECT count(*) FROM rls_status")
+          bad=$(psql "$DIRECT_DATABASE_URL" -Atc "SELECT count(*) FROM rls_status WHERE NOT (enabled AND forced)")
+          echo "tables with a policy: $total, not enabled and forced: $bad"
+          test "$total" -gt 0 && test "$bad" -eq 0
+      - name: Tenant isolation suite and endpoint specs under enforced row level security
+        env:
+          SECURITY_SHARD: ${{ matrix.shard }}
+        run: |
+          # The legs of the matrix are the denominator of the shard: a leg removed would leave specs that no job runs
+          test "${{ strategy.job-total }}" = "${SECURITY_SHARD#*/}"
+          # Same sampler as `security-shards`: the peak of memory of the runner, in the summary, to compare the two jobs
+          memory="$RUNNER_TEMP/memory.txt"
+          (while sleep 3; do free -m | awk '/^Mem:/ {print $3}'; done > "$memory") &
+          sampler=$!
+          report() {
+            kill "$sampler" 2>/dev/null || true
+            peak=$(sort -n "$memory" | tail -1)
+            line="rls-enforced security shard ${{ matrix.shard }}: peak memory used on the runner ${peak:-unknown} MB"
+            echo "$line" | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          trap report EXIT
+          pnpm test:security
+      # No latency spec and no plan spec here: a number measured under enforcement is not comparable with the baseline, and the plan
+      # specs assert a baseline with the policies OFF first (`rls-search-plan.spec`), which this job turned on. The plan specs run in
+      # `security-shards` (Step 7.3 owns their measurement under FORCE)
+
+  # The check for the ruleset of `main` (the owner adds it after a green run). It runs whatever happened upstream: only `success` of
+  # both jobs, or a skip because `rls-changes` found nothing that touches the database, is a green.
+  rls-enforced-tests:
+    needs: [rls-changes, rls-enforced-integration, rls-enforced-security]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: The jobs decide
+        env:
+          CHANGES: ${{ needs.rls-changes.result }}
+          RUN: ${{ needs.rls-changes.outputs.run }}
+          INTEGRATION: ${{ needs.rls-enforced-integration.result }}
+          SECURITY: ${{ needs.rls-enforced-security.result }}
+        run: |
+          echo "rls-changes=$CHANGES run=$RUN integration=$INTEGRATION security=$SECURITY"
+          if [ "$CHANGES" != "success" ]; then
+            echo "::error::rls-changes did not finish ($CHANGES)"; exit 1
+          fi
+          if [ "$RUN" = "false" ] && [ "$INTEGRATION" = "skipped" ] && [ "$SECURITY" = "skipped" ]; then exit 0; fi
+          if [ "$INTEGRATION" = "success" ] && [ "$SECURITY" = "success" ]; then exit 0; fi
+          echo "::error::The suites under enforced row level security did not all succeed"
           exit 1
 
   # PgBouncer in transaction mode, as production runs it (TDD_08 section 2.6). The stack is the one of
