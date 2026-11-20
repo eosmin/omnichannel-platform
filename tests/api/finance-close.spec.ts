@@ -359,6 +359,8 @@ describe('Closing the months, the reports and the auditor files', () => {
         status: PeriodStatus.OPEN,
         reopenedBy: ctx.adminA.id,
         reopenReason: 'The bank corrected a payment',
+        // The head of the last close is not offered for a month that can change again
+        closingHash: null,
         // February 2026 is over in the day of every store: the api says so, the button of the screen follows it
         hasEnded: true,
         hasStarted: true
