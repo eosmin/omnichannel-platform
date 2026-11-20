@@ -134,5 +134,14 @@ export const MediaRejectionReasons = {
 // ClamAV scan that runs before this.
 export const PdfInspection = {
   CONTENT_TYPE: 'application/pdf',
-  ACTIVE_NAMES: ['JavaScript', 'JS', 'Launch', 'SubmitForm', 'ImportData', 'GoToR', 'RichMedia']
+  ACTIVE_NAMES: ['JavaScript', 'JS', 'Launch', 'SubmitForm', 'ImportData', 'GoToR', 'RichMedia'],
+  // The bytes are read one to one as text, so that a name is never split by a multi-byte character
+  TEXT_ENCODING: 'latin1',
+  // A name: a slash and the regular characters after it, up to white space (NUL is one) or a delimiter. `/JSON` is the name JSON,
+  // never the name JS. The source of a global pattern, so that nobody shares one stateful regular expression
+  NAME_PATTERN: '\\/([^\\s\\0/[\\]<>(){}%]+)',
+  // A letter spelled as the mark and two hex digits
+  HEX_ESCAPE_MARK: '#',
+  HEX_ESCAPE_PATTERN: '#([0-9A-Fa-f]{2})',
+  HEX_RADIX: 16
 } as const

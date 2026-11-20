@@ -2,7 +2,8 @@ import {
   AnimatedImage,
   attachmentDisposition,
   keepsAnimation,
-  mediaVariantsSchema
+  mediaVariantsSchema,
+  PdfInspection
 } from './media-processing'
 
 describe('keepsAnimation', () => {
@@ -106,5 +107,36 @@ describe('mediaVariantsSchema', () => {
 
   it('refuses what is not an object', () => {
     expect(mediaVariantsSchema.safeParse('x').success).toBe(false)
+  })
+})
+
+// The worker builds its reader of PDF names from these (`findActivePdfNames`), so the rules are named here and
+// not spelled in the worker
+describe('PdfInspection', () => {
+  const name = new RegExp(PdfInspection.NAME_PATTERN, 'g')
+
+  it('reads a name up to a space, a NUL or a delimiter, never across a slash', () => {
+    const text = '<< /JS (x) /JavaScript\u0000/Launch[/GoToR]/JSON >>'
+    expect([...text.matchAll(name)].map(match => match[1])).toEqual([
+      'JS',
+      'JavaScript',
+      'Launch',
+      'GoToR',
+      'JSON'
+    ])
+  })
+
+  it('reads a hex escape as two hex digits after the mark', () => {
+    const escape = new RegExp(PdfInspection.HEX_ESCAPE_PATTERN, 'g')
+    expect('J#61va'.includes(PdfInspection.HEX_ESCAPE_MARK)).toBe(true)
+    expect('J#61va'.replace(escape, (_all, hex: string) => hex)).toBe('J61va')
+    expect(Number.parseInt('61', PdfInspection.HEX_RADIX)).toBe(97)
+  })
+
+  it('reads the bytes one to one, so a name is never split by a multi-byte character', () => {
+    expect(PdfInspection.TEXT_ENCODING).toBe('latin1')
+    expect(Buffer.from([0xff, 0x2f, 0x4a, 0x53]).toString(PdfInspection.TEXT_ENCODING)).toBe(
+      '\u00ff/JS'
+    )
   })
 })

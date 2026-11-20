@@ -14,6 +14,7 @@ import { FinanceLimits, FinanceTransactionKind } from '@platform/core/domain'
 import { accountLabelsOf } from '../../lib/finance/account-form'
 import { dayOfClock, dayOfUtcClock, nextDay } from '../../lib/finance/dates'
 import { amountExceedsLine } from '../../lib/finance/money'
+import { receiptRefusalOf } from '../../lib/finance/receipt-refusal'
 import {
   categoryAccountsOf,
   emptyTransactionDraft,
@@ -38,6 +39,7 @@ import {
   useFinanceReceiptUpload
 } from '../../lib/finance/use-finance'
 import { usePercentFigure, useMoney } from '../../lib/finance/use-money'
+import { useReceiptErrorText } from '../../lib/finance/use-receipt-error-text'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
@@ -144,6 +146,7 @@ function TransactionForm({
   const record = useRecordFinanceTransaction(storeId)
   const replaceTransaction = useReplaceFinanceTransaction(storeId)
   const upload = useFinanceReceiptUpload(storeId)
+  const receiptErrorText = useReceiptErrorText()
   const [today] = useState(() => dayOfClock(new Date()))
   // The api accepts a day ahead of its own today, which is the UTC day
   const [latestDay] = useState(() => nextDay(dayOfUtcClock(new Date())))
@@ -218,8 +221,13 @@ function TransactionForm({
       if (file !== null) {
         try {
           await upload.mutateAsync({ transactionId: saved.id, file })
-        } catch {
-          toast.error(t('form.receiptNotSaved'))
+        } catch (error) {
+          // A refusal of the file itself says why; any other failure keeps the line that sends the person to the transaction
+          toast.error(
+            receiptRefusalOf(error) === null
+              ? t('form.receiptNotSaved')
+              : `${t('form.receiptNotSaved')} ${receiptErrorText(error)}`
+          )
         }
       }
       toast.success(replace === null ? t('form.created') : t('form.replaced'))
