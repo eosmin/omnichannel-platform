@@ -24,7 +24,7 @@ CREATE FUNCTION public.rls_plugin_foreign_owner(p_id text) RETURNS boolean
       RAISE EXCEPTION 'the plugin id is required' USING ERRCODE = '22023';
     END IF;
     IF cardinality(v_orgs) = 0 THEN
-      RAISE EXCEPTION 'no organization in the context' USING ERRCODE = '42501';
+      RAISE EXCEPTION 'no organization in the context' USING ERRCODE = '22023';
     END IF;
     RETURN EXISTS (
       SELECT 1 FROM public.plugins p

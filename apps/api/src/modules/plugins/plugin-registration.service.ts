@@ -226,6 +226,7 @@ export class PluginRegistrationService {
       this.prisma.client.plugin.updateMany({
         where: {
           id: manifest.id,
+          organizationId: store.organizationId,
           status: { not: PluginStatus.ARCHIVED },
           manifest: { path: ['icon'], equals: manifest.icon }
         },

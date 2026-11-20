@@ -142,7 +142,7 @@ describe('row-level security, plugins: rls_plugin_foreign_owner', () => {
     })
     await withFixture(
       async ({ other, query }) => {
-        await expect(foreign(query, other)).rejects.toMatchObject({ code: '42501' })
+        await expect(foreign(query, other)).rejects.toMatchObject({ code: '22023' })
       },
       { organizations: 'none' }
     )
