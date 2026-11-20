@@ -1,11 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common'
+import { Body, Controller, Get, type OnModuleDestroy, Param, Patch, Post } from '@nestjs/common'
 
 import { Permissions } from '@platform/core/auth'
+import { connectionUrls, createOwnerClient } from '@platform/core/database-testing'
 import { resourceNotFound } from '@platform/core/errors'
 
 import { CurrentStore, RequirePermissions } from '../../apps/api/src/modules/tenancy'
-
-import { createWorkerClient } from './worker-db'
 
 export const LeakyRoutes = {
   tags: '/leaky/tags',
@@ -18,14 +17,20 @@ export const LeakyRoutes = {
 // change a tag the way a service written without thinking about tenants would. They exist so that
 // the isolation suite can be shown to fail on a leak: a suite that never failed would prove nothing.
 @Controller()
-export class LeakyTagController {
-  // On the connection of the worker, which skips Row-Level Security, and on purpose: with the policies enforced the database would
-  // hide the rows of other stores from a query that forgot to filter, and this controller would stop leaking, so the suite that
-  // shows the isolation checks catch a leak would have nothing to catch. The leak is the code's (a service written without
-  // thinking about tenants); the policies are the second wall, proven by tests/security/rls-isolation.spec.ts
+export class LeakyTagController implements OnModuleDestroy {
+  // On the connection of the owner of the tables, and on purpose: the owner always sees every row (the `_owner` policy of each table),
+  // so the database cannot hide the rows of other stores from a query that forgot to filter, and this controller keeps leaking
+  // whether or not the policies are enforced. Without that, the suite that shows the isolation checks catch a leak would have
+  // nothing to catch. The leak is the code's (a service written without thinking about tenants); the policies are the second wall,
+  // proven by tests/security/rls-isolation.spec.ts
   // A client of its own, not a PrismaService: the tenant transaction of the request lives in a store every PrismaService shares, so
   // the `client` of a second service would join it and the query would run as platform_app after all
-  private readonly db = createWorkerClient()
+  private readonly db = createOwnerClient(connectionUrls().owner)
+
+  // Closed with the app (`app.close()` in the suite)
+  async onModuleDestroy(): Promise<void> {
+    await this.db.$disconnect()
+  }
 
   // Lists every tag of the platform
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
