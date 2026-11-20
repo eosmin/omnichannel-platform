@@ -265,10 +265,11 @@ export class ConversationsController {
       viewerOf(user.id, held)
     )
     // After the read is stored and only for who could read it: the customer's channel is told too.
-    // Not awaited, so that a slow or unreachable Redis does not hold the answer; queueFor logs its own
-    // failures and never rejects.
-    void this.readReceipts.queueFor(store.id, conversationId)
-    void this.widgetRead.notify(store.id, conversationId)
+    // Awaited, because they read in the tenant transaction of this request, which closes with the answer; a slow
+    // or unreachable Redis does not hold it (queueFor leaves the queueing running), and both log their own
+    // failures and never reject.
+    await this.readReceipts.queueFor(store.id, conversationId)
+    await this.widgetRead.notify(store.id, conversationId)
     return this.marked(detail)
   }
 

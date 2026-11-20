@@ -130,7 +130,7 @@ export class SocketAccessService {
     // Before any database access. The room carries who is typing in a thread, which is what reading it
     // shows: the REST thread asks for the right to read messages as well.
     if (!data.held.includes(Permissions.MESSAGES_VIEW)) return new Set()
-    const rows = await this.prisma.tenantTransaction(
+    const rows = await this.prisma.detachedTenantTransaction(
       { storeIds: [data.storeId], organizationIds: [data.organizationId] },
       () =>
         this.prisma.client.conversation.findMany({

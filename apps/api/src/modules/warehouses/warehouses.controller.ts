@@ -23,6 +23,7 @@ import {
   CurrentOrganization,
   CurrentStore,
   RequirePermissions,
+  TenantOfOrganizationStores,
   type ResolvedTenant
 } from '../tenancy'
 
@@ -51,6 +52,9 @@ const id = () => new ZodValidationPipe(idSchema)
 // The warehouses of the organization of the store in X-Store-Id (TDD_16 §1): the permission is the one the caller
 // holds in that store, and the organization is the one TenantGuard resolved from it, never one from the request.
 // Reading asks for inventory:view; creating, changing and linking for org:manage_warehouses.
+@TenantOfOrganizationStores(
+  'a warehouse belongs to the organization and its stock is that of every store that sells from it: switching it off or unlinking a store must see the units and reservations of ALL the stores, so the context holds every store of the organization'
+)
 @Controller()
 export class WarehousesController {
   constructor(
