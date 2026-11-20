@@ -10,7 +10,7 @@ import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService, JobContext } from '@platform/core/database'
-import { type OwnerClient, rlsEnforcementRequested } from '@platform/core/database-testing'
+import type { OwnerClient } from '@platform/core/database-testing'
 import {
   PLUGIN_REVOKE_CONFIRMATION,
   PluginCatalogTypes,
@@ -20,7 +20,7 @@ import {
   WebhookHeaders,
   WebhookLimits
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, isRowLevelSecurityError } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { WebhookMetricTarget } from '@platform/core/metrics'
@@ -509,9 +509,10 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       })
 
       expect(outcome).toBe(WebhookOutcome.DELIVERED)
-      // Under enforced row-level security the policy of the log refuses the row (42501) and the delivery says so; without it the
-      // foreign key does, and that case was never counted
-      expect(goneCounted).toEqual(rlsEnforcementRequested() ? [WebhookMetricTarget.PLUGIN] : [])
+      // For a plugin the foreign key (23503 → P2003, deleted at once) answers first, as the enforced run showed, and not the policy
+      // (42501): the counter of the policy stays empty. If the order of the checks ever changes and it counts, this fails and says so.
+      // The verdict of the policy is pinned below, with a refusal that does not depend on the database.
+      expect(goneCounted).toEqual([])
       expect(errorLogged).toEqual([])
     })
 
@@ -526,6 +527,58 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       await expect(
         deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, { post })
       ).rejects.toBeInstanceOf(WebhookPostFailed)
+    })
+
+    it('gets from the database the refusal that the role of the worker is due for a deleted installation', async () => {
+      const { setup } = await setUp()
+      await owner.pluginInstallation.delete({ where: { id: setup.installationId } })
+      const rows = await app.get(PrismaService).client.$queryRaw<
+        { skips: boolean }[]
+      >`SELECT rolbypassrls AS skips FROM pg_roles WHERE rolname = current_user`
+      const skipsPolicy = rows[0]?.skips === true
+
+      const refused = await new JobContext(app.get(PrismaService))
+        .forStore(ctx.storeA.id, () =>
+          app.get(PrismaService).client.webhookDelivery.create({
+            data: {
+              pluginInstallationId: setup.installationId,
+              event: Events.MESSAGE_RECEIVED,
+              durationMs: 1,
+              success: true,
+              attempt: 1
+            }
+          })
+        )
+        .then(
+          () => null,
+          (error: unknown) => error
+        )
+
+      // A role that skips row-level security reaches the foreign key (P2003); one that does not is refused by the policy (42501)
+      // first. The worker of the suites skips it until E-2: when that changes, this says so instead of passing without telling.
+      expect(refused).not.toBeNull()
+      if (skipsPolicy) {
+        expect((refused as { code?: string }).code).toBe('P2003')
+        expect(isRowLevelSecurityError(refused)).toBe(false)
+      } else {
+        expect(isRowLevelSecurityError(refused)).toBe(true)
+      }
+    })
+
+    it('counts an installation that is gone when the policy refuses its log row', async () => {
+      const { setup } = await setUp()
+      await owner.pluginInstallation.delete({ where: { id: setup.installationId } })
+      const guarded = (
+        deliverer as unknown as {
+          guarded: (storeId: string, id: string, work: () => Promise<void>) => Promise<void>
+        }
+      ).guarded.bind(deliverer)
+      const refusal = Object.assign(new Error('refused'), { code: '42501' })
+
+      await expect(
+        guarded(ctx.storeA.id, setup.installationId, () => Promise.reject(refusal))
+      ).resolves.toBeUndefined()
+      expect(goneCounted).toEqual([WebhookMetricTarget.PLUGIN])
     })
 
     it('does not hide a refusal of the policy while the installation is still there', async () => {

@@ -8,7 +8,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { CredentialCipher, generateToken } from '@platform/core/crypto'
 import { PrismaService, JobContext } from '@platform/core/database'
-import { type OwnerClient, rlsEnforcementRequested } from '@platform/core/database-testing'
+import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AppPaths,
   StoreSettingsSections,
@@ -25,6 +25,7 @@ import { NotificationTypes } from '@platform/core/notifications'
 import type { TriggerWebhookJob } from '@platform/core/queues'
 import { UnsafeUrlError } from '@platform/core/url-safety'
 
+import { isGone } from '../../apps/worker/src/webhooks/gone-verdict'
 import { WebhookPostFailed } from '../../apps/worker/src/webhooks/pinned-https-post'
 import {
   TenantWebhookDeliverer,
@@ -480,54 +481,77 @@ describe('The delivery of a webhook', () => {
     expect(await owner.webhookDelivery.count({ where: { webhookId: row.id } })).toBe(0)
   })
 
-  // Under enforced row-level security the insert of the log is refused by the policy of the parent (42501) and not by the foreign key
-  const itWhenEnforced = rlsEnforcementRequested() ? it : it.skip
+  // Which wall refuses the log row of a deleted webhook depends on the role of the connection: a role that skips row-level security
+  // reaches the foreign key (23503 → P2003, absorbed as a deletion); one that does not is refused by the policy of the parent first
+  // (42501). The worker of the suites skips it until its bypass is taken away (E-2), so the test reads the role and says what each
+  // answer must be, instead of passing without telling which one it got.
+  const skipsPolicy = async (): Promise<boolean> => {
+    const rows = await app.get(PrismaService).client.$queryRaw<
+      { skips: boolean }[]
+    >`SELECT rolbypassrls AS skips FROM pg_roles WHERE rolname = current_user`
+    return rows[0]?.skips === true
+  }
 
-  itWhenEnforced(
-    'knows the refusal of the policy that a log row of a deleted webhook gets',
-    async () => {
-      const row = await webhook()
-      await owner.webhook.delete({ where: { id: row.id } })
+  it('gets from the database the refusal that the role of the worker is due', async () => {
+    const row = await webhook()
+    await owner.webhook.delete({ where: { id: row.id } })
 
-      const refused = await jobContext
-        .forStore(ctx.storeA.id, () =>
-          app.get(PrismaService).client.webhookDelivery.create({
-            data: {
-              webhookId: row.id,
-              event: Events.ORDER_CREATED,
-              durationMs: 1,
-              success: true,
-              attempt: 1
-            }
-          })
-        )
-        .then(
-          () => null,
-          (error: unknown) => error
-        )
+    const refused = await jobContext
+      .forStore(ctx.storeA.id, () =>
+        app.get(PrismaService).client.webhookDelivery.create({
+          data: {
+            webhookId: row.id,
+            event: Events.ORDER_CREATED,
+            durationMs: 1,
+            success: true,
+            attempt: 1
+          }
+        })
+      )
+      .then(
+        () => null,
+        (error: unknown) => error
+      )
 
-      expect(refused).not.toBeNull()
+    expect(refused).not.toBeNull()
+    if (await skipsPolicy()) {
+      expect(isGone(refused)).toBe(true)
+      expect(isRowLevelSecurityError(refused)).toBe(false)
+    } else {
       expect(isRowLevelSecurityError(refused)).toBe(true)
     }
-  )
+  })
 
-  itWhenEnforced(
-    'counts the webhook that was deleted behind the policy, and tells it by the target',
-    async () => {
-      const row = await webhook()
-      const post = jest.fn(async () => {
-        await owner.webhook.delete({ where: { id: row.id } })
-        return 200
-      })
+  it('counts the webhook that was deleted behind the policy only when the policy is what refuses', async () => {
+    const row = await webhook()
+    const post = jest.fn(async () => {
+      await owner.webhook.delete({ where: { id: row.id } })
+      return 200
+    })
 
-      await expect(deliverer.deliver(jobFor(row), 1, { post })).resolves.toBe(
-        WebhookOutcome.DELIVERED
-      )
-      expect(goneCounted).toEqual([WebhookMetricTarget.TENANT])
-      expect(errorLogged).toEqual([])
-      expect(await owner.webhookDelivery.count({ where: { webhookId: row.id } })).toBe(0)
-    }
-  )
+    await expect(deliverer.deliver(jobFor(row), 1, { post })).resolves.toBe(
+      WebhookOutcome.DELIVERED
+    )
+    expect(goneCounted).toEqual((await skipsPolicy()) ? [] : [WebhookMetricTarget.TENANT])
+    expect(errorLogged).toEqual([])
+    expect(await owner.webhookDelivery.count({ where: { webhookId: row.id } })).toBe(0)
+  })
+
+  it('counts a webhook that is gone when the policy refuses its log row (a refusal that does not depend on the role)', async () => {
+    const row = await webhook()
+    await owner.webhook.delete({ where: { id: row.id } })
+    const guarded = (
+      deliverer as unknown as {
+        guarded: (storeId: string, webhookId: string, work: () => Promise<void>) => Promise<void>
+      }
+    ).guarded.bind(deliverer)
+    const refusal = Object.assign(new Error('refused'), { code: '42501' })
+
+    await expect(
+      guarded(ctx.storeA.id, row.id, () => Promise.reject(refusal))
+    ).resolves.toBeUndefined()
+    expect(goneCounted).toEqual([WebhookMetricTarget.TENANT])
+  })
 
   it('ends without an error when the webhook is deleted between the post and its log', async () => {
     const row = await webhook()
