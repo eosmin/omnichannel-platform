@@ -1022,8 +1022,8 @@ the same `request.store` / `request.permissions` context so downstream services 
 `PermissionGuard` behave identically.
 
 Whole numbers in a query string (`limit`, `days`, a page size) are **decimal digits only**: `limit=25` is read, while `1e2`, `0x10`,
-`5.0`, `+5` and `%205` answer `400 VALIDATION_FAILED`, on the `plugin-api` lists as on every other list (leading zeros are
-accepted). Send the size as a plain number.
+`5.0`, `+5` and `%205` answer `400 VALIDATION_FAILED`, on the lists of the api that read a size or a number of days with `queryIntSchema` (`libs/core/domain/validation.ts`), the `plugin-api`
+lists included (leading zeros are accepted). Send the size as a plain number.
 
 ```typescript
 @Injectable()
