@@ -26,6 +26,12 @@ overrides:
   '@serwist/build>zod': 4.6.7
   '@serwist/turbopack>zod': 4.6.7
 
+  # @prisma/config 7.10.1 pins effect 3.20.0, which has GHSA-7589-6fvf-x4pw (ReDoS in Schema.TemplateLiteral,
+  # fixed in 3.22.1) and fails `pnpm audit --prod --audit-level=high`. effect is only used by the prisma CLI
+  # config loader (prisma generate/validate/migrate), never by our code. Remove this when prisma resolves
+  # effect 3.22.1 or later by itself.
+  '@prisma/config>effect': 3.22.1
+
 # GHSA-fc5q-39xc-vjpf (picomatch <=4.0.7, ReDoS through single-branch repeated extglobs, high) has no patched version.
 # The paths are @parcel/watcher, which sass (under next) and next-intl use to watch files: a build and dev tool that
 # never matches a pattern a user sent, so it is not on the path of a request. Ignored here so that the audit gate
