@@ -21,18 +21,44 @@ import { MediaPipeline } from './media-pipeline.service'
 // The standard antivirus test string: every scanner flags it, and it is harmless
 const EICAR = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'
 
+interface MediaRow {
+  status: string
+  key: string
+  filename: string
+  storeId: string | null
+  contentType: string
+  fileSize: number
+  variants: unknown
+  scanResult: unknown
+  scannedAt: Date | null
+  processedAt: Date | null
+}
+
 // The scan and the variants against the real daemon, bucket and database: the chain of a file from
 // `pending` to something that may be served, or to nothing.
 describe('MediaPipeline', () => {
   let moduleRef: TestingModule
   let pipeline: MediaPipeline
   let storage: StorageService
-  let prisma: PrismaService
   let heavy: Queue
   let owner: pg.Client
   const organizationId = randomUUID()
   const storeId = randomUUID()
   const keys: string[] = []
+
+  // Reads the row the way the owner of the database sees it, never through the connection of the worker: with the policies enforced
+  // that one sees a row only inside the context of its store, and what is checked here is the row, not the context
+  async function readMedia(id: string): Promise<MediaRow> {
+    const { rows } = await owner.query<MediaRow>(
+      `SELECT status, key, filename, store_id AS "storeId", content_type AS "contentType", file_size AS "fileSize", variants,
+              scan_result AS "scanResult", scanned_at AS "scannedAt", processed_at AS "processedAt"
+         FROM media WHERE id = $1`,
+      [id]
+    )
+    const row = rows[0]
+    if (row === undefined) throw new Error(`the media ${id} has no row`)
+    return row
+  }
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({ imports: [WorkerModule] })
@@ -42,7 +68,6 @@ describe('MediaPipeline', () => {
       .compile()
     pipeline = moduleRef.get(MediaPipeline, { strict: false })
     storage = moduleRef.get(StorageService, { strict: false })
-    prisma = moduleRef.get(PrismaService, { strict: false })
     heavy = moduleRef.get(getQueueToken(QueueNames.HEAVY_PROCESSING), { strict: false })
     owner = new pg.Client({ connectionString: connectionUrls().owner })
     await owner.connect()
@@ -100,7 +125,7 @@ describe('MediaPipeline', () => {
     // A repeated job (a retry after the first attempt died late) changes nothing
     await pipeline.scan(media.id, { storeId })
 
-    const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+    const row = await readMedia(media.id)
     expect(row.status).toBe('clean')
     expect(row.scannedAt).not.toBeNull()
     const queued = await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`)
@@ -140,7 +165,7 @@ describe('MediaPipeline', () => {
 
       await pipeline.scan(media.id, { storeId })
 
-      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      const row = await readMedia(media.id)
       expect(row.status).toBe('clean')
       const kept = await stored(media.key)
       const header = await sharp(kept).metadata()
@@ -174,7 +199,7 @@ describe('MediaPipeline', () => {
       await pipeline.scan(media.id, { storeId })
 
       remove.mockRestore()
-      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      const row = await readMedia(media.id)
       expect(row.status).toBe('unscannable') // The hourly cleanup removes the file of such a row
       expect(row.scanResult).toEqual({ reason: 'image_not_sanitizable' })
     })
@@ -189,7 +214,7 @@ describe('MediaPipeline', () => {
 
       await pipeline.scan(media.id, { storeId })
 
-      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      const row = await readMedia(media.id)
       expect(row.status).toBe('unscannable')
       expect(row.scanResult).toEqual({ reason: 'image_not_sanitizable' })
       expect(await storage.head(media.key)).toBeNull() // The original, with its metadata, is gone
@@ -209,7 +234,7 @@ describe('MediaPipeline', () => {
 
         await pipeline.scan(media.id, { storeId })
 
-        const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+        const row = await readMedia(media.id)
         expect([filename, row.status]).toEqual([filename, 'infected'])
         expect(row.scanResult).toEqual({ viruses: [expect.stringContaining('Eicar')] })
         expect(await storage.head(media.key)).toBeNull()
@@ -222,9 +247,7 @@ describe('MediaPipeline', () => {
       let seenWhileCleaning: string | undefined
       const put = storage.put.bind(storage)
       const spy = jest.spyOn(storage, 'put').mockImplementation(async (...args) => {
-        seenWhileCleaning = (
-          await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
-        ).status
+        seenWhileCleaning = (await readMedia(media.id)).status
         await put(...args)
       })
 
@@ -245,7 +268,7 @@ describe('MediaPipeline', () => {
 
       await pipeline.scan(media.id, { storeId })
 
-      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      const row = await readMedia(media.id)
       expect(row.status).toBe('unscannable')
       expect(row.scanResult).toEqual({ reason: 'image_not_sanitizable' })
       expect(await storage.head(media.key)).toBeNull()
@@ -263,7 +286,7 @@ describe('MediaPipeline', () => {
       await pipeline.scan(media.id, { storeId })
 
       expect((await stored(media.key)).equals(gif)).toBe(true)
-      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      const row = await readMedia(media.id)
       expect(row.status).toBe('clean')
       expect(row.fileSize).toBe(gif.length)
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
@@ -275,7 +298,7 @@ describe('MediaPipeline', () => {
 
     await pipeline.scan(media.id, { storeId })
 
-    const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+    const row = await readMedia(media.id)
     expect(row.status).toBe('infected')
     expect(row.scanResult).toEqual({ viruses: [expect.stringContaining('Eicar')] })
     expect(await storage.head(media.key)).toBeNull()
@@ -287,9 +310,7 @@ describe('MediaPipeline', () => {
 
     await pipeline.scan(media.id, { storeId })
 
-    expect((await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })).status).toBe(
-      'clean'
-    )
+    expect((await readMedia(media.id)).status).toBe('clean')
     expect(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`)).toBeUndefined()
   })
 
@@ -300,7 +321,7 @@ describe('MediaPipeline', () => {
 
     await pipeline.processImage(media.id, { storeId })
 
-    const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+    const row = await readMedia(media.id)
     expect(row.processedAt).not.toBeNull()
     expect(row.variants).toEqual({
       full: StorageKeys.messageVariant(storeId, media.id, 'full'),
@@ -331,7 +352,7 @@ describe('MediaPipeline', () => {
     expect(failure).toBeInstanceOf(UnrecoverableError)
     expect((failure as Error).message).toContain('could not be processed')
 
-    const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+    const row = await readMedia(media.id)
     expect(row.status).toBe('clean')
     expect(row.variants).toBeNull()
     // Settled with no variant: the thread draws a download, not a placeholder that never ends, and the
@@ -425,7 +446,7 @@ describe('MediaPipeline', () => {
       .toBuffer()
     const media = await processed('turned.webp', 'image/webp', rotated)
 
-    const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+    const row = await readMedia(media.id)
     expect(row.variants).not.toBeNull()
     expect((await variantMeta(media.id, 'full')).pages).toBeUndefined()
     // Turned a quarter, as a still: the frames were 40 x 40, so the shape does not tell, the pages do
@@ -458,7 +479,7 @@ describe('MediaPipeline', () => {
         'the daemon is down'
       )
 
-      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      const row = await readMedia(media.id)
       expect(row.status).toBe('pending')
       expect(await storage.head(media.key)).not.toBeNull()
     })
@@ -468,7 +489,7 @@ describe('MediaPipeline', () => {
 
       await expect(pipeline.scan(media.id, { storeId }, true)).rejects.toThrow('the daemon is down')
 
-      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      const row = await readMedia(media.id)
       expect(row.status).toBe('unscannable')
       expect(row.scannedAt).not.toBeNull()
       expect(await storage.head(media.key)).toBeNull()
@@ -521,7 +542,7 @@ describe('MediaPipeline', () => {
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
       await pipeline.processImage(avatar.id, { userId: avatar.userId })
 
-      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+      const row = await readMedia(avatar.id)
       const served = StorageKeys.avatarImage(avatar.userId, avatar.id)
       expect(row).toMatchObject({
         status: 'clean',
@@ -544,11 +565,11 @@ describe('MediaPipeline', () => {
       await pipeline.scan(avatar.id, { userId: avatar.userId })
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
       await pipeline.processImage(avatar.id, { userId: avatar.userId })
-      const first = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+      const first = await readMedia(avatar.id)
 
       await pipeline.processImage(avatar.id, { userId: avatar.userId })
 
-      const again = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+      const again = await readMedia(avatar.id)
       expect(again.processedAt).toEqual(first.processedAt)
     })
 
@@ -561,7 +582,7 @@ describe('MediaPipeline', () => {
         pipeline.processImage(avatar.id, { userId: avatar.userId })
       ).resolves.toBeUndefined()
 
-      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+      const row = await readMedia(avatar.id)
       expect(row.status).toBe('unscannable')
       expect(row.processedAt).toBeNull()
       expect(await storage.head(avatar.key)).toBeNull()
@@ -594,7 +615,7 @@ describe('MediaPipeline', () => {
 
       await pipeline.processImage(avatar.id, { userId: avatar.userId })
 
-      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+      const row = await readMedia(avatar.id)
       expect(row.processedAt).toBeNull()
       expect(row.status).toBe('unscannable')
     })
@@ -622,7 +643,7 @@ describe('MediaPipeline', () => {
 
       await pipeline.processImage(avatar.id, { userId: avatar.userId })
 
-      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+      const row = await readMedia(avatar.id)
       expect(row.status).toBe('unscannable')
     })
   })
