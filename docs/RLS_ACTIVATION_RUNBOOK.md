@@ -29,6 +29,10 @@ This is run by the OWNER, never by a session or by the CI. It turns on, in this 
   4. Only now set `DATABASE_REPLICA_URL` to `platform_replica_ro` if the api reads a replica (before the migration the role does not
      exist, and an api whose url names a role that cannot log in does not start).
   5. Start the new workers with `WORKER_RLS_CONTEXT=false`, and restart the api.
+- **The window between 1.1 and 1.3 (new api, old schema).** The new api calls the functions of the new migrations EVEN with both flags off: `lookup_plugin_status_of_key` (`20270122800000`; `PluginApiKeyGuard` asks for it on EVERY plugin-api request), `rls_list_remote_channel_plugins` (`20270122900000`; `RemoteChannelSync.refresh`), `rls_list_pickups_pending_stale` and `rls_list_pickups_count_behind` (`20270122700000`), `rls_transfer_line_store_ids` (`20270123000000`) and `rls_plugin_foreign_owner` (`20270123100000`). Until `pnpm db:migrate` has run, the plugin-api answers 5xx to the plugins and the sync of remote channels fails in the log. The order stays (the api goes first because the jobs it queues already carry `storeId`, and `20270121850000` drops the `rls_store_of_*` functions that the old workers use, so the migration waits until they are stopped). So:
+  - Run `pnpm db:migrate` AS SOON AS the old workers are stopped (1.2): do not wait for the other queues to drain; the jobs left in the queues are taken by the new workers (1.5).
+  - Tell the plugins and pause their calls for that window (minutes; one store).
+  - The window is closed when the function exists (`SELECT to_regprocedure('public.lookup_plugin_status_of_key(text)')` is not null) and a plugin-api request answers 200 again, with no 5xx and no failure of the remote channel sync in the log of the api.
 - Check: `/health` answers. `SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname IN ('platform_app','platform_worker','platform_replica_ro')`
   gives `false` for `platform_app` and `platform_replica_ro`, and `true` for `platform_worker` (it keeps the bypass until step 3b). The
   worker log has no start error (with the flag off it only warns).
@@ -111,5 +115,5 @@ Check after each step: `status` shows OFF, and the walk of step 2 passes.
 - The migration `20270122600000_rls_search_order_customers` and the customers one build `idx_customers_name_trgm` inside their
   transaction: deploy at a quiet hour.
 - The validators that guard the code (`validate:rls-worker`, `validate:replica`, `validate:definer`) are a net, not a proof: the
-  proof is the check `rls-enforced-tests` of the CI (it waits for `rls-enforced-integration` and the six `rls-enforced-security` shards)
+  proof is the check `rls-enforced-tests` of the CI (it waits for `rls-enforced-integration` and every shard of the `rls-enforced-security` matrix)
   and the walk of step 2.
