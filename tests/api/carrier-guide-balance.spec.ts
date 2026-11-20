@@ -27,7 +27,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { inStoreContext } from '../helpers/tenant-context'
 
 const POLICY = {
   balanceEnabled: true,
@@ -55,7 +55,7 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp([], onWorkerDatabase())
+    app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     prisma = app.get(PrismaService, { strict: false })
     writes = app.get(ShipmentWrites, { strict: false })
@@ -101,22 +101,25 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
         order: { select: { orderNumber: true } }
       }
     })
-    await prisma.transaction(async tx => {
-      await writes.move(
-        tx,
-        {
-          shipmentId,
-          storeId: row.storeId,
-          orderId: row.orderId,
-          orderNumber: row.order.orderNumber,
-          connectionId: row.connectionId
-        },
-        from,
-        to,
-        {},
-        { actor: { type: 'system', id: null }, source: ShipmentEventSource.SYSTEM, occurredAt }
-      )
-    })
+    // The write of the api that the suite calls by hand: in the context of the store, as a request has it
+    await inStoreContext(prisma, { storeId: row.storeId, organizationId: ctx.orgA.id }, () =>
+      prisma.transaction(async tx => {
+        await writes.move(
+          tx,
+          {
+            shipmentId,
+            storeId: row.storeId,
+            orderId: row.orderId,
+            orderNumber: row.order.orderNumber,
+            connectionId: row.connectionId
+          },
+          from,
+          to,
+          {},
+          { actor: { type: 'system', id: null }, source: ShipmentEventSource.SYSTEM, occurredAt }
+        )
+      })
+    )
   }
 
   // A guide of the connection made (taken from the balance) and then sent
@@ -524,7 +527,11 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 2))
     }
     const policyOf = async (connectionId: string) => {
-      const policy = await readGuidePolicy(prisma.client, ctx.storeA.id, connectionId)
+      const policy = await inStoreContext(
+        prisma,
+        { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+        () => readGuidePolicy(prisma.client, ctx.storeA.id, connectionId)
+      )
       if (policy === null) throw new Error('no policy')
       return policy
     }

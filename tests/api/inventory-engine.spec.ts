@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   InventoryAdjustmentReason,
@@ -18,7 +18,7 @@ import { createProduct, createProductVariant, createWarehouse, linkWarehouse } f
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { inStoreContext } from '../helpers/tenant-context'
 
 // The engine of stock (TDD_16 §4, §9), through the real service on the real database: the movements of an order are
 // not routes yet (Step 4.3), so this is how they are proven.
@@ -35,7 +35,7 @@ describe('InventoryService', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp([], onWorkerDatabase())
+    app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     inventory = app.get(InventoryService, { strict: false })
     emitter = app.get(EventEmitter2, { strict: false })
@@ -46,6 +46,39 @@ describe('InventoryService', () => {
     await app.close()
     await owner.$disconnect()
   })
+
+  // The service is a class of the api, which a suite calls by hand outside a request: in the context of the store of the call, as a
+  // request has it. A call that brings its own transaction (a case that holds a lock) keeps it, and the transaction opens in the context
+  const organizationOf = (storeId: string): string => {
+    if (storeId === ctx.storeA.id) return ctx.orgA.id
+    if (storeId === ctx.storeB.id) return ctx.orgB.id
+    throw new Error(`no organization known for the store ${storeId}`)
+  }
+  const inContextOf = <T>(storeId: string, work: () => Promise<T>): Promise<T> =>
+    inStoreContext(prisma, { storeId, organizationId: organizationOf(storeId) }, work)
+  const inTx = <T>(work: (tx: PrismaTransaction) => Promise<T>): Promise<T> =>
+    inContextOf(ctx.storeA.id, () => prisma.transaction(work))
+  const withContext =
+    <I extends { storeId: string }, R>(call: (input: I, tx?: PrismaTransaction) => Promise<R>) =>
+    (input: I, tx?: PrismaTransaction): Promise<R> =>
+      tx === undefined ? inContextOf(input.storeId, () => call(input)) : call(input, tx)
+  const scoped = {
+    move: withContext((input: MovementInput, tx?: PrismaTransaction) => inventory.move(input, tx)),
+    reserve: withContext((input: Omit<MovementInput, 'type'>, tx?: PrismaTransaction) =>
+      inventory.reserve(input, tx)
+    ),
+    restock: withContext((input: Omit<MovementInput, 'type'>, tx?: PrismaTransaction) =>
+      inventory.restock(input, tx)
+    ),
+    checkLevel: withContext(
+      (input: Parameters<InventoryService['checkLevel']>[0], tx?: PrismaTransaction) =>
+        inventory.checkLevel(input, tx)
+    ),
+    moveMany: (inputs: MovementInput[], tx?: PrismaTransaction) =>
+      tx === undefined
+        ? inContextOf(inputs[0]?.storeId ?? ctx.storeA.id, () => inventory.moveMany(inputs))
+        : inventory.moveMany(inputs, tx)
+  }
 
   const key = (): string => `${prefix}-${randomUUID()}`
   async function item(
@@ -64,7 +97,7 @@ describe('InventoryService', () => {
       warehouseId: ctx.warehouseA.id
     }
     if (options.onHand !== undefined && options.onHand > 0) {
-      await inventory.move({
+      await scoped.move({
         ...base,
         type: Type.RECEIPT,
         quantity: options.onHand,
@@ -76,7 +109,7 @@ describe('InventoryService', () => {
     return {
       ...base,
       move: (input: Partial<MovementInput> & Pick<MovementInput, 'type' | 'quantity'>) =>
-        inventory.move({ ...base, idempotencyKey: key(), ...input })
+        scoped.move({ ...base, idempotencyKey: key(), ...input })
     }
   }
   const levelOf = (productId: string, warehouseId = ctx.warehouseA.id) =>
@@ -123,7 +156,7 @@ describe('InventoryService', () => {
       await shipped.move({ type: Type.RESERVE, quantity: 3 })
       await shipped.move({ type: Type.ISSUE, quantity: 3 })
       expect(await levelOf(shipped.productId)).toMatchObject({ onHand: 7, reserved: 0 })
-      await inventory.restock({
+      await scoped.restock({
         storeId: ctx.storeA.id,
         productId: shipped.productId,
         warehouseId: ctx.warehouseA.id,
@@ -163,7 +196,7 @@ describe('InventoryService', () => {
         reason: InventoryAdjustmentReason.LOST
       })
       // A return follows the item it refers to, and a variant that is switched off does not count
-      await inventory.restock({
+      await scoped.restock({
         storeId: ctx.storeA.id,
         productId: stock.productId,
         warehouseId: ctx.warehouseA.id,
@@ -193,7 +226,7 @@ describe('InventoryService', () => {
         ErrorCodes.RESOURCE_NOT_FOUND
       )
       await refusal(
-        inventory.reserve({
+        scoped.reserve({
           storeId: ctx.storeA.id,
           productId: foreignProduct.id,
           warehouseId: ctx.warehouseA.id,
@@ -331,7 +364,7 @@ describe('InventoryService', () => {
       const unlinked = await createWarehouse(owner, { organizationId: ctx.orgA.id })
       const stock = await item({ onHand: 3 })
       const into = (warehouseId: string, type: Type) =>
-        inventory.move({
+        scoped.move({
           storeId: ctx.storeA.id,
           productId: stock.productId,
           warehouseId,
@@ -399,7 +432,7 @@ describe('InventoryService', () => {
         warehouseId: warehouse.id
       })
       const product = await createProduct(owner, { storeId: ctx.storeA.id })
-      await inventory.move({
+      await scoped.move({
         storeId: ctx.storeA.id,
         productId: product.id,
         warehouseId: warehouse.id,
@@ -429,7 +462,7 @@ describe('InventoryService', () => {
 
       const [, reservation] = await Promise.allSettled([
         switchOff(warehouse.id, locked),
-        locked.done.then(() => inventory.reserve(reserveOn(product.id, warehouse.id)))
+        locked.done.then(() => scoped.reserve(reserveOn(product.id, warehouse.id)))
       ])
 
       expect(reservation).toMatchObject({
@@ -448,8 +481,8 @@ describe('InventoryService', () => {
       let waited = 0
 
       await Promise.all([
-        prisma.transaction(async tx => {
-          await inventory.reserve(reserveOn(product.id, warehouse.id), tx)
+        inTx(async tx => {
+          await scoped.reserve(reserveOn(product.id, warehouse.id), tx)
           locked.release()
           await pause(HELD_MS)
         }),
@@ -480,7 +513,7 @@ describe('InventoryService', () => {
           locked.release()
           await pause(HELD_MS)
         }),
-        locked.done.then(() => inventory.reserve(reserveOn(product.id, warehouse.id)))
+        locked.done.then(() => scoped.reserve(reserveOn(product.id, warehouse.id)))
       ])
 
       expect(reservation).toMatchObject({
@@ -497,8 +530,8 @@ describe('InventoryService', () => {
       let waited = 0
 
       await Promise.all([
-        prisma.transaction(async tx => {
-          await inventory.reserve(reserveOn(product.id, warehouse.id), tx)
+        inTx(async tx => {
+          await scoped.reserve(reserveOn(product.id, warehouse.id), tx)
           locked.release()
           await pause(HELD_MS)
         }),
@@ -528,7 +561,7 @@ describe('InventoryService', () => {
       const [, out] = await Promise.allSettled([
         switchOff(warehouse.id, locked),
         locked.done.then(() =>
-          inventory.move({
+          scoped.move({
             storeId: ctx.storeA.id,
             productId: product.id,
             warehouseId: warehouse.id,
@@ -551,8 +584,8 @@ describe('InventoryService', () => {
       // The movement holds the product while the variant is created under lockProduct (FOR UPDATE)
       let waited = 0
       await Promise.all([
-        prisma.transaction(async tx => {
-          await inventory.move(
+        inTx(async tx => {
+          await scoped.move(
             {
               storeId: ctx.storeA.id,
               productId: product.id,
@@ -587,7 +620,7 @@ describe('InventoryService', () => {
           await pause(HELD_MS)
         }),
         switching.done.then(() =>
-          inventory.move({
+          scoped.move({
             storeId: ctx.storeA.id,
             productId: product.id,
             warehouseId: warehouse.id,
@@ -712,7 +745,7 @@ describe('InventoryService', () => {
     it('lets two orders that touch the same items in opposite orders both finish', async () => {
       const a = await item({ onHand: 5 })
       const b = await createProduct(owner, { storeId: ctx.storeA.id })
-      await inventory.move({
+      await scoped.move({
         storeId: ctx.storeA.id,
         productId: b.id,
         warehouseId: ctx.warehouseA.id,
@@ -733,7 +766,7 @@ describe('InventoryService', () => {
       // Six orders for five units of each item: none waits on another for ever, and exactly five get through
       const results = await Promise.allSettled(
         Array.from({ length: 6 }, (_, index) =>
-          inventory.moveMany(
+          scoped.moveMany(
             index % 2 === 0
               ? [reserve(a.productId), reserve(b.id)]
               : [reserve(b.id), reserve(a.productId)]
@@ -910,7 +943,7 @@ describe('InventoryService', () => {
         warehouseId: ctx.warehouseA.id
       }
 
-      const honest = await inventory.checkLevel(item0)
+      const honest = await scoped.checkLevel(item0)
       expect(honest.matches).toBe(true)
       expect(honest.actual).toMatchObject({ onHand: 10, reserved: 1 })
 
@@ -918,7 +951,7 @@ describe('InventoryService', () => {
       for (const forged of [{ onHand: 99 }, { reserved: 0 }, { valueCents: 1n }]) {
         const before = await levelOf(stock.productId)
         await owner.inventoryLevel.update({ where: { id: before.id }, data: forged })
-        const check = await inventory.checkLevel(item0)
+        const check = await scoped.checkLevel(item0)
         expect(check.matches).toBe(false)
         expect(check.expected).toEqual(honest.expected)
         await owner.inventoryLevel.update({
@@ -926,12 +959,12 @@ describe('InventoryService', () => {
           data: { onHand: before.onHand, reserved: before.reserved, valueCents: before.valueCents }
         })
       }
-      expect((await inventory.checkLevel(item0)).matches).toBe(true)
+      expect((await scoped.checkLevel(item0)).matches).toBe(true)
     })
 
     it('finds a level that never moved equal to its empty ledger', async () => {
       const stock = await item()
-      const check = await inventory.checkLevel({
+      const check = await scoped.checkLevel({
         storeId: ctx.storeA.id,
         productId: stock.productId,
         warehouseId: ctx.warehouseA.id
@@ -983,8 +1016,8 @@ describe('InventoryService', () => {
       const before = moved.heard.length
 
       await expect(
-        prisma.transaction(async tx => {
-          await inventory.reserve(
+        inTx(async tx => {
+          await scoped.reserve(
             {
               storeId: ctx.storeA.id,
               productId: stock.productId,
@@ -1017,9 +1050,9 @@ describe('InventoryService', () => {
 
       // The second line has no stock: the whole order fails and the first reservation goes with it
       await expect(
-        prisma.transaction(async tx => {
-          await inventory.reserve(reserve(first.productId), tx)
-          await inventory.reserve(reserve(second.productId), tx)
+        inTx(async tx => {
+          await scoped.reserve(reserve(first.productId), tx)
+          await scoped.reserve(reserve(second.productId), tx)
         })
       ).rejects.toMatchObject({ code: ErrorCodes.INSUFFICIENT_INVENTORY })
 
@@ -1080,7 +1113,7 @@ describe('InventoryService', () => {
       const theirs = await createProduct(owner, { storeId: ctx.storeB.id })
       const idempotencyKey = key()
 
-      await inventory.move({
+      await scoped.move({
         storeId: ctx.storeB.id,
         productId: theirs.id,
         warehouseId: ctx.warehouseB.id,
