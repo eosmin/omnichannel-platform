@@ -1,3 +1,5 @@
+import pg from 'pg'
+
 import { Permissions, RoleNames, RolePresets } from '@platform/core/auth'
 import {
   connectionUrls,
@@ -40,6 +42,32 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 // ledger stands on, so that a bug of a service cannot break them. Each case writes as the owner of the database, which no
 // privilege holds back: what refuses it is the table itself. The routes that read and write the ledger, and their isolation
 // cases, arrive with the second PR of Step 4B.2.
+// One UPDATE as the role of the url, inside a transaction that carries the context of the organization, the way the worker runs
+// (JobContext.forOrganization): with the policies enforced a role without bypass sees the rows of the organization it names and no
+// other, so an UPDATE outside a context changes no row and proves nothing. The grants and the triggers are still what is under test.
+// set_config(..., true) is transaction-local: it cannot reach the next user of the connection
+async function updateIncidentAs(
+  url: string,
+  organizationId: string,
+  sql: string
+): Promise<unknown> {
+  const client = new pg.Client({ connectionString: url })
+  client.on('error', () => undefined)
+  await client.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query("SELECT set_config('app.organization_ids', $1, true)", [organizationId])
+    const result = await client.query(sql)
+    await client.query('COMMIT')
+    return result.rowCount
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw error
+  } finally {
+    await client.end()
+  }
+}
+
 describe('The tables of the ledger', () => {
   const prefix = newRunPrefix()
   let owner: OwnerClient
@@ -1367,18 +1395,15 @@ describe('The tables of the ledger', () => {
         data: { resolvedAt: new Date() }
       })
       const row = await owner.financeChainIncident.create({ data: incident(orgB.id) })
-      const closeAs = async (url: string): Promise<unknown> => {
-        const client = createOwnerClient(url)
-        try {
-          return await client.$executeRawUnsafe(
-            `UPDATE finance_chain_incidents SET resolved_at = now() WHERE id = '${row.id}'`
-          )
-        } finally {
-          await client.$disconnect()
-        }
-      }
+      const closeAs = (url: string): Promise<unknown> =>
+        updateIncidentAs(
+          url,
+          orgB.id,
+          `UPDATE finance_chain_incidents SET resolved_at = now() WHERE id = '${row.id}'`
+        )
       await expect(closeAs(connectionUrls().app)).rejects.toThrow(/permission denied/)
-      await closeAs(connectionUrls().worker)
+      // The worker, in the context of the organization, closes the one incident
+      expect(await closeAs(connectionUrls().worker)).toBe(1)
       expect(
         (await owner.financeChainIncident.findUniqueOrThrow({ where: { id: row.id } })).resolvedAt
       ).not.toBeNull()
@@ -1399,21 +1424,20 @@ describe('The tables of the ledger', () => {
       expect(early.resolvedAt?.getTime()).toBe(row.detectedAt.getTime())
       const urls = connectionUrls()
       for (const url of [urls.worker]) {
-        const client = createOwnerClient(url)
-        try {
-          await expect(
-            client.$executeRawUnsafe(
-              `UPDATE finance_chain_incidents SET resolved_at = NULL WHERE id = '${row.id}'`
-            )
-          ).rejects.toThrow(/cannot be reopened/)
-          await expect(
-            client.$executeRawUnsafe(
-              `UPDATE finance_chain_incidents SET resolved_at = now() + interval '1 hour' WHERE id = '${row.id}'`
-            )
-          ).rejects.toThrow(/cannot be reopened/)
-        } finally {
-          await client.$disconnect()
-        }
+        await expect(
+          updateIncidentAs(
+            url,
+            orgB.id,
+            `UPDATE finance_chain_incidents SET resolved_at = NULL WHERE id = '${row.id}'`
+          )
+        ).rejects.toThrow(/cannot be reopened/)
+        await expect(
+          updateIncidentAs(
+            url,
+            orgB.id,
+            `UPDATE finance_chain_incidents SET resolved_at = now() + interval '1 hour' WHERE id = '${row.id}'`
+          )
+        ).rejects.toThrow(/cannot be reopened/)
       }
       // The owner of the database keeps the way to correct a mistake
       const reopened = await owner.financeChainIncident.update({
