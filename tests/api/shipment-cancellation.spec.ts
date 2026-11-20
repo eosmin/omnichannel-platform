@@ -539,6 +539,11 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
         .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseA.id })
       expect(first.status).toBe(CREATED)
       const firstId = (first.body as { id: string }).id
+      // The line added by hand is part of the order: its subtotal and total carry it, as an order made with two lines would
+      await owner.order.update({
+        where: { id: split.id },
+        data: { subtotalCents: { increment: 500 }, totalCents: { increment: 500 } }
+      })
       const cancelled = await asAdmin().post(ApiRoutes.shipments.cancel(firstId))
       expect(cancelled.body).toMatchObject({ status: ShipmentStatus.CANCEL_PENDING })
       // Even with lines left in its warehouse, a guide that is being voided may carry a share worked out for another placement of
