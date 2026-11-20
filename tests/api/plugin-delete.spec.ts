@@ -338,6 +338,59 @@ describe('Deleting a plugin of the organization', () => {
     }
   })
 
+  it('refuses a plugin revoked everywhere when only the sibling store still holds the endpoint and the secret of its last delivery', async () => {
+    const id = await register()
+    const installationA = await setUp(id)
+    const installationSibling = await setUp(id, asAdminSibling)
+    await revoke(installationA)
+    await revoke(installationSibling, asAdminSibling)
+    await owner.pluginInstallation.update({
+      where: { id: installationA },
+      data: { webhookEndpoint: null, webhookSecret: null }
+    })
+
+    expect(codeOf((await remove(id).expect(CONFLICT)).body)).toBe(ErrorCodes.PLUGIN_IN_USE)
+    expect(await exists(id)).toBe(true)
+    expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(2)
+  })
+
+  it('archives a plugin whose only connection is in a sibling store, and deletes none of the installations of the organization', async () => {
+    const id = await register()
+    const installationA = await setUp(id)
+    const installationSibling = await setUp(id, asAdminSibling)
+    await revoke(installationA)
+    await revoke(installationSibling, asAdminSibling)
+    await owner.pluginInstallation.updateMany({
+      where: { pluginId: id },
+      data: { webhookEndpoint: null, webhookSecret: null }
+    })
+    await owner.channelConnection.create({
+      data: {
+        storeId: ctx.storeA2.id,
+        pluginId: id,
+        connectionId: `${prefix}-sibling-connection-${id}`,
+        displayName: 'Past connection of the sibling',
+        status: 'disconnected',
+        credentials: Buffer.alloc(0),
+        installationId: installationSibling
+      }
+    })
+    try {
+      // The connection of the sibling store is invisible to the context of the store of the header
+      await remove(id).expect(NO_CONTENT)
+
+      expect((await owner.plugin.findUniqueOrThrow({ where: { id } })).status).toBe(
+        PluginStatus.ARCHIVED
+      )
+      expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(2)
+      expect(
+        await owner.channelConnection.count({ where: { installationId: installationSibling } })
+      ).toBe(1)
+    } finally {
+      await owner.channelConnection.deleteMany({ where: { installationId: installationSibling } })
+    }
+  })
+
   it('archives once when two deletes of the same plugin arrive together', async () => {
     const id = await register()
     const installationId = await holdAConnection(id)

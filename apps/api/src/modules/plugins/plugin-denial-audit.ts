@@ -43,7 +43,8 @@ export async function auditPluginDenial(
     if (!(await withinBudget(deps, denial, request.ip))) return
     const userAgent = request.get('user-agent')
     const { installation } = denial
-    deps.audit.log({
+    // Detached from the transaction of the request: a route that refuses with a 403 rolls it back, and the refusal must stay on the trail
+    deps.audit.logRefused({
       action: AuditAction.PLUGIN_API_DENIED,
       actor: { system: true },
       ...(installation === undefined

@@ -184,6 +184,53 @@ describe('the audit trail, against the database', () => {
     expect(await rowsOf('refused')).toEqual([])
   })
 
+  describe('a request that fails and rolls back', () => {
+    const STORE = 'ffffffff-ffff-4fff-8fff-fffffffffffe'
+    const failingRequest = (work: () => void): Promise<unknown> =>
+      app
+        .get(PrismaService)
+        .tenantTransaction({ storeIds: [STORE], organizationIds: [] }, () => {
+          work()
+          return Promise.reject(new Error('the request failed'))
+        })
+        .catch((error: unknown) => error)
+
+    it('keeps the entry of a refusal (logRefused), outside the transaction that rolls back', async () => {
+      const resourceId = randomUUID()
+
+      await failingRequest(() =>
+        audit.logRefused({
+          action: AuditAction.PLUGIN_API_DENIED,
+          actor: { system: true },
+          storeId: STORE,
+          resourceType: RESOURCE,
+          resourceId,
+          metadata: { missing: ['media:write'] }
+        })
+      )
+
+      expect(await rowsOf(resourceId)).toMatchObject([
+        { action: 'plugin.api_denied', store_id: STORE, metadata: { missing: ['media:write'] } }
+      ])
+    })
+
+    it('drops the entry of a success (log) that the same rollback reverts', async () => {
+      const resourceId = randomUUID()
+
+      await failingRequest(() =>
+        audit.log({
+          action: AuditAction.CUSTOMER_EXPORTED,
+          actor: { userId },
+          storeId: STORE,
+          resourceType: RESOURCE,
+          resourceId
+        })
+      )
+
+      expect(await rowsOf(resourceId)).toEqual([])
+    })
+  })
+
   it('stores metadata that was too big as a note, and the row is still written', async () => {
     const resourceId = randomUUID()
 

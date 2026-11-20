@@ -19,7 +19,13 @@ import { HttpStatusCodes } from '@platform/core/errors'
 import { MULTI_FILE_SEND_ENABLED, NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  actorOf,
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import {
   type ConnectChannelBody,
@@ -92,6 +98,9 @@ export class ChannelConnectionsController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_EDIT)
+  @NoTenantTransaction(
+    'connect() calls the provider (network): the reads and the write open short contexts of their own and the call runs between them, so no lock of the installation is held while the provider answers and a concurrent revoke is not blocked'
+  )
   @Post(ApiRoutes.channels.connect(':pluginId'))
   @HttpCode(HttpStatusCodes.CREATED)
   connect(
