@@ -38,7 +38,9 @@ import {
   type TagView
 } from '@platform/api-client'
 
+import { useStore } from '../../components/providers/store-context'
 import { apiClient } from '../api'
+import { AuxiliaryReads, mayRead } from '../auxiliary-reads'
 import { usePluginLabel } from '../plugin-label'
 
 // The list is read page by page; a realtime event makes the whole `conversations` key of the store
@@ -57,22 +59,28 @@ export function useConversationPages(
 }
 
 export function useConversationCounts(storeId: string): UseQueryResult<ConversationCountsView> {
+  const { can } = useStore()
   return useQuery({
+    enabled: mayRead(can, AuxiliaryReads.INBOX_DIRECTORY),
     queryKey: QueryKeys.conversations.counts(storeId),
     queryFn: ({ signal }) => fetchConversationCounts(apiClient, storeId, signal)
   })
 }
 
 export function useMemberDirectory(storeId: string): UseQueryResult<MemberDirectoryEntryView[]> {
+  const { can } = useStore()
   return useQuery({
+    enabled: mayRead(can, AuxiliaryReads.INBOX_DIRECTORY),
     queryKey: QueryKeys.members.directory(storeId),
     queryFn: ({ signal }) => fetchMemberDirectory(apiClient, storeId, signal)
   })
 }
 
 export function useChannelDirectory(storeId: string): UseQueryResult<ChannelDirectoryEntryView[]> {
+  const { can } = useStore()
   const label = usePluginLabel()
   return useQuery({
+    enabled: mayRead(can, AuxiliaryReads.INBOX_DIRECTORY),
     queryKey: QueryKeys.channels.directory(storeId),
     queryFn: ({ signal }) => fetchChannelDirectory(apiClient, storeId, signal),
     select: useCallback(
@@ -172,7 +180,9 @@ export function useInboxBehavior(
 
 // The tags of the store, for the filter of the list. Any agent who sees conversations reads them.
 export function useTags(storeId: string): UseQueryResult<TagView[]> {
+  const { can } = useStore()
   return useQuery({
+    enabled: mayRead(can, AuxiliaryReads.INBOX_DIRECTORY),
     queryKey: QueryKeys.tags.all(storeId),
     queryFn: ({ signal }) => fetchTags(apiClient, storeId, signal)
   })

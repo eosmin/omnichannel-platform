@@ -90,7 +90,7 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
           onlyDrafts={onlyDrafts}
           search={search}
           channels={channels.data ?? NO_CHANNELS}
-          areChannelsReady={!channels.isPending}
+          areChannelsReady={!channels.isLoading}
         />
       </div>
       {/* On a phone with the list showing the section is hidden: the page still needs its heading */}
