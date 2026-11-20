@@ -124,12 +124,21 @@ describe('periodView', () => {
     closedBy: null,
     reopenedAt: null,
     reopenedBy: null,
-    reopenReason: null
+    reopenReason: null,
+    closingHash: null
   }
 
   it('says a month has ended only from the day after its last one, in the day it is given', () => {
     expect(periodView(row, '2026-09-30').hasEnded).toBe(false)
     expect(periodView(row, '2026-10-01').hasEnded).toBe(true)
+  })
+
+  it('gives the head of the chain frozen at the close, for the auditor (TDD_18 §5.1), and null for a month never closed', () => {
+    expect(periodView(row, '2026-10-01').closingHash).toBeNull()
+    const hash = 'a'.repeat(64)
+    expect(
+      periodView({ ...row, status: 'closed', closingHash: hash }, '2026-10-01').closingHash
+    ).toBe(hash)
   })
 
   it('says a month has started from its first day', () => {

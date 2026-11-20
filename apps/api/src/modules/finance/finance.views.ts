@@ -1,4 +1,4 @@
-import { NormalSide, type VatLineKind, type VatSide } from '@platform/core/domain'
+import { NormalSide, PeriodStatus, type VatLineKind, type VatSide } from '@platform/core/domain'
 import { balanceOf, dateToDay, periodEnded } from '@platform/core/finance'
 
 // What the finance routes answer. A date is 'YYYY-MM-DD' (an accounting date is a day, not an instant), and a count that can
@@ -152,7 +152,8 @@ export const PERIOD_SELECT = {
   closedBy: true,
   reopenedAt: true,
   reopenedBy: true,
-  reopenReason: true
+  reopenReason: true,
+  closingHash: true
 } as const
 
 export interface PeriodRow {
@@ -167,6 +168,7 @@ export interface PeriodRow {
   reopenedAt: Date | null
   reopenedBy: string | null
   reopenReason: string | null
+  closingHash: string | null
 }
 
 export interface PeriodView {
@@ -181,6 +183,8 @@ export interface PeriodView {
   reopenedAt: string | null
   reopenedBy: string | null
   reopenReason: string | null
+  // The head of the entry chain frozen when the month was closed, for the auditor (TDD_18 §5.1); null while it is open (never closed or reopened)
+  closingHash: string | null
   // Against the day of the organization (see `organizationDay`): the last day is over / the first day has come
   hasEnded: boolean
   hasStarted: boolean
@@ -198,6 +202,9 @@ export const periodView = (row: PeriodRow, today: string): PeriodView => ({
   reopenedAt: row.reopenedAt === null ? null : row.reopenedAt.toISOString(),
   reopenedBy: row.reopenedBy,
   reopenReason: row.reopenReason,
+  // Only while it is closed: a reopened month keeps the old head in its row (the chain check reads it as an anchor) but the books
+  // can move again, so the answer does not offer it as the head of the month
+  closingHash: row.status === String(PeriodStatus.CLOSED) ? row.closingHash : null,
   hasEnded: periodEnded(isoDay(row.endsOn), today),
   hasStarted: isoDay(row.startsOn) <= today
 })

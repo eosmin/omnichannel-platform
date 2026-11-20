@@ -1,6 +1,7 @@
 import { createApiClient } from './api-client'
 import {
   fetchAllFinanceAccounts,
+  fetchAllFinancePeriods,
   fetchFinanceBalances,
   fetchFinanceSetup,
   mapFinanceAccountRole,
@@ -63,6 +64,32 @@ const settings = {
 }
 
 describe('finance api', () => {
+  it('reads the closing hash of a period: the head of the chain frozen at the close, or null', async () => {
+    const period = (closingHash: string | null) => ({
+      id: 'p1',
+      year: 2026,
+      month: 9,
+      startsOn: '2026-09-01',
+      endsOn: '2026-09-30',
+      status: closingHash === null ? 'open' : 'closed',
+      closedAt: null,
+      closedBy: null,
+      reopenedAt: null,
+      reopenedBy: null,
+      reopenReason: null,
+      closingHash,
+      hasEnded: true,
+      hasStarted: true
+    })
+    const { client } = setup(
+      json(200, { data: [period('b'.repeat(64)), period(null)], nextCursor: null, hasMore: false })
+    )
+
+    const periods = await fetchAllFinancePeriods(client, 's1')
+
+    expect(periods.map(item => item.closingHash)).toEqual(['b'.repeat(64), null])
+  })
+
   it('reads the state of the setup through the store of the request', async () => {
     const { client, fetchImpl } = setup(
       json(200, { ready: false, countries: ['SV'], settings: null })

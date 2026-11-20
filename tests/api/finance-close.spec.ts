@@ -32,6 +32,7 @@ interface PeriodBody {
   year: number
   month: number
   status: string
+  closingHash: string | null
   closedAt: string | null
   closedBy: string | null
   reopenedAt: string | null
@@ -296,6 +297,13 @@ describe('Closing the months, the reports and the auditor files', () => {
         where: { organizationId: ctx.orgA.id }
       })
       expect(row.closingHash).toBe(head.lastEntryHash)
+      // The head that was frozen is what the auditor reads (TDD_18 §5.1), in the answer of the close, of one period and of the list
+      expect(closed.closingHash).toBe(row.closingHash)
+      const one = await asAdminA().get(ApiRoutes.finance.periods.byId(january.id))
+      expect((one.body as PeriodBody).closingHash).toBe(row.closingHash)
+      const list = await asAdminA().get(ApiRoutes.finance.periods.list)
+      const listed = (list.body as { data: PeriodBody[] }).data.find(item => item.id === january.id)
+      expect(listed?.closingHash).toBe(row.closingHash)
       expect(head.lockedThrough?.toISOString().slice(0, 10)).toBe('2026-01-31')
       const audit = await waitForAuditEntries(
         owner,
@@ -351,6 +359,8 @@ describe('Closing the months, the reports and the auditor files', () => {
         status: PeriodStatus.OPEN,
         reopenedBy: ctx.adminA.id,
         reopenReason: 'The bank corrected a payment',
+        // The head of the last close is not offered for a month that can change again
+        closingHash: null,
         // February 2026 is over in the day of every store: the api says so, the button of the screen follows it
         hasEnded: true,
         hasStarted: true
