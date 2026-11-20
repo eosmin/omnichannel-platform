@@ -57,9 +57,12 @@ export class FinanceCloseService {
     now: Date = new Date()
   ): Promise<PeriodView> {
     await this.requireNothingPending(organizationId, periodId)
-    const result = await this.unit(organizationId, () =>
-      this.closeUnit(organizationId, periodId, actor, now)
-    )
+    // The answer is read in the same unit as the write: a read of its own after the commit could fail and answer an error for a month
+    // that is closed
+    const { result, view } = await this.unit(organizationId, async () => {
+      const closed = await this.closeUnit(organizationId, periodId, actor, now)
+      return { result: closed, view: await this.get(organizationId, closed.id) }
+    })
     this.audit.log({
       action: AuditAction.FINANCE_PERIOD_CLOSED,
       actor: { userId: actor.userId },
@@ -71,7 +74,7 @@ export class FinanceCloseService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    return this.unit(organizationId, () => this.get(organizationId, result.id))
+    return view
   }
 
   private closeUnit(
