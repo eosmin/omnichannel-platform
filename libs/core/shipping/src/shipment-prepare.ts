@@ -13,6 +13,7 @@ import {
   ShipmentLimits,
   ShipmentKind,
   ShipmentUnknownOutcomeStatuses,
+  ShipmentVoidingStatuses,
   ShippingFeeBoundKinds,
   ShippingPayer,
   shipmentIdempotencyKey,
@@ -399,6 +400,20 @@ export async function prepareGuide(
       unknown
         ? 'a guide of the order may exist at the carrier'
         : 'the order already has an active guide'
+    )
+  }
+  // A guide whose void is in progress or failed, of an origin that no longer has lines of the order (the lines moved), still
+  // counts in what the new guide is told it collects, and nothing takes it out when the void ends: the new guide waits for it.
+  // One whose origin still has lines is another share of a split order and does not stop this one.
+  const orphanVoiding = existing.some(
+    entry =>
+      ShipmentVoidingStatuses.some(status => String(status) === entry.status) &&
+      !origins.some(origin => origin.warehouseId === entry.originWarehouseId)
+  )
+  if (orphanVoiding) {
+    throw shippingRefusal(
+      ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS,
+      'a guide of a warehouse that no longer has lines of the order is still being voided: finish its cancellation, then create this one'
     )
   }
   const attempt =

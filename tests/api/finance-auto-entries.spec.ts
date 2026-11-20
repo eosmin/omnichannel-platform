@@ -577,6 +577,71 @@ describe('The automatic entries (Step 4B.6a)', () => {
       }
     })
 
+    // What an order moved on each account across every entry of its own (debit less credit)
+    async function netOf(orderId: string, role: AccountRole): Promise<number> {
+      const entries = await owner.journalEntry.findMany({
+        where: {
+          organizationId: ctx.orgA.id,
+          sourceType: FinanceSourceType.ORDER,
+          sourceId: orderId
+        },
+        include: { lines: { include: { account: { select: { code: true } } } } }
+      })
+      return entries
+        .flatMap(entry => entry.lines)
+        .filter(line => line.account.code === code(role))
+        .reduce((sum, line) => sum + line.debitCents - line.creditCents, 0)
+    }
+    const recognizeOn = (moment: 'shipped' | 'delivered') =>
+      owner.financeSettings.update({
+        where: { organizationId: ctx.orgA.id },
+        data: { recognizeSaleOn: moment }
+      })
+
+    it('an order half way when the organization changes the moment (E2 under delivered, sale under shipped) takes the cost out once and is sold once', async () => {
+      const connectionId = await connectionOf()
+      const id = await order({ carrierConnectionId: connectionId, status: 'SHIPPED' })
+      await issue(id)
+      try {
+        expect((await run(id, FinanceEventKind.SENT)).outcome).toBe(FinancePostingOutcome.POSTED)
+        await recognizeOn('shipped')
+        expect((await run(id, FinanceEventKind.SALE)).outcome).toBe(FinancePostingOutcome.POSTED)
+        // The sale takes the cost from where E2 put it, not from the inventory again
+        expect(await netOf(id, AccountRole.INVENTORY)).toBe(-800)
+        expect(await netOf(id, AccountRole.INVENTORY_IN_TRANSIT)).toBe(0)
+        expect(await netOf(id, AccountRole.COST_OF_GOODS_SOLD)).toBe(800)
+        expect(await netOf(id, AccountRole.SALES_REVENUE)).toBe(-2000)
+        // Both jobs run again: nothing new
+        expect((await run(id, FinanceEventKind.SENT)).outcome).toBe(FinancePostingOutcome.REPLAYED)
+        expect((await run(id, FinanceEventKind.SALE)).outcome).toBe(FinancePostingOutcome.REPLAYED)
+        expect(await netOf(id, AccountRole.COST_OF_GOODS_SOLD)).toBe(800)
+      } finally {
+        await recognizeOn('delivered')
+      }
+    })
+
+    it('the other way round (sale under shipped, then the moment goes back to delivered) neither takes the cost twice nor loses the sale', async () => {
+      const connectionId = await connectionOf()
+      const id = await order({ carrierConnectionId: connectionId, status: 'DELIVERED' })
+      await issue(id)
+      try {
+        await recognizeOn('shipped')
+        expect((await run(id, FinanceEventKind.SALE)).outcome).toBe(FinancePostingOutcome.POSTED)
+        await recognizeOn('delivered')
+        // The sale already took the cost from the inventory: E2 has nothing left, and the sale stays posted once
+        expect((await run(id, FinanceEventKind.SENT)).outcome).toBe(
+          FinancePostingOutcome.NOTHING_TO_POST
+        )
+        expect((await run(id, FinanceEventKind.SALE)).outcome).toBe(FinancePostingOutcome.REPLAYED)
+        expect(await netOf(id, AccountRole.INVENTORY)).toBe(-800)
+        expect(await netOf(id, AccountRole.INVENTORY_IN_TRANSIT)).toBe(0)
+        expect(await netOf(id, AccountRole.COST_OF_GOODS_SOLD)).toBe(800)
+        expect(await netOf(id, AccountRole.SALES_REVENUE)).toBe(-2000)
+      } finally {
+        await recognizeOn('delivered')
+      }
+    })
+
     it('an order returned after delivery is still a sale: its return is another entry', async () => {
       const connectionId = await connectionOf()
       const id = await order({ carrierConnectionId: connectionId })

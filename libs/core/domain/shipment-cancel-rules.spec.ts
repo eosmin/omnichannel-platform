@@ -11,6 +11,10 @@ const base: GuideSource = {
     { productId: 'p2', variantId: 'v1', quantity: 1 }
   ],
   totalCents: 5000,
+  allocations: [
+    { productId: 'p1', variantId: null, warehouseId: 'w1', quantity: 2 },
+    { productId: 'p2', variantId: 'v1', warehouseId: 'w1', quantity: 1 }
+  ],
   carrierConnectionId: 'c1'
 }
 
@@ -72,6 +76,39 @@ describe('guideAffectingChanges (TDD_17 §4.8)', () => {
     expect(guideAffectingChanges(base, { ...base, items: [first] })).toEqual([
       GuideAffectingFields.ITEMS
     ])
+  })
+
+  it('finds lines that move to another warehouse, or split between two, and reads the same placement in any order as nothing', () => {
+    const [first, second] = base.allocations
+    if (first === undefined || second === undefined) throw new Error('fixture')
+    expect(guideAffectingChanges(base, { ...base, allocations: [second, first] })).toEqual([])
+    expect(
+      guideAffectingChanges(base, {
+        ...base,
+        allocations: [{ ...first, warehouseId: 'w2' }, second]
+      })
+    ).toEqual([GuideAffectingFields.ORIGINS])
+    expect(
+      guideAffectingChanges(base, {
+        ...base,
+        allocations: [
+          { ...first, quantity: 1 },
+          { ...first, warehouseId: 'w2', quantity: 1 },
+          second
+        ]
+      })
+    ).toEqual([GuideAffectingFields.ORIGINS])
+    // The same units split in two rows, or kept in one, are the same placement
+    expect(
+      guideAffectingChanges(
+        { ...base, allocations: [{ ...first, quantity: 1 }, { ...first, quantity: 1 }, second] },
+        { ...base, allocations: [first, second] }
+      )
+    ).toEqual([])
+    // An order with no tracked stock has no placement to change
+    expect(
+      guideAffectingChanges({ ...base, allocations: [] }, { ...base, allocations: [] })
+    ).toEqual([])
   })
 
   it('finds a new planned carrier', () => {

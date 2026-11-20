@@ -22,6 +22,7 @@ import {
   computeOrderTotals,
   exchangeCreditReason,
   guideAffectingChanges,
+  type GuideSource,
   copyStockKey,
   type CopyStock,
   editableOrderFields,
@@ -115,6 +116,28 @@ function toAllocatable(lines: readonly OrderLine[], itemIds: readonly string[]):
     trackInventory: line.trackInventory,
     requested: line.requestedAllocations,
     preferred: line.preferredAllocations
+  }))
+}
+
+// Where each unit of each line of an order leaves from, as the guides see it (TDD_17 §4.8)
+async function allocationsOfOrder(
+  tx: PrismaTransaction,
+  storeId: string,
+  orderId: string
+): Promise<GuideSource['allocations']> {
+  const rows = await tx.orderItemAllocation.findMany({
+    where: { storeId, orderItem: { orderId } },
+    select: {
+      warehouseId: true,
+      quantity: true,
+      orderItem: { select: { productId: true, variantId: true } }
+    }
+  })
+  return rows.map(row => ({
+    productId: row.orderItem.productId,
+    variantId: row.orderItem.variantId,
+    warehouseId: row.warehouseId,
+    quantity: row.quantity
   }))
 }
 
@@ -819,6 +842,10 @@ export class OrdersService {
 
       // With a guide the tracking number is the guide's, not the agent's (TDD_17 §4.5 step 4)
       const hasActiveShipment = await hasActiveGuide(tx, storeId, orderId)
+      // The warehouses the lines leave from before the edit: a guide that is alive was made from them (TDD_17 §4.8)
+      const allocationsBefore = hasActiveShipment
+        ? await allocationsOfOrder(tx, storeId, orderId)
+        : []
       const requested = orderFieldsOfEdit(body)
       const verdict = checkOrderEdit(status, requested, { hasActiveShipment })
       if (!verdict.ok) {
@@ -1129,6 +1156,7 @@ export class OrdersService {
               paymentMethod: order.paymentMethod,
               items: order.items,
               totalCents: order.totalCents,
+              allocations: allocationsBefore,
               carrierConnectionId: order.carrierConnectionId
             },
             {
@@ -1138,6 +1166,10 @@ export class OrdersService {
               paymentMethod: body.paymentMethod ?? order.paymentMethod,
               items: lines === null ? order.items : lines,
               totalCents: newTotalCents,
+              // Lines kept: the placement did not move. Lines written: read after they are placed again (the allocation above),
+              // where the stock really went and not what the request asked for
+              allocations:
+                lines === null ? allocationsBefore : await allocationsOfOrder(tx, storeId, orderId),
               carrierConnectionId: newCarrierConnectionId
             }
           )

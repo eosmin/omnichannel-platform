@@ -12,6 +12,13 @@ export interface GuideSource {
   paymentMethod: string
   items: readonly { productId: string; variantId: string | null; quantity: number }[]
   totalCents: number
+  // The warehouse each unit of each line leaves from (the allocations of the order); empty for an order with no tracked stock
+  allocations: readonly {
+    productId: string
+    variantId: string | null
+    warehouseId: string
+    quantity: number
+  }[]
   // The carrier the order plans to use (a guide made for another one is the wrong guide)
   carrierConnectionId: string | null
 }
@@ -36,6 +43,25 @@ const isBlank = (value: unknown): boolean => typeof value === 'string' && value.
 const itemKey = (item: GuideSource['items'][number]): string =>
   `${item.productId}:${item.variantId ?? ''}:${item.quantity}`
 
+// The units of each line in each warehouse: rows of the same line and warehouse are one placement however they are split
+function placements(allocations: GuideSource['allocations']): string[] {
+  const units = new Map<string, number>()
+  for (const allocation of allocations) {
+    const key = `${allocation.productId}:${allocation.variantId ?? ''}:${allocation.warehouseId}`
+    units.set(key, (units.get(key) ?? 0) + allocation.quantity)
+  }
+  return [...units.entries()].map(([key, quantity]) => `${key}:${quantity}`).sort()
+}
+
+// The same units in the same warehouses, in any order: a guide leaves from one origin and, when the order has more than one guide,
+// each collects the share of its own lines, so moving a line to another warehouse leaves the guides that exist made for the wrong
+// origins (and a new guide would be told that the old one still collects)
+function sameOrigins(a: GuideSource['allocations'], b: GuideSource['allocations']): boolean {
+  const left = placements(a)
+  const right = placements(b)
+  return left.length === right.length && left.every((key, index) => key === right[index])
+}
+
 // The same lines in any order are the same lines
 function sameItems(a: GuideSource['items'], b: GuideSource['items']): boolean {
   const left = a.map(itemKey).sort()
@@ -58,6 +84,9 @@ export function guideAffectingChanges(
     changed.push(GuideAffectingFields.PAYMENT_METHOD)
   }
   if (!sameItems(before.items, after.items)) changed.push(GuideAffectingFields.ITEMS)
+  if (!sameOrigins(before.allocations, after.allocations)) {
+    changed.push(GuideAffectingFields.ORIGINS)
+  }
   if (before.carrierConnectionId !== after.carrierConnectionId) {
     changed.push(GuideAffectingFields.CARRIER)
   }

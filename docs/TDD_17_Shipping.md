@@ -1047,7 +1047,7 @@ HIGH-tier when a shipment exists):
 - **The shipment leaves its pickup:** when the shipment belonged to a pickup, the package count
   of that pickup is reduced through `modifyPickup` (§4.10) when the carrier allows it, otherwise
   the pickup gets a note and the agent is told.
-- **Editing the order after a guide exists** (address, recipient phones, items, payment method) uses the same
+- **Editing the order after a guide exists** (address, recipient phones, items, the warehouses the lines leave from, payment method) uses the same
   cancel-and-recreate path (§4.3), so the old guide is voided and a new one is made; the order
   does not need to be cancelled for that.
 - **A guide whose connection was disconnected (Step 4.8 PR C1).** Disconnecting keeps the connection, its shipments and its
@@ -1069,7 +1069,7 @@ HIGH-tier when a shipment exists):
   `SHIPPING_OUTCOME_UNKNOWN`; a package that left answers `SHIPPING_CANNOT_CANCEL_AFTER_PICKUP`; `CANCEL_PENDING` and
   `CANCEL_FAILED` do not stop it.
 - **As built (Step 4.10 PR D2), cancelling is a job.** It supersedes the synchronous cancel above. `POST /shipments/:id/cancel`,
-  cancelling the order and editing what a guide was made from (address, phones, payment method, lines, and the total of a
+  cancelling the order and editing what a guide was made from (address, phones, payment method, lines, the warehouse each line leaves from, and the total of a
   cash-on-delivery order) all start the void the same way: the guide moves to `CANCEL_PENDING` in the transaction of the caller and
   `CANCEL_SHIPMENT` (five attempts, exponential backoff from 30 s) asks the carrier once that transaction committed. A `local` guide
   is `CANCELLED` at once; a carrier that cannot void leaves `CANCEL_PENDING` with `not_supported`; a carrier that does not answer is

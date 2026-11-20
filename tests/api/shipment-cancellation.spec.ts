@@ -404,6 +404,164 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
       expect(voidJobs()).toHaveLength(0)
     })
 
+    it('voids the guide when the lines move to another warehouse, so the guide made next collects the whole total', async () => {
+      const order = await reserved({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+      // A guide leaves from a warehouse that has an address
+      await owner.warehouse.update({
+        where: { id: ctx.warehouseASecond.id },
+        data: { address: { line1: 'Bodega 2', city: 'Soyapango', country: 'SV' } }
+      })
+      await createInventoryLevel(owner, {
+        storeId: ctx.storeA.id,
+        productId: order.productId,
+        warehouseId: ctx.warehouseASecond.id,
+        onHand: 5,
+        reserved: 0
+      })
+      const first = await guide(order.id, forzaId)
+      const total = (await orderOf(order.id)).totalCents
+      expect((await shipmentOf(first)).codAmountCents).toBe(total)
+
+      const moved = await edit(order.id, {
+        items: [
+          {
+            productId: order.productId,
+            quantity: 1,
+            allocations: [{ warehouseId: ctx.warehouseASecond.id, quantity: 1 }]
+          }
+        ]
+      })
+      expect(moved.status).toBe(OK)
+      expect((await orderOf(order.id)).totalCents).toBe(total)
+      // The guide leaves from a warehouse that no longer holds the lines: it is voided like one of a changed address
+      expect((await shipmentOf(first)).status).toBe(ShipmentStatus.CANCEL_PENDING)
+
+      // The guide of the other warehouse waits for the void: made now, it would be told that the old one still collects
+      const early = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(order.id))
+        .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseASecond.id })
+      expect(early.status).toBe(CONFLICT)
+      expect((early.body as ErrorBody).error.code).toBe(ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS)
+      expect(await settle(first)).toBe(VoidSettlements.CANCELLED)
+
+      const next = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(order.id))
+        .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseASecond.id })
+      expect(next.status).toBe(CREATED)
+      const made = await shipmentOf((next.body as { id: string }).id)
+      // Not the total less what the voided guide collected: the new guide collects it all
+      expect(made.codAmountCents).toBe(total)
+      expect(made.originWarehouseId).toBe(ctx.warehouseASecond.id)
+      const entries = await waitForAuditEntries(owner, {
+        storeId: ctx.storeA.id,
+        action: AuditAction.ORDER_UPDATED,
+        resourceId: order.id
+      })
+      expect(entries[0]?.metadata).toMatchObject({
+        shipmentsVoided: [first],
+        guideChanges: ['origins']
+      })
+    })
+
+    // An order whose lines moved from the first warehouse to the second, with the guide of the first being voided in `status`
+    async function movedWithGuideIn(status: ShipmentStatus): Promise<string> {
+      const order = await reserved({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+      await owner.warehouse.update({
+        where: { id: ctx.warehouseASecond.id },
+        data: { address: { line1: 'Bodega 2', city: 'Soyapango', country: 'SV' } }
+      })
+      await createInventoryLevel(owner, {
+        storeId: ctx.storeA.id,
+        productId: order.productId,
+        warehouseId: ctx.warehouseASecond.id,
+        onHand: 5,
+        reserved: 0
+      })
+      const first = await guide(order.id, forzaId)
+      const moved = await edit(order.id, {
+        items: [
+          {
+            productId: order.productId,
+            quantity: 1,
+            allocations: [{ warehouseId: ctx.warehouseASecond.id, quantity: 1 }]
+          }
+        ]
+      })
+      expect(moved.status).toBe(OK)
+      await owner.shipment.update({ where: { id: first }, data: { status } })
+      return order.id
+    }
+
+    it.each([ShipmentStatus.CANCEL_PENDING, ShipmentStatus.CANCEL_FAILED])(
+      'makes the guide of the new warehouse wait while the guide of the old one is %s',
+      async status => {
+        const orderId = await movedWithGuideIn(status)
+        const refused = await asAdmin()
+          .post(ApiRoutes.shipments.forOrder(orderId))
+          .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseASecond.id })
+        expect(refused.status).toBe(CONFLICT)
+        expect((refused.body as ErrorBody).error.code).toBe(
+          ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS
+        )
+      }
+    )
+
+    it('does not stop the guide of one warehouse because the guide of another warehouse with lines of the order is being voided', async () => {
+      const split = await reserved({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+      const item = await owner.orderItem.findFirstOrThrow({ where: { orderId: split.id } })
+      const second = await owner.orderItem.create({
+        data: {
+          orderId: split.id,
+          productId: item.productId,
+          productName: 'second line',
+          quantity: 1,
+          unitPriceCents: 500
+        }
+      })
+      await owner.orderItemAllocation.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderItemId: second.id,
+          warehouseId: ctx.warehouseASecond.id,
+          quantity: 1
+        }
+      })
+      await owner.warehouse.update({
+        where: { id: ctx.warehouseASecond.id },
+        data: { address: { line1: 'Bodega 2', city: 'Soyapango', country: 'SV' } }
+      })
+      const first = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(split.id))
+        .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseA.id })
+      expect(first.status).toBe(CREATED)
+      await owner.shipment.update({
+        where: { id: (first.body as { id: string }).id },
+        data: { status: ShipmentStatus.CANCEL_PENDING }
+      })
+      // The first warehouse still has lines of the order: its guide is another share, not one the new guide must wait for
+      const other = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(split.id))
+        .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseASecond.id })
+      expect(other.status).toBe(CREATED)
+    })
+
+    it('leaves the guide alone when the edit sends the lines again in the warehouse they already are', async () => {
+      const order = await reserved({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+      const shipmentId = await guide(order.id, forzaId)
+      const same = await edit(order.id, {
+        items: [
+          {
+            productId: order.productId,
+            quantity: 1,
+            allocations: [{ warehouseId: ctx.warehouseA.id, quantity: 1 }]
+          }
+        ]
+      })
+      expect(same.status).toBe(OK)
+      expect((await shipmentOf(shipmentId)).status).toBe(ShipmentStatus.LABEL_CREATED)
+      expect(voidJobs()).toHaveLength(0)
+    })
+
     it('voids the guide when the planned carrier changes', async () => {
       const order = await reserved()
       const shipmentId = await guide(order.id, forzaId)
