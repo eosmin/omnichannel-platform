@@ -72,6 +72,15 @@ describe('The webhooks of an integration plugin and its revocation', () => {
   let cipher: CredentialCipher
   let counter = 0
   const goneCounted: string[] = []
+  // Which wall refuses the log row of a deleted installation depends on the role of the connection: a role that skips row-level
+  // security (BYPASSRLS or a superuser) reaches the foreign key (23503 → P2003, a deletion at once); one that does not is refused by
+  // the policy (42501) first and counted. The worker of the suites skips it until E-2 takes the bypass away, so the cases read the role.
+  const skipsPolicy = async (): Promise<boolean> => {
+    const rows = await app.get(PrismaService).client.$queryRaw<
+      { skips: boolean }[]
+    >`SELECT (rolbypassrls OR rolsuper) AS skips FROM pg_roles WHERE rolname = current_user`
+    return rows[0]?.skips === true
+  }
   const errorLogged: unknown[][] = []
   const counted: Record<string, number> = {}
 
@@ -509,10 +518,8 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       })
 
       expect(outcome).toBe(WebhookOutcome.DELIVERED)
-      // For a plugin the foreign key (23503 → P2003, deleted at once) answers first, as the enforced run showed, and not the policy
-      // (42501): the counter of the policy stays empty. If the order of the checks ever changes and it counts, this fails and says so.
-      // The verdict of the policy is pinned below, with a refusal that does not depend on the database.
-      expect(goneCounted).toEqual([])
+      // Which wall answered tells in the counter: the foreign key (the worker skips the policy) leaves it empty, the policy counts it
+      expect(goneCounted).toEqual((await skipsPolicy()) ? [] : [WebhookMetricTarget.PLUGIN])
       expect(errorLogged).toEqual([])
     })
 
@@ -527,15 +534,13 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       await expect(
         deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, { post })
       ).rejects.toBeInstanceOf(WebhookPostFailed)
+      expect(goneCounted).toEqual((await skipsPolicy()) ? [] : [WebhookMetricTarget.PLUGIN])
     })
 
     it('gets from the database the refusal that the role of the worker is due for a deleted installation', async () => {
       const { setup } = await setUp()
       await owner.pluginInstallation.delete({ where: { id: setup.installationId } })
-      const rows = await app.get(PrismaService).client.$queryRaw<
-        { skips: boolean }[]
-      >`SELECT rolbypassrls AS skips FROM pg_roles WHERE rolname = current_user`
-      const skipsPolicy = rows[0]?.skips === true
+      const skips = await skipsPolicy()
 
       const refused = await new JobContext(app.get(PrismaService))
         .forStore(ctx.storeA.id, () =>
@@ -557,7 +562,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       // A role that skips row-level security reaches the foreign key (P2003); one that does not is refused by the policy (42501)
       // first. The worker of the suites skips it until E-2: when that changes, this says so instead of passing without telling.
       expect(refused).not.toBeNull()
-      if (skipsPolicy) {
+      if (skips) {
         expect((refused as { code?: string }).code).toBe('P2003')
         expect(isRowLevelSecurityError(refused)).toBe(false)
       } else {

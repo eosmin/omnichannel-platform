@@ -488,7 +488,7 @@ describe('The delivery of a webhook', () => {
   const skipsPolicy = async (): Promise<boolean> => {
     const rows = await app.get(PrismaService).client.$queryRaw<
       { skips: boolean }[]
-    >`SELECT rolbypassrls AS skips FROM pg_roles WHERE rolname = current_user`
+    >`SELECT (rolbypassrls OR rolsuper) AS skips FROM pg_roles WHERE rolname = current_user`
     return rows[0]?.skips === true
   }
 
