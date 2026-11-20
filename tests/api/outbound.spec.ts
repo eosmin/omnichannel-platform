@@ -354,14 +354,21 @@ describe('Replies on their way to a channel', () => {
       conversationId: conversation.id
     }
   }
+  // The organization of each store the suite seeds: a store it does not know is a mistake of the case, not store A's
+  const organizationOf = (storeId: string) => {
+    const organizations = new Map([
+      [ctx.storeA.id, ctx.orgA.id],
+      [ctx.storeB.id, ctx.orgB.id]
+    ])
+    const found = organizations.get(storeId)
+    if (found === undefined) throw new Error(`no organization seeded for store ${storeId}`)
+    return found
+  }
   // What the api does when a request reaches it, called by hand by the suite: in the context of the store of the reply, as the interceptor opens it
   const asRequest = <T>(reply: { storeId: string }, work: () => Promise<T>) =>
     inStoreContext(
       app.get(PrismaService, { strict: false }),
-      {
-        storeId: reply.storeId,
-        organizationId: reply.storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id
-      },
+      { storeId: reply.storeId, organizationId: organizationOf(reply.storeId) },
       work
     )
   const stored = (id: string) =>
