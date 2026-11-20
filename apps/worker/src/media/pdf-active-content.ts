@@ -14,6 +14,8 @@ export interface PdfInspectionResult {
 const NAME = /\/([^\s/[\]<>(){}%]+)/g
 const HEX_ESCAPE = /#([0-9A-Fa-f]{2})/g
 const ACTIVE = new Set<string>(PdfInspection.ACTIVE_NAMES)
+// The value of /Filter: one name, or an array of them
+const FILTER = /\/Filter\s*(\[[^\]]*\]|\/[^\s/[\]<>(){}%]+)/
 const LENGTH = /\/Length\s+(\d+)\b(?!\s+\d+\s+R)/
 const END_MARK = 'endstream'
 
@@ -92,14 +94,10 @@ export function inspectPdf(bytes: Uint8Array): PdfInspectionResult {
       return unreadable(PdfInspection.UNREADABLE.TOO_MANY_OBJECT_STREAMS)
     // Only a deflate stream (or none) is undone, and without parameters (no predictor): anything else is a chain this
     // does not undo, and what a reader would build from it stays unseen
-    const filters = dictionaryNames.filter(name =>
-      PdfInspection.FILTER_NAMES.includes(name as never)
-    )
-    const plain = filters.length === 0
-    const flate =
-      filters.length === 2 &&
-      filters[0] === 'Filter' &&
-      filters[1] === PdfInspection.READABLE_FILTER
+    const declared = FILTER.exec(dictionary)?.[1]
+    const filters = declared === undefined ? [] : namesIn(declared)
+    const plain = !dictionaryNames.includes('Filter')
+    const flate = filters.length === 1 && filters[0] === PdfInspection.READABLE_FILTER
     if (
       (!plain && !flate) ||
       dictionaryNames.some(name => PdfInspection.PARAMETER_NAMES.includes(name as never))

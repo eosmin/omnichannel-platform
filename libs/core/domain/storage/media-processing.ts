@@ -164,26 +164,6 @@ export const PdfInspection = {
   DICTIONARY_WINDOW_BYTES: 4096,
   // The only filter an object stream may declare that is read (none at all is read as plain text)
   READABLE_FILTER: 'FlateDecode',
-  FILTER_NAMES: [
-    'Filter',
-    'FlateDecode',
-    'Fl',
-    'LZWDecode',
-    'LZW',
-    'ASCII85Decode',
-    'A85',
-    'ASCIIHexDecode',
-    'AHx',
-    'RunLengthDecode',
-    'RL',
-    'CCITTFaxDecode',
-    'CCF',
-    'DCTDecode',
-    'DCT',
-    'JBIG2Decode',
-    'JPXDecode',
-    'Crypt'
-  ],
   PARAMETER_NAMES: ['DecodeParms', 'DP'],
   UNREADABLE: {
     ENCRYPTED: 'encrypted',
