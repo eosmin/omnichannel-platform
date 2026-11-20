@@ -564,7 +564,60 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
         (await shipmentOf((one.body as { id: string }).id)).codAmountCents,
         (await shipmentOf((other.body as { id: string }).id)).codAmountCents
       ]
+      // Each package collects the value of its own lines: neither is left with nothing
+      expect(shares[0]).toBeGreaterThan(0)
+      expect(shares[1]).toBeGreaterThan(0)
       expect((shares[0] ?? 0) + (shares[1] ?? 0)).toBe(total)
+    })
+
+    it('waits while the guide of the other warehouse of a split order is stuck, and goes on once it is marked voided', async () => {
+      const split = await reserved({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+      const item = await owner.orderItem.findFirstOrThrow({ where: { orderId: split.id } })
+      const second = await owner.orderItem.create({
+        data: {
+          orderId: split.id,
+          productId: item.productId,
+          productName: 'second line',
+          quantity: 1,
+          unitPriceCents: 500
+        }
+      })
+      await owner.orderItemAllocation.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderItemId: second.id,
+          warehouseId: ctx.warehouseASecond.id,
+          quantity: 1
+        }
+      })
+      await owner.warehouse.update({
+        where: { id: ctx.warehouseASecond.id },
+        data: { address: { line1: 'Bodega 2', city: 'Soyapango', country: 'SV' } }
+      })
+      const first = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(split.id))
+        .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseA.id })
+      const firstId = (first.body as { id: string }).id
+      await owner.shipment.update({
+        where: { id: firstId },
+        data: { status: ShipmentStatus.CANCEL_FAILED }
+      })
+      const early = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(split.id))
+        .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseASecond.id })
+      expect(early.status).toBe(CONFLICT)
+      const { error } = early.body as ErrorBody
+      expect(error.code).toBe(ErrorCodes.SHIPPING_ORIGIN_VOID_PENDING)
+      expect(error.metadata).toMatchObject({
+        shipmentIds: [firstId],
+        statuses: [ShipmentStatus.CANCEL_FAILED]
+      })
+      const voided = await asAdmin().post(ApiRoutes.shipments.markVoided(firstId))
+      expect(voided.status).toBe(OK)
+      const next = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(split.id))
+        .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseASecond.id })
+      expect(next.status).toBe(CREATED)
     })
 
     it('leaves the guide alone when the edit sends the lines again in the warehouse they already are', async () => {

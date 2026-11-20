@@ -416,9 +416,12 @@ export async function prepareGuide(
   // when the void ends: the new guide waits for it. That holds for a guide of a warehouse that lost its lines and for one of a
   // warehouse that still has some: its share may have been worked out for another placement of the lines (the void of a moved
   // placement), and the new guide would be told to collect what that share leaves, not its own.
-  const voiding = existing.filter(entry =>
-    ShipmentVoidingStatuses.some(status => String(status) === entry.status)
-  )
+  // A prepaid order has no COD to share: nothing is at stake and nothing waits.
+  const voiding = collects
+    ? existing.filter(entry =>
+        ShipmentVoidingStatuses.some(status => String(status) === entry.status)
+      )
+    : []
   if (voiding.length > 0) {
     // The way out is in the code, not in the words: the screen says it (retry the cancellation of the guide, or mark it voided
     // when the carrier did cancel it) from the ids and the statuses
