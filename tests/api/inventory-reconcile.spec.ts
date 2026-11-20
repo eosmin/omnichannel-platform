@@ -18,6 +18,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { CapturedQueue } from '../helpers/queue'
+import { inStoreContext } from '../helpers/tenant-context'
 import { onWorkerDatabase } from '../helpers/worker-db'
 
 // The daily check of the stock against its ledger (TDD_16 §4.8, Step 4.2 PR C): it reads, it reports, it never fixes.
@@ -69,6 +70,11 @@ describe('The reconciliation of the stock', () => {
   })
 
   const key = (): string => `${prefix}-${randomUUID()}`
+  // A movement of the api that the suite makes by hand, in the context of the store (every store of the suite is of the organization A)
+  const move = (input: Parameters<InventoryService['move']>[0]) =>
+    inStoreContext(prisma, { storeId: input.storeId, organizationId: ctx.orgA.id }, () =>
+      inventory.move(input)
+    )
   async function aStore() {
     const store = await ensureStore(owner, ctx.orgA.id, `${prefix}-${randomUUID().slice(0, 8)}`)
     const warehouse = await createWarehouse(owner, { organizationId: ctx.orgA.id })
@@ -85,7 +91,7 @@ describe('The reconciliation of the stock', () => {
     unitCostCents: number | null = 250
   ) {
     const product = await createProduct(owner, { storeId: store.storeId })
-    await inventory.move({
+    await move({
       storeId: store.storeId,
       productId: product.id,
       warehouseId: store.warehouseId,
@@ -109,7 +115,7 @@ describe('The reconciliation of the stock', () => {
     it('reports nothing for a store whose levels all agree with the ledger', async () => {
       const store = await aStore()
       const productId = await stocked(store, 10)
-      await inventory.move({
+      await move({
         storeId: store.storeId,
         productId,
         warehouseId: store.warehouseId,
@@ -179,7 +185,7 @@ describe('The reconciliation of the stock', () => {
       const store = await aStore()
       const product = await createProduct(owner, { storeId: store.storeId })
       const variant = await createProductVariant(owner, { productId: product.id })
-      await inventory.move({
+      await move({
         storeId: store.storeId,
         productId: product.id,
         variantId: variant.id,
@@ -229,7 +235,7 @@ describe('The reconciliation of the stock', () => {
         update: { allowNegativeStock: true }
       })
       const productId = await stocked(store, 1)
-      await inventory.move({
+      await move({
         storeId: store.storeId,
         productId,
         warehouseId: store.warehouseId,

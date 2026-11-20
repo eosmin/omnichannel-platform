@@ -6,10 +6,9 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
-import { JobContext, PrismaService } from '@platform/core/database'
+import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AppPaths, CarrierResourceTypes, CodStatus, ShipmentStatus } from '@platform/core/domain'
-import { DomainEvents } from '@platform/core/event-bus'
 import { NotificationTypes } from '@platform/core/notifications'
 import { checkRemittancesJobId, JobNames, QueueNames } from '@platform/core/queues'
 
@@ -22,7 +21,8 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
-import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
+import { createGuardedWorkerPrisma } from '../helpers/worker-db'
+import { workerServices } from '../helpers/worker-services'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const OK = 200
@@ -48,21 +48,25 @@ describe('The daily check of overdue remittances', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let checker: RemittanceChecker
+  let jobs: JobContext
+  const check = (storeId: string, now: Date) =>
+    jobs.forStore(storeId, () => checker.check(storeId, now))
   const pushQueue = new CapturedQueue()
   const NOW = new Date('2026-11-12T15:00:00.000Z')
   const daysAgo = (days: number) => new Date(NOW.getTime() - days * DAY_MS)
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp(
-      [],
-      onWorkerDatabase(builder =>
-        builder.overrideProvider(getQueueToken(QueueNames.NOTIFICATIONS)).useValue(pushQueue)
-      )
+    app = await createTestApp([], builder =>
+      builder.overrideProvider(getQueueToken(QueueNames.NOTIFICATIONS)).useValue(pushQueue)
     )
     ctx = await seedTestContext(owner, app, prefix)
     const logger = { setContext: () => undefined, info: () => undefined } as unknown as PinoLogger
-    checker = new RemittanceChecker(app.get(PrismaService), app.get(DomainEvents), logger)
+    // As the worker has it: its own connection, its own events, and a context for the store of each check
+    const workerPrisma = createGuardedWorkerPrisma()
+    const { events } = await workerServices(app, workerPrisma)
+    checker = new RemittanceChecker(workerPrisma, events, logger)
+    jobs = new JobContext(workerPrisma)
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)
@@ -139,7 +143,7 @@ describe('The daily check of overdue remittances', () => {
     await owed(connection.id, 10)
     await owed(connection.id, 9, { codStatus: CodStatus.DISCREPANCY, codRemittedCents: 400 })
 
-    expect(await checker.check(ctx.storeA.id, NOW)).toBe(1)
+    expect(await check(ctx.storeA.id, NOW)).toBe(1)
 
     // The listener writes a row for each recipient: wait for the one of the holder, then look at who else was told
     await until(
@@ -171,7 +175,7 @@ describe('The daily check of overdue remittances', () => {
       status: ShipmentStatus.DELIVERED,
       deliveredAt: daysAgo(30)
     })
-    expect(await checker.check(ctx.storeA.id, NOW)).toBe(0)
+    expect(await check(ctx.storeA.id, NOW)).toBe(0)
     expect(await rowsOf()).toHaveLength(0)
   })
 
@@ -179,7 +183,7 @@ describe('The daily check of overdue remittances', () => {
     await manager()
     const connection = await connectionOf(ctx.storeA.id)
     await owed(connection.id, 3)
-    expect(await checker.check(ctx.storeA.id, NOW)).toBe(0)
+    expect(await check(ctx.storeA.id, NOW)).toBe(0)
 
     const saved = await api(app, ctx.adminA, ctx.storeA)
       .put(ApiRoutes.settings.preferences)
@@ -188,7 +192,7 @@ describe('The daily check of overdue remittances', () => {
     expect((saved.body as { remittances: { overdueAfterDays: number } }).remittances).toEqual({
       overdueAfterDays: 2
     })
-    expect(await checker.check(ctx.storeA.id, NOW)).toBe(1)
+    expect(await check(ctx.storeA.id, NOW)).toBe(1)
     // The listener finishes before the next test starts
     await warned(connection.id)
   })
@@ -197,20 +201,20 @@ describe('The daily check of overdue remittances', () => {
     await manager()
     const connection = await connectionOf(ctx.storeA.id)
     await owed(connection.id, 20)
-    expect(await checker.check(ctx.storeA.id, NOW)).toBe(1)
+    expect(await check(ctx.storeA.id, NOW)).toBe(1)
     await warned(connection.id)
-    expect(await checker.check(ctx.storeA.id, new Date(NOW.getTime() + DAY_MS))).toBe(0)
+    expect(await check(ctx.storeA.id, new Date(NOW.getTime() + DAY_MS))).toBe(0)
     // Another connection of the same store has its own week
     const other = await connectionOf(ctx.storeA.id)
     await owed(other.id, 20)
-    expect(await checker.check(ctx.storeA.id, new Date(NOW.getTime() + DAY_MS))).toBe(1)
+    expect(await check(ctx.storeA.id, new Date(NOW.getTime() + DAY_MS))).toBe(1)
     await warned(other.id)
 
     await owner.notification.updateMany({
       where: { storeId: ctx.storeA.id, resourceId: connection.id },
       data: { createdAt: new Date(NOW.getTime() - 8 * DAY_MS) }
     })
-    expect(await checker.check(ctx.storeA.id, new Date(NOW.getTime() + DAY_MS))).toBe(1)
+    expect(await check(ctx.storeA.id, new Date(NOW.getTime() + DAY_MS))).toBe(1)
   })
 
   it('adds what is owed shipment by shipment, so an overpaid package hides no debt', async () => {
@@ -218,7 +222,7 @@ describe('The daily check of overdue remittances', () => {
     const connection = await connectionOf(ctx.storeA.id)
     await owed(connection.id, 20, { codStatus: CodStatus.DISCREPANCY, codRemittedCents: 1500 })
     await owed(connection.id, 20)
-    expect(await checker.check(ctx.storeA.id, NOW)).toBe(1)
+    expect(await check(ctx.storeA.id, NOW)).toBe(1)
     await until(
       () => owner.notification.count({ where: { storeId: ctx.storeA.id, userId: holder.id } }),
       count => count > 0
@@ -238,7 +242,7 @@ describe('The daily check of overdue remittances', () => {
       codStatus: CodStatus.PENDING_REMITTANCE,
       deliveredAt: daysAgo(40)
     })
-    expect(await checker.check(ctx.storeA.id, NOW)).toBe(0)
+    expect(await check(ctx.storeA.id, NOW)).toBe(0)
   })
 
   describe('the daily schedule', () => {

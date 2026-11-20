@@ -53,8 +53,8 @@ import { createActor, seedTestContext, type TestContext } from '../helpers/conte
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
-import { createWorkerPrisma } from '../helpers/worker-db'
 import { inStoreContext } from '../helpers/tenant-context'
+import { createWorkerPrisma } from '../helpers/worker-db'
 import { workerServices } from '../helpers/worker-services'
 
 interface ErrorBody {
@@ -1243,7 +1243,8 @@ describe('Exports', () => {
         data: { status: ExportStatus.FAILED }
       })
       const service = app.get(ExportsService, { strict: false })
-      // The service is the api's and is called by hand: in a request the interceptor opens the context of the store
+      // Called by hand, outside a request: each ask opens the context its route would (the store of the case and its
+      // organization), one transaction per ask as one per request
       const ask = (userId: string) =>
         inStoreContext(
           app.get(PrismaService, { strict: false }),

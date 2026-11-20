@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
-import { JobContext, PrismaService } from '@platform/core/database'
+import { JobContext, type PrismaTransaction, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   ConversationStatus,
@@ -37,6 +37,10 @@ describe('Conversation sweeps', () => {
   let ctx: TestContext
   let wake: SnoozeWakeScheduler
   let archive: AutoArchiveScheduler
+  let jobs: JobContext
+  // What a sweep does for a store: inside the context of that store, as the worker opens it
+  const inStoreA = <T>(work: (tx: PrismaTransaction) => Promise<T>): Promise<T> =>
+    jobs.forStore(ctx.storeA.id, () => app.get(PrismaService, { strict: false }).transaction(work))
   const heard: { event: string; payload: unknown }[] = []
 
   beforeAll(async () => {
@@ -53,6 +57,7 @@ describe('Conversation sweeps', () => {
         update: { autoArchiveAfterDays }
       })
     }
+    jobs = new JobContext(app.get(PrismaService, { strict: false }))
     const conversations = app.get(ConversationsService, { strict: false })
     const locks = {
       withLock: async (_name: string, _seconds: number, work: () => Promise<void>) => {
@@ -206,7 +211,7 @@ describe('Conversation sweeps', () => {
       const chosenAt = new Date()
 
       await expect(
-        app.get(PrismaService, { strict: false }).transaction(tx =>
+        inStoreA(tx =>
           app
             .get(ConversationsService, { strict: false })
             .applyStatus(tx, ctx.storeA.id, id, ConversationStatus.OPEN, {
@@ -231,7 +236,7 @@ describe('Conversation sweeps', () => {
       ).id
 
       await expect(
-        app.get(PrismaService, { strict: false }).transaction(tx =>
+        inStoreA(tx =>
           app
             .get(ConversationsService, { strict: false })
             .applyStatus(tx, ctx.storeA.id, id, ConversationStatus.OPEN, {
@@ -310,7 +315,7 @@ describe('Conversation sweeps', () => {
       const cutoff = new Date(Date.now() - ARCHIVE_AFTER_DAYS * DAY_MS)
 
       await expect(
-        app.get(PrismaService, { strict: false }).transaction(tx =>
+        inStoreA(tx =>
           app
             .get(ConversationsService, { strict: false })
             .applyStatus(tx, ctx.storeA.id, id, ConversationStatus.ARCHIVED, {
