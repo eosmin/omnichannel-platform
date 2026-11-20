@@ -4,7 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
-import { inSavepoint } from '@platform/core/database'
+import { inSavepoint, PrismaService } from '@platform/core/database'
 import {
   BulkActions,
   BulkLimits,
@@ -72,7 +72,8 @@ export class ConversationBulkService {
     private readonly widgetRead: WidgetReadNotifier,
     private readonly exports: ExportsService,
     private readonly audit: AuditService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly prisma: PrismaService
   ) {
     this.logger.setContext(ConversationBulkService.name)
   }
@@ -159,9 +160,10 @@ export class ConversationBulkService {
         await inSavepoint(() => this.apply(storeId, id, body, viewer))
         result.succeeded.push(id)
       } catch (error) {
-        // A transaction that is aborted or closed cannot be told "one by one": the rest would fail too and the commit of a
-        // transaction in that state is a silent rollback, so a 200 would name as done what did not persist. The request fails.
-        if (isBrokenTransaction(error)) throw error
+        // Under RLS_CONTEXT the bulk is ONE transaction: if it is aborted or closed it cannot be told "one by one" (the rest would
+        // fail too and the commit of a transaction in that state is a silent rollback, so a 200 would name as done what did not
+        // persist): the request fails. Without a context each change has its own transaction and stays an item of its own.
+        if (this.prisma.hasTenantContext() && isBrokenTransaction(error)) throw error
         const code = codeOf(error)
         // What is ours (a deadlock, a timeout) is said here; the caller gets the code only
         if (code === ErrorCodes.INTERNAL_ERROR) {

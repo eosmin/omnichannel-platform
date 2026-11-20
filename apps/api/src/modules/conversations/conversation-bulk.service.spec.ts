@@ -9,33 +9,83 @@ import { ConversationBulkService } from './conversation-bulk.service'
 const viewer = { userId: 'user-1', held: new Set<string>() } as unknown as Viewer
 const actor = { userId: 'user-1' } as unknown as Actor
 
+const closed = Object.assign(new Error('transaction closed'), { code: 'P2028' })
+
+function build(markRead: jest.Mock, hasContext: boolean): ConversationBulkService {
+  const logger = { setContext: jest.fn(), error: jest.fn() }
+  return new ConversationBulkService(
+    { markRead } as unknown as ConversationsService,
+    {} as never,
+    {} as never,
+    { queueFor: jest.fn() } as never,
+    { notify: jest.fn() } as never,
+    {} as never,
+    { log: jest.fn() } as never,
+    logger as never,
+    { hasTenantContext: () => hasContext } as never
+  )
+}
+
+const run = (service: ConversationBulkService) =>
+  service.run(
+    'store-1',
+    { action: BulkActions.MARK_READ, conversationIds: ['a', 'b', 'c'] },
+    viewer,
+    actor
+  )
+
 // With no transaction open (RLS_CONTEXT off) the savepoint has nothing to protect: each change runs as it did, and the answer keeps
-// its contract, one entry per conversation
+// its contract, one entry per conversation, even when one of them fails because its own transaction closed
 describe('ConversationBulkService without an open transaction', () => {
   it('tells which conversations changed and which did not, and keeps going after a failure', async () => {
     const markRead = jest
-      .fn<Promise<unknown>, [string, string, Viewer]>()
+      .fn()
       .mockResolvedValueOnce({})
       .mockRejectedValueOnce(new Error('boom'))
       .mockResolvedValueOnce({})
-    const logger = { setContext: jest.fn(), error: jest.fn() }
-    const service = new ConversationBulkService(
-      { markRead } as unknown as ConversationsService,
-      {} as never,
-      {} as never,
-      { queueFor: jest.fn() } as never,
-      { notify: jest.fn() } as never,
-      {} as never,
-      { log: jest.fn() } as never,
-      logger as never
-    )
 
-    const result = await service.run(
-      'store-1',
-      { action: BulkActions.MARK_READ, conversationIds: ['a', 'b', 'c'] },
-      viewer,
-      actor
-    )
+    const result = await run(build(markRead, false))
+
+    expect(result.succeeded).toEqual(['a', 'c'])
+    expect(result.failed).toEqual([{ id: 'b', code: ErrorCodes.INTERNAL_ERROR }])
+    expect(markRead).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not stop the others when the transaction of one item closed', async () => {
+    const markRead = jest
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(closed)
+      .mockResolvedValueOnce({})
+
+    const result = await run(build(markRead, false))
+
+    expect(result.succeeded).toEqual(['a', 'c'])
+    expect(result.failed).toEqual([{ id: 'b', code: ErrorCodes.INTERNAL_ERROR }])
+  })
+})
+
+describe('ConversationBulkService inside the transaction of the request', () => {
+  // Three shapes of "the transaction is no longer usable": closed (Prisma), aborted (Postgres, direct) and aborted (inside a raw query error)
+  it.each([
+    ['closed', { code: 'P2028' }],
+    ['aborted', { code: '25P02' }],
+    ['aborted in a raw query error', { code: 'P2010', meta: { code: '25P02' } }]
+  ])('fails the request, and stops, when the transaction is %s', async (_name, broken) => {
+    const markRead = jest.fn().mockResolvedValueOnce({}).mockRejectedValueOnce(broken)
+
+    await expect(run(build(markRead, true))).rejects.toBe(broken)
+    expect(markRead).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps going after an ordinary failure of one item', async () => {
+    const markRead = jest
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({})
+
+    const result = await run(build(markRead, true))
 
     expect(result.succeeded).toEqual(['a', 'c'])
     expect(result.failed).toEqual([{ id: 'b', code: ErrorCodes.INTERNAL_ERROR }])

@@ -39,7 +39,7 @@ describe('RLS phase 6: a bulk action of conversations under enforcement', () => 
   beforeAll(async () => {
     owner = ownerClient()
     guarded = new PrismaService({
-      databaseUrl: connectionUrls().worker,
+      databaseUrl: connectionUrls().app,
       poolSize: 8,
       requireContext: true
     })
