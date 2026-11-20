@@ -103,6 +103,31 @@ export class FiscalController {
     )
   }
 
+  // The check of the reach for the routes that write: the service runs it inside the unit that writes (the routes are not one transaction)
+  private manageGuard(organizationId: string, userId: string, ids: readonly string[]) {
+    return () => this.mayManage(organizationId, userId, ids)
+  }
+
+  // The document is committed before it is queued (the route is not one transaction): a queue that blinked does not fail the request, which
+  // a repeat would refuse. `queued: true` in the answer is the STATE of the document (QUEUED), not a promise about the job: if the queue
+  // failed, the error below is the alarm and the document goes out in the next run of RECONCILE_FINANCE (FiscalSweepService.stalledDocuments,
+  // a QUEUED document untouched for QUEUED_STALL_MINUTES; the reconciler of the worker queues the same job id, so nothing is sent twice),
+  // which can take up to about a day.
+  private async enqueueAfterCommit(
+    organizationId: string,
+    documentId: string,
+    submission: number
+  ): Promise<void> {
+    try {
+      await this.queue.enqueue(organizationId, documentId, submission)
+    } catch (error) {
+      this.logger.error(
+        { err: errorName(error), documentId },
+        'a fiscal document was committed and could not be queued'
+      )
+    }
+  }
+
   @RequirePermissions(Permissions.FISCAL_VIEW)
   @NoStore()
   @Get(ApiRoutes.fiscal.providers)
@@ -214,6 +239,9 @@ export class FiscalController {
 
   @RequirePermissions(Permissions.FISCAL_MANAGE)
   @NoStore()
+  @NoTenantTransaction(
+    'writes a document of the organization that may belong to another store than the one of the header: its trigger reads the rows of the store of the DOCUMENT, so the service writes in units of its own, each in the context of the whole organization, and the reach of the person (HC-128) is checked inside them'
+  )
   @Patch(ApiRoutes.fiscal.documents.receiver(':id'))
   async receiver(
     @CurrentOrganization() organization: Organization,
@@ -223,19 +251,22 @@ export class FiscalController {
     @Body(new ZodValidationPipe(receiverPatchSchema)) body: ReceiverPatchBody,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: FiscalDocumentView }> {
-    await this.mayManage(organization.id, user.id, [documentId])
     return {
       data: await this.documents.updateReceiver(
         organization.id,
         documentId,
         body,
-        actorOf(user, store, req)
+        actorOf(user, store, req),
+        this.manageGuard(organization.id, user.id, [documentId])
       )
     }
   }
 
   @RequirePermissions(Permissions.FISCAL_MANAGE)
   @NoStore()
+  @NoTenantTransaction(
+    'writes a document of the organization that may belong to another store than the one of the header: its trigger reads the rows of the store of the DOCUMENT, so the service writes in units of its own, each in the context of the whole organization, and the reach of the person (HC-128) is checked inside them'
+  )
   @Post(ApiRoutes.fiscal.documents.retry(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async retry(
@@ -245,13 +276,13 @@ export class FiscalController {
     @Param('id', id()) documentId: string,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: { queued: true } }> {
-    await this.mayManage(organization.id, user.id, [documentId])
     const retried = await this.documents.retry(
       organization.id,
       documentId,
-      actorOf(user, store, req)
+      actorOf(user, store, req),
+      this.manageGuard(organization.id, user.id, [documentId])
     )
-    await this.queue.enqueue(organization.id, documentId, retried.submission)
+    await this.enqueueAfterCommit(organization.id, documentId, retried.submission)
     return { data: { queued: true } }
   }
 
@@ -260,6 +291,9 @@ export class FiscalController {
   // for the confirmation before it sends this.
   @RequirePermissions(Permissions.FISCAL_MANAGE)
   @NoStore()
+  @NoTenantTransaction(
+    'writes a document of the organization that may belong to another store than the one of the header: its trigger reads the rows of the store of the DOCUMENT, so the service writes in units of its own, each in the context of the whole organization, and the reach of the person (HC-128) is checked inside them'
+  )
   @Post(ApiRoutes.fiscal.documents.confirmIssuerChange(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async confirmIssuerChange(
@@ -270,20 +304,23 @@ export class FiscalController {
     @Body(new ZodValidationPipe(confirmIssuerChangeSchema)) body: ConfirmIssuerChangeBody,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: { queued: true } }> {
-    await this.mayManage(organization.id, user.id, [documentId])
     const confirmed = await this.documents.confirmIssuerChange(
       organization.id,
       documentId,
       body.reason,
-      actorOf(user, store, req)
+      actorOf(user, store, req),
+      this.manageGuard(organization.id, user.id, [documentId])
     )
-    await this.queue.enqueue(organization.id, documentId, confirmed.submission)
+    await this.enqueueAfterCommit(organization.id, documentId, confirmed.submission)
     return { data: { queued: true } }
   }
 
   // HIGH tier of DestructiveActionTiers (VOID_FISCAL_DOCUMENT): the interface asks before it sends this
   @RequirePermissions(Permissions.FISCAL_MANAGE)
   @NoStore()
+  @NoTenantTransaction(
+    'writes a document of the organization that may belong to another store than the one of the header: its trigger reads the rows of the store of the DOCUMENT, so the service writes in units of its own, each in the context of the whole organization, and the reach of the person (HC-128) is checked inside them; the call to the authority is never inside one'
+  )
   @Post(ApiRoutes.fiscal.documents.void(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async voidDocument(
@@ -295,7 +332,7 @@ export class FiscalController {
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: FiscalDocumentView }> {
     // The document that takes the place of this one is a document of the caller's reach too
-    await this.mayManage(
+    const guard = this.manageGuard(
       organization.id,
       user.id,
       body.replacementDocumentId === undefined
@@ -308,6 +345,7 @@ export class FiscalController {
         documentId,
         body.reason,
         actorOf(user, store, req),
+        guard,
         {
           ...(body.kind === undefined ? {} : { kind: body.kind }),
           ...(body.responsible === undefined ? {} : { responsible: body.responsible }),
@@ -323,6 +361,9 @@ export class FiscalController {
   // The sale document made again after the one before was voided (and its credit notes): a new document with a new number, queued
   @RequirePermissions(Permissions.FISCAL_MANAGE)
   @NoStore()
+  @NoTenantTransaction(
+    'writes a document of the organization that may belong to another store than the one of the header: its trigger reads the rows of the store of the DOCUMENT, so the service writes in units of its own, each in the context of the whole organization, and the reach of the person (HC-128) is checked inside them'
+  )
   @Post(ApiRoutes.fiscal.documents.replace(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async replace(
@@ -332,11 +373,11 @@ export class FiscalController {
     @Param('id', id()) documentId: string,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: FiscalDocumentView }> {
-    await this.mayManage(organization.id, user.id, [documentId])
     const made = await this.documents.replace(
       organization.id,
       documentId,
-      actorOf(user, store, req)
+      actorOf(user, store, req),
+      this.manageGuard(organization.id, user.id, [documentId])
     )
     // The sale document first; each credit note waits for it (its job asks again until the sale is accepted)
     // The documents are committed: one that cannot be queued (the queue blinked) does not stop the others and does not fail the request,
@@ -351,6 +392,6 @@ export class FiscalController {
         )
       }
     }
-    return { data: await this.documents.get(organization.id, made.id) }
+    return { data: await this.documents.viewOf(organization.id, made.id) }
   }
 }
