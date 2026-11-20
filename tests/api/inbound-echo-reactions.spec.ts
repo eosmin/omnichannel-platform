@@ -715,8 +715,11 @@ describe('Echoes and reactions that a channel delivers', () => {
         where: { storeId: ctx.storeB.id, channelMessageId: 'b-msg' }
       })
 
-      await prisma.transaction(tx =>
-        reactions.set(tx, ctx.storeA.id, target.id, { authorType: AuthorType.EXTERNAL }, '👍')
+      // In the context of store A, the one a caller that names store A runs in: the database, not only the where, keeps B's message out
+      await new JobContext(prisma).forStore(ctx.storeA.id, () =>
+        prisma.transaction(tx =>
+          reactions.set(tx, ctx.storeA.id, target.id, { authorType: AuthorType.EXTERNAL }, '👍')
+        )
       )
 
       expect(await owner.messageReaction.count({ where: { messageId: target.id } })).toBe(0)
