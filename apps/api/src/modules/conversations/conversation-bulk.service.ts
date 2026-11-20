@@ -4,6 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
+import { inSavepoint } from '@platform/core/database'
 import {
   BulkActions,
   BulkLimits,
@@ -142,7 +143,9 @@ export class ConversationBulkService {
   }
 
   // One at a time: each change takes the locks of its conversation, and two that ran together on the
-  // same store would only wait for each other
+  // same store would only wait for each other. Each change runs in a SAVEPOINT: under RLS_CONTEXT the whole bulk is one
+  // transaction, and a database error in one conversation (deadlock, unique, lock timeout) would abort it (25P02) and every
+  // later conversation would fail too. The savepoint is rolled back, the ones before it stay, and the next one starts clean.
   private async applyEach(
     storeId: string,
     ids: readonly string[],
@@ -153,7 +156,7 @@ export class ConversationBulkService {
     const result: BulkResult = { succeeded: [], failed: [], truncated }
     for (const id of ids) {
       try {
-        await this.apply(storeId, id, body, viewer)
+        await inSavepoint(() => this.apply(storeId, id, body, viewer))
         result.succeeded.push(id)
       } catch (error) {
         const code = codeOf(error)
