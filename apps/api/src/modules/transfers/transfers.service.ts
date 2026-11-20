@@ -662,7 +662,7 @@ export class TransfersService {
   // With Row-Level Security on, `lines` is what the context of the key lets it see (its store alone), not what the transfer holds: the
   // stores of ALL the lines are asked of the database (ids alone, and only to refuse), after the header is locked and in the same
   // transaction that moves the stock, so no line of a sibling store can be added between this check and the movement. With the switch
-  // off there is no context and `lines` is already every line.
+  // off there is no context and `lines` is already every line. The function is used only to REFUSE: it returns store ids, never a row.
   private async assertPluginOwnsEveryLine(
     tx: PrismaTransaction,
     transferId: string,
