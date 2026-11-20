@@ -1,4 +1,9 @@
-import { ApiLockTimeout, isLockTimeoutError, isTransactionWaitError } from './database-errors'
+import {
+  ApiLockTimeout,
+  isLockTimeoutError,
+  isRowLevelSecurityError,
+  isTransactionWaitError
+} from './database-errors'
 
 // The shape Prisma gave for a raw query that hit lock_timeout, captured against a real PostgreSQL
 const FROM_PRISMA_RAW = {
@@ -101,5 +106,43 @@ describe('isTransactionWaitError', () => {
     loop['cause'] = loop
 
     expect(isTransactionWaitError(loop)).toBe(false)
+  })
+})
+
+describe('isRowLevelSecurityError', () => {
+  it.each([
+    ['the error of the driver itself', { code: '42501' }],
+    [
+      'what Prisma gives for a raw query',
+      { code: 'P2010', meta: { driverAdapterError: { cause: { originalCode: '42501' } } } }
+    ],
+    ['an error that wraps the driver error as its cause', { cause: { code: '42501' } }],
+    [
+      'a model query: the code only in the cause of the adapter error',
+      { code: 'P2004', meta: { driverAdapterError: { cause: { originalCode: '42501' } } } }
+    ]
+  ])('knows %s', (_name, error) => {
+    expect(isRowLevelSecurityError(error)).toBe(true)
+  })
+
+  it.each([
+    ['a foreign key failure', { code: 'P2003' }],
+    [
+      'a foreign key failure of the driver',
+      { code: '23503', meta: { driverAdapterError: { cause: { originalCode: '23503' } } } }
+    ],
+    ['a lock timeout', { code: '55P03' }],
+    ['a message that only says it', new Error('new row violates row-level security policy 42501')],
+    ['a string', '42501'],
+    ['null', null]
+  ])('does not take %s for one', (_name, error) => {
+    expect(isRowLevelSecurityError(error)).toBe(false)
+  })
+
+  it('stops on an error that points back at itself', () => {
+    const loop: Record<string, unknown> = { code: 'X' }
+    loop['cause'] = loop
+
+    expect(isRowLevelSecurityError(loop)).toBe(false)
   })
 })
