@@ -214,6 +214,34 @@ describe('parseBankStatement', () => {
       expect(parsed.lines).toHaveLength(1)
     })
 
+    // Pinned (PR #829 review M4, which expected the mark to be kept): `trim()` takes U+FEFF for a blank, so at the edge of a description or
+    // a reference it is dropped (a reference with it matches one without it), and inside the text the cell is refused as `invalid_text`
+    it('trims the mark at the edge of a description or a reference, and refuses it inside the text', () => {
+      const parsed = parseBankStatement(
+        `Date,Description,Ref,Amount\n2026-11-02,${BOM}Deposit${BOM},${BOM}R-1,100.00\n2026-11-03,Fee ${BOM}one,R${BOM}-2,-1.50\n`,
+        signed
+      )
+      expect(parsed.errors.map(error => [error.row, error.field, error.code])).toEqual([
+        [3, 'description', BankStatementErrors.INVALID_TEXT],
+        [3, 'reference', BankStatementErrors.INVALID_TEXT]
+      ])
+      expect(parsed.lines.map(line => [line.description, line.reference])).toEqual([
+        ['Deposit', 'R-1']
+      ])
+    })
+
+    // PR #829 review M1: only the mark of UTF-8 is taken off. The text reaches the parser already decoded, and a UTF-16 file read as
+    // an 8-bit text (the mark FF FE, then a NUL between letters) is never read as a statement: it is refused, it imports no line
+    it('refuses a UTF-16 file that was read as an 8-bit text, and imports no line from it', () => {
+      const utf16 = Buffer.from(
+        `${BOM}Date,Description,Ref,Amount\n2026-11-02,Deposit,R-1,100.00\n`,
+        'utf16le'
+      ).toString('latin1')
+      const parsed = parseBankStatement(utf16, signed)
+      expect(parsed.errorCount).toBeGreaterThan(0)
+      expect(parsed.lines).toEqual([])
+    })
+
     it('says a file that is only the mark is empty', () => {
       const parsed = parseBankStatement(BOM, signed)
       expect(parsed.errors.map(error => error.code)).toEqual([BankStatementErrors.EMPTY_FILE])

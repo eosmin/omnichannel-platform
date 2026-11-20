@@ -12,6 +12,11 @@ const ALLOWED = new Set([
   'libs/core/domain/validation.ts'
 ])
 const COERCED_NUMBER = /\bcoerce\s*\.\s*number\b/
+// The same coercion written by hand: a `z.preprocess` whose callback turns the text into a number with `Number()`, `parseInt()` or
+// `parseFloat()` reads '1e2', '0x10' and ' 5' the way the coercion does. Rewriting a value that stays a text (an empty value to
+// undefined, then `queryIntSchema`) is fine and does not match. Bare `z.number()` is not searched: the bodies of the api use it on purpose
+const HAND_COERCED_NUMBER =
+  /\bz\s*\.\s*preprocess\s*\([^;]{0,240}?\b(?:Number|parseInt|parseFloat)\s*\(/
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap(name => {
@@ -30,5 +35,33 @@ describe('the whole numbers of a query string', () => {
       .filter(path => COERCED_NUMBER.test(readFileSync(join(ROOT, path), 'utf8')))
 
     expect(offenders).toEqual([])
+  })
+
+  it('are never turned into a number by hand inside a z.preprocess', () => {
+    const offenders = SCANNED.flatMap(dir => sources(join(ROOT, dir)))
+      .map(path => relative(ROOT, path))
+      .filter(path => !ALLOWED.has(path))
+      .filter(path => HAND_COERCED_NUMBER.test(readFileSync(join(ROOT, path), 'utf8')))
+
+    expect(offenders).toEqual([])
+  })
+
+  // The guard must see what it is for, and leave alone what the finance schemas do today
+  it.each([
+    ['Number()', 'z.preprocess(value => Number(value), z.number())', true],
+    ['parseInt()', 'z.preprocess(v => parseInt(String(v), 10), z.number().int())', true],
+    ['parseFloat()', 'z.preprocess(\n  v => parseFloat(v as string),\n  z.number()\n)', true],
+    [
+      'an empty value rewritten, then digits only',
+      "z.preprocess(value => (value === '' ? undefined : value), queryIntSchema(0, 9).optional())",
+      false
+    ],
+    [
+      'a text of digits piped to Number',
+      "z.preprocess(v => (v === '' ? undefined : v), z.string().regex(/^\\d+$/).transform(Number))",
+      false
+    ]
+  ])('tells %s', (_name, source, caught) => {
+    expect(HAND_COERCED_NUMBER.test(source)).toBe(caught)
   })
 })
