@@ -302,10 +302,12 @@ describe('The legal books', () => {
       await expect(
         owner.financeBookLayout.deleteMany({ where: { organizationId: ctx.orgA.id } })
       ).rejects.toThrow(/never changed or deleted/)
-      const audit = await waitForAuditEntries(owner, {
-        organizationId: ctx.orgA.id,
-        action: AuditAction.FINANCE_BOOK_LAYOUT_CHANGED
-      })
+      // Two PUTs, two audit rows; the audit queue may still hold the second one
+      const audit = await waitForAuditEntries(
+        owner,
+        { organizationId: ctx.orgA.id, action: AuditAction.FINANCE_BOOK_LAYOUT_CHANGED },
+        2
+      )
       expect(audit.length).toBeGreaterThanOrEqual(2)
     })
 
