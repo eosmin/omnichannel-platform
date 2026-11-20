@@ -10,7 +10,7 @@ import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { ReadReceipts } from '@platform/core/messaging'
+import { OutboundQueue } from '@platform/core/messaging'
 import { JobNames, QueueNames, type SendOutboundReadReceiptJob } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import {
@@ -62,11 +62,12 @@ describe('Telling the channel that an agent read a conversation', () => {
       })
     )
     registry.register(buildChannelPlugin({ id: PLAIN_TEXT_CHANNEL }))
-    // The route does not wait for the queueing: the suite keeps the promise of each to wait for it
-    const receipts = app.get(ReadReceipts, { strict: false })
-    const queueFor = receipts.queueFor.bind(receipts)
-    jest.spyOn(receipts, 'queueFor').mockImplementation((...args) => {
-      const pending = queueFor(...args)
+    // The route reads before it answers but leaves the queueing (Redis) running: the suite keeps the promise of
+    // each queueing to wait for it
+    const outbound = app.get(OutboundQueue, { strict: false })
+    const enqueueReadReceipt = outbound.enqueueReadReceipt.bind(outbound)
+    jest.spyOn(outbound, 'enqueueReadReceipt').mockImplementation((...args) => {
+      const pending = enqueueReadReceipt(...args)
       pendingQueueing.push(pending)
       return pending
     })
@@ -84,7 +85,7 @@ describe('Telling the channel that an agent read a conversation', () => {
   })
   afterEach(async () => {
     // A route does not wait for the queueing it starts: let it end before the next test begins
-    await Promise.all(pendingQueueing)
+    await Promise.allSettled(pendingQueueing)
   })
   afterAll(async () => {
     jest.restoreAllMocks()

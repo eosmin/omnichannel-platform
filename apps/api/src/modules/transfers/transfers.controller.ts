@@ -13,7 +13,8 @@ import {
   CurrentStore,
   RequireAnyPermission,
   RequirePermissions,
-  type ResolvedTenant
+  type ResolvedTenant,
+  TenantOfOrganizationStores
 } from '../tenancy'
 
 import {
@@ -43,6 +44,9 @@ const id = () => new ZodValidationPipe(idSchema)
 // holds in that store, the organization is the one TenantGuard resolved from it, never one from the request. Making,
 // changing, dispatching and cancelling ask for inventory:manage_transfers; receiving and closing for
 // inventory:receive_transfers; reading for either. What an answer shows of the lines is the stores of the caller.
+@TenantOfOrganizationStores(
+  'a transfer carries lines of several stores of the organization and the caller moves them all: the context holds every store of the organization, and the service decides which lines each caller sees and moves'
+)
 @Controller()
 export class TransfersController {
   constructor(private readonly transfers: TransfersService) {}

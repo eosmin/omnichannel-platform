@@ -49,6 +49,8 @@ export class FiscalListener {
     }
   }
 
+  // Read with no tenant context on purpose: `stores` has no row policy (`neverPolicy` in scripts/rls-exceptions.ts), here and in the
+  // same read of `onOrderStatus`. The documents are made inside `inOrganizationOfStore`; the queue is Redis, outside any transaction.
   private async organizationOf(storeId: string): Promise<string | null> {
     const store = await this.prisma.client.store.findUnique({
       where: { id: storeId },

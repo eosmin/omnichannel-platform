@@ -253,6 +253,10 @@ export class FinancePostingListener {
     })
   }
 
+  // Read with no tenant context on purpose: `stores` has no row policy (`neverPolicy` in scripts/rls-exceptions.ts, the guards read it
+  // before any context exists), and EventContext itself reads it the same way to open the context of the organization. Every other
+  // database call of this listener (the lines of a closed transfer, the list of a source that was not queued) opens its own context;
+  // the queue is Redis, outside any transaction. tests/api/finance-posting-listener-context.spec.ts proves each handler under RLS.
   private async organizationOf(storeId: string): Promise<string | null> {
     try {
       const store = await this.prisma.client.store.findUnique({

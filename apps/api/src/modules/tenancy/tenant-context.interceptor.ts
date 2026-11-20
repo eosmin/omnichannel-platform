@@ -12,7 +12,7 @@ import { from, lastValueFrom, type Observable } from 'rxjs'
 import { PrismaService, RLS_CONTEXT_ENABLED, type TenantContext } from '@platform/core/database'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { NO_TENANT_TRANSACTION_KEY } from './decorators'
+import { NO_TENANT_TRANSACTION_KEY, TENANT_ORGANIZATION_STORES_KEY } from './decorators'
 
 // Nest's own key of an @Sse() handler
 const SSE_METADATA = '__sse__'
@@ -58,12 +58,34 @@ export class TenantContextInterceptor implements NestInterceptor {
       [context.getHandler(), context.getClass()]
     )
     if (excluded !== undefined) return next.handle()
-    const tenant = tenantContextOf(context.switchToHttp().getRequest<AuthenticatedRequest>())
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>()
+    const tenant = tenantContextOf(request)
     if (tenant === undefined) return next.handle()
+    const wide =
+      this.reflector.getAllAndOverride<string | undefined>(TENANT_ORGANIZATION_STORES_KEY, [
+        context.getHandler(),
+        context.getClass()
+      ]) !== undefined
     return from(
-      this.prisma.tenantTransaction(tenant, () =>
-        lastValueFrom(next.handle(), { defaultValue: undefined })
+      (wide ? this.withOrganizationStores(tenant) : Promise.resolve(tenant)).then(opened =>
+        this.prisma.tenantTransaction(opened, () =>
+          lastValueFrom(next.handle(), { defaultValue: undefined })
+        )
       )
     )
+  }
+
+  // The context of a route marked @TenantOfOrganizationStores: every store of the organization of the request (Store is a global
+  // model, read before any context exists, as TenantGuard reads it). The organization is the one the guard put in the context, and
+  // the store of the header stays in it even if the read comes back empty.
+  private async withOrganizationStores(tenant: TenantContext): Promise<TenantContext> {
+    if (tenant.organizationIds.length === 0) return tenant
+    const stores = await this.prisma.client.store.findMany({
+      where: { organizationId: { in: [...tenant.organizationIds] } },
+      select: { id: true },
+      orderBy: { id: 'asc' }
+    })
+    const storeIds = new Set([...tenant.storeIds, ...stores.map(store => store.id)])
+    return { ...tenant, storeIds: [...storeIds] }
   }
 }
