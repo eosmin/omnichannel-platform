@@ -501,18 +501,34 @@ describe('The rollups of analytics', () => {
 
   describe('recordReply', () => {
     let conversations: ConversationsService
+    let guarded: PrismaService
+    let jobs: JobContext
     beforeAll(() => {
       conversations = app.get(ConversationsService, { strict: false })
+      // The worker records the reply inside the context of the store (the sender does), on the guarded
+      // connection: an access outside any context fails the suite instead of touching no row
+      guarded = createGuardedWorkerPrisma()
+      jobs = new JobContext(guarded)
     })
 
-    const reply = (conversationId: string, storeId: string, when: Date, automated?: boolean) =>
-      prisma.transaction(tx =>
-        conversations.recordReply(
-          tx,
-          storeId,
-          conversationId,
-          when,
-          automated === undefined ? {} : { automated }
+    // `contextStoreId` is the store the job runs for; it differs from `storeId` only in the case that
+    // checks the filter by store of the write itself, which the policy alone would not show
+    const reply = (
+      conversationId: string,
+      storeId: string,
+      when: Date,
+      automated?: boolean,
+      contextStoreId: string = storeId
+    ) =>
+      jobs.forStore(contextStoreId, () =>
+        guarded.transaction(tx =>
+          conversations.recordReply(
+            tx,
+            storeId,
+            conversationId,
+            when,
+            automated === undefined ? {} : { automated }
+          )
         )
       )
 
@@ -556,7 +572,8 @@ describe('The rollups of analytics', () => {
       const theirs = await aStore()
       const { id } = await conversation(theirs.id, { createdAt: at(0) })
 
-      await reply(id, mine.id, at(2), true)
+      // In the context of the store that owns the row, so only the `storeId` of the write keeps it out
+      await reply(id, mine.id, at(2), true, theirs.id)
 
       const after = await owner.conversation.findUniqueOrThrow({ where: { id } })
       expect(after.firstAutomatedResponseAt).toBeNull()
