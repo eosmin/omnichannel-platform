@@ -155,6 +155,10 @@ export class ConversationBulkService {
     viewer: Viewer
   ): Promise<BulkResult> {
     const result: BulkResult = { succeeded: [], failed: [], truncated }
+    const tellsCustomers =
+      body.action === BulkActions.MARK_READ && !viewer.userId.startsWith(PLUGIN_ACTOR_PREFIX)
+    // The receipts point at what existed when the batch began: the clock of the database, read once before the first change
+    const began = tellsCustomers ? await this.databaseNow() : undefined
     for (const id of ids) {
       try {
         await inSavepoint(() => this.apply(storeId, id, body, viewer))
@@ -175,7 +179,26 @@ export class ConversationBulkService {
         result.failed.push({ id, code })
       }
     }
+    // A plugin reads without telling the customer that a person saw it (as its route of one conversation). Only the
+    // conversations that went through are told: the lookups cost the same for 1 as for 500 and log their own failures
+    if (began !== undefined) {
+      await this.readReceipts.queueForMany(storeId, result.succeeded, began)
+      await this.widgetRead.notifyMany(storeId, result.succeeded, began)
+    }
     return result
+  }
+
+  // The clock of the database, in a savepoint: a failure of this read is not the failure of the bulk (the receipts then use the
+  // clock of the api, which only moves the cutoff by the skew between the two)
+  private async databaseNow(): Promise<Date> {
+    try {
+      const [row] = await inSavepoint(
+        () => this.prisma.client.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`
+      )
+      return row?.now ?? new Date()
+    } catch {
+      return new Date()
+    }
   }
 
   // Changes nothing: queues one file for the conversations the member may see, and says which of the
@@ -298,12 +321,7 @@ export class ConversationBulkService {
         return
       case BulkActions.MARK_READ:
         await this.conversations.markRead(storeId, conversationId, viewer)
-        // A plugin reads without telling the customer that a person saw it (as its route of one conversation); both
-        // read in the context of this request, so they are awaited, as the route does, and log their own failures
-        if (!viewer.userId.startsWith(PLUGIN_ACTOR_PREFIX)) {
-          await this.readReceipts.queueFor(storeId, conversationId)
-          await this.widgetRead.notify(storeId, conversationId)
-        }
+        // The receipts and the notices of the widget are asked once for the batch, after the loop (`applyEach`)
         return
       case BulkActions.MARK_UNREAD:
         await this.conversations.markUnread(storeId, conversationId, viewer)

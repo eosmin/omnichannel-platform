@@ -1,5 +1,5 @@
 import { Permissions } from '@platform/core/auth'
-import { BulkActions } from '@platform/core/domain'
+import { BulkActions, PLUGIN_ACTOR_PREFIX } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import type { ConversationsService, Viewer } from '@platform/core/messaging'
 
@@ -12,18 +12,30 @@ const actor = { userId: 'user-1' } as unknown as Actor
 
 const closed = Object.assign(new Error('transaction closed'), { code: 'P2028' })
 
+const queueForMany = jest.fn()
+const notifyMany = jest.fn()
+const BEGAN = new Date('2026-11-20T10:00:00Z')
+
+beforeEach(() => {
+  queueForMany.mockReset()
+  notifyMany.mockReset()
+})
+
 function build(markRead: jest.Mock, hasContext: boolean): ConversationBulkService {
   const logger = { setContext: jest.fn(), error: jest.fn() }
   return new ConversationBulkService(
     { markRead } as unknown as ConversationsService,
     {} as never,
     {} as never,
-    { queueFor: jest.fn() } as never,
-    { notify: jest.fn() } as never,
+    { queueForMany } as never,
+    { notifyMany } as never,
     {} as never,
     { log: jest.fn() } as never,
     logger as never,
-    { hasTenantContext: () => hasContext } as never
+    {
+      hasTenantContext: () => hasContext,
+      client: { $queryRaw: () => Promise.resolve([{ now: BEGAN }]) }
+    } as never
   )
 }
 
@@ -51,6 +63,25 @@ describe('ConversationBulkService without an open transaction', () => {
     expect(result.succeeded).toEqual(['a', 'c'])
     expect(result.failed).toEqual([{ id: 'b', code: ErrorCodes.INTERNAL_ERROR }])
     expect(markRead).toHaveBeenCalledTimes(3)
+    // The receipts are asked once, for the ones that went through, with the clock of the start of the batch
+    expect(queueForMany).toHaveBeenCalledTimes(1)
+    expect(queueForMany).toHaveBeenCalledWith('store-1', ['a', 'c'], BEGAN)
+    expect(notifyMany).toHaveBeenCalledWith('store-1', ['a', 'c'], BEGAN)
+  })
+
+  it('tells no customer when a plugin reads', async () => {
+    const markRead = jest.fn().mockResolvedValue({})
+    const service = build(markRead, false)
+
+    await service.run(
+      'store-1',
+      { action: BulkActions.MARK_READ, conversationIds: ['a'] },
+      { ...viewer, userId: `${PLUGIN_ACTOR_PREFIX}x` },
+      actor
+    )
+
+    expect(queueForMany).not.toHaveBeenCalled()
+    expect(notifyMany).not.toHaveBeenCalled()
   })
 
   it('does not stop the others when the transaction of one item closed', async () => {
