@@ -1076,7 +1076,7 @@ HIGH-tier when a shipment exists):
   asked again with the same key and the last attempt leaves `CANCEL_FAILED`; a refusal ends it at once. `shipment.cancel_failed`
   tells the managers of shipments in both of the last cases. Cancelling the order no longer waits for a guide that is only a label:
   the order and its release of stock commit with the guides in `CANCEL_PENDING`, and the stock is released once. An edit voids the
-  guide and does not make the new one; the new guide waits (`SHIPPING_ACTIVE_SHIPMENT_EXISTS`) until the old is `CANCELLED`. When the lines moved to another warehouse and the old guide is of a warehouse that no longer has lines of the order, the wait is `SHIPPING_ORIGIN_VOID_PENDING` (409, with the ids and statuses of the guides in the way): the way out is to wait while it is `CANCEL_PENDING`, and when it is `CANCEL_FAILED` to retry its cancellation or mark it voided. A voided
+  guide and does not make the new one; the new guide waits (`SHIPPING_ACTIVE_SHIPMENT_EXISTS`) until the old is `CANCELLED`. When the old guide is of another warehouse of the order (the lines moved, or a split order), the wait is `SHIPPING_ORIGIN_VOID_PENDING` (409, with the ids and statuses of the guides in the way): the way out is to wait while it is `CANCEL_PENDING`, and when it is `CANCEL_FAILED` to retry its cancellation or mark it voided. A voided
   guide leaves its pickup: its count drops, and the carrier is told after the commit when it holds the pickup (a failure leaves a
   note on the pickup, the guide is voided anyway).
 - **Customer message:** `ORDER_CANCELLED` per template (§4.7).

@@ -412,23 +412,22 @@ export async function prepareGuide(
         : 'the order already has an active guide'
     )
   }
-  // A guide whose void is in progress or failed, of an origin that no longer has lines of the order (the lines moved), still
-  // counts in what the new guide is told it collects, and nothing takes it out when the void ends: the new guide waits for it.
-  // One whose origin still has lines is another share of a split order and does not stop this one.
-  const orphansVoiding = existing.filter(
-    entry =>
-      ShipmentVoidingStatuses.some(status => String(status) === entry.status) &&
-      !origins.some(origin => origin.warehouseId === entry.originWarehouseId)
+  // A guide whose void is in progress or failed still counts in what the new guide is told it collects, and nothing takes it out
+  // when the void ends: the new guide waits for it. That holds for a guide of a warehouse that lost its lines and for one of a
+  // warehouse that still has some: its share may have been worked out for another placement of the lines (the void of a moved
+  // placement), and the new guide would be told to collect what that share leaves, not its own.
+  const voiding = existing.filter(entry =>
+    ShipmentVoidingStatuses.some(status => String(status) === entry.status)
   )
-  if (orphansVoiding.length > 0) {
+  if (voiding.length > 0) {
     // The way out is in the code, not in the words: the screen says it (retry the cancellation of the guide, or mark it voided
     // when the carrier did cancel it) from the ids and the statuses
     throw shippingRefusal(
       ErrorCodes.SHIPPING_ORIGIN_VOID_PENDING,
-      'a guide of a warehouse that no longer has lines of the order is still being voided: wait for it, or when it failed retry its cancellation or mark it voided, then create this one',
+      'a guide of the order is still being voided: wait for it, or when it failed retry its cancellation or mark it voided, then create this one',
       {
-        shipmentIds: orphansVoiding.map(entry => entry.id),
-        statuses: orphansVoiding.map(entry => entry.status)
+        shipmentIds: voiding.map(entry => entry.id),
+        statuses: voiding.map(entry => entry.status)
       }
     )
   }

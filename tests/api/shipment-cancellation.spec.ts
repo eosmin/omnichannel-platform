@@ -510,7 +510,7 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
       }
     )
 
-    it('does not stop the guide of one warehouse because the guide of another warehouse with lines of the order is being voided', async () => {
+    it('makes the guide of one warehouse wait while the guide of another warehouse of a split order is being voided, then shares the total between both', async () => {
       const split = await reserved({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
       const item = await owner.orderItem.findFirstOrThrow({ where: { orderId: split.id } })
       const second = await owner.orderItem.create({
@@ -538,15 +538,33 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
         .post(ApiRoutes.shipments.forOrder(split.id))
         .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseA.id })
       expect(first.status).toBe(CREATED)
-      await owner.shipment.update({
-        where: { id: (first.body as { id: string }).id },
-        data: { status: ShipmentStatus.CANCEL_PENDING }
-      })
-      // The first warehouse still has lines of the order: its guide is another share, not one the new guide must wait for
+      const firstId = (first.body as { id: string }).id
+      const cancelled = await asAdmin().post(ApiRoutes.shipments.cancel(firstId))
+      expect(cancelled.body).toMatchObject({ status: ShipmentStatus.CANCEL_PENDING })
+      // Even with lines left in its warehouse, a guide that is being voided may carry a share worked out for another placement of
+      // the lines (the void of a moved placement): the guide of the other warehouse would be told to collect what that share leaves
+      const early = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(split.id))
+        .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseASecond.id })
+      expect(early.status).toBe(CONFLICT)
+      expect((early.body as ErrorBody).error.code).toBe(ErrorCodes.SHIPPING_ORIGIN_VOID_PENDING)
+      expect(await settle(firstId)).toBe(VoidSettlements.CANCELLED)
+
+      // Once it is cancelled, each warehouse gets its own share and the shares add up to the total of the order
+      const total = (await orderOf(split.id)).totalCents
+      const one = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(split.id))
+        .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseA.id })
+      expect(one.status).toBe(CREATED)
       const other = await asAdmin()
         .post(ApiRoutes.shipments.forOrder(split.id))
         .send({ connectionId: forzaId, originWarehouseId: ctx.warehouseASecond.id })
       expect(other.status).toBe(CREATED)
+      const shares = [
+        (await shipmentOf((one.body as { id: string }).id)).codAmountCents,
+        (await shipmentOf((other.body as { id: string }).id)).codAmountCents
+      ]
+      expect((shares[0] ?? 0) + (shares[1] ?? 0)).toBe(total)
     })
 
     it('leaves the guide alone when the edit sends the lines again in the warehouse they already are', async () => {
