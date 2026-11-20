@@ -32,6 +32,7 @@ type Client = TestAgent
 const OK = 200
 const FORBIDDEN = 403
 const NOT_FOUND = 404
+const CONFLICT = 409
 const ASKS_PROVIDER_ID = 'rls-fiscal-routes-test'
 const SECRET = 'not-a-real-signing-key-1234567890'
 const RECEIVER_TAX_ID = '0614-010101-101-1'
@@ -309,8 +310,30 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
           before.submission,
           before.updatedAt
         ])
+        // Nothing was written, so nothing is on the trail
+        expect(await owner.auditLog.count({ where: { userId: onlyA2.id, resourceId: id } })).toBe(0)
       }
     )
+
+    it('voids once: the second request meets a document that is no longer accepted and writes nothing', async () => {
+      await useIssuer(SIMULATOR_PROVIDER_ID)
+      const id = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      const first = await fromA2(both)
+        .post(ApiRoutes.fiscal.documents.void(id))
+        .send({ reason: 'wrong customer' })
+      expect(first.status).toBe(OK)
+      const voided = await row(id)
+      const second = await fromA2(both)
+        .post(ApiRoutes.fiscal.documents.void(id))
+        .send({ reason: 'wrong customer' })
+      expect(second.status).toBe(CONFLICT)
+      const after = await row(id)
+      expect([after.status, after.voidedAt, after.voidClaimKey]).toEqual([
+        voided.status,
+        voided.voidedAt,
+        voided.voidClaimKey
+      ])
+    })
 
     it.each(routes)(
       'answers 403 on $name when the permission is missing in the store of the header',
