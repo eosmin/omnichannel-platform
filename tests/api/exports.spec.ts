@@ -9,7 +9,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
-import { JobContext, type PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -54,6 +54,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
 import { createWorkerPrisma } from '../helpers/worker-db'
+import { inStoreContext } from '../helpers/tenant-context'
 import { workerServices } from '../helpers/worker-services'
 
 interface ErrorBody {
@@ -1242,14 +1243,20 @@ describe('Exports', () => {
         data: { status: ExportStatus.FAILED }
       })
       const service = app.get(ExportsService, { strict: false })
+      // The service is the api's and is called by hand: in a request the interceptor opens the context of the store
       const ask = (userId: string) =>
-        service.request({
-          storeId: ctx.storeA.id,
-          userId,
-          type: ExportTypes.ANALYTICS,
-          format: ExportFormats.CSV,
-          filters: {}
-        })
+        inStoreContext(
+          app.get(PrismaService, { strict: false }),
+          { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+          () =>
+            service.request({
+              storeId: ctx.storeA.id,
+              userId,
+              type: ExportTypes.ANALYTICS,
+              format: ExportFormats.CSV,
+              filters: {}
+            })
+        )
 
       const pluginUser = pluginUserId(randomUUID())
       const pluginBurst = await Promise.allSettled(Array.from({ length: 5 }, () => ask(pluginUser)))

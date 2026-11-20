@@ -5,7 +5,7 @@ import type { INestApplication } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService, JobContext } from '@platform/core/database'
+import { JobContext, type PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -16,7 +16,7 @@ import {
   OutboundLimits,
   ReactionActors
 } from '@platform/core/domain'
-import { DomainEvents } from '@platform/core/event-bus'
+import type { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import {
   AwayReplyService,
@@ -49,7 +49,8 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { TEST_IDENTITY_KINDS } from '../helpers/identity-kinds'
 import { CapturedQueue, queueOf } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { createGuardedWorkerPrisma } from '../helpers/worker-db'
+import { workerServices } from '../helpers/worker-services'
 
 const OK = 200
 const NOT_FOUND = 404
@@ -75,27 +76,26 @@ describe('Echoes and reactions that a channel delivers', () => {
   let inbound: InboundMessageService
   let reactions: MessageReactionsService
   let prisma: PrismaService
+  let events: DomainEvents
   let handle = 0
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp(
-      [],
-      onWorkerDatabase(builder =>
-        builder
-          .overrideProvider(getQueueToken(QueueNames.INBOUND))
-          .useValue(new CapturedQueue())
-          .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
-          .useValue(new CapturedQueue())
-          .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
-          .useValue(new CapturedQueue())
-      )
+    app = await createTestApp([], builder =>
+      builder
+        .overrideProvider(getQueueToken(QueueNames.INBOUND))
+        .useValue(new CapturedQueue())
+        .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
+        .useValue(new CapturedQueue())
+        .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
+        .useValue(new CapturedQueue())
     )
     ctx = await seedTestContext(owner, app, prefix)
     app.get(PluginRegistry, { strict: false }).register(buildChannelPlugin())
-    prisma = app.get(PrismaService, { strict: false })
+    // As the worker has it: its own connection, its own events, a context opened for the store of each call
+    prisma = createGuardedWorkerPrisma()
     const connections = new ChannelConnectionResolver(prisma)
-    const events = app.get(DomainEvents, { strict: false })
+    events = (await workerServices(app, prisma)).events
     inbound = new InboundMessageService(
       prisma,
       connections,
@@ -113,11 +113,11 @@ describe('Echoes and reactions that a channel delivers', () => {
       events,
       queueOf(app, QueueNames.HEAVY_PROCESSING) as never,
       await app.resolve(PinoLogger),
-      app.get(JobContext, { strict: false })
+      new JobContext(prisma)
     )
     reactions = new MessageReactionsService(
       prisma,
-      new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS),
+      new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS, new JobContext(prisma)),
       events,
       await app.resolve(PinoLogger)
     )
@@ -222,7 +222,6 @@ describe('Echoes and reactions that a channel delivers', () => {
       const from = handleOf()
 
       const created: string[] = []
-      const events = app.get(DomainEvents, { strict: false })
       const spy = jest.spyOn(events, 'publish')
       await echo(connectionId, from, 'out-3')
       for (const [, name, payload] of spy.mock.calls) {
@@ -696,7 +695,6 @@ describe('Echoes and reactions that a channel delivers', () => {
       const from = handleOf()
       await inbound.handleMessageReceived(TEST_CHANNEL_ID, message(connectionId, from, 'r-00'))
       const published: unknown[] = []
-      const events = app.get(DomainEvents, { strict: false })
       const spy = jest.spyOn(events, 'publish').mockImplementation((_tx, name) => {
         published.push(name)
       })

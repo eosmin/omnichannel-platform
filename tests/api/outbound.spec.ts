@@ -24,7 +24,7 @@ import {
   MessageType
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { DomainEvents } from '@platform/core/event-bus'
+import type { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import {
   ChannelConnectionResolver,
@@ -68,7 +68,9 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
-import { onWorkerDatabase, createGuardedWorkerPrisma } from '../helpers/worker-db'
+import { inStoreContext, transactionInContext } from '../helpers/tenant-context'
+import { createGuardedWorkerPrisma } from '../helpers/worker-db'
+import { workerServices } from '../helpers/worker-services'
 
 const CREATED = 201
 const OK = 200
@@ -94,7 +96,9 @@ describe('Replies on their way to a channel', () => {
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
+  // What the worker runs on: its own connection and events, a context for the store of each job (the app keeps the api's)
   let prisma: PrismaService
+  let events: DomainEvents
   let sender: OutboundSender
   let writer: MessageStatusWriter
   let receipts: ChannelReceipts
@@ -138,9 +142,9 @@ describe('Replies on their way to a channel', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp([], onWorkerDatabase())
+    app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
-    prisma = app.get(PrismaService, { strict: false })
+    prisma = createGuardedWorkerPrisma()
     const registry = app.get(PluginRegistry, { strict: false })
     const pluginOf = (id: string): ReturnType<typeof buildChannelPlugin> =>
       buildChannelPlugin({ id, sendMessage: (c, p) => sendMessage(c, p) })
@@ -208,7 +212,7 @@ describe('Replies on their way to a channel', () => {
       .mockImplementation((c, p) => sendMessage(c, p))
 
     const logger: PinoLogger = await app.resolve(PinoLogger)
-    const events = app.get(DomainEvents, { strict: false })
+    events = (await workerServices(app, prisma)).events
     writer = new MessageStatusWriter(prisma, events, new JobContext(prisma))
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
     const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
@@ -394,15 +398,20 @@ describe('Replies on their way to a channel', () => {
       const undoHoldsTheRow = new Promise<void>(resolve => {
         locked = resolve
       })
-      const undo = prisma.transaction(async tx => {
-        await app
-          .get(ConversationsService, { strict: false })
-          .applyStatus(tx, reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
-            actor: 'system'
-          })
-        locked()
-        await held
-      })
+      // The Undo is the api's: its connection, and the context of the store that a request opens
+      const undo = transactionInContext(
+        app.get(PrismaService, { strict: false }),
+        { storeIds: [reply.storeId], organizationIds: [ctx.orgA.id] },
+        async tx => {
+          await app
+            .get(ConversationsService, { strict: false })
+            .applyStatus(tx, reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
+              actor: 'system'
+            })
+          locked()
+          await held
+        }
+      )
       await undoHoldsTheRow
 
       const sending = sender.send(job(reply), false)
@@ -1960,13 +1969,9 @@ describe('Replies on their way to a channel', () => {
             open: () => ({ accessToken: 'EAAB-test-token' })
           } as unknown as CredentialCipher),
           writer,
-          new ConversationsService(
-            prisma,
-            app.get(DomainEvents, { strict: false }),
-            new JobContext(prisma)
-          ),
+          new ConversationsService(prisma, events, new JobContext(prisma)),
           app.get(MessagingWindowService, { strict: false }),
-          app.get(DomainEvents, { strict: false }),
+          events,
           app.get(StorageService, { strict: false }),
           await app.resolve(PinoLogger),
           new JobContext(prisma)
@@ -2569,18 +2574,24 @@ describe('Replies on their way to a channel', () => {
           where: { id: conversation.id },
           data: { customerIdentity: { update: { lastInboundAt: new Date() } } }
         })
-        return app.get(MessagesService, { strict: false }).create(
-          ctx.storeA.id,
-          {
-            type: MessageType.IMAGE,
-            conversationId: conversation.id,
-            mediaIds,
-            idempotencyKey: randomUUID()
-          },
-          viewerOf(ctx.agentA.id, Object.values(Permissions)),
-          undefined,
-          (channel, capability) => registry.hasCapability(channel, capability),
-          channelFileLimits(registry, true)
+        // The service is the api's and is called by hand: in a request the interceptor opens the context of the store
+        return inStoreContext(
+          app.get(PrismaService, { strict: false }),
+          { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+          () =>
+            app.get(MessagesService, { strict: false }).create(
+              ctx.storeA.id,
+              {
+                type: MessageType.IMAGE,
+                conversationId: conversation.id,
+                mediaIds,
+                idempotencyKey: randomUUID()
+              },
+              viewerOf(ctx.agentA.id, Object.values(Permissions)),
+              undefined,
+              (channel, capability) => registry.hasCapability(channel, capability),
+              channelFileLimits(registry, true)
+            )
         )
       }
       const mine = (over: Parameters<typeof fileOf>[1] = {}) =>
