@@ -52,8 +52,11 @@ describe('RLS phase 6: a bulk action of conversations under enforcement', () => 
     )
     ctx = await seedTestContext(owner, app, prefix)
   })
-  afterAll(async () => {
+  afterEach(() => {
     jest.restoreAllMocks()
+    app.get(EventEmitter2).removeAllListeners(Events.CONVERSATION_READ)
+  })
+  afterAll(async () => {
     await cleanUp(owner, prefix)
     await app.close()
     await owner.$disconnect()

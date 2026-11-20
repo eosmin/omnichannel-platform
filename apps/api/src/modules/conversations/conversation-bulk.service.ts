@@ -159,6 +159,9 @@ export class ConversationBulkService {
         await inSavepoint(() => this.apply(storeId, id, body, viewer))
         result.succeeded.push(id)
       } catch (error) {
+        // A transaction that is aborted or closed cannot be told "one by one": the rest would fail too and the commit of a
+        // transaction in that state is a silent rollback, so a 200 would name as done what did not persist. The request fails.
+        if (isBrokenTransaction(error)) throw error
         const code = codeOf(error)
         // What is ours (a deadlock, a timeout) is said here; the caller gets the code only
         if (code === ErrorCodes.INTERNAL_ERROR) {
@@ -314,4 +317,18 @@ export class ConversationBulkService {
 // error that was not ours
 function codeOf(error: unknown): string {
   return error instanceof PlatformException ? error.code : ErrorCodes.INTERNAL_ERROR
+}
+
+const ABORTED_TRANSACTION = '25P02'
+const TRANSACTION_CLOSED = 'P2028'
+
+// The error says that the transaction of the request is no longer usable (aborted by an earlier statement, or closed by a timeout)
+function isBrokenTransaction(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const { code, meta } = error as { code?: unknown; meta?: { code?: unknown } }
+  return (
+    code === TRANSACTION_CLOSED ||
+    code === ABORTED_TRANSACTION ||
+    meta?.code === ABORTED_TRANSACTION
+  )
 }
