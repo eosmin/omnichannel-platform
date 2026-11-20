@@ -124,7 +124,7 @@ describe('ReadReceipts.queueFor', () => {
 })
 
 describe('ReadReceipts.queueForMany', () => {
-  const UP_TO = new Date('2026-11-20T10:00:00Z')
+  const UP_TO = '2026-11-20 10:00:00.123456'
 
   function buildMany(over: { enabled?: boolean; rows?: () => Promise<unknown> }) {
     const findSettings = jest.fn(() =>

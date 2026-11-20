@@ -6,7 +6,7 @@ import type { WidgetDelivery } from './widget-delivery.service'
 import { WidgetReadNotifier } from './widget-read-notifier.service'
 
 const STORE_ID = 'store-a'
-const UP_TO = new Date('2026-11-20T10:00:00Z')
+const UP_TO = '2026-11-20 10:00:00.123456'
 
 function build(over: { enabled?: boolean; rows?: () => Promise<unknown> }) {
   const findSettings = jest.fn(() =>

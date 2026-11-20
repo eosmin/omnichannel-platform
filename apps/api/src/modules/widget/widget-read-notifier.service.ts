@@ -8,6 +8,9 @@ import { readStorePreferences } from '@platform/core/store-preferences'
 
 import { WidgetDelivery } from './widget-delivery.service'
 
+// The one reference to the channel of this file (both lookups use it)
+const WIDGET_PLUGIN_ID = ChannelIds.WEB_WIDGET
+
 // Tells the visitor of the web widget that an agent read the conversation. The worker cannot reach a
 // visitor's socket, so this runs in the api next to the read itself (the other channels get theirs
 // through `ReadReceipts`). It follows the same switch of the store (`sendReadReceipts`), never changes
@@ -44,7 +47,11 @@ export class WidgetReadNotifier {
   // latest message of every conversation of the widget comes from one query. One emit per conversation with a target, with the
   // same arguments as `notify`; `upTo` (the clock of the database when the batch began) keeps out a message that arrived while the
   // batch ran, which nobody read. The query filters by the store of the request, so an id of another store finds nothing.
-  async notifyMany(storeId: string, conversationIds: readonly string[], upTo: Date): Promise<void> {
+  async notifyMany(
+    storeId: string,
+    conversationIds: readonly string[],
+    upTo: string
+  ): Promise<void> {
     if (conversationIds.length === 0) return
     try {
       const targets = await inSavepoint(() => this.targets(storeId, conversationIds, upTo))
@@ -65,7 +72,7 @@ export class WidgetReadNotifier {
   private async targets(
     storeId: string,
     conversationIds: readonly string[],
-    upTo: Date
+    upTo: string
   ): Promise<{ connectionId: string; channelIdentity: string; messageId: string }[]> {
     const settings = await this.prisma.client.storeSettings.findUnique({
       where: { storeId },
@@ -86,8 +93,8 @@ export class WidgetReadNotifier {
         AND m.author_type = ${AuthorType.CUSTOMER}
         AND m.deleted_at IS NULL
         AND m.content IS NOT NULL
-        AND m.created_at <= ${upTo.toISOString()}::timestamp
-        AND cc.plugin_id = ${ChannelIds.WEB_WIDGET}
+        AND m.created_at <= ${upTo}::timestamp
+        AND cc.plugin_id = ${WIDGET_PLUGIN_ID}
         AND cc.status = ${ChannelConnectionStatus.ACTIVE}
       ORDER BY m.conversation_id, m.created_at DESC, m.id DESC`
     return rows.map(row => ({
@@ -112,7 +119,7 @@ export class WidgetReadNotifier {
         content: { not: null },
         conversation: {
           channelConnection: {
-            pluginId: ChannelIds.WEB_WIDGET,
+            pluginId: WIDGET_PLUGIN_ID,
             status: ChannelConnectionStatus.ACTIVE
           }
         }

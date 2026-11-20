@@ -184,20 +184,29 @@ export class ConversationBulkService {
     if (began !== undefined) {
       await this.readReceipts.queueForMany(storeId, result.succeeded, began)
       await this.widgetRead.notifyMany(storeId, result.succeeded, began)
+    } else if (tellsCustomers) {
+      this.logger.warn(
+        { conversations: result.succeeded.length },
+        'the read receipts of a batch were not sent: the clock of the database could not be read'
+      )
     }
     return result
   }
 
-  // The clock of the database, in a savepoint: a failure of this read is not the failure of the bulk (the receipts then use the
-  // clock of the api, which only moves the cutoff by the skew between the two)
-  private async databaseNow(): Promise<Date> {
+  // The clock of the database, as the text it gave (UTC wall time), read in a savepoint: a failure of this read is not the failure of
+  // the bulk, but it fails closed: with no cutoff from the database there are no receipts for the batch (the clock of the api could
+  // be ahead and let in a message that arrived after the batch began)
+  private async databaseNow(): Promise<string | undefined> {
     try {
       const [row] = await inSavepoint(
-        () => this.prisma.client.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`
+        () =>
+          this.prisma.client.$queryRaw<
+            { now: string }[]
+          >`SELECT (clock_timestamp() AT TIME ZONE 'UTC')::text AS now`
       )
-      return row?.now ?? new Date()
+      return row?.now
     } catch {
-      return new Date()
+      return undefined
     }
   }
 

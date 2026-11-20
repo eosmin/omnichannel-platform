@@ -14,15 +14,20 @@ const closed = Object.assign(new Error('transaction closed'), { code: 'P2028' })
 
 const queueForMany = jest.fn()
 const notifyMany = jest.fn()
-const BEGAN = new Date('2026-11-20T10:00:00Z')
+const BEGAN = '2026-11-20 10:00:00.123456'
+
+const warn = jest.fn()
+const clock = jest.fn()
 
 beforeEach(() => {
+  warn.mockReset()
+  clock.mockReset().mockResolvedValue([{ now: BEGAN }])
   queueForMany.mockReset()
   notifyMany.mockReset()
 })
 
 function build(markRead: jest.Mock, hasContext: boolean): ConversationBulkService {
-  const logger = { setContext: jest.fn(), error: jest.fn() }
+  const logger = { setContext: jest.fn(), error: jest.fn(), warn }
   return new ConversationBulkService(
     { markRead } as unknown as ConversationsService,
     {} as never,
@@ -34,7 +39,7 @@ function build(markRead: jest.Mock, hasContext: boolean): ConversationBulkServic
     logger as never,
     {
       hasTenantContext: () => hasContext,
-      client: { $queryRaw: () => Promise.resolve([{ now: BEGAN }]) }
+      client: { $queryRaw: clock }
     } as never
   )
 }
@@ -67,6 +72,22 @@ describe('ConversationBulkService without an open transaction', () => {
     expect(queueForMany).toHaveBeenCalledTimes(1)
     expect(queueForMany).toHaveBeenCalledWith('store-1', ['a', 'c'], BEGAN)
     expect(notifyMany).toHaveBeenCalledWith('store-1', ['a', 'c'], BEGAN)
+  })
+
+  it('keeps the reads and tells no customer when the clock of the database cannot be read', async () => {
+    clock.mockRejectedValue(new Error('boom'))
+    const markRead = jest.fn().mockResolvedValue({})
+
+    const result = await run(build(markRead, false))
+
+    expect(result.succeeded).toEqual(['a', 'b', 'c'])
+    expect(queueForMany).not.toHaveBeenCalled()
+    expect(notifyMany).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(
+      { conversations: 3 },
+      'the read receipts of a batch were not sent: the clock of the database could not be read'
+    )
   })
 
   it('tells no customer when a plugin reads', async () => {

@@ -54,32 +54,24 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
         .useValue(true)
     )
     ctx = await seedTestContext(owner, app, prefix)
-    // Counts the queries of the two batch lookups through the client of the transaction (the guard of raw SQL reads them too)
-    const descriptor = Object.getOwnPropertyDescriptor(PrismaService.prototype, 'client')
-    const realClient = (): PrismaService['client'] =>
-      (descriptor?.get as () => PrismaService['client']).call(guarded)
-    jest.spyOn(guarded, 'client', 'get').mockImplementation(() => {
-      const client = realClient()
-      return new Proxy(client, {
-        get(target, property, receiver) {
-          const value = Reflect.get(target, property, receiver) as unknown
-          if (property !== '$queryRaw' || typeof value !== 'function') return value
-          return (...args: unknown[]) => {
-            const first = args[0] as { sql?: string } | readonly string[]
-            const text = Array.isArray(first)
-              ? first.join(' ')
-              : ((first as { sql?: string }).sql ?? '')
-            if (text.includes('DISTINCT ON')) batchLookups += 1
-            return (value as (...a: unknown[]) => unknown).apply(target, args)
-          }
-        }
-      })
-    })
   })
   beforeEach(async () => {
     enqueued = []
     emitted = []
     batchLookups = 0
+    // Each lookup asks the database once (the unit specs of both classes pin that): counting the calls is counting the queries
+    for (const [target, method] of [
+      [app.get(ReadReceipts), 'latestToMarkMany'],
+      [app.get(WidgetReadNotifier), 'targets']
+    ] as const) {
+      const original = (target as unknown as Record<string, (...a: unknown[]) => unknown>)[method]
+      jest
+        .spyOn(target as unknown as Record<string, (...a: unknown[]) => unknown>, method)
+        .mockImplementation(function (this: unknown, ...args: unknown[]) {
+          batchLookups += 1
+          return original?.apply(this, args)
+        })
+    }
     jest.spyOn(app.get(OutboundQueue), 'enqueueReadReceipt').mockImplementation(job => {
       enqueued.push(job)
       return Promise.resolve()
@@ -259,8 +251,10 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
     // Even when the id of another store is forced into the batch, the store of the context keeps it out
     enqueued = []
     await guarded.inStoreContext(ctx.storeA.id, async () => {
-      await app.get(ReadReceipts).queueForMany(ctx.storeA.id, [foreign.id], new Date())
-      await app.get(WidgetReadNotifier).notifyMany(ctx.storeA.id, [foreign.id], new Date())
+      await app.get(ReadReceipts).queueForMany(ctx.storeA.id, [foreign.id], '2999-01-01 00:00:00')
+      await app
+        .get(WidgetReadNotifier)
+        .notifyMany(ctx.storeA.id, [foreign.id], '2999-01-01 00:00:00')
     })
     expect(enqueued).toEqual([])
     expect(emitted).toEqual([])

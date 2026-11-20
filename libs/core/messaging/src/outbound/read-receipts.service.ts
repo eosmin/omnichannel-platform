@@ -43,13 +43,13 @@ export class ReadReceipts {
 
   // The same as `queueFor` for the conversations of a bulk action that went through (never one that failed): the switch of the
   // store is read once and the latest message of every conversation comes from one query, so the cost does not grow with the
-  // number of conversations. `upTo` is the clock of the database when the batch began: a message that arrived while the batch ran
+  // number of conversations. `upTo` is the clock of the database when the batch began, as the text the database gave (UTC wall time, no Date and no zone in between): a message that arrived while the batch ran
   // was not read by anyone, so no receipt may point at it. Each conversation with a message to mark gets its own job, with the same arguments as `queueFor`.
   // `storeId` is the one of the request; the query filters by it, so an id of another store finds nothing.
   async queueForMany(
     storeId: string,
     conversationIds: readonly string[],
-    upTo: Date
+    upTo: string
   ): Promise<void> {
     if (conversationIds.length === 0) return
     try {
@@ -73,7 +73,7 @@ export class ReadReceipts {
   private async latestToMarkMany(
     storeId: string,
     conversationIds: readonly string[],
-    upTo: Date
+    upTo: string
   ): Promise<Map<string, string>> {
     const found = new Map<string, string>()
     const settings = await this.prisma.client.storeSettings.findUnique({
@@ -90,7 +90,7 @@ export class ReadReceipts {
         AND author_type = ${AuthorType.CUSTOMER}
         AND channel_message_id IS NOT NULL
         AND deleted_at IS NULL
-        AND created_at <= ${upTo.toISOString()}::timestamp
+        AND created_at <= ${upTo}::timestamp
       ORDER BY conversation_id, created_at DESC, id DESC`
     for (const row of rows) found.set(row.conversation_id, row.id)
     return found
