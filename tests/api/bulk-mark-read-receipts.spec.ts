@@ -189,6 +189,19 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
     const response = await api(app, ctx.adminA, ctx.storeA)
       .post(ApiRoutes.conversations.bulk)
       .send({ action: BulkActions.MARK_READ, conversationIds: ids })
+    // The transaction of the request commits once the answer is sent, and the jobs are queued after that commit: wait until the
+    // reads are in the database, then let the hooks of the commit run
+    const body = response.body as { succeeded?: string[] }
+    const done = body.succeeded ?? []
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const unread = await owner.conversation.count({
+        where: { id: { in: done }, unreadCount: { gt: 0 } }
+      })
+      if (unread === 0) break
+      await new Promise<void>(resolve => setTimeout(resolve, 50))
+    }
+    await new Promise<void>(resolve => setImmediate(resolve))
+    await new Promise<void>(resolve => setTimeout(resolve, 50))
     // A lookup that failed is logged and the reads stand: say it here, or the case only sees a receipt that never came
     expect(JSON.stringify(warnings)).toBe('[]')
     return response
