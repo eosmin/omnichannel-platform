@@ -37,3 +37,9 @@ export function loadDbRoleEnv(): DbRoleEnv {
   }
   return parsed.data
 }
+
+// The environment of the command that gives the worker role its bypass back: `flagProblem` (scripts/lib/rls-worker-role.ts) refuses when
+// the flag of the workers is still ON in it
+export function workerEnvForRoleScript(): Record<string, string | undefined> {
+  return { WORKER_RLS_CONTEXT: process.env['WORKER_RLS_CONTEXT'] }
+}

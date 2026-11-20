@@ -341,7 +341,10 @@ jobs:
           SECURITY_SHARD: ${{ matrix.shard }}
         run: |
           # The legs of the matrix are the denominator of the shard: a leg removed would leave specs that no job runs
-          test "${{ strategy.job-total }}" = "${SECURITY_SHARD#*/}"
+          test "${{ strategy.job-total }}" = "${SECURITY_SHARD#*/}" || {
+            echo "::error::the matrix has ${{ strategy.job-total }} legs but the shard is ${SECURITY_SHARD}: change the matrix and the --shard of tests/project.json together (the denominator of SECURITY_SHARD), or specs would run in no job"
+            exit 1
+          }
           # The peak of memory used on the whole runner (jest, services and tooling), in the summary: the suite
           # once ran out of heap and nothing measured it. A trap writes it even if the step is cancelled
           memory="$RUNNER_TEMP/memory.txt"
@@ -481,6 +484,12 @@ jobs:
         run: pnpm exec tsx scripts/wait-for-bucket.ts
       - name: Migrate an empty database and give the roles their passwords
         run: pnpm db:migrate
+      - name: Take BYPASSRLS from the worker role (this ephemeral database only)
+        # The role of the worker is a role of the whole SERVER, so this reaches every database the role can connect to: here, only the
+        # one of this job. `--confirm` is the only guard of the script (it does not refuse a host that is not local); the URL is the
+        # literal service container of this job (POSTGRES_USER `platform` is its superuser), no secret and no input. It runs BEFORE
+        # `db:rls:enforce on`, which refuses to start while the worker skips RLS, and with `WORKER_RLS_CONTEXT=true` in this job.
+        run: pnpm db:rls:worker-role nobypass --confirm=platform_ci
       - name: Turn row level security ON (ENABLE and FORCE)
         run: pnpm db:rls:enforce on
       - name: Every table with a policy is enabled and forced
@@ -558,6 +567,12 @@ jobs:
         run: pnpm exec tsx scripts/wait-for-bucket.ts
       - name: Migrate an empty database and give the roles their passwords
         run: pnpm db:migrate
+      - name: Take BYPASSRLS from the worker role (this ephemeral database only)
+        # The role of the worker is a role of the whole SERVER, so this reaches every database the role can connect to: here, only the
+        # one of this job. `--confirm` is the only guard of the script (it does not refuse a host that is not local); the URL is the
+        # literal service container of this job (POSTGRES_USER `platform` is its superuser), no secret and no input. It runs BEFORE
+        # `db:rls:enforce on`, which refuses to start while the worker skips RLS, and with `WORKER_RLS_CONTEXT=true` in this job.
+        run: pnpm db:rls:worker-role nobypass --confirm=platform_ci
       - name: Turn row level security ON (ENABLE and FORCE)
         run: pnpm db:rls:enforce on
       - name: Every table with a policy is enabled and forced
@@ -573,7 +588,10 @@ jobs:
           SECURITY_SHARD: ${{ matrix.shard }}
         run: |
           # The legs of the matrix are the denominator of the shard: a leg removed would leave specs that no job runs
-          test "${{ strategy.job-total }}" = "${SECURITY_SHARD#*/}"
+          test "${{ strategy.job-total }}" = "${SECURITY_SHARD#*/}" || {
+            echo "::error::the matrix has ${{ strategy.job-total }} legs but the shard is ${SECURITY_SHARD}: change the matrix and the --shard of tests/project.json together (the denominator of SECURITY_SHARD), or specs would run in no job"
+            exit 1
+          }
           # Same sampler as `security-shards`: the peak of memory of the runner, in the summary, to compare the two jobs
           memory="$RUNNER_TEMP/memory.txt"
           (while sleep 3; do free -m | awk '/^Mem:/ {print $3}'; done > "$memory") &

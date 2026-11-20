@@ -7,7 +7,7 @@ import pg from 'pg'
 import sharp from 'sharp'
 
 import { PrismaService } from '@platform/core/database'
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, workerRoleBoundInSuites } from '@platform/core/database-testing'
 import { JobNames, QueueNames } from '@platform/core/queues'
 import { AnimatedImage, ImageVariants, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -611,13 +611,30 @@ describe('MediaPipeline', () => {
       const avatar = await pendingAvatar(await photoWithMetadata())
       await pipeline.scan(avatar.id, { userId: avatar.userId })
       await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
-      await owner.query(`UPDATE media SET uploaded_by = NULL WHERE id = $1`, [avatar.id])
+      // The row stays the user's own (uploaded_by) and visible to the context of that user; its key points at the files of ANOTHER user
+      const foreignKey = StorageKeys.avatar(randomUUID(), avatar.id, 'me.jpg')
+      await owner.query(`UPDATE media SET key = $2 WHERE id = $1`, [avatar.id, foreignKey])
 
       await pipeline.processImage(avatar.id, { userId: avatar.userId })
 
       const row = await readMedia(avatar.id)
       expect(row.processedAt).toBeNull()
       expect(row.status).toBe('unscannable')
+    })
+
+    it('with no uploader the row is hidden from the user scope when the worker role is bound, and refused when it is not', async () => {
+      const avatar = await pendingAvatar(await photoWithMetadata())
+      await pipeline.scan(avatar.id, { userId: avatar.userId })
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
+      await owner.query(`UPDATE media SET uploaded_by = NULL WHERE id = $1`, [avatar.id])
+
+      await pipeline.processImage(avatar.id, { userId: avatar.userId })
+
+      const row = await readMedia(avatar.id)
+      expect(row.processedAt).toBeNull()
+      // Worker role BOUND (WORKER_RLS_CONTEXT=true, no BYPASSRLS): row security hides the row from the user scope, so there is no row
+      // to refuse and nothing changes. With the bypass the row is seen and the guard by key refuses it. Never processed in both
+      expect(row.status).toBe(workerRoleBoundInSuites() ? 'clean' : 'unscannable')
     })
 
     it('fails (to be tried again) when its file is missing but the row is there', async () => {

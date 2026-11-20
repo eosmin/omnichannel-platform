@@ -712,7 +712,11 @@ CREATE POLICY conversations_isolation ON conversations
 - `app.store_ids` carries every store the user is a member of; the guard sets it from the membership list, so
   cross-store screens (org billing, multi-store switcher) keep working.
 - Two database roles: `platform_app` (subject to RLS, used by `apps/api` tenant requests) and `platform_worker`
-  (`BYPASSRLS`, used by `apps/worker` and inbound webhooks, which are scoped in code and audited). Never a superuser.
+  (used by `apps/worker` and inbound webhooks, which are scoped in code and audited). Never a superuser. `platform_worker` is created
+  with `BYPASSRLS`; **stage E of the RLS plan takes it away** (`pnpm db:rls:worker-role nobypass`, run by the owner, not a
+  migration), so that the worker meets the same policies as the api: a job with no context then reads no row, silently. The
+  worker opens a `JobContext` per store or organization (`WORKER_RLS_CONTEXT=true`) and refuses to start when the flag is on and
+  the role still has the bypass (`docs/RLS_ACTIVATION_RUNBOOK.md`).
 - **Child tables:** large ones carry their **own denormalized `store_id`** and a plain index-friendly policy
   (`messages`, `inventory_movements`, as the models already do). Small child tables without `store_id`
   (`order_items`, transfer and count lines) are protected through the parent with

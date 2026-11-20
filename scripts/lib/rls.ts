@@ -144,13 +144,19 @@ export function checkRlsCoverage(
   }
 }
 
-// The two roles of the application are never allowed to skip row security, except the worker until the last phase. A migration
-// that grants BYPASSRLS to platform_app, makes it a superuser, puts it in another role or makes it the owner of a table defeats
+// The api role is never allowed to skip row security (the worker is created with BYPASSRLS and loses it by hand, in stage E: see
+// WORKER_ALTER below). A migration that grants BYPASSRLS to platform_app, makes it a superuser, puts it in another role or makes it the owner of a table defeats
 // the whole mechanism.
 const ROLE_ALTER =
   /\b(?:ALTER|CREATE)\s+(?:ROLE|USER)\s+(?:IF\s+EXISTS\s+)?"?platform_app"?[^;]*;/gi
 const ROLE_GRANT = /\bGRANT\s+(?:(?!\bON\b)[^;])*\bTO\s+[^;]*\bplatform_app\b[^;]*;/gi
 const OWNER_TO = /\bOWNER\s+TO\s+"?platform_app"?/gi
+// The bypass of the worker is changed by the owner with `pnpm db:rls:worker-role` (stage E), never by a migration: a migration runs by
+// itself in the deploy and would change what the worker sees in production without the owner. Creating the role stays allowed
+const WORKER_ALTER =
+  /\bALTER\s+(?:ROLE|USER)\s+(?:IF\s+EXISTS\s+)?"?platform_worker"?[^;]*(?:;|$)/gi
+const WORKER_HEAD = /^\s*ALTER\s+(?:ROLE|USER)\s+(?:IF\s+EXISTS\s+)?"?platform_worker"?/i
+const WORKER_GRANT = /\bGRANT\s+(?:(?!\bON\b)[^;])*\bTO\s+[^;]*\bplatform_worker\b[^;]*;/gi
 export function roleViolations(migrations: readonly MigrationSql[]): string[] {
   const problems: string[] = []
   for (const { name, sql } of migrations) {
@@ -165,6 +171,23 @@ export function roleViolations(migrations: readonly MigrationSql[]): string[] {
           `${name}: platform_app must not be BYPASSRLS, SUPERUSER or a member of another role (${statement.trim()})`
         )
       }
+    }
+    for (const statement of text.match(WORKER_ALTER) ?? []) {
+      if (/BYPASSRLS/i.test(statement)) {
+        problems.push(
+          `${name}: the bypass of platform_worker changes with pnpm db:rls:worker-role, not in a migration (${statement.trim()})`
+        )
+      } else if (
+        /(?<![A-Za-z])SUPERUSER/i.test(statement) ||
+        /\b(?:IN\s+ROLE|IN\s+GROUP|ROLE)\s+"?\w/i.test(statement.replace(WORKER_HEAD, ''))
+      ) {
+        problems.push(
+          `${name}: platform_worker must not be SUPERUSER or a member of another role (${statement.trim()})`
+        )
+      }
+    }
+    for (const statement of text.match(WORKER_GRANT) ?? []) {
+      problems.push(`${name}: a role must not be granted to platform_worker (${statement.trim()})`)
     }
     for (const statement of text.match(ROLE_GRANT) ?? []) {
       problems.push(`${name}: a role must not be granted to platform_app (${statement.trim()})`)
