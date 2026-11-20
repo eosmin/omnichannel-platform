@@ -5224,6 +5224,9 @@ describe('Tenant isolation', () => {
 
   // The connections and events of a remote channel plugin (Step 5.6, C3): the key of one installation reaches the connections of that
   // installation and of no other, in its own store or in another. `channelConnection` and `pluginInstallation` are the resources.
+  // The plugin of this block is OFFICIAL (no organization): one plugin installed in stores of two organizations is the state that proves the
+  // isolation between installations. What a PRIVATE plugin of one organization does in a store of another (refused at install by
+  // plugin-installations.service.ts, hidden from that store by the row policy of `plugins`) is not tried here.
   describe('the channel routes of the plugin API', () => {
     const pluginId = `${prefix}-chan`
     const channelScopes = [PluginScopes.CHANNEL_CONNECTIONS, PluginScopes.CHANNEL_EVENTS]
@@ -5247,7 +5250,11 @@ describe('Tenant isolation', () => {
           manifest: {},
           pricingModel: PluginPricingModels.FREE,
           status: PluginStatus.APPROVED,
-          organizationId: ctx.orgA.id
+          // An official plugin (no organization): the three installations below are in stores of TWO organizations, and the product refuses to
+          // install the private plugin of one organization in a store of another (plugin-installations.service.ts). A private plugin of
+          // organization A is hidden by the row policy from a request of store B, so the key of B would be answered 401 before the
+          // isolation between the installations is ever tried
+          organizationId: null
         }
       })
       for (const [name, store] of [

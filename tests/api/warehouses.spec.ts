@@ -858,13 +858,18 @@ describe('The warehouses of an organization', () => {
 
         const [unlink, reservation] = await Promise.allSettled([
           asAdmin().put(ApiRoutes.warehouses.stores(body.id)).send({ stores: [] }),
-          inventory.reserve({
-            storeId: ctx.storeA.id,
-            productId: product.id,
-            warehouseId: body.id,
-            quantity: 1,
-            idempotencyKey: key()
-          })
+          inStoreContext(
+            app.get(PrismaService, { strict: false }),
+            { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+            () =>
+              inventory.reserve({
+                storeId: ctx.storeA.id,
+                productId: product.id,
+                warehouseId: body.id,
+                quantity: 1,
+                idempotencyKey: key()
+              })
+          )
         ])
 
         const linked = await owner.storeWarehouse.count({
