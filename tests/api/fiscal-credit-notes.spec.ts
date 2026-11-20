@@ -4,6 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   FiscalConflictReasons,
@@ -28,6 +29,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
+import { inStoreContext } from '../helpers/tenant-context'
 
 const OK = 200
 const FORBIDDEN = 403
@@ -155,6 +157,14 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
     return made.id
   }
 
+  // The service is called here by hand, outside a request: it reads in the store (and organization) of the case, as its route does
+  const getDocument = (id: string) =>
+    inStoreContext(
+      app.get(PrismaService, { strict: false }),
+      { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+      () => documents.get(ctx.orgA.id, id)
+    )
+
   const noteOf = (returnId: string) =>
     owner.fiscalDocument.findFirst({ where: { returnId, kind: FiscalDocumentKind.CREDIT_NOTE } })
 
@@ -281,7 +291,7 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
         // Retried while it still does not fit: refused, and it stays as it is
         const retry = await asAdminA().post(ApiRoutes.fiscal.documents.retry(note?.id ?? ''))
         expect(retry.status).toBe(CONFLICT)
-        expect(await documents.get(ctx.orgA.id, note?.id ?? '')).toMatchObject({
+        expect(await getDocument(note?.id ?? '')).toMatchObject({
           status: FiscalDocumentStatus.REJECTED
         })
       } finally {
@@ -317,7 +327,7 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
       expect(edit.status).toBe(CONFLICT)
       await documents.submit(ctx.orgA.id, order.documentId)
       await documents.submit(ctx.orgA.id, note?.id ?? '')
-      const view = await documents.get(ctx.orgA.id, note?.id ?? '')
+      const view = await getDocument(note?.id ?? '')
       expect(view.receiver.taxIdMasked).toBe(`${'*'.repeat(13)}01-1`)
       expect(view.documentType).toBe(SimulatorDocumentTypes.CREDIT_NOTE)
     })
