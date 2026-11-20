@@ -3,15 +3,13 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService, JobContext } from '@platform/core/database'
+import { JobContext, type PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, DeliveryStatus, MessageType, ReactionActors } from '@platform/core/domain'
-import { DomainEvents } from '@platform/core/event-bus'
+import type { DomainEvents } from '@platform/core/event-bus'
 import {
   AwayReplyService,
   ChannelConnectionResolver,
-  ConversationsService,
-  CustomerIdentityService,
   InboundMessageService,
   type InboundEvent,
   InboundMessageChangesService,
@@ -19,8 +17,7 @@ import {
   ReactionOutcomes,
   MessageReactionsService,
   MessagingWindowService,
-  OutboundQueue,
-  RoutingService
+  OutboundQueue
 } from '@platform/core/messaging'
 import { QueueNames } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
@@ -32,7 +29,8 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { TEST_IDENTITY_KINDS } from '../helpers/identity-kinds'
 import { CapturedQueue, queueOf } from '../helpers/queue'
-import { onWorkerDatabase } from '../helpers/worker-db'
+import { createGuardedWorkerPrisma } from '../helpers/worker-db'
+import { workerMessaging, workerServices } from '../helpers/worker-services'
 
 describe('A reaction or a quote that points at a message the platform sent', () => {
   const prefix = newRunPrefix()
@@ -43,6 +41,7 @@ describe('A reaction or a quote that points at a message the platform sent', () 
   let reactions: MessageReactionsService
   let changes: InboundMessageChangesService
   let prisma: PrismaService
+  let events: DomainEvents
   let handle = 0
 
   const warn = jest.fn<void, [Record<string, unknown>, string]>()
@@ -58,32 +57,31 @@ describe('A reaction or a quote that points at a message the platform sent', () 
       error: jest.fn()
     } as unknown as PinoLogger
     owner = ownerClient()
-    app = await createTestApp(
-      [],
-      onWorkerDatabase(builder =>
-        builder
-          .overrideProvider(getQueueToken(QueueNames.INBOUND))
-          .useValue(new CapturedQueue())
-          .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
-          .useValue(new CapturedQueue())
-          .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
-          .useValue(new CapturedQueue())
-      )
+    app = await createTestApp([], builder =>
+      builder
+        .overrideProvider(getQueueToken(QueueNames.INBOUND))
+        .useValue(new CapturedQueue())
+        .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
+        .useValue(new CapturedQueue())
+        .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
+        .useValue(new CapturedQueue())
     )
     ctx = await seedTestContext(owner, app, prefix)
     app.get(PluginRegistry, { strict: false }).register(buildChannelPlugin())
-    prisma = app.get(PrismaService, { strict: false })
+    // As the worker has it: its own connection, its own events, a context opened for the store of each call
+    prisma = createGuardedWorkerPrisma()
     const connections = new ChannelConnectionResolver(prisma)
-    const events = app.get(DomainEvents, { strict: false })
+    events = (await workerServices(app, prisma)).events
+    const messaging = await workerMessaging(app, prisma, events)
     inbound = new InboundMessageService(
       prisma,
       connections,
-      app.get(CustomerIdentityService, { strict: false }),
-      app.get(ConversationsService, { strict: false }),
-      app.get(RoutingService, { strict: false }),
+      messaging.identities,
+      messaging.conversations,
+      messaging.routing,
       new AwayReplyService(
         prisma,
-        app.get(ConversationsService, { strict: false }),
+        messaging.conversations,
         app.get(MessagingWindowService, { strict: false }),
         events,
         app.get(OutboundQueue, { strict: false }),
@@ -92,7 +90,7 @@ describe('A reaction or a quote that points at a message the platform sent', () 
       events,
       queueOf(app, QueueNames.HEAVY_PROCESSING) as never,
       logger,
-      app.get(JobContext, { strict: false })
+      new JobContext(prisma)
     )
     const targets = new InboundMessageTargets(
       prisma,

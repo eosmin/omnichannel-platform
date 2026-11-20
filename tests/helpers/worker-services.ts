@@ -10,7 +10,13 @@ import {
 import { AuditService } from '@platform/core/audit-module'
 import { JobContext, type PrismaService, WorkerLists } from '@platform/core/database'
 import { DomainEvents, EventsBridge } from '@platform/core/event-bus'
+import {
+  ConversationsService,
+  CustomerIdentityService,
+  RoutingService
+} from '@platform/core/messaging'
 
+import { TEST_IDENTITY_KINDS } from './identity-kinds'
 import { createGuardedWorkerPrisma } from './worker-db'
 
 // The two services a class of the worker gets with its database: the events (a hook after the commit only runs for a transaction
@@ -62,4 +68,28 @@ export async function workerTokenExpiry(app: INestApplication): Promise<ChannelT
     new JobContext(prisma),
     new WorkerLists(prisma)
   )
+}
+
+// The classes of the api that the inbound pipeline of the worker takes in: built on the worker's connection and events, as the worker
+// module has them, so that a transaction the worker opens is finished by the PrismaService that opened it (afterCommit, events). The
+// reads of MessagingWindowService stay the app's: they join the context that is open.
+export async function workerMessaging(
+  app: INestApplication,
+  prisma: PrismaService,
+  events: DomainEvents
+): Promise<{
+  conversations: ConversationsService
+  routing: RoutingService
+  identities: CustomerIdentityService
+}> {
+  const jobs = new JobContext(prisma)
+  const conversations = new ConversationsService(prisma, events, jobs)
+  const logger = (await app.resolve(PinoLogger)) as unknown as ConstructorParameters<
+    typeof RoutingService
+  >[3]
+  return {
+    conversations,
+    routing: new RoutingService(prisma, conversations, events, logger),
+    identities: new CustomerIdentityService(prisma, events, TEST_IDENTITY_KINDS, jobs)
+  }
 }

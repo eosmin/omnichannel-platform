@@ -218,9 +218,13 @@ export class ChannelReceipts {
       })
     )
     if (row === null) return
-    await this.health.record(row, {
-      healthy: false,
-      error: pluginHealthReason(event.status?.error?.message ?? '')
-    })
+    // record() writes and announces inside the caller's context (the scheduler opens one per connection): this is the store of the
+    // resolved connection, never one the event names
+    await this.jobContext.forStore(resolved.storeId, () =>
+      this.health.record(row, {
+        healthy: false,
+        error: pluginHealthReason(event.status?.error?.message ?? '')
+      })
+    )
   }
 }
