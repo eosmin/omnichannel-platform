@@ -134,20 +134,26 @@ export class ExportsService {
         select: EXPORT_COLUMNS
       })
     })
-    try {
-      await this.queue.add(
-        JobNames.GENERATE_EXPORT,
-        { exportId: created.id, storeId },
-        { jobId: `${JobNames.GENERATE_EXPORT}-${created.id}` }
-      )
-    } catch (error) {
-      // Nobody will run it: say so now and not an hour later
-      await this.prisma.client.export.updateMany({
-        where: { id: created.id, storeId },
-        data: { status: ExportStatus.FAILED, error: ErrorCodes.EXPORT_FAILED }
-      })
-      throw error
-    }
+    // After the REAL commit: under RLS_CONTEXT the request is one transaction and the row is not visible to the worker until it ends
+    // (a job that finds no row ends without a retry and the export would stay pending until the cleanup gives it up)
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      try {
+        await this.queue.add(
+          JobNames.GENERATE_EXPORT,
+          { exportId: created.id, storeId },
+          { jobId: `${JobNames.GENERATE_EXPORT}-${created.id}` }
+        )
+      } catch (error) {
+        // Nobody will run it: say so now and not an hour later. Its own context: the request's transaction is over
+        await this.prisma.tenantTransaction({ storeIds: [storeId], organizationIds: [] }, () =>
+          this.prisma.client.export.updateMany({
+            where: { id: created.id, storeId },
+            data: { status: ExportStatus.FAILED, error: ErrorCodes.EXPORT_FAILED }
+          })
+        )
+        throw error
+      }
+    })
     return exportView(created)
   }
 

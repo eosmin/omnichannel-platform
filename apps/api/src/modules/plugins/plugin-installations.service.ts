@@ -589,6 +589,7 @@ export class PluginInstallationsService {
       ) {
         return
       }
+      const { revokedAt } = kept
       const job: TriggerPluginWebhookJob = {
         pluginInstallationId: installationId,
         storeId,
@@ -598,29 +599,50 @@ export class PluginInstallationsService {
           storeId,
           installationId,
           pluginId,
-          revokedAt: kept.revokedAt.toISOString()
+          revokedAt: revokedAt.toISOString()
         },
         final: true
       }
-      await this.webhooksQueue.add(JobNames.TRIGGER_PLUGIN_WEBHOOK, job, {
-        jobId: pluginRevokedJobId(installationId, kept.revokedAt)
+      // After the REAL commit (under RLS_CONTEXT the request is one transaction): the job reads the installation and the secret of the
+      // revocation. A failure closes the subscription at once, as before, and never fails the revocation
+      await this.prisma.afterCommitStep(this.prisma.client, async () => {
+        try {
+          await this.webhooksQueue.add(JobNames.TRIGGER_PLUGIN_WEBHOOK, job, {
+            jobId: pluginRevokedJobId(installationId, revokedAt)
+          })
+        } catch (error) {
+          await this.closeRevokedSubscription(storeId, installationId, error)
+        }
       })
     } catch (error) {
+      await this.closeRevokedSubscription(storeId, installationId, error)
+    }
+  }
+
+  // A secret never stays on a revoked row for a delivery that will not come. In the context of the request when there is one, in one of
+  // its own when it runs after the commit.
+  private async closeRevokedSubscription(
+    storeId: string,
+    installationId: string,
+    error: unknown
+  ): Promise<void> {
+    this.logger.error(
+      { installationId, err: String(error) },
+      'the final webhook of a revoked plugin could not be queued'
+    )
+    const close = (): Promise<unknown> =>
+      this.prisma.client.pluginInstallation.updateMany({
+        where: { id: installationId, storeId, status: PluginInstallationStatus.REVOKED },
+        data: { webhookEndpoint: null, webhookSecret: null }
+      })
+    try {
+      if (this.prisma.hasTenantContext()) await close()
+      else await this.prisma.tenantTransaction({ storeIds: [storeId], organizationIds: [] }, close)
+    } catch (closing) {
       this.logger.error(
-        { installationId, err: String(error) },
-        'the final webhook of a revoked plugin could not be queued'
+        { installationId, err: String(closing) },
+        'the subscription of a revoked plugin could not be closed'
       )
-      try {
-        await this.prisma.client.pluginInstallation.updateMany({
-          where: { id: installationId, storeId, status: PluginInstallationStatus.REVOKED },
-          data: { webhookEndpoint: null, webhookSecret: null }
-        })
-      } catch (closing) {
-        this.logger.error(
-          { installationId, err: String(closing) },
-          'the subscription of a revoked plugin could not be closed'
-        )
-      }
     }
   }
 

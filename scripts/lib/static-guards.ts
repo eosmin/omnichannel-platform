@@ -21,6 +21,13 @@
 //    (two: rls_search_customer_list reads), order-text-customers.ts (rls_search_order_customers).
 // 2. AuditService.logRefused only for denials. It writes on a transaction of its own and survives a rollback, so a success recorded
 //    through it would stay although its action was reverted. Only the listed files may reference it.
+// 3. A JOB IS QUEUED AFTER THE REAL COMMIT. With RLS_CONTEXT a request is ONE transaction that the interceptor commits when the handler
+//    returns, and `prisma.transaction()` inside it only joins it: a `queue.add` written after it runs BEFORE the commit, the worker
+//    can start before the row is visible, finds none and ends without a retry. Every `X.add(` / `X.addBulk(` whose receiver is named
+//    like a queue (`queue`, `heavyQueue`, `this.emailQueue`...) in apps/api and libs must be written inside the function given to
+//    `PrismaService.afterCommitStep(...)`, or its file is listed in QUEUE_ADD_ALLOWED with the reason it is safe where it is. Read from
+//    the syntax tree, so a call split over lines (`this.heavyQueue\n.add(`) is seen. NOT followed: a call through a wrapper that is
+//    itself called inside a step, or a queue held under a name that does not end in `queue` (a reviewer reads those).
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -39,6 +46,33 @@ export const STORE_CONTEXT_WRITES_ALLOWED: Readonly<Record<string, number>> = {}
 // References to AuditService.logRefused (denials only), per file. Same rule: it can only shrink. Its own declaration is not a use.
 export const LOG_REFUSED_CALLERS: Readonly<Record<string, number>> = {
   'apps/api/src/modules/plugins/plugin-denial-audit.ts': 1
+}
+
+// Files of apps/api and libs that call `.add(` / `.addBulk(` on a queue OUTSIDE afterCommitStep, with how many, and why that is safe
+// there. It can only SHRINK (a bigger number fails, a smaller one fails too until the entry is lowered). A new call goes through
+// `prisma.afterCommitStep(prisma.client, () => queue.add(...))`; an entry here needs a reviewer who read the caller.
+export const QUEUE_ADD_ALLOWED: Readonly<Record<string, number>> = {
+  // A public route (no transaction of the request: `tenantContextOf` is undefined) and a job that carries what it needs in its payload
+  'apps/api/src/modules/auth/magic-link.service.ts': 1,
+  'apps/api/src/modules/carriers/carrier-webhook.service.ts': 1,
+  'apps/api/src/modules/channels/inbound-event-queue.service.ts': 1,
+  'apps/api/src/modules/webhooks/resend-webhook.controller.ts': 1,
+  // Payload only (the event of an analytics row is the whole job; nothing it reads was written by the request)
+  'apps/api/src/modules/search/search-tracker.service.ts': 1,
+  // The job reads a ledger that was committed by an earlier request, and its id is made of the organization (a cooldown of the queue)
+  'apps/api/src/modules/finance/finance-chain.service.ts': 1,
+  // The email is queued FIRST on purpose, under an id made from the key; the dispatch is claimed after it (see the comment there)
+  'apps/api/src/modules/order-messages/order-messages.service.ts': 1,
+  // The deliveries of a webhook name rows that were committed earlier (the webhook) and carry the body in the job; the dispatcher runs
+  // from a listener after the commit of the event
+  'apps/api/src/modules/tenant-webhooks/webhook-dispatcher.ts': 2,
+  // After a unit of `inStore` (a unit of its own that committed); the queue is never inside one (see the comment there)
+  'libs/core/messaging/src/inbound/inbound-message.service.ts': 2,
+  // Inside the transaction on purpose: the worker takes the row lock before it clears the entry, so it reads this commit
+  'libs/core/messaging/src/messages/media-refetch.service.ts': 1,
+  // The callers queue through `prisma.afterCommit(tx, () => outbound.enqueue(...))`, which is after the real commit (the pattern of the
+  // reply, the edit, the delete, the caption and the requeue); the typing and the read receipt carry what the job needs
+  'libs/core/messaging/src/outbound/outbound-queue.ts': 7
 }
 
 const WRITE_METHODS = new Set([
@@ -477,6 +511,46 @@ export function findLogRefusedUses(text: string, file: string): Finding[] {
   return found
 }
 
+// Every `X.add(...)` / `X.addBulk(...)` whose receiver ends in `queue` (any case) that is NOT inside the function given to a call of
+// `afterCommitStep`. The receiver is the last name of the expression: `this.heavyQueue`, `queue`, `deps.emailQueue`.
+export function findQueueAddsOutsideAfterCommit(text: string, file: string): Finding[] {
+  if (!/[qQ]ueue/.test(text)) return []
+  const source = parse(text, file)
+  const found: Finding[] = []
+  const receiverName = (node: ts.Expression): string | undefined => {
+    const at = unwrap(node)
+    if (ts.isIdentifier(at)) return at.text
+    if (ts.isPropertyAccessExpression(at)) return at.name.text
+    return undefined
+  }
+  const visit = (node: ts.Node, inStep: boolean): void => {
+    if (ts.isCallExpression(node)) {
+      const callee = unwrap(node.expression)
+      if (
+        ts.isPropertyAccessExpression(callee) &&
+        ['add', 'addBulk'].includes(callee.name.text) &&
+        /queue$/i.test(receiverName(callee.expression) ?? '') &&
+        !inStep
+      ) {
+        found.push({ file, line: lineOf(node), reason: `${callee.name.text}(` })
+      }
+      // The arguments of afterCommitStep(db, step) are the step: what is written inside it runs after the commit
+      if (calleeName(node) === 'afterCommitStep') {
+        ts.forEachChild(node.expression, child => visit(child, inStep))
+        // Only a function is the step: `afterCommitStep(this.queue.add(...), ...)` would run the add NOW
+        for (const argument of node.arguments) {
+          const at = unwrap(argument)
+          visit(argument, ts.isArrowFunction(at) || ts.isFunctionExpression(at))
+        }
+        return
+      }
+    }
+    ts.forEachChild(node, child => visit(child, inStep))
+  }
+  visit(source, false)
+  return found
+}
+
 const SCANNED_DIRS = ['apps', 'libs']
 // Skipped by EXACT place, never by a name at any depth (production code in a folder called `generated` must still be read: the
 // image hosts of the web are in apps/web/lib/generated). Scanned: .ts, .tsx, .mts, .cts (there is no .js in apps/ or libs/ outside
@@ -563,6 +637,22 @@ export function checkRefusedAudit(root: string): GuardReport {
       found,
       LOG_REFUSED_CALLERS,
       () => 'AuditService.logRefused is only for plugin denials'
+    )
+  }
+}
+
+export function checkQueueAddsAfterCommit(root: string): GuardReport {
+  // The worker is another process: its jobs run in units of JobContext of their own, and are not covered by this rule
+  const { scanned, found } = scan(root, (text, file) =>
+    /^(apps\/api|libs)\//.test(file) ? findQueueAddsOutsideAfterCommit(text, file) : []
+  )
+  return {
+    scanned,
+    failures: compare(
+      found,
+      QUEUE_ADD_ALLOWED,
+      finding =>
+        `queue.${finding.reason} outside afterCommitStep: with RLS_CONTEXT the job can start before the COMMIT of the request`
     )
   }
 }

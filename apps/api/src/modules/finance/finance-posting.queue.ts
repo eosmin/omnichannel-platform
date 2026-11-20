@@ -2,6 +2,7 @@ import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 
+import { PrismaService } from '@platform/core/database'
 import {
   FinanceEventKind,
   FinanceEventSource,
@@ -19,7 +20,8 @@ const SOURCES: readonly string[] = Object.values(FinanceSourceType)
 @Injectable()
 export class FinancePostingQueue {
   constructor(
-    @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly queue: Queue<PostFinanceEventJob>
+    @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly queue: Queue<PostFinanceEventJob>,
+    private readonly prisma: PrismaService
   ) {}
 
   async enqueue(job: {
@@ -36,10 +38,13 @@ export class FinancePostingQueue {
     const sourceType = job.sourceType as FinanceSourceType
     if (FinanceEventSource[kind] !== sourceType)
       throw new RangeError('the event is of another source')
-    await this.queue.add(
-      JobNames.POST_FINANCE_EVENT,
-      { ...job, kind, sourceType },
-      financePostingJobOptions()
+    // After the REAL commit: the job reads the sale, the return or the transfer that raised the event
+    await this.prisma.afterCommitStep(this.prisma.client, () =>
+      this.queue.add(
+        JobNames.POST_FINANCE_EVENT,
+        { ...job, kind, sourceType },
+        financePostingJobOptions()
+      )
     )
   }
 }

@@ -133,6 +133,8 @@ interface UnitOfWork {
   // 'closing': the last drain is done and the COMMIT is on its way; nothing new can be queued for it
   state: 'open' | 'closing' | 'committed' | 'rolledBack'
   hooks: Array<() => void>
+  // Steps that run after the commit and are AWAITED, so that a failure reaches the caller (see afterCommitStep)
+  steps: Array<() => Promise<unknown>>
   // Work queued to run, one at a time, once the callback of the transaction has finished and before it commits (the audit entry of a
   // request). It is dropped when the transaction rolls back.
   beforeCommit: Array<(tx: PrismaTransaction) => Promise<void>>
@@ -192,6 +194,7 @@ export async function inSavepoint<T>(
   const name = Prisma.raw(`attempt_${savepointCounter}`)
   const unit = units.get(target)
   const hooksBefore = unit?.hooks.length ?? 0
+  const stepsBefore = unit?.steps.length ?? 0
   await target.$executeRaw(Prisma.sql`SAVEPOINT ${name}`)
   try {
     const result = await attempt()
@@ -201,6 +204,7 @@ export async function inSavepoint<T>(
     // If this fails too the connection is gone: the error that matters is the first one
     // What the attempt asked to announce after the commit did not happen: its hooks go
     if (unit !== undefined && unit.hooks.length > hooksBefore) unit.hooks.length = hooksBefore
+    if (unit !== undefined && unit.steps.length > stepsBefore) unit.steps.length = stepsBefore
     // Released too: a rolled-back savepoint stays open until the transaction ends, and a loop of caught violations would pile them up
     await target
       .$executeRaw(Prisma.sql`ROLLBACK TO SAVEPOINT ${name}`)
@@ -397,6 +401,32 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     // After a rollback it is dropped: what it would announce did not happen
   }
 
+  // The same wait as afterCommit for work that is ASYNC and whose failure the caller must hear of: putting a job on a queue that a worker
+  // reads from another connection (it must find the row the request wrote) and that may be down. Under RLS_CONTEXT the request is ONE
+  // transaction opened by the interceptor, and `transaction()` inside it only joins it, so the line that follows `await
+  // prisma.transaction(...)` runs BEFORE the real COMMIT: a job queued there can start before the row is visible, and the worker
+  // answers "no row" without a retry. With `db` inside a transaction of this service the step waits for the OUTERMOST commit and then
+  // runs, awaited by whoever opened that transaction (the interceptor, a unit of JobContext): a step that throws makes that call reject
+  // AFTER the commit, as a queue that is down after the save always did, and the steps after it still run (the first failure is the one
+  // thrown). Never runs when the transaction rolls back; inSavepoint drops the steps of an attempt it rolls back. With no transaction
+  // open (the base client) there is nothing to wait for: it runs now and the caller awaits it, so the code that queued after its own
+  // transaction keeps its behavior. The step runs OUTSIDE the transaction: whatever it needs of the database opens its own context.
+  afterCommitStep(db: PrismaService['client'], step: () => Promise<unknown>): Promise<void> {
+    if (db === this.primary) return step().then(() => undefined)
+    const unit = units.get(db)
+    if (unit === undefined) {
+      return Promise.reject(
+        new Error('afterCommitStep was given a transaction that PrismaService did not open')
+      )
+    }
+    if (unit.state === 'open' || unit.state === 'closing') {
+      unit.steps.push(step)
+      return Promise.resolve()
+    }
+    // After the commit (work that outlived its callback): the data is there already. After a rollback it is dropped.
+    return unit.state === 'committed' ? step().then(() => undefined) : Promise.resolve()
+  }
+
   // Queues `work` to run just before the transaction `db` commits, after the callback of the unit of work has finished and with the
   // connection to itself (the audit entry of a request: it cannot be started earlier without racing the rest of the request, and
   // later it would find the transaction closed). It gets the transaction; a failure must be handled by the work itself (a throw
@@ -437,7 +467,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     fn: (tx: PrismaTransaction) => Promise<T>,
     options: TransactionOptions | undefined
   ): Promise<T> {
-    const unit: UnitOfWork = { state: 'open', hooks: [], beforeCommit: [] }
+    const unit: UnitOfWork = { state: 'open', hooks: [], steps: [], beforeCommit: [] }
     let result: T
     try {
       result = await this.base.$transaction(async (tx: PrismaTransaction) => {
@@ -451,10 +481,22 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       unit.state = 'rolledBack'
       unit.hooks.length = 0
+      unit.steps.length = 0
       throw error
     }
     unit.state = 'committed'
     for (const hook of unit.hooks.splice(0)) this.runHook(hook)
+    // Awaited one after the other, each one even if an earlier one failed: they are independent jobs, and the first failure is the one
+    // the caller hears of (the data is committed whatever they do)
+    let failure: { error: unknown } | undefined
+    for (const step of unit.steps.splice(0)) {
+      try {
+        await step()
+      } catch (error) {
+        failure ??= { error }
+      }
+    }
+    if (failure !== undefined) throw failure.error
     return result
   }
 

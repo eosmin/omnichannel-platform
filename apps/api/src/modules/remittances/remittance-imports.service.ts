@@ -210,10 +210,16 @@ export class RemittanceImportsService {
 
   // After the draft exists: the worker scans the file like any that comes from outside
   private async queueScan(storeId: string, mediaId: string): Promise<void> {
-    await this.heavyQueue.add(
-      JobNames.SCAN_FILE,
-      { mediaId, storeId },
-      { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+    // After the REAL commit: the scan reads the row of the file. A scan that was not queued waits for the hourly cleanup of pending
+    // files, so a queue that is down does not fail an import that was made (as before: the failure is swallowed where it happens)
+    await this.prisma.afterCommitStep(this.prisma.client, () =>
+      this.heavyQueue
+        .add(
+          JobNames.SCAN_FILE,
+          { mediaId, storeId },
+          { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+        )
+        .catch(() => undefined)
     )
   }
 }

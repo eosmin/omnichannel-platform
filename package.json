@@ -55,11 +55,12 @@
     "validate:plugin-api": "tsx scripts/check-plugin-api-coverage.ts",
     "validate:store-context-writes": "tsx scripts/validate-store-context-writes.ts",
     "validate:refused-audit": "tsx scripts/validate-refused-audit.ts",
+    "validate:enqueue-after-commit": "tsx scripts/validate-enqueue-after-commit.ts",
     "validate:replica": "tsx scripts/check-replica-routing.ts",
     "gen:image-hosts": "tsx libs/plugins/runtime/tools/generate-image-hosts.ts",
     "validate:image-hosts": "tsx libs/plugins/runtime/tools/generate-image-hosts.ts --check",
     "fiscal:conformance": "tsx libs/fiscal/conformance/src/run-conformance.ts",
-    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:stray-files && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:rls && pnpm validate:definer && pnpm validate:frontend && pnpm validate:channel-agnostic && pnpm validate:rls-worker && pnpm validate:external-io && pnpm validate:carrier-agnostic && pnpm validate:fiscal-agnostic && pnpm validate:plugin-api && pnpm validate:store-context-writes && pnpm validate:refused-audit && pnpm validate:replica && pnpm validate:image-hosts && pnpm test && pnpm test:contracts",
+    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:stray-files && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:rls && pnpm validate:definer && pnpm validate:frontend && pnpm validate:channel-agnostic && pnpm validate:rls-worker && pnpm validate:external-io && pnpm validate:carrier-agnostic && pnpm validate:fiscal-agnostic && pnpm validate:plugin-api && pnpm validate:store-context-writes && pnpm validate:refused-audit && pnpm validate:enqueue-after-commit && pnpm validate:replica && pnpm validate:image-hosts && pnpm test && pnpm test:contracts",
     "validate:affected": "tsx scripts/validate-affected.ts"
   },
   "devDependencies": {
