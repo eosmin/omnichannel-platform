@@ -241,6 +241,9 @@ function amountPattern(
   return pattern
 }
 
+// U+FEFF opens a UTF-8 file, once: inside a cell it is a fault of the file, not a character of the data
+const BYTE_ORDER_MARK = String.fromCharCode(0xfeff)
+
 // An amount as a bank prints it, to whole cents: an optional sign (only when `allowSign`), digits with the thousands separator of the
 // profile, at most one decimal separator and at most two decimals. No currency symbol, no exponent, no parentheses, no spaces
 // inside (unless the separator is a space): "abc" is never 0 and "1,234.50" is never 1.23. Returns signed cents, or null.
@@ -250,6 +253,8 @@ export function parseBankAmountCents(
   thousands: BankThousandsSeparator,
   allowSign: boolean
 ): number | null {
+  // trim() takes a byte order mark for a blank, so a cell that held one would be read as clean (PUR-003)
+  if (cell.includes(BYTE_ORDER_MARK)) return null
   const match = amountPattern(decimal, thousands).exec(cell.trim())
   if (match === null) return null
   const sign = match[1]
@@ -299,7 +304,12 @@ export function parseBankStatement(
     openLine,
     strayRows,
     truncated
-  } = splitDelimited(text, profile.delimiter, BankStatementLimits.MAX_ROWS * 2 + 10)
+  } = splitDelimited(
+    // The mark that opens a UTF-8 file is the file's, not the first cell's
+    text.startsWith(BYTE_ORDER_MARK) ? text.slice(1) : text,
+    profile.delimiter,
+    BankStatementLimits.MAX_ROWS * 2 + 10
+  )
   if (truncated) {
     fail(openLine, null, BankStatementErrors.TOO_MANY_ROWS, null)
     return { ...empty, errorCount }
@@ -467,7 +477,9 @@ export function parseBankStatement(
     let postedTime: string | null = null
     const dateCell = required(BankStatementFields.DATE)
     if (dateCell !== null) {
-      const moment = parseImportMoment(dateCell, profile.dateFormat)
+      const moment = dateCell.includes(BYTE_ORDER_MARK)
+        ? null
+        : parseImportMoment(dateCell, profile.dateFormat)
       postedOn = moment?.day ?? null
       postedTime = moment?.time ?? null
       if (moment === null) {
