@@ -14,8 +14,11 @@ module.exports = {
     '/node_modules/',
     '<rootDir>/api/products-search-performance.spec.ts',
     '<rootDir>/api/conversations-performance.spec.ts',
-    '<rootDir>/api/rls-search-plan.spec.ts',
-    '<rootDir>/api/rls-list-search-plan.spec.ts'
+    // The specs that read a plan with row level security on take locks: `jest.rls-plan.config.cts` runs them (`pnpm test:rls-plan`)
+    '<rootDir>/api/rls-inbox-webhooks-plan.spec.ts',
+    '<rootDir>/api/rls-list-search-plan.spec.ts',
+    '<rootDir>/api/rls-order-search-plan.spec.ts',
+    '<rootDir>/api/rls-search-plan.spec.ts'
   ],
   // The env of the app is read when it is imported: this runs before any suite does
   setupFiles: ['<rootDir>/helpers/env.ts'],
