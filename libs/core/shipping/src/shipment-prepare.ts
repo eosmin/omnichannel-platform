@@ -71,6 +71,7 @@ const REFUSAL_STATUS: Partial<Record<ErrorCode, number>> = {
   [ErrorCodes.SHIPPING_ORDER_NOT_CONFIRMED]: HttpStatusCodes.CONFLICT,
   [ErrorCodes.ORDER_PRICE_APPROVAL_PENDING]: HttpStatusCodes.CONFLICT,
   [ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS]: HttpStatusCodes.CONFLICT,
+  [ErrorCodes.SHIPPING_ORIGIN_VOID_PENDING]: HttpStatusCodes.CONFLICT,
   [ErrorCodes.SHIPPING_OUTCOME_UNKNOWN]: HttpStatusCodes.CONFLICT,
   [ErrorCodes.SHIPPING_CARRIER_NOT_ACTIVE]: HttpStatusCodes.CONFLICT,
   [ErrorCodes.SHIPPING_CARRIER_CAPABILITY_MISSING]: HttpStatusCodes.CONFLICT,
@@ -84,8 +85,17 @@ const REFUSAL_STATUS: Partial<Record<ErrorCode, number>> = {
   [ErrorCodes.SHIPPING_SERVICE_INVALID]: HttpStatusCodes.BAD_REQUEST
 }
 
-export function shippingRefusal(code: ErrorCode, message: string): PlatformException {
-  return new PlatformException(code, message, REFUSAL_STATUS[code] ?? HttpStatusCodes.BAD_REQUEST)
+export function shippingRefusal(
+  code: ErrorCode,
+  message: string,
+  metadata?: Record<string, unknown>
+): PlatformException {
+  return new PlatformException(
+    code,
+    message,
+    REFUSAL_STATUS[code] ?? HttpStatusCodes.BAD_REQUEST,
+    metadata
+  )
 }
 
 // The pieces the `local` label is drawn from, already localized except for the words (the service adds those)
@@ -390,7 +400,7 @@ export async function prepareGuide(
       kind: ShipmentKind.OUTBOUND,
       status: { notIn: [...ShipmentInactiveStatuses] }
     },
-    select: { originWarehouseId: true, codAmountCents: true, status: true }
+    select: { id: true, originWarehouseId: true, codAmountCents: true, status: true }
   })
   const same = existing.find(entry => entry.originWarehouseId === warehouse.id)
   if (same !== undefined) {
@@ -405,15 +415,21 @@ export async function prepareGuide(
   // A guide whose void is in progress or failed, of an origin that no longer has lines of the order (the lines moved), still
   // counts in what the new guide is told it collects, and nothing takes it out when the void ends: the new guide waits for it.
   // One whose origin still has lines is another share of a split order and does not stop this one.
-  const orphanVoiding = existing.some(
+  const orphansVoiding = existing.filter(
     entry =>
       ShipmentVoidingStatuses.some(status => String(status) === entry.status) &&
       !origins.some(origin => origin.warehouseId === entry.originWarehouseId)
   )
-  if (orphanVoiding) {
+  if (orphansVoiding.length > 0) {
+    // The way out is in the code, not in the words: the screen says it (retry the cancellation of the guide, or mark it voided
+    // when the carrier did cancel it) from the ids and the statuses
     throw shippingRefusal(
-      ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS,
-      'a guide of a warehouse that no longer has lines of the order is still being voided: finish its cancellation, then create this one'
+      ErrorCodes.SHIPPING_ORIGIN_VOID_PENDING,
+      'a guide of a warehouse that no longer has lines of the order is still being voided: wait for it, or when it failed retry its cancellation or mark it voided, then create this one',
+      {
+        shipmentIds: orphansVoiding.map(entry => entry.id),
+        statuses: orphansVoiding.map(entry => entry.status)
+      }
     )
   }
   const attempt =

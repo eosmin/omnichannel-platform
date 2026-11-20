@@ -139,6 +139,9 @@ export const ErrorCodes = {
   // Shipping (TDD_17 §3)
   SHIPPING_ORDER_NOT_CONFIRMED: 'SHIPPING_ORDER_NOT_CONFIRMED',
   SHIPPING_ACTIVE_SHIPMENT_EXISTS: 'SHIPPING_ACTIVE_SHIPMENT_EXISTS',
+  // A guide of a warehouse that no longer has lines of the order is still being voided (or its void failed): the guide of the new
+  // warehouse waits until it is cancelled, by retrying its cancellation or marking it voided by hand
+  SHIPPING_ORIGIN_VOID_PENDING: 'SHIPPING_ORIGIN_VOID_PENDING',
   SHIPPING_CARRIER_NOT_ACTIVE: 'SHIPPING_CARRIER_NOT_ACTIVE',
   // The one answer of the public carrier webhook to anything it will not take (an unreadable address, a connection that does
   // not exist or was let go, a bad signature): it says nothing about which

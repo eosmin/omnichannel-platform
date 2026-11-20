@@ -721,6 +721,7 @@
     "RETURN_RECEIPT_INVALID": "The receipt must name the condition of every line of the return",
     "RETURN_REFUND_EXCEEDS_PAID": "The refund is more than the customer paid",
     "SHIPPING_ACTIVE_SHIPMENT_EXISTS": "The order already has an active shipment",
+    "SHIPPING_ORIGIN_VOID_PENDING": "A guide of the previous warehouse is still being cancelled. Wait for it to finish; if its cancellation failed, retry it or mark it as voided, then create this one",
     "SHIPPING_CANNOT_CANCEL_AFTER_PICKUP": "The shipment cannot be cancelled after pickup",
     "SHIPPING_CARRIER_CREDENTIALS_INVALID": "The carrier did not accept the credentials",
     "SHIPPING_CARRIER_CAPABILITY_MISSING": "The carrier does not support that action",
