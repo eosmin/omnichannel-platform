@@ -39,7 +39,7 @@ test.describe('Finanzas → the screens in Spanish', () => {
   // The sign-in form of the suite is read in English, so the person signs in with it and the interface is changed to Spanish after
   async function signInInSpanish(page: Page, context: BrowserContext): Promise<void> {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await context.addCookies([{ name: LOCALE_COOKIE, value: Locales.ES, url: WEB_URL }])
   }
 

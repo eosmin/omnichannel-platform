@@ -34,7 +34,7 @@ test.describe('Finance → fiscal documents and issuer', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.fiscal)
     await expect(page.getByRole('heading', { name: fiscal.title, level: 1 })).toBeVisible()
     await expect(page.getByTestId('fiscal-caution')).toBeVisible()

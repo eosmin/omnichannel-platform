@@ -55,7 +55,7 @@ test.describe('Finance → a business document with a sealed receiver', () => {
 
   test('an owner sets the books and the issuer up, and delivers the sale', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.home)
     await expect(page.getByRole('heading', { name: finance.setup.title, level: 1 })).toBeVisible()
     await page.getByLabel(finance.setup.startsOn, { exact: true }).fill('2026-01-01')
@@ -103,7 +103,7 @@ test.describe('Finance → a business document with a sealed receiver', () => {
 
   test('the authority refuses it, and the screen says why and offers the fix', async ({ page }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.fiscal)
     const refused = page.locator('[data-testid="fiscal-document-row"][data-status="rejected"]')
     await expect(async () => {
@@ -130,7 +130,7 @@ test.describe('Finance → a business document with a sealed receiver', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.fiscal)
     await page.locator('[data-testid="fiscal-document-row"][data-status="rejected"]').click()
     const dialog = page.getByRole('dialog')

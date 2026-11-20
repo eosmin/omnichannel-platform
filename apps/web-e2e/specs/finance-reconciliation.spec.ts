@@ -110,7 +110,7 @@ test.describe('Finance → bank reconciliation', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.reconciliation)
     await expect(page.getByRole('heading', { name: reconciliation.title, level: 1 })).toBeVisible()
     await page
@@ -200,7 +200,7 @@ test.describe('Finance → bank reconciliation', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.reconciliation)
     await page
       .getByTestId('bank-account-picker')
@@ -272,7 +272,7 @@ test.describe('Finance → bank reconciliation', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.reconciliation)
     await page
       .getByTestId('bank-account-picker')
@@ -328,7 +328,7 @@ test.describe('Finance → bank reconciliation', () => {
     page
   }) => {
     await signIn(page, ownerEmail)
-    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.waitForURL(/\/(?:s\/[^/]+\/|finance)/)
     await page.goto(AppPaths.finance.reconciliation)
     await page
       .getByTestId('bank-account-picker')
