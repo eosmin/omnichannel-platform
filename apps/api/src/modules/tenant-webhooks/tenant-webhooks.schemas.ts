@@ -13,6 +13,14 @@ import { cursorSchema } from '../customers/list-cursor'
 
 export const idSchema = lowercasedUuidSchema
 
+// The address as the URL standard writes it, and without the dot that ends a fully qualified host name: `example.com.` is the
+// host `example.com`, so the two spellings are one address for the rule that a store holds one webhook per address and events
+export function canonicalWebhookUrl(value: string): string {
+  const url = new URL(value)
+  url.hostname = url.hostname.replace(/\.+$/, '')
+  return url.href
+}
+
 // The address is checked for its shape here (https, no credentials); that it points at the public internet
 // needs the resolver and is checked by the service. No fragment: it would never reach the server.
 const webhookUrl = z
@@ -24,9 +32,13 @@ const webhookUrl = z
   .refine(value => !isPlainHttpsUrl(value) || new URL(value).hash === '', {
     message: 'must not carry a fragment'
   })
+  // A host made only of dots names nothing: the final dots cannot be taken off it (`https://./` stays as it is)
+  .refine(value => !isPlainHttpsUrl(value) || new URL(value).hostname.replace(/\.+$/, '') !== '', {
+    message: 'must name a host'
+  })
   // The address as the URL standard writes it (host in lower case, no default port, a path): two spellings of one address
-  // are one, for the rule that a store holds one webhook per address and set of events
-  .transform(value => (isPlainHttpsUrl(value) ? new URL(value).href : value))
+  // (and the host with no final dot) are one, for the rule that a store holds one webhook per address and set of events
+  .transform(value => (isPlainHttpsUrl(value) ? canonicalWebhookUrl(value) : value))
 
 // Each event once, in a fixed order (the same set is then the same array: a store cannot hold two webhooks with the
 // same address and events), and only the ones a webhook can be subscribed to
