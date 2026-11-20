@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { CarrierLocationLimits, PaginationLimits, uuidSchema } from '@platform/core/domain'
+import {
+  CarrierLocationLimits,
+  PaginationLimits,
+  uuidSchema,
+  queryIntSchema
+} from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
 
@@ -10,7 +15,7 @@ export const connectionIdSchema = uuidSchema
 // malformed query (400), not an empty page.
 export const listCarriersQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 })
 export type ListCarriersQuery = z.output<typeof listCarriersQuerySchema>
 

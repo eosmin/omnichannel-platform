@@ -4,7 +4,8 @@ import {
   BulkLabelLimits,
   PaginationLimits,
   ShipmentStatus,
-  uuidSchema
+  uuidSchema,
+  queryIntSchema
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -35,12 +36,7 @@ const idList = z
 export const listShipmentsQuerySchema = z
   .strictObject({
     cursor: cursorSchema.optional(),
-    limit: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(PaginationLimits.MAX)
-      .default(PaginationLimits.DEFAULT),
+    limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
     status: z.enum(ShipmentStatus).optional(),
     connectionId: uuidSchema.optional(),
     orderId: uuidSchema.optional(),

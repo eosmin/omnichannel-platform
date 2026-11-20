@@ -6,7 +6,8 @@ import {
   isStorableProviderCode,
   normalizeProviderStatusCode,
   PaginationLimits,
-  ShipmentStatus
+  ShipmentStatus,
+  queryIntSchema
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -46,13 +47,13 @@ export const mappingCursorSchema = z.string().transform((text, ctx): string => {
 
 export const listStatusMappingsQuerySchema = z.strictObject({
   cursor: mappingCursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 })
 export type ListStatusMappingsQuery = z.output<typeof listStatusMappingsQuerySchema>
 
 export const listUnmappedStatusesQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 })
 export type ListUnmappedStatusesQuery = z.output<typeof listUnmappedStatusesQuerySchema>
 

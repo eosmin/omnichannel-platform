@@ -6,7 +6,8 @@ import {
   PaginationLimits,
   ReturnListLimits,
   ReceptionBatchStatus,
-  uuidSchema
+  uuidSchema,
+  queryIntSchema
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -17,12 +18,7 @@ export const returnIdSchema = uuidSchema
 export const listReturnsQuerySchema = z
   .strictObject({
     cursor: cursorSchema.optional(),
-    limit: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(PaginationLimits.MAX)
-      .default(PaginationLimits.DEFAULT),
+    limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
     status: z.enum(OrderReturnStatus).optional(),
     orderId: uuidSchema.optional(),
     // The number of the order as the store prints it (`00041`): the screen's filter by order, which a person does not know by id

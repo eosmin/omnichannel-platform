@@ -8,7 +8,8 @@ import {
   SearchApiParams,
   SearchConfig,
   searchClickFields,
-  uuidSchema
+  uuidSchema,
+  queryIntSchema
 } from '@platform/core/domain'
 
 // The text of a search, read as the names it is compared with were stored: NFC, every kind of space one space. A
@@ -29,12 +30,7 @@ const queryText = z
   // Nothing but combining marks is no text to look for: it would fold to nothing and match everything
   .refine(value => foldForSearch(value).trim() !== '', { message: 'has no text to search' })
 
-const limit = z.coerce
-  .number()
-  .int()
-  .min(1)
-  .max(SearchConfig.MAX_LIMIT)
-  .default(SearchConfig.DEFAULT_LIMIT)
+const limit = queryIntSchema(1, SearchConfig.MAX_LIMIT).default(SearchConfig.DEFAULT_LIMIT)
 
 // The global search asks for the text: how many of each group is the platform's call. `passive` marks the palette's
 // as-you-type search, which is not counted (SearchApiParams).

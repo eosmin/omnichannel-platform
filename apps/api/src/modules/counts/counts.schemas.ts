@@ -6,7 +6,8 @@ import {
   CountStatus,
   lowercasedUuidSchema,
   PaginationLimits,
-  singleLineText
+  singleLineText,
+  queryIntSchema
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -15,7 +16,7 @@ export const idSchema = lowercasedUuidSchema
 
 export const listCountsQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   status: z.enum(CountStatus).optional(),
   warehouseId: lowercasedUuidSchema.optional()
 })
@@ -45,7 +46,7 @@ export const updateCountLinesSchema = z.strictObject({
 
 export const countLinesQuerySchema = z.strictObject({
   cursor: lowercasedUuidSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   // Only the lines still to count, or only those whose count differs from the snapshot
   filter: z.enum(CountLineFilters).optional()
 })

@@ -6,7 +6,8 @@ import {
   lowercasedUuidSchema,
   WebhookEvents,
   WebhookLimits,
-  WebhookStatus
+  WebhookStatus,
+  queryIntSchema
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -68,12 +69,9 @@ export const updateWebhookSchema = z
 
 export const listDeliveriesQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(WebhookLimits.DELIVERIES_MAX_PAGE_SIZE)
-    .default(WebhookLimits.DELIVERIES_DEFAULT_PAGE_SIZE),
+  limit: queryIntSchema(1, WebhookLimits.DELIVERIES_MAX_PAGE_SIZE).default(
+    WebhookLimits.DELIVERIES_DEFAULT_PAGE_SIZE
+  ),
   success: z
     .enum(['true', 'false'])
     .transform(value => value === 'true')

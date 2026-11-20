@@ -9,7 +9,8 @@ import {
   lowercasedUuidSchema,
   PaginationLimits,
   ProductLimits,
-  singleLineText
+  singleLineText,
+  queryIntSchema
 } from '@platform/core/domain'
 
 import { cursorSchema, type ListCursor } from '../customers/list-cursor'
@@ -31,12 +32,7 @@ export const encodeSeqCursor = (seq: bigint): string =>
 
 export const idSchema = lowercasedUuidSchema
 
-const limit = z.coerce
-  .number()
-  .int()
-  .min(1)
-  .max(PaginationLimits.MAX)
-  .default(PaginationLimits.DEFAULT)
+const limit = queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 const flag = z.enum(['true', 'false']).transform(value => value === 'true')
 
 // Where the next page of the levels sorted by product name starts: the name and the id of the last level it returned

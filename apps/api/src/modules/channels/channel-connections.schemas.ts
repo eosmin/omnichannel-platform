@@ -5,7 +5,8 @@ import {
   ChannelConnectionListStates,
   InboundLimits,
   PaginationLimits,
-  singleLineText
+  singleLineText,
+  queryIntSchema
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -60,7 +61,7 @@ export type ConnectResult = z.output<typeof connectResultSchema>
 // limit out of range, is a malformed query (400), not an empty page.
 export const listConnectionsQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   state: z.enum(ChannelConnectionListStates).optional()
 })
 export type ListConnectionsQuery = z.output<typeof listConnectionsQuerySchema>
