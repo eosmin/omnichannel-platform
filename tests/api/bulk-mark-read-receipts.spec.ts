@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { PrismaService, RLS_CONTEXT_ENABLED } from '@platform/core/database'
@@ -38,6 +39,7 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
   let enqueued: { storeId: string; conversationId: string; messageId: string }[] = []
   let emitted: { connectionId: string; channelIdentity: string; messageId: string }[] = []
   let batchLookups = 0
+  let warnings: unknown[][] = []
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -59,6 +61,11 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
     enqueued = []
     emitted = []
     batchLookups = 0
+    warnings = []
+    // What the services say when a lookup fails: a missing receipt must come with its reason in the failure of the case
+    jest.spyOn(PinoLogger.prototype, 'warn').mockImplementation((...args: unknown[]) => {
+      if (String(args[1]).includes('read receipts')) warnings.push(args)
+    })
     // Each lookup asks the database once (the unit specs of both classes pin that): counting the calls is counting the queries
     for (const [target, method] of [
       [app.get(ReadReceipts), 'latestToMarkMany'],
@@ -178,10 +185,14 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
     return expected
   }
 
-  const bulk = (ids: string[]) =>
-    api(app, ctx.adminA, ctx.storeA)
+  const bulk = async (ids: string[]) => {
+    const response = await api(app, ctx.adminA, ctx.storeA)
       .post(ApiRoutes.conversations.bulk)
       .send({ action: BulkActions.MARK_READ, conversationIds: ids })
+    // A lookup that failed is logged and the reads stand: say it here, or the case only sees a receipt that never came
+    expect(JSON.stringify(warnings)).toBe('[]')
+    return response
+  }
 
   it('tells what the lookups of one conversation would, and costs the same queries for 10 as for 40', async () => {
     const small = await seed(1)
