@@ -18,6 +18,7 @@ const OWN = [
 // the reviewers of tenancy take, not a side effect of writing a reason. A plugin route must never be here: a key is bound to ONE store.
 const ALLOWED_ON_CLASS = [
   'apps/api/src/modules/counts/counts.controller.ts',
+  'apps/api/src/modules/purchases/purchase-orders.controller.ts',
   'apps/api/src/modules/transfers/transfers.controller.ts',
   'apps/api/src/modules/warehouses/warehouses.controller.ts'
 ]
@@ -40,7 +41,7 @@ function sources(dir: string): string[] {
 }
 
 describe('@TenantOfOrganizationStores', () => {
-  it('is used by exactly the controllers of transfers, counts and warehouses, and by the delete of a plugin, and by no plugin-api route', () => {
+  it('is used by exactly the controllers of transfers, counts, warehouses and purchase orders, and by the delete of a plugin, and by no plugin-api route', () => {
     const users = SCANNED.flatMap(sources)
       .filter(path => {
         const text = readFileSync(path, 'utf8')
