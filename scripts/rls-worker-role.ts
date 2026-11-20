@@ -72,21 +72,21 @@ async function run(selected: WorkerRoleMode): Promise<void> {
       return
     }
     const statement = workerRoleStatement(selected)
+    const current = await client.query<{ name: string }>('SELECT current_database() AS name')
+    const database = current.rows[0]?.name ?? ''
+    // Before the confirmation, so that a refusal shows it too: the databases of the server where the role can connect
+    const reached = await client.query<{ datname: string }>(
+      `SELECT datname FROM pg_database
+        WHERE NOT datistemplate AND has_database_privilege($1, oid, 'CONNECT') ORDER BY datname`,
+      [WORKER_ROLE]
+    )
+    console.log(
+      reachedDatabasesWarning(
+        reached.rows.map(row => row.datname),
+        database
+      )
+    )
     if (statement !== null) {
-      const current = await client.query<{ name: string }>('SELECT current_database() AS name')
-      const database = current.rows[0]?.name ?? ''
-      // Before the confirmation, so that a refusal shows it too: the databases of the server where the role can connect
-      const reached = await client.query<{ datname: string }>(
-        `SELECT datname FROM pg_database
-          WHERE NOT datistemplate AND has_database_privilege($1, oid, 'CONNECT') ORDER BY datname`,
-        [WORKER_ROLE]
-      )
-      console.log(
-        reachedDatabasesWarning(
-          reached.rows.map(row => row.datname),
-          database
-        )
-      )
       const refused =
         flagProblem(selected, workerEnvForRoleScript()) ??
         confirmProblem(selected, confirmationOf(argv), database)

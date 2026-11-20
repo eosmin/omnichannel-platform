@@ -58,16 +58,16 @@ This is run by the OWNER, never by a session or by the CI. It turns on, in this 
 
 `platform_worker` is created with `BYPASSRLS` and keeps it. `WORKER_RLS_CONTEXT` stays `false` in every step above until here (#786: the
 worker refuses to start with the flag ON while its role still skips RLS; with the flag off it only warns, so a rollback does not crash-loop).
-The order is exact, and "step 4" inside this section means "start the workers", not section 4 below (enforce on):
+The order is exact. The actions below are lettered (a to e) so that they are not mixed with the numbered sections of this runbook:
 
-1. `pnpm db:rls:worker-role status` (reads only; shows host, database and the role). Rehearse the whole of 3b first in STAGING: some managed
+(a) `pnpm db:rls:worker-role status` (reads only; shows host, database, the role and the databases of the server it reaches). Rehearse the whole of 3b first in STAGING: some managed
    providers do not let you change `BYPASSRLS` (error `42501`), and you need to know it before production.
-2. Stop the workers and let the queues drain.
-3. `pnpm db:rls:worker-role nobypass --confirm=<database name>`. The script prints the host, the database and the role before it acts,
+(b) Stop the workers and let the queues drain.
+(c) `pnpm db:rls:worker-role nobypass --confirm=<database name>`. The script prints the host, the database and the role before it acts,
    and it is idempotent. `--confirm` is the ONLY guard: it must equal `current_database()` and the script does NOT refuse a host that is
    not local, so read the host it prints.
-4. Start the workers with `WORKER_RLS_CONTEXT=true`.
-5. Check: the gauge `platform_worker_role_bypasses_rls` is `0`; `status` shows `rolbypassrls = false`; the worker log has no start error.
+(d) Start the workers with `WORKER_RLS_CONTEXT=true`.
+(e) Check: the gauge `platform_worker_role_bypasses_rls` is `0`; `status` shows `rolbypassrls = false`; the worker log has no start error.
 
 A ROLE belongs to the whole SERVER, not to one database: the change reaches EVERY database of that server where `platform_worker` can
 connect. The script lists them (a query to `pg_database`) before it acts and in the refusal; read the list, and if it names a database that
@@ -77,7 +77,7 @@ that one run: never in `.env` or `.env.local`, never in the repository, never in
 run while the worker still skips RLS, so this step comes before section 4 (enforce on).
 
 Back (in this order): `WORKER_RLS_CONTEXT=false`, restart the workers, then `pnpm db:rls:worker-role bypass --confirm=<database name>`.
-NEVER run `bypass` while the flag is ON: the worker would refuse to start (the only state the check rejects) .
+NEVER run `bypass` while the flag is ON: the worker would refuse to start (the only state the check rejects).
 
 ## 4. Turn the policies on
 
