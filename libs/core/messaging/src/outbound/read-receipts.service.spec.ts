@@ -188,6 +188,24 @@ describe('ReadReceipts.queueForMany', () => {
     expect(findSettings).not.toHaveBeenCalled()
   })
 
+  it('makes the same number of calls to the database for 3 conversations as for 30', async () => {
+    const callsFor = async (count: number): Promise<number> => {
+      const { receipts, findSettings, queryRaw } = buildMany({})
+      await receipts.queueForMany(
+        STORE_ID,
+        Array.from({ length: count }, (_, i) => `c${i}`),
+        UP_TO
+      )
+      return findSettings.mock.calls.length + queryRaw.mock.calls.length
+    }
+
+    const small = await callsFor(3)
+    const large = await callsFor(30)
+
+    expect(small).toBe(2)
+    expect(large).toBe(small)
+  })
+
   it('logs the size of the batch when the lookup fails, and does not reject', async () => {
     const { receipts, warn, enqueueReadReceipt } = buildMany({
       rows: () => Promise.reject(new TypeError('boom'))
