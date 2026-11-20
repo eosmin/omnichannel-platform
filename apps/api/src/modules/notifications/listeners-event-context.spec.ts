@@ -16,7 +16,7 @@ import * as ts from 'typescript'
 // shipment-effects 1 are covered by delegation, B1 #776: `this.send` / `effects.follow` open it per step so no transaction stays open
 // during the provider, the e-mail or the retry sleeps; they are not debt of B3).
 // A handler marked `@EventContextNotNeeded('reason')` (it only moves a socket or Redis) counts as declared when the reason is not empty and
-// its own body names no prisma / tenantTransaction / transaction / client; the decorator itself is added by the PR that needs it.
+// neither the handler (signature included) nor a method of its class that it calls through `this.` names prisma* / PrismaService / tenantTransaction / transaction / client / db / repo.
 // Limits of the walk, to be read in review (it proves a context CAN be opened, not that every path opens it): a call needs a receiver
 // (`x.inStore(`; a bare imported helper is not seen); any branch that opens counts, even if another branch reads the database bare;
 // only `if (true/false/0/null/undefined)` and the code after a `return` / `throw` / `break` / `continue` in a block are cut: `false && x`,
@@ -28,13 +28,11 @@ import * as ts from 'typescript'
 const ROOT = join(__dirname, '..', '..', '..', '..', '..')
 const WRAPPERS = new Set(['InEventStore', 'InEventOrganization'])
 // Bare handlers per file today (fiscal and widget-delivery open their context in the body, so they are not listed). Owner B1 (session 7b):
-// shipment-effects, order-message-triggers. Owner B3 (74 and 8c): finance-posting, cache-invalidation, realtime-events.
+// shipment-effects, order-message-triggers. Owner B3 (74): finance-posting. (cache-invalidation and realtime-events carry the marker, B3b.)
 const PENDING: Readonly<Record<string, number>> = {
-  'apps/api/src/modules/cache/cache-invalidation.listener.ts': 7,
   'apps/api/src/modules/finance/finance-posting.listener.ts': 11,
   'apps/api/src/modules/order-messages/order-message-triggers.listener.ts': 2,
-  'apps/api/src/modules/orders/shipment-effects.listener.ts': 1,
-  'apps/api/src/modules/realtime/realtime-events.listener.ts': 33
+  'apps/api/src/modules/orders/shipment-effects.listener.ts': 1
 }
 interface Handler {
   file: string
@@ -113,20 +111,65 @@ const decoratorName = (decorator: ts.Decorator): string | undefined => {
 }
 
 // The marker of a handler that needs no context because it never touches the database (a socket, Redis): it counts as declared ONLY
-// with a reason that is not empty and a body that names none of these (the handler itself; a method it delegates to is not read).
-const DATABASE_NAMES = new Set(['prisma', 'tenantTransaction', 'transaction', 'client'])
+// with a reason that is not empty and code that names none of these (the handler, and the methods of its class it calls through `this.`).
+const DATABASE_NAMES = new Set([
+  'tenantTransaction',
+  'detachedTenantTransaction',
+  'transaction',
+  'client',
+  'PrismaService',
+  'db',
+  'repo'
+])
+const isDatabaseName = (name: string): boolean => DATABASE_NAMES.has(name) || /^prisma/i.test(name)
 const MARKER = 'EventContextNotNeeded'
 
 const touchesDatabase = (root: ts.Node): boolean => {
   const visit = (node: ts.Node): boolean =>
-    (ts.isIdentifier(node) && DATABASE_NAMES.has(node.text)) ||
+    (ts.isIdentifier(node) && isDatabaseName(node.text)) ||
     ts.forEachChild(node, child => (visit(child) ? true : undefined)) === true
   return visit(root)
 }
 
+// The method itself (signature included) and every method of its class it calls through `this.`, followed to any depth: a helper, or a
+// destructured multi-line signature, cannot hide a read from the marker. What is called on another object is for the reviewer.
+const touchesDatabaseThroughClass = (method: ts.MethodDeclaration): boolean => {
+  const owner = method.parent
+  const methods = new Map<string, ts.MethodDeclaration>()
+  if (ts.isClassLike(owner)) {
+    for (const member of owner.members) {
+      if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name)) {
+        methods.set(member.name.text, member)
+      }
+    }
+  }
+  const seen = new Set<ts.MethodDeclaration>()
+  const walk = (current: ts.MethodDeclaration): boolean => {
+    if (seen.has(current)) return false
+    seen.add(current)
+    if (touchesDatabase(current)) return true
+    const called: string[] = []
+    const collect = (node: ts.Node): void => {
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        node.expression.kind === ts.SyntaxKind.ThisKeyword
+      ) {
+        called.push(node.name.text)
+      }
+      ts.forEachChild(node, collect)
+    }
+    collect(current)
+    return called.some(name => {
+      const next = methods.get(name)
+      return next !== undefined && walk(next)
+    })
+  }
+  return walk(method)
+}
+
 const isDeclaredNotNeeded = (
   decorators: readonly ts.Decorator[],
-  body: ts.Node | undefined
+  method: ts.MethodDeclaration
 ): boolean => {
   const marker = decorators.find(decorator => decoratorName(decorator) === MARKER)
   if (marker === undefined || !ts.isCallExpression(marker.expression)) return false
@@ -135,7 +178,7 @@ const isDeclaredNotNeeded = (
     reason !== undefined &&
     (ts.isStringLiteral(reason) || ts.isNoSubstitutionTemplateLiteral(reason)) &&
     reason.text.trim() !== ''
-  return hasReason && body !== undefined && !touchesDatabase(body)
+  return hasReason && method.body !== undefined && !touchesDatabaseThroughClass(method)
 }
 
 // The event a listener names: the text of the argument of @OnEvent(...)
@@ -156,7 +199,7 @@ function handlersIn(file: string, source: string): Handler[] {
       if (listeners.length > 0) {
         const wrapped =
           decorators.some(decorator => WRAPPERS.has(decoratorName(decorator) ?? '')) ||
-          isDeclaredNotNeeded(decorators, node.body) ||
+          isDeclaredNotNeeded(decorators, node) ||
           (node.body !== undefined && reachesOpeningCall(node.body))
         for (const listener of listeners) {
           const { line } = tree.getLineAndCharacterOfPosition(listener.getStart(tree))
@@ -288,6 +331,29 @@ describe('the listeners of domain events open the context of their event', () =>
       '  @OnEvent(Events.N)',
       "  @EventContextNotNeeded('says it needs none')",
       '  async onN(p: P): Promise<void> { await this.prisma.client.order.findMany() }',
+      '  @OnEvent(Events.O)',
+      "  @EventContextNotNeeded('reads through a helper')",
+      '  async onO(p: P): Promise<void> { await this.reader(p) }',
+      '  @OnEvent(Events.P)',
+      "  @EventContextNotNeeded('database name only in the signature')",
+      '  async onP(',
+      '    prisma: Db,',
+      '    { storeId }: P',
+      '  ): Promise<void> {',
+      '    this.realtime.toStore(storeId)',
+      '  }',
+      '  @OnEvent(Events.S)',
+      "  @EventContextNotNeeded('two hops to the read')",
+      '  async onS(p: P): Promise<void> { await this.first(p) }',
+      '  private async first(p: P): Promise<void> { await this.reader(p) }',
+      '  @OnEvent(Events.Q)',
+      "  @EventContextNotNeeded('a db property')",
+      '  async onQ(p: P): Promise<void> { await this.db.message.findMany() }',
+      '  @OnEvent(Events.R)',
+      "  @EventContextNotNeeded('helper without a read')",
+      '  async onR(p: P): Promise<void> { await this.publish(p) }',
+      '  private async publish(p: P): Promise<void> { this.realtime.toStore(p.storeId) }',
+      '  private async reader(p: P): Promise<void> { await this.prisma.tenantTransaction(ctx, () => work(p)) }',
       '  // inStore( in a later method does not count for these',
       '  async later(): Promise<void> {',
       '    await this.events.inStore(id, async () => {})',
@@ -310,7 +376,25 @@ describe('the listeners of domain events open the context of their event', () =>
       'Events.K:true',
       'Events.L:false',
       'Events.M:false',
-      'Events.N:false'
+      'Events.N:false',
+      'Events.O:false',
+      'Events.P:false',
+      'Events.S:false',
+      'Events.Q:false',
+      'Events.R:true'
     ])
+  })
+
+  // The two marked handlers of realtime-events that evict sockets (onStatusChanged, onAssigned) read the conversation through
+  // SocketAccessService.visibleAmong, on another object, which the marker check cannot follow. Their reason is only true while that read
+  // opens a context of its own that also works inside an open one (a plain tenantTransaction throws there, and mayStay turns the throw
+  // into "evict the socket").
+  it('keeps the read of the socket eviction in a detached context of its own', () => {
+    const file = 'apps/api/src/modules/realtime/socket-access.service.ts'
+    const source = readFileSync(join(ROOT, file), 'utf8')
+    const visible = source.slice(source.indexOf('async visibleAmong('))
+    const body = visible.slice(0, visible.indexOf('\n  }\n'))
+    expect(body).toContain('this.prisma.detachedTenantTransaction(')
+    expect(body).not.toMatch(/this\.prisma\.tenantTransaction\(/)
   })
 })

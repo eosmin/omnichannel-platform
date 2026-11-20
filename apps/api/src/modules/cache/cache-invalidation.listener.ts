@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 
 import { CacheScopes } from '@platform/core/cache'
+import { EventContextNotNeeded } from '@platform/core/database'
 import { Events, type DomainEventPayloads } from '@platform/core/events'
 import { CacheService } from '@platform/core/redis'
 
@@ -23,6 +24,7 @@ export class CacheInvalidationListener {
   @OnEvent(Events.TAG_CREATED)
   @OnEvent(Events.TAG_UPDATED)
   @OnEvent(Events.TAG_DELETED)
+  @EventContextNotNeeded('only drops Redis generations (CacheService), reads no table')
   async onTagChanged(payload: DomainEventPayloads[typeof Events.TAG_CREATED]): Promise<void> {
     await this.cache.invalidateScope(CacheScopes.storeTags(payload.storeId))
   }
@@ -30,6 +32,7 @@ export class CacheInvalidationListener {
   @OnEvent(Events.SNIPPET_CREATED)
   @OnEvent(Events.SNIPPET_UPDATED)
   @OnEvent(Events.SNIPPET_DELETED)
+  @EventContextNotNeeded('only drops Redis generations (CacheService), reads no table')
   async onSnippetChanged(
     payload: DomainEventPayloads[typeof Events.SNIPPET_CREATED]
   ): Promise<void> {
@@ -40,6 +43,7 @@ export class CacheInvalidationListener {
   // Preferences), so it drops only the preferences. The other writers of StoreSettings (inbox, inventory,
   // returns, carriers) emit nothing: a reader of theirs that is cached needs its own event first.
   @OnEvent(Events.STORE_SETTINGS_UPDATED)
+  @EventContextNotNeeded('only drops Redis generations (CacheService), reads no table')
   async onStoreSettingsUpdated(
     payload: DomainEventPayloads[typeof Events.STORE_SETTINGS_UPDATED]
   ): Promise<void> {
