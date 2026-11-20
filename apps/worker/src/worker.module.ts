@@ -9,6 +9,7 @@ import {
   DigestPlatformModule,
   EmailPlatformModule,
   HttpPlatformModule,
+  isRequireContextOn,
   QueuesPlatformModule
 } from '@platform/core/http'
 import { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
@@ -25,6 +26,7 @@ import { AnalyticsModule } from './analytics/analytics.module'
 import { CarriersWorkerModule } from './carriers/carriers.module'
 import { ExportsModule } from './exports/exports.module'
 import { WorkerReadinessModule } from './health/worker-readiness.module'
+import { WORKER_RLS_CONTEXT_ON, WorkerRoleCheck } from './health/worker-role.check'
 import { InboundModule } from './inbound/inbound.module'
 import { MediaModule } from './media/media.module'
 import { NotificationsModule } from './notifications/notifications.module'
@@ -95,6 +97,8 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     LedgerModule
   ],
   providers: [
+    WorkerRoleCheck,
+    { provide: WORKER_RLS_CONTEXT_ON, useFactory: isRequireContextOn },
     ProcessorSupport,
     LeaderLockService,
     OutboundQueue,
