@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
+import { AuditService } from '@platform/core/audit-module'
 import { ComplianceConfig } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
@@ -48,7 +49,13 @@ describe('The data of an erased customer', () => {
     ctx = await seedTestContext(owner, app, prefix)
     worker = new PrismaService({ databaseUrl: connectionUrls().worker })
     storage = app.get(StorageService)
-    eraser = new ErasedCustomerData(worker, new JobContext(worker), storage, logger)
+    eraser = new ErasedCustomerData(
+      worker,
+      new JobContext(worker),
+      storage,
+      app.get(AuditService),
+      logger
+    )
   })
   afterAll(async () => {
     for (const key of keys) await storage.delete(key).catch(() => undefined)
@@ -407,6 +414,21 @@ describe('The data of an erased customer', () => {
           ErrorCodes.CUSTOMER_ERASED
         )
       }
+    })
+
+    it('is snoozed with no note, and refuses a note, which would be free text about the person', async () => {
+      const t = await erasedWithThread()
+      const until = new Date(Date.now() + 3_600_000).toISOString()
+
+      const withNote = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.conversations.snooze(t.conversation.id))
+        .send({ until, note: 'call Maria at 7000 1234' })
+      const without = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.conversations.snooze(t.conversation.id))
+        .send({ until })
+
+      expect(withNote.status).toBe(CONFLICT)
+      expect(without.status).toBe(200)
     })
 
     it('shows the messaging window as closed with no template to offer', async () => {

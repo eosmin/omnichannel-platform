@@ -191,7 +191,7 @@ export class NotificationsInboxListener {
         type: NotificationTypes.MESSAGE_FAILED,
         // Why the channel refused it: a code, drawn as a sentence by the page (NOT-06)
         params: { reason: payload.errorCode },
-        resourceType: 'message',
+        resourceType: NotificationResourceTypes.MESSAGE,
         resourceId: messageId,
         actionPath: AppPaths.store.conversation(storeId, conversationId)
       })

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
+import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
 import { ComplianceConfig, RetentionRun } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { MessageType } from '@platform/core/domain'
@@ -40,6 +42,7 @@ export class ErasedCustomerData {
     private readonly prisma: PrismaService,
     private readonly jobContext: JobContext,
     private readonly storage: StorageService,
+    private readonly audit: AuditService,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(ErasedCustomerData.name)
@@ -80,29 +83,54 @@ export class ErasedCustomerData {
     )
 
     let more = false
-    const take = (outcome: { deleted: number; more: boolean }): number => {
-      more = more || outcome.more
-      return outcome.deleted
+    // Each category runs apart: one that fails does not keep the others (the files above all) from running; the first failure is thrown at the end
+    const failures: unknown[] = []
+    const attempt = async (
+      work: () => Promise<{ deleted: number; more: boolean }>
+    ): Promise<number> => {
+      try {
+        const outcome = await work()
+        more = more || outcome.more
+        return outcome.deleted
+      } catch (error) {
+        failures.push(error)
+        this.logger.warn(
+          { storeId, customerId, errorName: errorName(error) },
+          'a category of the clearing of an erased customer failed'
+        )
+        return 0
+      }
     }
-    report.messages = take(
-      await this.inStore(storeId, ids => this.messages(storeId, customerId, ids))
+    report.messages = await attempt(() =>
+      this.inStore(storeId, limit => this.messages(storeId, customerId, limit))
     )
-    report.revisions = take(
-      await this.inStore(storeId, ids => this.revisions(storeId, customerId, ids))
+    report.revisions = await attempt(() =>
+      this.inStore(storeId, limit => this.revisions(storeId, customerId, limit))
     )
-    report.csatComments = take(
-      await this.inStore(storeId, ids => this.conversationNotes(storeId, customerId, ids))
+    report.csatComments = await attempt(() =>
+      this.inStore(storeId, limit => this.conversationNotes(storeId, customerId, limit))
     )
-    report.notifications = take(
-      await this.inStore(storeId, ids => this.notifications(storeId, customerId, ids))
+    report.notifications = await attempt(() =>
+      this.inStore(storeId, limit => this.notifications(storeId, customerId, limit))
     )
-    const files = await this.files(storeId, customerId)
-    report.files = files.deleted
-    report.filesLeft = files.left
-    more = more || files.more
+    let filesLeft = 0
+    await attempt(async () => {
+      const outcome = await this.files(storeId, customerId)
+      report.files = outcome.deleted
+      filesLeft = outcome.left
+      return { deleted: outcome.deleted, more: outcome.more }
+    })
+    report.filesLeft = filesLeft
+    if (failures.length > 0) {
+      this.logger.info(
+        { storeId, customerId, ...report },
+        'the data of an erased customer was cleared in part'
+      )
+      throw failures[0]
+    }
 
     // Marked only when nothing waits: the sweep takes the customers that are not
-    if (!more && files.left === 0) {
+    if (!more && report.filesLeft === 0) {
       await this.jobContext.forStore(storeId, () =>
         this.prisma.client.customer.updateMany({
           where: { id: customerId, storeId, erasedAt: { not: null } },
@@ -110,6 +138,21 @@ export class ErasedCustomerData {
         })
       )
       report.cleared = true
+      // The end of the erasure, with counts only: when the data was gone is what the entry of the request cannot say
+      this.audit.log({
+        action: AuditAction.CUSTOMER_ERASED_DATA_CLEARED,
+        actor: { system: true },
+        storeId,
+        resourceType: 'customer',
+        resourceId: customerId,
+        metadata: {
+          messages: report.messages,
+          revisions: report.revisions,
+          conversationNotes: report.csatComments,
+          notifications: report.notifications,
+          files: report.files
+        }
+      })
     }
     this.logger.info(
       { storeId, customerId, ...report },
@@ -238,6 +281,16 @@ export class ErasedCustomerData {
         }
         if (gone) removable.push(file.id)
         else left += 1
+      }
+      // A row that stays (a key that is not ours, a bucket that failed) is the trace of an object, not a place to keep the text of the person
+      const kept = rows.filter(file => !removable.includes(file.id)).map(file => file.id)
+      if (kept.length > 0) {
+        await this.jobContext.forStore(storeId, () =>
+          this.prisma.client.media.updateMany({
+            where: { id: { in: kept }, storeId },
+            data: { filename: ComplianceConfig.ERASED_CONTENT_PLACEHOLDER, caption: null }
+          })
+        )
       }
       if (removable.length > 0) {
         const removed = await this.jobContext.forStore(storeId, () =>

@@ -283,7 +283,7 @@ export class NotificationsEventsListener {
       const notification = {
         storeId,
         type,
-        resourceType: 'conversation',
+        resourceType: NotificationResourceTypes.CONVERSATION,
         resourceId: conversationId,
         actionPath: AppPaths.store.conversation(storeId, conversationId)
       }
@@ -1255,7 +1255,7 @@ export class NotificationsEventsListener {
         action: AuditAction.MEDIA_INFECTED,
         actor: { system: true },
         storeId,
-        resourceType: 'message',
+        resourceType: NotificationResourceTypes.MESSAGE,
         resourceId: messageId
       })
       const readers = await this.prisma.client.membership.findMany({
@@ -1273,7 +1273,7 @@ export class NotificationsEventsListener {
         {
           storeId,
           type: NotificationTypes.MEDIA_INFECTED,
-          resourceType: 'message',
+          resourceType: NotificationResourceTypes.MESSAGE,
           resourceId: messageId,
           actionPath: AppPaths.store.conversation(storeId, conversationId)
         }
@@ -1293,7 +1293,7 @@ export class NotificationsEventsListener {
         action: AuditAction.MEDIA_UNSCANNABLE,
         actor: { system: true },
         storeId,
-        resourceType: 'message',
+        resourceType: NotificationResourceTypes.MESSAGE,
         resourceId: messageId
       })
       const readers = await this.prisma.client.membership.findMany({
@@ -1310,7 +1310,7 @@ export class NotificationsEventsListener {
         {
           storeId,
           type: NotificationTypes.MEDIA_UNSCANNABLE,
-          resourceType: 'message',
+          resourceType: NotificationResourceTypes.MESSAGE,
           resourceId: messageId,
           actionPath: AppPaths.store.conversation(storeId, conversationId)
         }

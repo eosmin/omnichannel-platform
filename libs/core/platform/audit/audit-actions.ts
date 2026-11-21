@@ -58,6 +58,8 @@ export const AuditAction = {
   CUSTOMER_DELETED: 'customer.deleted',
   // The personal data of a customer was erased (Step 7.2); the entry carries counts, never the data
   CUSTOMER_ERASED: 'customer.erased',
+  // The data that hangs from an erased customer (messages, files, names in notifications) was all cleared: the date that the erasure was done (counts only)
+  CUSTOMER_ERASED_DATA_CLEARED: 'customer.erased_data_cleared',
   CUSTOMER_MERGED: 'customer.merged',
   CUSTOMER_UNMERGED: 'customer.unmerged',
   CUSTOMER_NOTE_DELETED: 'customer.note_deleted',

@@ -48,6 +48,7 @@ import {
   invalidInput,
   isHiddenStatus,
   lockConversationForWrite,
+  requireCustomerNotErased,
   requireAnyPermission,
   statusOf,
   type Viewer,
@@ -348,6 +349,10 @@ export class ConversationsService {
         throw invalidInput('snoozing needs the moment the conversation comes back')
       }
       assertSnoozeWindow(options.snoozedUntil)
+      // The note of a snooze is free text about the person: a conversation of an erased customer is snoozed with none
+      if (options.snoozeNote !== undefined && options.snoozeNote !== null) {
+        await requireCustomerNotErased(tx, storeId, conversationId)
+      }
     }
     // A snooze that ran out raises the row until someone opens it (only the sweep of the worker gives
     // this reason: a customer who writes to a snoozed conversation wakes it too, but nobody's timer
