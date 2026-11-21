@@ -18,6 +18,7 @@ import {
   type BulkLabelsMergeJob,
   type CancelShipmentJob,
   type EnforceRetentionJob,
+  type EraseCustomerDataJob,
   type EvaluatePickupsJob,
   type FetchInboundMediaJob,
   type FetchOriginMediaJob,
@@ -51,6 +52,7 @@ import { InventoryReconciler } from '../inventory/inventory-reconciler.service'
 import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
 import { OriginMediaFetcher } from '../media/origin-media-fetcher.service'
+import { ErasedCustomerData } from '../retention/erased-customer-data.service'
 import { StoreRetentionEnforcer } from '../retention/store-retention-enforcer.service'
 import { BulkLabelsRunner } from '../shipping/bulk-labels-runner.service'
 import { PickupEvaluator } from '../shipping/pickup-evaluator.service'
@@ -76,6 +78,7 @@ type HeavyJob =
   | SyncPickupJob
   | EvaluatePickupsJob
   | EnforceRetentionJob
+  | EraseCustomerDataJob
   | PostFinanceEventJob
   | SubmitFiscalDocumentJob
   | ReportFiscalContingencyJob
@@ -159,6 +162,9 @@ const reportFiscalContingencyJobSchema = exactly<ReportFiscalContingencyJob>()(
 const retentionJobSchema = exactly<EnforceRetentionJob>()(
   z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
 )
+const eraseCustomerDataJobSchema = exactly<EraseCustomerDataJob>()(
+  z.object({ storeId: z.uuid(), customerId: z.uuid(), correlationId: z.string().optional() })
+)
 const pollJobSchema = exactly<PollShipmentStatusJob>()(
   z.object({
     storeId: z.uuid(),
@@ -222,6 +228,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly pickupSyncer: PickupSyncer,
     private readonly pickupEvaluator: PickupEvaluator,
     private readonly retention: StoreRetentionEnforcer,
+    private readonly erasedData: ErasedCustomerData,
     private readonly financePosting: FinancePostingService,
     private readonly financeReconciler: FinanceReconciler,
     private readonly financeChain: FinanceChainChecker,
@@ -355,6 +362,17 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
         throw new UnrecoverableError('the retention job does not fit its schema')
       // Rejects when a category failed (after the others ran): the queue asks again and finds what is left
       await this.skipIfGone(job, () => this.retention.enforce(enforce.data.storeId))
+      return
+    }
+    if (job.name === JobNames.ERASE_CUSTOMER_DATA) {
+      const erase = eraseCustomerDataJobSchema.safeParse(job.data)
+      if (!erase.success) throw new UnrecoverableError('the erasure job does not fit its schema')
+      await this.skipIfGone(job, async () => {
+        const report = await this.erasedData.clear(erase.data.storeId, erase.data.customerId)
+        // Something is left (a bucket that failed, a run that hit its cap): the queue asks again, and the daily sweep after it
+        if (!report.cleared && !report.skipped)
+          throw new Error('the data of the erased customer is not all cleared yet')
+      })
       return
     }
     if (job.name === JobNames.POLL_SHIPMENT_STATUS) {

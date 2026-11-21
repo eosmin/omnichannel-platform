@@ -349,3 +349,11 @@ export const DigestLimits = {
 export function isDailyDigestHour(timezone: string, at: Date): boolean {
   return hourIn(timezone, at) === DigestLimits.DAILY_LOCAL_HOUR
 }
+
+// What a notification points to (`resourceType`) and the key of the name it carries (`params.customer`). The clearing of an erased customer
+// (Step 7.2-C) finds the notifications that name them by both, so the emitters and that sweep read the same constants
+export const NotificationResourceTypes = {
+  CONVERSATION: 'conversation',
+  MESSAGE: 'message'
+} as const
+export const NotificationParamKeys = { CUSTOMER: 'customer' } as const

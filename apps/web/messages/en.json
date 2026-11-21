@@ -597,6 +597,7 @@
     "FILE_NOT_READY": "The file is still being processed",
     "FILE_UNSCANNABLE": "The file could not be checked and was discarded. Upload it again",
     "FILE_TOO_LARGE": "The file is too large",
+    "CUSTOMER_ERASED": "This customer was erased. Nothing can be sent to them or written for them",
     "AVATAR_UPLOAD_LIMIT_EXCEEDED": "You asked to upload too many pictures this hour. Try again in a while",
     "FILE_TYPE_NOT_ALLOWED": "This type of file is not allowed",
     "FILE_UNAVAILABLE": "The file could not be sent because it is no longer available",

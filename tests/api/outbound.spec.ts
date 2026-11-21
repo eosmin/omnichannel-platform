@@ -690,6 +690,26 @@ describe('Replies on their way to a channel', () => {
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.QUEUED)
     })
 
+    it('sends nothing for a customer erased since the reply was queued, and fails it with its own code', async () => {
+      const reply = await queuedReply()
+      const row = await owner.message.findUniqueOrThrow({
+        where: { id: reply.id },
+        select: { conversation: { select: { customerId: true } } }
+      })
+      await owner.customer.update({
+        where: { id: row.conversation.customerId },
+        data: { erasedAt: new Date() }
+      })
+
+      await sender.send(job(reply), false)
+
+      expect(sent).toHaveLength(0)
+      expect(await stored(reply.id)).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        deliveryError: ErrorCodes.CUSTOMER_ERASED
+      })
+    })
+
     it('tries again after a refusal the plugin says can be repeated, and fails the message on the last attempt', async () => {
       const reply = await queuedReply()
       sendMessage = () =>

@@ -29,6 +29,7 @@ import {
   invalidInput,
   isOwnToPlugin,
   lockConversationForWrite,
+  requireCustomerNotErased,
   requireAnyPermission,
   requireOwnIfPlugin,
   type Viewer
@@ -145,6 +146,7 @@ export class MessageChangesService {
     const conversationId = await this.conversationOf(storeId, messageId)
     return this.prisma.transaction(async tx => {
       const message = await this.lockTarget(tx, storeId, messageId, conversationId, viewer)
+      await requireCustomerNotErased(tx, storeId, conversationId)
       await lockMessageRow(tx, messageId)
       if (message.deletedAt !== null || message.deleteStatus === DeliveryStatus.QUEUED.valueOf()) {
         throw resourceConflict('the message is deleted')
@@ -182,6 +184,7 @@ export class MessageChangesService {
     const conversationId = await this.conversationOf(storeId, messageId)
     await this.prisma.transaction(async tx => {
       const message = await this.lockTarget(tx, storeId, messageId, conversationId, viewer)
+      await requireCustomerNotErased(tx, storeId, conversationId)
       // Who may not delete it is told so whether or not it is deleted already
       if (isNote(message)) requireMayDeleteNote(message, viewer)
       else if (isReplyOfTeam(message)) requireMayDeleteReply(message, viewer)

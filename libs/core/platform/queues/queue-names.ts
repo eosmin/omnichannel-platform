@@ -53,6 +53,8 @@ export const JobNames = {
   FETCH_INBOUND_MEDIA: 'fetch-inbound-media',
   FETCH_ORIGIN_MEDIA: 'fetch-origin-media', // The picture or the thumbnail of an ad: one job each
   ENFORCE_RETENTION: 'enforce-retention',
+  // Clears what hangs from an erased customer: the text of its messages, its files, the names in its notifications (Step 7.2-C)
+  ERASE_CUSTOMER_DATA: 'erase-customer-data',
   RECONCILE_INVENTORY: 'reconcile-inventory',
   // The automatic entry of one event of one source (TDD_18 §6.1): the worker loads the current rows and posts it under its key
   POST_FINANCE_EVENT: 'post-finance-event',
@@ -157,6 +159,14 @@ export const reportFiscalContingencyJobId = (contingencyId: string, ask: number)
 // 03:00 seen twice around a change of the clock) asks for the same job (dashes, no colon)
 export const enforceRetentionJobId = (storeId: string, localDay: string): string =>
   `${JobNames.ENFORCE_RETENTION}-${storeId}-${localDay}`
+
+// One job per erased customer: asking for it again while it waits adds nothing (dashes, no colon)
+export const eraseCustomerDataJobId = (customerId: string): string =>
+  `${JobNames.ERASE_CUSTOMER_DATA}-${customerId}`
+
+// The second run of that job, a little later (the same job id would be ignored while the first is kept)
+export const eraseCustomerDataRecheckJobId = (customerId: string): string =>
+  `${JobNames.ERASE_CUSTOMER_DATA}-recheck-${customerId}`
 
 // One cold export per month of the run: the monthly scheduler run twice is one job (dashes, no colon)
 export const exportAuditLogsJobId = (month: string): string =>

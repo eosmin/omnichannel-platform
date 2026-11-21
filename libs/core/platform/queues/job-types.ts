@@ -315,6 +315,11 @@ export interface SendOutboundTypingJob extends BaseJob {
 export interface EnforceRetentionJob extends BaseJob {
   storeId: string
 }
+// The data that hangs from an erased customer is cleared (Step 7.2-C). Holds ids only: nothing about the person travels in the queue
+export interface EraseCustomerDataJob extends BaseJob {
+  storeId: string
+  customerId: string
+}
 
 // dead letter: a copy kept for triage; the failed job itself stays in its original queue
 export interface DeadLetterJob {

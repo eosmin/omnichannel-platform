@@ -16,6 +16,7 @@ import {
 import {
   actorOfViewer,
   lockConversationForWrite,
+  requireCustomerNotErased,
   requireAnyPermission,
   type Viewer
 } from '../conversations/conversations.support'
@@ -75,6 +76,7 @@ export class AgentReactionsService {
       // The conversation row is locked first, as every write to a thread: a conversation the agent may
       // not see is one that does not exist
       await lockConversationForWrite(tx, storeId, target.conversationId, viewer)
+      await requireCustomerNotErased(tx, storeId, target.conversationId)
       const message = await tx.message.findFirst({
         where: { id: messageId, storeId },
         select: {

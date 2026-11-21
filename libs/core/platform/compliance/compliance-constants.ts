@@ -9,7 +9,12 @@ export const ComplianceConfig = {
   BREACH_NOTIFICATION_HOURS: 72,
   ERASURE_GRACE_PERIOD_DAYS: 30,
   UNMERGE_WINDOW_DAYS: 30,
-  ERASED_CONTENT_PLACEHOLDER: '[erased]' // Written into Message.content on erasure
+  ERASED_CONTENT_PLACEHOLDER: '[erased]', // Written into Message.content on erasure
+  // The clearing of the data of an erased customer runs again shortly after the first time and, in the sweep, for this many days after it was
+  // marked: a write that was in flight when the erasure committed (a reply, an inbound message, a file that was being fetched) lands after the
+  // first run, and a lock on the customer in the paths that write would invert the order of the merge (deadlock)
+  ERASED_DATA_RECHECK_DELAY_MS: 15 * 60 * 1000,
+  ERASED_DATA_RECHECK_DAYS: 2
 } as const
 
 // Platform-wide floors and ceilings. Tenant-configurable values live in RetentionSettings, and

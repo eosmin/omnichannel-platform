@@ -47,6 +47,7 @@ import {
   isHiddenStatus,
   type LockedConversation,
   lockConversationForWrite,
+  requireCustomerNotErased,
   requireAnyPermission,
   requireOwnIfPlugin,
   statusOf,
@@ -233,6 +234,8 @@ export class MessagesService {
         }
         return { message: replayed, created: false }
       }
+      // A new reply, note or file for a customer who was erased: refused (a request that was already stored answers as it did)
+      await requireCustomerNotErased(tx, storeId, body.conversationId)
 
       const from = statusOf(current.status)
       // Spam is answered after it is marked as not spam; an internal note can still be written
@@ -433,6 +436,7 @@ export class MessagesService {
       })
       if (found === null) throw resourceNotFound('message')
       const current = await lockConversationForWrite(tx, storeId, found.conversationId, viewer)
+      await requireCustomerNotErased(tx, storeId, found.conversationId)
       // Read again under the lock: two requests to resend the same message take turns
       const row = await tx.message.findFirst({
         where: { id: messageId, storeId },
@@ -549,6 +553,7 @@ export class MessagesService {
       })
       if (found === null) throw resourceNotFound('message')
       const current = await lockConversationForWrite(tx, storeId, found.conversationId, viewer)
+      await requireCustomerNotErased(tx, storeId, found.conversationId)
       await lockMessageRow(tx, messageId)
       const row = await tx.message.findFirst({
         where: { id: messageId, storeId },

@@ -130,7 +130,9 @@ export class InboundMediaFetcher {
       Promise.all([
         this.prisma.client.message.findFirst({
           where: { id: messageId, storeId },
-          select: { conversation: { select: { customerId: true } } }
+          select: {
+            conversation: { select: { customerId: true, customer: { select: { erasedAt: true } } } }
+          }
         }),
         this.prisma.client.channelConnection.findFirst({
           where: {
@@ -146,6 +148,11 @@ export class InboundMediaFetcher {
     )
     // Either is gone since the job was queued: there is nobody to give the file to
     if (message === null || connection === null) return
+    // The customer was erased since the file arrived: a file of theirs is not stored any more (the object is never fetched, so there is none to delete)
+    if (message.conversation.customer.erasedAt !== null) {
+      await this.marker.mark(storeId, messageId, index, MediaUnavailableCodes.REFUSED)
+      return
+    }
 
     const plugin = this.registry.find(connection.pluginId)
     if (plugin?.fetchMedia === undefined) {

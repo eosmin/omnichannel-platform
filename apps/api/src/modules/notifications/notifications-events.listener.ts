@@ -81,7 +81,12 @@ import { ExportStatus, ExportTypePermissions, type ExportType } from '@platform/
 import { conversationReaders, isHiddenStatus } from '@platform/core/messaging'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
-import { type NotificationType, NotificationTypes } from '@platform/core/notifications'
+import {
+  NotificationParamKeys,
+  NotificationResourceTypes,
+  type NotificationType,
+  NotificationTypes
+} from '@platform/core/notifications'
 import { readOrderPreferences } from '@platform/core/store-preferences'
 
 import { customerNameOf, textForParams } from './notification-params'
@@ -140,9 +145,9 @@ export class NotificationsEventsListener {
         // The author is left out when it is not known: the plain text then reads right
         params: {
           ...(author === null ? {} : { author }),
-          customer: customerNameOf(conversation)
+          [NotificationParamKeys.CUSTOMER]: customerNameOf(conversation)
         },
-        resourceType: 'message',
+        resourceType: NotificationResourceTypes.MESSAGE,
         resourceId: messageId,
         actionPath: AppPaths.store.conversation(storeId, conversationId)
       })
@@ -278,7 +283,7 @@ export class NotificationsEventsListener {
       const notification = {
         storeId,
         type,
-        resourceType: 'conversation',
+        resourceType: NotificationResourceTypes.CONVERSATION,
         resourceId: conversationId,
         actionPath: AppPaths.store.conversation(storeId, conversationId)
       }
@@ -1250,7 +1255,7 @@ export class NotificationsEventsListener {
         action: AuditAction.MEDIA_INFECTED,
         actor: { system: true },
         storeId,
-        resourceType: 'message',
+        resourceType: NotificationResourceTypes.MESSAGE,
         resourceId: messageId
       })
       const readers = await this.prisma.client.membership.findMany({
@@ -1268,7 +1273,7 @@ export class NotificationsEventsListener {
         {
           storeId,
           type: NotificationTypes.MEDIA_INFECTED,
-          resourceType: 'message',
+          resourceType: NotificationResourceTypes.MESSAGE,
           resourceId: messageId,
           actionPath: AppPaths.store.conversation(storeId, conversationId)
         }
@@ -1288,7 +1293,7 @@ export class NotificationsEventsListener {
         action: AuditAction.MEDIA_UNSCANNABLE,
         actor: { system: true },
         storeId,
-        resourceType: 'message',
+        resourceType: NotificationResourceTypes.MESSAGE,
         resourceId: messageId
       })
       const readers = await this.prisma.client.membership.findMany({
@@ -1305,7 +1310,7 @@ export class NotificationsEventsListener {
         {
           storeId,
           type: NotificationTypes.MEDIA_UNSCANNABLE,
-          resourceType: 'message',
+          resourceType: NotificationResourceTypes.MESSAGE,
           resourceId: messageId,
           actionPath: AppPaths.store.conversation(storeId, conversationId)
         }

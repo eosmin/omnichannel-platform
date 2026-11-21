@@ -12,7 +12,8 @@ import { PrismaService, JobContext } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   isInstallationActive,
-  OutboundLimits
+  OutboundLimits,
+  isErasedHandle
 } from '@platform/core/domain'
 import { enumValueOf } from '@platform/core/messaging'
 import type { SendOutboundTypingJob } from '@platform/core/queues'
@@ -90,6 +91,8 @@ export class TypingSender {
     )
     if (conversation === null) return
     const { channelConnection: connection, customerIdentity } = conversation
+    // The handle of an erased customer is no handle: nobody to tell
+    if (isErasedHandle(customerIdentity.channelIdentity)) return
     const connectionStatus = isInstallationActive(connection.installation)
       ? connection.status
       : ChannelConnectionStatus.DISCONNECTED
