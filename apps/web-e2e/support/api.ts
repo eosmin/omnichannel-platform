@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { type AccountProfile, accountProfileSchema } from '@platform/api-client'
-import { API_PREFIX, ApiRoutes } from '@platform/core/api'
+import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import { RoleNames, TenantHeaders } from '@platform/core/auth'
 import { ChannelIds } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
@@ -238,4 +238,21 @@ export function financeCall(
     headers: { authorization: `Bearer ${token}`, [TenantHeaders.STORE_ID]: storeId },
     body: init.body === undefined ? undefined : JSON.stringify(init.body)
   })
+}
+
+// What a plugin does with the one-time code it was given: trades it for its key (the code is the credential, the route is public)
+export async function exchangePluginSetupCode(code: string): Promise<string> {
+  const body = (await call(PluginApiRoutes.setupExchange, {
+    method: 'POST',
+    body: JSON.stringify({ code })
+  })) as { apiKey: string }
+  return body.apiKey
+}
+
+// What the api answers to a plugin key on the route that says who it is: 200 while the key is the live one, 401 once it is not
+export async function statusOfPluginKey(key: string): Promise<number> {
+  const response = await fetch(`${API_URL}${API_PREFIX}${PluginApiRoutes.installation}`, {
+    headers: { authorization: `Bearer ${key}`, [FORWARDED_FOR]: newClientIp() }
+  })
+  return response.status
 }

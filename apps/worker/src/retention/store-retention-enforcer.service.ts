@@ -2,7 +2,14 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { RetentionDefaults, RetentionRun, type RetentionField } from '@platform/core/compliance'
+import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
+import {
+  RetentionDefaults,
+  RetentionResourceTypes,
+  RetentionRun,
+  type RetentionField
+} from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { ConversationStatus, DAY_MS } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
@@ -11,6 +18,7 @@ import { StorageService } from '@platform/core/storage-module'
 
 import { categoryRunner, inBatches, PartialRunError } from './retention-batches'
 import { objectKeysOf } from './retention-objects'
+import { runAuditMetadata, runHasNews } from './run-audit'
 
 const DATE_LENGTH = 10 // "2026-11-14" in an ISO date
 
@@ -42,7 +50,8 @@ export class StoreRetentionEnforcer {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly logger: PinoLogger,
-    private readonly jobContext: JobContext
+    private readonly jobContext: JobContext,
+    private readonly audit: AuditService
   ) {
     this.logger.setContext(StoreRetentionEnforcer.name)
   }
@@ -89,6 +98,19 @@ export class StoreRetentionEnforcer {
     await run('notifications', () => this.notifications(storeId, before('notificationDays')))
 
     this.logger.info({ storeId, ...report }, 'the retention run of a store finished')
+    // One entry for the run, with the store: the viewer of the audit log of that store reads it. Written before the failure below, so a
+    // run that stopped halfway still says what it deleted and where it failed
+    const metadata = runAuditMetadata(report, report.more, failed)
+    if (runHasNews(metadata)) {
+      this.audit.log({
+        action: AuditAction.RETENTION_RUN,
+        actor: { system: true },
+        storeId,
+        resourceType: RetentionResourceTypes.STORE,
+        resourceId: storeId,
+        metadata
+      })
+    }
     if (report.more.length > 0) {
       this.logger.warn({ storeId, more: report.more }, 'a full batch was deleted; more waits')
     }

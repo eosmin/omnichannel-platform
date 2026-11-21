@@ -93,6 +93,14 @@ const commandSecretSchema = z.object({
 })
 export type RotatedCommandSecretView = z.output<typeof commandSecretSchema>
 
+// A blank key is refused here: the old one is already dead, so an empty "new key" must show as an error and not as a dialog to copy
+const apiKeySchema = z.object({
+  apiKey: z.string().min(1),
+  apiKeyPrefix: z.string().min(1),
+  rotatedAt: z.string()
+})
+export type RotatedPluginApiKeyView = z.output<typeof apiKeySchema>
+
 export function fetchPluginConsent(
   client: ApiClient,
   storeId: string,
@@ -184,6 +192,19 @@ export function rotateCommandSecret(
   return client.request(ApiRoutes.plugins.commandSecret(enc(installationId)), {
     method: 'POST',
     schema: commandSecretSchema,
+    storeId
+  })
+}
+
+// The key answers once and the old one is dead from that call on (TDD_10 §6.7.3): nothing here retries or caches it
+export function rotatePluginApiKey(
+  client: ApiClient,
+  storeId: string,
+  installationId: string
+): Promise<RotatedPluginApiKeyView> {
+  return client.request(ApiRoutes.plugins.apiKey(enc(installationId)), {
+    method: 'POST',
+    schema: apiKeySchema,
     storeId
   })
 }

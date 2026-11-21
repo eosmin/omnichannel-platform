@@ -657,6 +657,7 @@
     "FINANCE_PERIOD_ALREADY_CLOSED": "The period is closed already",
     "FINANCE_CURRENCY_UNSUPPORTED": "Only USD is supported",
     "FINANCE_SETUP_REQUIRED": "Finance has not been set up for this organization yet",
+    "FINANCE_REPORT_BUSY": "Finance reports are already being prepared for this organization: wait a few seconds and try again",
     "FINANCE_TAX_RATE_NOT_CONFIGURED": "A product of this order is taxed and no tax rate is set for it: choose a default tax rate in Finance first",
     "FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED": "Changing whether the prices include the tax moves the total of the whole catalog: confirm the change of price mode",
     "PURCHASE_ORDER_INVALID_STATUS_TRANSITION": "The purchase order cannot move to that status from where it is",
@@ -928,7 +929,8 @@
         "body": "Your export could not be made. Try asking for it again.",
         "reason": {
           "EXPORT_TOO_LARGE": "The export is too large. Narrow the filters or the dates and ask for it again.",
-          "EXPORT_EMPTY": "There was nothing to export with those filters."
+          "EXPORT_EMPTY": "There was nothing to export with those filters.",
+          "PERMISSION_DENIED": "The export was cancelled: you no longer have permission to export this. Ask an administrator."
         }
       }
     },
@@ -3195,6 +3197,19 @@
         "requested": "Access it asks for",
         "events": "Events it follows",
         "newCode": "Get a new setup code",
+        "rotateKey": "Make a new access key",
+        "apiKey": {
+          "title": "New access key for {name}",
+          "description": "Copy it now: it is shown only once. The previous key stopped working the moment this one was made.",
+          "label": "Access key",
+          "how": "Give it to the plugin as its Bearer token. Until the plugin uses it, every call it makes is refused."
+        },
+        "rotateKeyConfirm": {
+          "title": "Make a new access key for {name}?",
+          "body": "The current key stops working at once, with no grace time: {name} cannot reach your store until it is given the new key. The new key is shown one time only.",
+          "cancel": "Cancel",
+          "confirm": "Make a new key"
+        },
         "rotateSecret": "Make a new command secret",
         "commandSecret": {
           "title": "New command secret for {name}",
