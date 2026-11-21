@@ -1122,9 +1122,21 @@ of the worker needs `s3:GetBucketVersioning` and `s3:GetEncryptionConfiguration`
 are bucket-level actions, not `bucket/*`); without them the answer is "unknown" and counts as a gap.
 
 Versioning keeps what the application deletes: the conversation-deletion and retention jobs only add a delete
-marker. Add a lifecycle rule `NoncurrentVersionExpiration` (days chosen with the retention policy) so the
-deleted bytes of a customer do not stay for ever; until then a deletion is recoverable by whoever holds the
-bucket. Replication is not checked here. The 7-year cold retention of the audit archive is a separate feature and
+marker. The lifecycle of the production bucket (owner, 2026-11-21) is a rule `NoncurrentVersionExpiration` of 30
+days, so the deleted bytes of a customer do not stay for ever (until they expire a deletion is recoverable by
+whoever holds the bucket), and a rule `AbortIncompleteMultipartUpload` after 7 days, so an upload that never
+finished does not keep its parts. `put-bucket-lifecycle-configuration` REPLACES every rule of the bucket: when the
+bucket already holds others, read them with `get-bucket-lifecycle-configuration` and send the merged set (the replica
+bucket needs versioning, and gets the same rules):
+
+```bash
+aws s3api put-bucket-lifecycle-configuration --bucket platform-production \
+  --lifecycle-configuration '{"Rules":[{"ID":"expire-noncurrent","Status":"Enabled","Filter":{},"Expiration":{"ExpiredObjectDeleteMarker":true},"NoncurrentVersionExpiration":{"NoncurrentDays":30},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}]}'
+```
+
+The sweep that re-encodes the pictures stored before the metadata cleaning (`ExistingPictureSanitizer`) replaces the
+original in place, so versioning is its way back: it must not run in production while the versioning gap above reads 1 (the guard that enforces it in the scheduler is
+a task of Step 7.3 of the plan; there is no switch to turn the scheduler off, so that task is a prerequisite of the first production deploy). With versioning on, the deletion of the bytes of a customer (an erasure, a deleted conversation) adds a delete marker and the bytes live as noncurrent versions until the rule above expires them: a legal deletion is complete up to 30 days later. Replication is not checked here. The 7-year cold retention of the audit archive is a separate feature and
 is not part of this check.
 
 ### 7.4 Kubernetes backups (Phase 2 only)

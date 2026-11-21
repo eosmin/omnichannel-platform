@@ -35,8 +35,14 @@ const record = (isBlocked: boolean, wait = 0) => ({
 
 function build(increment: jest.Mock) {
   const inc = jest.fn()
-  const guard = new UserRateLimitGuard(new Reflector(), { increment }, { inc } as never)
-  return { guard, inc }
+  const observe = jest.fn()
+  const guard = new UserRateLimitGuard(
+    new Reflector(),
+    { increment },
+    { inc } as never,
+    { observe } as never
+  )
+  return { guard, inc, observe }
 }
 
 describe('UserRateLimitGuard', () => {
@@ -52,6 +58,16 @@ describe('UserRateLimitGuard', () => {
       UserRateLimits.SEARCH.limit,
       0,
       'user:search'
+    )
+  })
+
+  it('records the share of the budget spent, by the throttler of the profile', async () => {
+    const increment = jest.fn().mockResolvedValue({ ...record(false), totalHits: 6 })
+    const { guard, observe } = build(increment)
+    await guard.canActivate(contextOf(limited, { id: 'u1' }))
+    expect(observe).toHaveBeenCalledWith(
+      { throttler: 'user:search' },
+      6 / UserRateLimits.SEARCH.limit
     )
   })
 

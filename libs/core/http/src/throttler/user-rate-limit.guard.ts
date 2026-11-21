@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import type { ThrottlerStorage } from '@nestjs/throttler'
-import type { Counter } from '@prometheus-io/client'
+import type { Counter, Histogram } from '@prometheus-io/client'
 
 import { USER_RATE_LIMIT_METADATA_KEY, type UserRateLimitProfile } from '@platform/core/auth'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
@@ -31,7 +31,8 @@ export class UserRateLimitGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     @Inject(USER_RATE_LIMIT_STORAGE) private readonly storage: ThrottlerStorage,
-    @InjectMetric(MetricNames.RATE_LIMIT_HITS) private readonly hits: Counter<string>
+    @InjectMetric(MetricNames.RATE_LIMIT_HITS) private readonly hits: Counter<string>,
+    @InjectMetric(MetricNames.RATE_LIMIT_BUDGET_USAGE) private readonly usage: Histogram<string>
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -50,7 +51,7 @@ export class UserRateLimitGuard implements CanActivate {
         HttpStatusCodes.INTERNAL_SERVER_ERROR
       )
     }
-    await spendUserBudget(this.storage, this.hits, this.logger, user.id, profile)
+    await spendUserBudget(this.storage, this.hits, this.usage, this.logger, user.id, profile)
     return true
   }
 }

@@ -24,8 +24,14 @@ const record = (isBlocked: boolean, wait = 0) => ({
 
 function build(increment: jest.Mock, profile: UserRateLimitProfile = AuthenticatedUserRateLimit) {
   const inc = jest.fn()
-  const guard = new AuthenticatedUserRateLimitGuard({ increment }, { inc } as never, profile)
-  return { guard, inc }
+  const observe = jest.fn()
+  const guard = new AuthenticatedUserRateLimitGuard(
+    { increment },
+    { inc } as never,
+    { observe } as never,
+    profile
+  )
+  return { guard, inc, observe }
 }
 
 describe('AuthenticatedUserRateLimitGuard', () => {
@@ -68,6 +74,17 @@ describe('AuthenticatedUserRateLimitGuard', () => {
       metadata: { retryAfterSeconds: 21 }
     })
     expect(inc).toHaveBeenCalledWith({ throttler: 'user:authenticated' })
+  })
+
+  it('records how much of the budget was spent, by throttler and never by person', async () => {
+    const increment = jest.fn().mockResolvedValue({ ...record(false), totalHits: 150 })
+    const { guard, observe } = build(increment)
+    await guard.canActivate(contextOf({ user: { id: 'u1' } }))
+    expect(observe).toHaveBeenCalledTimes(1)
+    expect(observe).toHaveBeenCalledWith(
+      { throttler: 'user:authenticated' },
+      150 / AuthenticatedUserRateLimit.limit
+    )
   })
 
   it('does not count a route with no authenticated user (public, probes, plugin api)', async () => {

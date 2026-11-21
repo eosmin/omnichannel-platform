@@ -185,6 +185,7 @@ export const MetricNames = {
   PERMISSION_DENIALS: 'platform_permission_denials_total',
   TENANT_VIOLATIONS: 'platform_tenant_violations_total',     // Any non-zero value is an incident
   RATE_LIMIT_HITS: 'platform_rate_limit_hits_total',
+  RATE_LIMIT_BUDGET_USAGE: 'platform_rate_limit_budget_usage_ratio',
 
   // Queues
   QUEUE_DEPTH: 'platform_queue_depth',

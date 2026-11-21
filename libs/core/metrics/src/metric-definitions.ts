@@ -159,6 +159,12 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'Requests refused by a rate limit',
     labels: ['throttler']
   },
+  [MetricNames.RATE_LIMIT_BUDGET_USAGE]: {
+    kind: 'histogram',
+    help: 'Share of the budget of a person already spent in the window when a request was counted, by throttler',
+    labels: ['throttler'],
+    buckets: [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 1]
+  },
 
   [MetricNames.QUEUE_DEPTH]: {
     kind: 'gauge',

@@ -1,6 +1,6 @@
 import type { Logger } from '@nestjs/common'
 import type { ThrottlerStorage } from '@nestjs/throttler'
-import type { Counter } from '@prometheus-io/client'
+import type { Counter, Histogram } from '@prometheus-io/client'
 
 import {
   RETRY_AFTER_METADATA_KEY,
@@ -15,6 +15,7 @@ import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/e
 export async function spendUserBudget(
   storage: ThrottlerStorage,
   hits: Counter<string>,
+  usage: Histogram<string>,
   logger: Logger,
   userId: string,
   profile: UserRateLimitProfile
@@ -34,8 +35,12 @@ export async function spendUserBudget(
     )
     return
   }
+  const throttler = userRateLimitThrottler(profile)
+  // Aggregated by throttler and bucketed: the person is never a label, so the cardinality is the number of profiles. Weighted by
+  // requests, so the highest bucket reached says how close the busiest person came to the limit
+  usage.observe({ throttler }, Math.min(record.totalHits / profile.limit, 1))
   if (!record.isBlocked) return
-  hits.inc({ throttler: userRateLimitThrottler(profile) })
+  hits.inc({ throttler })
   throw new PlatformException(
     ErrorCodes.RATE_LIMIT_EXCEEDED,
     'Too many requests',

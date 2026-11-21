@@ -47,6 +47,9 @@ export const MetricNames = {
   PERMISSION_DENIALS: 'platform_permission_denials_total',
   TENANT_VIOLATIONS: 'platform_tenant_violations_total', // Any non-zero value is an incident
   RATE_LIMIT_HITS: 'platform_rate_limit_hits_total',
+  // How much of its budget a person had spent in the window when a request was counted (spent / limit, by throttler): the fitting of
+  // the quota reads it (TDD_05 §3.1). Never labelled with the person
+  RATE_LIMIT_BUDGET_USAGE: 'platform_rate_limit_budget_usage_ratio',
   AUDIT_WRITE_FAILURES: 'platform_audit_write_failures_total', // Any non-zero value: an action left no trace
 
   // Queues

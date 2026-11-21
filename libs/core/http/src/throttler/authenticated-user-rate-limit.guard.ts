@@ -7,7 +7,7 @@ import {
   Optional
 } from '@nestjs/common'
 import type { ThrottlerStorage } from '@nestjs/throttler'
-import type { Counter } from '@prometheus-io/client'
+import type { Counter, Histogram } from '@prometheus-io/client'
 
 import {
   AUTHENTICATED_USER_RATE_LIMIT,
@@ -31,6 +31,7 @@ export class AuthenticatedUserRateLimitGuard implements CanActivate {
   constructor(
     @Inject(USER_RATE_LIMIT_STORAGE) private readonly storage: ThrottlerStorage,
     @InjectMetric(MetricNames.RATE_LIMIT_HITS) private readonly hits: Counter<string>,
+    @InjectMetric(MetricNames.RATE_LIMIT_BUDGET_USAGE) private readonly usage: Histogram<string>,
     // The budget in force (HttpPlatformModule provides it from the env); the profile of the code where nothing does
     @Optional()
     @Inject(AUTHENTICATED_USER_RATE_LIMIT)
@@ -42,7 +43,7 @@ export class AuthenticatedUserRateLimitGuard implements CanActivate {
     if (context.getType() !== 'http') return true
     const { user } = context.switchToHttp().getRequest<AuthenticatedRequest>()
     if (user === undefined) return true
-    await spendUserBudget(this.storage, this.hits, this.logger, user.id, this.profile)
+    await spendUserBudget(this.storage, this.hits, this.usage, this.logger, user.id, this.profile)
     return true
   }
 }
