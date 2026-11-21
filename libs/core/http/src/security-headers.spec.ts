@@ -52,6 +52,13 @@ describe('security headers of the http apps', () => {
     expect(headers.get('x-content-type-options')).toBe('nosniff')
   })
 
+  it('forbids framing and isolates the browsing context, named on purpose and not left to helmet defaults', async () => {
+    const headers = await headersOf(`${API_PREFIX}/ping`)
+
+    expect(headers.get('x-frame-options')).toBe('DENY')
+    expect(headers.get('cross-origin-opener-policy')).toBe('same-origin')
+  })
+
   it('tells the browser to use https for a year, subdomains and preload included', async () => {
     const headers = await headersOf(`${API_PREFIX}/ping`)
 

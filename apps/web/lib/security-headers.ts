@@ -77,5 +77,10 @@ export const STATIC_SECURITY_HEADERS: ReadonlyArray<{ key: string; value: string
   { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
-  { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=()' }
+  { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=()' },
+  // The old twin of `frame-ancestors 'none'`, for the browsers that ignore the CSP directive
+  { key: 'X-Frame-Options', value: 'DENY' },
+  // A page of another origin gets no handle on this one; popups stay allowed because the sign-in and the channel
+  // connection flows open one and read it back, which `same-origin` would cut
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' }
 ]
