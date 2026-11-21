@@ -450,12 +450,18 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
       'audit_logs'
     ]
 
+    // The context of the delete of a store: the route runs with the organization of the request in it
+    const CONTEXT_A = { organizations: [] as string[] }
+    beforeAll(() => {
+      CONTEXT_A.organizations = [ctx.orgA.id]
+    })
+
     it('counts the rows of a store with the rights of the owner, whatever the context of the caller, and a count of the caller sees none', async () => {
       const truth = await raw.query<{ n: number }>(
         'SELECT count(*)::int AS n FROM orders WHERE store_id = $1',
         [ctx.storeA.id]
       )
-      const found = await underRls({}, async db => ({
+      const found = await underRls(CONTEXT_A, async db => ({
         naive: (
           await db.query<{ n: number }>(
             'SELECT count(*)::int AS n FROM orders WHERE store_id = $1',
@@ -535,7 +541,7 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
     it('fails closed (an error, no answer) when the function cannot see every row', async () => {
       await expect(
         underRls(
-          {},
+          CONTEXT_A,
           db => db.query('SELECT * FROM rls_store_tables_with_rows($1::text)', [ctx.storeA.id]),
           async db => {
             // The owner of the function is a role that owns no table and cannot bypass row security
@@ -549,7 +555,7 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
     it('fails closed when a table with row security has no policy that shows every row to its owner', async () => {
       await expect(
         underRls(
-          {},
+          CONTEXT_A,
           db => db.query('SELECT * FROM rls_store_tables_with_rows($1::text)', [ctx.storeA.id]),
           async db => {
             // The owner of the database is a superuser in the suites and skips row security: this is a role that owns every table
@@ -565,6 +571,9 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
                END $$`
             )
             await db.query('GRANT CREATE ON SCHEMA public TO rls_probe_owner')
+            // The function now reads `stores` (to find the organization of the store) as its owner; `stores` has no store_id column, so the
+            // loop above did not hand it to the probe role. The real owner of the function owns `stores` too: give the probe the same read
+            await db.query('GRANT SELECT ON public.stores TO rls_probe_owner')
             await db.query(
               'ALTER FUNCTION rls_store_tables_with_rows(text) OWNER TO rls_probe_owner'
             )
@@ -576,14 +585,58 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
     it('takes no list of tables to leave out: the caller cannot hide a table that holds rows', async () => {
       // A second argument would be the way to make the delete of a store go through with its data: there is none (42883)
       await expect(
-        underRls({}, db =>
+        underRls(CONTEXT_A, db =>
           db.query('SELECT * FROM rls_store_tables_with_rows($1::text, $2::text[])', [
             ctx.storeA.id,
             ['orders', 'products', 'inventory_levels']
           ])
         )
       ).rejects.toThrow(/does not exist/)
-      const { rows } = await underRls({}, db =>
+      const { rows } = await underRls(CONTEXT_A, db =>
+        db.query<{ table_name: string }>(
+          'SELECT table_name FROM rls_store_tables_with_rows($1::text)',
+          [ctx.storeA.id]
+        )
+      )
+      expect(rows.map(row => row.table_name)).toContain('orders')
+    })
+
+    it('refuses a call with no context at all, and answers nothing about a store of another organization (22023)', async () => {
+      // The function runs as the owner and the store id is a parameter: with no check, any session of the application could ask
+      // which tables hold rows of ANY store. Nothing in the context, or an organization that is not the owner of the store, is the
+      // same error as a store that does not exist, so the answer does not tell which ids are real.
+      const noContext = await underRls({}, db =>
+        db.query('SELECT * FROM rls_store_tables_with_rows($1::text)', [ctx.storeA.id]).then(
+          () => 'answered',
+          (error: { code?: string }) => error.code
+        )
+      )
+      expect(noContext).toBe('22023')
+      const otherOrganization = await underRls({ organizations: [ctx.orgB.id] }, db =>
+        db.query('SELECT * FROM rls_store_tables_with_rows($1::text)', [ctx.storeA.id]).then(
+          () => 'answered',
+          (error: { code?: string }) => error.code
+        )
+      )
+      expect(otherOrganization).toBe('22023')
+      const otherStore = await underRls({ stores: [ctx.storeB.id] }, db =>
+        db.query('SELECT * FROM rls_store_tables_with_rows($1::text)', [ctx.storeA.id]).then(
+          () => 'answered',
+          (error: { code?: string }) => error.code
+        )
+      )
+      expect(otherStore).toBe('22023')
+      const unknown = await underRls(CONTEXT_A, db =>
+        db.query("SELECT * FROM rls_store_tables_with_rows('no-such-store')").then(
+          () => 'answered',
+          (error: { code?: string }) => error.code
+        )
+      )
+      expect(unknown).toBe('22023')
+    })
+
+    it('answers for the store of the context, with no organization in it', async () => {
+      const { rows } = await underRls({ stores: [ctx.storeA.id] }, db =>
         db.query<{ table_name: string }>(
           'SELECT table_name FROM rls_store_tables_with_rows($1::text)',
           [ctx.storeA.id]
@@ -606,7 +659,7 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
         'SELECT count(*)::int AS n FROM orders WHERE store_id = $1',
         [ctx.storeA.id]
       )
-      const counted = await underRls({}, async db => {
+      const counted = await underRls(CONTEXT_A, async db => {
         // The caller is platform_app, who may create temporary tables: this one shadows the real one for any code that does not pin
         // the schema
         await db.query('CREATE TEMP TABLE orders (store_id text)')
@@ -625,7 +678,7 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
 
     it('refuses an empty store id and cannot be called by PUBLIC', async () => {
       await expect(
-        underRls({}, db => db.query("SELECT * FROM rls_store_tables_with_rows('')"))
+        underRls(CONTEXT_A, db => db.query("SELECT * FROM rls_store_tables_with_rows('')"))
       ).rejects.toThrow(/store id is required/)
       const { rows } = await raw.query<{ acl: string | null }>(
         "SELECT proacl::text AS acl FROM pg_proc WHERE proname = 'rls_store_tables_with_rows'"
