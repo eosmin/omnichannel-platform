@@ -5,11 +5,13 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
 import {
   AuditColdExport,
   auditColdExportLockKey,
   DataRetentionPolicies,
-  PlatformCleanup
+  PlatformCleanup,
+  RetentionResourceTypes
 } from '@platform/core/compliance'
 import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
@@ -30,6 +32,7 @@ import {
   createWebhook
 } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 
@@ -66,8 +69,14 @@ describe('The retention run of the worker', () => {
     ctx = await seedTestContext(owner, app, prefix)
     worker = new PrismaService({ databaseUrl: connectionUrls().worker })
     storage = app.get(StorageService)
-    enforcer = new StoreRetentionEnforcer(worker, storage, logger, new JobContext(worker))
-    cleaner = new PlatformCleaner(worker, new JobContext(worker), logger)
+    enforcer = new StoreRetentionEnforcer(
+      worker,
+      storage,
+      logger,
+      new JobContext(worker),
+      app.get(AuditService)
+    )
+    cleaner = new PlatformCleaner(worker, new JobContext(worker), logger, app.get(AuditService))
     exporter = new AuditColdExporter(worker, new WorkerLists(worker), storage, logger)
   })
   afterAll(async () => {
@@ -140,6 +149,55 @@ describe('The retention run of the worker', () => {
       expect(await owner.media.count({ where: { id: old.mediaId } })).toBe(0)
       expect(await storage.head(old.key)).toBeNull()
       expect(await storage.head(old.thumb)).toBeNull()
+    })
+
+    it('writes one system entry for the run, with the store and the counts, and none for a run that deleted nothing', async () => {
+      const startedAt = new Date()
+      const old = await conversationWithFile(ctx.storeA.id, {
+        status: ConversationStatus.RESOLVED,
+        lastMessageAt: daysAgo(800)
+      })
+      const where = {
+        action: AuditAction.RETENTION_RUN,
+        storeId: ctx.storeA.id,
+        timestamp: { gte: startedAt }
+      }
+
+      const report = await enforcer.enforce(ctx.storeA.id)
+
+      const entries = await waitForAuditEntries(owner, where)
+      expect(entries).toHaveLength(1)
+      const [entry] = entries
+      expect(entry).toMatchObject({
+        userId: null,
+        organizationId: null,
+        resourceType: RetentionResourceTypes.STORE,
+        resourceId: ctx.storeA.id
+      })
+      expect(entry?.metadata).toEqual({
+        counts: expect.objectContaining({ conversations: report.conversations }) as unknown,
+        more: report.more,
+        failed: []
+      })
+      // Counts only: nothing that names a row of the customer
+      expect(JSON.stringify(entry?.metadata)).not.toContain(old.conversationId)
+      expect(JSON.stringify(entry?.metadata)).not.toContain(old.messageId)
+      // The other store has no entry from this run
+      expect(
+        await owner.auditLog.count({
+          where: {
+            action: AuditAction.RETENTION_RUN,
+            storeId: ctx.storeB.id,
+            timestamp: { gte: startedAt }
+          }
+        })
+      ).toBe(0)
+
+      // Nothing left to delete: the run leaves no entry
+      const again = await enforcer.enforce(ctx.storeA.id)
+      expect(again.conversations).toBe(0)
+      await new Promise(resolve => setTimeout(resolve, 500))
+      expect(await owner.auditLog.count({ where })).toBe(1)
     })
 
     // The summary or the label of an order, sent in the conversation as a message: the file belongs to the order (TDD_05 §10.4: an order is
@@ -486,6 +544,39 @@ describe('The retention run of the worker', () => {
   describe('of the platform (PlatformCleaner)', () => {
     // A clock in 2001: only the rows this suite makes, dated before it, are past their date
     const now = new Date('2001-06-15T12:00:00Z')
+
+    it('writes one system entry with no store and the counts of the run', async () => {
+      const startedAt = new Date()
+      await owner.session.create({
+        data: {
+          userId: ctx.adminA.id,
+          familyId: randomUUID(),
+          refreshTokenHash: randomUUID(),
+          expiresAt: daysAgo(1, now),
+          familyExpiresAt: daysAgo(1, now)
+        }
+      })
+
+      const report = await cleaner.run(now)
+
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.PLATFORM_CLEANUP_RUN,
+        timestamp: { gte: startedAt }
+      })
+      const entry = entries.find(
+        candidate =>
+          (candidate.metadata as { counts?: { sessions?: number } } | null)?.counts?.sessions ===
+          report.sessions
+      )
+      expect(entry).toMatchObject({
+        userId: null,
+        storeId: null,
+        organizationId: null,
+        resourceType: RetentionResourceTypes.PLATFORM
+      })
+      expect(entry?.metadata).toMatchObject({ failed: [] })
+      expect(report.sessions).toBeGreaterThanOrEqual(1)
+    })
 
     it('deletes the sessions past expiresAt and keeps the live ones', async () => {
       const make = (expiresAt: Date) =>

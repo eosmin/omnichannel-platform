@@ -446,8 +446,15 @@ describe('The data of an erased customer', () => {
 
   describe('the daily sweep', () => {
     it('finds an erased customer that was not cleared, and clears it', async () => {
+      const startedAt = new Date()
       const t = await erasedWithThread()
-      const sweep = new ErasedCustomerSweep(worker, new JobContext(worker), eraser, logger)
+      const sweep = new ErasedCustomerSweep(
+        worker,
+        new JobContext(worker),
+        eraser,
+        logger,
+        app.get(AuditService)
+      )
 
       const report = await sweep.run()
 
@@ -456,6 +463,19 @@ describe('The data of an erased customer', () => {
         PLACEHOLDER
       )
       expect(await owner.media.count({ where: { id: t.file.mediaId } })).toBe(0)
+
+      // One entry for the run: no store, counts only, never the customer
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.ERASED_CUSTOMER_SWEEP_RUN,
+        timestamp: { gte: startedAt }
+      })
+      const entry = entries.find(
+        candidate =>
+          (candidate.metadata as { counts?: { cleared?: number } } | null)?.counts?.cleared ===
+          report.cleared
+      )
+      expect(entry).toMatchObject({ userId: null, storeId: null, organizationId: null })
+      expect(JSON.stringify(entry?.metadata)).not.toContain(t.conversation.customerId ?? '')
     })
   })
 

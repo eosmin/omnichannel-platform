@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { ComplianceConfig } from '@platform/core/compliance'
+import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
+import { ComplianceConfig, RetentionResourceTypes } from '@platform/core/compliance'
 import { JobContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import { DAY_MS } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
@@ -9,6 +11,7 @@ import { errorName } from '@platform/core/errors'
 import { inEachStoreStrict } from '../schedulers/store-sweep'
 
 import { ErasedCustomerData } from './erased-customer-data.service'
+import { runAuditMetadata, runHasNews } from './run-audit'
 
 // rls-context: the read of the pending customers runs inside JobContext.forStore of each store
 
@@ -31,7 +34,8 @@ export class ErasedCustomerSweep {
     private readonly prisma: PrismaService,
     private readonly jobContext: JobContext,
     private readonly data: ErasedCustomerData,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly audit: AuditService
   ) {
     this.logger.setContext(ErasedCustomerSweep.name)
   }
@@ -78,6 +82,16 @@ export class ErasedCustomerSweep {
       }
     })
     this.logger.info(report, 'the sweep of erased customers finished')
+    // Counts only, never the customers: each one already has its own entry in its store when its data is cleared. No store: platform wide
+    const metadata = runAuditMetadata(report, [], report.failed > 0 ? ['customers'] : [])
+    if (runHasNews(metadata)) {
+      this.audit.log({
+        action: AuditAction.ERASED_CUSTOMER_SWEEP_RUN,
+        actor: { system: true },
+        resourceType: RetentionResourceTypes.PLATFORM,
+        metadata
+      })
+    }
     return report
   }
 }
