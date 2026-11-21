@@ -27,7 +27,11 @@ import {
   type MessageFailedPayload
 } from '@platform/core/events'
 import { conversationReaders, isHiddenStatus } from '@platform/core/messaging'
-import { NotificationTypes } from '@platform/core/notifications'
+import {
+  NotificationParamKeys,
+  NotificationResourceTypes,
+  NotificationTypes
+} from '@platform/core/notifications'
 
 import { customerNameOf } from './notification-params'
 import { NotificationsService } from './notifications.service'
@@ -134,8 +138,8 @@ export class NotificationsInboxListener {
           storeId,
           type: NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE,
           // Whose conversation it is: a text and an email of three of them tell them apart by it
-          params: { customer: customerNameOf(conversation) },
-          resourceType: 'conversation',
+          params: { [NotificationParamKeys.CUSTOMER]: customerNameOf(conversation) },
+          resourceType: NotificationResourceTypes.CONVERSATION,
           resourceId: conversationId,
           actionPath: AppPaths.store.conversation(storeId, conversationId)
         }

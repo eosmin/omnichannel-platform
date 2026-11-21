@@ -370,7 +370,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       await this.skipIfGone(job, async () => {
         const report = await this.erasedData.clear(erase.data.storeId, erase.data.customerId)
         // Something is left (a bucket that failed, a run that hit its cap): the queue asks again, and the daily sweep after it
-        if (!report.cleared)
+        if (!report.cleared && !report.skipped)
           throw new Error('the data of the erased customer is not all cleared yet')
       })
       return

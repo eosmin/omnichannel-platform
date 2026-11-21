@@ -3,6 +3,7 @@
 -- created, so no policy: the table keeps the ones it has.
 -- Rollback: rollbacks/20270124200000_erased_customer_data_purge.rollback.sql
 ALTER TABLE "customers" ADD COLUMN "erased_data_purged_at" TIMESTAMP(3);
+ALTER TABLE "customers" ADD COLUMN "erased_data_attempted_at" TIMESTAMP(3);
 
 -- Few rows (the customers erased and not yet cleared): the sweep reads exactly them
 CREATE INDEX "ix_customers_erased_pending" ON "customers" ("store_id")

@@ -127,7 +127,7 @@ describe('The data of an erased customer', () => {
     })
     await owner.conversation.update({
       where: { id: conversation.id },
-      data: { csatScore: 4, csatComment: SAID }
+      data: { csatScore: 4, csatComment: SAID, snoozeNote: SAID, attentionNote: SAID }
     })
     const member = await owner.membership.findFirstOrThrow({
       where: { storeId },
@@ -143,6 +143,19 @@ describe('The data of an erased customer', () => {
         params: { customer: 'Maria Quintanilla', other: 'kept' },
         resourceType: 'conversation',
         resourceId: conversation.id
+      }
+    })
+    // A mention in a note points to the message, not to the conversation
+    const mention = await owner.notification.create({
+      data: {
+        userId: member.userId,
+        storeId,
+        type: 'conversation.mentioned',
+        severity: 'info',
+        messageKey: 'notifications.conversation.mentioned',
+        params: { customer: 'Maria Quintanilla', author: 'An agent' },
+        resourceType: 'message',
+        resourceId: note.id
       }
     })
     const file = await fileOf(storeId, inbound.id, conversation.customerId)
@@ -161,6 +174,7 @@ describe('The data of an erased customer', () => {
       note,
       system,
       notification,
+      mention,
       file,
       reaction,
       bystander,
@@ -188,7 +202,7 @@ describe('The data of an erased customer', () => {
     expect(await owner.message.count({ where: { conversationId: t.conversation.id } })).toBe(3)
   })
 
-  it('deletes the past versions of an edit, the comment of the survey and keeps its score', async () => {
+  it('deletes the past versions of an edit and the free text of the conversation, and keeps the score of the survey', async () => {
     const t = await erasedWithThread()
 
     await eraser.clear(ctx.storeA.id, t.conversation.customerId)
@@ -197,9 +211,9 @@ describe('The data of an erased customer', () => {
     expect(
       await owner.conversation.findUniqueOrThrow({
         where: { id: t.conversation.id },
-        select: { csatScore: true, csatComment: true }
+        select: { csatScore: true, csatComment: true, snoozeNote: true, attentionNote: true }
       })
-    ).toEqual({ csatScore: 4, csatComment: null })
+    ).toEqual({ csatScore: 4, csatComment: null, snoozeNote: null, attentionNote: null })
   })
 
   it('takes the name out of the notifications about its conversations, and nothing else out of them', async () => {
@@ -211,6 +225,9 @@ describe('The data of an erased customer', () => {
       where: { id: t.notification.id }
     })
     expect(notification.params).toEqual({ customer: PLACEHOLDER, other: 'kept' })
+    // The mention of a colleague in a note of the conversation names the customer too
+    const mention = await owner.notification.findUniqueOrThrow({ where: { id: t.mention.id } })
+    expect(mention.params).toEqual({ customer: PLACEHOLDER, author: 'An agent' })
   })
 
   it('deletes the files of its messages, the objects and the rows, and no file of another customer', async () => {
@@ -289,6 +306,40 @@ describe('The data of an erased customer', () => {
     expect(await storage.head(t.file.key)).toBeNull()
   })
 
+  it('keeps the row of a file with a key outside the store, and does not mark the customer as cleared', async () => {
+    const t = await erasedWithThread()
+    const foreign = await putObject(StorageKeys.message(ctx.storeB.id, randomUUID(), 'foreign.txt'))
+    const mediaId = randomUUID()
+    const own = await putObject(StorageKeys.message(ctx.storeA.id, mediaId, 'own.txt'))
+    await owner.media.create({
+      data: {
+        id: mediaId,
+        storeId: ctx.storeA.id,
+        purpose: MediaPurpose.MESSAGE,
+        messageId: t.inbound.id,
+        customerId: t.conversation.customerId,
+        key: own,
+        variants: { thumb: foreign },
+        filename: 'own.txt',
+        contentType: 'text/plain',
+        fileSize: 1
+      }
+    })
+
+    const report = await eraser.clear(ctx.storeA.id, t.conversation.customerId)
+
+    // The object of the store goes, the one outside it is never touched, and the row that names it stays as its only trace
+    expect(await storage.head(own)).toBeNull()
+    expect(await storage.head(foreign)).not.toBeNull()
+    expect(await owner.media.count({ where: { id: mediaId } })).toBe(1)
+    expect(report).toMatchObject({ cleared: false, filesLeft: 1 })
+  })
+
+  it('says it skipped a customer who is gone or was not erased, and touches nothing', async () => {
+    const missing = await eraser.clear(ctx.storeA.id, randomUUID())
+    expect(missing).toMatchObject({ skipped: true, cleared: false })
+  })
+
   it('refuses a customer who was not erased, and touches nothing of theirs', async () => {
     const live = await createConversationOf(owner, { storeId: ctx.storeA.id })
     const message = await createMessage(owner, {
@@ -337,6 +388,38 @@ describe('The data of an erased customer', () => {
   })
 
   describe('a conversation of an erased customer', () => {
+    it('refuses to react, to edit, to delete and to send again a message of the thread', async () => {
+      const t = await erasedWithThread()
+      const asAdmin = () => api(app, ctx.adminA, ctx.storeA)
+
+      const react = await asAdmin()
+        .put(ApiRoutes.messages.reaction(t.inbound.id))
+        .send({ emoji: '👍' })
+      const edit = await asAdmin()
+        .patch(ApiRoutes.messages.byId(t.note.id))
+        .send({ content: 'new words', version: 1 })
+      const remove = await asAdmin().delete(ApiRoutes.messages.byId(t.note.id))
+      const resend = await asAdmin().post(ApiRoutes.messages.resend(t.inbound.id)).send({})
+
+      for (const response of [react, edit, remove, resend]) {
+        expect(response.status).toBe(CONFLICT)
+        expect((response.body as { error: { code: string } }).error.code).toBe(
+          ErrorCodes.CUSTOMER_ERASED
+        )
+      }
+    })
+
+    it('shows the messaging window as closed with no template to offer', async () => {
+      const t = await erasedWithThread()
+
+      const response = await api(app, ctx.adminA, ctx.storeA).get(
+        ApiRoutes.conversations.messagingWindow(t.conversation.id)
+      )
+
+      expect(response.status).toBe(200)
+      expect(response.body).toMatchObject({ open: false, requiresTemplate: false })
+    })
+
     it('refuses a reply with its own code, and writes nothing', async () => {
       const t = await erasedWithThread()
       const before = await owner.message.count({ where: { conversationId: t.conversation.id } })

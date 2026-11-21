@@ -445,8 +445,14 @@ describe('HeavyProcessingProcessor', () => {
       expect(clearErased).not.toHaveBeenCalled()
     })
 
+    it('completes without a retry when the customer is gone or was not erased', async () => {
+      clearErased.mockResolvedValueOnce({ cleared: false, skipped: true })
+
+      await expect(clear({ storeId: STORE_ID, customerId: CUSTOMER_ID })).resolves.toBeUndefined()
+    })
+
     it('rejects while something is left, so the queue asks again', async () => {
-      clearErased.mockResolvedValueOnce({ cleared: false })
+      clearErased.mockResolvedValueOnce({ cleared: false, skipped: false })
 
       await expect(clear({ storeId: STORE_ID, customerId: CUSTOMER_ID })).rejects.toThrow(
         'not all cleared'

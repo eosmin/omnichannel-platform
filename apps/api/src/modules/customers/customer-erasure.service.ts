@@ -216,24 +216,29 @@ export class CustomerErasureService {
   }
 
   private async queueDataClearing(storeId: string, customerId: string): Promise<void> {
-    try {
-      await this.prisma.afterCommitStep(this.prisma.client, () =>
-        this.queue.add(
+    // The failure is caught INSIDE the step: inside a request the step runs at the commit of the request, after this method returned, and a
+    // queue that is down must not turn an erasure that committed into an error
+    await this.prisma.afterCommitStep(this.prisma.client, () =>
+      this.queue
+        .add(
           JobNames.ERASE_CUSTOMER_DATA,
           { storeId, customerId },
           {
             jobId: eraseCustomerDataJobId(customerId),
             attempts: 5,
             backoff: { type: 'exponential', delay: 30_000 },
-            removeOnComplete: true
+            removeOnComplete: true,
+            // A job that used its attempts releases its id, so asking again queues a new one (the sweep is the net under it)
+            removeOnFail: true
           }
         )
-      )
-    } catch (error) {
-      this.logger.warn(
-        { storeId, customerId, errorName: errorName(error) },
-        'the clearing of the data of an erased customer could not be queued; the sweep will find it'
-      )
-    }
+        .then(() => undefined)
+        .catch((error: unknown) => {
+          this.logger.warn(
+            { storeId, customerId, errorName: errorName(error) },
+            'the clearing of the data of an erased customer could not be queued; the sweep will find it'
+          )
+        })
+    )
   }
 }

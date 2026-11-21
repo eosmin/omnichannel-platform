@@ -39,7 +39,8 @@ export class ErasedCustomerSweep {
         this.prisma.client.customer.findMany({
           where: { storeId, erasedAt: { not: null }, erasedDataPurgedAt: null },
           select: { id: true },
-          orderBy: { id: 'asc' },
+          // Never tried first, then the one tried longest ago
+          orderBy: [{ erasedDataAttemptedAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }],
           take: CUSTOMERS_PER_STORE
         })
       )

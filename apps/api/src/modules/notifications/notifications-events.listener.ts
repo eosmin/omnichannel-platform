@@ -81,7 +81,12 @@ import { ExportStatus, ExportTypePermissions, type ExportType } from '@platform/
 import { conversationReaders, isHiddenStatus } from '@platform/core/messaging'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
-import { type NotificationType, NotificationTypes } from '@platform/core/notifications'
+import {
+  NotificationParamKeys,
+  NotificationResourceTypes,
+  type NotificationType,
+  NotificationTypes
+} from '@platform/core/notifications'
 import { readOrderPreferences } from '@platform/core/store-preferences'
 
 import { customerNameOf, textForParams } from './notification-params'
@@ -140,9 +145,9 @@ export class NotificationsEventsListener {
         // The author is left out when it is not known: the plain text then reads right
         params: {
           ...(author === null ? {} : { author }),
-          customer: customerNameOf(conversation)
+          [NotificationParamKeys.CUSTOMER]: customerNameOf(conversation)
         },
-        resourceType: 'message',
+        resourceType: NotificationResourceTypes.MESSAGE,
         resourceId: messageId,
         actionPath: AppPaths.store.conversation(storeId, conversationId)
       })
