@@ -30,7 +30,8 @@ import {
   type OrderMessageTrigger,
   OrderResourceTypes,
   ShipmentInactiveStatuses,
-  ShipmentKind
+  ShipmentKind,
+  MessageMetadataKeys
 } from '@platform/core/domain'
 import { ErrorCodes, errorName, PlatformException, resourceNotFound } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -793,7 +794,13 @@ export class OrderMessagesService {
         type: MessageType.DOCUMENT,
         content: null,
         authorType: AuthorType.SYSTEM,
-        metadata: { orderMessage: { orderId: order.id, kind: input.kind, attachment: true } },
+        metadata: {
+          [MessageMetadataKeys.ORDER_MESSAGE]: {
+            orderId: order.id,
+            kind: input.kind,
+            attachment: true
+          }
+        },
         deliveryStatus: DeliveryStatus.QUEUED,
         createdAt: at
       },

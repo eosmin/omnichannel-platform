@@ -5,7 +5,7 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { ComplianceConfig, RetentionRun } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
-import { MessageType } from '@platform/core/domain'
+import { MessageMetadataKeys, MessageType } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { NotificationParamKeys, NotificationResourceTypes } from '@platform/core/notifications'
 import { MediaPurpose, objectKeysOf } from '@platform/core/storage'
@@ -70,10 +70,9 @@ export class ErasedCustomerData {
       report.skipped = true
       return report
     }
-    if (customer.erasedDataPurgedAt !== null) {
-      report.cleared = true
-      return report
-    }
+    // Already marked as cleared: it runs again all the same (the second run, the sweep of the days after), and finds nothing unless a write was in
+    // flight at the erasure. It marks and audits only the first time
+    const firstTime = customer.erasedDataPurgedAt === null
     // The sweep takes the customers tried longest ago first: one that keeps failing does not starve the others
     await this.jobContext.forStore(storeId, () =>
       this.prisma.client.customer.updateMany({
@@ -131,28 +130,31 @@ export class ErasedCustomerData {
 
     // Marked only when nothing waits: the sweep takes the customers that are not
     if (!more && report.filesLeft === 0) {
-      await this.jobContext.forStore(storeId, () =>
-        this.prisma.client.customer.updateMany({
-          where: { id: customerId, storeId, erasedAt: { not: null } },
-          data: { erasedDataPurgedAt: new Date() }
-        })
-      )
       report.cleared = true
+      if (firstTime) {
+        await this.jobContext.forStore(storeId, () =>
+          this.prisma.client.customer.updateMany({
+            where: { id: customerId, storeId, erasedAt: { not: null } },
+            data: { erasedDataPurgedAt: new Date() }
+          })
+        )
+      }
       // The end of the erasure, with counts only: when the data was gone is what the entry of the request cannot say
-      this.audit.log({
-        action: AuditAction.CUSTOMER_ERASED_DATA_CLEARED,
-        actor: { system: true },
-        storeId,
-        resourceType: 'customer',
-        resourceId: customerId,
-        metadata: {
-          messages: report.messages,
-          revisions: report.revisions,
-          conversationNotes: report.csatComments,
-          notifications: report.notifications,
-          files: report.files
-        }
-      })
+      if (firstTime)
+        this.audit.log({
+          action: AuditAction.CUSTOMER_ERASED_DATA_CLEARED,
+          actor: { system: true },
+          storeId,
+          resourceType: 'customer',
+          resourceId: customerId,
+          metadata: {
+            messages: report.messages,
+            revisions: report.revisions,
+            conversationNotes: report.csatComments,
+            notifications: report.notifications,
+            files: report.files
+          }
+        })
     }
     this.logger.info(
       { storeId, customerId, ...report },
@@ -170,7 +172,7 @@ export class ErasedCustomerData {
   }
 
   // The text of the messages of the conversations of the customer: free text, the text waiting for an edit and the metadata (a template keeps
-  // the variables it was filled with, a reply keeps what it quotes). A system line is not touched. Only a row that still holds something
+  // the variables it was filled with, a reply keeps what it quotes). A system line, a product card, the summary of an order and a message that carries the pointer of an order are not touched (they hold the books' data, not words of the person; what an order copied is the debt (b) of the plan). Only a row that still holds something
   private messages(storeId: string, customerId: string, limit: number): Promise<number> {
     const placeholder = ComplianceConfig.ERASED_CONTENT_PLACEHOLDER
     return this.prisma.client.$executeRaw`
@@ -182,7 +184,8 @@ export class ErasedCustomerData {
         SELECT m.id FROM messages m
         JOIN conversations c ON c.id = m.conversation_id
         WHERE m.store_id = ${storeId} AND c.store_id = ${storeId} AND c.customer_id = ${customerId}
-          AND m.type <> ${MessageType.SYSTEM}
+          AND m.type NOT IN (${MessageType.SYSTEM}, ${MessageType.ORDER_SUMMARY}, ${MessageType.PRODUCT_CARD})
+          AND NOT jsonb_exists(COALESCE(m.metadata, '{}'::jsonb), ${MessageMetadataKeys.ORDER_MESSAGE})
           AND ((m.content IS NOT NULL AND m.content <> ${placeholder})
             OR m.pending_content IS NOT NULL OR m.metadata IS NOT NULL)
         LIMIT ${limit})`

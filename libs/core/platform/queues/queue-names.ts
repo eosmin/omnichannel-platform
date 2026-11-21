@@ -164,6 +164,10 @@ export const enforceRetentionJobId = (storeId: string, localDay: string): string
 export const eraseCustomerDataJobId = (customerId: string): string =>
   `${JobNames.ERASE_CUSTOMER_DATA}-${customerId}`
 
+// The second run of that job, a little later (the same job id would be ignored while the first is kept)
+export const eraseCustomerDataRecheckJobId = (customerId: string): string =>
+  `${JobNames.ERASE_CUSTOMER_DATA}-recheck-${customerId}`
+
 // One cold export per month of the run: the monthly scheduler run twice is one job (dashes, no colon)
 export const exportAuditLogsJobId = (month: string): string =>
   `${JobNames.EXPORT_AUDIT_LOGS_TO_COLD_STORAGE}-${month}`

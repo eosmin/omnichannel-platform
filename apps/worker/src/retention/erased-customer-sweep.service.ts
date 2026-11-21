@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
+import { ComplianceConfig } from '@platform/core/compliance'
 import { JobContext, JobContextGoneError, PrismaService } from '@platform/core/database'
+import { DAY_MS } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
 import { inEachStoreStrict } from '../schedulers/store-sweep'
@@ -37,10 +39,16 @@ export class ErasedCustomerSweep {
   // `until`: the moment (epoch ms) after which it starts no other customer, so a long backlog never outlasts the lock of the daily run
   async run(until: number = Number.POSITIVE_INFINITY): Promise<ErasedSweepReport> {
     const report: ErasedSweepReport = { customers: 0, cleared: 0, skipped: 0, failed: 0 }
+    const recheckFrom = new Date(Date.now() - ComplianceConfig.ERASED_DATA_RECHECK_DAYS * DAY_MS)
     await inEachStoreStrict(this.prisma, async storeId => {
       const pending = await this.jobContext.forStore(storeId, () =>
         this.prisma.client.customer.findMany({
-          where: { storeId, erasedAt: { not: null }, erasedDataPurgedAt: null },
+          // Not cleared yet, or cleared lately: a write in flight at the erasure may have landed after the first run
+          where: {
+            storeId,
+            erasedAt: { not: null },
+            OR: [{ erasedDataPurgedAt: null }, { erasedDataPurgedAt: { gt: recheckFrom } }]
+          },
           select: { id: true },
           // Never tried first, then the one tried longest ago
           orderBy: [{ erasedDataAttemptedAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }],

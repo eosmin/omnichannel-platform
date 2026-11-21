@@ -15,6 +15,7 @@ import { lockCustomerForWrite } from '@platform/core/messaging'
 import {
   type EraseCustomerDataJob,
   eraseCustomerDataJobId,
+  eraseCustomerDataRecheckJobId,
   JobNames,
   QueueNames
 } from '@platform/core/queues'
@@ -215,30 +216,39 @@ export class CustomerErasureService {
     return view
   }
 
+  // Two runs: now, and again a little later, which finds what a write that was in flight at the erasure left behind (the sweep of the next
+  // days is the net under both). The failure of the queue is caught INSIDE the step: inside a request the step runs at the commit of the
+  // request, after this method returned, and a queue that is down must not turn an erasure that committed into an error
   private async queueDataClearing(storeId: string, customerId: string): Promise<void> {
-    // The failure is caught INSIDE the step: inside a request the step runs at the commit of the request, after this method returned, and a
-    // queue that is down must not turn an erasure that committed into an error
-    await this.prisma.afterCommitStep(this.prisma.client, () =>
-      this.queue
-        .add(
+    const options = {
+      attempts: 5,
+      backoff: { type: 'exponential' as const, delay: 30_000 },
+      removeOnComplete: true,
+      // A job that used its attempts releases its id, so asking again queues a new one
+      removeOnFail: true
+    }
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      try {
+        await this.queue.add(
+          JobNames.ERASE_CUSTOMER_DATA,
+          { storeId, customerId },
+          { ...options, jobId: eraseCustomerDataJobId(customerId) }
+        )
+        await this.queue.add(
           JobNames.ERASE_CUSTOMER_DATA,
           { storeId, customerId },
           {
-            jobId: eraseCustomerDataJobId(customerId),
-            attempts: 5,
-            backoff: { type: 'exponential', delay: 30_000 },
-            removeOnComplete: true,
-            // A job that used its attempts releases its id, so asking again queues a new one (the sweep is the net under it)
-            removeOnFail: true
+            ...options,
+            jobId: eraseCustomerDataRecheckJobId(customerId),
+            delay: ComplianceConfig.ERASED_DATA_RECHECK_DELAY_MS
           }
         )
-        .then(() => undefined)
-        .catch((error: unknown) => {
-          this.logger.warn(
-            { storeId, customerId, errorName: errorName(error) },
-            'the clearing of the data of an erased customer could not be queued; the sweep will find it'
-          )
-        })
-    )
+      } catch (error) {
+        this.logger.warn(
+          { storeId, customerId, errorName: errorName(error) },
+          'the clearing of the data of an erased customer could not be queued; the sweep will find it'
+        )
+      }
+    })
   }
 }

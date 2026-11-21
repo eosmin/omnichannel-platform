@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
+import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { ComplianceConfig } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
@@ -17,6 +18,7 @@ import { ErasedCustomerData } from '../../apps/worker/src/retention/erased-custo
 import { ErasedCustomerSweep } from '../../apps/worker/src/retention/erased-customer-sweep.service'
 import { createConversationOf, createMessage, createOrder } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
@@ -279,6 +281,58 @@ describe('The data of an erased customer', () => {
     const again = await eraser.clear(ctx.storeA.id, t.conversation.customerId)
 
     expect(again).toMatchObject({ cleared: true, messages: 0, files: 0 })
+  })
+
+  it('runs again for a customer already marked, and clears what a write in flight left behind, without a second audit entry', async () => {
+    const t = await erasedWithThread()
+    await eraser.clear(ctx.storeA.id, t.conversation.customerId)
+    // A reply or a file that was in flight at the erasure lands after the first run
+    const late = await createMessage(owner, {
+      storeId: ctx.storeA.id,
+      conversationId: t.conversation.id,
+      content: SAID
+    })
+    const lateFile = await fileOf(ctx.storeA.id, late.id, t.conversation.customerId)
+
+    const again = await eraser.clear(ctx.storeA.id, t.conversation.customerId)
+
+    expect(again).toMatchObject({ cleared: true, messages: 1, files: 1 })
+    expect((await owner.message.findUniqueOrThrow({ where: { id: late.id } })).content).toBe(
+      PLACEHOLDER
+    )
+    expect(await storage.head(lateFile.key)).toBeNull()
+    const entries = await waitForAuditEntries(owner, {
+      storeId: ctx.storeA.id,
+      resourceId: t.conversation.customerId,
+      action: AuditAction.CUSTOMER_ERASED_DATA_CLEARED
+    })
+    expect(entries).toHaveLength(1)
+  })
+
+  it('leaves the summary of an order and a message that carries the pointer of an order as they are', async () => {
+    const t = await erasedWithThread()
+    const summary = await createMessage(owner, {
+      storeId: ctx.storeA.id,
+      conversationId: t.conversation.id,
+      type: MessageType.ORDER_SUMMARY,
+      content: 'Order T-1',
+      metadata: { order: { number: 'T-1' } }
+    })
+    const pointer = await createMessage(owner, {
+      storeId: ctx.storeA.id,
+      conversationId: t.conversation.id,
+      type: MessageType.DOCUMENT,
+      content: 'Order T-1 document',
+      metadata: { orderMessage: { orderId: randomUUID(), kind: 'order_summary' } }
+    })
+
+    await eraser.clear(ctx.storeA.id, t.conversation.customerId)
+
+    for (const message of [summary, pointer]) {
+      const row = await owner.message.findUniqueOrThrow({ where: { id: message.id } })
+      expect(row.metadata).not.toBeNull()
+      expect(row.content).not.toBe(PLACEHOLDER)
+    }
   })
 
   it('finishes what a bucket that failed halfway left, on the next run', async () => {

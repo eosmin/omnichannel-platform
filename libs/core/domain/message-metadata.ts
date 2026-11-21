@@ -16,7 +16,10 @@ export const MessageMetadataKeys = {
   // Set on a message that answers a story of the business: `{ url? }`, the link of the story as the provider
   // gave it (it expires within about a day, and may not come). Channel agnostic: the thread draws a card
   // from it, whatever the channel that wrote it.
-  STORY_REPLY: 'storyReply'
+  STORY_REPLY: 'storyReply',
+  // The pointer of a message that belongs to an order (`{ orderId, kind, ... }`): the order is the books', so the clearing of an erased customer
+  // leaves a message that carries it as it is
+  ORDER_MESSAGE: 'orderMessage'
 } as const
 
 // What a contact card a customer shares may carry. Channel agnostic: each plugin cuts what its provider

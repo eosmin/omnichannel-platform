@@ -59,7 +59,9 @@ function setup(options: {
         findFirst: jest
           .fn()
           .mockResolvedValue(
-            options.message === undefined ? { conversation: { customerId: 'c1' } } : options.message
+            options.message === undefined
+              ? { conversation: { customerId: 'c1', customer: { erasedAt: null } } }
+              : options.message
           )
       },
       channelConnection: {
@@ -167,6 +169,21 @@ describe('InboundMediaFetcher', () => {
     const { fetcher, queue } = setup({ existing: { status: 'clean' }, plugin: {} })
     await fetcher.fetch(job, false)
     expect(queue.add).not.toHaveBeenCalled()
+  })
+
+  it('stores no file of a customer who was erased since it arrived, and asks the provider for nothing', async () => {
+    const plugin = { fetchMedia: jest.fn() }
+    const { fetcher, storage, media, marker } = setup({
+      plugin,
+      message: { conversation: { customerId: 'c1', customer: { erasedAt: new Date() } } }
+    })
+
+    await fetcher.fetch(job, false)
+
+    expect(plugin.fetchMedia).not.toHaveBeenCalled()
+    expect(storage.put).not.toHaveBeenCalled()
+    expect(media.create).not.toHaveBeenCalled()
+    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'refused')
   })
 
   it('does nothing when the message or the connection is gone', async () => {
