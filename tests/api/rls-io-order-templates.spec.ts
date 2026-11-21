@@ -6,7 +6,7 @@ import { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService, RLS_CONTEXT_ENABLED } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import { DeliveryStatus, OrderMessageKind, TemplateStatuses } from '@platform/core/domain'
-import { HttpStatusCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { Locales } from '@platform/core/i18n'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability, type MessageTemplate } from '@platform/plugins/sdk'
@@ -134,7 +134,11 @@ describe('RLS phase 6: the templates of the order messages ask the provider with
         }
       })
 
-    expect(response.status).toBe(HttpStatusCodes.CONFLICT)
+    // The refusal comes from the check of the link (the channel does not list it), not from the declaration of the channel
+    expect(response.status).toBe(HttpStatusCodes.BAD_REQUEST)
+    expect((response.body as { error: { code: string } }).error.code).toBe(
+      ErrorCodes.ORDER_TEMPLATE_CHANNEL_TEMPLATE_MISSING
+    )
     expect(opened).toEqual([{ call: 'listTemplates', tenantOpen: false }])
     expect(await owner.orderMessageTemplate.count({ where: { storeId: ctx.storeA.id } })).toBe(
       before
