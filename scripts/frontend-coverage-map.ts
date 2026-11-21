@@ -353,6 +353,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'plugins.consent': { step: '5.6' }, // PR W1: the consent screen
   'plugins.setupCode': { step: '5.6' }, // PR W1: the owner asks for a new code
   'plugins.commandSecret': { step: '5.6' }, // PR W1: the owner rotates the secret of a channel plugin
+  'plugins.apiKey': { step: '7.3' }, // PR 7.3-B2: the button that rotates the API key (HC-216); the route comes first
   'pluginWidgets.list': { step: '5.7' },
   'pluginWidgets.sessions': { step: '5.7' },
   'pluginWidgets.bridge': { step: '5.7' },

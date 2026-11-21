@@ -17,6 +17,7 @@ import {
   type ResolvedTenant
 } from '../tenancy'
 
+import { PluginApiKeyService, type RotatedPluginApiKey } from './plugin-api-key.service'
 import {
   PluginCommandSecretService,
   type RotatedCommandSecret
@@ -57,6 +58,7 @@ export class PluginsController {
     private readonly installations: PluginInstallationsService,
     private readonly registration: PluginRegistrationService,
     private readonly commandSecrets: PluginCommandSecretService,
+    private readonly apiKeys: PluginApiKeyService,
     private readonly deletion: PluginDeletionService
   ) {}
 
@@ -153,6 +155,21 @@ export class PluginsController {
     @Req() req: AuthenticatedRequest
   ): Promise<RotatedCommandSecret> {
     return this.commandSecrets.rotate(store, installationId, actorOf(user, store, req))
+  }
+
+  // A new API key for an installation (the id is the installation's): shown once, and the old one stops working at once. The answer
+  // carries a key and is not stored. It is a route of a person: a plugin key does not rotate itself.
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  @NoStore()
+  @Post(ApiRoutes.plugins.apiKey(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  rotateApiKey(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ZodValidationPipe(uuidSchema)) installationId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<RotatedPluginApiKey> {
+    return this.apiKeys.rotate(store, installationId, actorOf(user, store, req))
   }
 
   // The owner pastes the manifest of an integration plugin (D10): 201 when the id is new, 200 when a newer version of one of
