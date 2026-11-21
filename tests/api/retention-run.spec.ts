@@ -554,6 +554,8 @@ describe('The retention run of the worker', () => {
         expiresAt: daysAgo(grace + 1, now),
         status: InvitationStatus.EXPIRED
       })
+      // Exactly at the grace is not past it
+      const atTheEdge = await make(ctx.storeA.id, { expiresAt: daysAgo(grace, now) })
       const justExpired = await make(ctx.storeA.id, { expiresAt: daysAgo(1, now) })
       const live = await make(ctx.storeA.id, { expiresAt: new Date('2001-12-01T00:00:00Z') })
       // What a person did with an invitation is history, however old: accepted and revoked are not "expired"
@@ -572,12 +574,23 @@ describe('The retention run of the worker', () => {
       const left = await owner.invitation.findMany({
         where: {
           id: {
-            in: [longGone, longGoneOther, markedExpired, justExpired, live, accepted, revoked]
+            in: [
+              longGone,
+              longGoneOther,
+              markedExpired,
+              atTheEdge,
+              justExpired,
+              live,
+              accepted,
+              revoked
+            ]
           }
         },
         select: { id: true }
       })
-      expect(left.map(row => row.id).sort()).toEqual([justExpired, live, accepted, revoked].sort())
+      expect(left.map(row => row.id).sort()).toEqual(
+        [atTheEdge, justExpired, live, accepted, revoked].sort()
+      )
     })
 
     it('deletes the deliveries of a webhook past thirty days and the hours of the rollup past ninety', async () => {

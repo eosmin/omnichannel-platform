@@ -10,7 +10,7 @@ import { inEachStoreStrict } from '../schedulers/store-sweep'
 
 import { type BatchOutcome, categoryRunner, inBatches, PartialRunError } from './retention-batches'
 
-// rls-context: sessions and verification_tokens are global tables; every other table runs inside JobContext.forStore of its store
+// rls-context: sessions, verification_tokens and invitations are global tables (invitations is skipped by the RLS migrations); every other table runs inside JobContext.forStore of its store
 
 export interface PlatformCleanupReport {
   sessions: number
@@ -124,13 +124,14 @@ export class PlatformCleaner {
       )
     )
     await run('mergedCustomers', () => this.mergedCustomers(now))
+    // `invitations` is outside RLS (the migrations skip it), so it runs platform-wide like the sessions: a store that
+    // cannot be entered does not stop it
     await run('invitations', () =>
-      this.perStore(
-        storeId => this.prisma.client.$executeRaw`
+      this.batches(
+        () => this.prisma.client.$executeRaw`
           DELETE FROM invitations WHERE id IN (
             SELECT id FROM invitations
-            WHERE store_id = ${storeId}
-              AND status IN (${InvitationStatus.PENDING}, ${InvitationStatus.EXPIRED})
+            WHERE status IN (${InvitationStatus.PENDING}, ${InvitationStatus.EXPIRED})
               AND expires_at < (${invitationCutoff}::timestamptz AT TIME ZONE 'UTC')
             ORDER BY expires_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
       )
