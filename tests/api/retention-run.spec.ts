@@ -196,7 +196,8 @@ describe('The retention run of the worker', () => {
       // Nothing left to delete: the run leaves no entry
       const again = await enforcer.enforce(ctx.storeA.id)
       expect(again.conversations).toBe(0)
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // The writes of the audit are detached: wait for those in flight before saying that none was made
+      await app.get(AuditService).onModuleDestroy()
       expect(await owner.auditLog.count({ where })).toBe(1)
     })
 

@@ -475,7 +475,9 @@ describe('The data of an erased customer', () => {
           report.cleared
       )
       expect(entry).toMatchObject({ userId: null, storeId: null, organizationId: null })
-      expect(JSON.stringify(entry?.metadata)).not.toContain(t.conversation.customerId ?? '')
+      const customerId = t.conversation.customerId
+      expect(customerId).toBeTruthy()
+      expect(JSON.stringify(entry?.metadata)).not.toContain(customerId)
     })
   })
 

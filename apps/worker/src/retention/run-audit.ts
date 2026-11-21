@@ -20,10 +20,11 @@ export function runAuditMetadata(
 
 // A run that deleted nothing, stopped on nothing and failed nowhere leaves no entry (the log line says it ran): one row for each store each
 // night would bury the entries that matter
-export function runHasNews(metadata: RunAuditMetadata): boolean {
+// `notNews`: counters that say what was looked at and not what was done (they do not make an entry by themselves)
+export function runHasNews(metadata: RunAuditMetadata, notNews: readonly string[] = []): boolean {
   return (
     metadata.more.length > 0 ||
     metadata.failed.length > 0 ||
-    Object.values(metadata.counts).some(count => count > 0)
+    Object.entries(metadata.counts).some(([name, count]) => count > 0 && !notNews.includes(name))
   )
 }

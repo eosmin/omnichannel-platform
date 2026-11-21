@@ -18,6 +18,11 @@ import { runAuditMetadata, runHasNews } from './run-audit'
 // At most this many customers a store, a night: the rest waits for the next one
 const CUSTOMERS_PER_STORE = 50
 
+// The names an entry of the sweep gives to what stopped or failed (the keys of the report that count what was done are its own)
+const SweepAuditNames = { CUSTOMERS: 'customers', STORES: 'stores' } as const
+// What the report counts as looked at, not done: a run that only looked leaves no entry
+const SWEEP_NOT_NEWS = ['customers', 'skipped'] as const
+
 export interface ErasedSweepReport {
   customers: number
   cleared: number
@@ -43,7 +48,40 @@ export class ErasedCustomerSweep {
   // `until`: the moment (epoch ms) after which it starts no other customer, so a long backlog never outlasts the lock of the daily run
   async run(until: number = Number.POSITIVE_INFINITY): Promise<ErasedSweepReport> {
     const report: ErasedSweepReport = { customers: 0, cleared: 0, skipped: 0, failed: 0 }
+    const more: string[] = []
+    const failedRun: string[] = []
     const recheckFrom = new Date(Date.now() - ComplianceConfig.ERASED_DATA_RECHECK_DAYS * DAY_MS)
+    try {
+      await this.sweepStores(report, recheckFrom, until, more)
+    } catch (error) {
+      // A store that cannot be entered stops the sweep: what was cleared before it is still said, and the failure is too
+      failedRun.push(SweepAuditNames.STORES)
+      this.audit.log(this.entryOf(report, more, failedRun))
+      throw error
+    }
+    this.logger.info(report, 'the sweep of erased customers finished')
+    const entry = this.entryOf(report, more, failedRun)
+    if (runHasNews(entry.metadata, SWEEP_NOT_NEWS)) this.audit.log(entry)
+    return report
+  }
+
+  // Counts only, never the customers: each one already has its own entry in its store when its data is cleared. No store: platform wide
+  private entryOf(report: ErasedSweepReport, more: string[], failedRun: string[]) {
+    const failed = report.failed > 0 ? [SweepAuditNames.CUSTOMERS, ...failedRun] : failedRun
+    return {
+      action: AuditAction.ERASED_CUSTOMER_SWEEP_RUN,
+      actor: { system: true } as const,
+      resourceType: RetentionResourceTypes.PLATFORM,
+      metadata: runAuditMetadata(report, more, failed)
+    }
+  }
+
+  private async sweepStores(
+    report: ErasedSweepReport,
+    recheckFrom: Date,
+    until: number,
+    more: string[]
+  ): Promise<void> {
     await inEachStoreStrict(this.prisma, async storeId => {
       const pending = await this.jobContext.forStore(storeId, () =>
         this.prisma.client.customer.findMany({
@@ -59,8 +97,15 @@ export class ErasedCustomerSweep {
           take: CUSTOMERS_PER_STORE
         })
       )
+      // A full page: a store may hold more, tomorrow takes them
+      if (pending.length === CUSTOMERS_PER_STORE && !more.includes(SweepAuditNames.CUSTOMERS)) {
+        more.push(SweepAuditNames.CUSTOMERS)
+      }
       for (const customer of pending) {
-        if (Date.now() > until) return
+        if (Date.now() > until) {
+          if (!more.includes(SweepAuditNames.CUSTOMERS)) more.push(SweepAuditNames.CUSTOMERS)
+          return
+        }
         report.customers += 1
         try {
           const done = await this.data.clear(storeId, customer.id)
@@ -81,17 +126,5 @@ export class ErasedCustomerSweep {
         }
       }
     })
-    this.logger.info(report, 'the sweep of erased customers finished')
-    // Counts only, never the customers: each one already has its own entry in its store when its data is cleared. No store: platform wide
-    const metadata = runAuditMetadata(report, [], report.failed > 0 ? ['customers'] : [])
-    if (runHasNews(metadata)) {
-      this.audit.log({
-        action: AuditAction.ERASED_CUSTOMER_SWEEP_RUN,
-        actor: { system: true },
-        resourceType: RetentionResourceTypes.PLATFORM,
-        metadata
-      })
-    }
-    return report
   }
 }
