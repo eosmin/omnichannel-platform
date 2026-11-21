@@ -64,19 +64,23 @@ export class AccountSettingsService {
     actor: AccountActor
   ): Promise<ProfileView> {
     // One short context of the person: the picture rows are read and written under their id (the storage stays outside)
-    const replaced = await this.prisma.inUserContext(userId, () => this.swapProfile(userId, body))
+    const replaced = await this.prisma.inUserContext(userId, async () => {
+      const swapped = await this.swapProfile(userId, body)
+      // Queued with the unit: the change and its entry commit together
+      this.audit.log({
+        action: AuditAction.ACCOUNT_PROFILE_UPDATED,
+        actor: { userId },
+        resourceType: 'user',
+        resourceId: userId,
+        // Which fields, never their values: a name is personal data
+        metadata: { fields: Object.keys(body) },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent
+      })
+      return swapped
+    })
     if (replaced !== null) await this.dropObject(replaced.key)
 
-    this.audit.log({
-      action: AuditAction.ACCOUNT_PROFILE_UPDATED,
-      actor: { userId },
-      resourceType: 'user',
-      resourceId: userId,
-      // Which fields, never their values: a name is personal data
-      metadata: { fields: Object.keys(body) },
-      ipAddress: actor.ipAddress,
-      userAgent: actor.userAgent
-    })
     return this.profile(userId)
   }
 
