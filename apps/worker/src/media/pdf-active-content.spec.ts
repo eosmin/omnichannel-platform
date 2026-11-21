@@ -1,4 +1,9 @@
-import { findActivePdfNames } from './pdf-active-content'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { PdfInspection } from '@platform/core/storage'
+
+import { findActivePdfNames, newPdfScanWork, type PdfScanWork } from './pdf-active-content'
 
 // TAX-436: a PDF kept as the receipt of a transaction must not carry, in the clear, anything that runs when it is
 // opened. Best effort, not a sandbox: see the header of `pdf-active-content.ts`.
@@ -55,38 +60,75 @@ describe('findActivePdfNames', () => {
     ).toEqual([])
   })
 
-  // Linear, not quadratic: the time of a file eight times larger is about eight times the time, never sixty-four. An absolute limit in
-  // milliseconds flakes on a shared runner (3152 ms against 3000 once), so the cost is measured against the same function on a smaller
-  // file of the same kind, the best of three runs each, and the ratio is held to four times the linear one, and the large file has a loose absolute ceiling for a scan that is linear but uniformly slow.
+  // Linear, not quadratic, counted as WORK and not as time: a time (even a ratio of two times) flakes on a shared runner (3152 ms against
+  // 3000 once; a ratio of 43.9 against 32 the next time), while the counters of the scan are the same on every machine. `PdfScanWork` counts
+  // each pass over the text, the characters it examined and the names it read; every traversal of the text goes through the one
+  // function that counts, so a second pass (or one per name) is seen as work that grows faster than the file.
   describe('is linear in the size of the file', () => {
     const SMALL = 1024 * 1024
     const FACTOR = 8
-    const LINEAR_MARGIN = 4
-    const SLOWEST_LARGE_NS = 15_000_000_000
-    const bestOf = (bytes: Uint8Array): number => {
-      let best = Number.POSITIVE_INFINITY
-      for (let run = 0; run < 3; run += 1) {
-        const started = process.hrtime.bigint()
-        findActivePdfNames(bytes)
-        best = Math.min(best, Number(process.hrtime.bigint() - started))
-      }
-      return best
+    const make: [string, (size: number) => Buffer][] = [
+      ['no names at all', size => Buffer.alloc(size, 0x20)],
+      ['nothing but names', size => Buffer.from('/a'.repeat(size / 2))],
+      ['names that are active', size => Buffer.from('/JS '.repeat(size / 4))]
+    ]
+    const work = (bytes: Buffer): PdfScanWork => {
+      const counted = newPdfScanWork()
+      findActivePdfNames(bytes, counted)
+      return counted
     }
 
+    it.each(make)('reads the text once and each name once, for a file with %s', (_name, build) => {
+      for (const size of [SMALL, SMALL * FACTOR]) {
+        const counted = work(build(size))
+        expect(counted.passes).toBe(1)
+        expect(counted.charsExamined).toBe(size)
+        // A name takes at least two characters ('/' and one more), so the names read cannot be more than half of the file
+        expect(counted.namesRead).toBeLessThanOrEqual(size / 2)
+      }
+    })
+
+    it.each(make)(
+      'does eight times the work for a file eight times larger, with %s',
+      (_name, build) => {
+        const small = work(build(SMALL))
+        const large = work(build(SMALL * FACTOR))
+        expect(large.charsExamined).toBe(small.charsExamined * FACTOR)
+        expect(large.namesRead).toBeLessThanOrEqual(small.namesRead * FACTOR)
+        expect(large.passes).toBe(small.passes)
+        expect(large.charsDecoded).toBeLessThanOrEqual(small.charsDecoded * FACTOR)
+      }
+    )
+
+    it('makes the text in the one counted pass, and never anywhere else', () => {
+      const source = readFileSync(join(__dirname, 'pdf-active-content.ts'), 'utf8')
+      // The text is made from the bytes once, inside the generator that counts, and is scanned by its one `matchAll`: no other function
+      // holds it, so no other function can traverse it unseen
+      expect(source.match(/\.toString\(\s*PdfInspection\.TEXT_ENCODING\s*\)/g)).toHaveLength(1)
+      expect(source.match(/matchAll\(/g)).toHaveLength(1)
+      expect(source.match(/TEXT_ENCODING/g)).toHaveLength(1)
+    })
+
+    // What a regular expression does inside the pass is not counted: a nested quantifier (`(a+)+`, `(a*)*`, `(.*)*`) is the shape of the
+    // ones that backtrack without end, so the patterns of the scan have none
     it.each([
-      ['no names at all', (size: number) => Buffer.alloc(size, 0x20)],
-      ['nothing but names', (size: number) => Buffer.from('/a'.repeat(size / 2))]
-    ])(
-      'for a file with %s',
-      (_name, make) => {
-        findActivePdfNames(make(SMALL)) // warm up the engine at the measured size before measuring
-        const small = bestOf(make(SMALL))
-        const large = bestOf(make(SMALL * FACTOR))
-        expect(findActivePdfNames(make(SMALL))).toEqual([])
-        expect(large / small).toBeLessThan(FACTOR * LINEAR_MARGIN)
-        expect(large).toBeLessThan(SLOWEST_LARGE_NS)
+      ['the name', PdfInspection.NAME_PATTERN],
+      ['the hex escape', PdfInspection.HEX_ESCAPE_PATTERN]
+    ])('has no nested quantifier in the pattern of %s', (_what, pattern) => {
+      expect(pattern).not.toMatch(/\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{]/)
+      expect(pattern).not.toMatch(/[+*}]\?/)
+    })
+
+    // A scan that is linear but uniformly slow is not a matter of work but of time: the ceiling is a safety net far above any runner
+    it.each(make)(
+      'finishes a file of 10 MB in a time no runner passes, with %s',
+      (_name, build) => {
+        const bytes = build(10 * 1024 * 1024)
+        const started = Date.now()
+        findActivePdfNames(bytes)
+        expect(Date.now() - started).toBeLessThan(60_000)
       },
-      30_000
+      90_000
     )
   })
 })
