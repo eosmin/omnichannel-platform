@@ -3014,6 +3014,7 @@
         "webhooks": "Integraciones salientes",
         "apiKeys": "Claves de API",
         "retention": "Retención de datos",
+        "auditLog": "Registro de auditoría",
         "safety": "Seguridad y confirmaciones"
       },
       "org": {
@@ -4848,6 +4849,60 @@
           "expiryPast": "El último día no puede ser anterior a hoy.",
           "expiryInvalid": "Ese día no es válido."
         }
+      }
+    },
+    "auditLog": {
+      "title": "Registro de auditoría",
+      "intro": "Quién hizo qué en esta tienda, de lo más reciente a lo más antiguo. Cada entrada guarda ids, cantidades y el nombre de la acción, nunca el nombre ni el texto de un cliente. Leer el registro también queda registrado.",
+      "caption": "Entradas del registro de auditoría de la tienda, de la más reciente a la más antigua",
+      "filters": {
+        "label": "Filtros del registro de auditoría",
+        "action": "Acción",
+        "actionPlaceholder": "order.created",
+        "actor": "Persona",
+        "anyActor": "Cualquiera",
+        "from": "Desde",
+        "to": "Hasta",
+        "apply": "Aplicar filtros",
+        "clear": "Quitar filtros",
+        "reversed": "El primer día es posterior al último."
+      },
+      "columns": {
+        "when": "Cuándo",
+        "actor": "Quién",
+        "action": "Acción",
+        "resource": "Sobre qué",
+        "details": "Detalle"
+      },
+      "actor": {
+        "system": "Sistema o plugin",
+        "unknown": "Alguien que ya no está en el equipo ({id})"
+      },
+      "noResource": "Ninguno",
+      "open": "Ver detalle",
+      "loadMore": "Cargar más",
+      "empty": "Ninguna entrada coincide con estos filtros.",
+      "export": {
+        "button": "Exportar CSV",
+        "hint": "El archivo trae lo que muestran los filtros, tal como estaba el registro al pedirlo.",
+        "queued": "Se está preparando el archivo del registro de auditoría. Estará listo en el centro de exportaciones.",
+        "view": "Ver exportaciones",
+        "tooLarge": "El archivo tendría demasiadas entradas. Acota las fechas o los filtros y pídelo de nuevo."
+      },
+      "entry": {
+        "title": "Entrada del registro de auditoría",
+        "description": "Lo que el registro guardó de esta acción.",
+        "when": "Cuándo",
+        "actor": "Quién",
+        "action": "Acción",
+        "resourceType": "Tipo de recurso",
+        "resourceId": "Id del recurso",
+        "ip": "Dirección IP",
+        "userAgent": "Navegador",
+        "id": "Id de la entrada",
+        "none": "Ninguno",
+        "metadata": "Metadatos",
+        "noMetadata": "Esta entrada no tiene metadatos."
       }
     },
     "retention": {
