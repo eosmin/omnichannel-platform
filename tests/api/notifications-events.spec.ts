@@ -663,8 +663,9 @@ describe('Notifications raised by events', () => {
       await events.emitAsync(Events.EXPORT_READY, settled(pending))
       await events.emitAsync(Events.EXPORT_READY, { ...settled(ready), requestedBy: ctx.agentA.id })
       await events.emitAsync(Events.EXPORT_READY, settled(lost))
+      // The audit log is a kind that is served now: whoever lacks org:view_audit_log is told nothing about one
       await events.emitAsync(Events.EXPORT_READY, {
-        ...settled(ready),
+        ...settled(lost),
         exportType: ExportTypes.AUDIT_LOG
       })
 
