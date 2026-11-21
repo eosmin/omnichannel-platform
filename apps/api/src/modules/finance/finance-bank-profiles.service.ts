@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
 import {
   type BankStatementEncoding,
   type BankStatementMapping,
@@ -135,7 +135,10 @@ const nameInUse = () =>
 // money moves through them, so the routes ask for finance:reconcile and nothing is audited (like the profiles of a remittance file).
 @Injectable()
 export class FinanceBankProfilesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jobs: JobContext
+  ) {}
 
   async list(organizationId: string, accountId?: string): Promise<BankProfileView[]> {
     const rows = await this.prisma.client.bankImportProfile.findMany({
@@ -266,11 +269,18 @@ export class FinanceBankProfilesService {
   }
 
   // The profile an import is read with: of the organization or nothing
-  async forImport(organizationId: string, profileId: string): Promise<BankProfileView> {
-    const row = await this.prisma.client.bankImportProfile.findFirst({
-      where: { id: profileId, organizationId },
-      select: SELECT
-    })
+  async forImport(
+    organizationId: string,
+    storeId: string,
+    profileId: string
+  ): Promise<BankProfileView> {
+    // Its own short unit: the route of the import is @NoTenantTransaction, so that no connection is held while the file arrives
+    const row = await this.jobs.forStoreOrJoin(storeId, () =>
+      this.prisma.client.bankImportProfile.findFirst({
+        where: { id: profileId, organizationId },
+        select: SELECT
+      })
+    )
     if (row === null) throw resourceNotFound('bank import profile')
     return bankProfileView(row)
   }

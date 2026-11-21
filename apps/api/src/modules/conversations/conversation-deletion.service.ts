@@ -4,7 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { RetentionRun } from '@platform/core/compliance'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { CONVERSATION_RESOURCE_TYPE } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -29,6 +29,7 @@ export interface ConversationDeletion {
 export class ConversationDeletionService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
     private readonly storage: StorageService,
@@ -42,50 +43,53 @@ export class ConversationDeletionService {
     conversationId: string,
     actor: Actor
   ): Promise<ConversationDeletion> {
-    const outcome = await this.prisma.transaction(
-      async tx => {
-        // No viewer: the permission to delete reaches every conversation of the store. One of another store is one
-        // that does not exist.
-        const locked = await lockConversationForWrite(tx, storeId, conversationId)
-        const conversation = await tx.conversation.findUniqueOrThrow({
-          where: { id: conversationId, storeId },
-          select: { customerId: true, channelType: true }
-        })
-        const messageCount = await tx.message.count({ where: { conversationId, storeId } })
-        // The files are rows of their own that point at the message with no cascade (a file may outlive its message
-        // in the gallery of other places), so they are found and deleted here, and so are the pictures of the ads.
-        // Found through the conversation, never through a list of ids: a conversation of any length is one query.
-        // The documents of an order (its summary, sent as a message) belong to the order: they keep their row and only
-        // lose the message they were sent with (`Media.message` is SET NULL). The same rule as the nightly retention.
-        const filesOfConversation = filesOfConversationsWhere(storeId, [conversationId])
-        const files = await tx.media.findMany({
-          where: filesOfConversation,
-          select: { key: true, variants: true }
-        })
-        await tx.media.deleteMany({ where: filesOfConversation })
-        // An order keeps its place in the customer's history and forgets only the conversation it came from
-        // (written raw so that the link going away is not a change of the order: its `updated_at` stays)
-        await tx.$executeRaw`
+    // The rows in ONE unit of their own (the route is @NoTenantTransaction); the audit entry and the bucket come after it, with no context
+    const outcome = await this.jobs.forStoreOrJoin(
+      storeId,
+      () =>
+        this.prisma.transaction(async tx => {
+          // No viewer: the permission to delete reaches every conversation of the store. One of another store is one
+          // that does not exist.
+          const locked = await lockConversationForWrite(tx, storeId, conversationId)
+          const conversation = await tx.conversation.findUniqueOrThrow({
+            where: { id: conversationId, storeId },
+            select: { customerId: true, channelType: true }
+          })
+          const messageCount = await tx.message.count({ where: { conversationId, storeId } })
+          // The files are rows of their own that point at the message with no cascade (a file may outlive its message
+          // in the gallery of other places), so they are found and deleted here, and so are the pictures of the ads.
+          // Found through the conversation, never through a list of ids: a conversation of any length is one query.
+          // The documents of an order (its summary, sent as a message) belong to the order: they keep their row and only
+          // lose the message they were sent with (`Media.message` is SET NULL). The same rule as the nightly retention.
+          const filesOfConversation = filesOfConversationsWhere(storeId, [conversationId])
+          const files = await tx.media.findMany({
+            where: filesOfConversation,
+            select: { key: true, variants: true }
+          })
+          await tx.media.deleteMany({ where: filesOfConversation })
+          // An order keeps its place in the customer's history and forgets only the conversation it came from
+          // (written raw so that the link going away is not a change of the order: its `updated_at` stays)
+          await tx.$executeRaw`
         UPDATE orders SET conversation_id = NULL WHERE store_id = ${storeId} AND conversation_id = ${conversationId}`
-        // Messages, reactions, revisions, origins and the links of the tags go with it (onDelete: Cascade)
-        await tx.conversation.delete({ where: { id: conversationId, storeId } })
-        this.events.publish(tx, Events.CONVERSATION_DELETED, {
-          storeId,
-          conversationId,
-          customerId: conversation.customerId,
-          visibility: { hidden: isHiddenStatus(locked.status), assignedTo: locked.assignedTo }
-        })
-        // Only keys under the store's own prefix are deleted: a damaged `variants` column cannot name the files of
-        // another store or of a person
-        const named = files.map(file => objectKeysOf(storeId, file))
-        return {
-          counts: { messages: messageCount, files: files.length },
-          keys: named.flatMap(item => item.keys),
-          foreign: named.reduce((total, item) => total + item.foreign.length, 0),
-          channelType: conversation.channelType,
-          customerId: conversation.customerId
-        }
-      },
+          // Messages, reactions, revisions, origins and the links of the tags go with it (onDelete: Cascade)
+          await tx.conversation.delete({ where: { id: conversationId, storeId } })
+          this.events.publish(tx, Events.CONVERSATION_DELETED, {
+            storeId,
+            conversationId,
+            customerId: conversation.customerId,
+            visibility: { hidden: isHiddenStatus(locked.status), assignedTo: locked.assignedTo }
+          })
+          // Only keys under the store's own prefix are deleted: a damaged `variants` column cannot name the files of
+          // another store or of a person
+          const named = files.map(file => objectKeysOf(storeId, file))
+          return {
+            counts: { messages: messageCount, files: files.length },
+            keys: named.flatMap(item => item.keys),
+            foreign: named.reduce((total, item) => total + item.foreign.length, 0),
+            channelType: conversation.channelType,
+            customerId: conversation.customerId
+          }
+        }),
       { timeout: RetentionRun.TRANSACTION_TIMEOUT_MS }
     )
 

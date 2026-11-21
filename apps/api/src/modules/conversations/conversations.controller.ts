@@ -57,6 +57,7 @@ import {
   actorOf,
   CurrentPermissions,
   CurrentStore,
+  NoTenantTransaction,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -177,6 +178,9 @@ export class ConversationsController {
   // what the server keeps. It reaches every conversation of the store, not only the ones the caller may see.
   @RequirePermissions(Permissions.CONVERSATIONS_DELETE)
   @NoStore()
+  @NoTenantTransaction(
+    'deletes the files of the conversation from the bucket: the rows go in one unit of the service with its own time limit, and the bucket is called after it with no context open'
+  )
   @Delete(ApiRoutes.conversations.byId(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async deleteConversation(
