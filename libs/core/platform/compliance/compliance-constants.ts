@@ -73,7 +73,11 @@ export const PlatformCleanup = {
   MAX_BATCHES: 100,
   // A verification token that was used is useless, and is deleted this long after it was used (an expired one, at once):
   // the day lets a person who opens a link twice, or a support check, still read what happened
-  USED_TOKEN_GRACE_DAYS: 1
+  USED_TOKEN_GRACE_DAYS: 1,
+  // An invitation that nobody accepted stays in the list of the team as expired (it is how the person is
+  // invited again); it is deleted this long after it expired (MVP_TRIM_CHECKLIST §10 item 21). An accepted or
+  // revoked one is the history of who joined and is not touched here
+  EXPIRED_INVITATION_GRACE_DAYS: 30
 } as const
 
 // The cold export of the audit log (TDD_05 §9.3): whole calendar months that are entirely past the hot window, the
