@@ -32,7 +32,8 @@ const detail: ConversationDetail = {
     displayIdentity: SENTINELS.handle,
     username: SENTINELS.username,
     avatarUrl: SENTINELS.avatar,
-    isCaution: true
+    isCaution: true,
+    isErased: false
   },
   lastMessage: null,
   tags: [{ id: 'tag-1', name: 'vip', color: '#ffffff' }],

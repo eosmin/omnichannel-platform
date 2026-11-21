@@ -7,9 +7,10 @@ import type { NoteView } from './notes.service'
 // The reason of a caution flag is text a member of the team wrote about a person (TDD_17 §4.16) and it is for the team: a plugin
 // sees THAT the customer is flagged (`isCaution`) and never why, whatever scope it holds. The routes that set or clear the flag
 // answer what the plugin itself sent, never what the team wrote.
+// `erasedAt` is for the screens of the team (Step 7.2-F): the plugin API does not widen its contract with it.
 // Field by field, so that a field the profile gains later (another text of the team) reaches a plugin only when someone adds it here.
-export type PluginCustomerDetail = Omit<CustomerDetail, 'cautionReason'>
-export type PluginCreatedCustomer = Omit<CreatedCustomer, 'cautionReason'>
+export type PluginCustomerDetail = Omit<CustomerDetail, 'cautionReason' | 'erasedAt'>
+export type PluginCreatedCustomer = Omit<CreatedCustomer, 'cautionReason' | 'erasedAt'>
 
 export function pluginCustomerDetail(customer: CustomerDetail): PluginCustomerDetail {
   return {

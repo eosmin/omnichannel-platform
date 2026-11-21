@@ -29,12 +29,14 @@ import {
   type CustomerMergePreviewView,
   type CustomerOrdersPageView,
   type CustomerDetailView,
+  type CustomerErasureView,
   type CustomerListPageView,
   type CustomerNoteView,
   type CustomerTimelinePageView,
   deleteCustomerAddress,
   deleteCustomerNote,
   detachCustomerTag,
+  eraseCustomer,
   fetchCustomer,
   fetchCustomerMergePreview,
   fetchCustomerOrders,
@@ -327,4 +329,21 @@ export function useCustomerCaution(
     onSuccess: refresh
   })
   return { set, clear }
+}
+
+// Erase the personal data of a customer (`customers:erase`). What the profile, the lists, the inbox and the orders show of
+// the customer changes at once, so all of them are read again. Irreversible: there is no way back to undo it here.
+export function useCustomerErasure(
+  storeId: string,
+  customerId: string
+): UseMutationResult<CustomerErasureView, Error, void> {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => eraseCustomer(apiClient, storeId, customerId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: QueryKeys.customers.all(storeId) })
+      void queryClient.invalidateQueries({ queryKey: QueryKeys.conversations.all(storeId) })
+      void queryClient.invalidateQueries({ queryKey: QueryKeys.orders.all(storeId) })
+    }
+  })
 }

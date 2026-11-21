@@ -46,6 +46,8 @@ export interface ConversationListItem {
     avatarUrl: string | null
     // The chip of the conversation header (TDD_17 §4.16); the reason is read in the customer panel
     isCaution: boolean
+    // The personal data of the customer was erased (TDD_05 §10.3): the thread is read only
+    isErased: boolean
   }
   lastMessage: {
     id: string
@@ -92,7 +94,7 @@ export const LIST_SELECT = {
   attentionReason: true,
   attentionAt: true,
   attentionNote: true,
-  customer: { select: { id: true, name: true, isCaution: true } },
+  customer: { select: { id: true, name: true, isCaution: true, erasedAt: true } },
   customerIdentity: { select: { channelIdentity: true, username: true, avatarUrl: true } },
   tags: { select: { id: true, name: true, color: true }, orderBy: { name: 'asc' } }
 } as const
@@ -118,7 +120,7 @@ interface ListRow {
   attentionReason: string | null
   attentionAt: Date | null
   attentionNote: string | null
-  customer: { id: string; name: string | null; isCaution: boolean }
+  customer: { id: string; name: string | null; isCaution: boolean; erasedAt: Date | null }
   customerIdentity: { channelIdentity: string; username: string | null; avatarUrl: string | null }
   tags: { id: string; name: string; color: string }[]
 }
@@ -158,7 +160,8 @@ function listItem(row: ListRow, lastMessage: LastMessage | null): ConversationLi
       displayIdentity: row.customer.name ?? row.customerIdentity.channelIdentity,
       username: row.customerIdentity.username,
       avatarUrl: avatarUrlOf(row.customerIdentity.avatarUrl),
-      isCaution: row.customer.isCaution
+      isCaution: row.customer.isCaution,
+      isErased: row.customer.erasedAt !== null
     },
     lastMessage,
     tags: row.tags

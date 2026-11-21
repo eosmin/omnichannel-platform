@@ -349,6 +349,27 @@ describe('The erasure of a customer', () => {
       expect(JSON.stringify(list.body)).not.toContain(customer.id)
     })
 
+    it('tells the profile and the conversation that the customer was erased, which the web draws as read only', async () => {
+      const customer = await fullCustomer()
+      const conversation = await createConversationOf(owner, { storeId: ctx.storeA.id })
+      await owner.conversation.update({
+        where: { id: conversation.id },
+        data: { customerId: customer.id, customerIdentityId: customer.identityId }
+      })
+      const profileBefore = await asAdmin().get(ApiRoutes.customers.byId(customer.id))
+      const threadBefore = await asAdmin().get(ApiRoutes.conversations.byId(conversation.id))
+      expect(profileBefore.body).toMatchObject({ erasedAt: null })
+      expect(threadBefore.body).toMatchObject({ customer: { isErased: false } })
+
+      await eraser_(customer.id)
+
+      const profile = await asAdmin().get(ApiRoutes.customers.byId(customer.id))
+      const thread = await asAdmin().get(ApiRoutes.conversations.byId(conversation.id))
+      expect(profile.status).toBe(OK)
+      expect(typeof (profile.body as { erasedAt: unknown }).erasedAt).toBe('string')
+      expect(thread.body).toMatchObject({ customer: { isErased: true } })
+    })
+
     it('refuses every later write on the erased customer, so no personal data comes back', async () => {
       const customer = await fullCustomer()
       await eraser_(customer.id)

@@ -175,7 +175,10 @@ export const conversationListItemSchema = z.object({
     // initials when it fails
     avatarUrl: z.string().nullable(),
     // The chip of the conversation header (TDD_17 §4.16)
-    isCaution: z.boolean()
+    isCaution: z.boolean(),
+    // The personal data of the customer was erased: the thread is read only. Required, not defaulted: a payload without it
+    // must fail loudly, not draw the reply box of a customer the api refuses (409)
+    isErased: z.boolean()
   }),
   lastMessage: z
     .object({
@@ -653,6 +656,8 @@ export const customerDetailSchema = z.object({
   locale: z.string().nullable(),
   isCaution: z.boolean(),
   cautionReason: z.string().nullable(),
+  // When the personal data was erased; null for a customer that was not. Required, like `isErased` of a conversation
+  erasedAt: z.string().nullable(),
   identities: z.array(
     z.object({
       id: z.string(),
@@ -708,6 +713,20 @@ export const customerCautionSchema = z.object({
   cautionReason: z.string().nullable()
 })
 export type CustomerCautionView = z.output<typeof customerCautionSchema>
+
+// POST /customers/:id/erasure: counts only, never a value (the api answers whoever holds `customers:erase`)
+export const customerErasureSchema = z.object({
+  erased: z.literal(true),
+  erasedAt: z.string(),
+  deleted: z.object({ notes: z.number(), addresses: z.number(), fiscalData: z.number() }),
+  anonymized: z.object({
+    identities: z.number(),
+    consents: z.number(),
+    mergeSnapshots: z.number()
+  }),
+  retained: z.object({ orders: z.number(), conversations: z.number() })
+})
+export type CustomerErasureView = z.output<typeof customerErasureSchema>
 
 export const customerAddressSchema = customerDetailSchema.shape.addresses.element
 

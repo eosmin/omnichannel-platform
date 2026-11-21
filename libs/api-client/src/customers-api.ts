@@ -13,6 +13,8 @@ import {
   type CustomerCautionView,
   type CustomerAddressView,
   customerDetailSchema,
+  customerErasureSchema,
+  type CustomerErasureView,
   createdCustomerSchema,
   type CreatedCustomerView,
   customerIdentitySchema,
@@ -287,6 +289,19 @@ export function clearCustomerCaution(
   return client.request(ApiRoutes.customers.caution(customerId), {
     method: 'DELETE',
     schema: customerCautionSchema,
+    storeId
+  })
+}
+
+// Erases the personal data of the customer (`customers:erase`). Irreversible; erasing twice answers the same.
+export function eraseCustomer(
+  client: ApiClient,
+  storeId: string,
+  customerId: string
+): Promise<CustomerErasureView> {
+  return client.request(ApiRoutes.customers.erasure(customerId), {
+    method: 'POST',
+    schema: customerErasureSchema,
     storeId
   })
 }

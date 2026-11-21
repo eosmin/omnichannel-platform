@@ -16,6 +16,7 @@ import { relativeTime } from '../../lib/inbox/relative-time'
 import { useCustomerName } from '../../lib/inbox/use-customer-name'
 import { useProfile } from '../../lib/use-profile'
 import { cn } from '../../lib/utils'
+import { ErasedChip } from '../customers/erased-chip'
 
 import { CustomerAvatar } from './customer-avatar'
 import { TagChips } from './tag-chips'
@@ -149,6 +150,7 @@ export function ConversationItem({
               {tStatus(status)}
             </span>
           )}
+          {item.customer.isErased ? <ErasedChip /> : null}
           <TagChips tags={item.tags} />
         </span>
       </span>

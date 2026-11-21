@@ -5,6 +5,7 @@ import {
   createCustomer,
   createCustomerAddress,
   deleteCustomerNote,
+  eraseCustomer,
   fetchCustomer,
   fetchCustomerConversations,
   fetchCustomerMergePreview,
@@ -148,6 +149,7 @@ describe('customer changes', () => {
     locale: null,
     isCaution: false,
     cautionReason: null,
+    erasedAt: null,
     identities: [],
     addresses: [],
     tags: [],
@@ -217,6 +219,7 @@ const detail = {
   locale: null,
   isCaution: false,
   cautionReason: null,
+  erasedAt: null,
   identities: [],
   addresses: [],
   tags: [],
@@ -322,6 +325,51 @@ describe('the caution flag', () => {
   })
 })
 
+describe('the erasure of a customer', () => {
+  it('posts with no body and reads the counts it answers', async () => {
+    const answer = {
+      erased: true,
+      erasedAt: '2026-11-21T10:00:00.000Z',
+      deleted: { notes: 2, addresses: 1, fiscalData: 0 },
+      anonymized: { identities: 1, consents: 1, mergeSnapshots: 0 },
+      retained: { orders: 3, conversations: 1 }
+    }
+    const { client, fetchImpl } = setup(json(200, answer))
+
+    const view = await eraseCustomer(client, 's1', 'c1')
+
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/customers/c1/erasure')
+    expect(init?.method).toBe('POST')
+    expect(init?.body).toBeUndefined()
+    expect(view).toEqual(answer)
+  })
+
+  it('reads erasedAt of a profile, null when the customer was not erased', async () => {
+    const base = {
+      id: 'c1',
+      name: null,
+      email: null,
+      phone: null,
+      locale: null,
+      isCaution: false,
+      cautionReason: null,
+      erasedAt: null,
+      identities: [],
+      addresses: [],
+      tags: [],
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-01T00:00:00.000Z'
+    }
+    const plain = setup(json(200, base))
+    await expect(fetchCustomer(plain.client, 's1', 'c1')).resolves.toMatchObject({ erasedAt: null })
+    const erased = setup(json(200, { ...base, erasedAt: '2026-11-21T10:00:00.000Z' }))
+    await expect(fetchCustomer(erased.client, 's1', 'c1')).resolves.toMatchObject({
+      erasedAt: '2026-11-21T10:00:00.000Z'
+    })
+  })
+})
+
 describe('the identities', () => {
   it('links a handle and unlinks it by id', async () => {
     const identity = {
@@ -362,6 +410,7 @@ describe('createCustomer', () => {
     locale: null,
     isCaution: false,
     cautionReason: null,
+    erasedAt: null,
     identities: [],
     addresses: [],
     tags: [],

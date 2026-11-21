@@ -105,7 +105,9 @@ function Body({ customerId, onClose }: { customerId: string; onClose: () => void
                   {t('media')}
                 </Button>
               ) : null}
-              {can(ClientPermissions.CUSTOMERS_EDIT) ? <NoteBox customerId={customerId} /> : null}
+              {can(ClientPermissions.CUSTOMERS_EDIT) && customer.data.erasedAt === null ? (
+                <NoteBox customerId={customerId} />
+              ) : null}
               {mayOpenOrders ? (
                 <Tabs value={section} onValueChange={value => setSection(value as Section)}>
                   <TabsList aria-label={t('sectionLabel')}>
