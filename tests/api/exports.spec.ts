@@ -308,7 +308,9 @@ describe('Exports', () => {
       })
       expect(entry?.userId).toBe(ctx.adminA.id)
       expect(entry?.storeId).toBe(ctx.storeA.id)
-      expect(entry?.metadata).toMatchObject({ rowCount: row.rowCount, filters: { q: 'needle' } })
+      // The text typed to search is never copied into the (immutable) audit entry: only that there was one
+      expect(entry?.metadata).toMatchObject({ rowCount: row.rowCount, filters: { hasText: true } })
+      expect(JSON.stringify(entry?.metadata)).not.toContain('needle')
     })
 
     it('refuses a filter it does not know', async () => {
@@ -582,6 +584,74 @@ describe('Exports', () => {
       expect(entry?.metadata).toMatchObject({ rowCount: 1 })
       const list = await asAdmin().get(`${ApiRoutes.exports.list}?type=${ExportTypes.ORDERS}`)
       expect((list.body as PageBody).data.map(item => item.id)).toContain(view.id)
+    })
+  })
+
+  describe('the audit log file', () => {
+    it('writes the rows of the store with the columns of the viewer, defuses a formula, and leaves out other stores and rows with no store', async () => {
+      const action = `${prefix}.audit-file`
+      const row = (storeId: string | null, userId: string, extra: Record<string, unknown> = {}) =>
+        owner.auditLog.create({
+          data: { action, storeId, userId, resourceType: 'order', resourceId: 'o-1', ...extra },
+          select: { id: true }
+        })
+      const mine = await row(ctx.storeA.id, ctx.adminA.id, {
+        userAgent: '=HYPERLINK("x")',
+        metadata: { count: 2 }
+      })
+      await row(ctx.storeB.id, ctx.adminB.id)
+      await row(null, ctx.adminA.id)
+
+      const view = await request(`${ApiRoutes.organizations.auditLogExport}?action=${action}`)
+      const file = await made(view.id)
+
+      const lines = file.replace(BOM, '').trim().split('\r\n')
+      expect(lines[0]).toBe(
+        'id,timestamp,action,user_id,resource_type,resource_id,ip_address,user_agent,metadata'
+      )
+      expect(lines).toHaveLength(2)
+      expect(lines[1]).toContain(mine.id)
+      expect(lines[1]).toContain(`'=HYPERLINK`)
+      expect(lines[1]).toContain('""count"":2')
+      const settled = await owner.export.findUniqueOrThrow({ where: { id: view.id } })
+      expect(settled.rowCount).toBe(1)
+    })
+
+    it('needs org:view_audit_log, shows the export to who made it, and audits it as audit_log.exported', async () => {
+      expect(
+        (await api(app, ctx.agentA, ctx.storeA).get(ApiRoutes.organizations.auditLogExport)).status
+      ).toBe(FORBIDDEN)
+      const view = await request(ApiRoutes.organizations.auditLogExport)
+      await made(view.id)
+
+      const [entry] = await waitForAuditEntries(owner, {
+        storeId: ctx.storeA.id,
+        action: AuditAction.AUDIT_LOG_EXPORTED,
+        resourceId: view.id
+      })
+      expect(entry?.userId).toBe(ctx.adminA.id)
+      const list = await asAdmin().get(`${ApiRoutes.exports.list}?type=${ExportTypes.AUDIT_LOG}`)
+      expect((list.body as PageBody).data.map(item => item.id)).toContain(view.id)
+      // A member who cannot read the log does not see the export even if they asked for one before they lost the right
+      const lost = await createActor(owner, app, {
+        prefix,
+        name: 'audit-lost',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: (
+          await createRole(owner, {
+            storeId: ctx.storeA.id,
+            permissions: [Permissions.CUSTOMERS_EXPORT]
+          })
+        ).id
+      })
+      await owner.export.update({ where: { id: view.id }, data: { requestedBy: lost.id } })
+      const hidden = await api(app, lost, ctx.storeA).get(`${ApiRoutes.exports.byId(view.id)}`)
+      expect(hidden.status).toBe(NOT_FOUND)
+      // Nor does the Admin of another store, who holds the same permission, see or download it
+      const other = api(app, ctx.adminB, ctx.storeB)
+      expect((await other.get(ApiRoutes.exports.byId(view.id))).status).toBe(NOT_FOUND)
+      expect((await other.get(ApiRoutes.exports.download(view.id))).status).toBe(NOT_FOUND)
     })
   })
 
