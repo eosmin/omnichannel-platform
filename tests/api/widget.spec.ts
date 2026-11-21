@@ -464,6 +464,8 @@ describe('The web widget', () => {
         { visitorToken: visitor.visitorToken, content: 'hola' },
         // A field the message does not declare is refused like in the other bodies of the widget
         { ...base, extra: 1 },
+        // The store is the one the signed token names, never one the script sends: a store id is an undeclared field
+        { ...base, storeId: ctx.storeB.id },
         { ...base, attachments: [] }
       ]) {
         expect((await send(bad)).status).toBe(BAD_REQUEST)
