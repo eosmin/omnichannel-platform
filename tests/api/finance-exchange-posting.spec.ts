@@ -25,7 +25,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
-import { inStoreContext } from '../helpers/tenant-context'
+import { withTenantContext } from '../helpers/tenant-context'
 
 const CREATED = 201
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -57,9 +57,10 @@ describe('The sale of an order with nothing to collect (an exchange, a full disc
     const realGuard = app.get(FinanceCloseGuard)
     guard = {
       check: (organizationId, options) =>
-        inStoreContext(
+        // The context of the whole organization, as the worker opens it: the guard is strict and refuses a context of one store
+        withTenantContext(
           app.get(PrismaService, { strict: false }),
-          { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+          { storeIds: [ctx.storeA.id, ctx.storeA2.id], organizationIds: [ctx.orgA.id] },
           () => realGuard.check(organizationId, options)
         )
     }
