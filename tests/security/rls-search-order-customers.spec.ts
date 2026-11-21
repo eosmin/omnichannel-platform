@@ -10,7 +10,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 // filters by itself, so
 //  - no store in the context RAISES (never an empty answer that looks like "nobody");
 //  - the context of one store never reads a customer of another;
-//  - an absorbed (merged) customer IS found: the order keeps pointing at who made it;
+//  - an absorbed (merged) customer IS found: the order keeps pointing at who made it, and an erased one is NOT (like every other search);
 //  - the answer is bounded (p_limit 1 to 10001, an error outside it, never a clamp) and a pattern is required;
 //  - EXECUTE is for the api and the worker roles, and for nobody else.
 // The calls are made as platform_app, the role of the api.
@@ -103,6 +103,27 @@ describe('the customers function of the orders search under row-level security',
       byPhone.id
     ])
     expect(await idsIn([storeB], `%orfeo ${tag}%`, `%orfeo ${tag}%`, null)).toEqual([alien.id])
+  })
+
+  it('does not find a customer who was erased, by name, e-mail or phone, and still finds the same text for a live one', async () => {
+    const live = await owner.customer.create({
+      data: { storeId: storeA, name: `Erasa ${tag}`, email: `live-erased-${tag}@example.invalid` },
+      select: { id: true }
+    })
+    const erased = await owner.customer.create({
+      data: {
+        storeId: storeA,
+        name: `Erasa ${tag} olvidada`,
+        email: `gone-erased-${tag}@example.invalid`,
+        phone: '+503 7777-0002',
+        erasedAt: new Date()
+      },
+      select: { id: true }
+    })
+    expect(await idsIn([storeA], `%erasa ${tag}%`, `%erasa ${tag}%`, null)).toEqual([live.id])
+    expect(await idsIn([storeA], '%zzzz-none%', `%gone-erased-${tag}@%`, null)).toEqual([])
+    expect(await idsIn([storeA], '%zzzz-none%', '%zzzz-none%', '%50377770002%')).toEqual([])
+    expect(erased.id).not.toBe(live.id)
   })
 
   it('refuses a limit that is missing, zero or past 10001, and a missing name or e-mail pattern', async () => {
