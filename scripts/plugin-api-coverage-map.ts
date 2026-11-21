@@ -28,6 +28,9 @@ const CUSTOMER_NOTE_AUTHOR =
 const ANALYTICS_REPORTS =
   'The scheduled reports send the figures out by email to addresses of people, and a report keeps who made it: a plugin reads the metrics and asks for a file of them, and the reports wait for an actor that the screen can show (Step 5.6 PR E7-2)'
 
+const CUSTOMER_ERASURE =
+  'Erasing the personal data of a customer (customers:erase): irreversible, and the answer to a data subject request that the owner decides; no plugin scope grants it'
+
 const SESSION = "A person's own session: a plugin has an API key, not a login"
 const ACCOUNT =
   "A person's own account (their name, picture and preferences): the id comes from their token"
@@ -292,6 +295,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: ['customers:read', 'customers:flag-caution'],
     exposed: '/plugin-api/customers/:id/caution'
   },
+  'customers.erasure': { none: CUSTOMER_ERASURE },
   'customers.export': { scope: ['customers:read', 'exports:write'] },
 
   // Orders (`orders:*` exist); the messages and templates of an order are a scope of their own

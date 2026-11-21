@@ -59,6 +59,7 @@ import {
 
 import { AddressesService } from './addresses.service'
 import { type CautionView, CustomerCautionService } from './customer-caution.service'
+import { CustomerErasureService, type ErasureView } from './customer-erasure.service'
 import { CustomerMediaService } from './customer-media.service'
 import type { GalleryPage } from './customer-media.views'
 import { CustomerMergePreviewService, type MergePreview } from './customer-merge-preview.service'
@@ -122,6 +123,7 @@ export class CustomersController {
     private readonly addresses: AddressesService,
     private readonly notes: NotesService,
     private readonly caution: CustomerCautionService,
+    private readonly erasure: CustomerErasureService,
     private readonly tags: CustomerTagsService,
     private readonly merges: CustomerMergeService,
     private readonly mergePreviews: CustomerMergePreviewService,
@@ -217,6 +219,21 @@ export class CustomersController {
     @Req() req: AuthenticatedRequest
   ): Promise<CautionView> {
     return this.caution.set(store.id, customerId, body, actorOf(user, store, req))
+  }
+
+  // Erases the personal data of the customer (TDD_05 §10.3): irreversible, so it has its own permission, which is not
+  // `customers:delete`. Erasing a customer already erased answers the same and changes nothing.
+  @RequirePermissions(Permissions.CUSTOMERS_ERASE)
+  @NoStore()
+  @Post(ApiRoutes.customers.erasure(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  erase(
+    @CurrentStore() store: ResolvedTenant['store'],
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) customerId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<ErasureView> {
+    return this.erasure.erase(store.id, customerId, actorOf(user, store, req))
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_FLAG_CAUTION)

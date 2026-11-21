@@ -3297,7 +3297,8 @@
           "delete": "Delete customers",
           "merge": "Merge customers",
           "export": "Export customers",
-          "flag_caution": "Flag customers with caution"
+          "flag_caution": "Flag customers with caution",
+          "erase": "Erase the personal data of customers"
         },
         "orders": {
           "view": "View orders",

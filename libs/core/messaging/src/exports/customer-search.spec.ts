@@ -18,8 +18,12 @@ describe('phoneDigitsOf', () => {
 })
 
 describe('the customers of a store', () => {
-  it('scopes to the store and leaves the absorbed customers out', () => {
-    expect(customerSearchWhere(STORE)).toEqual({ storeId: STORE, mergedIntoId: null })
+  it('scopes to the store and leaves the absorbed and the erased customers out', () => {
+    expect(customerSearchWhere(STORE)).toEqual({
+      storeId: STORE,
+      mergedIntoId: null,
+      erasedAt: null
+    })
   })
 })
 

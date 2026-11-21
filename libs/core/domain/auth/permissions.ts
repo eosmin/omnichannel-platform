@@ -28,6 +28,8 @@ export const Permissions = {
   CUSTOMERS_MERGE: 'customers:merge',
   CUSTOMERS_EXPORT: 'customers:export',
   CUSTOMERS_FLAG_CAUTION: 'customers:flag_caution',
+  // Erase the personal data of a customer (Step 7.2): irreversible, so it is not part of `customers:delete`
+  CUSTOMERS_ERASE: 'customers:erase',
 
   // Orders
   ORDERS_VIEW: 'orders:view',

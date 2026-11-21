@@ -659,6 +659,16 @@ const resources: IsolationResource[] = [
         null
     }
   },
+  // The erasure of a customer (Step 7.2) is a second way to change the same model: irreversible, so a request from another store
+  // must be a 404 and leave the customer as it was (the case above covers its read, list, update and creation)
+  {
+    name: 'customer',
+    create: createCustomer,
+    modify: { path: ApiRoutes.customers.erasure, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.customer.findUnique({ where: { id }, select: { erasedAt: true } }))?.erasedAt ===
+      null
+  },
   {
     name: 'customerIdentity',
     create: createCustomerIdentity,

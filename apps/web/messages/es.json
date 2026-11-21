@@ -3297,7 +3297,8 @@
           "delete": "Eliminar clientes",
           "merge": "Fusionar clientes",
           "export": "Exportar clientes",
-          "flag_caution": "Marcar clientes con precaución"
+          "flag_caution": "Marcar clientes con precaución",
+          "erase": "Borrar los datos personales de clientes"
         },
         "orders": {
           "view": "Ver pedidos",

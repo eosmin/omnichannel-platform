@@ -49,10 +49,12 @@ export function customerSearchPatterns(q: string, folded: string): CustomerSearc
 export interface CustomerSearchWhere {
   storeId: string
   mergedIntoId: null
+  // A customer who was erased (Step 7.2) is a name that is gone: the list and the export do not carry the row
+  erasedAt: null
 }
 
 export function customerSearchWhere(storeId: string): CustomerSearchWhere {
-  return { storeId, mergedIntoId: null }
+  return { storeId, mergedIntoId: null, erasedAt: null }
 }
 
 // The orders a page of the customers a search finds can come in: the list (newest first) and the export (by id)
