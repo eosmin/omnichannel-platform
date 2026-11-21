@@ -5,6 +5,7 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { RetentionResourceTypes } from '@platform/core/compliance'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuditLogResourceTypes, PaginationLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -55,7 +56,7 @@ describe('Audit log viewer', () => {
 
   async function entry(data: {
     storeId: string | null
-    userId: string
+    userId: string | null
     action?: string
     resourceType?: string
     resourceId?: string
@@ -151,6 +152,37 @@ describe('Audit log viewer', () => {
     expect(
       (await api(app, ctx.adminB, ctx.storeA).get(ApiRoutes.organizations.auditLog)).status
     ).toBe(FORBIDDEN)
+  })
+
+  it('shows the system entry of the retention run of its store (no person) and never the platform wide ones, which have no store', async () => {
+    const counts = { conversations: 3 }
+    await entry({
+      storeId: ctx.storeA.id,
+      userId: null,
+      action: AuditAction.RETENTION_RUN,
+      resourceType: RetentionResourceTypes.STORE,
+      resourceId: ctx.storeA.id,
+      metadata: { counts }
+    })
+    await entry({
+      storeId: null,
+      userId: null,
+      action: AuditAction.PLATFORM_CLEANUP_RUN,
+      resourceType: RetentionResourceTypes.PLATFORM
+    })
+
+    const retention = await list(`action=${AuditAction.RETENTION_RUN}`)
+    const platform = await list(`action=${AuditAction.PLATFORM_CLEANUP_RUN}`)
+
+    expect(
+      retention.data.some(
+        row =>
+          row.userId === null &&
+          row.resourceId === ctx.storeA.id &&
+          JSON.stringify(row.metadata) === JSON.stringify({ counts })
+      )
+    ).toBe(true)
+    expect(platform.data).toHaveLength(0)
   })
 
   it('pages by cursor, newest first, with no row lost or repeated when two share the same instant', async () => {
