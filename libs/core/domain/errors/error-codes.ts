@@ -101,6 +101,8 @@ export const ErrorCodes = {
   ORDER_PAYMENT_NOT_ALLOWED: 'ORDER_PAYMENT_NOT_ALLOWED',
   CONVERSATION_ALREADY_RESOLVED: 'CONVERSATION_ALREADY_RESOLVED',
   CONVERSATION_INVALID_STATUS_TRANSITION: 'CONVERSATION_INVALID_STATUS_TRANSITION',
+  // The customer was erased (Step 7.2): nothing is written for them or sent to them any more (409; a message that was queued fails with it)
+  CUSTOMER_ERASED: 'CUSTOMER_ERASED',
   CUSTOMER_MERGE_SAME_ID: 'CUSTOMER_MERGE_SAME_ID',
   CUSTOMER_UNMERGE_WINDOW_EXPIRED: 'CUSTOMER_UNMERGE_WINDOW_EXPIRED',
   // A rule, not a race: conversations point to the identity, so it stays (409)

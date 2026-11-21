@@ -154,6 +154,27 @@ export async function lockConversationForWrite(
   }
 }
 
+// Nothing is written for an erased customer and nothing is sent to them (Step 7.2): a reply, a note, a reaction, an edit or a deletion
+// toward the channel in a conversation of theirs is refused with its own code. Called under the lock of the conversation, by the writes that
+// would put words in the thread or send to the channel; the status, the assignment and the tags of the conversation stay open to the team.
+export async function requireCustomerNotErased(
+  tx: PrismaTransaction,
+  storeId: string,
+  conversationId: string
+): Promise<void> {
+  const row = await tx.conversation.findFirst({
+    where: { id: conversationId, storeId },
+    select: { customer: { select: { erasedAt: true } } }
+  })
+  if (row?.customer.erasedAt != null) {
+    throw new PlatformException(
+      ErrorCodes.CUSTOMER_ERASED,
+      'the customer of the conversation was erased',
+      HttpStatusCodes.CONFLICT
+    )
+  }
+}
+
 // A caller who holds none of the permissions cannot do it: they are named in the answer
 export function requireAnyPermission(
   held: readonly Permission[],

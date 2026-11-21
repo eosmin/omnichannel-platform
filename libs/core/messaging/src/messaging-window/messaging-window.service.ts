@@ -65,10 +65,15 @@ export class MessagingWindowService {
         channelType: true,
         status: true,
         assignedTo: true,
+        customer: { select: { erasedAt: true } },
         customerIdentity: { select: { lastInboundAt: true, adWindowOpenedAt: true } }
       }
     })
     if (row === null || !canSee(viewer, row)) throw resourceNotFound('conversation')
+    // An erased customer has no window, on a channel that has one or not: the automations that ask (the closing message, the away reply,
+    // the messages of an order) send nothing, and the composer reads it as closed with no template to offer
+    if (row.customer.erasedAt !== null)
+      return { open: false, closesAt: null, requiresTemplate: false }
     const policy = this.policies.policyFor(row.channelType)
     return stateOf(
       policy,

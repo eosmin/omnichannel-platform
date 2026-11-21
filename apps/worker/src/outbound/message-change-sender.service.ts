@@ -16,7 +16,8 @@ import {
   ChannelConnectionStatus,
   DeliveryStatus,
   isInstallationActive,
-  OutboundLimits
+  OutboundLimits,
+  isErasedHandle
 } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { enumValueOf } from '@platform/core/messaging'
@@ -226,6 +227,10 @@ export class MessageChangeSender {
   ): Prepared {
     if (message.channelMessageId === null) return { refusedWith: ErrorCodes.CHANNEL_MESSAGE_FAILED }
     const { channelConnection: connection, customerIdentity } = message.conversation
+    // The handle of an erased customer is no handle: nothing is asked of the channel
+    if (isErasedHandle(customerIdentity.channelIdentity)) {
+      return { refusedWith: ErrorCodes.CUSTOMER_ERASED }
+    }
     const connectionStatus = isInstallationActive(connection.installation)
       ? connection.status
       : ChannelConnectionStatus.DISCONNECTED

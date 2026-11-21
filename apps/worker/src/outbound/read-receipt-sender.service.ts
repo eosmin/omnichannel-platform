@@ -13,7 +13,8 @@ import {
   AuthorType,
   ChannelConnectionStatus,
   isInstallationActive,
-  OutboundLimits
+  OutboundLimits,
+  isErasedHandle
 } from '@platform/core/domain'
 import { enumValueOf } from '@platform/core/messaging'
 import type { SendOutboundReadReceiptJob } from '@platform/core/queues'
@@ -67,6 +68,8 @@ export class ReadReceiptSender {
     )
     if (message?.channelMessageId == null) return
     const { channelConnection: connection, customerIdentity } = message.conversation
+    // The handle of an erased customer is no handle: nobody to tell
+    if (isErasedHandle(customerIdentity.channelIdentity)) return
     const connectionStatus = isInstallationActive(connection.installation)
       ? connection.status
       : ChannelConnectionStatus.DISCONNECTED

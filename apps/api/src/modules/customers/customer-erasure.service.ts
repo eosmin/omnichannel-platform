@@ -1,13 +1,23 @@
+import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
+import type { Queue } from 'bullmq'
+import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { ComplianceConfig } from '@platform/core/compliance'
 import { DatabaseNull, PrismaService } from '@platform/core/database'
-import { resourceConflict } from '@platform/core/errors'
+import { erasedHandleOf } from '@platform/core/domain'
+import { errorName, resourceConflict } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { lockCustomerForWrite } from '@platform/core/messaging'
+import {
+  type EraseCustomerDataJob,
+  eraseCustomerDataJobId,
+  JobNames,
+  QueueNames
+} from '@platform/core/queues'
 
 import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
@@ -38,15 +48,19 @@ export class CustomerErasureService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly events: DomainEvents
-  ) {}
+    private readonly events: DomainEvents,
+    @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly queue: Queue<EraseCustomerDataJob>,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(CustomerErasureService.name)
+  }
 
   async erase(storeId: string, customerId: string, actor: Actor): Promise<ErasureView> {
-    const { view, done } = await this.prisma.transaction(async tx => {
+    const { view, done, pending } = await this.prisma.transaction(async tx => {
       await lockCustomerForWrite(tx, storeId, customerId, { allowErased: true })
       const current = await tx.customer.findUniqueOrThrow({
         where: { id: customerId },
-        select: { erasedAt: true }
+        select: { erasedAt: true, erasedDataPurgedAt: true }
       })
       const [orders, conversations] = await Promise.all([
         tx.order.count({ where: { storeId, customerId } }),
@@ -56,6 +70,8 @@ export class CustomerErasureService {
       if (current.erasedAt !== null) {
         return {
           done: false,
+          // Asked again while its data is not all cleared: the job is asked again too (the same job id adds nothing while one waits)
+          pending: current.erasedDataPurgedAt === null,
           view: {
             erased: true as const,
             erasedAt: current.erasedAt.toISOString(),
@@ -110,7 +126,7 @@ export class CustomerErasureService {
           where: { id: identity.id },
           data: {
             // Unique by the id of the row, so the key (store, channel, handle) cannot clash and never matches a real handle
-            channelIdentity: `erased:${identity.id}`,
+            channelIdentity: erasedHandleOf(identity.id),
             displayName: null,
             channelMetadata: DatabaseNull,
             username: null,
@@ -158,6 +174,7 @@ export class CustomerErasureService {
       this.events.publish(tx, Events.CUSTOMER_UPDATED, { storeId, customerId })
       return {
         done: true,
+        pending: true,
         view: {
           erased: true as const,
           erasedAt: now.toISOString(),
@@ -175,6 +192,9 @@ export class CustomerErasureService {
         }
       }
     })
+    // After the real commit: the job reads the customer as erased. A queue that is down does not undo the erasure; the daily sweep finds the
+    // customer by the missing mark and finishes what the job would have done
+    if (pending) await this.queueDataClearing(storeId, customerId)
     if (done) {
       this.audit.log({
         action: AuditAction.CUSTOMER_ERASED,
@@ -193,5 +213,27 @@ export class CustomerErasureService {
       })
     }
     return view
+  }
+
+  private async queueDataClearing(storeId: string, customerId: string): Promise<void> {
+    try {
+      await this.prisma.afterCommitStep(this.prisma.client, () =>
+        this.queue.add(
+          JobNames.ERASE_CUSTOMER_DATA,
+          { storeId, customerId },
+          {
+            jobId: eraseCustomerDataJobId(customerId),
+            attempts: 5,
+            backoff: { type: 'exponential', delay: 30_000 },
+            removeOnComplete: true
+          }
+        )
+      )
+    } catch (error) {
+      this.logger.warn(
+        { storeId, customerId, errorName: errorName(error) },
+        'the clearing of the data of an erased customer could not be queued; the sweep will find it'
+      )
+    }
   }
 }

@@ -13,7 +13,8 @@ import {
   ChannelConnectionStatus,
   DeliveryStatus,
   isInstallationActive,
-  OutboundLimits
+  OutboundLimits,
+  isErasedHandle
 } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { enumValueOf, reactionWhereOf, reactorOfJob } from '@platform/core/messaging'
@@ -105,6 +106,11 @@ export class ReactionSender {
       return
     }
     const { channelConnection: connection, customerIdentity } = message.conversation
+    // The handle of an erased customer is no handle: nothing is asked of the channel
+    if (isErasedHandle(customerIdentity.channelIdentity)) {
+      await settle(ErrorCodes.CUSTOMER_ERASED)
+      return
+    }
     const connectionStatus = isInstallationActive(connection.installation)
       ? connection.status
       : ChannelConnectionStatus.DISCONNECTED

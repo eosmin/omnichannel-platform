@@ -141,6 +141,7 @@ export class OutboundSender {
               status: true,
               resolvedAt: true,
               channelType: true,
+              customer: { select: { erasedAt: true } },
               customerIdentity: { select: { channelIdentity: true } },
               channelConnection: {
                 select: {
@@ -155,6 +156,17 @@ export class OutboundSender {
     )
     // Gone, or already sent or failed: a second job for the same message (the sweep) has nothing to do
     if (message === null) return
+    // The customer was erased since the reply was queued (an automation, an agent): it goes nowhere, and says why. Before the claim of a
+    // closing message and before anything is asked of the provider
+    if (message.conversation.customer.erasedAt !== null) {
+      await this.fail(
+        storeId,
+        messageId,
+        ErrorCodes.CUSTOMER_ERASED,
+        message.failureDefinitive !== false
+      )
+      return
+    }
     // Whatever an earlier attempt left: from here on a failure is definitive only if nothing before it may have gone
     const tainted = message.failureDefinitive === false
     const isClosing = isClosingMessage(message.metadata)

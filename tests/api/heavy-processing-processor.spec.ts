@@ -21,6 +21,7 @@ describe('HeavyProcessingProcessor', () => {
   const runPickup = jest.fn().mockResolvedValue(undefined)
   const evaluatePickups = jest.fn().mockResolvedValue(null)
   const enforceRetention = jest.fn().mockResolvedValue(undefined)
+  const clearErased = jest.fn().mockResolvedValue({ cleared: true })
   const postFinance = jest.fn().mockResolvedValue({ outcome: 'posted' })
   const reconcileFinance = jest.fn().mockResolvedValue(undefined)
   const reconcileFiscal = jest.fn().mockResolvedValue(undefined)
@@ -45,6 +46,7 @@ describe('HeavyProcessingProcessor', () => {
     { run: runPickup } as never, // the pickup sync: what it is handed is what is tested
     { run: evaluatePickups } as never, // the pickup evaluation: what it is handed is what is tested
     { enforce: enforceRetention } as never, // the nightly retention of a store: what it is handed is what is tested
+    { clear: clearErased } as never, // the clearing of the data of an erased customer: what it is handed is what is tested
     { post: postFinance } as never, // the automatic entries of the books: what it is handed is what is tested
     { reconcile: reconcileFinance } as never, // the daily check of the books: what it is handed is what is tested
     { check: checkChain } as never, // the weekly check of the chain: what it is handed is what is tested
@@ -82,6 +84,7 @@ describe('HeavyProcessingProcessor', () => {
     runPickup.mockClear()
     evaluatePickups.mockClear()
     enforceRetention.mockClear()
+    clearErased.mockClear()
   })
 
   it('hands the inbound media job to the fetcher with the id the widget chose for the file', async () => {
@@ -413,6 +416,41 @@ describe('HeavyProcessingProcessor', () => {
       enforceRetention.mockRejectedValueOnce(new Error('a category failed'))
 
       await expect(retention({ storeId: STORE_ID })).rejects.toThrow('a category failed')
+    })
+  })
+  describe('the clearing of the data of an erased customer (Step 7.2-C)', () => {
+    const STORE_ID = '3c9d1e5a-7b2f-4d86-a0c4-5e6f70819203'
+    const CUSTOMER_ID = '5e1f3a77-9d4b-4f08-b2e6-7a8b9c0d1e2f'
+    const clear = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.ERASE_CUSTOMER_DATA,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 5 }
+      } as unknown as ProcessorJob)
+
+    it('clears the customer the job names in the store it names, and nothing else', async () => {
+      await clear({ storeId: STORE_ID, customerId: CUSTOMER_ID })
+
+      expect(clearErased).toHaveBeenCalledWith(STORE_ID, CUSTOMER_ID)
+      expect(enforceRetention).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['no customer', { storeId: STORE_ID }],
+      ['a customer that is not an id', { storeId: STORE_ID, customerId: 'all' }],
+      ['no store', { customerId: CUSTOMER_ID }]
+    ])('refuses for good a job with %s, and clears nothing', async (_name, data) => {
+      await expect(clear(data)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(clearErased).not.toHaveBeenCalled()
+    })
+
+    it('rejects while something is left, so the queue asks again', async () => {
+      clearErased.mockResolvedValueOnce({ cleared: false })
+
+      await expect(clear({ storeId: STORE_ID, customerId: CUSTOMER_ID })).rejects.toThrow(
+        'not all cleared'
+      )
     })
   })
   describe('the poll of a carrier (TDD_17 §4.9)', () => {
