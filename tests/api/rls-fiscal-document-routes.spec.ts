@@ -17,8 +17,13 @@ import {
   FiscalSweepLimits,
   FiscalVoidConsultState,
   FiscalVoidKind,
-  OrderStatus
+  OrderReturnReasons,
+  OrderReturnStatus,
+  OrderReturnType,
+  OrderStatus,
+  ShippingPayer
 } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
 import { Events } from '@platform/core/events'
 import { QueueNames } from '@platform/core/queues'
 import {
@@ -262,6 +267,42 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
   }
   const row = (id: string) => owner.fiscalDocument.findUniqueOrThrow({ where: { id } })
 
+  // A received return of one unit of the order, and the credit note its event made
+  async function returnWithNote(orderId: string) {
+    const returned = await owner.orderReturn.create({
+      data: {
+        storeId: ctx.storeA.id,
+        orderId,
+        type: OrderReturnType.REFUND,
+        reason: OrderReturnReasons.DEFECTIVE,
+        status: OrderReturnStatus.RECEIVED,
+        shippingPayer: ShippingPayer.SENDER,
+        createdBy: ctx.adminA.id,
+        receivedAt: new Date()
+      },
+      select: { id: true }
+    })
+    const item = await owner.orderItem.findFirstOrThrow({
+      where: { orderId },
+      select: { id: true }
+    })
+    await owner.orderReturnLine.create({
+      data: { storeId: ctx.storeA.id, returnId: returned.id, orderItemId: item.id, quantity: 1 }
+    })
+    await emitter.emitAsync(Events.RETURN_RECEIVED, {
+      storeId: ctx.storeA.id,
+      orderId,
+      orderNumber: 'N',
+      actor: { type: 'system', id: null },
+      returnId: returned.id
+    })
+    const note = await owner.fiscalDocument.findFirstOrThrow({
+      where: { returnId: returned.id, kind: FiscalDocumentKind.CREDIT_NOTE },
+      select: { id: true }
+    })
+    return { returnId: returned.id, noteId: note.id }
+  }
+
   describe('a person who manages the documents in A and in A2, with the header of A2', () => {
     it('fixes the receiver of a document of A', async () => {
       await useIssuer(SIMULATOR_PROVIDER_ID)
@@ -473,6 +514,112 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
       asked.forEach(spy => spy.mockRestore())
       const after = await row(id)
       expect([after.status, after.voidClaimKey]).toEqual([FiscalDocumentStatus.ACCEPTED, null])
+    })
+
+    it('refuses, at the guard, a replacement that belongs to another organization and asks nobody', async () => {
+      await useIssuer(SIMULATOR_PROVIDER_ID)
+      const id = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      // An accepted sale document of ORGANIZATION B. The guard of the route counts the ids of the call (the document and its replacement)
+      // by organization and reach, so it refuses before the lookup of the replacement; the lookup cannot be fed a foreign row that names the
+      // document either: the trigger `check_fiscal_document_scope` refuses a `replaces_document_id` of another organization
+      const mine = await row(id)
+      const orderB = await createOrder(owner, { storeId: ctx.storeB.id })
+      const foreign = await owner.fiscalDocument.create({
+        data: {
+          organizationId: ctx.orgB.id,
+          storeId: ctx.storeB.id,
+          orderId: orderB.id,
+          kind: FiscalDocumentKind.SALE,
+          sequenceNumber: 1,
+          documentType: mine.documentType,
+          status: FiscalDocumentStatus.ACCEPTED,
+          providerId: mine.providerId,
+          environment: mine.environment,
+          externalNumber: `FOREIGN-${randomUUID().slice(0, 8)}`,
+          issuerSnapshot: {},
+          linesSnapshot: [],
+          receiverEncrypted: new Uint8Array(mine.receiverEncrypted),
+          currency: mine.currency,
+          totalCents: mine.totalCents,
+          taxCents: mine.taxCents
+        },
+        select: { id: true }
+      })
+      const asked = (['void', 'consultVoid'] as const).map(method => jest.spyOn(simulator, method))
+      const refused = await fromA2(both)
+        .post(ApiRoutes.fiscal.documents.void(id))
+        .send({ reason: 'wrong customer', replacementDocumentId: foreign.id })
+      expect(refused.status).toBe(NOT_FOUND)
+      expect((errorOf(refused) as { code: string }).code).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
+      expect(asked.map(spy => spy.mock.calls.length)).toEqual([0, 0])
+      asked.forEach(spy => spy.mockRestore())
+      const after = await row(id)
+      expect([after.status, after.voidClaimKey]).toEqual([FiscalDocumentStatus.ACCEPTED, null])
+      expect((await row(foreign.id)).status).toBe(FiscalDocumentStatus.ACCEPTED)
+    })
+
+    it('makes a voided credit note again from the sibling store, naming the sale that is live', async () => {
+      await useIssuer(SIMULATOR_PROVIDER_ID)
+      const documentId = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      const saleDoc = await row(documentId)
+      const { returnId, noteId } = await returnWithNote(saleDoc.orderId)
+      const returned = { id: returnId }
+      const note = { id: noteId }
+      await documents.submit(ctx.orgA.id, note.id)
+      expect((await row(note.id)).status).toBe(FiscalDocumentStatus.ACCEPTED)
+      const voided = await fromA2(both)
+        .post(ApiRoutes.fiscal.documents.void(note.id))
+        .send({ reason: 'redo' })
+      expect(voided.status).toBe(OK)
+      expect((await row(note.id)).status).toBe(FiscalDocumentStatus.VOIDED)
+
+      const again = await fromA2(both).post(ApiRoutes.fiscal.documents.replace(note.id))
+      expect(again.status).toBe(OK)
+      const created = await row((again.body as { data: { id: string } }).data.id)
+      expect(created.id).not.toBe(note.id)
+      expect(created.kind).toBe(FiscalDocumentKind.CREDIT_NOTE)
+      expect(created.status).toBe(FiscalDocumentStatus.QUEUED)
+      expect(created.returnId).toBe(returned.id)
+      expect(created.parentDocumentId).toBe(documentId)
+      expect(created.storeId).toBe(ctx.storeA.id)
+      expect((await row(note.id)).status).toBe(FiscalDocumentStatus.VOIDED)
+      const live = await owner.fiscalDocument.count({
+        where: {
+          returnId: returned.id,
+          kind: FiscalDocumentKind.CREDIT_NOTE,
+          status: { not: FiscalDocumentStatus.VOIDED }
+        }
+      })
+      expect(live).toBe(1)
+
+      // A voided note of another return, for the people who must not reach it: nothing is made
+      const second = await returnWithNote(saleDoc.orderId)
+      await documents.submit(ctx.orgA.id, second.noteId)
+      expect(
+        (
+          await fromA2(both)
+            .post(ApiRoutes.fiscal.documents.void(second.noteId))
+            .send({ reason: 'redo' })
+        ).status
+      ).toBe(OK)
+      const notes = () =>
+        owner.fiscalDocument.count({
+          where: { returnId: second.returnId, kind: FiscalDocumentKind.CREDIT_NOTE }
+        })
+      const before = await notes()
+      const replace = (client: Client) =>
+        client.post(ApiRoutes.fiscal.documents.replace(second.noteId))
+      const codeOf = async (client: Client) => {
+        const answer = await replace(client)
+        return [answer.status, (errorOf(answer) as { code: string }).code]
+      }
+      expect(await codeOf(fromA2(onlyA2))).toEqual([NOT_FOUND, ErrorCodes.RESOURCE_NOT_FOUND])
+      expect(await codeOf(api(app, ctx.adminB, ctx.storeB))).toEqual([
+        NOT_FOUND,
+        ErrorCodes.RESOURCE_NOT_FOUND
+      ])
+      expect(await codeOf(fromA2(agentInA2))).toEqual([FORBIDDEN, ErrorCodes.PERMISSION_DENIED])
+      expect(await notes()).toBe(before)
     })
 
     it('takes no claim and asks nobody when the reach is lost between the first unit and the claim', async () => {
