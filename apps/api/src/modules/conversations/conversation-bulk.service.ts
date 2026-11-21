@@ -245,7 +245,7 @@ export class ConversationBulkService {
   }
 
   // "Select all matching" + Export CSV: one file for the filter, as `GET /conversations/export` makes it.
-  // The worker reads the conversations when it runs, with the viewer's permissions frozen in the row, so
+  // The worker reads the conversations when it runs, with the viewer's permissions frozen in the row as a ceiling (the worker cuts them to what the member holds when it writes), so
   // nothing is resolved to ids here and no cap applies; the count only tells the member what to expect.
   private async exportFilter(
     storeId: string,
