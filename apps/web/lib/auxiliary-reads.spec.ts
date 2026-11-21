@@ -55,27 +55,8 @@ describe('the reads a screen makes beside its own', () => {
     expect(isAwaiting({ isPending: false, fetchStatus: 'fetching' })).toBe(false)
   })
 
-  // There is no renderer in the web tests, so the hooks are held by their text: the query of each one is enabled by `mayRead` itself
-  // (a mention of it in a comment does not match), and no screen waits on `isPending` of one of them
-  it('the four directory hooks of the inbox enable their query with the permission', () => {
-    const hooks = source('inbox/use-inbox-data.ts')
-    for (const name of [
-      'useConversationCounts',
-      'useMemberDirectory',
-      'useChannelDirectory',
-      'useTags'
-    ]) {
-      const start = hooks.indexOf(`export function ${name}(`)
-      expect(start).toBeGreaterThan(-1)
-      const rest = hooks.slice(start + 1)
-      const next = rest.search(/\nexport (?:async )?function /)
-      const body = next === -1 ? rest : rest.slice(0, next)
-      expect(`${name}: ${body}`).toMatch(
-        /\n\s+enabled: mayRead\(can, AuxiliaryReads\.INBOX_DIRECTORY\),/
-      )
-    }
-  })
-
+  // The four directory hooks of the inbox run for real in `inbox/use-inbox-data.spec.ts` (renderHook): they make no request without
+  // the permission. The screens below stay held by their text: none waits on `isPending` of one of those reads
   it.each([
     ['components/inbox/composer.tsx', 'members'],
     ['components/inbox/bulk-pick-dialog.tsx', 'members'],
