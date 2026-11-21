@@ -1,7 +1,12 @@
 import type { Redis } from 'ioredis'
 
 import { type Permission, Permissions, RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
-import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
+import {
+  type ErrorCode,
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException
+} from '@platform/core/errors'
 import {
   type ClientUploadPurpose,
   FILE_SIGNATURE_WINDOW_BYTES,
@@ -146,13 +151,14 @@ export async function countWithinQuota(
   redis: Redis,
   key: string,
   limit: number,
-  bucket: number
+  bucket: number,
+  code: ErrorCode = ErrorCodes.RATE_LIMIT_EXCEEDED
 ): Promise<void> {
   const used = Number(await redis.eval(COUNT_SCRIPT, 1, key, QUOTA_TTL_SECONDS))
   if (used > limit) {
     const msLeft = Math.max((bucket + 1) * QUOTA_WINDOW_MS - Date.now(), 1000)
     throw new PlatformException(
-      ErrorCodes.RATE_LIMIT_EXCEEDED,
+      code,
       'Too many upload urls requested',
       HttpStatusCodes.TOO_MANY_REQUESTS,
       { [RETRY_AFTER_METADATA_KEY]: Math.ceil(msLeft / 1000) }

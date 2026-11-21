@@ -4,7 +4,11 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { type Permission, Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { OrderCancellationReasons, SettingsLimits } from '@platform/core/domain'
+import {
+  BUSINESS_HOURS_TIMEZONE_METADATA_KEY,
+  OrderCancellationReasons,
+  SettingsLimits
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { defaultCancellationReasons } from '@platform/core/store-preferences'
 
@@ -377,9 +381,12 @@ describe('The settings of the inbox of a store', () => {
 
   describe('business hours', () => {
     it('answers 404 for a store that never set them, and returns what was put', async () => {
+      const empty = await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.businessHours)
+      expect(empty.status).toBe(NOT_FOUND)
+      // Whoever cannot read the inbox behavior still learns the zone the store starts in
       expect(
-        (await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.businessHours)).status
-      ).toBe(NOT_FOUND)
+        typeof (empty.body as ErrorBody).error.metadata?.[BUSINESS_HOURS_TIMEZONE_METADATA_KEY]
+      ).toBe('string')
 
       const put = await api(app, ctx.adminA2, ctx.storeA2)
         .put(ApiRoutes.settings.businessHours)

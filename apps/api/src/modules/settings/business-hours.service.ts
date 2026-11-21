@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditService } from '@platform/core/audit-module'
 import { lockStoreForWrite, lockStoreScope, PrismaService } from '@platform/core/database'
-import { weekScheduleSchema } from '@platform/core/domain'
+import { BUSINESS_HOURS_TIMEZONE_METADATA_KEY, weekScheduleSchema } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 
 import type { Actor } from '../tenancy'
@@ -42,7 +42,16 @@ export class BusinessHoursService {
       where: { storeId },
       select: HOURS_SELECT
     })
-    if (row === null) throw resourceNotFound('business hours')
+    if (row === null) {
+      const store = await this.prisma.client.store.findUnique({
+        where: { id: storeId },
+        select: { timezone: true }
+      })
+      throw resourceNotFound(
+        'business hours',
+        store === null ? undefined : { [BUSINESS_HOURS_TIMEZONE_METADATA_KEY]: store.timezone }
+      )
+    }
     return view(row)
   }
 

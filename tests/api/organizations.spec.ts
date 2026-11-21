@@ -263,6 +263,8 @@ describe('Organizations and stores', () => {
       ['a name with no letter or digit', { name: '¡¿?!' }],
       ['a timezone that does not exist', { name: 'ok', timezone: 'Mars/Olympus' }],
       ['a currency that is not a code', { name: 'ok', currency: 'dollars' }],
+      ['a currency that is not one (ZZZ)', { name: 'ok', currency: 'ZZZ' }],
+      ['a currency already replaced (HRK)', { name: 'ok', currency: 'HRK' }],
       ['a locale that is not supported', { name: 'ok', defaultLocale: 'xx' }],
       ['an organization in the body', { name: 'ok', organizationId: randomUUID() }]
     ])('refuses %s', async (_label, body) => {

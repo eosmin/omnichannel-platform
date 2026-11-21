@@ -6,13 +6,17 @@ import { PlatformException } from './platform-exception'
 // to the logs; the client reads the code. Writing `new PlatformException(ErrorCodes.RESOURCE_...)` by
 // hand elsewhere is refused by eslint; these are the exceptions.
 
-// `what` names the resource ("customer").
-export function resourceNotFound(what: string): PlatformException {
+// `what` names the resource ("customer"). `metadata` tells the client what it may use instead.
+export function resourceNotFound(
+  what: string,
+  metadata?: Record<string, unknown>
+): PlatformException {
   return new PlatformException(
     // eslint-disable-next-line no-restricted-syntax -- the one place that builds this answer
     ErrorCodes.RESOURCE_NOT_FOUND,
     `${what} not found`,
-    HttpStatusCodes.NOT_FOUND
+    HttpStatusCodes.NOT_FOUND,
+    metadata
   )
 }
 

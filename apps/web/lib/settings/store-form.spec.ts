@@ -26,6 +26,10 @@ describe('store form', () => {
     expect(storeFormProblems({ ...BASE, currency: 'usd' }).currency).toBe(
       StoreFormErrors.CURRENCY_INVALID
     )
+    // Three capital letters are not enough: ZZZ is no currency
+    expect(storeFormProblems({ ...BASE, currency: 'ZZZ' }).currency).toBe(
+      StoreFormErrors.CURRENCY_INVALID
+    )
     expect(storeFormProblems({ ...BASE, defaultLocale: 'fr' }).defaultLocale).toBe(
       StoreFormErrors.LOCALE_INVALID
     )
