@@ -76,7 +76,7 @@ function asksProvider(): FiscalDocumentProvider {
 // invalidation), so a test can say that a request asked again after a failure reached the authority ONCE.
 const received: string[] = []
 function remembersProvider(): FiscalDocumentProvider {
-  const base = simulatorProvider()
+  const base: FiscalDocumentProvider = simulatorProvider()
   const known = new Set<string>()
   return Object.create(base, {
     id: { value: REMEMBERS_PROVIDER_ID, enumerable: true },
