@@ -17,7 +17,7 @@ import {
 } from '@platform/core/domain'
 import { NotificationSeverity, NotificationTypes } from '@platform/core/notifications'
 
-import { createCarrierConnection, createShipment } from '../builders'
+import { createCarrierConnection, createMember, createShipment } from '../builders'
 import { createChannelConnection } from '../builders/conversation'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 
@@ -41,7 +41,10 @@ describe('row-level security, phase 5: what the other lists of the worker return
       data: { name: `${prefix}-org`, slug: `${prefix}-org` }
     })
     for (const side of ['a', 'b']) {
-      stores.push((await ensureStore(owner, org.id, `${prefix}-store-${side}`)).id)
+      const store = await ensureStore(owner, org.id, `${prefix}-store-${side}`)
+      stores.push(store.id)
+      // An order (and so a shipment) is written by a member of its store
+      await createMember(owner, { storeId: store.id, prefix })
     }
   })
 
