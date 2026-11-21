@@ -6,6 +6,7 @@ import { officialRedactedKeys } from '@platform/plugins/runtime'
 
 import { AnalyticsModule } from './modules/analytics/analytics.module'
 import { ApiKeysModule } from './modules/api-keys'
+import { AuditLogModule } from './modules/audit-log'
 import { AuthModule } from './modules/auth/auth.module'
 import { CacheInvalidationModule } from './modules/cache'
 import { CarrierGuidesModule } from './modules/carrier-guides/carrier-guides.module'
@@ -65,6 +66,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     ConversationsModule,
     MessagesModule,
     MediaModule,
+    AuditLogModule,
     ExportsModule,
     NotificationsModule,
     ChannelRegistryModule,

@@ -46,6 +46,7 @@ export { lockMessageRow, publishMessageChanged } from './changes/message-changed
 export * from './changes/inbound-message-changes.service'
 export * from './inbound/inbound-message-targets'
 export * from './exports/customer-search'
+export * from './exports/audit-log-where'
 export * from './exports/export-filters'
 export * from './exports/media-gallery'
 export * from './exports/conversations-export-scope'

@@ -928,7 +928,8 @@
         "body": "Your export could not be made. Try asking for it again.",
         "reason": {
           "EXPORT_TOO_LARGE": "The export is too large. Narrow the filters or the dates and ask for it again.",
-          "EXPORT_EMPTY": "There was nothing to export with those filters."
+          "EXPORT_EMPTY": "There was nothing to export with those filters.",
+          "PERMISSION_DENIED": "The export was cancelled: you no longer have permission to export this. Ask an administrator."
         }
       }
     },

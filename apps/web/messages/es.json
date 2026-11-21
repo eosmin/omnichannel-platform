@@ -928,7 +928,8 @@
         "body": "No se pudo generar tu exportación. Intenta pedirla de nuevo.",
         "reason": {
           "EXPORT_TOO_LARGE": "La exportación es demasiado grande. Acota los filtros o las fechas y pídela de nuevo.",
-          "EXPORT_EMPTY": "No había nada que exportar con esos filtros."
+          "EXPORT_EMPTY": "No había nada que exportar con esos filtros.",
+          "PERMISSION_DENIED": "Se canceló la exportación: ya no tienes permiso para exportar esto. Consulta a un administrador."
         }
       }
     },

@@ -19,6 +19,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'organizations.stores': { step: '3.6' },
   'organizations.storeById': { step: '3.6' },
   'organizations.auditLog': { step: '7.2' },
+  'organizations.auditLogExport': { step: '7.2' },
+  'organizations.auditLogEntry': { step: '7.2' },
   'invitations.byToken': { step: '3.1' },
   'invitations.accept': { step: '3.1' },
   'conversations.list': { step: '3.2' },

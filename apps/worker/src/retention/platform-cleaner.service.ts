@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { DataRetentionPolicies, PlatformCleanup } from '@platform/core/compliance'
+import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
+import {
+  DataRetentionPolicies,
+  PlatformCleanup,
+  RetentionResourceTypes
+} from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { DAY_MS, InvitationStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
@@ -9,6 +15,7 @@ import { errorName } from '@platform/core/errors'
 import { inEachStoreStrict } from '../schedulers/store-sweep'
 
 import { type BatchOutcome, categoryRunner, inBatches, PartialRunError } from './retention-batches'
+import { runAuditMetadata, runHasNews } from './run-audit'
 
 // rls-context: sessions, verification_tokens and invitations are global tables (invitations is skipped by the RLS migrations); every other table runs inside JobContext.forStore of its store
 
@@ -37,7 +44,8 @@ export class PlatformCleaner {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jobContext: JobContext,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly audit: AuditService
   ) {
     this.logger.setContext(PlatformCleaner.name)
   }
@@ -138,6 +146,17 @@ export class PlatformCleaner {
     )
 
     this.logger.info(report, 'the platform cleanup finished')
+    // One entry for the run. It runs over every store, so it has no store (and no organization): the viewer of one store never reads
+    // it, by design; it is there for the operator and the cold export
+    const metadata = runAuditMetadata(report, report.more, failed)
+    if (runHasNews(metadata)) {
+      this.audit.log({
+        action: AuditAction.PLATFORM_CLEANUP_RUN,
+        actor: { system: true },
+        resourceType: RetentionResourceTypes.PLATFORM,
+        metadata
+      })
+    }
     if (report.more.length > 0) {
       this.logger.warn({ more: report.more }, 'a full batch was deleted; more waits')
     }
