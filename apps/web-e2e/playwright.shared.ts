@@ -2,7 +2,7 @@ import type { PlaywrightTestConfig } from '@playwright/test'
 
 import { LOCALE_COOKIE } from '@platform/api-client'
 import { API_PREFIX, ApiRoutes, InfraRoutes } from '@platform/core/api'
-import { E2eMagicLinkLimit } from '@platform/core/auth'
+import { E2eMagicLinkLimit, E2eUserRateLimit } from '@platform/core/auth'
 import { Locales } from '@platform/core/i18n'
 
 import {
@@ -51,7 +51,12 @@ export function webServers(options: {
         DATABASE_URL: databaseUrls.app,
         TRUST_PROXY_HOPS: '1',
         META_GRAPH_ORIGIN: GRAPH_URL,
-        ...(raised ? { E2E_MAGIC_LINK_LIMIT: String(E2eMagicLinkLimit.suite) } : {}),
+        ...(raised
+          ? {
+              E2E_MAGIC_LINK_LIMIT: String(E2eMagicLinkLimit.suite),
+              E2E_USER_RATE_LIMIT: String(E2eUserRateLimit.suite)
+            }
+          : {}),
         // A third-party channel plugin the repository does not know (`acme_chat`), registered only under
         // NODE_ENV=test: toy-plugin.spec.ts checks that the web draws it from its descriptor alone
         E2E_TOY_PLUGIN: '1',

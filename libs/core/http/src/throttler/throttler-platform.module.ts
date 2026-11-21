@@ -6,6 +6,7 @@ import type { Redis } from 'ioredis'
 import { ThrottlerNames, ThrottleProfiles } from '@platform/core/auth'
 import { REDIS_CLIENT, RedisThrottlerStorage } from '@platform/core/redis'
 
+import { AuthenticatedUserRateLimitGuard } from './authenticated-user-rate-limit.guard'
 import { ResilientThrottlerGuard } from './resilient-throttler.guard'
 import { USER_RATE_LIMIT_STORAGE, UserRateLimitGuard } from './user-rate-limit.guard'
 
@@ -39,8 +40,10 @@ import { USER_RATE_LIMIT_STORAGE, UserRateLimitGuard } from './user-rate-limit.g
       inject: [REDIS_CLIENT],
       useFactory: (redis: Redis) => new RedisThrottlerStorage(redis)
     },
-    UserRateLimitGuard
+    UserRateLimitGuard,
+    // Not an APP_GUARD here: it needs the user, so TenancyModule registers it after the guards of the token and the permission
+    AuthenticatedUserRateLimitGuard
   ],
-  exports: [USER_RATE_LIMIT_STORAGE, UserRateLimitGuard]
+  exports: [USER_RATE_LIMIT_STORAGE, UserRateLimitGuard, AuthenticatedUserRateLimitGuard]
 })
 export class ThrottlerPlatformModule {}

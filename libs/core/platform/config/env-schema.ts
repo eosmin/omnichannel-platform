@@ -2,7 +2,7 @@ import { isIP } from 'node:net'
 
 import { z } from 'zod'
 
-import { E2eMagicLinkLimit } from '@platform/core/auth'
+import { E2eMagicLinkLimit, E2eUserRateLimit } from '@platform/core/auth'
 import {
   emptyAsUnset,
   isDeployedEnvironment,
@@ -195,6 +195,13 @@ export const envSchema = z
       z.coerce.number().int().min(E2eMagicLinkLimit.min).max(E2eMagicLinkLimit.max).optional()
     ),
 
+    // The general budget of a person (AuthenticatedUserRateLimit), raised for the browser suite alone, like the magic link above: a
+    // number between the real limit and a bound, never "no limit", refused outside NODE_ENV=test (checked below).
+    E2E_USER_RATE_LIMIT: z.preprocess(
+      value => (value === '' ? undefined : value),
+      z.coerce.number().int().min(E2eUserRateLimit.min).max(E2eUserRateLimit.max).optional()
+    ),
+
     // A channel plugin of the suites answers on this machine over http, which a `commandsUrl` is never allowed to do (TDD_10 §6.7). Off
     // by default, and any environment but NODE_ENV=test refuses it (checked below). Only the word `true` turns it on.
     PLUGIN_ALLOW_LOCAL_COMMANDS_URL: z
@@ -231,6 +238,16 @@ export const envSchema = z
           'E2E_MAGIC_LINK_LIMIT is for NODE_ENV=test only: any other environment keeps the real limit',
         path: ['E2E_MAGIC_LINK_LIMIT'],
         input: env.E2E_MAGIC_LINK_LIMIT
+      })
+    }
+    if (env.NODE_ENV !== 'test' && env.E2E_USER_RATE_LIMIT !== undefined) {
+      // A looser budget would let one token be used without bound
+      ctx.issues.push({
+        code: 'custom',
+        message:
+          'E2E_USER_RATE_LIMIT is for NODE_ENV=test only: any other environment keeps the real limit',
+        path: ['E2E_USER_RATE_LIMIT'],
+        input: env.E2E_USER_RATE_LIMIT
       })
     }
     if (env.NODE_ENV !== 'test' && env.PLUGIN_ALLOW_LOCAL_COMMANDS_URL) {
