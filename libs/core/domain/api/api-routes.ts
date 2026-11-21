@@ -26,7 +26,8 @@ export const ApiRoutes = {
     stores: '/organizations/current/stores',
     storeById: (id: string) => `/organizations/current/stores/${id}`,
     auditLog: '/organizations/current/audit-log',
-    auditLogExport: '/organizations/current/audit-log/export'
+    auditLogExport: '/organizations/current/audit-log/export',
+    auditLogEntry: (id: string) => `/organizations/current/audit-log/${id}`
   },
 
   // Public. Accepting creates the account (when there is none), the membership and the session.

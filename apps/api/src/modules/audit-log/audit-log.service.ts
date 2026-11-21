@@ -3,7 +3,8 @@ import { Injectable } from '@nestjs/common'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
-import { type CursorPage } from '@platform/core/domain'
+import { AuditLogResourceTypes, type CursorPage } from '@platform/core/domain'
+import { resourceNotFound } from '@platform/core/errors'
 import { type AuditLogFilters, auditLogWhere } from '@platform/core/messaging'
 import { ExportFormats, ExportTypes } from '@platform/core/queues'
 
@@ -49,16 +50,19 @@ export class AuditLogService {
     const hasMore = rows.length > limit
     const page = hasMore ? rows.slice(0, limit) : rows
     const last = page.at(-1)
-    // Reading the log is itself audited (TDD_05 §9.3). The filters are ids, names of actions and instants: no text of a person.
-    this.audit.log({
-      action: AuditAction.AUDIT_LOG_VIEWED,
-      actor: auditActorOf(actor),
-      storeId,
-      resourceType: 'audit_log',
-      metadata: { filters, page: cursor === undefined ? 'first' : 'next' },
-      ipAddress: actor.ipAddress,
-      userAgent: actor.userAgent
-    })
+    // Reading the log is itself audited (TDD_05 §9.3): the first page of a reading, not every page of it, so that scrolling does not
+    // fill the log with the reads of the log. The filters are ids, names of actions and instants: no text of a person.
+    if (cursor === undefined) {
+      this.audit.log({
+        action: AuditAction.AUDIT_LOG_VIEWED,
+        actor: auditActorOf(actor),
+        storeId,
+        resourceType: AuditLogResourceTypes.AUDIT_LOG,
+        metadata: { filters },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent
+      })
+    }
     return {
       data: page.map(row => auditLogEntryView(row)),
       nextCursor:
@@ -69,14 +73,35 @@ export class AuditLogService {
     }
   }
 
+  // One entry of the store. An entry of another store, one with no store and one that does not exist are the same 404.
+  async get(storeId: string, actor: Actor, id: string): Promise<AuditLogEntryView> {
+    const row = await this.prisma.client.auditLog.findFirst({
+      where: { id, storeId },
+      select: AUDIT_LOG_COLUMNS
+    })
+    if (row === null) throw resourceNotFound('audit log entry')
+    this.audit.log({
+      action: AuditAction.AUDIT_LOG_VIEWED,
+      actor: auditActorOf(actor),
+      storeId,
+      resourceType: AuditLogResourceTypes.AUDIT_LOG,
+      resourceId: id,
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return auditLogEntryView(row)
+  }
+
   // The file is made in the background by the worker, which writes `audit_log.exported` when it is ready
   requestExport(storeId: string, userId: string, query: ExportAuditLogQuery): Promise<ExportView> {
+    // The file holds the log as it was when it was asked for: with no end, the end is now, or the rows written while the job
+    // waits in the queue (the reads of the log among them) would be in it
     return this.exports.request({
       storeId,
       userId,
       type: ExportTypes.AUDIT_LOG,
       format: ExportFormats.CSV,
-      filters: { ...query }
+      filters: { ...query, before: query.before ?? new Date().toISOString() }
     })
   }
 }

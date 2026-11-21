@@ -3112,6 +3112,7 @@ const resources: IsolationResource[] = [
         select: { id: true }
       })
     },
+    readPath: ApiRoutes.organizations.auditLogEntry,
     listPath: ApiRoutes.organizations.auditLog,
     untouched: async (owner, id) =>
       (await owner.auditLog.findUnique({ where: { id }, select: { id: true } })) !== null

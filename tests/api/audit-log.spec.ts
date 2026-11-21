@@ -1,9 +1,12 @@
+import { randomUUID } from 'node:crypto'
+
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
+import { AuditLogResourceTypes } from '@platform/core/domain'
 import { ExportStatus, ExportTypes } from '@platform/core/queues'
 
 import { createRole } from '../builders'
@@ -17,6 +20,7 @@ const OK = 200
 const ACCEPTED = 202
 const FORBIDDEN = 403
 const BAD_REQUEST = 400
+const NOT_FOUND = 404
 
 interface EntryBody {
   id: string
@@ -252,6 +256,29 @@ describe('Audit log viewer', () => {
     ).toBe(BAD_REQUEST)
   })
 
+  it('reads one entry of the store by id, and answers a 404 for any other: another store, no store, unknown', async () => {
+    const mine = await entry({
+      storeId: ctx.storeA.id,
+      userId: ctx.adminA.id,
+      metadata: { count: 3 }
+    })
+    const foreign = await entry({ storeId: ctx.storeB.id, userId: ctx.adminB.id })
+    const unowned = await entry({ storeId: null, userId: ctx.adminA.id })
+    const read = (id: string) => asAdmin().get(ApiRoutes.organizations.auditLogEntry(id))
+
+    const found = await read(mine.id)
+    expect(found.status).toBe(OK)
+    expect(found.body).toMatchObject({ id: mine.id, action, metadata: { count: 3 } })
+    expect((await read(foreign.id)).status).toBe(NOT_FOUND)
+    expect((await read(unowned.id)).status).toBe(NOT_FOUND)
+    expect((await read(randomUUID())).status).toBe(NOT_FOUND)
+    expect((await read('not-a-uuid')).status).toBe(BAD_REQUEST)
+    expect(
+      (await api(app, ctx.agentA, ctx.storeA).get(ApiRoutes.organizations.auditLogEntry(mine.id)))
+        .status
+    ).toBe(FORBIDDEN)
+  })
+
   it('audits that it was read, with the filters and no text of a person', async () => {
     const seen = `${prefix}.audited-read`
     await list(`action=${seen}`)
@@ -262,8 +289,8 @@ describe('Audit log viewer', () => {
       userId: ctx.adminA.id,
       metadata: { path: ['filters', 'action'], equals: seen }
     })
-    expect(viewed?.metadata).toEqual({ filters: { action: seen }, page: 'first' })
-    expect(viewed?.resourceType).toBe('audit_log')
+    expect(viewed?.metadata).toEqual({ filters: { action: seen } })
+    expect(viewed?.resourceType).toBe(AuditLogResourceTypes.AUDIT_LOG)
   })
 
   it('asks for the same permission to export, and answers with the export of the center', async () => {
@@ -282,7 +309,10 @@ describe('Audit log viewer', () => {
     expect(row.storeId).toBe(ctx.storeA.id)
     expect(row.requestedBy).toBe(ctx.adminA.id)
     // The store is not in the filters: the file is the one of the row
-    expect(row.filters).toEqual({ action, from: '2026-01-01T00:00:00.000Z' })
+    // With no end of its own the range ends when it was asked for, so the file never grows while the job waits
+    expect(row.filters).toMatchObject({ action, from: '2026-01-01T00:00:00.000Z' })
+    const before = (row.filters as { before?: string }).before ?? ''
+    expect(Math.abs(Date.now() - new Date(before).getTime())).toBeLessThan(60_000)
     expect(
       (await asAdmin().get(`${ApiRoutes.organizations.auditLogExport}?storeId=${ctx.storeB.id}`))
         .status
