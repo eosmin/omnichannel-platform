@@ -1131,7 +1131,7 @@ bucket needs versioning, and gets the same rules):
 
 ```bash
 aws s3api put-bucket-lifecycle-configuration --bucket platform-production \
-  --lifecycle-configuration '{"Rules":[{"ID":"expire-noncurrent","Status":"Enabled","Filter":{},"NoncurrentVersionExpiration":{"NoncurrentDays":30},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}]}'
+  --lifecycle-configuration '{"Rules":[{"ID":"expire-noncurrent","Status":"Enabled","Filter":{},"Expiration":{"ExpiredObjectDeleteMarker":true},"NoncurrentVersionExpiration":{"NoncurrentDays":30},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}]}'
 ```
 
 The sweep that re-encodes the pictures stored before the metadata cleaning (`ExistingPictureSanitizer`) replaces the
