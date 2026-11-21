@@ -3197,6 +3197,19 @@
         "requested": "Acceso que pide",
         "events": "Eventos que sigue",
         "newCode": "Obtener un código nuevo",
+        "rotateKey": "Crear una clave de acceso nueva",
+        "apiKey": {
+          "title": "Clave de acceso nueva para {name}",
+          "description": "Cópiala ahora: solo se muestra una vez. La clave anterior dejó de funcionar en el momento en que se creó esta.",
+          "label": "Clave de acceso",
+          "how": "Entrégasela al plugin como su token Bearer. Mientras el plugin no la use, todas sus llamadas son rechazadas."
+        },
+        "rotateKeyConfirm": {
+          "title": "¿Crear una clave de acceso nueva para {name}?",
+          "body": "La clave actual deja de funcionar de inmediato, sin tiempo de gracia: {name} no podrá entrar a tu tienda hasta que se le dé la clave nueva. La clave nueva se muestra una sola vez.",
+          "cancel": "Cancelar",
+          "confirm": "Crear clave nueva"
+        },
         "rotateSecret": "Crear un secreto de comandos nuevo",
         "commandSecret": {
           "title": "Secreto de comandos nuevo de {name}",

@@ -9,11 +9,22 @@ import type { PluginSetupOfferView } from '../../lib/settings/plugins-requests'
 import {
   usePluginDetail,
   useReissueSetupCode,
-  useRotateCommandSecret
+  useRotateCommandSecret,
+  useRotatePluginApiKey
 } from '../../lib/settings/use-plugins'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '../ui/alert-dialog'
 import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
 
@@ -43,8 +54,12 @@ export function PluginDetailDialog({
   const detail = usePluginDetail(storeId, pluginId)
   const reissue = useReissueSetupCode(storeId)
   const rotate = useRotateCommandSecret(storeId)
+  const rotateKey = useRotatePluginApiKey(storeId)
   const [offer, setOffer] = useState<PluginSetupOfferView | null>(null)
   const [commandSecret, setCommandSecret] = useState<string | null>(null)
+  // The new key lives only here, until the dialog that shows it is closed; the mutation keeps nothing (gcTime 0, reset on close)
+  const [apiKey, setApiKey] = useState<string | null>(null)
+  const [confirmingKey, setConfirmingKey] = useState(false)
   const [consenting, setConsenting] = useState(false)
 
   const day = (iso: string): string =>
@@ -60,6 +75,23 @@ export function PluginDetailDialog({
           reissue.reset()
         }}
       />
+    )
+  }
+  if (apiKey !== null) {
+    return (
+      <SecretOnceDialog
+        title={t('apiKey.title', { name })}
+        description={t('apiKey.description')}
+        label={t('apiKey.label')}
+        secret={apiKey}
+        testId="plugin-api-key"
+        onClose={() => {
+          setApiKey(null)
+          rotateKey.reset()
+        }}
+      >
+        <p className="text-muted-foreground text-sm">{t('apiKey.how')}</p>
+      </SecretOnceDialog>
     )
   }
   if (commandSecret !== null) {
@@ -88,12 +120,20 @@ export function PluginDetailDialog({
     data !== undefined && isLive && installation !== null
       ? data.requestedScopes.filter(scope => !installation.scopes.includes(scope))
       : []
+  // The key of an installation that is up and has one of its own: the official plugins have none (the api answers 404 to the rest)
+  const canRotateKey =
+    installation !== null &&
+    installation.status === String(PluginInstallationStatus.ACTIVE) &&
+    installation.apiKeyPrefix !== null &&
+    data !== undefined &&
+    !data.isOfficial
   const isRemoteChannel =
     data !== undefined && data.type === String(PluginCatalogTypes.CHANNEL) && !data.isOfficial
 
   return (
     <>
-      <Dialog open onOpenChange={open => (open ? undefined : onClose())}>
+      {/* Not while the key is being made: the one answer that carries it would reach no one, and the old key is already dead */}
+      <Dialog open onOpenChange={open => (open || rotateKey.isPending ? undefined : onClose())}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{name}</DialogTitle>
@@ -221,10 +261,46 @@ export function PluginDetailDialog({
                   {t('rotateSecret')}
                 </Button>
               ) : null}
+              {canManage && installation !== null && canRotateKey ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={rotateKey.isPending}
+                  busy={rotateKey.isPending}
+                  onClick={() => setConfirmingKey(true)}
+                >
+                  {t('rotateKey')}
+                </Button>
+              ) : null}
             </div>
           )}
         </DialogContent>
       </Dialog>
+      {installation === null ? null : (
+        <AlertDialog open={confirmingKey} onOpenChange={setConfirmingKey}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('rotateKeyConfirm.title', { name })}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t('rotateKeyConfirm.body', { name })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t('rotateKeyConfirm.cancel')}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() =>
+                  rotateKey.mutate(installation.id, {
+                    onSuccess: result => setApiKey(result.apiKey),
+                    onError: error => toast.error(errorText(error))
+                  })
+                }
+              >
+                {t('rotateKeyConfirm.confirm')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
       {consenting ? (
         <PluginInstallDialog pluginId={pluginId} name={name} onClose={() => setConsenting(false)} />
       ) : null}

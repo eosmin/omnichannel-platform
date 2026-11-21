@@ -3197,6 +3197,19 @@
         "requested": "Access it asks for",
         "events": "Events it follows",
         "newCode": "Get a new setup code",
+        "rotateKey": "Make a new access key",
+        "apiKey": {
+          "title": "New access key for {name}",
+          "description": "Copy it now: it is shown only once. The previous key stopped working the moment this one was made.",
+          "label": "Access key",
+          "how": "Give it to the plugin as its Bearer token. Until the plugin uses it, every call it makes is refused."
+        },
+        "rotateKeyConfirm": {
+          "title": "Make a new access key for {name}?",
+          "body": "The current key stops working at once, with no grace time: {name} cannot reach your store until it is given the new key. The new key is shown one time only.",
+          "cancel": "Cancel",
+          "confirm": "Make a new key"
+        },
         "rotateSecret": "Make a new command secret",
         "commandSecret": {
           "title": "New command secret for {name}",
