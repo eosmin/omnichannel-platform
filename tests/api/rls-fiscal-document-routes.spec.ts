@@ -15,6 +15,7 @@ import {
   FiscalRejectionReasons,
   FiscalSweepKind,
   FiscalSweepLimits,
+  FiscalVoidConsultState,
   FiscalVoidKind,
   OrderStatus
 } from '@platform/core/domain'
@@ -93,7 +94,10 @@ function remembersProvider(): FiscalDocumentProvider {
       enumerable: true,
       value: (...args: Parameters<NonNullable<FiscalDocumentProvider['consultVoid']>>) =>
         known.has(args[1].idempotencyKey)
-          ? Promise.resolve({ voided: true, response: { voided: true, recovered: true } })
+          ? Promise.resolve({
+              state: FiscalVoidConsultState.VOIDED,
+              response: { voided: true, recovered: true }
+            })
           : base.consultVoid?.(...args)
     }
   }) as FiscalDocumentProvider
@@ -180,6 +184,14 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
     await app.close()
     await guarded.onModuleDestroy()
     await owner.$disconnect()
+  })
+
+  // A failed assertion must not leave a spy or a count for the cases that follow
+  beforeEach(() => {
+    received.length = 0
+  })
+  afterEach(() => {
+    jest.restoreAllMocks()
   })
 
   const asAdminA = () => api(app, ctx.adminA, ctx.storeA)
@@ -446,7 +458,7 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
       expect(received).toHaveLength(1)
     })
 
-    it('refuses a replacement of another document or of none, and asks nobody', async () => {
+    it('refuses a replacement that is not the one made for the document, or none, and asks nobody', async () => {
       await useIssuer(SIMULATOR_PROVIDER_ID)
       const id = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
       const other = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
