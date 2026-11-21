@@ -26,7 +26,9 @@ export type CustomersExportFilters = z.output<typeof customersExportFiltersSchem
 
 // The permissions that decide what a viewer of conversations sees (conversations.support.ts). The
 // export is written later by the worker, with nobody asking, so the requester is frozen in the row:
-// the permissions are those of the request, the assignment of each conversation is read when the file is made (a known limit, written in the plan).
+// the permissions are those of the request, the assignment of each conversation is read when the file is made, on purpose:
+// the file then holds what the requester sees at that moment and never more (tests/api/exports.spec.ts).
+// The permissions are not re-read when the file is made: see the security debts of Step 7.3.
 const VIEW_PERMISSIONS: readonly Permission[] = [
   Permissions.CONVERSATIONS_VIEW,
   Permissions.CONVERSATIONS_VIEW_ALL,
