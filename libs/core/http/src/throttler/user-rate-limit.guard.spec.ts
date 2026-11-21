@@ -35,8 +35,14 @@ const record = (isBlocked: boolean, wait = 0) => ({
 
 function build(increment: jest.Mock) {
   const inc = jest.fn()
-  const guard = new UserRateLimitGuard(new Reflector(), { increment }, { inc } as never)
-  return { guard, inc }
+  const observe = jest.fn()
+  const guard = new UserRateLimitGuard(
+    new Reflector(),
+    { increment },
+    { inc } as never,
+    { observe } as never
+  )
+  return { guard, inc, observe }
 }
 
 describe('UserRateLimitGuard', () => {
