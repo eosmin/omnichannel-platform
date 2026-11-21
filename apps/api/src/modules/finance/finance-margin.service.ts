@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { JobContext, PrismaService } from '@platform/core/database'
+import { PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   FinanceReport,
@@ -36,6 +36,7 @@ import {
 import type { Actor } from '../tenancy'
 
 import type { MarginCsvRow } from './finance-margin.csv'
+import { FinanceReportGate } from './finance-report-gate.service'
 import type { FlowQuery } from './finance-reports.schemas'
 import { centsAsNumber } from './finance.support'
 
@@ -94,24 +95,18 @@ export class FinanceMarginService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly jobContext: JobContext
+    private readonly gate: FinanceReportGate
   ) {}
 
   // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
-  // (a request holds the store of the header alone with RLS on, and the report would change with the header)
+  // (a request holds the store of the header alone with RLS on, and the report would change with the header). It holds one place of the cap
+  // of reads of the organization and runs as short units, one for each page of entries (debt (c) of F6-3): no unit holds the whole range
   async margin(organizationId: string, query: FlowQuery): Promise<MarginView> {
-    return this.jobContext.inOrganization(
-      organizationId,
-      () => this.readMargin(organizationId, query),
-      {
-        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
-      }
-    )
+    return this.gate.read(organizationId, () => this.readMargin(organizationId, query))
   }
 
   private async readMargin(organizationId: string, query: FlowQuery): Promise<MarginView> {
-    await this.requireStore(organizationId, query.storeId)
-    const db = this.prisma.client
+    await this.gate.unit(organizationId, () => this.requireStore(organizationId, query.storeId))
     const rows = new Map<string, MarginRow>()
     let orderRevenue = 0
     let orderCost = 0
@@ -120,99 +115,105 @@ export class FinanceMarginService {
     let unvaluedUnits = 0
     let after = 0n
     for (;;) {
-      const entries = await db.journalEntry.findMany({
-        where: {
-          organizationId,
-          type: JournalEntryType.SALE,
-          sourceType: FinanceSourceType.ORDER,
-          sourceId: { not: null },
-          // The sale key ends so; the exact key is checked below
-          idempotencyKey: { endsWith: FinanceSaleKeyParts.SUFFIX },
-          entryDate: { gte: new Date(query.from), lte: new Date(query.to) },
-          number: { gt: after }
-        },
-        select: { number: true, sourceId: true, idempotencyKey: true },
-        orderBy: { number: 'asc' },
-        take: FinanceReportLimits.MARGIN_PAGE_SIZE
-      })
-      if (entries.length === 0) break
-      // Only the entry of the sale itself (`order:<id>:sale`): the advance payment of an order (E1) is also a SALE entry of source ORDER
-      // and would count the order twice or in the month of the payment (HC-005); the books read the sale the same way
-      const ids = [
-        ...new Set(
-          entries.flatMap(entry =>
-            entry.sourceId === null ||
-            entry.idempotencyKey !== FinancePostingKey.ORDER_SALE(entry.sourceId)
-              ? []
-              : [entry.sourceId]
+      const page = await this.gate.unit(organizationId, async () => {
+        const entries = await this.prisma.client.journalEntry.findMany({
+          where: {
+            organizationId,
+            type: JournalEntryType.SALE,
+            sourceType: FinanceSourceType.ORDER,
+            sourceId: { not: null },
+            // The sale key ends so; the exact key is checked below
+            idempotencyKey: { endsWith: FinanceSaleKeyParts.SUFFIX },
+            entryDate: { gte: new Date(query.from), lte: new Date(query.to) },
+            number: { gt: after }
+          },
+          select: { number: true, sourceId: true, idempotencyKey: true },
+          orderBy: { number: 'asc' },
+          take: FinanceReportLimits.MARGIN_PAGE_SIZE
+        })
+        if (entries.length === 0) return null
+        // Only the entry of the sale itself (`order:<id>:sale`): the advance payment of an order (E1) is also a SALE entry of source ORDER
+        // and would count the order twice or in the month of the payment (HC-005); the books read the sale the same way
+        const ids = [
+          ...new Set(
+            entries.flatMap(entry =>
+              entry.sourceId === null ||
+              entry.idempotencyKey !== FinancePostingKey.ORDER_SALE(entry.sourceId)
+                ? []
+                : [entry.sourceId]
+            )
           )
-        )
-      ]
-      const everyOrder = await db.order.findMany({
-        // The organization is the store's: an order of another organization is never read, whatever the entry says
-        where: { id: { in: ids }, store: { organizationId } },
-        select: {
-          id: true,
-          storeId: true,
-          subtotalCents: true,
-          shippingCents: true,
-          discountCents: true,
-          totalCents: true,
-          taxCents: true,
-          pricesIncludeTax: true,
-          items: {
-            select: { productId: true, quantity: true, unitPriceCents: true, taxCents: true }
+        ]
+        const everyOrder = await this.prisma.client.order.findMany({
+          // The organization is the store's: an order of another organization is never read, whatever the entry says
+          where: { id: { in: ids }, store: { organizationId } },
+          select: {
+            id: true,
+            storeId: true,
+            subtotalCents: true,
+            shippingCents: true,
+            discountCents: true,
+            totalCents: true,
+            taxCents: true,
+            pricesIncludeTax: true,
+            items: {
+              select: { productId: true, quantity: true, unitPriceCents: true, taxCents: true }
+            }
           }
+        })
+        // An order of another store than the one asked is left out on purpose; one that is not found at all is counted
+        const orders =
+          query.storeId === undefined
+            ? everyOrder
+            : everyOrder.filter(order => order.storeId === query.storeId)
+        const movements = await this.prisma.client.inventoryMovement.findMany({
+          where: {
+            type: InventoryMovementType.ISSUE,
+            referenceType: InventoryReferenceType.ORDER,
+            referenceId: { in: orders.map(order => order.id) },
+            storeId: { in: [...new Set(orders.map(order => order.storeId))] }
+          },
+          select: {
+            storeId: true,
+            referenceId: true,
+            productId: true,
+            quantity: true,
+            unitCostCents: true,
+            valueCents: true
+          }
+        })
+        const movementsOf = new Map<string, MarginMovement[]>()
+        for (const movement of movements) {
+          const key = `${movement.storeId}:${movement.referenceId}`
+          movementsOf.set(key, [...(movementsOf.get(key) ?? []), movement])
         }
+        // An entry whose order cannot be found at all is counted, never skipped in silence
+        const found = new Set(everyOrder.map(order => order.id))
+        ordersNotReadable += ids.filter(id => !found.has(id)).length
+        for (const order of orders) {
+          const draft: MarginOrder = { ...order, lines: order.items }
+          const result = marginOfOrder(draft, movementsOf.get(`${order.storeId}:${order.id}`) ?? [])
+          if (!result.ok) {
+            ordersNotReadable += 1
+            continue
+          }
+          ordersUsed += 1
+          addMarginRows(rows, result.rows)
+          orderRevenue += result.revenueCents
+          orderCost += result.costCents
+          unvaluedUnits += result.unvaluedUnits
+        }
+        return { last: entries.at(-1)?.number ?? after, size: entries.length }
       })
-      // An order of another store than the one asked is left out on purpose; one that is not found at all is counted
-      const orders =
-        query.storeId === undefined
-          ? everyOrder
-          : everyOrder.filter(order => order.storeId === query.storeId)
-      const movements = await db.inventoryMovement.findMany({
-        where: {
-          type: InventoryMovementType.ISSUE,
-          referenceType: InventoryReferenceType.ORDER,
-          referenceId: { in: orders.map(order => order.id) },
-          storeId: { in: [...new Set(orders.map(order => order.storeId))] }
-        },
-        select: {
-          storeId: true,
-          referenceId: true,
-          productId: true,
-          quantity: true,
-          unitCostCents: true,
-          valueCents: true
-        }
-      })
-      const movementsOf = new Map<string, MarginMovement[]>()
-      for (const movement of movements) {
-        const key = `${movement.storeId}:${movement.referenceId}`
-        movementsOf.set(key, [...(movementsOf.get(key) ?? []), movement])
-      }
-      // An entry whose order cannot be found at all is counted, never skipped in silence
-      const found = new Set(everyOrder.map(order => order.id))
-      ordersNotReadable += ids.filter(id => !found.has(id)).length
-      for (const order of orders) {
-        const draft: MarginOrder = { ...order, lines: order.items }
-        const result = marginOfOrder(draft, movementsOf.get(`${order.storeId}:${order.id}`) ?? [])
-        if (!result.ok) {
-          ordersNotReadable += 1
-          continue
-        }
-        ordersUsed += 1
-        addMarginRows(rows, result.rows)
-        orderRevenue += result.revenueCents
-        orderCost += result.costCents
-        unvaluedUnits += result.unvaluedUnits
-      }
-      after = entries.at(-1)?.number ?? after
-      if (entries.length < FinanceReportLimits.MARGIN_PAGE_SIZE) break
+      if (page === null) break
+      after = page.last
+      if (page.size < FinanceReportLimits.MARGIN_PAGE_SIZE) break
     }
 
-    const ledger = await this.ledgerFigures(organizationId, query)
-    const names = await this.namesOf(organizationId, [...rows.values()])
+    const { ledger, names } = await this.gate.unit(organizationId, async () => ({
+      ledger: await this.ledgerFigures(organizationId, query),
+      names: await this.namesOf(organizationId, [...rows.values()])
+    }))
     const views = [...rows.values()]
       .map(row => ({
         storeId: row.storeId,
@@ -262,19 +263,14 @@ export class FinanceMarginService {
     }
   }
 
-  // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
-  // (a request holds the store of the header alone with RLS on, and the report would change with the header)
+  // The same read as the report, as the rows of a file: the same place of the cap (the report joins it) and the same short units
   async marginCsvRows(
     organizationId: string,
     query: FlowQuery,
     actor: Actor
   ): Promise<MarginCsvRow[]> {
-    return this.jobContext.inOrganization(
-      organizationId,
-      () => this.readMarginCsvRows(organizationId, query, actor),
-      {
-        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
-      }
+    return this.gate.read(organizationId, () =>
+      this.readMarginCsvRows(organizationId, query, actor)
     )
   }
 
