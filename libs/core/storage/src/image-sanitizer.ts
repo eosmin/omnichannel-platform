@@ -55,6 +55,10 @@ function isAnimatedPng(input: Buffer): boolean {
 // Errors of the machine, not of the picture: a retry may well work, so they must not end in a refusal
 const ENVIRONMENT_ERROR = /memory|ENOMEM|resource|thread|too many open|EMFILE|cannot allocate/i
 
+// Whether an error is of the machine and not of the picture (see ENVIRONMENT_ERROR): a retry may work, so it must never end as a refusal
+export const isEnvironmentError = (error: unknown): boolean =>
+  error instanceof Error && ENVIRONMENT_ERROR.test(error.message)
+
 function encode(input: Buffer, format: 'jpeg' | 'png' | 'webp', quality: number): Promise<Buffer> {
   // A photo with a small flaw in its tail is still a photo; only a file that cannot be decoded fails.
   // The orientation is applied to the pixels and the colour profile stays; the rest is dropped.
@@ -166,7 +170,7 @@ async function sanitizeWithinSlot(
     return { kind: 'sanitized', body }
   } catch (error) {
     if (error instanceof ImageNotSanitizable) throw error
-    if (error instanceof Error && ENVIRONMENT_ERROR.test(error.message)) throw error
+    if (isEnvironmentError(error)) throw error
     throw new ImageNotSanitizable(error)
   }
 }

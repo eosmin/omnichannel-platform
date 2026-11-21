@@ -130,6 +130,12 @@ export const ExistingPictureSweep = {
   // none); a picture the sweep looked at and could not or need not rewrite carries `sanitizeSweep: <outcome>` so it is not taken again
   CLEANED_KEY: 'sanitized',
   OUTCOME_KEY: 'sanitizeSweep',
+  // A picture that fails (the bucket, the machine) is tried again on the next runs, `scanResult.sweepAttempts` counting, and after MAX_ATTEMPTS
+  // it ends as `failed` so that one bad row cannot hold the batch of its store for ever. Clearing its `scan_result` makes the sweep take it again.
+  ATTEMPTS_KEY: 'sweepAttempts',
+  MAX_ATTEMPTS: 3,
+  // A run stops taking pictures after this long, under the lock of its schedule, so two runs never overlap
+  MAX_RUN_MS: 420_000,
   Outcomes: {
     // The file held no metadata (a crash between the write and the mark, or a picture that was already clean): only the mark is written
     ALREADY_CLEAN: 'already_clean',
@@ -137,6 +143,10 @@ export const ExistingPictureSweep = {
     UNTOUCHED: 'untouched',
     // The picture no longer decodes. It was served as clean, so it is never deleted by the sweep: left as it is and logged
     UNDECODABLE: 'undecodable',
+    // It decodes but cannot be cleaned (it does not fit the file limit once re-encoded, a size it may not have): left as it is, with its metadata, and logged
+    NOT_CLEANABLE: 'not_cleanable',
+    // It failed MAX_ATTEMPTS times: left as it is and logged at error level
+    FAILED: 'failed',
     // The row names a file that is not in the bucket: logged, left for the cleanup of stray rows
     MISSING: 'missing'
   }
