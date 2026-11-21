@@ -1359,13 +1359,20 @@ export class NotificationsEventsListener {
       const expected =
         type === NotificationTypes.EXPORT_READY ? ExportStatus.READY : ExportStatus.FAILED
       if (row === null || row.status !== expected) return
+      // An export the worker cancelled because the requester lost the permission of its kind (`PERMISSION_DENIED`) is the one
+      // notice that must reach someone whose role no longer holds that permission: it is the only place the person learns why the
+      // file never came, so it asks for an active membership of the store and nothing more (ids and the kind, no data).
+      const lostThePermission =
+        type === NotificationTypes.EXPORT_FAILED && row.error === ErrorCodes.PERMISSION_DENIED
       const member = await this.prisma.client.membership.count({
         where: {
           userId: requestedBy,
           storeId,
           status: MembershipStatus.ACTIVE,
           revokedAt: null,
-          AND: needed.map(name => ({ role: { permissions: { some: { name } } } }))
+          ...(lostThePermission
+            ? {}
+            : { AND: needed.map(name => ({ role: { permissions: { some: { name } } } })) })
         }
       })
       if (member === 0) return

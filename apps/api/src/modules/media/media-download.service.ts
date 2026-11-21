@@ -70,7 +70,7 @@ export class MediaDownloadService {
         customerId: body.customerId,
         ...(body.type === undefined ? {} : { type: body.type }),
         ...(body.q === undefined ? {} : { q: body.q }),
-        // The file holds what the requester could see now: their permissions are frozen in the row
+        // The file holds what the requester could see now: their permissions are frozen in the row as a ceiling, and the worker cuts them to what they hold when it writes
         viewer: { userId, held: viewPermissionsOf(held) }
       }
     })
