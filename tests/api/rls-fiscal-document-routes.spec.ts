@@ -18,7 +18,9 @@ import {
   FiscalVoidConsultState,
   FiscalVoidKind,
   OrderReturnStatus,
-  OrderStatus
+  OrderReturnType,
+  OrderStatus,
+  ShippingPayer
 } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
 import { QueueNames } from '@platform/core/queues'
@@ -262,6 +264,42 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
     return document.id
   }
   const row = (id: string) => owner.fiscalDocument.findUniqueOrThrow({ where: { id } })
+
+  // A received return of one unit of the order, and the credit note its event made
+  async function returnWithNote(orderId: string) {
+    const returned = await owner.orderReturn.create({
+      data: {
+        storeId: ctx.storeA.id,
+        orderId,
+        type: OrderReturnType.REFUND,
+        reason: 'DEFECTIVE',
+        status: OrderReturnStatus.RECEIVED,
+        shippingPayer: ShippingPayer.SENDER,
+        createdBy: ctx.adminA.id,
+        receivedAt: new Date()
+      },
+      select: { id: true }
+    })
+    const item = await owner.orderItem.findFirstOrThrow({
+      where: { orderId },
+      select: { id: true }
+    })
+    await owner.orderReturnLine.create({
+      data: { storeId: ctx.storeA.id, returnId: returned.id, orderItemId: item.id, quantity: 1 }
+    })
+    await emitter.emitAsync(Events.RETURN_RECEIVED, {
+      storeId: ctx.storeA.id,
+      orderId,
+      orderNumber: 'N',
+      actor: { type: 'system', id: null },
+      returnId: returned.id
+    })
+    const note = await owner.fiscalDocument.findFirstOrThrow({
+      where: { returnId: returned.id, kind: FiscalDocumentKind.CREDIT_NOTE },
+      select: { id: true }
+    })
+    return { returnId: returned.id, noteId: note.id }
+  }
 
   describe('a person who manages the documents in A and in A2, with the header of A2', () => {
     it('fixes the receiver of a document of A', async () => {
@@ -512,44 +550,18 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
       asked.forEach(spy => spy.mockRestore())
       const after = await row(id)
       expect([after.status, after.voidClaimKey]).toEqual([FiscalDocumentStatus.ACCEPTED, null])
+      expect((await row(foreign.id)).status).toBe(FiscalDocumentStatus.ACCEPTED)
     })
 
-    it('makes a voided credit note again from the sibling store, against the live sale', async () => {
+    it('makes a voided credit note again from the sibling store, naming the sale that is live', async () => {
       await useIssuer(SIMULATOR_PROVIDER_ID)
       const documentId = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
       const saleDoc = await row(documentId)
-      const orderId = saleDoc.orderId
-      const returned = await owner.orderReturn.create({
-        data: {
-          storeId: ctx.storeA.id,
-          orderId,
-          type: 'refund',
-          reason: 'DEFECTIVE',
-          status: OrderReturnStatus.RECEIVED,
-          shippingPayer: 'sender',
-          createdBy: ctx.adminA.id,
-          receivedAt: new Date()
-        },
-        select: { id: true }
-      })
-      const item = await owner.orderItem.findFirstOrThrow({
-        where: { orderId },
-        select: { id: true }
-      })
-      await owner.orderReturnLine.create({
-        data: { storeId: ctx.storeA.id, returnId: returned.id, orderItemId: item.id, quantity: 1 }
-      })
-      await emitter.emitAsync(Events.RETURN_RECEIVED, {
-        storeId: ctx.storeA.id,
-        orderId,
-        orderNumber: 'N',
-        actor: { type: 'system', id: null },
-        returnId: returned.id
-      })
-      const note = await owner.fiscalDocument.findFirstOrThrow({
-        where: { returnId: returned.id, kind: FiscalDocumentKind.CREDIT_NOTE }
-      })
+      const { returnId, noteId } = await returnWithNote(saleDoc.orderId)
+      const returned = { id: returnId }
+      const note = { id: noteId }
       await documents.submit(ctx.orgA.id, note.id)
+      expect((await row(note.id)).status).toBe(FiscalDocumentStatus.ACCEPTED)
       const voided = await fromA2(both)
         .post(ApiRoutes.fiscal.documents.void(note.id))
         .send({ reason: 'redo' })
@@ -559,10 +571,43 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
       const again = await fromA2(both).post(ApiRoutes.fiscal.documents.replace(note.id))
       expect(again.status).toBe(OK)
       const created = await row((again.body as { data: { id: string } }).data.id)
+      expect(created.id).not.toBe(note.id)
       expect(created.kind).toBe(FiscalDocumentKind.CREDIT_NOTE)
+      expect(created.status).toBe(FiscalDocumentStatus.QUEUED)
       expect(created.returnId).toBe(returned.id)
       expect(created.parentDocumentId).toBe(documentId)
       expect(created.storeId).toBe(ctx.storeA.id)
+      expect((await row(note.id)).status).toBe(FiscalDocumentStatus.VOIDED)
+      const live = await owner.fiscalDocument.count({
+        where: {
+          returnId: returned.id,
+          kind: FiscalDocumentKind.CREDIT_NOTE,
+          status: { not: FiscalDocumentStatus.VOIDED }
+        }
+      })
+      expect(live).toBe(1)
+
+      // A voided note of another return, for the people who must not reach it: nothing is made
+      const second = await returnWithNote(saleDoc.orderId)
+      await documents.submit(ctx.orgA.id, second.noteId)
+      expect(
+        (
+          await fromA2(both)
+            .post(ApiRoutes.fiscal.documents.void(second.noteId))
+            .send({ reason: 'redo' })
+        ).status
+      ).toBe(OK)
+      const notes = () =>
+        owner.fiscalDocument.count({
+          where: { returnId: second.returnId, kind: FiscalDocumentKind.CREDIT_NOTE }
+        })
+      const before = await notes()
+      const replace = (client: Client) =>
+        client.post(ApiRoutes.fiscal.documents.replace(second.noteId))
+      expect((await replace(fromA2(onlyA2))).status).toBe(NOT_FOUND)
+      expect((await replace(api(app, ctx.adminB, ctx.storeB))).status).toBe(NOT_FOUND)
+      expect((await replace(fromA2(agentInA2))).status).toBe(FORBIDDEN)
+      expect(await notes()).toBe(before)
     })
 
     it('takes no claim and asks nobody when the reach is lost between the first unit and the claim', async () => {
