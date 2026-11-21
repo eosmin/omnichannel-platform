@@ -69,6 +69,8 @@ test.describe('the erasure of a customer', () => {
     await expect(profile.getByRole('button', { name: en.customers.edit.editProfile })).toHaveCount(
       0
     )
+    // Nor the box of notes: the api refuses a note of an erased customer
+    await expect(profile.getByLabel(en.customers.edit.note.label, { exact: true })).toHaveCount(0)
   })
 
   test('the conversation of an erased customer is read only, with its own text', async () => {

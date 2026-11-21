@@ -13,6 +13,7 @@ import { canUnmerge } from '../../lib/customers/merge-form'
 import { groupByDay } from '../../lib/customers/timeline-days'
 import {
   useCustomerEdits,
+  useCustomer,
   useCustomerMerges,
   useCustomerTimeline
 } from '../../lib/customers/use-customer-data'
@@ -204,7 +205,11 @@ function MergeEntry({
   const { storeId, can } = useStore()
   const { unmerge } = useCustomerMerges(storeId, customerId)
   const [isAsking, setAsking] = useState(false)
-  const mayUndo = can(ClientPermissions.CUSTOMERS_MERGE) && canUnmerge(entry, new Date())
+  // The api refuses to undo a merge of an erased customer (409): the button is not drawn. The drawer already holds the profile.
+  const { data: customer } = useCustomer(storeId, customerId)
+  const isErased = customer !== undefined && customer.erasedAt !== null
+  const mayUndo =
+    !isErased && can(ClientPermissions.CUSTOMERS_MERGE) && canUnmerge(entry, new Date())
   const until = new Date(entry.unmergeUntil)
   return (
     <div className="flex flex-col gap-1">
