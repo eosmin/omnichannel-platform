@@ -30,6 +30,11 @@ describe('store form', () => {
     expect(storeFormProblems({ ...BASE, currency: 'ZZZ' }).currency).toBe(
       StoreFormErrors.CURRENCY_INVALID
     )
+    // A currency the store already holds is not asked again, a changed one is
+    expect(storeFormProblems({ ...BASE, currency: 'HRK' }, 'HRK').currency).toBeUndefined()
+    expect(storeFormProblems({ ...BASE, currency: 'HRK' }, 'USD').currency).toBe(
+      StoreFormErrors.CURRENCY_INVALID
+    )
     expect(storeFormProblems({ ...BASE, defaultLocale: 'fr' }).defaultLocale).toBe(
       StoreFormErrors.LOCALE_INVALID
     )

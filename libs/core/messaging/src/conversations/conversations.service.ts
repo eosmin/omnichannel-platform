@@ -675,7 +675,8 @@ export class ConversationsService {
   }
 
   // Taking a conversation, giving it to someone and releasing it. Two agents who take the same one
-  // together take turns on the lock of the row: the second finds it assigned and is told to whom.
+  // together take turns on the lock of the row: the second finds it assigned, and is told to whom only if
+  // it may see the conversation (the 409 never gives a colleague's id to who cannot open the thread).
   // Only who may assign (CONVERSATIONS_ASSIGN) takes it from someone else or hands it over.
   async assign(
     storeId: string,
@@ -697,7 +698,7 @@ export class ConversationsService {
       // and then unassigns): the two never wait for each other in opposite orders
       if (checksAssignee) await this.requireAssignee(tx, storeId, userId)
       // Locked without the viewer: whoever loses a race for a conversation must be told that it is
-      // taken (and by whom), not that it does not exist
+      // taken, not that it does not exist
       const current = await lockConversationForWrite(tx, storeId, conversationId)
       const visible = canSee(viewer, current)
       // The one thing that is answered about a conversation the caller does not see is that it is

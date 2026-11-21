@@ -2,14 +2,13 @@
 // its own list because the one of the runtime (`Intl.supportedValuesOf('currency')`) also holds obsolete
 // codes and any three letters passed as a code (`ZZZ`), and because the api and the page must agree on
 // what is valid. Not in the list on purpose: precious metals (XAU, XAG...), fund and test codes (XTS, XXX),
-// and codes already replaced (BGN by EUR on 2026-01-01, HRK, VEF, CUC, SLL, ZWL...). When ISO publishes an
+// and codes already replaced (BGN by EUR on 2026-01-01, ANG by XCG in 2025, HRK, VEF, CUC, SLL, ZWL...). When ISO publishes an
 // amendment, change this list and nothing else.
 export const SUPPORTED_CURRENCIES = [
   'AED',
   'AFN',
   'ALL',
   'AMD',
-  'ANG',
   'AOA',
   'ARS',
   'AUD',
@@ -153,6 +152,7 @@ export const SUPPORTED_CURRENCIES = [
   'WST',
   'XAF',
   'XCD',
+  'XCG',
   'XOF',
   'XPF',
   'YER',

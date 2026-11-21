@@ -1019,7 +1019,7 @@ describe('The conversations of a store', () => {
         // The audit log tells it as a reopening too, not as the Ctrl+Z of the toast
         const logged = await waitForAuditEntries(
           owner,
-          { resourceId: id, action: { startsWith: 'conversation.re' } },
+          { resourceId: id, action: AuditAction.CONVERSATION_REOPENED },
           1
         )
         expect(logged.map(entry => entry.action)).toEqual([AuditAction.CONVERSATION_REOPENED])

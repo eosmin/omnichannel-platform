@@ -25,13 +25,20 @@ export type StoreFormProblems = Partial<Record<keyof StoreFormValues, StoreFormE
 
 // What the form says is checked here as the api will check it, so that the person reads the problem
 // before the request. The api still decides.
-export function storeFormProblems(values: StoreFormValues): StoreFormProblems {
+// A currency the store already holds is not asked again (it may be a code replaced since: the person
+// renames the store without choosing a currency); the api only reads the currency when it changes.
+export function storeFormProblems(
+  values: StoreFormValues,
+  initialCurrency?: string
+): StoreFormProblems {
   const problems: StoreFormProblems = {}
   const name = values.name.trim()
   if (name.length === 0) problems.name = StoreFormErrors.NAME_REQUIRED
   else if (name.length > OrganizationLimits.NAME_MAX_LENGTH)
     problems.name = StoreFormErrors.NAME_TOO_LONG
-  if (!isSupportedCurrency(values.currency)) problems.currency = StoreFormErrors.CURRENCY_INVALID
+  if (values.currency !== initialCurrency && !isSupportedCurrency(values.currency)) {
+    problems.currency = StoreFormErrors.CURRENCY_INVALID
+  }
   if (!SUPPORTED_LOCALES.some(locale => locale === values.defaultLocale)) {
     problems.defaultLocale = StoreFormErrors.LOCALE_INVALID
   }

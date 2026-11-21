@@ -43,8 +43,8 @@ export class ConversationStatusChangeService {
           from === ConversationStatus.RESOLVED &&
           to === ConversationStatus.OPEN
         if (!resolved && !undone) return
-        // An Undo that the thread did not take back (late, or not the resolver's) is a reopening: the
-        // audit log says so, as the thread does with its own line
+        // An Undo that the thread did not take back (late, or not the resolver's) is logged as a reopening,
+        // as the thread writes its own line. Only this path logs it: a plain status change to open does not.
         const action = resolved
           ? AuditAction.CONVERSATION_RESOLVED
           : retracted

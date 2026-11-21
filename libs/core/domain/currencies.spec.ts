@@ -2,14 +2,27 @@ import { isSupportedCurrency, SUPPORTED_CURRENCIES } from './currencies'
 
 describe('supported currencies', () => {
   it('accepts the currencies the stores use', () => {
-    for (const code of ['USD', 'EUR', 'MXN', 'GTQ', 'JPY', 'ZWG']) {
+    for (const code of ['USD', 'EUR', 'MXN', 'GTQ', 'JPY', 'ZWG', 'XCG']) {
       expect(isSupportedCurrency(code)).toBe(true)
     }
   })
 
   it('refuses three letters that are not a current currency', () => {
     // ZZZ is no currency at all; the others are test, metal or replaced codes
-    for (const code of ['ZZZ', 'XXX', 'XTS', 'XAU', 'HRK', 'VEF', 'BGN', 'usd', 'US', 'USDD', '']) {
+    for (const code of [
+      'ZZZ',
+      'XXX',
+      'XTS',
+      'XAU',
+      'HRK',
+      'VEF',
+      'BGN',
+      'ANG',
+      'usd',
+      'US',
+      'USDD',
+      ''
+    ]) {
       expect(isSupportedCurrency(code)).toBe(false)
     }
   })
