@@ -55,6 +55,10 @@ function isAnimatedPng(input: Buffer): boolean {
 // Errors of the machine, not of the picture: a retry may well work, so they must not end in a refusal
 const ENVIRONMENT_ERROR = /memory|ENOMEM|resource|thread|too many open|EMFILE|cannot allocate/i
 
+// Whether an error is of the machine and not of the picture (see ENVIRONMENT_ERROR): a retry may work, so it must never end as a refusal
+export const isEnvironmentError = (error: unknown): boolean =>
+  error instanceof Error && ENVIRONMENT_ERROR.test(error.message)
+
 function encode(input: Buffer, format: 'jpeg' | 'png' | 'webp', quality: number): Promise<Buffer> {
   // A photo with a small flaw in its tail is still a photo; only a file that cannot be decoded fails.
   // The orientation is applied to the pixels and the colour profile stays; the rest is dropped.
@@ -69,6 +73,40 @@ function encode(input: Buffer, format: 'jpeg' | 'png' | 'webp', quality: number)
   return pipeline.png({ compressionLevel: 9 }).toBuffer()
 }
 
+// Whether a picture carries what the cleaning removes (EXIF, XMP, IPTC, the Photoshop block). It reads the header only. The check of the
+// output of `sanitizeImage` and the check of a stored picture (`ExistingPictureSanitizer`) are this one.
+export async function carriesMetadata(body: Buffer): Promise<boolean> {
+  const header = await sharp(body, {
+    limitInputPixels: ImageSanitizing.MAX_INPUT_PIXELS
+  }).metadata()
+  return (
+    header.exif !== undefined ||
+    header.xmp !== undefined ||
+    header.iptc !== undefined ||
+    header.tifftagPhotoshop !== undefined
+  )
+}
+
+// The decodes in flight in this process, bounded by `ImageSanitizing.MAX_CONCURRENT_DECODES` (a queue of waiters: first come, first
+// served). Whoever calls the cleaner, the heavy queue or a sweep, shares it.
+let decodesInFlight = 0
+const waiting: (() => void)[] = []
+export async function withDecodeSlot<T>(work: () => Promise<T>): Promise<T> {
+  if (decodesInFlight >= ImageSanitizing.MAX_CONCURRENT_DECODES) {
+    await new Promise<void>(resolve => waiting.push(resolve))
+  } else {
+    decodesInFlight += 1
+  }
+  try {
+    return await work()
+  } finally {
+    // The slot passes to the next waiter without being freed, so the count never dips under the bound
+    const next = waiting.shift()
+    if (next === undefined) decodesInFlight -= 1
+    else next()
+  }
+}
+
 // The one place where a picture is cleaned of its metadata, used for what an agent uploads and for
 // what a customer sends alike (both reach the scan of the media pipeline). The type is checked against
 // the bytes before anything is decoded, the pixels are bounded before anything is decoded whole, the
@@ -76,10 +114,18 @@ function encode(input: Buffer, format: 'jpeg' | 'png' | 'webp', quality: number)
 // file limit (the quality goes down a step at a time to make it so) and is checked: one that still holds
 // EXIF, XMP or IPTC is refused. An error of the machine (memory, threads) propagates, so the queue
 // retries; any other is the picture's.
-export async function sanitizeImage(
+export function sanitizeImage(
   input: Buffer,
   contentType: string,
   maxBytes: number = UploadLimits.MAX_FILE_SIZE_BYTES
+): Promise<SanitizedImage> {
+  return withDecodeSlot(() => sanitizeWithinSlot(input, contentType, maxBytes))
+}
+
+async function sanitizeWithinSlot(
+  input: Buffer,
+  contentType: string,
+  maxBytes: number
 ): Promise<SanitizedImage> {
   const expected = FORMAT_OF[contentType]
   if (expected === undefined || !isSanitizedType(contentType)) {
@@ -118,21 +164,13 @@ export async function sanitizeImage(
       throw new ImageNotSanitizable('the cleaned picture does not fit the file limit')
     }
 
-    const result = await sharp(body, {
-      limitInputPixels: ImageSanitizing.MAX_INPUT_PIXELS
-    }).metadata()
-    if (
-      result.exif !== undefined ||
-      result.xmp !== undefined ||
-      result.iptc !== undefined ||
-      result.tifftagPhotoshop !== undefined
-    ) {
+    if (await carriesMetadata(body)) {
       throw new ImageNotSanitizable('the new file still has metadata')
     }
     return { kind: 'sanitized', body }
   } catch (error) {
     if (error instanceof ImageNotSanitizable) throw error
-    if (error instanceof Error && ENVIRONMENT_ERROR.test(error.message)) throw error
+    if (isEnvironmentError(error)) throw error
     throw new ImageNotSanitizable(error)
   }
 }

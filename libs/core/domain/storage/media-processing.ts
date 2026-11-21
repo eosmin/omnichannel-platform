@@ -113,7 +113,43 @@ export const ImageSanitizing = {
   MAX_INPUT_PIXELS: 50_000_000,
   // The types that are re-encoded. A gif or an animated webp or png is left as it came (see the plan,
   // Step 7.1): the encoder would flatten it, and #181 keeps stickers moving.
-  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp']
+  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp'],
+  // The pictures one worker process decodes at the same time, whatever the concurrency of the queues that call the cleaner: a
+  // picture of MAX_INPUT_PIXELS is about 200 MB of raster plus the encoder, so the peak of the cleaning is bounded by this number
+  // and not by the sum of the queues (Step 7.1, "Memory of the picture cleaning")
+  MAX_CONCURRENT_DECODES: 1
+} as const
+
+// The sweep that cleans the pictures stored before the cleaning existed (`ExistingPictureSanitizer`, Step 7.1): every run takes a bounded
+// batch of each store, the oldest first, and the progress is in the rows themselves, so it is safe to repeat and resumes where it stopped.
+export const ExistingPictureSweep = {
+  // Rows taken per store per run, and rows in the whole run (a full run is logged and the next one takes the rest)
+  BATCH_PER_STORE: 25,
+  MAX_PER_RUN: 100,
+  // Media.scanResult is written whole by the sweep, and a row it has not finished holds only its own keys (nothing else writes the `scan_result` of a clean picture): `sanitized: true` is the mark the scan writes on a picture it cleaned (an older row has
+  // none); a picture the sweep looked at and could not or need not rewrite carries `sanitizeSweep: <outcome>` so it is not taken again
+  CLEANED_KEY: 'sanitized',
+  OUTCOME_KEY: 'sanitizeSweep',
+  // A picture that fails (the bucket, the machine) is tried again on the next runs, `scanResult.sweepAttempts` counting, and after MAX_ATTEMPTS
+  // it ends as `failed` so that one bad row cannot hold the batch of its store for ever. Clearing its `scan_result` makes the sweep take it again.
+  ATTEMPTS_KEY: 'sweepAttempts',
+  MAX_ATTEMPTS: 3,
+  // A run stops taking pictures after this long, under the lock of its schedule, so two runs never overlap
+  MAX_RUN_MS: 420_000,
+  Outcomes: {
+    // The file held no metadata (a crash between the write and the mark, or a picture that was already clean): only the mark is written
+    ALREADY_CLEAN: 'already_clean',
+    // A gif or an animation: left as it came (see the plan, Step 7.1)
+    UNTOUCHED: 'untouched',
+    // The picture no longer decodes. It was served as clean, so it is never deleted by the sweep: left as it is and logged
+    UNDECODABLE: 'undecodable',
+    // It decodes but cannot be cleaned (it does not fit the file limit once re-encoded, a size it may not have): left as it is, with its metadata, and logged
+    NOT_CLEANABLE: 'not_cleanable',
+    // It failed MAX_ATTEMPTS times: left as it is and logged at error level
+    FAILED: 'failed',
+    // The row names a file that is not in the bucket: logged, left for the cleanup of stray rows
+    MISSING: 'missing'
+  }
 } as const
 
 // Media.scanResult.reason of a file that was refused before the scan because it cannot be decoded and

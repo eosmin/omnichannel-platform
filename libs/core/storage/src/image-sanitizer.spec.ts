@@ -2,7 +2,13 @@ import sharp from 'sharp'
 
 import { ImageSanitizing } from '@platform/core/storage'
 
-import { ImageNotSanitizable, isSanitizedType, sanitizeImage } from './image-sanitizer'
+import {
+  carriesMetadata,
+  ImageNotSanitizable,
+  isSanitizedType,
+  sanitizeImage,
+  withDecodeSlot
+} from './image-sanitizer'
 
 // A 20x10 picture: red on the left half, blue on the right half
 async function twoColours(): Promise<ReturnType<typeof sharp>> {
@@ -250,5 +256,66 @@ describe('sanitizeImage', () => {
     expect(ImageSanitizing.CONTENT_TYPES.every(isSanitizedType)).toBe(true)
     expect(isSanitizedType('image/gif')).toBe(false)
     expect(isSanitizedType('application/pdf')).toBe(false)
+  })
+})
+
+describe('carriesMetadata', () => {
+  it('sees the EXIF of a phone photo and nothing in a picture made of pixels', async () => {
+    const photo = await (
+      await twoColours()
+    )
+      .withMetadata({ orientation: 6, exif: PHONE_EXIF })
+      .jpeg()
+      .toBuffer()
+    const plain = await (await twoColours()).jpeg().toBuffer()
+
+    await expect(carriesMetadata(photo)).resolves.toBe(true)
+    await expect(carriesMetadata(plain)).resolves.toBe(false)
+  })
+})
+
+describe('the decodes in flight (memory of the cleaning)', () => {
+  const pause = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 5))
+
+  it('never runs more than the bound at once, whoever asks, and runs them all', async () => {
+    let inFlight = 0
+    let peak = 0
+    const work = async (): Promise<number> => {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await pause()
+      inFlight -= 1
+      return 1
+    }
+
+    const results = await Promise.all(Array.from({ length: 8 }, () => withDecodeSlot(work)))
+
+    expect(results).toHaveLength(8)
+    expect(peak).toBe(ImageSanitizing.MAX_CONCURRENT_DECODES)
+  })
+
+  it('frees the slot when the work fails, so the next one is not stuck', async () => {
+    await expect(withDecodeSlot(() => Promise.reject(new Error('out of memory')))).rejects.toThrow(
+      'out of memory'
+    )
+    await expect(withDecodeSlot(() => Promise.resolve('next'))).resolves.toBe('next')
+  })
+
+  it('bounds the real cleaning: pictures cleaned together all come out cleaned', async () => {
+    const photo = await (
+      await twoColours()
+    )
+      .withMetadata({ orientation: 6, exif: PHONE_EXIF })
+      .jpeg()
+      .toBuffer()
+
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () => sanitizeImage(photo, 'image/jpeg'))
+    )
+
+    for (const result of results) {
+      if (result.kind !== 'sanitized') throw new Error('expected a sanitized picture')
+      await expect(carriesMetadata(result.body)).resolves.toBe(false)
+    }
   })
 })
