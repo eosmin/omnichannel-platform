@@ -17,11 +17,13 @@ import {
   FiscalSweepLimits,
   FiscalVoidConsultState,
   FiscalVoidKind,
+  OrderReturnReasons,
   OrderReturnStatus,
   OrderReturnType,
   OrderStatus,
   ShippingPayer
 } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
 import { Events } from '@platform/core/events'
 import { QueueNames } from '@platform/core/queues'
 import {
@@ -272,7 +274,7 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
         storeId: ctx.storeA.id,
         orderId,
         type: OrderReturnType.REFUND,
-        reason: 'DEFECTIVE',
+        reason: OrderReturnReasons.DEFECTIVE,
         status: OrderReturnStatus.RECEIVED,
         shippingPayer: ShippingPayer.SENDER,
         createdBy: ctx.adminA.id,
@@ -514,10 +516,12 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
       expect([after.status, after.voidClaimKey]).toEqual([FiscalDocumentStatus.ACCEPTED, null])
     })
 
-    it('refuses a replacement that belongs to another organization and asks nobody', async () => {
+    it('refuses, at the guard, a replacement that belongs to another organization and asks nobody', async () => {
       await useIssuer(SIMULATOR_PROVIDER_ID)
       const id = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
-      // An accepted sale document of ORGANIZATION B, with the same provider and environment as the one of A
+      // An accepted sale document of ORGANIZATION B. The guard of the route counts the ids of the call (the document and its replacement)
+      // by organization and reach, so it refuses before the lookup of the replacement; the lookup cannot be fed a foreign row that names the
+      // document either: the trigger `check_fiscal_document_scope` refuses a `replaces_document_id` of another organization
       const mine = await row(id)
       const orderB = await createOrder(owner, { storeId: ctx.storeB.id })
       const foreign = await owner.fiscalDocument.create({
@@ -546,6 +550,7 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
         .post(ApiRoutes.fiscal.documents.void(id))
         .send({ reason: 'wrong customer', replacementDocumentId: foreign.id })
       expect(refused.status).toBe(NOT_FOUND)
+      expect((errorOf(refused) as { code: string }).code).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
       expect(asked.map(spy => spy.mock.calls.length)).toEqual([0, 0])
       asked.forEach(spy => spy.mockRestore())
       const after = await row(id)
@@ -604,9 +609,16 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
       const before = await notes()
       const replace = (client: Client) =>
         client.post(ApiRoutes.fiscal.documents.replace(second.noteId))
-      expect((await replace(fromA2(onlyA2))).status).toBe(NOT_FOUND)
-      expect((await replace(api(app, ctx.adminB, ctx.storeB))).status).toBe(NOT_FOUND)
-      expect((await replace(fromA2(agentInA2))).status).toBe(FORBIDDEN)
+      const codeOf = async (client: Client) => {
+        const answer = await replace(client)
+        return [answer.status, (errorOf(answer) as { code: string }).code]
+      }
+      expect(await codeOf(fromA2(onlyA2))).toEqual([NOT_FOUND, ErrorCodes.RESOURCE_NOT_FOUND])
+      expect(await codeOf(api(app, ctx.adminB, ctx.storeB))).toEqual([
+        NOT_FOUND,
+        ErrorCodes.RESOURCE_NOT_FOUND
+      ])
+      expect(await codeOf(fromA2(agentInA2))).toEqual([FORBIDDEN, ErrorCodes.PERMISSION_DENIED])
       expect(await notes()).toBe(before)
     })
 
