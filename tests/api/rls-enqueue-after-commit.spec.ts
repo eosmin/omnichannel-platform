@@ -20,7 +20,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
 
-const OK = 200
+const ACCEPTED = 202
 const SERVER_ERROR = 500
 
 // What the worker would see at the moment a job is added: the row of the export, read from ANOTHER connection (the owner), so only what
@@ -93,13 +93,15 @@ describe('RLS phase 6: a job is queued after the real commit of the request', ()
   it('queues the job of an export only when the row can be read from another connection, and once', async () => {
     const response = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.customers.export)
 
-    expect(response.status).toBe(OK)
+    expect(response.status).toBe(ACCEPTED)
     const { id } = response.body as { id: string }
     expect(probe.seen).toEqual([{ name: JobNames.GENERATE_EXPORT, exportId: id, rowVisible: true }])
   })
 
   it('queues nothing when the request rolls back, and leaves no row', async () => {
     const exports = app.get(ExportsService)
+    const mine = { storeId: ctx.storeA.id, requestedBy: ctx.adminA.id }
+    const before = await owner.export.count({ where: mine })
 
     await expect(
       guarded.tenantTransaction(
@@ -120,9 +122,7 @@ describe('RLS phase 6: a job is queued after the real commit of the request', ()
     ).rejects.toThrow('the request failed')
 
     expect(probe.seen).toEqual([])
-    expect(
-      await owner.export.count({ where: { storeId: ctx.storeA.id, requestedBy: ctx.adminA.id } })
-    ).toBe(0)
+    expect(await owner.export.count({ where: mine })).toBe(before)
   })
 
   it('fails the request when the queue is down, after closing the export as failed', async () => {
