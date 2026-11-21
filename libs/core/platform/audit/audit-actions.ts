@@ -56,6 +56,8 @@ export const AuditAction = {
 
   // Data modification
   CUSTOMER_DELETED: 'customer.deleted',
+  // The personal data of a customer was erased (Step 7.2); the entry carries counts, never the data
+  CUSTOMER_ERASED: 'customer.erased',
   CUSTOMER_MERGED: 'customer.merged',
   CUSTOMER_UNMERGED: 'customer.unmerged',
   CUSTOMER_NOTE_DELETED: 'customer.note_deleted',

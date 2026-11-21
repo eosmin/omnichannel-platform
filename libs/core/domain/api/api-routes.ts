@@ -82,6 +82,7 @@ export const ApiRoutes = {
     media: (id: string) => `/customers/${id}/media`,
     timeline: (id: string) => `/customers/${id}/timeline`,
     caution: (id: string) => `/customers/${id}/caution`, // PUT sets it with a reason, DELETE clears it
+    erasure: (id: string) => `/customers/${id}/erasure`, // POST erases the personal data of the customer (Step 7.2)
     export: '/customers/export'
   },
 

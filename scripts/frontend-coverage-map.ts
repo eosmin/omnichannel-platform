@@ -67,6 +67,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'customers.media': { step: '3.4' },
   'customers.timeline': { step: '3.3' },
   'customers.caution': { step: '4.14' },
+  'customers.erasure': { step: '7.2' },
   'customers.export': { step: '3.4' },
   'orders.list': { step: '4.4' },
   'orders.create': { step: '4.4' },

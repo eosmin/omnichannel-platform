@@ -4,7 +4,7 @@ import {
   type PrismaTransaction
 } from '@platform/core/database'
 import { cleanName } from '@platform/core/domain'
-import { resourceNotFound } from '@platform/core/errors'
+import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 
 // Postgres LIKE treats _ and % as wildcards, and Prisma's `contains` does not escape them: a search
 // for "a_c" would match "abc". The backslash is the escape character of LIKE.
@@ -15,18 +15,25 @@ export function escapeLike(text: string): string {
 // Both of these are the first statements of every write of a customer, in this order: the shared
 // lock on the store (so that deleting the store waits), then the customer row (so that two writes
 // of the same customer, a merge and an edit for example, take turns). A customer that was absorbed
-// by a merge is not found: from then on it is only a snapshot waiting for its 30 days.
+// by a merge is not found: from then on it is only a snapshot waiting for its 30 days. An erased customer is refused (409).
 export async function lockCustomerForWrite(
   tx: PrismaTransaction,
   storeId: string,
-  customerId: string
+  customerId: string,
+  options: { allowErased?: boolean } = {}
 ): Promise<void> {
   await lockStoreForWrite(tx, storeId)
-  const rows = await tx.$queryRaw<{ id: string }[]>`
-    SELECT id FROM customers
+  const rows = await tx.$queryRaw<{ id: string; erased_at: Date | null }[]>`
+    SELECT id, erased_at FROM customers
     WHERE id = ${customerId} AND store_id = ${storeId} AND merged_into_id IS NULL
     FOR UPDATE`
-  if (rows.length === 0) throw resourceNotFound('customer')
+  const row = rows[0]
+  if (row === undefined) throw resourceNotFound('customer')
+  // An erased customer holds no personal data and must not get any back (a name, a note, a flag with a reason, a merge that
+  // copies another one's contact data): every write refuses it, except the erasure itself, which answers again
+  if (row.erased_at !== null && options.allowErased !== true) {
+    throw resourceConflict('the customer was erased', { erased: true })
+  }
 }
 
 // What the services of the module run their reads on: the transaction of the request when there is

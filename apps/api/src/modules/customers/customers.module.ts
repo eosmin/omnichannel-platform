@@ -10,6 +10,7 @@ import { TenancyModule } from '../tenancy'
 
 import { AddressesService } from './addresses.service'
 import { CustomerCautionService } from './customer-caution.service'
+import { CustomerErasureService } from './customer-erasure.service'
 import { CustomerMediaService } from './customer-media.service'
 import { CustomerMergePreviewService } from './customer-merge-preview.service'
 import { CustomerMergeService } from './customer-merge.service'
@@ -37,6 +38,7 @@ import { PluginCustomersController } from './plugin-customers.controller'
     CustomerMergePreviewService,
     CustomerTimelineService,
     CustomerCautionService,
+    CustomerErasureService,
     CustomerMediaService,
     CustomerOrdersService,
     CustomerIdentityService
