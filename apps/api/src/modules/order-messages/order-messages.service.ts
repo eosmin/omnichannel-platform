@@ -254,23 +254,26 @@ export class OrderMessagesService {
     kind: OrderMessageKindType,
     shipmentId?: string
   ): Promise<OrderMessagePreviewResult> {
-    const order = await this.loadOrder(storeId, orderId)
-    // What send would refuse before it renders anything is refused here too, so the preview never promises a message that
-    // would not go
-    const stop = await this.customerStop(storeId, order)
-    if (stop !== null) return { ok: false, reason: stop, missing: [] }
-    const template = await this.templates.resolve(storeId, kind, order.customer.locale)
-    if (template === null) {
-      return { ok: false, reason: OrderMessageNotSentReasons.NO_TEMPLATE, missing: [] }
-    }
-    const { text } = await this.renderFor(storeId, order, template, shipmentId)
-    return text.ok
-      ? { ok: true, text: text.text, locale: localeOf(template.locale) }
-      : {
-          ok: false,
-          reason: text.reason,
-          missing: text.reason === OrderMessageNotSentReasons.MISSING_VARIABLE ? text.missing : []
-        }
+    // One short unit of the store (the route is @NoTenantTransaction): the preview reads only, and asks no provider
+    return this.inStore(storeId, async () => {
+      const order = await this.loadOrder(storeId, orderId)
+      // What send would refuse before it renders anything is refused here too, so the preview never promises a message that
+      // would not go
+      const stop = await this.customerStop(storeId, order)
+      if (stop !== null) return { ok: false, reason: stop, missing: [] }
+      const template = await this.templates.resolve(storeId, kind, order.customer.locale)
+      if (template === null) {
+        return { ok: false, reason: OrderMessageNotSentReasons.NO_TEMPLATE, missing: [] }
+      }
+      const { text } = await this.renderFor(storeId, order, template, shipmentId)
+      return text.ok
+        ? { ok: true, text: text.text, locale: localeOf(template.locale) }
+        : {
+            ok: false,
+            reason: text.reason,
+            missing: text.reason === OrderMessageNotSentReasons.MISSING_VARIABLE ? text.missing : []
+          }
+    })
   }
 
   async send(input: SendOrderMessageInput): Promise<OrderMessageOutcome> {

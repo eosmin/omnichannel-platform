@@ -1,7 +1,1 @@
-[
-  "apps/api/src/modules/order-messages/order-messages.controller.ts#OrderMessagesController.send",
-  "apps/api/src/modules/order-messages/order-templates.controller.ts#OrderTemplatesController.put",
-  "apps/api/src/modules/order-messages/plugin-order-messages.controller.ts#PluginOrderMessagesController.putTemplate",
-  "apps/api/src/modules/order-messages/plugin-order-messages.controller.ts#PluginOrderMessagesController.send",
-  "libs/core/http/src/health/health.controller.ts#HealthController.ready"
-]
+["libs/core/http/src/health/health.controller.ts#HealthController.ready"]

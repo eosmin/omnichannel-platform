@@ -6,6 +6,7 @@ import { AuditAction, type AuditActionType } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import {
   DatabaseNull,
+  JobContext,
   lockStoreForWrite,
   lockStoreScope,
   PrismaService
@@ -98,6 +99,7 @@ function viewOf(row: TemplateRow): OrderTemplateView {
 export class OrderTemplatesService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly audit: AuditService,
     private readonly registry: PluginRegistry,
     private readonly channelTemplates: ChannelTemplatesService
@@ -172,7 +174,9 @@ export class OrderTemplatesService {
       this.assertLinkable(storeId, body.channelTemplate)
       // A link that is already stored is not asked again: editing the text of a template must not fail because the channel
       // has since paused or removed the one it points to (the send judges it)
-      const stored = await this.storedLink(storeId, kind, locale)
+      const stored = await this.jobs.forStoreOrJoin(storeId, () =>
+        this.storedLink(storeId, kind, locale)
+      )
       const same =
         stored?.pluginId === body.channelTemplate.pluginId &&
         stored.name === body.channelTemplate.name &&
@@ -186,39 +190,44 @@ export class OrderTemplatesService {
       // A JSON column is cleared with Prisma's own marker: a plain null is a value it cannot place
       channelTemplate: body.channelTemplate ?? DatabaseNull
     }
-    const { row, created } = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      // The store lock is a shared one: two PUTs of the same address would both find no row and both create it, and the second
-      // would break on the unique index. This one makes the writers of templates take turns.
-      await lockStoreScope(tx, storeId, TEMPLATE_LOCK_SCOPE)
-      const existing = await tx.orderMessageTemplate.findFirst({
-        where: { storeId, kind, locale },
-        select: { id: true }
-      })
-      if (existing === null) {
-        const made = await tx.orderMessageTemplate.create({
-          data: { storeId, kind, locale, ...data },
+    // The rows and the entry of the audit in ONE unit (the route is @NoTenantTransaction): they commit together, and the provider was asked
+    // before it with no context open
+    const { row } = await this.jobs.forStoreOrJoin(storeId, async () => {
+      const written = await this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        // The store lock is a shared one: two PUTs of the same address would both find no row and both create it, and the second
+        // would break on the unique index. This one makes the writers of templates take turns.
+        await lockStoreScope(tx, storeId, TEMPLATE_LOCK_SCOPE)
+        const existing = await tx.orderMessageTemplate.findFirst({
+          where: { storeId, kind, locale },
+          select: { id: true }
+        })
+        if (existing === null) {
+          const made = await tx.orderMessageTemplate.create({
+            data: { storeId, kind, locale, ...data },
+            select: TEMPLATE_SELECT
+          })
+          return { row: made, created: true }
+        }
+        const updated = await tx.orderMessageTemplate.update({
+          where: { id: existing.id },
+          data:
+            options.keepSettings === true
+              ? { body: data.body, channelTemplate: data.channelTemplate }
+              : data,
           select: TEMPLATE_SELECT
         })
-        return { row: made, created: true }
-      }
-      const updated = await tx.orderMessageTemplate.update({
-        where: { id: existing.id },
-        data:
-          options.keepSettings === true
-            ? { body: data.body, channelTemplate: data.channelTemplate }
-            : data,
-        select: TEMPLATE_SELECT
+        return { row: updated, created: false }
       })
-      return { row: updated, created: false }
-    })
-    this.logChange(storeId, actor, AuditAction.ORDER_TEMPLATE_UPDATED, kind, locale, {
-      change: created ? 'created' : 'updated',
-      autoSend: row.autoSend,
-      linked: body.channelTemplate !== null,
-      // What went out to customers is the text: its hash tells that it changed, and its length how much
-      bodySha256: createHash('sha256').update(body.body).digest('hex'),
-      bodyLength: body.body.length
+      this.logChange(storeId, actor, AuditAction.ORDER_TEMPLATE_UPDATED, kind, locale, {
+        change: written.created ? 'created' : 'updated',
+        autoSend: written.row.autoSend,
+        linked: body.channelTemplate !== null,
+        // What went out to customers is the text: its hash tells that it changed, and its length how much
+        bodySha256: createHash('sha256').update(body.body).digest('hex'),
+        bodyLength: body.body.length
+      })
+      return written
     })
     return viewOf(row)
   }
