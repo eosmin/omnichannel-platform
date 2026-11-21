@@ -187,6 +187,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'Channel webhooks received',
     labels: ['channel_type']
   },
+  [MetricNames.WEBHOOK_DISPATCH_LOST]: {
+    kind: 'counter',
+    help: 'Webhook deliveries never queued: no_store counts events, read_failed counts failed reads (webhooks or plugin installations of one event), queue_failed counts jobs',
+    labels: ['reason']
+  },
   [MetricNames.CHANNEL_WEBHOOK_REJECTED]: {
     kind: 'counter',
     help: 'Channel webhooks rejected',

@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { type EventContext, JobContextGoneError } from '@platform/core/database'
-import type { WebhookEvent } from '@platform/core/domain'
+import { type WebhookEvent, WebhookDispatchLossReasons } from '@platform/core/domain'
 import { type DomainEventPayloads, Events } from '@platform/core/events'
 import { PluginScopes } from '@platform/plugins/sdk'
 
@@ -23,6 +23,12 @@ function build(
   options: {
     goneStore?: boolean
     webhookReadFails?: boolean
+    // The first N reads of the webhooks fail with the lock timeout of the database (SQLSTATE 55P03): a pause, not an answer
+    transientWebhookReads?: number
+    queueFails?: boolean
+    // The installations read fails with the lock timeout this many times (a second side, read after the webhooks)
+    transientInstallationReads?: number
+    noWebhooks?: boolean
     installed?: boolean
     hiddenPlugin?: boolean
   } = {}
@@ -32,6 +38,9 @@ function build(
   const queued: { name: string; data: Record<string, unknown> }[][] = []
   const queuedOutside: boolean[] = []
   const errors: unknown[][] = []
+  const lost: { labels: unknown; amount: number | undefined }[] = []
+  let webhookReads = 0
+  let installationReads = 0
   const events = {
     inStore: (storeId: string, work: () => Promise<unknown>) => {
       if (options.goneStore === true) return Promise.reject(new JobContextGoneError('gone'))
@@ -44,14 +53,23 @@ function build(
   const prisma = {
     client: {
       webhook: {
-        findMany: () =>
-          options.webhookReadFails === true
+        findMany: () => {
+          webhookReads += 1
+          if (webhookReads <= (options.transientWebhookReads ?? 0)) {
+            return Promise.reject(Object.assign(new Error('lock timeout'), { code: '55P03' }))
+          }
+          return options.webhookReadFails === true
             ? Promise.reject(new Error('read failed'))
-            : readsFor([{ id: 'webhook-1' }])
+            : readsFor(options.noWebhooks === true ? [] : [{ id: 'webhook-1' }])
+        }
       },
       pluginInstallation: {
-        findMany: () =>
-          readsFor(
+        findMany: () => {
+          installationReads += 1
+          if (installationReads <= (options.transientInstallationReads ?? 0)) {
+            return Promise.reject(Object.assign(new Error('lock timeout'), { code: '55P03' }))
+          }
+          return readsFor(
             options.installed === true
               ? [
                   {
@@ -69,11 +87,13 @@ function build(
                 ]
               : []
           )
+        }
       }
     }
   }
   const queue = {
     addBulk: (jobs: { name: string; data: Record<string, unknown> }[]) => {
+      if (options.queueFails === true) return Promise.reject(new Error('redis down'))
       queuedOutside.push(open.getStore() === undefined)
       queued.push(jobs)
       return Promise.resolve()
@@ -89,9 +109,12 @@ function build(
     prisma as never,
     events as unknown as EventContext,
     queue as never,
-    logger as unknown as PinoLogger
+    logger as unknown as PinoLogger,
+    {
+      inc: (labels: unknown, amount?: number) => lost.push({ labels, amount })
+    } as never
   )
-  return { dispatcher, opened, queued, queuedOutside, errors }
+  return { dispatcher, opened, queued, queuedOutside, errors, lost, reads: () => webhookReads }
 }
 
 describe('WebhookDispatcher under row security', () => {
@@ -162,5 +185,98 @@ describe('WebhookDispatcher under row security', () => {
       1
     )
     expect(errors).toHaveLength(1)
+  })
+
+  const dispatchToEnd = async (run: Promise<number>): Promise<number> => {
+    await jest.runAllTimersAsync()
+    return run
+  }
+
+  describe('a delivery that is lost leaves a trace to alert on', () => {
+    beforeEach(() => jest.useFakeTimers())
+    afterEach(() => jest.useRealTimers())
+
+    it('counts an event that carries no store', async () => {
+      const { dispatcher, lost } = build()
+      await dispatcher.dispatch(Events.ORDER_CREATED, { orderId: 'o1' })
+      expect(lost).toEqual([{ labels: { reason: WebhookDispatchLossReasons.NO_STORE }, amount: 1 }])
+    })
+
+    it('counts a read that failed for good, once, and does not retry what is not transient', async () => {
+      const { dispatcher, lost, reads } = build({ webhookReadFails: true })
+      expect(
+        await dispatchToEnd(dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE }))
+      ).toBe(0)
+      expect(reads()).toBe(1)
+      expect(lost.map(entry => entry.labels)).toEqual([
+        { reason: WebhookDispatchLossReasons.READ_FAILED }
+      ])
+    })
+
+    it('asks again after a lock timeout and delivers when the read then answers', async () => {
+      const { dispatcher, lost, reads, queued } = build({ transientWebhookReads: 2 })
+      expect(
+        await dispatchToEnd(dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE }))
+      ).toBe(1)
+      expect(reads()).toBe(3)
+      expect(queued).toHaveLength(1)
+      expect(lost).toEqual([])
+    })
+
+    it('gives up after a bounded number of tries and counts the loss', async () => {
+      const { dispatcher, lost, reads, errors } = build({ transientWebhookReads: 99 })
+      expect(
+        await dispatchToEnd(dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE }))
+      ).toBe(0)
+      expect(reads()).toBe(4)
+      expect(lost.map(entry => entry.labels)).toEqual([
+        { reason: WebhookDispatchLossReasons.READ_FAILED }
+      ])
+      expect(errors).toHaveLength(1)
+    })
+
+    it('does not count a store with no subscribers, nor a store that is gone', async () => {
+      const gone = build({ goneStore: true })
+      await gone.dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE })
+      expect(gone.lost).toEqual([])
+      const none = build({ noWebhooks: true })
+      expect(await none.dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE })).toBe(0)
+      expect(none.lost).toEqual([])
+    })
+
+    it('keeps the webhooks it read when the installations read keeps timing out, and counts that read', async () => {
+      const { dispatcher, lost, queued, errors } = build({
+        installed: true,
+        transientInstallationReads: 99
+      })
+      expect(
+        await dispatchToEnd(dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE }))
+      ).toBe(1)
+      expect(queued).toHaveLength(1)
+      expect(lost.map(entry => entry.labels)).toEqual([
+        { reason: WebhookDispatchLossReasons.READ_FAILED }
+      ])
+      expect(errors).toHaveLength(1)
+    })
+
+    it('counts the plugin jobs that could not be queued', async () => {
+      const { dispatcher, lost } = build({ installed: true, noWebhooks: true, queueFails: true })
+      expect(
+        await dispatchToEnd(dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE }))
+      ).toBe(0)
+      expect(lost).toEqual([
+        { labels: { reason: WebhookDispatchLossReasons.QUEUE_FAILED }, amount: 1 }
+      ])
+    })
+
+    it('counts the jobs that could not be queued, one for each', async () => {
+      const { dispatcher, lost } = build({ queueFails: true })
+      expect(
+        await dispatchToEnd(dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE }))
+      ).toBe(0)
+      expect(lost).toEqual([
+        { labels: { reason: WebhookDispatchLossReasons.QUEUE_FAILED }, amount: 1 }
+      ])
+    })
   })
 })

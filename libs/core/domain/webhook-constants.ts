@@ -92,6 +92,23 @@ export type WebhookEvent = (typeof WebhookEvents)[number]
 const WEBHOOK_EVENT_SET: ReadonlySet<string> = new Set(WebhookEvents)
 export const isWebhookEvent = (event: string): event is WebhookEvent => WEBHOOK_EVENT_SET.has(event)
 
+// Why the deliveries of an event were never queued (the label `reason` of `platform_webhook_dispatch_lost_total`). A store with no
+// subscribers, or one that no longer exists, loses nothing and is not counted.
+export const WebhookDispatchLossReasons = {
+  // The payload of an event of the catalog names no store: a bug of its emitter
+  NO_STORE: 'no_store',
+  // The webhooks or the plugin installations of the store could not be read (after the tries for a lock or a busy pool)
+  READ_FAILED: 'read_failed',
+  // The jobs of the deliveries could not be added to the queue (Redis)
+  QUEUE_FAILED: 'queue_failed'
+} as const
+export type WebhookDispatchLossReason =
+  (typeof WebhookDispatchLossReasons)[keyof typeof WebhookDispatchLossReasons]
+
+// The pauses between the tries of the read of the dispatcher when the database answers a lock timeout or a busy pool (a transient
+// failure): three more tries after the first, under two seconds in all, so the event listener is not held for long.
+export const WebhookDispatchReadRetryPausesMs = [100, 400, 1500] as const
+
 // Where an inbound provider webhook comes from, for the idempotency table (ProcessedWebhookEvent).
 export const WebhookSources = { RESEND: 'resend' } as const
 export type WebhookSource = (typeof WebhookSources)[keyof typeof WebhookSources]
