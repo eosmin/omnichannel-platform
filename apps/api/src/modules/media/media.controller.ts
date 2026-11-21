@@ -20,6 +20,7 @@ import type { ExportView } from '../exports'
 import {
   CurrentPermissions,
   CurrentStore,
+  NoTenantTransaction,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -49,6 +50,9 @@ export class MediaController {
   }
 
   @RequirePermissions(Permissions.MEDIA_UPLOAD)
+  @NoTenantTransaction(
+    'checks the uploaded file in the bucket and moves it: the service reads and writes in short units of the store, and the bucket and Redis are called between them with no context open'
+  )
   @Post(ApiRoutes.media.confirmUpload)
   @HttpCode(HttpStatusCodes.OK)
   confirmUpload(

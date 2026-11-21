@@ -18,7 +18,12 @@ import { PluginScopes } from '@platform/plugins/sdk'
 
 import type { ExportView } from '../exports'
 import { CurrentPluginInstallation, PluginApi } from '../plugins/plugin-api.decorators'
-import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
+import {
+  CurrentPermissions,
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions
+} from '../tenancy'
 import { pluginUserId } from '../tenancy/actor'
 
 import { MediaDownloadService } from './media-download.service'
@@ -51,6 +56,9 @@ export class PluginMediaController {
 
   @PluginApi(PluginScopes.MEDIA_WRITE)
   @RequirePermissions(Permissions.MEDIA_UPLOAD)
+  @NoTenantTransaction(
+    'checks the uploaded file in the bucket and moves it: the service reads and writes in short units of the store, and the bucket and Redis are called between them with no context open'
+  )
   @Post(PluginApiRoutes.media.confirmUpload)
   @HttpCode(HttpStatusCodes.OK)
   confirmUpload(

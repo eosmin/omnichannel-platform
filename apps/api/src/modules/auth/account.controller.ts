@@ -6,7 +6,7 @@ import { CurrentUser } from '@platform/core/auth-module'
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { SkipTenant } from '../tenancy'
+import { NoTenantTransaction, SkipTenant } from '../tenancy'
 
 import {
   type AccountActor,
@@ -41,6 +41,9 @@ export class AccountController {
     return this.settings.profile(user.id)
   }
 
+  @NoTenantTransaction(
+    'replacing the picture removes the old object from the bucket: the service swaps the rows in one short context of the person and calls the bucket after it with no context open'
+  )
   @Patch(ApiRoutes.account.profile)
   updateProfile(
     @CurrentUser() user: AuthenticatedUser,

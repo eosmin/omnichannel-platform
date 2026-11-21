@@ -25,6 +25,7 @@ import { InjectMetric } from '@platform/core/metrics-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
 import { InboundEventQueue } from '../channels/inbound-event-queue.service'
+import { NoTenantTransaction } from '../tenancy'
 
 import { WidgetAway } from './widget-away.service'
 import { WidgetDownloads, type WidgetFileLink } from './widget-downloads.service'
@@ -132,6 +133,9 @@ export class WidgetController {
   // A message goes where a provider's webhook goes: the plugin reads it as an event and the inbound
   // queue takes it, so that the worker stores it, routes it and tells the team like any other.
   @RateLimit(WidgetThrottle.MESSAGES)
+  @NoTenantTransaction(
+    'a public route of the widget: no person and no store header open a transaction of the request; it reads the files the visitor signed in Redis and the bucket, and hands the message to the inbound queue'
+  )
   @Post(ApiRoutes.widget.messages)
   @HttpCode(HttpStatusCodes.OK)
   async send(
