@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common'
 
 import type { Permission } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
+import { FiscalLimits } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 
 import { storesOf } from '../counts/counts.support'
@@ -13,11 +14,23 @@ import { storesOf } from '../counts/counts.support'
 // organization's (TDD_18 §9.1): this is the fiscal document, whose rows carry their own store.
 @Injectable()
 export class FiscalReachService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jobContext: JobContext
+  ) {}
 
   // The stores of the organization where the person holds the permission, active member only
   stores(organizationId: string, userId: string, permission: Permission): Promise<string[]> {
     return storesOf(this.prisma.client, organizationId, userId, permission)
+  }
+
+  // The same for a route that is @NoTenantTransaction (the request holds no context): the read is one short unit of the organization
+  storesInUnit(organizationId: string, userId: string, permission: Permission): Promise<string[]> {
+    return this.jobContext.inOrganization(
+      organizationId,
+      () => this.stores(organizationId, userId, permission),
+      { maxWait: FiscalLimits.CONTEXT_MAX_WAIT_MS, timeout: FiscalLimits.CONTEXT_TIMEOUT_MS }
+    )
   }
 
   // Every one of the documents is the organization's and belongs to a store of the reach, or none of them is known

@@ -235,19 +235,22 @@ export class FiscalEvidenceService {
   // finished job keeps its id and would swallow the new one, so it is removed first.
   private async queueScan(storeId: string, mediaId: string): Promise<void> {
     const jobId = `${JobNames.SCAN_FILE}-${mediaId}`
-    try {
-      const old = await this.heavyQueue.getJob(jobId)
-      if (old !== undefined && ((await old.isCompleted()) || (await old.isFailed()))) {
-        await old.remove()
+    // After the REAL commit: the scan reads the row of the file. The failure is swallowed where it happens
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      try {
+        const old = await this.heavyQueue.getJob(jobId)
+        if (old !== undefined && ((await old.isCompleted()) || (await old.isFailed()))) {
+          await old.remove()
+        }
+        await this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId, storeId }, { jobId })
+      } catch (error) {
+        // A queue that blinks leaves a pending file: asked for again, it is queued again (the sweep of Step 4B.8 does it too)
+        this.logger.warn(
+          { mediaId, err: errorName(error) },
+          'the scan of a fiscal evidence file was not queued'
+        )
       }
-      await this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId, storeId }, { jobId })
-    } catch (error) {
-      // A queue that blinks leaves a pending file: asked for again, it is queued again (the sweep of Step 4B.8 does it too)
-      this.logger.warn(
-        { mediaId, err: errorName(error) },
-        'the scan of a fiscal evidence file was not queued'
-      )
-    }
+    })
   }
 
   // The content of a kind, read from the row. The built document is sealed in the row (it holds the receiver): it is opened here and

@@ -179,24 +179,26 @@ export class InvitationsService {
       }),
       this.localeFor(store.id, email)
     ])
-    // After the commit: a mail must never go out for an invitation that was not saved
-    await this.emailQueue.add(
-      JobNames.SEND_EMAIL,
-      {
-        template: EmailTemplates.INVITATION,
-        to: email,
-        locale: destination,
-        data: {
-          url: this.linkFor(token),
-          inviterName: inviter.name,
-          storeName: store.name,
-          roleName: roleLabelOf(destination, role.name),
-          expiresInDays: INVITATION_TTL_DAYS
+    // After the REAL commit (under RLS_CONTEXT the request is one transaction): a mail must never go out for an invitation that was not saved
+    await this.prisma.afterCommitStep(this.prisma.client, () =>
+      this.emailQueue.add(
+        JobNames.SEND_EMAIL,
+        {
+          template: EmailTemplates.INVITATION,
+          to: email,
+          locale: destination,
+          data: {
+            url: this.linkFor(token),
+            inviterName: inviter.name,
+            storeName: store.name,
+            roleName: roleLabelOf(destination, role.name),
+            expiresInDays: INVITATION_TTL_DAYS
+          },
+          tags: { template: EmailTemplates.INVITATION }
         },
-        tags: { template: EmailTemplates.INVITATION }
-      },
-      // The job holds the raw token: once sent it has no reason to stay in the queue
-      { removeOnComplete: true }
+        // The job holds the raw token: once sent it has no reason to stay in the queue
+        { removeOnComplete: true }
+      )
     )
     this.audit.log({
       action,

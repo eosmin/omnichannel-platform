@@ -43,7 +43,9 @@ function build(row?: Row) {
     transaction: jest.fn(async (work: (t: typeof tx) => Promise<void>) => {
       await work(tx)
       calls.push('commit')
-    })
+    }),
+    // Outside a transaction of the service the step runs at once, as PrismaService.afterCommitStep does
+    afterCommitStep: jest.fn((_db: unknown, step: () => Promise<unknown>) => step())
   }
   const queue = {
     add: jest.fn((name: string, _data: SendEmailJob, _options: unknown) => {

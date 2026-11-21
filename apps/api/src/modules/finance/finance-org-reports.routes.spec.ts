@@ -15,13 +15,15 @@ const routes: [string, string, string][] = [
   ['book of a kind', 'finance-books.controller.ts', 'book'],
   ['book csv', 'finance-books.controller.ts', 'bookCsv'],
   ['aging', 'finance-statements.controller.ts', 'aging'],
-  ['aging csv', 'finance-statements.controller.ts', 'agingCsv']
+  ['aging csv', 'finance-statements.controller.ts', 'agingCsv'],
+  ['close of a period', 'finance-reports.controller.ts', 'closePeriod']
 ]
 const notRoutes: [string, string, string][] = [
   ['book layouts', 'finance-books.controller.ts', 'layouts'],
   ['write a layout', 'finance-books.controller.ts', 'writeLayout'],
   ['frozen books', 'finance-books.controller.ts', 'frozen'],
-  ['income statement', 'finance-statements.controller.ts', 'incomeStatement']
+  ['income statement', 'finance-statements.controller.ts', 'incomeStatement'],
+  ['reopen of a period', 'finance-reports.controller.ts', 'reopenPeriod']
 ]
 
 // The decorators of a handler: the lines that stand right above its name (decorators, their arguments and comments), read upwards until

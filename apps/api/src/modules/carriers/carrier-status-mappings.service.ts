@@ -449,12 +449,15 @@ export class CarrierStatusMappingsService {
     providerCode: string,
     requestedBy: string
   ): Promise<void> {
-    await this.heavyQueue.add(JobNames.REPROCESS_CARRIER_EVENTS, {
-      storeId,
-      connectionId,
-      providerCode,
-      requestedBy
-    })
+    // After the REAL commit (under RLS_CONTEXT the request is one transaction): the job reads the mapping that was just saved
+    await this.prisma.afterCommitStep(this.prisma.client, () =>
+      this.heavyQueue.add(JobNames.REPROCESS_CARRIER_EVENTS, {
+        storeId,
+        connectionId,
+        providerCode,
+        requestedBy
+      })
+    )
   }
 
   private async connectionOf(

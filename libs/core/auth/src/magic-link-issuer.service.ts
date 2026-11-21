@@ -20,6 +20,7 @@ const MS_PER_MINUTE = 60_000
 interface IssuerDatabase {
   readonly client: PrismaService['client']
   transaction: PrismaService['transaction']
+  afterCommitStep: PrismaService['afterCommitStep']
 }
 interface IssuerLogger {
   setContext: PinoLogger['setContext']
@@ -70,20 +71,23 @@ export class MagicLinkIssuer {
         }
       })
     })
-    // After the commit: a mail must never go out for a token that was not saved
-    await this.emailQueue.add(
-      JobNames.SEND_EMAIL,
-      {
-        template: EmailTemplates.MAGIC_LINK,
-        to: user.email,
-        locale: localeOrDefault(user.locale),
-        data: { url: this.linkFor(token), expiresInMinutes: MAGIC_LINK_TTL_MINUTES },
-        tags: { template: EmailTemplates.MAGIC_LINK },
-        ...(correlationId === undefined ? {} : { correlationId })
-      },
-      // The job holds the raw token: once sent it has no reason to stay for the 24 hours that the
-      // queue keeps completed jobs. (A failed job keeps it, and the token expires in minutes.)
-      { removeOnComplete: true }
+    // After the REAL commit (a unit that joined a wider transaction has not committed when this line runs): a mail must never go out
+    // for a token that was not saved
+    await this.prisma.afterCommitStep(this.prisma.client, () =>
+      this.emailQueue.add(
+        JobNames.SEND_EMAIL,
+        {
+          template: EmailTemplates.MAGIC_LINK,
+          to: user.email,
+          locale: localeOrDefault(user.locale),
+          data: { url: this.linkFor(token), expiresInMinutes: MAGIC_LINK_TTL_MINUTES },
+          tags: { template: EmailTemplates.MAGIC_LINK },
+          ...(correlationId === undefined ? {} : { correlationId })
+        },
+        // The job holds the raw token: once sent it has no reason to stay for the 24 hours that the
+        // queue keeps completed jobs. (A failed job keeps it, and the token expires in minutes.)
+        { removeOnComplete: true }
+      )
     )
     this.logger.info({ userId: user.id }, 'magic link sent')
   }

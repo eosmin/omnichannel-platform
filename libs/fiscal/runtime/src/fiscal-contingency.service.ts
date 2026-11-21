@@ -915,27 +915,31 @@ export class FiscalContingencyService {
     organizationId: string,
     docs: readonly { id: string; submission: number }[]
   ): Promise<void> {
-    // In chunks: the failed jobs of the last time are removed together and the new ones are added in one call, not one round trip each
-    for (let start = 0; start < docs.length; start += ENQUEUE_CHUNK) {
-      const chunk = docs.slice(start, start + ENQUEUE_CHUNK)
-      const jobs = chunk.map(doc => ({
-        doc,
-        jobId: submitFiscalDocumentJobId(doc.id, doc.submission)
-      }))
-      await Promise.all(
-        jobs.map(async ({ jobId }) => {
-          const earlier = await this.queue.getJob(jobId)
-          if (earlier !== undefined && (await earlier.isFailed())) await earlier.remove()
-        })
-      )
-      await this.queue.addBulk(
-        jobs.map(({ doc, jobId }) => ({
-          name: JobNames.SUBMIT_FISCAL_DOCUMENT,
-          data: { organizationId, documentId: doc.id },
-          opts: { ...fiscalJobOptions(), jobId }
+    // After the REAL commit: the jobs read documents that this unit (or the request that joined it) has not committed when this line
+    // runs. The failure reaches the caller after the commit, as a queue that is down always did
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      // In chunks: the failed jobs of the last time are removed together and the new ones are added in one call, not one round trip each
+      for (let start = 0; start < docs.length; start += ENQUEUE_CHUNK) {
+        const chunk = docs.slice(start, start + ENQUEUE_CHUNK)
+        const jobs = chunk.map(doc => ({
+          doc,
+          jobId: submitFiscalDocumentJobId(doc.id, doc.submission)
         }))
-      )
-    }
+        await Promise.all(
+          jobs.map(async ({ jobId }) => {
+            const earlier = await this.queue.getJob(jobId)
+            if (earlier !== undefined && (await earlier.isFailed())) await earlier.remove()
+          })
+        )
+        await this.queue.addBulk(
+          jobs.map(({ doc, jobId }) => ({
+            name: JobNames.SUBMIT_FISCAL_DOCUMENT,
+            data: { organizationId, documentId: doc.id },
+            opts: { ...fiscalJobOptions(), jobId }
+          }))
+        )
+      }
+    })
   }
 
   // The queue may be down (it is often the very outage that made the contingency): a report that cannot be queued now is asked for again by
@@ -945,37 +949,48 @@ export class FiscalContingencyService {
     contingencyId: string,
     ask: number
   ): Promise<void> {
-    try {
-      await this.enqueueReport(organizationId, contingencyId, ask)
-    } catch (error) {
-      this.logger.error(
-        { contingencyId, err: errorName(error) },
-        'the report of a contingency could not be queued: the daily check asks for it again'
-      )
-    }
+    await this.enqueueReport(organizationId, contingencyId, ask, true)
   }
 
   // The daily check asks again for a report that is owed (one job for each day), so an ended contingency never waits for ever
   async askReport(organizationId: string, contingencyId: string, now: Date): Promise<void> {
-    await this.enqueueReport(organizationId, contingencyId, Math.floor(now.getTime() / 86_400_000))
+    await this.enqueueReport(
+      organizationId,
+      contingencyId,
+      Math.floor(now.getTime() / 86_400_000),
+      false
+    )
   }
 
+  // After the REAL commit: the job reads the contingency. `swallow`: the failure is told in the log where it happens (after the commit
+  // when a transaction is open) and never reaches the caller
   private async enqueueReport(
     organizationId: string,
     contingencyId: string,
-    ask: number
+    ask: number,
+    swallow: boolean
   ): Promise<void> {
     // One job for a contingency: a job that waits, runs or backs off keeps a second one from being added (the same id), so a report never
     // runs twice at once and the attempts are not spent twice as fast. `ask` stays for the callers that told one ask from another.
     void ask
     const jobId = reportFiscalContingencyJobId(contingencyId, 1)
-    const earlier = await this.queue.getJob(jobId)
-    if (earlier !== undefined && (await earlier.isFailed())) await earlier.remove()
-    await this.queue.add(
-      JobNames.REPORT_FISCAL_CONTINGENCY,
-      { organizationId, contingencyId },
-      { ...fiscalJobOptions(), jobId }
-    )
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      try {
+        const earlier = await this.queue.getJob(jobId)
+        if (earlier !== undefined && (await earlier.isFailed())) await earlier.remove()
+        await this.queue.add(
+          JobNames.REPORT_FISCAL_CONTINGENCY,
+          { organizationId, contingencyId },
+          { ...fiscalJobOptions(), jobId }
+        )
+      } catch (error) {
+        if (!swallow) throw error
+        this.logger.error(
+          { contingencyId, err: errorName(error) },
+          'the report of a contingency could not be queued: the daily check asks for it again'
+        )
+      }
+    })
   }
 
   // The report did not go through: what failed is a code (never data), and the person is told once

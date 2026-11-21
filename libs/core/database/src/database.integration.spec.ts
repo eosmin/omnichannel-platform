@@ -1167,6 +1167,124 @@ describe('PrismaService', () => {
       expect(hook).toHaveBeenCalledTimes(1)
     })
   })
+
+  // afterCommitStep: the work that must wait for the REAL commit (a job that reads what the request wrote) and whose failure the caller
+  // must still hear of. Under RLS_CONTEXT the commit of a request is the interceptor's, so the line after `await service.transaction()`
+  // is NOT after the commit.
+  describe('afterCommitStep', () => {
+    const slugOf = (suffix: string): string => `it-${runId}-step-${suffix}`
+    const context = { storeIds: [], organizationIds: [] }
+    const seenFromAnotherConnection = (slug: string): Promise<number> =>
+      withClient(urls.owner, async owner => {
+        const { rows } = await owner.query('SELECT 1 FROM organizations WHERE slug = $1', [slug])
+        return rows.length
+      })
+
+    it('runs the step after the COMMIT of the outermost transaction, when another connection can read the row', async () => {
+      const slug = slugOf('visible')
+      const seen: number[] = []
+
+      await service.tenantTransaction(context, async () => {
+        await service.client.organization.create({ data: { name: 'Step', slug } })
+        // The inner unit joins the open transaction: its end is NOT the commit
+        await service.transaction(async tx => {
+          await service.afterCommitStep(tx, async () => {
+            seen.push(await seenFromAnotherConnection(slug))
+          })
+        })
+        expect(seen).toEqual([])
+        // The handler is still running: a worker that started now would find no row
+        expect(await seenFromAnotherConnection(slug)).toBe(0)
+      })
+
+      expect(seen).toEqual([1])
+    })
+
+    it('never runs the step of a transaction that rolls back, and runs each step of one that commits', async () => {
+      const step = jest.fn(() => Promise.resolve())
+
+      await expect(
+        service.tenantTransaction(context, async () => {
+          await service.afterCommitStep(service.client, step)
+          throw new Error('abort')
+        })
+      ).rejects.toThrow('abort')
+      expect(step).not.toHaveBeenCalled()
+
+      await service.tenantTransaction(context, async () => {
+        await service.afterCommitStep(service.client, step)
+        await service.afterCommitStep(service.client, step)
+      })
+      expect(step).toHaveBeenCalledTimes(2)
+    })
+
+    it('runs the step at once, and lets its failure out, when no transaction is open', async () => {
+      const ran: string[] = []
+      await service.afterCommitStep(service.client, () => {
+        ran.push('now')
+        return Promise.resolve()
+      })
+      expect(ran).toEqual(['now'])
+
+      await expect(
+        service.afterCommitStep(service.client, () => Promise.reject(new Error('queue is down')))
+      ).rejects.toThrow('queue is down')
+    })
+
+    it('keeps the data when a step fails, runs the steps after it, and rejects with the first failure', async () => {
+      const slug = slugOf('failing')
+      const ran: string[] = []
+
+      await expect(
+        service.tenantTransaction(context, async () => {
+          await service.client.organization.create({ data: { name: 'Step', slug } })
+          await service.afterCommitStep(service.client, () => {
+            ran.push('first')
+            return Promise.reject(new Error('first failed'))
+          })
+          await service.afterCommitStep(service.client, () => {
+            ran.push('second')
+            return Promise.resolve()
+          })
+        })
+      ).rejects.toThrow('first failed')
+
+      // The request failed AFTER the commit: what it wrote stands, as with a queue that is down after the save
+      expect(ran).toEqual(['first', 'second'])
+      expect(await seenFromAnotherConnection(slug)).toBe(1)
+    })
+
+    it('drops the steps of an attempt that inSavepoint rolls back, and keeps the ones around it', async () => {
+      const slug = slugOf('savepoint')
+      const ran: string[] = []
+      const add = (name: string) =>
+        service.afterCommitStep(service.client, () => {
+          ran.push(name)
+          return Promise.resolve()
+        })
+
+      await service.tenantTransaction(context, async () => {
+        await add('before')
+        await inSavepoint(async () => {
+          await add('lost')
+          await service.client.organization.create({ data: { name: 'Step', slug } })
+          await service.client.organization.create({ data: { name: 'Step', slug } })
+        }).catch(() => undefined)
+        await add('after')
+      })
+
+      expect(ran).toEqual(['before', 'after'])
+    })
+
+    it('refuses a transaction that the service did not open', async () => {
+      // eslint-disable-next-line no-restricted-syntax -- a transaction the service did not open is the case under test
+      await service.client.$transaction(async tx => {
+        await expect(service.afterCommitStep(tx, () => Promise.resolve())).rejects.toThrow(
+          'did not open'
+        )
+      })
+    })
+  })
 })
 
 describe('PrismaService with requireContext', () => {

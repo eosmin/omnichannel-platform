@@ -6,7 +6,13 @@ import {
   alreadyAsRequested,
   confirmationOf,
   confirmProblem,
+  connectionsProblem,
+  connectionsSummary,
+  allowedHostOf,
   flagProblem,
+  forceConnectedOf,
+  hostProblem,
+  readWorkerConnections,
   reachedDatabasesWarning,
   WORKER_ROLE,
   WORKER_ROLE_MODES,
@@ -146,5 +152,120 @@ describe('reachedDatabasesWarning', () => {
   it('says so when the database is the only one, and handles the singular', () => {
     expect(reachedDatabasesWarning(['platform'], 'platform')).toContain('no other database')
     expect(reachedDatabasesWarning(['platform', 'b'], 'platform')).toContain('1 other database: b')
+  })
+})
+
+describe('connectionsProblem', () => {
+  const idle = { visible: true, connections: [] }
+  const busy = {
+    visible: true,
+    connections: [
+      { datname: 'platform', count: 3 },
+      { datname: 'platform_dev', count: 1 }
+    ]
+  }
+
+  it('lets nobypass go on when no session of the role is connected', () => {
+    expect(connectionsProblem('nobypass', idle, false)).toBeUndefined()
+  })
+
+  it('refuses nobypass while workers are connected, names where, and says to stop the workers', () => {
+    const problem = connectionsProblem('nobypass', busy, false)
+    expect(problem).toContain('4 connections')
+    expect(problem).toContain('platform (3)')
+    expect(problem).toContain('platform_dev (1)')
+    expect(problem).toContain('stop the workers')
+  })
+
+  it('refuses nobypass when the sessions of the role cannot be seen, because zero would be a guess', () => {
+    const problem = connectionsProblem('nobypass', { visible: false, connections: [] }, false)
+    expect(problem).toContain('pg_read_all_stats')
+  })
+
+  it('lets --force-connected go on in both cases (the rehearsal)', () => {
+    expect(connectionsProblem('nobypass', busy, true)).toBeUndefined()
+    expect(
+      connectionsProblem('nobypass', { visible: false, connections: [] }, true)
+    ).toBeUndefined()
+  })
+
+  it('does not ask the other modes to stop the workers', () => {
+    expect(connectionsProblem('status', busy, false)).toBeUndefined()
+    expect(connectionsProblem('bypass', busy, false)).toBeUndefined()
+  })
+})
+
+describe('connectionsSummary', () => {
+  it('counts the sessions per database, and says when it cannot see them', () => {
+    expect(connectionsSummary({ visible: true, connections: [] })).toContain('0 connections')
+    expect(
+      connectionsSummary({ visible: true, connections: [{ datname: 'platform', count: 2 }] })
+    ).toContain('2 connections: platform (2)')
+    expect(connectionsSummary({ visible: false, connections: [] })).toContain('cannot be seen')
+  })
+})
+
+describe('forceConnectedOf', () => {
+  it('is true only with the flag typed out', () => {
+    expect(forceConnectedOf(['nobypass', '--force-connected'])).toBe(true)
+    expect(forceConnectedOf(['nobypass', '--confirm=x'])).toBe(false)
+  })
+})
+
+describe('hostProblem', () => {
+  it('lets a local host go and refuses another one unless it is allowed by name', () => {
+    for (const host of ['localhost', '127.0.0.1', '::1', '[::1]']) {
+      expect(hostProblem('nobypass', host, undefined)).toBeUndefined()
+    }
+    expect(hostProblem('nobypass', 'db.example.com', undefined)).toContain('--allow-host=')
+    expect(hostProblem('nobypass', 'db.example.com', 'db.example.com')).toBeUndefined()
+    expect(hostProblem('nobypass', 'db.example.com', 'other.example.com')).toContain('not the host')
+  })
+
+  it('treats the socket, loopback ranges, case and a final dot as this machine', () => {
+    for (const host of ['', '/var/run/postgresql', '127.0.0.2', 'LOCALHOST', 'localhost.']) {
+      expect(hostProblem('nobypass', host, undefined)).toBeUndefined()
+    }
+    expect(hostProblem('nobypass', '0.0.0.0', undefined)).toContain('--allow-host=')
+  })
+
+  it('reads --allow-host and ignores an empty value', () => {
+    expect(allowedHostOf(['nobypass', '--allow-host=db.example.com'])).toBe('db.example.com')
+    expect(allowedHostOf(['nobypass', '--allow-host='])).toBeUndefined()
+    expect(allowedHostOf(['nobypass'])).toBeUndefined()
+  })
+
+  it('never asks it to read', () => {
+    expect(hostProblem('status', 'db.example.com', undefined)).toBeUndefined()
+  })
+})
+
+describe('readWorkerConnections', () => {
+  it('reads the visibility of the sessions and the count of the role per database, without its own session', async () => {
+    const calls: { text: string; values: unknown[] | undefined }[] = []
+    const answers: { rows: Record<string, unknown>[] }[] = [
+      { rows: [{ visible: true }] },
+      {
+        rows: [
+          { datname: 'platform', total: '2' },
+          { datname: null, total: '1' }
+        ]
+      }
+    ]
+    const facts = await readWorkerConnections({
+      query: (text: string, values?: unknown[]) => {
+        calls.push({ text, values })
+        return Promise.resolve(answers[calls.length - 1] ?? { rows: [] })
+      }
+    })
+    expect(facts).toEqual({
+      visible: true,
+      connections: [
+        { datname: 'platform', count: 2 },
+        { datname: '?', count: 1 }
+      ]
+    })
+    expect(calls[1]?.text).toContain('pg_backend_pid()')
+    expect(calls[1]?.values).toEqual(['platform_worker'])
   })
 })
