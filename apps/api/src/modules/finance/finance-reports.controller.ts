@@ -98,6 +98,9 @@ export class FinanceReportsController {
   // HIGH tier of DestructiveActionTiers (CLOSE_FISCAL_PERIOD): the interface asks before it sends this
   @RequirePermissions(Permissions.FINANCE_CLOSE_PERIODS)
   @NoStore()
+  @NoTenantTransaction(
+    'the guard of the close looks for the sources of every store of the organization that have no entry: the service opens the context of the organization itself, because the one of the request holds the store of the header alone'
+  )
   @Post(ApiRoutes.finance.periods.close(':id'))
   @HttpCode(HttpStatusCodes.OK)
   closePeriod(

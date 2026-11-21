@@ -2,8 +2,13 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { type PrismaTransaction, PrismaService } from '@platform/core/database'
-import { EntryOrigin, FinanceResourceTypes, PeriodStatus } from '@platform/core/domain'
+import { JobContext, type PrismaTransaction, PrismaService } from '@platform/core/database'
+import {
+  EntryOrigin,
+  FinanceResourceTypes,
+  FinanceSweepLimits,
+  PeriodStatus
+} from '@platform/core/domain'
 import { ErrorCodes, resourceNotFound } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -32,8 +37,18 @@ export class FinanceCloseService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
-    private readonly guard: FinanceCloseGuard
+    private readonly guard: FinanceCloseGuard,
+    private readonly jobContext: JobContext
   ) {}
+
+  // The close is @NoTenantTransaction: its reads and its write are units of the organization of their own (strict: they join only a
+  // context that holds every store of it), never the one of the request, which holds the store of the header alone
+  private unit<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
+    return this.jobContext.inOrganization(organizationId, work, {
+      maxWait: FinanceSweepLimits.CONTEXT_MAX_WAIT_MS,
+      timeout: FinanceSweepLimits.CONTEXT_TIMEOUT_MS
+    })
+  }
 
   async close(
     organizationId: string,
@@ -42,7 +57,33 @@ export class FinanceCloseService {
     now: Date = new Date()
   ): Promise<PeriodView> {
     await this.requireNothingPending(organizationId, periodId)
-    const result = await this.prisma.transaction(async tx => {
+    // The answer is read in the same unit as the write: a read of its own after the commit could fail and answer an error for a month
+    // that is closed
+    const { result, view } = await this.unit(organizationId, async () => {
+      const closed = await this.closeUnit(organizationId, periodId, actor, now)
+      return { result: closed, view: await this.get(organizationId, closed.id) }
+    })
+    this.audit.log({
+      action: AuditAction.FINANCE_PERIOD_CLOSED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: FinanceResourceTypes.PERIOD,
+      resourceId: result.id,
+      metadata: { year: result.year, month: result.month, closingHash: result.hash },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return view
+  }
+
+  private closeUnit(
+    organizationId: string,
+    periodId: string,
+    actor: Actor,
+    now: Date
+  ): Promise<{ id: string; year: number; month: number; hash: string | null }> {
+    return this.prisma.transaction(async tx => {
       const head = await this.lockSettings(tx, organizationId)
       // The incident is read again under the lock: one that opened after the check above (the weekly job does not take this lock) still stops
       // the close, so a month is never frozen over a chain found altered a moment before
@@ -132,18 +173,6 @@ export class FinanceCloseService {
       })
       return { id: period.id, year: period.year, month: period.month, hash: head.hash }
     })
-    this.audit.log({
-      action: AuditAction.FINANCE_PERIOD_CLOSED,
-      actor: { userId: actor.userId },
-      organizationId,
-      storeId: actor.storeId,
-      resourceType: FinanceResourceTypes.PERIOD,
-      resourceId: result.id,
-      metadata: { year: result.year, month: result.month, closingHash: result.hash },
-      ipAddress: actor.ipAddress,
-      userAgent: actor.userAgent
-    })
-    return this.get(organizationId, result.id)
   }
 
   // Only the latest closed period, with the reason typed (TDD_18 §5.3): who, when and why are the row's, kept after the next close
@@ -226,10 +255,12 @@ export class FinanceCloseService {
   // runs preview transactions that take the settings row FOR SHARE and would wait for the lock the close holds. A period that does not
   // exist is left to the transaction, which answers 404.
   private async requireNothingPending(organizationId: string, periodId: string): Promise<void> {
-    const period = await this.prisma.client.fiscalPeriod.findFirst({
-      where: { id: periodId, organizationId },
-      select: { startsOn: true }
-    })
+    const period = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalPeriod.findFirst({
+        where: { id: periodId, organizationId },
+        select: { startsOn: true }
+      })
+    )
     if (period === null) return
     const blockers = await this.guard.check(organizationId, { since: period.startsOn })
     // An altered chain is its own refusal: it is not fixed by posting again, a person must find out why (TDD_18 §11)

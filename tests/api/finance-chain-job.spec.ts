@@ -41,7 +41,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue, queueOf } from '../helpers/queue'
-import { inStoreContext } from '../helpers/tenant-context'
+import { withTenantContext } from '../helpers/tenant-context'
 
 const CREATED = 201
 const ACCEPTED = 202
@@ -125,11 +125,13 @@ describe('The weekly check of the chain, its incident and the guard of the close
     const realGuard = app.get(FinanceCloseGuard)
     guard = {
       check: (organizationId, options) =>
-        inStoreContext(
+        // The context of the whole organization, as the worker opens it: the guard is strict and refuses a context of one store
+        withTenantContext(
           app.get(PrismaService, { strict: false }),
           {
-            storeId: organizationId === ctx.orgB.id ? ctx.storeB.id : ctx.storeA.id,
-            organizationId
+            storeIds:
+              organizationId === ctx.orgB.id ? [ctx.storeB.id] : [ctx.storeA.id, ctx.storeA2.id],
+            organizationIds: [organizationId]
           },
           () => realGuard.check(organizationId, options)
         )

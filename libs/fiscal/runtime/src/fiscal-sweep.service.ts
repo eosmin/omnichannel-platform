@@ -84,9 +84,10 @@ export class FiscalSweepService {
     )
     const now = options.now ?? new Date()
     const reach = options.storeIds === undefined ? {} : { storeId: { in: [...options.storeIds] } }
-    // One page is one read in one context of the organization (a request joins its own): the sweep of the worker asks page after page, so a
+    // One page is one read in one context of the organization (strict: it joins only a context that holds every store of it, so a request
+    // that holds the store of the header alone is refused instead of reading one store): the sweep of the worker asks page after page, so a
     // long run never holds a transaction
-    return this.jobContext.inOrganizationOrRequest(
+    return this.jobContext.inOrganization(
       organizationId,
       () => {
         switch (kind) {
