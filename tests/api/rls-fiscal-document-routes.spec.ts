@@ -17,6 +17,7 @@ import {
   FiscalSweepLimits,
   FiscalVoidConsultState,
   FiscalVoidKind,
+  OrderReturnStatus,
   OrderStatus
 } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
@@ -473,6 +474,95 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
       asked.forEach(spy => spy.mockRestore())
       const after = await row(id)
       expect([after.status, after.voidClaimKey]).toEqual([FiscalDocumentStatus.ACCEPTED, null])
+    })
+
+    it('refuses a replacement that belongs to another organization and asks nobody', async () => {
+      await useIssuer(SIMULATOR_PROVIDER_ID)
+      const id = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      // An accepted sale document of ORGANIZATION B, with the same provider and environment as the one of A
+      const mine = await row(id)
+      const orderB = await createOrder(owner, { storeId: ctx.storeB.id })
+      const foreign = await owner.fiscalDocument.create({
+        data: {
+          organizationId: ctx.orgB.id,
+          storeId: ctx.storeB.id,
+          orderId: orderB.id,
+          kind: FiscalDocumentKind.SALE,
+          sequenceNumber: 1,
+          documentType: mine.documentType,
+          status: FiscalDocumentStatus.ACCEPTED,
+          providerId: mine.providerId,
+          environment: mine.environment,
+          externalNumber: `FOREIGN-${randomUUID().slice(0, 8)}`,
+          issuerSnapshot: {},
+          linesSnapshot: [],
+          receiverEncrypted: new Uint8Array(mine.receiverEncrypted),
+          currency: mine.currency,
+          totalCents: mine.totalCents,
+          taxCents: mine.taxCents
+        },
+        select: { id: true }
+      })
+      const asked = (['void', 'consultVoid'] as const).map(method => jest.spyOn(simulator, method))
+      const refused = await fromA2(both)
+        .post(ApiRoutes.fiscal.documents.void(id))
+        .send({ reason: 'wrong customer', replacementDocumentId: foreign.id })
+      expect(refused.status).toBe(NOT_FOUND)
+      expect(asked.map(spy => spy.mock.calls.length)).toEqual([0, 0])
+      asked.forEach(spy => spy.mockRestore())
+      const after = await row(id)
+      expect([after.status, after.voidClaimKey]).toEqual([FiscalDocumentStatus.ACCEPTED, null])
+    })
+
+    it('makes a voided credit note again from the sibling store, against the live sale', async () => {
+      await useIssuer(SIMULATOR_PROVIDER_ID)
+      const documentId = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      const saleDoc = await row(documentId)
+      const orderId = saleDoc.orderId
+      const returned = await owner.orderReturn.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderId,
+          type: 'refund',
+          reason: 'DEFECTIVE',
+          status: OrderReturnStatus.RECEIVED,
+          shippingPayer: 'sender',
+          createdBy: ctx.adminA.id,
+          receivedAt: new Date()
+        },
+        select: { id: true }
+      })
+      const item = await owner.orderItem.findFirstOrThrow({
+        where: { orderId },
+        select: { id: true }
+      })
+      await owner.orderReturnLine.create({
+        data: { storeId: ctx.storeA.id, returnId: returned.id, orderItemId: item.id, quantity: 1 }
+      })
+      await emitter.emitAsync(Events.RETURN_RECEIVED, {
+        storeId: ctx.storeA.id,
+        orderId,
+        orderNumber: 'N',
+        actor: { type: 'system', id: null },
+        returnId: returned.id
+      })
+      const note = await owner.fiscalDocument.findFirstOrThrow({
+        where: { returnId: returned.id, kind: FiscalDocumentKind.CREDIT_NOTE }
+      })
+      await documents.submit(ctx.orgA.id, note.id)
+      const voided = await fromA2(both)
+        .post(ApiRoutes.fiscal.documents.void(note.id))
+        .send({ reason: 'redo' })
+      expect(voided.status).toBe(OK)
+      expect((await row(note.id)).status).toBe(FiscalDocumentStatus.VOIDED)
+
+      const again = await fromA2(both).post(ApiRoutes.fiscal.documents.replace(note.id))
+      expect(again.status).toBe(OK)
+      const created = await row((again.body as { data: { id: string } }).data.id)
+      expect(created.kind).toBe(FiscalDocumentKind.CREDIT_NOTE)
+      expect(created.returnId).toBe(returned.id)
+      expect(created.parentDocumentId).toBe(documentId)
+      expect(created.storeId).toBe(ctx.storeA.id)
     })
 
     it('takes no claim and asks nobody when the reach is lost between the first unit and the claim', async () => {
