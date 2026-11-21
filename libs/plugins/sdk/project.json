@@ -7,6 +7,15 @@
   "targets": {
     "lint": {},
     "type-check": {},
-    "test": {}
+    "test": {
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/tsconfig.spec.json",
+        "{workspaceRoot}/jest.preset.cjs",
+        "{workspaceRoot}/docs/TDD_10_Plugins.md",
+        "{workspaceRoot}/docs/TDD_17_Shipping.md"
+      ]
+    }
   }
 }
