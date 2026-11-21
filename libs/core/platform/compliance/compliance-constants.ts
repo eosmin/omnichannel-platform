@@ -41,7 +41,12 @@ export const DataRetentionPolicies = {
 export { RetentionBounds, type RetentionField } from '@platform/core/domain'
 
 // The resource of the audit entry of a change to the windows
-export const RetentionResourceTypes = { RETENTION_SETTINGS: 'retention_settings' } as const
+export const RetentionResourceTypes = {
+  RETENTION_SETTINGS: 'retention_settings',
+  // The resource of the entry of a nightly run of the worker: the store of a retention run, the platform for the others
+  STORE: 'store',
+  PLATFORM: 'platform'
+} as const
 
 // The windows of a store that has no RetentionSettings row yet (a row is made with the store, so this is the
 // guard against a store made by hand): the factory defaults of the table
