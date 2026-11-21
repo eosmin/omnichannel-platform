@@ -8,6 +8,7 @@ import { localCarrierPlugin } from '@platform/carriers/local'
 import { EventsBridge } from '@platform/core/event-bus'
 import { configureHttpApp } from '@platform/core/http'
 import { QueueNames } from '@platform/core/queues'
+import { AuthenticatedUserRateLimitGuard } from '@platform/core/throttler'
 import { CarrierRegistry } from '@platform/plugins/runtime'
 
 import { AppModule } from '../../apps/api/src/app.module'
@@ -45,6 +46,11 @@ export async function createTestApp(
     // The events a carrier pushed are queued for the worker; the suite reads them, and nothing is left in a development queue
     .overrideProvider(getQueueToken(QueueNames.WEBHOOKS))
     .useValue(new CapturedQueue())
+    // The general budget per person (600 a minute, counted in the Redis every run shares) would cut the suites that make hundreds of
+    // calls as one of a few users (tenant-isolation, the pooler): like the per-address limit they dodge with a fresh address, the
+    // budget is not counted here. tests/api/authenticated-user-rate-limit.spec.ts puts the real guard back and proves it.
+    .overrideProvider(AuthenticatedUserRateLimitGuard)
+    .useValue({ canActivate: (): boolean => true })
     // The carriers of a suite are the fake ones it registers: a fake borrows the id of a carrier (there are only three), so the
     // official carriers must not hold them. The `local` courier stays, as it has no API to be replaced by.
     .overrideProvider(CarrierRegistry)
