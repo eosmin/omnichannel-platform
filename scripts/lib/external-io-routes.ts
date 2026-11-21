@@ -383,6 +383,50 @@ function callReaches(
   return call.network && !byName.has(target)
 }
 
+// What is wrong with the `localMethods` that providers declare, so that an exemption cannot outlive the method it was written for: a
+// provider listed twice (the second would replace the first), a provider with no class here (nothing to read), a name that is not a
+// method of the class (renamed or misspelled), and a local method that now does I/O itself or calls a method of its class that is not
+// local (a `head()` added to a signer would keep every route exempt)
+export function localMethodProblems(
+  classes: readonly ClassInfo[],
+  providers: readonly ExternalIoProvider[]
+): string[] {
+  const problems: string[] = []
+  const seen = new Set<string>()
+  for (const provider of providers) {
+    if (seen.has(provider.name)) problems.push(`${provider.name} is listed twice`)
+    seen.add(provider.name)
+  }
+  for (const provider of providers) {
+    const local = provider.localMethods ?? []
+    if (local.length === 0) continue
+    const owner = classes.find(c => c.name === provider.name)
+    if (owner === undefined) {
+      problems.push(`${provider.name}: localMethods needs the class of the provider in the scan`)
+      continue
+    }
+    for (const name of local) {
+      const method = owner.methods.find(m => m.name === name)
+      if (method === undefined) {
+        problems.push(`${provider.name}.${name}: declared local but the class has no such method`)
+        continue
+      }
+      if (method.directIo || method.calls.some(call => call.field !== undefined && call.network)) {
+        problems.push(`${provider.name}.${name}: declared local but it goes over the network`)
+      }
+      const other = method.calls.find(
+        call => call.field === undefined && !local.includes(call.method)
+      )
+      if (other !== undefined) {
+        problems.push(
+          `${provider.name}.${name}: declared local but it calls this.${other.method}(), which is not`
+        )
+      }
+    }
+  }
+  return problems
+}
+
 // The local methods of each provider, by class name
 function localMethodsOf(
   providers: readonly ExternalIoProvider[]
