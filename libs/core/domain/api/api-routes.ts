@@ -516,7 +516,8 @@ export const ApiRoutes = {
     revoke: (id: string) => `/plugins/${id}/revoke`, // Uninstalls: the id is the installation's
     consent: (id: string) => `/plugins/${id}/consent`, // What installing the plugin of that id would grant (GET); the id is the plugin's
     setupCode: (id: string) => `/plugins/${id}/setup-code`, // A new one-time code for an installation that is not set up yet (POST); the id is the installation's
-    commandSecret: (id: string) => `/plugins/${id}/command-secret` // Rotates the secret that signs the commands to a remote channel (POST); the id is the installation's
+    commandSecret: (id: string) => `/plugins/${id}/command-secret`, // Rotates the secret that signs the commands to a remote channel (POST); the id is the installation's
+    apiKey: (id: string) => `/plugins/${id}/api-key` // Rotates the API key of an installation (POST): the old key stops working at once and the new one is shown once; the id is the installation's
   },
 
   // The widgets of the plugins in the agent sidebar (TDD_10 §7): the ones the store has, a short session

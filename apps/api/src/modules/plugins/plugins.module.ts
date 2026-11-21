@@ -13,6 +13,7 @@ import { ChannelRegistryModule } from '../channel-registry'
 import { ChannelsModule } from '../channels/channels.module'
 import { TenancyModule } from '../tenancy'
 
+import { PluginApiKeyService } from './plugin-api-key.service'
 import { PluginApiController } from './plugin-api.controller'
 import { PluginCatalogSync } from './plugin-catalog-sync.service'
 import { PluginChallengeService } from './plugin-challenge.service'
@@ -45,6 +46,7 @@ import { PluginsController } from './plugins.controller'
   providers: [
     PluginCatalogSync,
     PluginChallengeService,
+    PluginApiKeyService,
     PluginCommandSecretService,
     PluginDeletionService,
     PluginIconService,

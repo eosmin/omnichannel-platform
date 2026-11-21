@@ -1226,7 +1226,7 @@ belongs to one store and may hold up to 20 active connections. The migration of 
 
 *Rotation.* Rotating the secret keeps the previous one valid for 10 minutes: for that time every
 command carries both signatures (§6.7.4), so what is already queued is not interrupted, and the
-plugin verifies against any it knows. Rotating the API key invalidates the old one at once.
+plugin verifies against any it knows. Rotating the API key invalidates the old one at once. `POST /plugins/:id/api-key` (`SETTINGS_MANAGE_PLUGINS`, any ACTIVE installation, not only a channel) does it: the new key is shown once in that answer, the hash and display prefix are replaced in one write, and the audit entry `plugin.api_key_rotated` never holds a key.
 
 *Registry.* `PluginRegistry` is per process and holds the official plugins plus a
 `RemoteChannelPlugin` for each plugin that has at least one `ACTIVE` installation. The api and the
