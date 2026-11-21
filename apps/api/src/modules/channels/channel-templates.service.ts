@@ -90,10 +90,13 @@ export class ChannelTemplatesService {
 
   // For the composer: the connection must be of this store and of this plugin
   async list(storeId: string, pluginId: string, connectionRowId: string): Promise<TemplateView[]> {
-    const row = await this.prisma.client.channelConnection.findFirst({
-      where: { id: connectionRowId, storeId, pluginId, ...OfActiveInstallation },
-      select: CONNECTION_ROW_SELECT
-    })
+    // The read is one short unit of the store (the route is @NoTenantTransaction); the provider is asked after it with no context open
+    const row = await this.context.inStore(storeId, () =>
+      this.prisma.client.channelConnection.findFirst({
+        where: { id: connectionRowId, storeId, pluginId, ...OfActiveInstallation },
+        select: CONNECTION_ROW_SELECT
+      })
+    )
     if (row === null) throw resourceNotFound('channel connection')
     return this.listOf(row)
   }

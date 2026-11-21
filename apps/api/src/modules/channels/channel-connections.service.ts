@@ -308,7 +308,7 @@ export class ChannelConnectionsService {
     row: ConnectionRow
   ): Promise<ChannelConnectionView> {
     try {
-      return this.view(row, await this.profileStatuses(storeId, [row]))
+      return this.view(row, await this.unit(storeId, () => this.profileStatuses(storeId, [row])))
     } catch (error) {
       this.logger.warn({ storeId, errorName: errorName(error) }, 'profile status not read')
       return this.view(row, new Map())
@@ -442,7 +442,7 @@ export class ChannelConnectionsService {
     connectionId: string,
     pluginId: string
   ): Promise<{ accountId: string }> {
-    const row = await this.rowOf(storeId, connectionId)
+    const row = await this.unit(storeId, () => this.rowOf(storeId, connectionId))
     if (row.pluginId !== pluginId) throw resourceNotFound('channel connection')
     if (row.status === String(ChannelConnectionStatus.DISCONNECTED)) {
       throw resourceConflict('the connection is disconnected')
@@ -692,13 +692,15 @@ export class ChannelConnectionsService {
     options: { authMethod?: ChannelAuthMethod } = {}
   ): Promise<ChannelConnectionView> {
     const { authMethod } = options
-    const row = await this.rowOf(storeId, connectionId)
+    const { row, working } = await this.unit(storeId, async () => ({
+      row: await this.rowOf(storeId, connectionId),
+      working: await this.prisma.client.channelConnection.count({
+        where: { id: connectionId, storeId, ...OfActiveInstallation }
+      })
+    }))
     if (row.status === String(ChannelConnectionStatus.DISCONNECTED)) {
       throw resourceConflict('the connection is disconnected')
     }
-    const working = await this.prisma.client.channelConnection.count({
-      where: { id: connectionId, storeId, ...OfActiveInstallation }
-    })
     if (working === 0) throw resourceConflict('the plugin is not installed in this store')
     const plugin = this.registry.find(row.pluginId)
     if (plugin === undefined) throw resourceNotFound('channel')
@@ -781,66 +783,70 @@ export class ChannelConnectionsService {
       )
     }
 
-    const saved = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      await this.installationOf(tx, storeId, row.pluginId)
-      // Named by the account it read: a connection released or disconnected meanwhile is not written
-      // and still holding the credentials it had when it was read: a disconnect and a reconnect with another
-      // token while the provider answered must not be overwritten by this older one
-      const where = {
-        id: row.id,
-        storeId,
-        connectionId: row.connectionId,
-        credentials: row.credentials
-      }
-      const data = {
-        credentials: sealed,
-        // Last, so that a plugin cannot say how it was connected through the login
-        metadata: authMethod === undefined ? result.metadata : { ...result.metadata, authMethod },
-        lastError: null,
-        lastHealthyAt: new Date()
-      }
-      const restored = await tx.channelConnection.updateMany({
-        where: { ...where, status: ChannelConnectionStatus.ERROR },
-        data: { ...data, status: ChannelConnectionStatus.ACTIVE }
-      })
-      const stayed =
-        restored.count === 1
-          ? 0
-          : (
-              await tx.channelConnection.updateMany({
-                where: { ...where, status: ChannelConnectionStatus.ACTIVE },
-                data
-              })
-            ).count
-      if (restored.count + stayed !== 1) {
-        throw resourceConflict('the connection changed while the token was being checked')
-      }
-      if (restored.count === 1) {
-        this.events.publish(tx, Events.CHANNEL_HEALTH_RESTORED, {
+    // The rows and the entry of the audit in ONE unit: they commit together, and the provider was asked before it with no context open
+    const saved = await this.unit(storeId, async () => {
+      const written = await this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        await this.installationOf(tx, storeId, row.pluginId)
+        // Named by the account it read: a connection released or disconnected meanwhile is not written
+        // and still holding the credentials it had when it was read: a disconnect and a reconnect with another
+        // token while the provider answered must not be overwritten by this older one
+        const where = {
+          id: row.id,
           storeId,
-          channelConnectionId: row.id,
-          pluginId: row.pluginId
+          connectionId: row.connectionId,
+          credentials: row.credentials
+        }
+        const data = {
+          credentials: sealed,
+          // Last, so that a plugin cannot say how it was connected through the login
+          metadata: authMethod === undefined ? result.metadata : { ...result.metadata, authMethod },
+          lastError: null,
+          lastHealthyAt: new Date()
+        }
+        const restored = await tx.channelConnection.updateMany({
+          where: { ...where, status: ChannelConnectionStatus.ERROR },
+          data: { ...data, status: ChannelConnectionStatus.ACTIVE }
         })
-      }
-      await this.forgetProfileRefusals(tx, storeId, row.id)
-      return tx.channelConnection.findFirstOrThrow({
-        where: { id: row.id, storeId },
-        select: VIEW_SELECT
+        const stayed =
+          restored.count === 1
+            ? 0
+            : (
+                await tx.channelConnection.updateMany({
+                  where: { ...where, status: ChannelConnectionStatus.ACTIVE },
+                  data
+                })
+              ).count
+        if (restored.count + stayed !== 1) {
+          throw resourceConflict('the connection changed while the token was being checked')
+        }
+        if (restored.count === 1) {
+          this.events.publish(tx, Events.CHANNEL_HEALTH_RESTORED, {
+            storeId,
+            channelConnectionId: row.id,
+            pluginId: row.pluginId
+          })
+        }
+        await this.forgetProfileRefusals(tx, storeId, row.id)
+        return tx.channelConnection.findFirstOrThrow({
+          where: { id: row.id, storeId },
+          select: VIEW_SELECT
+        })
       })
-    })
-    this.audit.log({
-      action: AuditAction.CHANNEL_TOKEN_UPDATED,
-      actor: { userId: actor.userId },
-      storeId,
-      resourceType: 'channel_connection',
-      resourceId: row.id,
-      metadata:
-        authMethod === undefined
-          ? { pluginId: row.pluginId }
-          : { pluginId: row.pluginId, authMethod },
-      ipAddress: actor.ipAddress,
-      userAgent: actor.userAgent
+      this.audit.log({
+        action: AuditAction.CHANNEL_TOKEN_UPDATED,
+        actor: { userId: actor.userId },
+        storeId,
+        resourceType: 'channel_connection',
+        resourceId: row.id,
+        metadata:
+          authMethod === undefined
+            ? { pluginId: row.pluginId }
+            : { pluginId: row.pluginId, authMethod },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent
+      })
+      return written
     })
     return this.viewAfterWrite(storeId, await this.withTokenInfo(storeId, saved))
   }
@@ -1025,22 +1031,27 @@ export class ChannelConnectionsService {
 
   // Asks the plugin now and writes the answer, as the scheduler would
   async test(storeId: string, connectionId: string): Promise<ChannelTestResult> {
-    const row = await this.rowOf(storeId, connectionId)
+    const { row, working } = await this.unit(storeId, async () => ({
+      row: await this.rowOf(storeId, connectionId),
+      // A stranded connection (its installation was revoked) is not probed: it is only disconnected
+      working: await this.prisma.client.channelConnection.count({
+        where: { id: connectionId, storeId, ...OfActiveInstallation }
+      })
+    }))
     if (row.status === String(ChannelConnectionStatus.DISCONNECTED)) {
       throw resourceConflict('the connection is disconnected')
     }
-    // A stranded connection (its installation was revoked) is not probed: it is only disconnected
-    const working = await this.prisma.client.channelConnection.count({
-      where: { id: connectionId, storeId, ...OfActiveInstallation }
-    })
     if (working === 0) throw resourceConflict('the plugin is not installed in this store')
     const plugin = this.registry.find(row.pluginId)
     if (plugin === undefined) throw resourceNotFound('channel')
     const checkedAt = new Date()
     const checked = await this.health.check(row, plugin)
-    await this.health.record(row, checked)
+    await this.unit(storeId, () => this.health.record(row, checked))
     // Disconnected while it was being asked: the verdict is about a connection that is no more
-    if ((await this.get(storeId, connectionId)).status === ChannelConnectionStatus.DISCONNECTED) {
+    if (
+      (await this.unit(storeId, () => this.get(storeId, connectionId))).status ===
+      ChannelConnectionStatus.DISCONNECTED
+    ) {
       throw resourceConflict('the connection is disconnected')
     }
     return {
@@ -1116,6 +1127,12 @@ export class ChannelConnectionsService {
       })
     }
     return this.viewAfterWrite(storeId, done.saved)
+  }
+
+  // One short unit of the store: the routes that ask the provider (`test`, `updateToken`) are @NoTenantTransaction, so each step of the
+  // database opens its own and the provider is asked between them with no context open
+  private unit<T>(storeId: string, work: () => Promise<T>): Promise<T> {
+    return this.jobs.forStoreOrJoin(storeId, work)
   }
 
   private async rowOf(storeId: string, connectionId: string) {

@@ -18,6 +18,7 @@ import {
   actorOf,
   CurrentPermissions,
   CurrentStore,
+  NoTenantTransaction,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -132,6 +133,9 @@ export class CarrierConnectionsController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_CARRIERS)
+  @NoTenantTransaction(
+    'asks the carrier whether the connection works (network): the service reads and writes in short units of the store and the carrier is asked between them with no context open'
+  )
   @Post(ApiRoutes.carriers.test(':id'))
   @HttpCode(HttpStatusCodes.OK)
   test(

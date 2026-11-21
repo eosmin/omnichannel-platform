@@ -115,6 +115,9 @@ export class ChannelConnectionsController {
 
   // The token of a connection that exists, checked against the account it already has
   @RequirePermissions(Permissions.SETTINGS_EDIT)
+  @NoTenantTransaction(
+    'asks the provider of the channel (network): the service reads and writes in short units of the store and the provider is asked between them with no context open'
+  )
   @Post(ApiRoutes.channels.updateToken(':id'))
   @HttpCode(HttpStatusCodes.OK)
   updateToken(
@@ -142,6 +145,9 @@ export class ChannelConnectionsController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_EDIT)
+  @NoTenantTransaction(
+    'asks the provider of the channel (network): the service reads and writes in short units of the store and the provider is asked between them with no context open'
+  )
   @Post(ApiRoutes.channels.test(':id'))
   @HttpCode(HttpStatusCodes.OK)
   test(

@@ -8,7 +8,7 @@ import { MULTI_FILE_SEND_ENABLED, NoStore, ZodValidationPipe } from '@platform/c
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { PluginApi } from '../plugins/plugin-api.decorators'
-import { CurrentStore, RequirePermissions } from '../tenancy'
+import { CurrentStore, NoTenantTransaction, RequirePermissions } from '../tenancy'
 
 import {
   ChannelConnectionsService,
@@ -40,6 +40,9 @@ export class PluginChannelsController {
   @PluginApi(PluginScopes.CHANNELS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND_TEMPLATE)
   @NoStore()
+  @NoTenantTransaction(
+    'lists the templates the provider approved (network): the service reads the connection in one short unit of the store and asks the provider after it with no context open'
+  )
   @Get(PluginApiRoutes.channels.templates(':pluginId'))
   list(
     @CurrentStore() store: { id: string },
