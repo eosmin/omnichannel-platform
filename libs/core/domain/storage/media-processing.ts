@@ -113,7 +113,33 @@ export const ImageSanitizing = {
   MAX_INPUT_PIXELS: 50_000_000,
   // The types that are re-encoded. A gif or an animated webp or png is left as it came (see the plan,
   // Step 7.1): the encoder would flatten it, and #181 keeps stickers moving.
-  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp']
+  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp'],
+  // The pictures one worker process decodes at the same time, whatever the concurrency of the queues that call the cleaner: a
+  // picture of MAX_INPUT_PIXELS is about 200 MB of raster plus the encoder, so the peak of the cleaning is bounded by this number
+  // and not by the sum of the queues (Step 7.1, "Memory of the picture cleaning")
+  MAX_CONCURRENT_DECODES: 1
+} as const
+
+// The sweep that cleans the pictures stored before the cleaning existed (`ExistingPictureSanitizer`, Step 7.1): every run takes a bounded
+// batch of each store, the oldest first, and the progress is in the rows themselves, so it is safe to repeat and resumes where it stopped.
+export const ExistingPictureSweep = {
+  // Rows taken per store per run, and rows in the whole run (a full run is logged and the next one takes the rest)
+  BATCH_PER_STORE: 25,
+  MAX_PER_RUN: 100,
+  // Media.scanResult is merged, never replaced: `sanitized: true` is the mark the scan writes on a picture it cleaned (an older row has
+  // none); a picture the sweep looked at and could not or need not rewrite carries `sanitizeSweep: <outcome>` so it is not taken again
+  CLEANED_KEY: 'sanitized',
+  OUTCOME_KEY: 'sanitizeSweep',
+  Outcomes: {
+    // The file held no metadata (a crash between the write and the mark, or a picture that was already clean): only the mark is written
+    ALREADY_CLEAN: 'already_clean',
+    // A gif or an animation: left as it came (see the plan, Step 7.1)
+    UNTOUCHED: 'untouched',
+    // The picture no longer decodes. It was served as clean, so it is never deleted by the sweep: left as it is and logged
+    UNDECODABLE: 'undecodable',
+    // The row names a file that is not in the bucket: logged, left for the cleanup of stray rows
+    MISSING: 'missing'
+  }
 } as const
 
 // Media.scanResult.reason of a file that was refused before the scan because it cannot be decoded and

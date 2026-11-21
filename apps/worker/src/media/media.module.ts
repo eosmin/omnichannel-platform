@@ -19,6 +19,7 @@ import { RetentionWorkerModule } from '../retention/retention.module'
 import { ShippingWorkerModule } from '../shipping/shipping.module'
 
 import { ClamavClient } from './clamav.client'
+import { ExistingPictureSanitizer } from './existing-picture-sanitizer.service'
 import { InboundMediaFetcher } from './inbound-media-fetcher.service'
 import { MediaPipeline } from './media-pipeline.service'
 import { OriginMediaFetcher } from './origin-media-fetcher.service'
@@ -58,8 +59,9 @@ import { UnavailableFileMarker } from './unavailable-file-marker.service'
     InboundMediaFetcher,
     OriginMediaFetcher,
     OrphanMediaCleaner,
+    ExistingPictureSanitizer,
     HeavyProcessingProcessor
   ],
-  exports: [OrphanMediaCleaner]
+  exports: [OrphanMediaCleaner, ExistingPictureSanitizer]
 })
 export class MediaModule {}

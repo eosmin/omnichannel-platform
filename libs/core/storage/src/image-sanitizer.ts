@@ -69,6 +69,40 @@ function encode(input: Buffer, format: 'jpeg' | 'png' | 'webp', quality: number)
   return pipeline.png({ compressionLevel: 9 }).toBuffer()
 }
 
+// Whether a picture carries what the cleaning removes (EXIF, XMP, IPTC, the Photoshop block). It reads the header only. The check of the
+// output of `sanitizeImage` and the check of a stored picture (`ExistingPictureSanitizer`) are this one.
+export async function carriesMetadata(body: Buffer): Promise<boolean> {
+  const header = await sharp(body, {
+    limitInputPixels: ImageSanitizing.MAX_INPUT_PIXELS
+  }).metadata()
+  return (
+    header.exif !== undefined ||
+    header.xmp !== undefined ||
+    header.iptc !== undefined ||
+    header.tifftagPhotoshop !== undefined
+  )
+}
+
+// The decodes in flight in this process, bounded by `ImageSanitizing.MAX_CONCURRENT_DECODES` (a queue of waiters: first come, first
+// served). Whoever calls the cleaner, the heavy queue or a sweep, shares it.
+let decodesInFlight = 0
+const waiting: (() => void)[] = []
+export async function withDecodeSlot<T>(work: () => Promise<T>): Promise<T> {
+  if (decodesInFlight >= ImageSanitizing.MAX_CONCURRENT_DECODES) {
+    await new Promise<void>(resolve => waiting.push(resolve))
+  } else {
+    decodesInFlight += 1
+  }
+  try {
+    return await work()
+  } finally {
+    // The slot passes to the next waiter without being freed, so the count never dips under the bound
+    const next = waiting.shift()
+    if (next === undefined) decodesInFlight -= 1
+    else next()
+  }
+}
+
 // The one place where a picture is cleaned of its metadata, used for what an agent uploads and for
 // what a customer sends alike (both reach the scan of the media pipeline). The type is checked against
 // the bytes before anything is decoded, the pixels are bounded before anything is decoded whole, the
@@ -76,10 +110,18 @@ function encode(input: Buffer, format: 'jpeg' | 'png' | 'webp', quality: number)
 // file limit (the quality goes down a step at a time to make it so) and is checked: one that still holds
 // EXIF, XMP or IPTC is refused. An error of the machine (memory, threads) propagates, so the queue
 // retries; any other is the picture's.
-export async function sanitizeImage(
+export function sanitizeImage(
   input: Buffer,
   contentType: string,
   maxBytes: number = UploadLimits.MAX_FILE_SIZE_BYTES
+): Promise<SanitizedImage> {
+  return withDecodeSlot(() => sanitizeWithinSlot(input, contentType, maxBytes))
+}
+
+async function sanitizeWithinSlot(
+  input: Buffer,
+  contentType: string,
+  maxBytes: number
 ): Promise<SanitizedImage> {
   const expected = FORMAT_OF[contentType]
   if (expected === undefined || !isSanitizedType(contentType)) {
@@ -118,15 +160,7 @@ export async function sanitizeImage(
       throw new ImageNotSanitizable('the cleaned picture does not fit the file limit')
     }
 
-    const result = await sharp(body, {
-      limitInputPixels: ImageSanitizing.MAX_INPUT_PIXELS
-    }).metadata()
-    if (
-      result.exif !== undefined ||
-      result.xmp !== undefined ||
-      result.iptc !== undefined ||
-      result.tifftagPhotoshop !== undefined
-    ) {
+    if (await carriesMetadata(body)) {
       throw new ImageNotSanitizable('the new file still has metadata')
     }
     return { kind: 'sanitized', body }
