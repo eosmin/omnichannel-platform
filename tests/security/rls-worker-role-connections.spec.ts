@@ -3,6 +3,7 @@ import pg from 'pg'
 import { connectionUrls, DatabaseRoles } from '@platform/core/database-testing'
 
 import {
+  WORKER_ROLE,
   connectionsProblem,
   readReachedDatabases,
   readWorkerConnections
@@ -18,6 +19,10 @@ describe('the facts the worker-role script reads from the server', () => {
   })
   afterAll(async () => {
     await owner.end()
+  })
+
+  it('names the same role as the harness', () => {
+    expect(WORKER_ROLE).toBe(DatabaseRoles.WORKER)
   })
 
   it('lists the database of the run among the ones the worker role can connect to, and no template', async () => {
