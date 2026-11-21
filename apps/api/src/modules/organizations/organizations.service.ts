@@ -228,6 +228,26 @@ export class OrganizationsService {
     body: DeleteStoreBody,
     actor: Actor
   ): Promise<void> {
+    await this.inOrganizationContext(organizationId, () =>
+      this.deleteStoreInTransaction(organizationId, storeId, body, actor)
+    )
+    await this.forgetStore(storeId)
+    this.logStore(AuditAction.STORE_DELETED, organizationId, storeId, actor, {})
+  }
+
+  // rls_store_tables_with_rows checks the store against the context (the organization of the request): the request has it when the
+  // interceptor of the context is on, and with it off the delete opens its own, for the organization the guard put in the request
+  private inOrganizationContext<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
+    if (this.prisma.hasTenantContext()) return work()
+    return this.prisma.tenantTransaction({ storeIds: [], organizationIds: [organizationId] }, work)
+  }
+
+  private async deleteStoreInTransaction(
+    organizationId: string,
+    storeId: string,
+    body: DeleteStoreBody,
+    actor: Actor
+  ): Promise<void> {
     await this.prisma.transaction(async tx => {
       const target = await tx.store.findFirst({
         where: { id: storeId, organizationId, ...managedBy(actor.userId) },
@@ -266,8 +286,6 @@ export class OrganizationsService {
       }
       await tx.store.deleteMany({ where: { id: storeId, organizationId } })
     })
-    await this.forgetStore(storeId)
-    this.logStore(AuditAction.STORE_DELETED, organizationId, storeId, actor, {})
   }
 
   // The change is already written: a cache that cannot be reached must not turn it into a 500 (the

@@ -55,6 +55,10 @@ export const MetricNames = {
   QUEUE_FAILED: 'platform_queue_failed_total',
   QUEUE_PROCESSING_DURATION: 'platform_queue_processing_duration_seconds',
 
+  // Webhooks: the deliveries of an event that were never queued (label `reason`, WebhookDispatchLossReasons). Any non-zero rate is a
+  // delivery lost with no other trace than the log: alert on it
+  WEBHOOK_DISPATCH_LOST: 'platform_webhook_dispatch_lost_total',
+
   // Channels
   CHANNEL_WEBHOOK_RECEIVED: 'platform_channel_webhook_received_total',
   CHANNEL_WEBHOOK_REJECTED: 'platform_channel_webhook_rejected_total',

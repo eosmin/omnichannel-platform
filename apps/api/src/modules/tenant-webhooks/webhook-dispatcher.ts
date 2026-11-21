@@ -1,8 +1,15 @@
 import { randomUUID } from 'node:crypto'
 
 import { InjectQueue } from '@nestjs/bullmq'
-import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common'
+import {
+  Injectable,
+  Optional,
+  type OnModuleDestroy,
+  type OnModuleInit,
+  Inject
+} from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import type { Counter } from '@prometheus-io/client'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
@@ -14,11 +21,17 @@ import {
 } from '@platform/core/database'
 import {
   isWebhookEvent,
+  WebhookDispatchLossReasons,
+  type WebhookDispatchLossReason,
+  WebhookDispatchReadRetryPausesMs,
   PluginInstallationStatus,
   PluginStatus,
   type WebhookEvent,
   WebhookStatus
 } from '@platform/core/domain'
+import { isLockTimeoutError, isTransactionWaitError } from '@platform/core/errors'
+import { MetricNames } from '@platform/core/metrics'
+import { getMetricToken } from '@platform/core/metrics-module'
 import {
   JobNames,
   QueueNames,
@@ -47,7 +60,11 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
     private readonly events: EventContext,
     @InjectQueue(QueueNames.WEBHOOKS)
     private readonly queue: Queue<TriggerWebhookJob | TriggerPluginWebhookJob>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    // The deliveries that were never queued, by reason: the trace to alert on (a log line is not read by anyone at 3 am)
+    @Optional()
+    @Inject(getMetricToken(MetricNames.WEBHOOK_DISPATCH_LOST))
+    private readonly lost?: Counter<string>
   ) {
     this.logger.setContext(WebhookDispatcher.name)
   }
@@ -71,26 +88,46 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
         { event },
         'an event of the webhook catalog carries no store: not dispatched'
       )
+      this.countLost(WebhookDispatchLossReasons.NO_STORE)
       return 0
     }
     // ONE short context per event (it is heard for every store and event) holds both reads. Each read is in its own savepoint, so a
     // read that fails does not abort the transaction of the other: a store whose webhooks could not be read does not cost its plugins
     // their delivery. The queue is asked after the context has closed.
-    let read: Reads
-    try {
-      read = await this.events.inStore(storeId, () => this.read(event, storeId))
-    } catch (error) {
-      // A store deleted after the event has nothing left to deliver
-      if (error instanceof JobContextGoneError) return 0
-      this.logger.error(
-        { event, storeId, err: String(error) },
-        'the webhooks of an event could not be read'
-      )
-      return 0
-    }
+    const read = await this.readWithRetries(event, storeId)
+    if (read === null) return 0
     const tenants = await this.queueTenants(event, storeId, body, read.webhooks)
     const plugins = await this.queuePlugins(event, storeId, body, read.installations)
     return tenants + plugins
+  }
+
+  // A lock timeout or a busy pool is the database asking for a pause, not an answer: the read is made again, a bounded number of times,
+  // each in a context of its own. Anything else (and the last try) is a delivery lost: logged and counted. A store that is gone, or
+  // that has nobody to tell, is no loss.
+  private async readWithRetries(event: WebhookEvent, storeId: string): Promise<Reads | null> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.events.inStore(storeId, () => this.read(event, storeId))
+      } catch (error) {
+        // A store deleted after the event has nothing left to deliver
+        if (error instanceof JobContextGoneError) return null
+        const pause = WebhookDispatchReadRetryPausesMs[attempt]
+        if (isTransient(error) && pause !== undefined) {
+          await new Promise<void>(resolve => setTimeout(resolve, pause))
+          continue
+        }
+        this.logger.error(
+          { event, storeId, attempts: attempt + 1, err: String(error) },
+          'the webhooks of an event could not be read'
+        )
+        this.countLost(WebhookDispatchLossReasons.READ_FAILED)
+        return null
+      }
+    }
+  }
+
+  private countLost(reason: WebhookDispatchLossReason, amount = 1): void {
+    this.lost?.inc({ reason }, amount)
   }
 
   private async read(event: WebhookEvent, storeId: string): Promise<Reads> {
@@ -132,19 +169,29 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
     return { webhooks, installations }
   }
 
-  // One read in its own savepoint: a failure is logged and answers nothing, and the transaction stays usable for the next read
+  // One read in its own savepoint. A lock timeout or a busy pool rolls back only that savepoint, so the read is made again there after a
+  // pause (bounded) and the other side keeps what it read. A failure that stays is logged and counted and answers nothing, and the
+  // transaction stays usable for the next read.
   private async attempt<T>(
     event: WebhookEvent,
     storeId: string,
     message: string,
     read: () => Promise<T[]>
   ): Promise<T[]> {
-    try {
-      return await inSavepoint(read)
-    } catch (error) {
-      if (error instanceof JobContextGoneError) throw error
-      this.logger.error({ event, storeId, err: String(error) }, message)
-      return []
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await inSavepoint(read)
+      } catch (error) {
+        if (error instanceof JobContextGoneError) throw error
+        const pause = WebhookDispatchReadRetryPausesMs[attempt]
+        if (isTransient(error) && pause !== undefined) {
+          await new Promise<void>(resolve => setTimeout(resolve, pause))
+          continue
+        }
+        this.logger.error({ event, storeId, attempts: attempt + 1, err: String(error) }, message)
+        this.countLost(WebhookDispatchLossReasons.READ_FAILED)
+        return []
+      }
     }
   }
 
@@ -180,6 +227,7 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
         { event, storeId, err: String(error) },
         'the webhooks of an event could not be queued'
       )
+      this.countLost(WebhookDispatchLossReasons.QUEUE_FAILED, webhooks.length)
       return 0
     }
   }
@@ -192,6 +240,7 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
     body: Record<string, unknown>,
     installations: Reads['installations']
   ): Promise<number> {
+    let attempted = 0
     try {
       let hidden = 0
       const jobs = installations.flatMap(installation => {
@@ -224,6 +273,7 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
         )
       }
       if (jobs.length === 0) return 0
+      attempted = jobs.length
       await this.queue.addBulk(jobs)
       return jobs.length
     } catch (error) {
@@ -231,6 +281,7 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
         { event, storeId, err: String(error) },
         'the plugin webhooks of an event could not be queued'
       )
+      if (attempted > 0) this.countLost(WebhookDispatchLossReasons.QUEUE_FAILED, attempted)
       return 0
     }
   }
@@ -244,6 +295,10 @@ interface Reads {
     plugin: { manifest: unknown }
   }[]
 }
+
+// The database asking for a pause: a lock that timed out, or a pool with no connection free in time
+const isTransient = (error: unknown): boolean =>
+  isLockTimeoutError(error) || isTransactionWaitError(error)
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
