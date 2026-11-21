@@ -13,15 +13,23 @@ import {
   FiscalEnvironment,
   FiscalIssueOn,
   FiscalRejectionReasons,
+  FiscalSweepKind,
+  FiscalSweepLimits,
+  FiscalVoidConsultState,
   FiscalVoidKind,
   OrderStatus
 } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
 import { QueueNames } from '@platform/core/queues'
-import { FISCAL_PROVIDERS, FiscalDocumentsService } from '@platform/fiscal/runtime'
+import {
+  FISCAL_PROVIDERS,
+  FiscalDocumentsService,
+  FiscalSweepService
+} from '@platform/fiscal/runtime'
 import type { FiscalDocumentProvider } from '@platform/fiscal/sdk'
 import { SIMULATOR_PROVIDER_ID, simulatorProvider } from '@platform/fiscal/simulator'
 
+import { FiscalSubmissionQueue } from '../../apps/api/src/modules/fiscal/fiscal-submission.queue'
 import { createOrder } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
@@ -39,6 +47,9 @@ const FORBIDDEN = 403
 const NOT_FOUND = 404
 const CONFLICT = 409
 const ASKS_PROVIDER_ID = 'rls-fiscal-routes-test'
+const REMEMBERS_PROVIDER_ID = 'rls-fiscal-routes-remembers'
+const MINUTE_MS = 60_000
+const SERVER_ERROR = 500
 const SECRET = 'not-a-real-signing-key-1234567890'
 const RECEIVER_TAX_ID = '0614-010101-101-1'
 
@@ -57,6 +68,37 @@ function asksProvider(): FiscalDocumentProvider {
           kindsWithReplacement: [FiscalVoidKind.CORRECTION]
         }
       }
+    }
+  }) as FiscalDocumentProvider
+}
+
+// The simulator is stateless: a document it invalidated is a document it knows nothing about when it is asked again. This one remembers
+// what it invalidated, as an authority does, and counts the invalidations it received (the key of a request is the same for the same
+// invalidation), so a test can say that a request asked again after a failure reached the authority ONCE.
+const received: string[] = []
+function remembersProvider(): FiscalDocumentProvider {
+  const base: FiscalDocumentProvider = simulatorProvider()
+  const known = new Set<string>()
+  return Object.create(base, {
+    id: { value: REMEMBERS_PROVIDER_ID, enumerable: true },
+    void: {
+      enumerable: true,
+      value: (...args: Parameters<FiscalDocumentProvider['void']>) => {
+        const key = args[2].idempotencyKey
+        received.push(key)
+        known.add(key)
+        return base.void(...args)
+      }
+    },
+    consultVoid: {
+      enumerable: true,
+      value: (...args: Parameters<NonNullable<FiscalDocumentProvider['consultVoid']>>) =>
+        known.has(args[1].idempotencyKey)
+          ? Promise.resolve({
+              state: FiscalVoidConsultState.VOIDED,
+              response: { voided: true, recovered: true }
+            })
+          : base.consultVoid?.(...args)
     }
   }) as FiscalDocumentProvider
 }
@@ -95,7 +137,7 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
         .overrideProvider(RLS_CONTEXT_ENABLED)
         .useValue(true)
         .overrideProvider(FISCAL_PROVIDERS)
-        .useValue([simulator, asksProvider()])
+        .useValue([simulator, asksProvider(), remembersProvider()])
     )
     ctx = await seedTestContext(owner, app, prefix)
     documents = app.get(FiscalDocumentsService)
@@ -142,6 +184,14 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
     await app.close()
     await guarded.onModuleDestroy()
     await owner.$disconnect()
+  })
+
+  // A failed assertion must not leave a spy or a count for the cases that follow
+  beforeEach(() => {
+    received.length = 0
+  })
+  afterEach(() => {
+    jest.restoreAllMocks()
   })
 
   const asAdminA = () => api(app, ctx.adminA, ctx.storeA)
@@ -360,5 +410,124 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
         expect((await call(fromA2(agentInA2), id)).status).toBe(FORBIDDEN)
       }
     )
+  })
+
+  // The cases that BLOCK turning RLS_CONTEXT on for the fiscal routes of a person (debt (d) of #816): what happens when a unit of a route
+  // dies or the queue is down, with the document of one store and the header of its sibling
+  describe('a route that fails half way, with the header of the sibling store', () => {
+    it('ends an invalidation whose last unit died with ONE invalidation at the authority', async () => {
+      await useIssuer(REMEMBERS_PROVIDER_ID)
+      const id = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      received.length = 0
+      // The authority invalidates the document and the last unit of the route dies before it writes the answer
+      const dies = jest
+        .spyOn(documents as unknown as { safeResponse: () => unknown }, 'safeResponse')
+        .mockImplementationOnce(() => {
+          throw new Error('connection lost')
+        })
+      const first = await fromA2(both)
+        .post(ApiRoutes.fiscal.documents.void(id))
+        .send({ reason: 'wrong customer' })
+      dies.mockRestore()
+      expect(first.status).toBe(SERVER_ERROR)
+      const stuck = await row(id)
+      expect(stuck.status).toBe(FiscalDocumentStatus.ACCEPTED)
+      expect(stuck.voidClaimKey).not.toBeNull()
+      expect(received).toHaveLength(1)
+
+      // The claim is alive: the same request is the same invalidation and waits for the lease, it never reaches the authority again
+      const early = await fromA2(both)
+        .post(ApiRoutes.fiscal.documents.void(id))
+        .send({ reason: 'wrong customer' })
+      expect(early.status).toBe(CONFLICT)
+      expect(received).toHaveLength(1)
+
+      // The lease ends: the same key finds the claim, consults the authority and settles the document with what it answered
+      await owner.fiscalDocument.update({
+        where: { id },
+        data: { voidClaimUntil: new Date(Date.now() - 1000) }
+      })
+      const again = await fromA2(both)
+        .post(ApiRoutes.fiscal.documents.void(id))
+        .send({ reason: 'wrong customer' })
+      expect(again.status).toBe(OK)
+      const done = await row(id)
+      expect(done.status).toBe(FiscalDocumentStatus.VOIDED)
+      expect(done.voidClaimKey).toBeNull()
+      expect(done.voidResponse).toEqual({ voided: true, recovered: true })
+      expect(received).toHaveLength(1)
+    })
+
+    it('refuses a replacement that is not the one made for the document, or none, and asks nobody', async () => {
+      await useIssuer(SIMULATOR_PROVIDER_ID)
+      const id = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      const other = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      const asked = (['void', 'consultVoid'] as const).map(method => jest.spyOn(simulator, method))
+      for (const replacementDocumentId of [other, randomUUID()]) {
+        const refused = await fromA2(both)
+          .post(ApiRoutes.fiscal.documents.void(id))
+          .send({ reason: 'wrong customer', replacementDocumentId })
+        expect(refused.status).toBe(NOT_FOUND)
+      }
+      expect(asked.map(spy => spy.mock.calls.length)).toEqual([0, 0])
+      asked.forEach(spy => spy.mockRestore())
+      const after = await row(id)
+      expect([after.status, after.voidClaimKey]).toEqual([FiscalDocumentStatus.ACCEPTED, null])
+    })
+
+    it('takes no claim and asks nobody when the reach is lost between the first unit and the claim', async () => {
+      await useIssuer(SIMULATOR_PROVIDER_ID)
+      const id = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      const asked = (['void', 'consultVoid'] as const).map(method => jest.spyOn(simulator, method))
+      // A guard that lets the first unit through and refuses the second, the one that takes the claim
+      let calls = 0
+      const guard = (): Promise<void> => {
+        calls += 1
+        return calls === 1 ? Promise.resolve() : Promise.reject(new Error('the reach was lost'))
+      }
+
+      await expect(
+        documents.void(
+          ctx.orgA.id,
+          id,
+          'wrong customer',
+          { userId: both.id, storeId: ctx.storeA2.id },
+          guard
+        )
+      ).rejects.toThrow('the reach was lost')
+
+      expect(asked.map(spy => spy.mock.calls.length)).toEqual([0, 0])
+      asked.forEach(spy => spy.mockRestore())
+      const after = await row(id)
+      expect([after.status, after.voidClaimKey]).toEqual([FiscalDocumentStatus.ACCEPTED, null])
+    })
+
+    it('answers a replacement whose queueing failed, and leaves the document queued for the check of the night', async () => {
+      await useIssuer(ASKS_PROVIDER_ID)
+      const id = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      const down = jest
+        .spyOn(app.get(FiscalSubmissionQueue), 'enqueue')
+        .mockRejectedValue(new Error('the queue is down'))
+      let made: string
+      try {
+        const answer = await fromA2(both).post(ApiRoutes.fiscal.documents.replace(id))
+        expect(answer.status).toBe(OK)
+        made = (answer.body as { data: { id: string } }).data.id
+      } finally {
+        down.mockRestore()
+      }
+      // Committed and not queued: the check of the night lists it once the time of a stall has passed
+      const queued = await row(made)
+      expect(queued.status).toBe(FiscalDocumentStatus.QUEUED)
+      // It was numbered when it was made (the number is the document's, so it is not lost with the job): the check asks for THIS document
+      expect(queued.sequenceNumber).not.toBeNull()
+      const later = new Date(Date.now() + (FiscalSweepLimits.QUEUED_STALL_MINUTES + 1) * MINUTE_MS)
+      const found = await app
+        .get(FiscalSweepService)
+        .find(ctx.orgA.id, FiscalSweepKind.STALLED_DOCUMENT, { now: later })
+      expect(found.data.filter(finding => finding.id === made)).toHaveLength(1)
+      expect((await row(made)).sequenceNumber).toBe(queued.sequenceNumber)
+      expect(await owner.fiscalDocument.count({ where: { replacesDocumentId: id } })).toBe(1)
+    })
   })
 })
