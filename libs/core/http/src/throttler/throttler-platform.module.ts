@@ -7,6 +7,7 @@ import { ThrottlerNames, ThrottleProfiles } from '@platform/core/auth'
 import { REDIS_CLIENT, RedisThrottlerStorage } from '@platform/core/redis'
 
 import { AuthenticatedUserRateLimitGuard } from './authenticated-user-rate-limit.guard'
+import { PluginKeyProbeLimiter } from './plugin-key-probe-limiter'
 import { ResilientThrottlerGuard } from './resilient-throttler.guard'
 import { USER_RATE_LIMIT_STORAGE, UserRateLimitGuard } from './user-rate-limit.guard'
 
@@ -41,9 +42,16 @@ import { USER_RATE_LIMIT_STORAGE, UserRateLimitGuard } from './user-rate-limit.g
       useFactory: (redis: Redis) => new RedisThrottlerStorage(redis)
     },
     UserRateLimitGuard,
+    // The failures of a plugin key per address, asked by PluginApiKeyGuard and by the body parser of the events route
+    PluginKeyProbeLimiter,
     // Not an APP_GUARD here: it needs the user, so TenancyModule registers it after the guards of the token and the permission
     AuthenticatedUserRateLimitGuard
   ],
-  exports: [USER_RATE_LIMIT_STORAGE, UserRateLimitGuard, AuthenticatedUserRateLimitGuard]
+  exports: [
+    USER_RATE_LIMIT_STORAGE,
+    UserRateLimitGuard,
+    AuthenticatedUserRateLimitGuard,
+    PluginKeyProbeLimiter
+  ]
 })
 export class ThrottlerPlatformModule {}

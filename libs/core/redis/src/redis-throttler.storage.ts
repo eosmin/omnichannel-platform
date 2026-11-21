@@ -49,6 +49,13 @@ type ThrottlerStorageRecord = Awaited<ReturnType<ThrottlerStorage['increment']>>
 export class RedisThrottlerStorage implements ThrottlerStorage {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
+  // Seconds left of the block of a key (0 when it is not blocked), read without counting a hit: for a limit that counts only some
+  // requests (the failures of a key) and has to be asked about before the work of the others
+  async blockedFor(key: string, throttlerName: string): Promise<number> {
+    const remainingMs = await this.redis.pttl(`${CacheKeys.rateLimit(throttlerName, key)}:block`)
+    return remainingMs > 0 ? Math.ceil(remainingMs / MS_PER_SECOND) : 0
+  }
+
   async increment(
     key: string,
     ttl: number,

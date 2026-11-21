@@ -97,10 +97,12 @@ function readBody(request: Request, limit: number): Promise<Buffer> {
 // key: the key itself is judged later by its guard. A caller without a header of that shape gets the small parser, but one that
 // WRITES the header with a made-up key gets the large one: the cost is one buffer of at most 1 MiB and one JSON parse per request
 // before the guard answers 401, ten times what any other route reads. The key cannot be checked here (it is a database lookup), so
-// the per-address limit of the plugin routes of Step 7.3 is what bounds it (tracked in the plan, PR C4 debt).
+// what bounds it is the limit per address of the keys that do not open the door (`PluginKeyProbeLimiter`, Step 7.3 PR S3): an
+// address that is over it gets the small parser, so the large body is never read for it, and the guard answers it 429 before it
+// looks at the key. Up to the limit an address can still make this read, once per failure of its key.
 // It takes what the other parser takes for this route and nothing more: `application/json` in UTF-8, no content encoding, an
 // object or an array. Anything else is left to Nest's parser, which refuses or ignores it as it does everywhere.
-export const pluginEventsBodyParser: RequestHandler = (
+const readLargeBody: RequestHandler = (
   request: Request,
   response: Response,
   next: NextFunction
@@ -151,4 +153,30 @@ export const pluginEventsBodyParser: RequestHandler = (
       })
       next(error)
     })
+}
+
+// What the parser asks of the limit of the keys that failed: only how long an address has to wait
+export interface PluginKeyProbeGate {
+  retryAfter: (address: string) => Promise<number>
+}
+
+// The parser with the limit in front: asked before a byte of the body is read, and only for the one route. An address that has to
+// wait is handed to Nest's small parser as if it carried no key. The limiter never throws (it lets the call through when Redis
+// fails), but the answer is guarded anyway: a failed read must not stop the request.
+export function pluginEventsBodyParser(probes?: PluginKeyProbeGate): RequestHandler {
+  return (request: Request, response: Response, next: NextFunction): void => {
+    if (probes === undefined || request.method !== 'POST' || request.path !== EVENTS_PATH) {
+      readLargeBody(request, response, next)
+      return
+    }
+    probes.retryAfter(request.ip ?? '').then(
+      wait => {
+        if (wait > 0) next()
+        else readLargeBody(request, response, next)
+      },
+      () => {
+        readLargeBody(request, response, next)
+      }
+    )
+  }
 }

@@ -45,6 +45,21 @@ describe('RedisThrottlerStorage', () => {
     expect(hits[0]?.timeToExpire).toBeLessThanOrEqual(60)
   })
 
+  it('says how long a key is blocked without counting a hit, and 0 when it is not', async () => {
+    const key = newKey()
+    await expect(storage.blockedFor(key, name)).resolves.toBe(0)
+
+    await storage.increment(key, WINDOW_MS, 1, WINDOW_MS, name)
+    await expect(storage.blockedFor(key, name)).resolves.toBe(0)
+    await storage.increment(key, WINDOW_MS, 1, WINDOW_MS, name)
+
+    const waiting = await storage.blockedFor(key, name)
+    expect(waiting).toBeGreaterThan(55)
+    expect(waiting).toBeLessThanOrEqual(60)
+    // Asking is not a hit: the block counts nothing while it lasts and the counter is where the two failures left it
+    expect(await redis.get(`rl:${name}:${key}`)).toBe('2')
+  })
+
   it('refuses the first request past the limit and every one after it', async () => {
     const key = newKey()
     for (let i = 0; i < 2; i += 1) await storage.increment(key, WINDOW_MS, 2, 0, name)

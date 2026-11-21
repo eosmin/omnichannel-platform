@@ -5,7 +5,11 @@ import type { Redis } from 'ioredis'
 import { PinoLogger } from 'nestjs-pino'
 
 import { AuditService } from '@platform/core/audit-module'
-import { type Permission, RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
+import {
+  type Permission,
+  PluginApiKeyRefusalFloorMs,
+  RETRY_AFTER_METADATA_KEY
+} from '@platform/core/auth'
 import { hashToken } from '@platform/core/crypto'
 import {
   contextOf,
@@ -22,6 +26,7 @@ import {
   PluginStatus
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
+import { PluginKeyProbeLimiter } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import type { PluginScope } from '@platform/plugins/sdk'
@@ -64,16 +69,30 @@ export class PluginApiKeyGuard implements CanActivate {
     @Inject(getStorageToken()) private readonly throttle: ThrottlerStorage,
     private readonly logger: PinoLogger,
     private readonly audit: AuditService,
-    @Inject(REDIS_CLIENT) private readonly redis: Redis
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly probes: PluginKeyProbeLimiter
   ) {
     this.logger.setContext(PluginApiKeyGuard.name)
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>()
+    const startedAt = Date.now()
+    // First of all, before the key is looked up in the database: an address that has sent too many keys that did not open the door
+    // waits, and the lookup (and the large body of the events route, see pluginEventsBodyParser) is never paid for it
+    const wait = await this.probes.retryAfter(request.ip ?? '')
+    if (wait > 0) {
+      this.probes.countRefusal()
+      throw new PlatformException(
+        ErrorCodes.RATE_LIMIT_EXCEEDED,
+        'too many requests',
+        HttpStatusCodes.TOO_MANY_REQUESTS,
+        { [RETRY_AFTER_METADATA_KEY]: wait }
+      )
+    }
     const token = bearerTokenOf(request.headers.authorization)
     if (token === undefined || !token.startsWith(PLUGIN_API_KEY_TOKEN_PREFIX)) {
-      return this.refuseKey(request, PluginApiDenialReasons.INVALID_KEY)
+      return this.refuseKey(startedAt, request, PluginApiDenialReasons.INVALID_KEY)
     }
 
     // The key tells the database, and nobody else, which store it opens: the lookup answers the installation and its store, and the
@@ -96,7 +115,8 @@ export class PluginApiKeyGuard implements CanActivate {
               }
             })
           )
-    if (installation === null) return this.refuseKey(request, PluginApiDenialReasons.INVALID_KEY)
+    if (installation === null)
+      return this.refuseKey(startedAt, request, PluginApiDenialReasons.INVALID_KEY)
     // The status of the plugin is not read with a nested select inside the context of the store: the policy of `plugins` hides the
     // plugin of another organization there and the row would come back null. The lookup of the key answers it; no answer is a
     // refusal, the same one as for an unknown key, never an error
@@ -106,7 +126,7 @@ export class PluginApiKeyGuard implements CanActivate {
       pluginStatus !== String(PluginStatus.APPROVED)
     ) {
       // The caller gets the same answer as for an unknown key; the audit log knows which installation it was
-      return this.refuseKey(request, PluginApiDenialReasons.INACTIVE, installation, {
+      return this.refuseKey(startedAt, request, PluginApiDenialReasons.INACTIVE, installation, {
         status: { installation: installation.status, plugin: pluginStatus }
       })
     }
@@ -204,12 +224,19 @@ export class PluginApiKeyGuard implements CanActivate {
   }
 
   // A key that does not open the door: audited (with a cap) and answered with the one answer for every such key
-  private refuseKey(
+  // The answer is the same for every kind of key and takes the same time at least: the call waits for the floor, counted from the
+  // start of the guard, so a key that was never looked up and one that went through three queries cannot be told apart by the clock.
+  // The failure is counted against the address (PluginApiKeyProbeThrottle) before the answer.
+  private async refuseKey(
+    startedAt: number,
     request: AuthenticatedRequest,
     reason: PluginApiDenialReason,
     installation?: { id: string; pluginId: string; store: { id: string } },
     detail: { status?: { installation: string; plugin: string | null } } = {}
-  ): never {
+  ): Promise<never> {
+    await this.probes.recordFailure(request.ip ?? '')
+    const remaining = PluginApiKeyRefusalFloorMs - (Date.now() - startedAt)
+    if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining))
     // The audit is capped, so the log keeps every one of these (never the key)
     this.logger.warn(
       { installationId: installation?.id, reason },
