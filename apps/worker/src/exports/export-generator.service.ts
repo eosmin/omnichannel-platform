@@ -11,6 +11,7 @@ import {
   ReportFormatExtensions
 } from '@platform/core/analytics'
 import { AuditService } from '@platform/core/audit-module'
+import { type Permission } from '@platform/core/auth'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -40,6 +41,11 @@ import { CsvExportWriter } from './csv-export-writer'
 import { customersExportSource } from './customers-export.source'
 import { ExportProgress } from './export-progress'
 import { auditActorOfRequester, auditViaOfRequester } from './export-requester'
+import {
+  accessOfRequester,
+  currentPermissionsOfRequester,
+  narrowedViewer
+} from './export-requester-access'
 import { publishExportSettled } from './export-settled'
 import { mediaZipSource, ZipEmptyError, ZipTooLargeError } from './media-zip-export.source'
 import { ordersExportSource } from './orders-export.source'
@@ -89,7 +95,24 @@ export class ExportGenerator {
     // Already settled: a job that arrives twice makes the file once
     if (row.status !== ExportStatus.PENDING) return
 
-    const plan = this.planOf(row)
+    // Who asked may have lost the permission, or the place in the store, since: what the file holds is decided now, not at the request.
+    // Nothing is written for a requester who may no longer take this kind out (not even a count), and the row says so.
+    const held = await currentPermissionsOfRequester(
+      this.prisma,
+      this.jobContext,
+      row.storeId,
+      row.requestedBy
+    )
+    if (!accessOfRequester(row.type, held).allowed || held === null) {
+      this.logger.warn(
+        { exportId, storeId, type: row.type },
+        'an export was cancelled: its requester no longer holds the permissions of its kind'
+      )
+      await this.fail(row, ErrorCodes.PERMISSION_DENIED)
+      throw new UnrecoverableError('the requester of the export no longer holds its permissions')
+    }
+
+    const plan = this.planOf(row, held)
     if (plan === null) {
       await this.fail(row)
       throw new UnrecoverableError('the export row does not fit its kind')
@@ -169,7 +192,7 @@ export class ExportGenerator {
   }
 
   // null when the row holds a kind this step does not make, or filters that do not fit their schema
-  private planOf(row: ExportRow): ExportPlan | null {
+  private planOf(row: ExportRow, held: readonly Permission[]): ExportPlan | null {
     const { type, storeId, filters } = row
     if (type === ExportTypes.CUSTOMERS) {
       const parsed = customersExportFiltersSchema.safeParse(filters ?? {})
@@ -184,7 +207,10 @@ export class ExportGenerator {
     if (type === ExportTypes.CONVERSATIONS) {
       const parsed = conversationsExportFiltersSchema.safeParse(filters)
       if (!parsed.success) return null
-      const source = conversationsExportSource(this.prisma, this.jobContext, storeId, parsed.data)
+      const source = conversationsExportSource(this.prisma, this.jobContext, storeId, {
+        ...parsed.data,
+        viewer: narrowedViewer(parsed.data.viewer, held)
+      })
       return {
         extension: ExportFileExtensions.CSV,
         count: source.count,
@@ -222,7 +248,10 @@ export class ExportGenerator {
     if (type === ExportTypes.MEDIA_ZIP) {
       const parsed = mediaZipFiltersSchema.safeParse(filters)
       if (!parsed.success) return null
-      const source = mediaZipSource(this.prisma, this.jobContext, storeId, parsed.data)
+      const source = mediaZipSource(this.prisma, this.jobContext, storeId, {
+        ...parsed.data,
+        viewer: narrowedViewer(parsed.data.viewer, held)
+      })
       return {
         extension: ExportFileExtensions.ZIP,
         count: source.count,
