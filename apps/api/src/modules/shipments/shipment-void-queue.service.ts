@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
+import { PrismaService } from '@platform/core/database'
 import { ShipmentCancelLimits } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import {
@@ -19,6 +20,7 @@ import { ShipmentCancellation, type VoidJob } from '@platform/core/shipping'
 @Injectable()
 export class ShipmentVoidQueue {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly cancellation: ShipmentCancellation,
     private readonly logger: PinoLogger,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly queue: Queue<CancelShipmentJob>
@@ -31,31 +33,34 @@ export class ShipmentVoidQueue {
     jobs: readonly VoidJob[],
     requestedBy: string | null
   ): Promise<void> {
-    for (const job of jobs) {
-      try {
-        await this.queue.add(
-          JobNames.CANCEL_SHIPMENT,
-          { storeId, shipmentId: job.shipmentId, requestedBy },
-          {
-            jobId: cancelShipmentJobId(job.shipmentId, job.requestedAt.getTime()),
-            attempts: ShipmentCancelLimits.JOB_ATTEMPTS,
-            backoff: { type: 'exponential', delay: ShipmentCancelLimits.BACKOFF_BASE_MS }
-          }
-        )
-      } catch (error) {
-        // The shipment is committed as CANCEL_PENDING and nothing will ask the carrier: it is left CANCEL_FAILED, which tells the
-        // team, and the request does not fail for a queue that was down
-        this.logger.error(
-          { shipmentId: job.shipmentId, errorName: errorName(error) },
-          'a void of a guide could not be queued'
-        )
-        await this.cancellation
-          .markNotQueued(storeId, job.shipmentId, {
-            type: requestedBy === null ? 'system' : 'user',
-            id: requestedBy
-          })
-          .catch(() => undefined)
+    // After the REAL commit (under RLS_CONTEXT the request is one transaction): the job reads the shipment that was just marked
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      for (const job of jobs) {
+        try {
+          await this.queue.add(
+            JobNames.CANCEL_SHIPMENT,
+            { storeId, shipmentId: job.shipmentId, requestedBy },
+            {
+              jobId: cancelShipmentJobId(job.shipmentId, job.requestedAt.getTime()),
+              attempts: ShipmentCancelLimits.JOB_ATTEMPTS,
+              backoff: { type: 'exponential', delay: ShipmentCancelLimits.BACKOFF_BASE_MS }
+            }
+          )
+        } catch (error) {
+          // The shipment is committed as CANCEL_PENDING and nothing will ask the carrier: it is left CANCEL_FAILED, which tells the
+          // team, and the request does not fail for a queue that was down
+          this.logger.error(
+            { shipmentId: job.shipmentId, errorName: errorName(error) },
+            'a void of a guide could not be queued'
+          )
+          await this.cancellation
+            .markNotQueued(storeId, job.shipmentId, {
+              type: requestedBy === null ? 'system' : 'user',
+              id: requestedBy
+            })
+            .catch(() => undefined)
+        }
       }
-    }
+    })
   }
 }

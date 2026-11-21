@@ -8,7 +8,16 @@ describe('FiscalSubmissionQueue', () => {
   const make = (earlier: { isFailed: () => Promise<boolean>; remove: jest.Mock } | undefined) => {
     const add = jest.fn().mockResolvedValue(undefined)
     const getJob = jest.fn().mockResolvedValue(earlier)
-    return { add, getJob, producer: new FiscalSubmissionQueue({ add, getJob } as never) }
+    // With no transaction open the step runs at once, as PrismaService.afterCommitStep does
+    const prisma = {
+      client: {},
+      afterCommitStep: (_db: unknown, step: () => Promise<unknown>) => step()
+    }
+    return {
+      add,
+      getJob,
+      producer: new FiscalSubmissionQueue({ add, getJob } as never, prisma as never)
+    }
   }
 
   it('queues the ids only, under the id of the document and its submission', async () => {

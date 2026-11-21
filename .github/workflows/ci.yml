@@ -112,6 +112,8 @@ jobs:
       # inStoreContext is a read-only context (organizationIds: []); logRefused is for denials only: both lists only shrink
       - run: pnpm validate:store-context-writes
       - run: pnpm validate:refused-audit
+      # A job is queued after the REAL commit of the request (RLS_CONTEXT makes it the interceptor's): the list of files only shrinks
+      - run: pnpm validate:enqueue-after-commit
       # TDD_08 §2.5: a read goes to the replica only from the files listed in scripts/replica-readers.ts, never in a write path or a guard
       - run: pnpm validate:replica
       # The image hosts of the CSP are written from what the plugins declare; a plugin that changes them must regenerate the file

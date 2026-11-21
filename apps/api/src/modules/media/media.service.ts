@@ -406,10 +406,13 @@ export class MediaService {
 
   // Scan first; PROCESS_IMAGE is queued by the scan job only after a clean result
   private async queueScan(storeId: string, mediaId: string): Promise<void> {
-    await this.heavyQueue.add(
-      JobNames.SCAN_FILE,
-      { mediaId, storeId },
-      { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+    // After the REAL commit: the scan reads the row of the file that this request wrote
+    await this.prisma.afterCommitStep(this.prisma.client, () =>
+      this.heavyQueue.add(
+        JobNames.SCAN_FILE,
+        { mediaId, storeId },
+        { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+      )
     )
   }
 

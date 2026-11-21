@@ -6,9 +6,11 @@ import {
   STORE_CONTEXT_WRITES_ALLOWED,
   WRITING_FUNCTION_NAMES,
   productionSources,
+  checkQueueAddsAfterCommit,
   checkRefusedAudit,
   checkStoreContextWrites,
   findLogRefusedUses,
+  findQueueAddsOutsideAfterCommit,
   findStoreContextWrites
 } from './static-guards'
 
@@ -308,5 +310,58 @@ describe('the files that are scanned', () => {
     expect(files.filter(file => /(^|\/)node_modules\//.test(file))).toEqual([])
     expect(files.filter(file => file.startsWith('libs/core/database/generated/'))).toEqual([])
     expect(files.filter(file => /^apps\/[^/]+\/(\.next|dist)\//.test(file))).toEqual([])
+  })
+})
+
+describe('a job is queued after the real commit', () => {
+  const adds = (code: string): string[] =>
+    findQueueAddsOutsideAfterCommit(code, 'probe.ts').map(f => `${f.line}:${f.reason}`)
+
+  it.each([
+    ['a direct add', 'await this.queue.add(JOB, data)', '1:add('],
+    ['a heavy queue add', 'await this.heavyQueue.add(JOB, data, opts)', '1:add('],
+    ['an addBulk', 'await this.emailQueue.addBulk(jobs)', '1:addBulk('],
+    ['a call split over two lines', 'await this.heavyQueue\n  .add(JOB, data)', '1:add('],
+    ['a bare identifier receiver', 'await queue.add(JOB, data)', '1:add('],
+    [
+      'an add after a transaction (the line that is NOT after the commit)',
+      'await this.prisma.transaction(tx => work(tx))\nawait this.queue.add(JOB, data)',
+      '2:add('
+    ],
+    [
+      'an add in the arguments of afterCommitStep that is not the step',
+      'this.prisma.afterCommitStep(this.queue.add(JOB, data), () => 1)',
+      '1:add('
+    ],
+    [
+      'an add in a function that only sits next to afterCommitStep',
+      'const later = () => this.queue.add(JOB, data)\nawait this.prisma.afterCommitStep(db, () => other())',
+      '1:add('
+    ]
+  ])('refuses %s', (_label, code, expected) => {
+    expect(adds(code)).toEqual([expected])
+  })
+
+  it.each([
+    [
+      'an add inside the step',
+      'await this.prisma.afterCommitStep(this.prisma.client, () => this.queue.add(JOB, data))'
+    ],
+    [
+      'an add inside an async step with a catch',
+      'await p.afterCommitStep(db, async () => { try { await this.heavyQueue.add(J, d) } catch (e) { log(e) } })'
+    ],
+    [
+      'an addBulk inside the step',
+      'await p.afterCommitStep(db, () => this.emailQueue\n  .addBulk(jobs))'
+    ],
+    ['an add on something that is not a queue', 'set.add(item)\nthis.items.add(item)'],
+    ['a comment or a string', "// this.queue.add(x)\nconst s = 'this.queue.add(x)'"]
+  ])('accepts %s', (_label, code) => {
+    expect(adds(code)).toEqual([])
+  })
+
+  it('has every queue.add of apps/api and libs after the commit, or listed with a reason', () => {
+    expect(checkQueueAddsAfterCommit(ROOT).failures).toEqual([])
   })
 })

@@ -4,7 +4,7 @@ import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 
-import type { PrismaTransaction } from '@platform/core/database'
+import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { MediaStatus, ShipmentLimits } from '@platform/core/domain'
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
 import { MediaPurpose, sanitizeFilename, StorageKeys } from '@platform/core/storage'
@@ -32,6 +32,7 @@ const CONTENT_TYPE = 'application/pdf'
 @Injectable()
 export class ShipmentLabels {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ScanFileJob>
   ) {}
@@ -89,10 +90,13 @@ export class ShipmentLabels {
   // After the commit: a label from a carrier is scanned by the worker, like any file that comes from outside
   async queueScan(label: StoredLabel): Promise<void> {
     if (!label.needsScan) return
-    await this.heavyQueue.add(
-      JobNames.SCAN_FILE,
-      { mediaId: label.mediaId, storeId: label.storeId },
-      { jobId: `${JobNames.SCAN_FILE}-${label.mediaId}` }
+    // After the REAL commit: the scan reads the row of the label that the unit of the guide wrote
+    await this.prisma.afterCommitStep(this.prisma.client, () =>
+      this.heavyQueue.add(
+        JobNames.SCAN_FILE,
+        { mediaId: label.mediaId, storeId: label.storeId },
+        { jobId: `${JobNames.SCAN_FILE}-${label.mediaId}` }
+      )
     )
   }
 

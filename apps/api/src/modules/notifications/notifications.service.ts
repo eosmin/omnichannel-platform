@@ -174,25 +174,34 @@ export class NotificationsService {
     }
   }
 
-  // Redis down makes the queue wait instead of fail: the action is not held for a job
+  // Redis down makes the queue wait instead of fail: the action is not held for a job. After the REAL commit: the notification is
+  // written in the transaction of the handler (under RLS_CONTEXT the one of the request), and the job reads its row. A queue that does
+  // not answer costs the push or the immediate mail and never the action that raised the notification, so the failure ends here.
   private async enqueue(
     name: typeof JobNames.SEND_WEB_PUSH | typeof JobNames.QUEUE_EMAIL_DIGEST,
     data: SendWebPushJob & QueueEmailDigestJob
   ): Promise<void> {
-    let timer: NodeJS.Timeout | undefined
-    try {
-      await Promise.race([
-        this.queue.add(name, data, { jobId: `${name}-${data.notificationId}` }),
-        new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(
-            () => reject(new Error('the queue did not answer')),
-            PushLimits.ENQUEUE_TIMEOUT_MS
-          )
-        })
-      ])
-    } finally {
-      clearTimeout(timer)
-    }
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      let timer: NodeJS.Timeout | undefined
+      try {
+        await Promise.race([
+          this.queue.add(name, data, { jobId: `${name}-${data.notificationId}` }),
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('the queue did not answer')),
+              PushLimits.ENQUEUE_TIMEOUT_MS
+            )
+          })
+        ])
+      } catch (error) {
+        this.logger.warn(
+          { userId: data.userId, notificationId: data.notificationId, err: String(error) },
+          'the job of a notification could not be queued'
+        )
+      } finally {
+        clearTimeout(timer)
+      }
+    })
   }
 
   private async isQuiet(input: SendNotification): Promise<boolean> {

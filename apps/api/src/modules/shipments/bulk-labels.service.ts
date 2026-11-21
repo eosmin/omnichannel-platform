@@ -172,34 +172,44 @@ export class BulkLabelsService {
         select: JOB_SELECT
       })
     })
-    try {
-      await this.queue.add(
-        JobNames.BULK_LABELS_MERGE,
-        {
-          storeId,
-          jobId: row.id,
-          ...(body.connectionId === undefined ? {} : { connectionId: body.connectionId }),
-          ...(body.locationIds === undefined ? {} : { locationIds: body.locationIds }),
-          ...(body.locationsByConnection === undefined
-            ? {}
-            : { locationsByConnection: body.locationsByConnection }),
-          ...(body.pickup === undefined ? {} : { pickup: body.pickup }),
-          canOverridePrice: held.includes(Permissions.ORDERS_OVERRIDE_PRICE)
-        },
-        { jobId: bulkLabelsMergeJobId(row.id), attempts: BulkLabelLimits.JOB_ATTEMPTS }
-      )
-    } catch (error) {
-      // Nothing will ever run it: closed as failed, so that the screen does not wait for it
-      this.logger.error(
-        { jobId: row.id, errorName: errorName(error) },
-        'a bulk run could not be queued'
-      )
-      await this.prisma.client.bulkLabelJob.updateMany({
-        where: { id: row.id, storeId, status: BulkLabelJobStatus.QUEUED },
-        data: { status: BulkLabelJobStatus.FAILED, finishedAt: new Date() }
-      })
-      throw error
-    }
+    // After the REAL commit (under RLS_CONTEXT the request is one transaction): the job reads the row of the run. A failure still
+    // reaches the caller, after the run was closed as failed
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      try {
+        await this.queue.add(
+          JobNames.BULK_LABELS_MERGE,
+          {
+            storeId,
+            jobId: row.id,
+            ...(body.connectionId === undefined ? {} : { connectionId: body.connectionId }),
+            ...(body.locationIds === undefined ? {} : { locationIds: body.locationIds }),
+            ...(body.locationsByConnection === undefined
+              ? {}
+              : { locationsByConnection: body.locationsByConnection }),
+            ...(body.pickup === undefined ? {} : { pickup: body.pickup }),
+            canOverridePrice: held.includes(Permissions.ORDERS_OVERRIDE_PRICE)
+          },
+          { jobId: bulkLabelsMergeJobId(row.id), attempts: BulkLabelLimits.JOB_ATTEMPTS }
+        )
+      } catch (error) {
+        // Nothing will ever run it: closed as failed, so that the screen does not wait for it
+        this.logger.error(
+          { jobId: row.id, errorName: errorName(error) },
+          'a bulk run could not be queued'
+        )
+        // Its own context: the transaction of the request is over
+        // Whatever happens to the mark, the error that matters is the one of the queue
+        await this.prisma
+          .detachedTenantTransaction({ storeIds: [storeId], organizationIds: [] }, () =>
+            this.prisma.client.bulkLabelJob.updateMany({
+              where: { id: row.id, storeId, status: BulkLabelJobStatus.QUEUED },
+              data: { status: BulkLabelJobStatus.FAILED, finishedAt: new Date() }
+            })
+          )
+          .catch(() => undefined)
+        throw error
+      }
+    })
     this.audit.log({
       action: AuditAction.BULK_LABELS_REQUESTED,
       actor: { userId: actor.userId },
