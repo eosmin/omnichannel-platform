@@ -892,6 +892,62 @@ describe('Exports', () => {
         expect(file).not.toContain('bulk-theirs')
       })
 
+      it('leaves out a conversation reassigned to someone else between the request and the file, for a ticked selection and for a filter', async () => {
+        const supervisorOnly = await createRole(owner, {
+          storeId: ctx.storeA.id,
+          permissions: [Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_EXPORT]
+        })
+        const member = await createActor(owner, app, {
+          prefix,
+          name: 'bulk-reassigned',
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          roleId: supervisorOnly.id
+        })
+        const tag = await createTag(owner, { storeId: ctx.storeA.id, name: `${prefix}-reassign` })
+        const seedMine = async (text: string) => {
+          const conversation = await seed(text, { assignedTo: member.id })
+          await owner.conversation.update({
+            where: { id: conversation.id },
+            data: { tags: { connect: { id: tag.id } } }
+          })
+          return conversation
+        }
+        const keptById = await seedMine('reassign-kept-by-id')
+        const movedById = await seedMine('reassign-moved-by-id')
+        const movedByFilter = await seedMine('reassign-moved-by-filter')
+
+        const selection = await bulk(member, {
+          action: BulkActions.EXPORT_CSV,
+          conversationIds: [keptById.id, movedById.id]
+        })
+        expect(selection.status).toBe(OK)
+        const selectionRow = await lastExport()
+        const filtered = await bulk(member, {
+          action: BulkActions.EXPORT_CSV,
+          filter: { tagId: tag.id }
+        })
+        expect(filtered.status).toBe(OK)
+        const filterRow = await lastExport()
+
+        // The row froze who asked and what they may do, not who holds each conversation: another agent takes two of
+        // them in the seconds before the worker makes the files. The file never holds more than the requester sees
+        // when it is written (reading the assignment then, and not freezing it, is what keeps it so: a frozen list
+        // would carry a conversation the requester has since lost)
+        await owner.conversation.updateMany({
+          where: { id: { in: [movedById.id, movedByFilter.id] } },
+          data: { assignedTo: ctx.adminA.id }
+        })
+
+        const byIds = await made(selectionRow.id)
+        expect(byIds).toContain('reassign-kept-by-id')
+        expect(byIds).not.toContain('reassign-moved-by-id')
+        const byFilter = await made(filterRow.id)
+        expect(byFilter).toContain('reassign-kept-by-id')
+        expect(byFilter).not.toContain('reassign-moved-by-id')
+        expect(byFilter).not.toContain('reassign-moved-by-filter')
+      })
+
       it('writes no file when nothing ticked can be seen', async () => {
         const before = await owner.export.count({ where: { storeId: ctx.storeA.id } })
         const elsewhere = await createConversationOf(owner, { storeId: ctx.storeB.id })

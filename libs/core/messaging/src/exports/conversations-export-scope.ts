@@ -11,7 +11,8 @@ import {
 import type { ConversationsExportFilters } from './export-filters'
 
 // The requester of an export as the row froze them: the assignment of each conversation is read when the
-// file is made, the permissions are those of the request
+// file is made (on purpose: a frozen list could carry a conversation the requester has since lost), the permissions are
+// those of the request
 export function exportViewerOf(filters: ConversationsExportFilters): Viewer {
   const { userId, held } = filters.viewer
   return { userId, held, canViewAll: held.includes(Permissions.CONVERSATIONS_VIEW_ALL) }
