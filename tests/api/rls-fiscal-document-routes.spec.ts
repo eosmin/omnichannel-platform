@@ -516,15 +516,18 @@ describe('RLS phase 6 (F6-3): the fiscal routes of a person on a document of a s
       } finally {
         down.mockRestore()
       }
-      // Committed and not queued: no number was taken, and the check of the night lists it once the time of a stall has passed
+      // Committed and not queued: the check of the night lists it once the time of a stall has passed
       const queued = await row(made)
       expect(queued.status).toBe(FiscalDocumentStatus.QUEUED)
-      expect(queued.sequenceNumber).toBeNull()
+      // It was numbered when it was made (the number is the document's, so it is not lost with the job): the check asks for THIS document
+      expect(queued.sequenceNumber).not.toBeNull()
       const later = new Date(Date.now() + (FiscalSweepLimits.QUEUED_STALL_MINUTES + 1) * MINUTE_MS)
       const found = await app
         .get(FiscalSweepService)
         .find(ctx.orgA.id, FiscalSweepKind.STALLED_DOCUMENT, { now: later })
       expect(found.data.filter(finding => finding.id === made)).toHaveLength(1)
+      expect((await row(made)).sequenceNumber).toBe(queued.sequenceNumber)
+      expect(await owner.fiscalDocument.count({ where: { replacesDocumentId: id } })).toBe(1)
     })
   })
 })
