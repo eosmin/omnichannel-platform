@@ -13,6 +13,7 @@ import {
 } from '@platform/core/analytics'
 import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
+import { ConsentPurposes } from '@platform/core/compliance'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CarrierId,
@@ -131,6 +132,8 @@ import {
   customerOfIdentity,
   customerOfFiscalData,
   createCustomerFiscalData,
+  customerOfConsent,
+  createConsentRecord,
   survivorOfMerge,
   dropCachedSettings
 } from '../builders'
@@ -680,6 +683,25 @@ const resources: IsolationResource[] = [
     },
     untouched: async (owner, id) =>
       (await owner.customerIdentity.findUnique({ where: { id }, select: { id: true } })) !== null
+  },
+  // The consents of a customer are read and written through the customer (`GET` and `POST /compliance/consent`): a stranger
+  // is a 404 on the customer, and a refused withdrawal must leave no new row behind. An id the suite made up (a row that does not
+  // exist) is asked for as a customer: the answer must be the same 404
+  {
+    name: 'consentRecord',
+    create: createConsentRecord,
+    readPath: id => `${ApiRoutes.compliance.consent}?customerId=${customerOfConsent.get(id) ?? id}`,
+    modify: {
+      path: () => ApiRoutes.compliance.consent,
+      method: 'post',
+      body: id => ({
+        customerId: customerOfConsent.get(id) ?? id,
+        purpose: ConsentPurposes.ORDER_MESSAGES,
+        granted: false
+      })
+    },
+    untouched: async (owner, id) =>
+      (await owner.consentRecord.count({ where: { customerId: customerOfConsent.get(id) } })) === 1
   },
   // The fiscal data of a customer (Step 4B.7b-3): personal and tax data, reached through its customer by the route that changes it. A
   // request from another store names a customer it does not have: a 404, and the row stays as it was.

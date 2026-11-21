@@ -118,6 +118,24 @@ export const ConsentPurposes = {
 } as const
 export type ConsentPurpose = (typeof ConsentPurposes)[keyof typeof ConsentPurposes]
 
+// The legal basis of each purpose is a fact of the purpose, not a choice of whoever records the row: a body that named its
+// own basis could write a "consent" for something that rests on the contract. The record takes it from here.
+export const ConsentPurposeLegalBasis: Record<
+  ConsentPurpose,
+  (typeof LegalBases)[keyof typeof LegalBases]
+> = {
+  [ConsentPurposes.ORDER_MESSAGES]: LegalBases.CONTRACT
+}
+
+// Where a `ConsentRecord` came from (`ConsentRecord.source`). Only the team of the store records one today.
+export const ConsentSources = {
+  STAFF: 'staff'
+} as const
+
+// A customer's consent history is append-only (the latest row of a purpose is the current answer), so the list is a page of
+// the newest rows, not the whole table.
+export const ConsentListLimits = { MAX_ROWS: 100 } as const
+
 export const CookieCategories = {
   NECESSARY: 'necessary', // No consent required
   FUNCTIONAL: 'functional', // Language, last store
@@ -127,3 +145,27 @@ export const CookieCategories = {
 
 // A new version re-prompts the cookie consent.
 export const COOKIE_POLICY_VERSION = '2026-09-01'
+
+// The cookie the browser keeps the choice in (TDD_05 §10.5). Not a secret and not HttpOnly: the page reads it to know whether
+// to ask again.
+export const COOKIE_CONSENT_COOKIE_NAME = 'platform_cc'
+// One year, the longest a choice stays before the banner asks again whatever the policy version.
+export const COOKIE_CONSENT_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365
+
+export const CookieConsentLimits = {
+  // The id the browser makes for itself (a random UUID): the length of one, with room for the dashes
+  VISITOR_ID_LENGTH: 36,
+  USER_AGENT_MAX_LENGTH: 512
+} as const
+
+// The categories a person can choose. `necessary` is always on and is not a choice, so it is not a key of the stored value.
+export const ChoosableCookieCategories = [
+  CookieCategories.FUNCTIONAL,
+  CookieCategories.ANALYTICS,
+  CookieCategories.MARKETING
+] as const
+export type ChoosableCookieCategory = (typeof ChoosableCookieCategories)[number]
+
+// The key that hashes the address of a visitor in `CookieConsent.ipHash`. Derived from the signing secret with its own label by
+// `CompliancePlatformModule`; the token lives here so that what uses it imports no env.
+export const COOKIE_CONSENT_HASH_KEY = Symbol('COOKIE_CONSENT_HASH_KEY')
