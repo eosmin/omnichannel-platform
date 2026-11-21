@@ -169,21 +169,29 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
     return { webhooks, installations }
   }
 
-  // One read in its own savepoint: a failure is logged and answers nothing, and the transaction stays usable for the next read
+  // One read in its own savepoint. A lock timeout or a busy pool rolls back only that savepoint, so the read is made again there after a
+  // pause (bounded) and the other side keeps what it read. A failure that stays is logged and counted and answers nothing, and the
+  // transaction stays usable for the next read.
   private async attempt<T>(
     event: WebhookEvent,
     storeId: string,
     message: string,
     read: () => Promise<T[]>
   ): Promise<T[]> {
-    try {
-      return await inSavepoint(read)
-    } catch (error) {
-      // Not answered here: the whole read is made again after a pause (readWithRetries)
-      if (error instanceof JobContextGoneError || isTransient(error)) throw error
-      this.logger.error({ event, storeId, err: String(error) }, message)
-      this.countLost(WebhookDispatchLossReasons.READ_FAILED)
-      return []
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await inSavepoint(read)
+      } catch (error) {
+        if (error instanceof JobContextGoneError) throw error
+        const pause = WebhookDispatchReadRetryPausesMs[attempt]
+        if (isTransient(error) && pause !== undefined) {
+          await new Promise<void>(resolve => setTimeout(resolve, pause))
+          continue
+        }
+        this.logger.error({ event, storeId, attempts: attempt + 1, err: String(error) }, message)
+        this.countLost(WebhookDispatchLossReasons.READ_FAILED)
+        return []
+      }
     }
   }
 

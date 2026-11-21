@@ -26,6 +26,9 @@ function build(
     // The first N reads of the webhooks fail with the lock timeout of the database (SQLSTATE 55P03): a pause, not an answer
     transientWebhookReads?: number
     queueFails?: boolean
+    // The installations read fails with the lock timeout this many times (a second side, read after the webhooks)
+    transientInstallationReads?: number
+    noWebhooks?: boolean
     installed?: boolean
     hiddenPlugin?: boolean
   } = {}
@@ -37,6 +40,7 @@ function build(
   const errors: unknown[][] = []
   const lost: { labels: unknown; amount: number | undefined }[] = []
   let webhookReads = 0
+  let installationReads = 0
   const events = {
     inStore: (storeId: string, work: () => Promise<unknown>) => {
       if (options.goneStore === true) return Promise.reject(new JobContextGoneError('gone'))
@@ -56,12 +60,16 @@ function build(
           }
           return options.webhookReadFails === true
             ? Promise.reject(new Error('read failed'))
-            : readsFor([{ id: 'webhook-1' }])
+            : readsFor(options.noWebhooks === true ? [] : [{ id: 'webhook-1' }])
         }
       },
       pluginInstallation: {
-        findMany: () =>
-          readsFor(
+        findMany: () => {
+          installationReads += 1
+          if (installationReads <= (options.transientInstallationReads ?? 0)) {
+            return Promise.reject(Object.assign(new Error('lock timeout'), { code: '55P03' }))
+          }
+          return readsFor(
             options.installed === true
               ? [
                   {
@@ -79,6 +87,7 @@ function build(
                 ]
               : []
           )
+        }
       }
     }
   }
@@ -227,9 +236,37 @@ describe('WebhookDispatcher under row security', () => {
     })
 
     it('does not count a store with no subscribers, nor a store that is gone', async () => {
-      const quiet = build({ goneStore: true })
-      await quiet.dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE })
-      expect(quiet.lost).toEqual([])
+      const gone = build({ goneStore: true })
+      await gone.dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE })
+      expect(gone.lost).toEqual([])
+      const none = build({ noWebhooks: true })
+      expect(await none.dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE })).toBe(0)
+      expect(none.lost).toEqual([])
+    })
+
+    it('keeps the webhooks it read when the installations read keeps timing out, and counts that read', async () => {
+      const { dispatcher, lost, queued, errors } = build({
+        installed: true,
+        transientInstallationReads: 99
+      })
+      expect(
+        await dispatchToEnd(dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE }))
+      ).toBe(1)
+      expect(queued).toHaveLength(1)
+      expect(lost.map(entry => entry.labels)).toEqual([
+        { reason: WebhookDispatchLossReasons.READ_FAILED }
+      ])
+      expect(errors).toHaveLength(1)
+    })
+
+    it('counts the plugin jobs that could not be queued', async () => {
+      const { dispatcher, lost } = build({ installed: true, noWebhooks: true, queueFails: true })
+      expect(
+        await dispatchToEnd(dispatcher.dispatch(Events.ORDER_CREATED, { storeId: STORE }))
+      ).toBe(0)
+      expect(lost).toEqual([
+        { labels: { reason: WebhookDispatchLossReasons.QUEUE_FAILED }, amount: 1 }
+      ])
     })
 
     it('counts the jobs that could not be queued, one for each', async () => {

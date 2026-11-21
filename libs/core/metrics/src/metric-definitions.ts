@@ -189,7 +189,7 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
   },
   [MetricNames.WEBHOOK_DISPATCH_LOST]: {
     kind: 'counter',
-    help: 'Webhook deliveries of an event that were never queued (no store in the event, a read that failed, a queue that refused)',
+    help: 'Webhook deliveries never queued: no_store counts events, read_failed counts failed reads (webhooks or plugin installations of one event), queue_failed counts jobs',
     labels: ['reason']
   },
   [MetricNames.CHANNEL_WEBHOOK_REJECTED]: {
