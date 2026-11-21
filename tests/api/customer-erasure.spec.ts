@@ -337,14 +337,59 @@ describe('The erasure of a customer', () => {
       expect((await erase(ctx.adminA, randomUUID())).status).toBe(NOT_FOUND)
     })
 
-    it('hides the erased customer from the search of customers', async () => {
+    it('hides the erased customer from the list of customers', async () => {
       const customer = await fullCustomer()
+      const before = await asAdmin().get(ApiRoutes.customers.list)
+      expect(JSON.stringify(before.body)).toContain(customer.id)
+
       await eraser_(customer.id)
 
       const list = await asAdmin().get(ApiRoutes.customers.list)
-
       expect(list.status).toBe(OK)
       expect(JSON.stringify(list.body)).not.toContain(customer.id)
+    })
+
+    it('refuses every later write on the erased customer, so no personal data comes back', async () => {
+      const customer = await fullCustomer()
+      await eraser_(customer.id)
+
+      const edit = await asAdmin()
+        .patch(ApiRoutes.customers.byId(customer.id))
+        .send({ name: NAME, email: EMAIL })
+      const note = await asAdmin()
+        .post(ApiRoutes.customers.notes(customer.id))
+        .send({ content: NOTE })
+      const flag = await asAdmin()
+        .put(ApiRoutes.customers.caution(customer.id))
+        .send({ reason: REASON })
+
+      for (const response of [edit, note, flag]) expect(response.status).toBe(CONFLICT)
+      const row = await owner.customer.findUniqueOrThrow({ where: { id: customer.id } })
+      expect(row).toMatchObject({
+        name: ComplianceConfig.ERASED_CONTENT_PLACEHOLDER,
+        email: null,
+        cautionReason: null
+      })
+      expect(await owner.customerNote.count({ where: { customerId: customer.id } })).toBe(0)
+    })
+
+    it('empties the values of a merge snapshot that does not follow the current shape too', async () => {
+      const merge = await createCustomerMerge(owner, { storeId: ctx.storeA.id })
+      await owner.customerMerge.update({
+        where: { id: merge.id },
+        data: {
+          unmergeUntil: new Date(Date.now() - 60_000),
+          // Written by an older version: no lists of ids, only the values
+          snapshot: { survivorBefore: { name: NAME }, survivorAfter: { email: EMAIL } }
+        }
+      })
+
+      const done = await eraser_(merge.survivorId)
+
+      expect(done.status).toBe(OK)
+      const kept = await owner.customerMerge.findUniqueOrThrow({ where: { id: merge.id } })
+      expect(JSON.stringify(kept.snapshot)).not.toContain(NAME)
+      expect(JSON.stringify(kept.snapshot)).not.toContain(EMAIL)
     })
   })
 })

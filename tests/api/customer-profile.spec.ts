@@ -207,6 +207,22 @@ describe('The name and photo of a customer', () => {
       expect(row.profileFetchedAt).not.toBeNull()
     })
 
+    it('does not give the channel profile back to a customer erased while the job waited', async () => {
+      const t = await setup({ customerName: null })
+      await owner.customer.update({ where: { id: t.customerId }, data: { erasedAt: new Date() } })
+
+      await fetcher.fetch(t, false)
+
+      expect(await identityRow(t.identityId)).toMatchObject({
+        displayName: null,
+        username: null,
+        avatarUrl: null
+      })
+      expect(
+        (await owner.customer.findUniqueOrThrow({ where: { id: t.customerId } })).name
+      ).toBeNull()
+    })
+
     it('names a customer who has no name, and leaves the name an agent gave', async () => {
       const unnamed = await setup({ customerName: null })
       const named = await setup({ customerName: 'Pedro the agent wrote' })

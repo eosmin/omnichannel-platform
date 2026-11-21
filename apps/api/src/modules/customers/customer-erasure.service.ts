@@ -11,8 +11,6 @@ import { lockCustomerForWrite } from '@platform/core/messaging'
 
 import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
-import { mergeSnapshotSchema } from './merge-snapshot'
-
 // What the erasure answers and the audit entry records: counts, never a value (the answer reaches whoever holds
 // `customers:erase`, who may not read customers, and the audit log outlives the store's retention windows)
 export interface ErasureView {
@@ -45,7 +43,7 @@ export class CustomerErasureService {
 
   async erase(storeId: string, customerId: string, actor: Actor): Promise<ErasureView> {
     const { view, done } = await this.prisma.transaction(async tx => {
-      await lockCustomerForWrite(tx, storeId, customerId)
+      await lockCustomerForWrite(tx, storeId, customerId, { allowErased: true })
       const current = await tx.customer.findUniqueOrThrow({
         where: { id: customerId },
         select: { erasedAt: true }
@@ -143,11 +141,16 @@ export class CustomerErasureService {
       })
       let mergeSnapshots = 0
       for (const merge of merges) {
-        const parsed = mergeSnapshotSchema.safeParse(merge.snapshot)
-        if (!parsed.success) continue
+        // On the raw JSON, not through the schema: a snapshot an older version wrote, or a malformed one, must lose the values too
+        const raw =
+          typeof merge.snapshot === 'object' &&
+          merge.snapshot !== null &&
+          !Array.isArray(merge.snapshot)
+            ? merge.snapshot
+            : {}
         await tx.customerMerge.update({
           where: { id: merge.id },
-          data: { snapshot: { ...parsed.data, survivorBefore: {}, survivorAfter: {} } }
+          data: { snapshot: { ...raw, survivorBefore: {}, survivorAfter: {} } }
         })
         mergeSnapshots += 1
       }

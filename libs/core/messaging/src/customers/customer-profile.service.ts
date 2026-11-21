@@ -27,9 +27,11 @@ export class CustomerProfileService {
     await this.prisma.transaction(async tx => {
       const identity = await tx.customerIdentity.findFirst({
         where: { id: identityId, storeId },
-        select: { customerId: true }
+        select: { customerId: true, customer: { select: { erasedAt: true } } }
       })
-      if (identity === null) return // Erased or merged away since the job was queued
+      if (identity === null) return // Merged away since the job was queued
+      // Erased since the job was queued: the identity row stays (anonymized) and must not get the channel's name back
+      if (identity.customer.erasedAt !== null) return
       // What the channel shows now replaces what was read before, field by field: a field it does not
       // give is left as it was. The photo link is the exception: it expires, so a read that found
       // something never leaves an old one behind. A read that found nothing changes none of them.
@@ -67,7 +69,7 @@ export class CustomerProfileService {
   ): Promise<void> {
     const now = new Date()
     await this.prisma.client.customerIdentity.updateMany({
-      where: { id: identityId, storeId },
+      where: { id: identityId, storeId, customer: { erasedAt: null } },
       data:
         kind === ProfileFailureKinds.OUTAGE
           ? { profileFetchError: errorCode, profileRetryAfter: retryAfterOutage(now) }
