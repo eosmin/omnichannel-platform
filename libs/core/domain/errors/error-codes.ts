@@ -231,6 +231,8 @@ export const ErrorCodes = {
   FILE_TYPE_NOT_ALLOWED: 'FILE_TYPE_NOT_ALLOWED',
   FILE_INFECTED: 'FILE_INFECTED',
   FILE_NOT_READY: 'FILE_NOT_READY',
+  // A person asked for more avatar upload urls in the hour than the limit allows (429, with the seconds to wait)
+  AVATAR_UPLOAD_LIMIT_EXCEEDED: 'AVATAR_UPLOAD_LIMIT_EXCEEDED',
   // The scan gave up: the file will never be served, the member uploads it again
   FILE_UNSCANNABLE: 'FILE_UNSCANNABLE',
   // The file of a message was missing, infected or not alone when the channel was to receive it

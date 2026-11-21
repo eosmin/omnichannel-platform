@@ -60,7 +60,8 @@ export class AvatarUploadsService {
       this.redis,
       CacheKeys.upload.avatarQuota(userId, bucket),
       AvatarProcessing.SIGNED_URLS_PER_USER_PER_HOUR,
-      bucket
+      bucket,
+      ErrorCodes.AVATAR_UPLOAD_LIMIT_EXCEEDED
     )
     // Chosen by the server: it becomes Media.id on confirmation and is part of the key
     const mediaId = crypto.randomUUID()

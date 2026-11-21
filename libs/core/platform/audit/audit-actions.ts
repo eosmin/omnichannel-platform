@@ -80,6 +80,9 @@ export const AuditAction = {
   // trace of an Undo inside its window, so this log is where both facts live, with who and when
   CONVERSATION_RESOLVED: 'conversation.resolved',
   CONVERSATION_RESOLVE_UNDONE: 'conversation.resolve_undone',
+  // The Undo of a resolution that the thread did not take back (the window was over, or another person
+  // asked): it is a reopening, and the thread says so with its own line
+  CONVERSATION_REOPENED: 'conversation.reopened',
 
   // Orders (TDD_17 §3)
   ORDER_CONFIRMED: 'order.confirmed',

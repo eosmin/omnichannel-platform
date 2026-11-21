@@ -576,9 +576,10 @@ describe('The conversations of a store', () => {
       for (const response of [read, status, readState]) {
         expect(response.status).toBe(NOT_FOUND)
       }
-      // Taking it is told who has it: the agent may have seen it unassigned a moment ago
+      // Taking it is told that it is taken, not by whom: the agent may have seen it unassigned a
+      // moment ago, but cannot see it now
       expect(take.status).toBe(CONFLICT)
-      expect((take.body as ErrorBody).error.metadata).toEqual({ assignedTo: ctx.adminA.id })
+      expect((take.body as ErrorBody).error.metadata ?? {}).toEqual({})
       expect((await row(theirs.id)).assignedTo).toBe(ctx.adminA.id)
     })
   })
@@ -1015,6 +1016,13 @@ describe('The conversations of a store', () => {
         expect((await linesOf(id)).map(line => (line.metadata as { event: string }).event)).toEqual(
           [SystemMessageEvents.RESOLVED, SystemMessageEvents.RESOLVE_UNDONE]
         )
+        // The audit log tells it as a reopening too, not as the Ctrl+Z of the toast
+        const logged = await waitForAuditEntries(
+          owner,
+          { resourceId: id, action: AuditAction.CONVERSATION_REOPENED },
+          1
+        )
+        expect(logged.map(entry => entry.action)).toEqual([AuditAction.CONVERSATION_REOPENED])
       }
     })
 
@@ -1202,7 +1210,8 @@ describe('The conversations of a store', () => {
         expect([one.status, two.status].sort()).toEqual([OK, CONFLICT])
         const loser = one.status === CONFLICT ? one : two
         const winner = one.status === OK ? ctx.agentA.id : agent2.id
-        expect((loser.body as ErrorBody).error.metadata).toEqual({ assignedTo: winner })
+        // The loser cannot see what the winner now holds: it learns that it is taken, not by whom
+        expect((loser.body as ErrorBody).error.metadata ?? {}).toEqual({})
         expect((await row(conversation.id)).assignedTo).toBe(winner)
       }
     })

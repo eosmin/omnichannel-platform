@@ -26,7 +26,12 @@ import { HttpStatusCodes } from '@platform/core/errors'
 import { apiClient } from '../api'
 import { usePluginLabel } from '../plugin-label'
 
-import { type BusinessHoursView, fetchBusinessHours, saveBusinessHours } from './hours-requests'
+import {
+  type BusinessHoursState,
+  type BusinessHoursView,
+  readBusinessHours,
+  saveBusinessHours
+} from './hours-requests'
 import { RoutingKeys } from './routing-keys'
 import {
   createRule,
@@ -138,19 +143,11 @@ export function useSnippetChoices(
   })
 }
 
-// null is a store that never saved a schedule (404): the page offers to make one. Any other failure is
-// an error, so a network problem is never read as "no schedule yet".
-export function useBusinessHours(storeId: string): UseQueryResult<BusinessHoursView | null> {
+// `hours` null is a store that never saved a schedule (404): the page offers to make one, in `storeTimezone`.
+export function useBusinessHours(storeId: string): UseQueryResult<BusinessHoursState> {
   return useQuery({
     queryKey: RoutingKeys.hours(storeId),
-    queryFn: async ({ signal }) => {
-      try {
-        return await fetchBusinessHours(apiClient, storeId, signal)
-      } catch (error) {
-        if (error instanceof ApiError && error.status === HttpStatusCodes.NOT_FOUND) return null
-        throw error
-      }
-    },
+    queryFn: ({ signal }) => readBusinessHours(apiClient, storeId, signal),
     retry: (count, error) =>
       !(error instanceof ApiError && error.status < HttpStatusCodes.INTERNAL_SERVER_ERROR) &&
       count < 2
@@ -164,7 +161,10 @@ export function useSaveBusinessHours(
   return useMutation({
     mutationFn: (hours: BusinessHoursView) => saveBusinessHours(apiClient, storeId, hours),
     onSuccess: hours => {
-      queryClient.setQueryData(RoutingKeys.hours(storeId), hours)
+      queryClient.setQueryData<BusinessHoursState>(RoutingKeys.hours(storeId), {
+        hours,
+        storeTimezone: hours.timezone
+      })
       // The zone of the hours is the one the store shows every hour in
       void queryClient.invalidateQueries({ queryKey: QueryKeys.inboxBehavior.store(storeId) })
     }

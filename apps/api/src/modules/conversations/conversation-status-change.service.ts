@@ -43,15 +43,20 @@ export class ConversationStatusChangeService {
           from === ConversationStatus.RESOLVED &&
           to === ConversationStatus.OPEN
         if (!resolved && !undone) return
+        // An Undo that the thread did not take back (late, or not the resolver's) is logged as a reopening,
+        // as the thread writes its own line. Only this path logs it: a plain status change to open does not.
+        const action = resolved
+          ? AuditAction.CONVERSATION_RESOLVED
+          : retracted
+            ? AuditAction.CONVERSATION_RESOLVE_UNDONE
+            : AuditAction.CONVERSATION_REOPENED
         this.audit.log({
-          action: resolved
-            ? AuditAction.CONVERSATION_RESOLVED
-            : AuditAction.CONVERSATION_RESOLVE_UNDONE,
+          action,
           actor: auditActorOf(actor),
           storeId,
           resourceType: 'conversation',
           resourceId: conversationId,
-          metadata: { ...auditViaOf(actor), ...(undone ? { silent: retracted } : {}) },
+          metadata: { ...auditViaOf(actor), ...(undone && retracted ? { silent: true } : {}) },
           ipAddress: actor.ipAddress,
           userAgent: actor.userAgent
         })

@@ -43,3 +43,8 @@ export const AwayReply = {
   LOOKBACK_MS: 8 * 24 * 60 * 60 * 1000,
   STEP_MS: 60 * 1000
 } as const
+
+// The answer 404 of `GET /settings/business-hours` (a store that never saved a schedule) carries the time
+// zone of the store under this key, so that the page starts in it for a role without CONVERSATIONS_VIEW,
+// which cannot read the inbox behavior where the zone also lives.
+export const BUSINESS_HOURS_TIMEZONE_METADATA_KEY = 'storeTimezone'
