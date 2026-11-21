@@ -3,7 +3,7 @@ import { phraseMatches as inCore } from '@platform/core/domain'
 import { phraseMatches as inWeb } from './destructive-action'
 
 // The web keeps its own copy of the rule so that the domain barrel does not weigh on the inbox; until
-// they are one (Step 7.7), both are held to the same cases
+// they are one (Step 7.4), both are held to the same cases
 describe('phraseMatches in the web and in core', () => {
   it.each([
     ['My shop', 'My shop', true],

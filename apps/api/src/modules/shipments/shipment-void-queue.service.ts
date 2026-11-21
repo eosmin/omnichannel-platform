@@ -16,7 +16,7 @@ import { ShipmentCancellation, type VoidJob } from '@platform/core/shipping'
 
 // Hands the voids that a transaction started to the worker (TDD_17 §4.8), once that transaction has committed: the carrier is
 // never called inside a request, and a guide that nobody queued stays CANCEL_PENDING, where a second request asks again after
-// fifteen minutes (the sweep that does not wait for a person is Step 7.4).
+// fifteen minutes (the sweep that does not wait for a person is Step 7.6).
 @Injectable()
 export class ShipmentVoidQueue {
   constructor(

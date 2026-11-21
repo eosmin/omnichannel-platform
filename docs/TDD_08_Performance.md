@@ -595,7 +595,7 @@ Time to Interactive          < 3.5s
 Cumulative Layout Shift      < 0.1
 Interaction to Next Paint    < 200ms    (field metric; CI measures Total Blocking Time < 200ms)
 
-Initial JS bundle            < 200 KB gzipped   (CI holds a ceiling per page until Step 7.7)
+Initial JS bundle            < 200 KB gzipped   (CI holds a ceiling per page until Step 7.4)
 Per-route JS                 < 100 KB gzipped   (not measured in CI)
 ```
 
@@ -605,7 +605,7 @@ Playwright's Chromium so that the inbox can be measured signed in, asserts these
 Total Blocking Time < 200 ms stands in for Interaction to Next Paint, which needs a person.
 The per-route JS budget is not measured: a lab run cannot tell the shared chunks from the route's
 own. A regression fails the job (pull requests only; it is not a required check). Until the bundle
-is split (Step 7.7) the initial script transfer is held at a ceiling per page above the 200 KB
+is split (Step 7.4) the initial script transfer is held at a ceiling per page above the 200 KB
 (`ScriptCeilingsKb` in `apps/web-e2e/lighthouse/budgets.ts`).
 
 ### 4.5 API latency budgets

@@ -13,7 +13,7 @@ import { expect, test } from '../support/test'
 const finance = en.finance
 const purchases = en.finance.purchases
 
-// A name typed by a person has no spaces to break at (Step 7.7 finding N-BR1-11): 150 letters in a row. It must wrap inside its card and its
+// A name typed by a person has no spaces to break at (Step 7.4 finding N-BR1-11): 150 letters in a row. It must wrap inside its card and its
 // dialog, the buttons beside it stay on the screen, and the page does not grow a horizontal scroll bar.
 const LONG = 'a'.repeat(150)
 

@@ -1096,7 +1096,7 @@ A customer message pushes by default (owner, 2026-11-08): to the owner of an ope
 (once until they read it) and, for a conversation nobody owns, to who may take it (the unassigned
 queue: the same readers and the same permissions as the in-app line, per `storeId`). The push never
 carries the text of the message or the name of the customer (its body is the generic sentence
-of the type): both stay in the center. It does not name the store either (debt in the plan, Step 7.7). A person turns it off per type in this matrix, and
+of the type): both stay in the center. It does not name the store either (debt in the plan, Step 7.4). A person turns it off per type in this matrix, and
 quiet hours hold it back like any push.
 
 Per-type toggles are stored per `(userId, storeId, type)` in `NotificationPreference`;
