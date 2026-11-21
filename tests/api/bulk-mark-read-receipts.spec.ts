@@ -4,12 +4,21 @@ import type { INestApplication } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
+import { Permissions } from '@platform/core/auth'
 import { PrismaService, RLS_CONTEXT_ENABLED } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
-import { AuthorType, BulkActions, ChannelIds, MessageType } from '@platform/core/domain'
+import {
+  AuthorType,
+  BulkActions,
+  ChannelIds,
+  MessageType,
+  PLUGIN_ACTOR_PREFIX
+} from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { OutboundQueue, ReadReceipts } from '@platform/core/messaging'
+import { OutboundQueue, ReadReceipts, type Viewer } from '@platform/core/messaging'
 
+import { ConversationBulkService } from '../../apps/api/src/modules/conversations/conversation-bulk.service'
+import type { Actor as ApiActor } from '../../apps/api/src/modules/tenancy'
 import { WidgetDelivery } from '../../apps/api/src/modules/widget/widget-delivery.service'
 import { WidgetReadNotifier } from '../../apps/api/src/modules/widget/widget-read-notifier.service'
 import { createConversationOf } from '../builders'
@@ -343,6 +352,86 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
     ])
     expect(emitted.map(row => row.messageId)).toEqual([sibling.widget])
   })
+
+  // A lookup that fails in the database is a savepoint that is rolled back, not a transaction that dies: the reads of the batch stand
+  // (they are committed), no receipt is queued and the failure is logged with the size of the batch
+  it('keeps the reads of the batch when the lookup of the receipts fails in the database', async () => {
+    const rows = await seed(1)
+    const ids = rows.map(row => row.id)
+    // A real database error (22012), raised inside the same transaction as the reads, where the lookup would have run; only the first
+    // call fails, so the sibling batch below goes through the real lookups
+    const lookup = jest.spyOn(
+      ReadReceipts.prototype as unknown as Record<string, (...a: unknown[]) => unknown>,
+      'latestToMarkMany'
+    )
+    lookup.mockImplementationOnce(() => guarded.client.$queryRaw`SELECT 1 / 0`)
+    const response = await api(app, ctx.adminA, ctx.storeA)
+      .post(ApiRoutes.conversations.bulk)
+      .send({ action: BulkActions.MARK_READ, conversationIds: ids })
+    expect(response.status).toBe(HttpStatusCodes.OK)
+    expect((response.body as BulkBody).failed).toEqual([])
+    expect((response.body as BulkBody).succeeded.toSorted()).toEqual([...ids].toSorted())
+    expect(
+      await owner.conversation.count({ where: { id: { in: ids }, unreadCount: { gt: 0 } } })
+    ).toBe(0)
+    expect(JSON.stringify(warnings)).toContain('could not be queued')
+    // A sibling batch that IS told, so that "no receipt for the first" means "the commit ran and left it out"
+    warnings = []
+    const siblings = await seed(1)
+    await bulk(
+      siblings.map(row => row.id),
+      withChannelId(siblings)
+    )
+    const told = new Set(enqueued.map(job => job.conversationId))
+    expect(ids.some(id => told.has(id))).toBe(false)
+    expect(told.size).toBe(withChannelId(siblings))
+  }, 60_000)
+
+  // A plugin reads without telling the customer that a person saw it: the same batch run as a plugin queues and emits nothing, and
+  // a sibling batch run as a person right after tells its customers (so that "nothing" means "the commit ran and left it out")
+  it('tells no customer when the reader is a plugin, and tells them when it is a person', async () => {
+    const pluginRows = await seed(1)
+    const personRows = await seed(1)
+    const service = app.get(ConversationBulkService)
+    const viewer = {
+      userId: `${PLUGIN_ACTOR_PREFIX}fixture-installation`,
+      held: Object.values(Permissions),
+      canViewAll: true
+    } as unknown as Viewer
+    const actor = { userId: ctx.adminA.id } as unknown as ApiActor
+    const result = await guarded.tenantTransaction(
+      {
+        storeIds: [ctx.storeA.id],
+        organizationIds: [ctx.orgA.id],
+        userId: ctx.adminA.id
+      },
+      () =>
+        service.run(
+          ctx.storeA.id,
+          { action: BulkActions.MARK_READ, conversationIds: pluginRows.map(row => row.id) },
+          viewer,
+          actor
+        )
+    )
+    expect(result.failed).toEqual([])
+    expect(result.succeeded).toHaveLength(pluginRows.length)
+    // The plugin read counts as a read, only nobody is told
+    expect(
+      await owner.conversation.count({
+        where: { id: { in: pluginRows.map(row => row.id) }, unreadCount: { gt: 0 } }
+      })
+    ).toBe(0)
+    expect(enqueued).toEqual([])
+    expect(emitted).toEqual([])
+    const person = await bulk(
+      personRows.map(row => row.id),
+      withChannelId(personRows)
+    )
+    expect(person.status).toBe(HttpStatusCodes.OK)
+    const told = new Set(enqueued.map(job => job.conversationId))
+    expect(pluginRows.some(row => told.has(row.id))).toBe(false)
+    expect(told.size).toBe(withChannelId(personRows))
+  }, 120_000)
 
   it('tells nothing when the store switched read receipts off', async () => {
     await owner.storeSettings.updateMany({
