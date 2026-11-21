@@ -243,7 +243,7 @@ describe('hostProblem', () => {
 describe('readWorkerConnections', () => {
   it('reads the visibility of the sessions and the count of the role per database, without its own session', async () => {
     const calls: { text: string; values: unknown[] | undefined }[] = []
-    const answers = [
+    const answers: { rows: Record<string, unknown>[] }[] = [
       { rows: [{ visible: true }] },
       {
         rows: [
@@ -255,7 +255,7 @@ describe('readWorkerConnections', () => {
     const facts = await readWorkerConnections({
       query: (text: string, values?: unknown[]) => {
         calls.push({ text, values })
-        return Promise.resolve(answers[calls.length - 1])
+        return Promise.resolve(answers[calls.length - 1] ?? { rows: [] })
       }
     })
     expect(facts).toEqual({
