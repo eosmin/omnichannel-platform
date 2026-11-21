@@ -46,8 +46,8 @@ export class ConversationDeletionService {
     // The rows in ONE unit of their own (the route is @NoTenantTransaction); the audit entry and the bucket come after it, with no context
     const outcome = await this.jobs.forStoreOrJoin(
       storeId,
-      () =>
-        this.prisma.transaction(async tx => {
+      async () => {
+        const done = await this.prisma.transaction(async tx => {
           // No viewer: the permission to delete reaches every conversation of the store. One of another store is one
           // that does not exist.
           const locked = await lockConversationForWrite(tx, storeId, conversationId)
@@ -89,40 +89,38 @@ export class ConversationDeletionService {
             channelType: conversation.channelType,
             customerId: conversation.customerId
           }
-        }),
+        })
+        // Queued with the unit: the deletion and its entry commit together, so a deletion of customer data is never without its record.
+        // Numbers and ids, never text: what the customer wrote is what was deleted
+        this.audit.log({
+          action: AuditAction.CONVERSATION_DELETED,
+          actor: { userId: actor.userId },
+          storeId,
+          resourceType: CONVERSATION_RESOURCE_TYPE,
+          resourceId: conversationId,
+          metadata: {
+            customerId: done.customerId,
+            channelType: done.channelType,
+            messages: done.counts.messages,
+            files: done.counts.files
+          },
+          ipAddress: actor.ipAddress,
+          userAgent: actor.userAgent
+        })
+        return done
+      },
       { timeout: RetentionRun.TRANSACTION_TIMEOUT_MS }
     )
 
-    try {
-      this.audit.log({
-        action: AuditAction.CONVERSATION_DELETED,
-        actor: { userId: actor.userId },
-        storeId,
-        resourceType: CONVERSATION_RESOURCE_TYPE,
-        resourceId: conversationId,
-        // Numbers and ids, never text: what the customer wrote is what was deleted
-        metadata: {
-          customerId: outcome.customerId,
-          channelType: outcome.channelType,
-          messages: outcome.counts.messages,
-          files: outcome.counts.files
-        },
-        ipAddress: actor.ipAddress,
-        userAgent: actor.userAgent
-      })
-    } finally {
-      // The entry is written before the objects are touched: the deletion is done and has to be on record even if the
-      // bucket is slow or the process stops here
-      if (outcome.foreign > 0) {
-        this.logger.warn(
-          { storeId, count: outcome.foreign },
-          'a file of a deleted conversation has a key outside the store and was left in the bucket'
-        )
-      }
-      // Chunked, like the retention run: a conversation can hold thousands of files. A key that is not deleted is a
-      // stray object, and the orphan cleanup of the worker removes it; the rows are gone either way.
-      await this.deleteObjects(outcome.keys)
+    if (outcome.foreign > 0) {
+      this.logger.warn(
+        { storeId, count: outcome.foreign },
+        'a file of a deleted conversation has a key outside the store and was left in the bucket'
+      )
     }
+    // Chunked, like the retention run: a conversation can hold thousands of files. A key that is not deleted is a
+    // stray object, and the orphan cleanup of the worker removes it; the rows and the entry are gone either way.
+    await this.deleteObjects(outcome.keys)
     return outcome.counts
   }
 

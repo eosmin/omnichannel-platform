@@ -79,8 +79,8 @@ export class PluginDeletionService {
 
     let outcome: { removedInstallations: number; archived: boolean }
     try {
-      outcome = await this.jobs.inOrganization(store.organizationId, () =>
-        this.prisma.transaction(async tx => {
+      outcome = await this.jobs.inOrganization(store.organizationId, async () => {
+        const done = await this.prisma.transaction(async tx => {
           // The same lock as a registration: one change of the organization's catalog at a time
           await tx.$queryRaw`SELECT id FROM organizations WHERE id = ${store.organizationId} FOR UPDATE`
           // The plugin row too, before its installations are read: an install that is writing waits for this, and one that comes
@@ -128,7 +128,24 @@ export class PluginDeletionService {
           if (removed.count !== 1) throw resourceNotFound('plugin')
           return { removedInstallations: installations.length, archived: false }
         })
-      )
+        // Queued with the unit: the rows and their entry commit together, so a deletion is never without its record; the picture and the
+        // registry below may fail without hiding it
+        this.audit.log({
+          action: done.archived ? AuditAction.PLUGIN_ARCHIVED : AuditAction.PLUGIN_DELETED,
+          actor: { userId: actor.userId },
+          storeId: store.id,
+          resourceType: 'plugin',
+          resourceId: plugin.id,
+          metadata: {
+            pluginId: plugin.id,
+            type: plugin.type,
+            removedInstallations: done.removedInstallations
+          },
+          ipAddress: actor.ipAddress,
+          userAgent: actor.userAgent
+        })
+        return done
+      })
     } catch (error) {
       // An installation written between the check and the delete: the plugin is in use after all
       if (isForeignKeyViolation(error))
@@ -136,21 +153,6 @@ export class PluginDeletionService {
       throw error
     }
 
-    // Audited as soon as the rows are gone; the picture and the registry below may fail without hiding it
-    this.audit.log({
-      action: outcome.archived ? AuditAction.PLUGIN_ARCHIVED : AuditAction.PLUGIN_DELETED,
-      actor: { userId: actor.userId },
-      storeId: store.id,
-      resourceType: 'plugin',
-      resourceId: plugin.id,
-      metadata: {
-        pluginId: plugin.id,
-        type: plugin.type,
-        removedInstallations: outcome.removedInstallations
-      },
-      ipAddress: actor.ipAddress,
-      userAgent: actor.userAgent
-    })
     // Best effort: the plugin is gone and audited, so a failure here must not turn the answer into an error (a retry would be a 404)
     if (plugin.type === String(PluginCatalogTypes.CHANNEL)) {
       try {

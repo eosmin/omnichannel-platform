@@ -207,13 +207,15 @@ export class FinanceBankImportsService {
 
     // A file whose lines are all known is refused before anything is uploaded (the check inside the transaction stays: it is the one
     // that holds when two files arrive at the same moment)
-    const known = await this.prisma.client.bankStatementLine.count({
-      where: {
-        organizationId,
-        accountId: profile.accountId,
-        lineHash: { in: hashed.map(entry => entry.hash) }
-      }
-    })
+    const known = await this.jobs.forStoreOrJoin(storeId, () =>
+      this.prisma.client.bankStatementLine.count({
+        where: {
+          organizationId,
+          accountId: profile.accountId,
+          lineHash: { in: hashed.map(entry => entry.hash) }
+        }
+      })
+    )
     if (known === hashed.length) {
       throw resourceConflict('every line of the file was imported before', {
         conflict: FinanceConflicts.BANK_IMPORT_NOTHING_NEW
