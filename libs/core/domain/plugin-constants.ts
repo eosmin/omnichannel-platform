@@ -145,6 +145,12 @@ export const PluginInstallLimits = {
   DEFAULT_REQUESTS_PER_MINUTE: 60
 } as const
 
+// One rotation of the API key of an installation at a time: the store lock of the writers is a shared one, so two rotations at once
+// would both read the same hash and the one that lost the swap would be told "not found" for an installation that exists
+export const PluginLockScopes = {
+  API_KEY: 'plugin_api_key'
+} as const
+
 // What the owner types to revoke an integration plugin (TDD_10 §6.6): the word, as written, so that a click cannot revoke
 export const PLUGIN_REVOKE_CONFIRMATION = 'REVOKE'
 

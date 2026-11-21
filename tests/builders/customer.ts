@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import { ConsentPurposes, ConsentSources, LegalBases } from '@platform/core/compliance'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ChannelIds } from '@platform/core/domain'
 
@@ -80,6 +81,31 @@ export async function createCustomerFiscalData(
     select: { id: true }
   })
   customerOfFiscalData.set(row.id, customerId)
+  return { id: row.id, customerId }
+}
+
+// Remembers whose each consent record is: the route that reaches the consents of a customer names the customer
+export const customerOfConsent = new Map<string, string>()
+
+// A consent record of a customer, as the owner (an agreement, as the team records it)
+export async function createConsentRecord(
+  owner: OwnerClient,
+  input: { storeId: string; customerId?: string }
+): Promise<{ id: string; customerId: string }> {
+  const customerId = input.customerId ?? (await createCustomer(owner, input)).id
+  const row = await owner.consentRecord.create({
+    data: {
+      storeId: input.storeId,
+      customerId,
+      purpose: ConsentPurposes.ORDER_MESSAGES,
+      legalBasis: LegalBases.CONTRACT,
+      granted: true,
+      grantedAt: new Date(),
+      source: ConsentSources.STAFF
+    },
+    select: { id: true }
+  })
+  customerOfConsent.set(row.id, customerId)
   return { id: row.id, customerId }
 }
 

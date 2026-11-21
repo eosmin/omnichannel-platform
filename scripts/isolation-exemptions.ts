@@ -13,6 +13,5 @@ import type { IsolationExemption } from './lib/isolation'
 // stores, even of the same organization). The plan lists which PR removes which line (Step 4.8, "Left by PR B1").
 
 export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> = {
-  ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' }
 }

@@ -13,6 +13,7 @@ import { CarrierGuidesModule } from './modules/carrier-guides/carrier-guides.mod
 import { CarriersModule } from './modules/carriers/carriers.module'
 import { ChannelRegistryModule } from './modules/channel-registry'
 import { ChannelsModule } from './modules/channels/channels.module'
+import { ComplianceModule } from './modules/compliance/compliance.module'
 import { ConversationsModule } from './modules/conversations/conversations.module'
 import { CountsModule } from './modules/counts/counts.module'
 import { CustomersModule } from './modules/customers/customers.module'
@@ -61,6 +62,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     OrganizationsModule,
     TeamModule,
     CustomersModule,
+    ComplianceModule,
     ConversationsModule,
     MessagesModule,
     MediaModule,
