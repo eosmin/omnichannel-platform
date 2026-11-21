@@ -37,6 +37,13 @@ describe('RolePresets', () => {
     }
   })
 
+  it('gives the irreversible erasure of a customer to the Admin and to no other preset', () => {
+    expect(RolePresets[RoleNames.ADMIN]).toContain(Permissions.CUSTOMERS_ERASE)
+    for (const role of [RoleNames.SUPERVISOR, RoleNames.AGENT, RoleNames.VIEWER]) {
+      expect(RolePresets[role]).not.toContain(Permissions.CUSTOMERS_ERASE)
+    }
+  })
+
   it('keeps the Viewer read only', () => {
     for (const permission of RolePresets[RoleNames.VIEWER]) {
       expect(permission).toMatch(/:view$/)
