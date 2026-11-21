@@ -571,6 +571,9 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
                END $$`
             )
             await db.query('GRANT CREATE ON SCHEMA public TO rls_probe_owner')
+            // The function now reads `stores` (to find the organization of the store) as its owner; `stores` has no store_id column, so the
+            // loop above did not hand it to the probe role. The real owner of the function owns `stores` too: give the probe the same read
+            await db.query('GRANT SELECT ON public.stores TO rls_probe_owner')
             await db.query(
               'ALTER FUNCTION rls_store_tables_with_rows(text) OWNER TO rls_probe_owner'
             )
