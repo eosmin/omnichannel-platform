@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
+import { AuditAction } from '@platform/core/audit'
 import { PrismaService, RLS_CONTEXT_ENABLED } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import { CarrierId, ChannelConnectionStatus } from '@platform/core/domain'
@@ -15,6 +16,7 @@ import {
   ensurePluginInstallation
 } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
@@ -36,6 +38,8 @@ describe('RLS phase 6: the provider is asked with no context open', () => {
   let fake: FakeCarrier
   let carrierConnectionId = ''
   let counter = 0
+  // The account the next call to `connect` names: a plugin that now names another one is refused
+  let account: string | undefined
   const opened: { call: string; tenantOpen: boolean }[] = []
 
   beforeAll(async () => {
@@ -74,6 +78,7 @@ describe('RLS phase 6: the provider is asked with no context open', () => {
   })
   beforeEach(() => {
     opened.length = 0
+    account = undefined
   })
 
   const admin = () => api(app, ctx.adminA, ctx.storeA)
@@ -88,7 +93,7 @@ describe('RLS phase 6: the provider is asked with no context open', () => {
         connect: input => {
           opened.push({ call: 'connect', tenantOpen: guarded.hasTenantContext() })
           return Promise.resolve({
-            connectionId: `acct-${id}`,
+            connectionId: account ?? `acct-${id}`,
             displayName: 'Acme account',
             credentials: input.credentials,
             metadata: {}
@@ -141,6 +146,33 @@ describe('RLS phase 6: the provider is asked with no context open', () => {
     ])
     const after = await owner.channelConnection.findUniqueOrThrow({ where: { id: connectionId } })
     expect(Buffer.from(after.credentials).equals(Buffer.from(before.credentials))).toBe(false)
+    // The entry of the audit is queued with the unit of the write: it exists once the unit committed
+    const entries = await waitForAuditEntries(owner, {
+      action: AuditAction.CHANNEL_TOKEN_UPDATED,
+      resourceId: connectionId
+    })
+    expect(entries).toHaveLength(1)
+  })
+
+  it('writes nothing and no entry when the provider names another account for the new token', async () => {
+    const connectionId = await connected()
+    const before = await owner.channelConnection.findUniqueOrThrow({ where: { id: connectionId } })
+    account = 'another-account'
+
+    const response = await admin()
+      .post(ApiRoutes.channels.updateToken(connectionId))
+      .send({ credentials: { token: `${TOKEN}-3` } })
+
+    expect(response.status).toBe(HttpStatusCodes.BAD_REQUEST)
+    expect(opened.every(call => !call.tenantOpen)).toBe(true)
+    const after = await owner.channelConnection.findUniqueOrThrow({ where: { id: connectionId } })
+    expect(Buffer.from(after.credentials).equals(Buffer.from(before.credentials))).toBe(true)
+    await new Promise(resolve => setTimeout(resolve, 300))
+    expect(
+      await owner.auditLog.count({
+        where: { action: AuditAction.CHANNEL_TOKEN_UPDATED, resourceId: connectionId }
+      })
+    ).toBe(0)
   })
 
   it('does not touch the connection of another store: the same answer as one that does not exist', async () => {
