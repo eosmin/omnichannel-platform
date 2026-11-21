@@ -654,6 +654,58 @@ describe('Notifications raised by events', () => {
       }
     )
 
+    it('tells an active member whose export was cancelled for a lost permission why, even though their role no longer makes that kind', async () => {
+      const row = await exportOf(
+        ctx.agentA.id,
+        ExportStatus.FAILED,
+        ExportTypes.CUSTOMERS,
+        ErrorCodes.PERMISSION_DENIED
+      )
+
+      await app.get(EventEmitter2).emitAsync(Events.EXPORT_FAILED, settled(row))
+
+      const rows = (await rowsOf(NotificationTypes.EXPORT_FAILED, ctx.agentA.id)).filter(
+        notification => notification.resourceId === row.id
+      )
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        params: { type: ExportTypes.CUSTOMERS, reason: ErrorCodes.PERMISSION_DENIED }
+      })
+    })
+
+    it('tells nobody about a cancelled export when the member was removed or suspended, and nobody about another kind of failure of a kind their role lost', async () => {
+      const suspended = await actorWithPermissions(owner, app, {
+        prefix,
+        name: `cancelledSuspended${randomUUID().slice(0, 6)}`,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.CONVERSATIONS_VIEW]
+      })
+      const cancelled = await exportOf(
+        suspended.id,
+        ExportStatus.FAILED,
+        ExportTypes.CUSTOMERS,
+        ErrorCodes.PERMISSION_DENIED
+      )
+      await owner.membership.updateMany({
+        where: { userId: suspended.id, storeId: ctx.storeA.id },
+        data: { status: MembershipStatus.SUSPENDED }
+      })
+      const tooLarge = await exportOf(
+        ctx.agentA.id,
+        ExportStatus.FAILED,
+        ExportTypes.CUSTOMERS,
+        ErrorCodes.EXPORT_TOO_LARGE
+      )
+
+      const events = app.get(EventEmitter2)
+      await events.emitAsync(Events.EXPORT_FAILED, settled(cancelled))
+      await events.emitAsync(Events.EXPORT_FAILED, settled(tooLarge))
+
+      expect(await rowsOf(NotificationTypes.EXPORT_FAILED, suspended.id)).toHaveLength(0)
+      expect(await rowsOf(NotificationTypes.EXPORT_FAILED, ctx.agentA.id)).toHaveLength(0)
+    })
+
     it('tells nobody when the row is not in the state of the event, is not theirs or is of a kind their role lost', async () => {
       const events = app.get(EventEmitter2)
       const pending = await exportOf(ctx.adminA.id, ExportStatus.PENDING)

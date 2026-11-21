@@ -97,12 +97,23 @@ export class ExportGenerator {
 
     // Who asked may have lost the permission, or the place in the store, since: what the file holds is decided now, not at the request.
     // Nothing is written for a requester who may no longer take this kind out (not even a count), and the row says so.
-    const held = await currentPermissionsOfRequester(
-      this.prisma,
-      this.jobContext,
-      row.storeId,
-      row.requestedBy
-    )
+    let held: readonly Permission[] | null
+    try {
+      held = await currentPermissionsOfRequester(
+        this.prisma,
+        this.jobContext,
+        row.storeId,
+        row.requestedBy
+      )
+    } catch (error) {
+      // A read that fails on the last attempt settles the row: a row left pending holds the requester's place in the active ceiling
+      this.logger.error(
+        { exportId, errorName: errorName(error) },
+        'the permissions of the requester of an export could not be read'
+      )
+      if (lastAttempt) await this.fail(row)
+      throw error
+    }
     if (!accessOfRequester(row.type, held).allowed || held === null) {
       this.logger.warn(
         { exportId, storeId, type: row.type },

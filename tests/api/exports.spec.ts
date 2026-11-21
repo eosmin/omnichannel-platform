@@ -42,6 +42,7 @@ import { AnalyticsExportWriter } from '../../apps/worker/src/exports/analytics/a
 import { CsvExportWriter } from '../../apps/worker/src/exports/csv-export-writer'
 import { ExpiredExportsCleaner } from '../../apps/worker/src/exports/expired-exports-cleaner.service'
 import { ExportGenerator } from '../../apps/worker/src/exports/export-generator.service'
+import { currentPermissionsOfRequester } from '../../apps/worker/src/exports/export-requester-access'
 import { ZipExportWriter } from '../../apps/worker/src/exports/zip-export-writer'
 import {
   createConversationOf,
@@ -1556,8 +1557,13 @@ describe('Exports', () => {
         key: null,
         rowCount: null
       })
+      // The name the generator gives a file of this kind, today
       const listed = await storage.head(
-        StorageKeys.export(ctx.storeA.id, exportId, `conversations.csv`)
+        StorageKeys.export(
+          ctx.storeA.id,
+          exportId,
+          `${ExportTypes.CONVERSATIONS}-${new Date().toISOString().slice(0, 10)}.csv`
+        )
       )
       expect(listed).toBeNull()
     }
@@ -1740,6 +1746,35 @@ describe('Exports', () => {
         error: ErrorCodes.PERMISSION_DENIED,
         key: null
       })
+    })
+
+    it('reads what a plugin holds from its ACTIVE installation of the store of the row: status, scopes and store decide', async () => {
+      const installation = await ensurePluginInstallation(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${prefix}-exports-plugin-held`
+      })
+      await owner.pluginInstallation.update({
+        where: { id: installation.id },
+        data: { scopes: [PluginScopes.EXPORTS_WRITE, PluginScopes.ANALYTICS_READ] }
+      })
+      const requester = pluginUserId(installation.id)
+      const read = (storeId: string) =>
+        currentPermissionsOfRequester(
+          workerPrisma,
+          new JobContext(workerPrisma),
+          storeId,
+          requester
+        )
+
+      expect(await read(ctx.storeA.id)).toEqual(
+        expect.arrayContaining([Permissions.ANALYTICS_VIEW, Permissions.ANALYTICS_EXPORT])
+      )
+      expect(await read(ctx.storeB.id)).toBeNull()
+      await owner.pluginInstallation.update({
+        where: { id: installation.id },
+        data: { status: PluginInstallationStatus.REVOKED }
+      })
+      expect(await read(ctx.storeA.id)).toBeNull()
     })
 
     it('reads the permissions of the store of the row: a membership in another store does not count', async () => {
