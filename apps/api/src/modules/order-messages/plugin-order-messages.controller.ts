@@ -29,7 +29,7 @@ import { type OrderMessagePreview, pluginDispatchKey } from '@platform/core/ship
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { CurrentPluginInstallation, PluginApi } from '../plugins/plugin-api.decorators'
-import { CurrentStore, pluginActorOf, RequirePermissions } from '../tenancy'
+import { CurrentStore, NoTenantTransaction, pluginActorOf, RequirePermissions } from '../tenancy'
 
 import { OrderMessageHistoryService } from './order-message-history.service'
 import {
@@ -131,6 +131,9 @@ export class PluginOrderMessagesController {
   // `orders:read` as the history does
   @PluginApi(PluginScopes.ORDERS_READ, PluginScopes.ORDER_MESSAGES_WRITE)
   @RequirePermissions(Permissions.ORDERS_SEND_MESSAGES)
+  @NoTenantTransaction(
+    'asks the provider to render the approved template (network) and uses the bucket for the summary: the service reads and writes in short units of the store (`inStore`), and the provider and the bucket are called between them with no context open'
+  )
   @Post(PluginApiRoutes.orders.messages(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async send(
@@ -169,6 +172,9 @@ export class PluginOrderMessagesController {
 
   @PluginApi(PluginScopes.ORDER_TEMPLATES_WRITE)
   @RequirePermissions(Permissions.SETTINGS_MANAGE_ORDER_TEMPLATES)
+  @NoTenantTransaction(
+    'links a template of the channel: the provider is asked whether it exists and is approved (network) between the short units of the store that read the stored link and write the template with its audit entry, with no context open'
+  )
   @Put(PluginApiRoutes.orderTemplates.byKindAndLocale(':kind', ':locale'))
   @HttpCode(HttpStatusCodes.OK)
   async putTemplate(

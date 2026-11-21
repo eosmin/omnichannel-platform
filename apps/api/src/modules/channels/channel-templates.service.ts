@@ -110,17 +110,20 @@ export class ChannelTemplatesService {
     pluginId: string,
     wanted: { name: string; language: string }
   ): Promise<TemplateLinkVerdict> {
-    const rows = await this.prisma.client.channelConnection.findMany({
-      where: {
-        storeId,
-        pluginId,
-        status: { not: ChannelConnectionStatus.DISCONNECTED },
-        ...OfActiveInstallation
-      },
-      select: CONNECTION_ROW_SELECT,
-      orderBy: { createdAt: 'asc' },
-      take: LINK_CHECK_MAX_ACCOUNTS
-    })
+    // One short unit of the store: the provider is asked after it, with no context open
+    const rows = await this.context.inStore(storeId, () =>
+      this.prisma.client.channelConnection.findMany({
+        where: {
+          storeId,
+          pluginId,
+          status: { not: ChannelConnectionStatus.DISCONNECTED },
+          ...OfActiveInstallation
+        },
+        select: CONNECTION_ROW_SELECT,
+        orderBy: { createdAt: 'asc' },
+        take: LINK_CHECK_MAX_ACCOUNTS
+      })
+    )
     if (rows.length === 0) return TemplateLinkVerdicts.UNKNOWN
     const answers = await Promise.all(
       rows.map(row =>

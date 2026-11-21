@@ -9,7 +9,12 @@ import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import { invalidInput } from '@platform/core/messaging'
 import { pressedDispatchKey } from '@platform/core/shipping'
 
-import { CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import {
   type OrderMessageHistoryItem,
@@ -52,6 +57,9 @@ export class OrderMessagesController {
 
   @RequirePermissions(Permissions.ORDERS_SEND_MESSAGES)
   @NoStore()
+  @NoTenantTransaction(
+    'asks the provider to render the approved template (network) and uses the bucket for the summary: the service reads and writes in short units of the store (`inStore`), and the provider and the bucket are called between them with no context open'
+  )
   @Post(ApiRoutes.orders.messages(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async send(

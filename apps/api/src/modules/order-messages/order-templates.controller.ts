@@ -10,7 +10,13 @@ import type { Locale } from '@platform/core/i18n'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import type { OrderMessagePreview } from '@platform/core/shipping'
 
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  actorOf,
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import {
   kindSchema,
@@ -63,6 +69,9 @@ export class OrderTemplatesController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_ORDER_TEMPLATES)
+  @NoTenantTransaction(
+    'links a template of the channel: the provider is asked whether it exists and is approved (network) between the short units of the store that read the stored link and write the template with its audit entry, with no context open'
+  )
   @Put(ApiRoutes.orderTemplates.byKindAndLocale(':kind', ':locale'))
   @HttpCode(HttpStatusCodes.OK)
   put(
