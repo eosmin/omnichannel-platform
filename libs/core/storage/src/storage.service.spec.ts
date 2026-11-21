@@ -1,3 +1,6 @@
+import http from 'node:http'
+import https from 'node:https'
+import net from 'node:net'
 import { Readable } from 'node:stream'
 
 import type { S3Client } from '@aws-sdk/client-s3'
@@ -272,5 +275,56 @@ describe('StorageService', () => {
     it('answers null for an object that is not there', async () => {
       expect(await serviceWith(jest.fn().mockRejectedValue(failure(404))).read('k', 10)).toBeNull()
     })
+  })
+})
+
+// `uploadUrl` and `downloadUrl` are declared LOCAL in scripts/external-io-providers.ts: a route that only signs does not hold the 15 s transaction
+// of a request on the network. This is the property, not a pin by name: the REAL client of the module (createS3Client, static credentials)
+// signs while every way out of the process throws, so a signature that needs the network (a provider chain, a lookup of the region) fails here.
+describe('StorageService signing is local', () => {
+  const offline = (): never => {
+    throw new Error('the signature went to the network')
+  }
+  const spies: jest.SpyInstance[] = []
+  afterEach(() => {
+    for (const spy of spies.splice(0)) spy.mockRestore()
+  })
+
+  function signingService(): StorageService {
+    const s3 = createS3Client({
+      bucket: 'bucket',
+      region: 'us-east-1',
+      accessKeyId: 'AKIAEXAMPLE',
+      secretAccessKey: 'secret-example',
+      endpoint: 'https://s3.invalid',
+      forcePathStyle: true
+    })
+    spies.push(
+      jest.spyOn(http, 'request').mockImplementation(offline),
+      jest.spyOn(https, 'request').mockImplementation(offline),
+      jest.spyOn(net.Socket.prototype, 'connect').mockImplementation(offline),
+      jest.spyOn(globalThis, 'fetch').mockImplementation(offline)
+    )
+    return new StorageService(s3, 'bucket')
+  }
+
+  it('signs an upload URL with no call to the network', async () => {
+    const url = await signingService().uploadUrl({
+      key: 'stores/s/messages/a/photo.png',
+      contentType: 'image/png',
+      contentLength: 1024
+    })
+    expect(url).toContain('https://s3.invalid/bucket/stores/s/messages/a/photo.png')
+    expect(url).toContain('X-Amz-Signature=')
+  })
+
+  it('signs a download URL with no call to the network', async () => {
+    const url = await signingService().downloadUrl({
+      key: 'stores/s/messages/a/photo.png',
+      contentType: 'image/png',
+      filename: 'photo.png'
+    })
+    expect(url).toContain('https://s3.invalid/bucket/stores/s/messages/a/photo.png')
+    expect(url).toContain('X-Amz-Signature=')
   })
 })

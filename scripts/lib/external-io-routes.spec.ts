@@ -1,6 +1,12 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { EXTERNAL_IO_PROVIDERS } from '../external-io-providers'
+
 import {
   baselineGrowth,
   fixedEntries,
+  localMethodProblems,
   networkFunctionsOf,
   newlyUnmarked,
   parseClasses,
@@ -286,5 +292,102 @@ describe('baseline helpers', () => {
     expect(
       unknownProviders(parseClasses('x.ts', SERVICE), [{ name: 'Gone', reason: 'r' }])
     ).toEqual(['Gone'])
+  })
+})
+
+describe('local methods of a provider', () => {
+  const service = `
+class SignedService {
+  constructor(private readonly storage: StorageService) {}
+  sign(id: string) { return this.storage.downloadUrl(id) }
+  signThenHead(id: string) { return this.storage.downloadUrl(id).then(() => this.storage.head(id)) }
+  head(id: string) { return this.storage.head(id) }
+}
+`
+  const controllerOf = (method: string) => `
+@Controller('files')
+class SignedController {
+  constructor(private readonly signed: SignedService) {}
+  @Get('x')
+  read() { return this.signed.${method}('1') }
+}
+`
+  const keys = (
+    method: string,
+    providers: Parameters<typeof unmarkedExternalRoutes>[1]
+  ): string[] =>
+    unmarkedExternalRoutes(
+      [
+        ...parseClasses('a/signed.service.ts', service),
+        ...parseClasses('a/signed.controller.ts', controllerOf(method))
+      ],
+      providers
+    ).map(r => r.key)
+  const LOCAL = [{ name: 'StorageService', reason: 'the bucket', localMethods: ['downloadUrl'] }]
+  const ALL = [{ name: 'StorageService', reason: 'the bucket' }]
+
+  it('flags a call to any method of the provider when none is declared local', () => {
+    expect(keys('sign', ALL)).toEqual(['a/signed.controller.ts#SignedController.read'])
+  })
+
+  it('does not flag a route that only calls a method declared local', () => {
+    expect(keys('sign', LOCAL)).toEqual([])
+  })
+
+  it('still flags a route that also calls a method that is not local', () => {
+    expect(keys('signThenHead', LOCAL)).toEqual(['a/signed.controller.ts#SignedController.read'])
+    expect(keys('head', LOCAL)).toEqual(['a/signed.controller.ts#SignedController.read'])
+  })
+})
+
+describe('the local methods that providers declare', () => {
+  const provider = (body: string) => parseClasses('a/store.ts', `class StoreService {\n${body}\n}`)
+  const LOCAL = [{ name: 'StoreService', reason: 'x', localMethods: ['sign'] }]
+
+  it('accepts a method that computes and calls nothing of its class', () => {
+    expect(localMethodProblems(provider('sign(id: string) { return makeUrl(id) }'), LOCAL)).toEqual(
+      []
+    )
+  })
+
+  it('refuses a name that is not a method of the class', () => {
+    expect(localMethodProblems(provider('other() { return 1 }'), LOCAL)).toEqual([
+      'StoreService.sign: declared local but the class has no such method'
+    ])
+  })
+
+  it('refuses a local method that calls a method of its class that is not local', () => {
+    expect(
+      localMethodProblems(
+        provider('sign(id: string) { return this.head(id) }\nhead(id: string) { return 1 }'),
+        LOCAL
+      )
+    ).toEqual(['StoreService.sign: declared local but it calls this.head(), which is not'])
+  })
+
+  it('refuses a local method that goes over the network, and a class that is not in the scan', () => {
+    expect(localMethodProblems(provider('sign(id: string) { return fetch(id) }'), LOCAL)).toEqual([
+      'StoreService.sign: declared local but it goes over the network'
+    ])
+    expect(localMethodProblems([], LOCAL)).toEqual([
+      'StoreService: localMethods needs the class of the provider in the scan'
+    ])
+  })
+
+  it('refuses a provider that is listed twice', () => {
+    expect(
+      localMethodProblems(provider('sign(id: string) { return 1 }'), [...LOCAL, ...LOCAL])
+    ).toEqual(['StoreService is listed twice'])
+  })
+
+  it('declares exactly the two signers of the bucket, which keeps static credentials', () => {
+    const storage = EXTERNAL_IO_PROVIDERS.find(entry => entry.name === 'StorageService')
+    expect(storage?.localMethods).toEqual(['uploadUrl', 'downloadUrl'])
+    const module = readFileSync(
+      join(__dirname, '../../libs/core/storage/src/storage.module.ts'),
+      'utf8'
+    )
+    expect(module).toMatch(/credentials:\s*\{\s*accessKeyId/)
+    expect(module).toMatch(/region:/)
   })
 })
