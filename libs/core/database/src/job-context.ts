@@ -123,10 +123,11 @@ export class JobContext {
     options?: TransactionOptions
   ): Promise<T> {
     if (active.getStore() === undefined && this.prisma.hasTenantContext()) {
-      // Joined only when the context of the request is the one of this store: with another store's context every row of this one
-      // would answer none, or fail a WITH CHECK, with no error that says why
+      // Joined only when the context of the request is exactly this store's: with another store's context every row of this one
+      // would answer none, or fail a WITH CHECK, with no error that says why; with a context of several stores (a route marked
+      // @TenantOfOrganizationStores) the work of one store would read and write across all of them
       const context = this.prisma.currentTenantContext()
-      if (context?.storeIds.includes(storeId) !== true) {
+      if (context === undefined || !sameSet(context.storeIds, [storeId])) {
         return Promise.reject(
           new JobContextError('the context of the request is not the one of this store')
         )
