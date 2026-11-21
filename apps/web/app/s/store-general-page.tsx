@@ -55,7 +55,7 @@ function GeneralForm({ store }: { store: StoreView }): ReactElement {
   const update = useUpdateStore(storeId, store.id)
   const [initial, setInitial] = useState(() => valuesOf(store))
   const [values, setValues] = useState(initial)
-  const problems = storeFormProblems(values)
+  const problems = storeFormProblems(values, initial.currency)
   const patch = storePatchOf(initial, values)
   useUnsavedChanges(hasChanges(patch))
   const canSave = hasChanges(patch) && Object.keys(problems).length === 0 && !update.isPending

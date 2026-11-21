@@ -12,7 +12,11 @@ export const apiSecurityHeaders = helmet({
   },
   hsts: { maxAge: ONE_YEAR_SECONDS, includeSubDomains: true, preload: true },
   referrerPolicy: { policy: 'no-referrer' },
-  crossOriginResourcePolicy: { policy: 'same-site' }
+  crossOriginResourcePolicy: { policy: 'same-site' },
+  // The old header for the browsers that ignore frame-ancestors (helmet's default is `sameorigin`, tightened here: no
+  // page frames the api) and no window of another origin keeps a handle on a page of the api (helmet's default, written down)
+  frameguard: { action: 'deny' },
+  crossOriginOpenerPolicy: { policy: 'same-origin' }
 })
 
 // The one page this api serves, Bull Board, needs its own scripts, styles and images, and nothing

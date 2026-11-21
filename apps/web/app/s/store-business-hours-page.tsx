@@ -13,7 +13,6 @@ import { LoadFailed, PageLoading, PermissionDenied } from '../../components/sett
 import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Label } from '../../components/ui/label'
-import { useInboxBehavior } from '../../lib/inbox/use-inbox-data'
 import {
   closedWeek,
   DEFAULT_RANGE,
@@ -48,7 +47,7 @@ function HoursLoader(): ReactElement {
   const hours = useBusinessHours(storeId)
   if (hours.isError) return <LoadFailed error={hours.error} onRetry={() => void hours.refetch()} />
   if (hours.data === undefined) return <PageLoading />
-  return <HoursBody saved={hours.data} />
+  return <HoursBody saved={hours.data.hours} savedTimezone={hours.data.storeTimezone} />
 }
 
 function browserTimezone(): string {
@@ -64,18 +63,19 @@ function startingHours(timezone: string): BusinessHoursView {
   return { timezone, schedule: week, awayMessageSnippetId: null }
 }
 
-function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement {
+function HoursBody({
+  saved,
+  savedTimezone
+}: {
+  saved: BusinessHoursView | null
+  savedTimezone: string | null
+}): ReactElement {
   const t = useTranslations('settings.hours')
   const errorText = useErrorText()
   const { storeId, can } = useStore()
   const canEdit = can(ClientPermissions.SETTINGS_EDIT)
   const mayListSnippets = can(ClientPermissions.CONVERSATIONS_VIEW)
   const snippets = useSnippetChoices(storeId, mayListSnippets)
-  // The time zone of the store comes with the inbox behavior (CONVERSATIONS_VIEW, as the snippets);
-  // without that permission the page can only offer the one of the browser
-  const storeBehavior = useInboxBehavior(storeId, mayListSnippets)
-  const storeTimezone = storeBehavior.data?.timezone
-  const storeTimezonePending = mayListSnippets && storeBehavior.isPending
   const save = useSaveBusinessHours(storeId)
   const idPrefix = useId()
   // null until the person starts a schedule on a store that has none
@@ -100,9 +100,9 @@ function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement
             <Button
               type="button"
               size="sm"
-              disabled={storeTimezonePending || storeBehavior.isError}
               onClick={() => {
-                const starting = startingHours(storeTimezone ?? browserTimezone())
+                // The zone of the store comes with the answer of the api (any role that reads the page)
+                const starting = startingHours(savedTimezone ?? browserTimezone())
                 // Starting is not a change: only what the person edits after it is unsaved
                 setBaseline(starting)
                 setDraft(starting)
@@ -110,11 +110,6 @@ function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement
             >
               {t('empty.start')}
             </Button>
-          ) : null}
-          {storeBehavior.isError ? (
-            <p role="alert" className="text-destructive text-sm">
-              {errorText(storeBehavior.error)}
-            </p>
           ) : null}
         </div>
       </section>

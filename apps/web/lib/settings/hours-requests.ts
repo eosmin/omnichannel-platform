@@ -1,7 +1,9 @@
 import { z } from 'zod'
 
-import type { ApiClient } from '@platform/api-client'
+import { type ApiClient, ApiError } from '@platform/api-client'
 import { ApiRoutes } from '@platform/core/api'
+import { BUSINESS_HOURS_TIMEZONE_METADATA_KEY } from '@platform/core/domain'
+import { HttpStatusCodes } from '@platform/core/errors'
 
 // Settings → Business hours: the weekly schedule of a store and the snippet sent when nobody answers.
 
@@ -34,6 +36,30 @@ export function fetchBusinessHours(
   signal?: AbortSignal
 ): Promise<BusinessHoursView> {
   return client.request(ApiRoutes.settings.businessHours, { schema: hoursSchema, storeId, signal })
+}
+
+// What the page starts from: the saved hours (null for a store that has none) and the time zone the
+// store works in. A store with no schedule answers 404 with its zone, which is how a role without
+// CONVERSATIONS_VIEW (it cannot read the inbox behavior) learns it. Any other failure is thrown, so a
+// network problem is never read as "no schedule yet".
+export interface BusinessHoursState {
+  hours: BusinessHoursView | null
+  storeTimezone: string | null
+}
+
+export async function readBusinessHours(
+  client: ApiClient,
+  storeId: string,
+  signal?: AbortSignal
+): Promise<BusinessHoursState> {
+  try {
+    const hours = await fetchBusinessHours(client, storeId, signal)
+    return { hours, storeTimezone: hours.timezone }
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== HttpStatusCodes.NOT_FOUND) throw error
+    const zone = error.metadata[BUSINESS_HOURS_TIMEZONE_METADATA_KEY]
+    return { hours: null, storeTimezone: typeof zone === 'string' ? zone : null }
+  }
 }
 
 // The whole week is replaced

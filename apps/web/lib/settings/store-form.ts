@@ -1,8 +1,10 @@
 import type { StorePatch } from '@platform/api-client'
-import { OrganizationLimits } from '@platform/core/domain'
+import {
+  isSupportedCurrency,
+  OrganizationLimits,
+  SUPPORTED_CURRENCIES
+} from '@platform/core/domain'
 import { SUPPORTED_LOCALES } from '@platform/core/i18n'
-
-const CURRENCY_CODE = /^[A-Z]{3}$/
 
 export interface StoreFormValues {
   name: string
@@ -23,13 +25,20 @@ export type StoreFormProblems = Partial<Record<keyof StoreFormValues, StoreFormE
 
 // What the form says is checked here as the api will check it, so that the person reads the problem
 // before the request. The api still decides.
-export function storeFormProblems(values: StoreFormValues): StoreFormProblems {
+// A currency the store already holds is not asked again (it may be a code replaced since: the person
+// renames the store without choosing a currency); the api only reads the currency when it changes.
+export function storeFormProblems(
+  values: StoreFormValues,
+  initialCurrency?: string
+): StoreFormProblems {
   const problems: StoreFormProblems = {}
   const name = values.name.trim()
   if (name.length === 0) problems.name = StoreFormErrors.NAME_REQUIRED
   else if (name.length > OrganizationLimits.NAME_MAX_LENGTH)
     problems.name = StoreFormErrors.NAME_TOO_LONG
-  if (!CURRENCY_CODE.test(values.currency)) problems.currency = StoreFormErrors.CURRENCY_INVALID
+  if (values.currency !== initialCurrency && !isSupportedCurrency(values.currency)) {
+    problems.currency = StoreFormErrors.CURRENCY_INVALID
+  }
   if (!SUPPORTED_LOCALES.some(locale => locale === values.defaultLocale)) {
     problems.defaultLocale = StoreFormErrors.LOCALE_INVALID
   }
@@ -54,6 +63,8 @@ export function hasChanges(patch: object): boolean {
 // The zones, currencies and locales a select offers. Intl may not list them (an old browser): the
 // list then holds only the current value, which the caller adds.
 export function intlValues(key: 'timeZone' | 'currency'): string[] {
+  // The currencies are the ones the api accepts, not the ones this browser happens to know
+  if (key === 'currency') return [...SUPPORTED_CURRENCIES]
   try {
     return Intl.supportedValuesOf(key)
   } catch {

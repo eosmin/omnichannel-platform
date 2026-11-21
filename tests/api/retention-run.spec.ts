@@ -8,11 +8,12 @@ import { AuditAction } from '@platform/core/audit'
 import {
   AuditColdExport,
   auditColdExportLockKey,
-  DataRetentionPolicies
+  DataRetentionPolicies,
+  PlatformCleanup
 } from '@platform/core/compliance'
 import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
-import { ConversationStatus } from '@platform/core/domain'
+import { ConversationStatus, InvitationStatus } from '@platform/core/domain'
 import { ImageVariants, MediaPurpose, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -23,6 +24,7 @@ import { RetentionScheduler } from '../../apps/worker/src/schedulers/retention.s
 import {
   createConversationOf,
   createCustomer,
+  createInvitation,
   createMessage,
   createOrder,
   createWebhook
@@ -534,6 +536,61 @@ describe('The retention run of the worker', () => {
         select: { id: true }
       })
       expect(left.map(token => token.id).sort()).toEqual([live.id, usedJustNow.id].sort())
+    })
+
+    it('deletes the invitations expired for more than the grace, whatever their store, and keeps the rest', async () => {
+      const make = async (
+        storeId: string,
+        over: { expiresAt: Date; status?: InvitationStatus }
+      ): Promise<string> => {
+        const made = await createInvitation(owner, { storeId, prefix })
+        await owner.invitation.update({ where: { id: made.id }, data: over })
+        return made.id
+      }
+      const grace = PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS
+      const longGone = await make(ctx.storeA.id, { expiresAt: daysAgo(grace + 1, now) })
+      const longGoneOther = await make(ctx.storeB.id, { expiresAt: daysAgo(grace + 1, now) })
+      const markedExpired = await make(ctx.storeA.id, {
+        expiresAt: daysAgo(grace + 1, now),
+        status: InvitationStatus.EXPIRED
+      })
+      // Exactly at the grace is not past it
+      const atTheEdge = await make(ctx.storeA.id, { expiresAt: daysAgo(grace, now) })
+      const justExpired = await make(ctx.storeA.id, { expiresAt: daysAgo(1, now) })
+      const live = await make(ctx.storeA.id, { expiresAt: new Date('2001-12-01T00:00:00Z') })
+      // What a person did with an invitation is history, however old: accepted and revoked are not "expired"
+      const accepted = await make(ctx.storeA.id, {
+        expiresAt: daysAgo(grace + 1, now),
+        status: InvitationStatus.ACCEPTED
+      })
+      const revoked = await make(ctx.storeA.id, {
+        expiresAt: daysAgo(grace + 1, now),
+        status: InvitationStatus.REVOKED
+      })
+
+      const report = await cleaner.run(now)
+
+      expect(report.invitations).toBeGreaterThanOrEqual(3)
+      const left = await owner.invitation.findMany({
+        where: {
+          id: {
+            in: [
+              longGone,
+              longGoneOther,
+              markedExpired,
+              atTheEdge,
+              justExpired,
+              live,
+              accepted,
+              revoked
+            ]
+          }
+        },
+        select: { id: true }
+      })
+      expect(left.map(row => row.id).sort()).toEqual(
+        [atTheEdge, justExpired, live, accepted, revoked].sort()
+      )
     })
 
     it('deletes the deliveries of a webhook past thirty days and the hours of the rollup past ninety', async () => {

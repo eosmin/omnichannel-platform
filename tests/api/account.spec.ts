@@ -437,7 +437,8 @@ describe('The account of a person', () => {
       const over = await requestUpload(asHeavy)
 
       expect(over.status).toBe(TOO_MANY_REQUESTS)
-      expect(codeOf(over.body)).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
+      // Its own code: the page cannot tell "too many asked this hour" from "five pictures held"
+      expect(codeOf(over.body)).toBe(ErrorCodes.AVATAR_UPLOAD_LIMIT_EXCEEDED)
       // The avatar limit says when to come back too: the seconds left of the hour
       const secondsLeft = Math.ceil((3_600_000 - (Date.now() % 3_600_000)) / 1000)
       const retryAfter = (over.body as { error: { metadata?: Record<string, unknown> } }).error

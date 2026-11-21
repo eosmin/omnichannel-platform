@@ -932,6 +932,7 @@ Platform-wide, not per store (`Schedules.CLEANUP_PLATFORM_DATA`, daily):
 - `WebhookDelivery` older than 30 days
 - `Export` rows past `expiresAt` (and their S3 objects)
 - `CustomerMerge` rows past `unmergeUntil` (the absorbed `Customer` row is then hard-deleted)
+- Invitations still `PENDING` or marked `EXPIRED` more than 30 days after `expiresAt` (`PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS`); an invitee who opens the link after that gets the generic invalid answer, no longer the "expired" one. Accepted and revoked invitations are kept
 
 Orders and audit logs are never touched by tenant-configurable policies.
 

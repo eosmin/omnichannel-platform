@@ -1,7 +1,8 @@
 import { ApiError, createApiClient } from '@platform/api-client'
 import { TenantHeaders } from '@platform/core/auth'
+import { BUSINESS_HOURS_TIMEZONE_METADATA_KEY } from '@platform/core/domain'
 
-import { fetchBusinessHours, saveBusinessHours } from './hours-requests'
+import { fetchBusinessHours, readBusinessHours, saveBusinessHours } from './hours-requests'
 
 function setup(body: unknown, status = 200) {
   const fetchImpl = jest.fn<Promise<Response>, [string, RequestInit]>().mockImplementation(() =>
@@ -71,5 +72,49 @@ describe('business hours requests', () => {
     await saveBusinessHours(client, 's1', hours)
     expect(call()[1]?.method).toBe('PUT')
     expect(bodyOf(call()[1])).toEqual(hours)
+  })
+
+  it('reads the zone of the store from the 404 of a store that never saved a schedule', async () => {
+    const { client } = setup(
+      {
+        error: {
+          code: 'RESOURCE_NOT_FOUND',
+          message: 'x',
+          metadata: { [BUSINESS_HOURS_TIMEZONE_METADATA_KEY]: 'America/El_Salvador' }
+        },
+        correlationId: 'c-1'
+      },
+      404
+    )
+
+    await expect(readBusinessHours(client, 'store-1')).resolves.toEqual({
+      hours: null,
+      storeTimezone: 'America/El_Salvador'
+    })
+  })
+
+  it('has no zone when the 404 carries none, and returns the saved hours with the zone of them', async () => {
+    const { client } = setup(
+      { error: { code: 'RESOURCE_NOT_FOUND', message: 'x' }, correlationId: 'c-1' },
+      404
+    )
+    await expect(readBusinessHours(client, 'store-1')).resolves.toEqual({
+      hours: null,
+      storeTimezone: null
+    })
+
+    const saved = setup(hours)
+    await expect(readBusinessHours(saved.client, 'store-1')).resolves.toEqual({
+      hours,
+      storeTimezone: hours.timezone
+    })
+  })
+
+  it('does not read any other failure as a store without a schedule', async () => {
+    const { client } = setup(
+      { error: { code: 'INTERNAL_ERROR', message: 'x' }, correlationId: 'c-1' },
+      500
+    )
+    await expect(readBusinessHours(client, 'store-1')).rejects.toBeInstanceOf(ApiError)
   })
 })

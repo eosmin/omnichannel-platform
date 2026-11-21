@@ -77,5 +77,10 @@ export const STATIC_SECURITY_HEADERS: ReadonlyArray<{ key: string; value: string
   { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
-  { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=()' }
+  { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=()' },
+  // The old twin of `frame-ancestors 'none'`, for the browsers that ignore the CSP directive
+  { key: 'X-Frame-Options', value: 'DENY' },
+  // No window of another origin keeps a handle on this one. Nothing in the app depends on an opener: the OAuth flows
+  // are full-page redirects and downloads open with `noopener`
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' }
 ]
