@@ -126,7 +126,7 @@ export const ExistingPictureSweep = {
   // Rows taken per store per run, and rows in the whole run (a full run is logged and the next one takes the rest)
   BATCH_PER_STORE: 25,
   MAX_PER_RUN: 100,
-  // Media.scanResult is merged, never replaced: `sanitized: true` is the mark the scan writes on a picture it cleaned (an older row has
+  // Media.scanResult is written whole by the sweep, and a row it has not finished holds only its own keys (nothing else writes the `scan_result` of a clean picture): `sanitized: true` is the mark the scan writes on a picture it cleaned (an older row has
   // none); a picture the sweep looked at and could not or need not rewrite carries `sanitizeSweep: <outcome>` so it is not taken again
   CLEANED_KEY: 'sanitized',
   OUTCOME_KEY: 'sanitizeSweep',

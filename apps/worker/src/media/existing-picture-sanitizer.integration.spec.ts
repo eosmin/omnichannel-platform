@@ -161,7 +161,8 @@ describe('ExistingPictureSanitizer', () => {
 
     expect(failed).toMatchObject({ cleaned: 0, failed: 1 })
     expect((await stored(media.key)).equals(photo)).toBe(true) // The original is there, byte for byte
-    expect((await row(media.id)).scanResult).toBeNull() // And the row says it was not seen
+    // And the row is not finished: it only counts the failed attempt
+    expect((await row(media.id)).scanResult).toEqual({ [ExistingPictureSweep.ATTEMPTS_KEY]: 1 })
     const retried = await sanitizer.runScoped([storeId])
     expect(retried).toMatchObject({ cleaned: 1, failed: 0 })
     expect((await sharp(await stored(media.key)).metadata()).exif).toBeUndefined()
