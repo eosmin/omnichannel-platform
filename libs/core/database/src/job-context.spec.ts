@@ -126,6 +126,20 @@ describe('JobContext', () => {
     await expect(
       new JobContext(inRequest.prisma).forStoreOrJoin(OTHER, () => Promise.resolve('wrong'))
     ).rejects.toBeInstanceOf(JobContextError)
+    // A request context of two stores that holds this one is not the one of this store either: its rows would answer for both
+    requestPrisma.currentTenantContext = () => ({
+      storeIds: [STORE, OTHER],
+      organizationIds: [ORG]
+    })
+    await expect(
+      new JobContext(inRequest.prisma).forStoreOrJoin(STORE, () => Promise.resolve('wrong'))
+    ).rejects.toBeInstanceOf(JobContextError)
+    expect(inRequest.contexts).toEqual([])
+    // A request transaction whose context cannot be read fails closed
+    requestPrisma.currentTenantContext = () => undefined as unknown as Context
+    await expect(
+      new JobContext(inRequest.prisma).forStoreOrJoin(STORE, () => Promise.resolve('wrong'))
+    ).rejects.toBeInstanceOf(JobContextError)
 
     const inJob = fakePrisma({ store: { organizationId: ORG } })
     await expect(
