@@ -75,7 +75,7 @@ test.describe('performance budgets', () => {
     // Signed out, whatever test ran before
     async function signOut(): Promise<void> {
       await context.clearCookies()
-      await context.addCookies([englishLocaleCookie])
+      await context.addCookies([englishLocaleCookie, answeredCookieConsent])
     }
     expectWithinBudgets(
       'login',
@@ -90,7 +90,7 @@ test.describe('performance budgets', () => {
     // the page that Lighthouse measures
     async function signInAfresh(): Promise<void> {
       await context.clearCookies()
-      await context.addCookies([englishLocaleCookie])
+      await context.addCookies([englishLocaleCookie, answeredCookieConsent])
       await reachServicesFromOwnAddress(context)
       try {
         await signIn(page, 'admin@test.com')
@@ -112,7 +112,7 @@ test.describe('performance budgets', () => {
     const storeId = await storeIdNamed(FIRST_STORE)
     async function signInAfresh(): Promise<void> {
       await context.clearCookies()
-      await context.addCookies([englishLocaleCookie])
+      await context.addCookies([englishLocaleCookie, answeredCookieConsent])
       await reachServicesFromOwnAddress(context)
       try {
         await signIn(page, 'admin@test.com')
@@ -133,7 +133,7 @@ test.describe('performance budgets', () => {
     const storeId = await storeIdNamed(FIRST_STORE)
     async function signInAfresh(): Promise<void> {
       await context.clearCookies()
-      await context.addCookies([englishLocaleCookie])
+      await context.addCookies([englishLocaleCookie, answeredCookieConsent])
       await reachServicesFromOwnAddress(context)
       try {
         await signIn(page, 'admin@test.com')
@@ -153,7 +153,7 @@ test.describe('performance budgets', () => {
     const storeId = await storeIdNamed(FIRST_STORE)
     async function signInAfresh(): Promise<void> {
       await context.clearCookies()
-      await context.addCookies([englishLocaleCookie])
+      await context.addCookies([englishLocaleCookie, answeredCookieConsent])
       await reachServicesFromOwnAddress(context)
       try {
         await signIn(page, 'admin@test.com')

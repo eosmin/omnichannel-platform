@@ -200,4 +200,32 @@ test.describe('the cookie banner', () => {
       categories: { functional: false, analytics: false, marketing: false }
     })
   })
+
+  test('the banner floats over the page: fixed, and the content does not move when it mounts or leaves', async ({
+    page,
+    context
+  }) => {
+    await page.goto(AppPaths.login)
+    const heading = page.getByRole('heading', { name: en.login.title })
+    const form = page.getByLabel(en.login.emailLabel)
+    await expect(banner(page)).toBeVisible()
+    // Out of the flow: a banner in the normal flow would be `static` and would push the form
+    await expect(banner(page)).toHaveCSS('position', 'fixed')
+    const withBanner = { heading: await heading.boundingBox(), form: await form.boundingBox() }
+
+    await banner(page).getByRole('button', { name: t.reject }).click()
+    await expect(banner(page)).toBeHidden()
+    const withoutBanner = { heading: await heading.boundingBox(), form: await form.boundingBox() }
+
+    expect(withBanner.heading).not.toBeNull()
+    expect(withBanner).toEqual(withoutBanner)
+    // The page has no more height because of the banner either
+    const scrollHeight = (): Promise<number> =>
+      page.evaluate(() => document.documentElement.scrollHeight)
+    const heightWithout = await scrollHeight()
+    await context.clearCookies({ name: COOKIE_CONSENT_COOKIE_NAME })
+    await page.reload()
+    await expect(banner(page)).toBeVisible()
+    expect(await scrollHeight()).toBe(heightWithout)
+  })
 })

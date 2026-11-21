@@ -6,11 +6,11 @@ import {
   currentChoice,
   encodeChoice,
   isCategoryAllowed,
-  isSettled,
   NONE_ALLOWED,
   parseStoredChoice,
   type CookieChoice
 } from './cookie-choice'
+import { isSettled } from './cookie-settled'
 
 const ID = '3f2b8c1e-0a4d-4f6e-9b1a-7c5d2e8f9a10'
 const choice = (patch: Partial<CookieChoice> = {}): CookieChoice => ({

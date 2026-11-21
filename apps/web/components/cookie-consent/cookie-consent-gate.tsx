@@ -4,7 +4,7 @@ import { type ComponentType, type ReactElement, useEffect, useState } from 'reac
 
 import { COOKIE_PREFERENCES_OPEN_EVENT } from '@platform/core/domain'
 
-import { isSettled } from '../../lib/cookie-consent/cookie-choice'
+import { isSettled } from '../../lib/cookie-consent/cookie-settled'
 
 import type { CookieConsentUiProps } from './cookie-consent-ui'
 

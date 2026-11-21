@@ -71,11 +71,6 @@ export function currentChoice(cookieHeader: string): CookieChoice | null {
   return stored !== null && stored.policyVersion === COOKIE_POLICY_VERSION ? stored : null
 }
 
-// The check every page makes, with no parsing: the choice is current and the api has it, so there is nothing to draw
-export function isSettled(cookieHeader: string): boolean {
-  return `; ${cookieHeader}`.includes(`; ${COOKIE_CONSENT_COOKIE_NAME}=${COOKIE_POLICY_VERSION}.1.`)
-}
-
 // Whether the person allowed a category. `necessary` is not asked, and no answer is a no: nothing optional is switched on by default.
 export function isCategoryAllowed(
   cookieHeader: string,
