@@ -1,13 +1,18 @@
 import { type Job, UnrecoverableError } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 
-import { JobContextError, JobContextGoneError } from '@platform/core/database'
+import {
+  JobContextError,
+  JobContextGoneError,
+  JobContextMismatchError
+} from '@platform/core/database'
 import { MessageType } from '@platform/core/domain'
 import type {
   InboundMessageChangesService,
   InboundMessageService,
   MessageReactionsService
 } from '@platform/core/messaging'
+import { QueueNames } from '@platform/core/queues'
 import type { ProcessChannelEventJob } from '@platform/plugins/runtime'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
@@ -77,9 +82,12 @@ describe('InboundProcessor and a store that was deleted', () => {
   })
 
   it('ends as done, with a warning, a message of a connection whose store is gone, and asks for no profile', async () => {
-    handleMessageReceived.mockRejectedValue(new JobContextGoneError('gone'))
-    await expect(processor.process(jobOf(received()))).resolves.toBeUndefined()
+    const gone = new JobContextGoneError('gone')
+    handleMessageReceived.mockRejectedValue(gone)
+    const job = jobOf(received())
+    await expect(processor.process(job)).resolves.toBeUndefined()
     expect(subjectGone).toHaveBeenCalledTimes(1)
+    expect(subjectGone).toHaveBeenCalledWith(QueueNames.INBOUND, job, gone)
     expect(request).not.toHaveBeenCalled()
   })
 
@@ -103,6 +111,12 @@ describe('InboundProcessor and a store that was deleted', () => {
   it('lets any other failure reach the queue, so that the job is retried', async () => {
     handleMessageReceived.mockRejectedValue(new JobContextError('hidden'))
     await expect(processor.process(jobOf(received()))).rejects.toBeInstanceOf(JobContextError)
+    expect(subjectGone).not.toHaveBeenCalled()
+  })
+
+  it('does not retry a payload whose store is not the one of its row', async () => {
+    handleMessageReceived.mockRejectedValue(new JobContextMismatchError('no'))
+    await expect(processor.process(jobOf(received()))).rejects.toBeInstanceOf(UnrecoverableError)
     expect(subjectGone).not.toHaveBeenCalled()
   })
 
