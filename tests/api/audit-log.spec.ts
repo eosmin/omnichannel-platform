@@ -5,8 +5,11 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuditLogResourceTypes, PaginationLimits } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
+import { ExportLimits } from '@platform/core/exports'
 import { ExportStatus, ExportTypes } from '@platform/core/queues'
 
 import { createRole } from '../builders'
@@ -280,6 +283,23 @@ describe('Audit log viewer', () => {
       (await api(app, ctx.agentA, ctx.storeA).get(ApiRoutes.organizations.auditLogEntry(mine.id)))
         .status
     ).toBe(FORBIDDEN)
+  })
+
+  it('refuses an export larger than one file, with the range to narrow, and queues none', async () => {
+    const prisma = app.get(PrismaService)
+    const count = jest
+      .spyOn(prisma.client.auditLog, 'count')
+      .mockResolvedValueOnce(ExportLimits.AUDIT_LOG_MAX_ROWS + 1)
+    const before = await owner.export.count({ where: { storeId: ctx.storeA.id } })
+
+    const response = await asAdmin().get(ApiRoutes.organizations.auditLogExport)
+
+    count.mockRestore()
+    expect(response.status).toBe(BAD_REQUEST)
+    expect((response.body as { error: { code: string } }).error.code).toBe(
+      ErrorCodes.EXPORT_TOO_LARGE
+    )
+    expect(await owner.export.count({ where: { storeId: ctx.storeA.id } })).toBe(before)
   })
 
   it('audits that it was read, with the filters and no text of a person', async () => {

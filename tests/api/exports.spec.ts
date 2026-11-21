@@ -308,7 +308,9 @@ describe('Exports', () => {
       })
       expect(entry?.userId).toBe(ctx.adminA.id)
       expect(entry?.storeId).toBe(ctx.storeA.id)
-      expect(entry?.metadata).toMatchObject({ rowCount: row.rowCount, filters: { q: 'needle' } })
+      // The text typed to search is never copied into the (immutable) audit entry: only that there was one
+      expect(entry?.metadata).toMatchObject({ rowCount: row.rowCount, filters: { hasText: true } })
+      expect(JSON.stringify(entry?.metadata)).not.toContain('needle')
     })
 
     it('refuses a filter it does not know', async () => {
