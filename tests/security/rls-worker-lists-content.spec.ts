@@ -1,6 +1,6 @@
 import pg from 'pg'
 
-import { AnalyticsMetrics, ReportFrequency } from '@platform/core/analytics'
+import { AnalyticsMetrics, ReportFormats, ReportFrequency } from '@platform/core/analytics'
 import {
   connectionUrls,
   ensureStore,
@@ -15,6 +15,7 @@ import {
   ShipmentKind,
   ShipmentStatus
 } from '@platform/core/domain'
+import { NotificationSeverity, NotificationTypes } from '@platform/core/notifications'
 
 import { createCarrierConnection, createShipment } from '../builders'
 import { createChannelConnection } from '../builders/conversation'
@@ -23,7 +24,10 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 // The lists of the worker that rls-worker-lists.spec.ts only checks for grants, owner and search path (the pickup lists have their own
 // cases there): what each one returns and what it leaves out, read as the role of the worker with NO context, the way its scheduler
 // calls it. Debt "each of the other five gets its content case" of PR A, closed here. The suites share the database, so every case
-// looks only at the rows this run made.
+// looks only at the rows this run made. That a plain read with no context sees no row is proved by rls-worker-lists.spec.ts (the pickup
+// lists, with row security ON inside a rolled back transaction); the lists here are definers of the same migration.
+const PAGE = 2
+
 describe('row-level security, phase 5: what the other lists of the worker return', () => {
   const prefix = newRunPrefix()
   const urls = connectionUrls()
@@ -43,6 +47,8 @@ describe('row-level security, phase 5: what the other lists of the worker return
 
   afterAll(async () => {
     await cleanUp(owner, prefix)
+    // The plugins of the channel cases have no store to cascade from: the ids carry the prefix of the run
+    await owner.plugin.deleteMany({ where: { id: { startsWith: prefix } } })
     await worker.end().catch(() => undefined)
     await owner.$disconnect()
   })
@@ -50,23 +56,42 @@ describe('row-level security, phase 5: what the other lists of the worker return
   const storeA = (): string => stores[0] ?? ''
   const storeB = (): string => stores[1] ?? ''
 
-  // Walks a list to its end, one row a page (so a page boundary cuts nothing), and keeps what this run made
+  // The order the database gives depends on its collation: the cases compare sets, ordered the same way on both sides
+  const byId = <Row extends { id: string }>(rows: Row[]): Row[] =>
+    [...rows].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0))
+
+  const byConnection = <Row extends { connection_id: string }>(rows: Row[]): Row[] =>
+    [...rows].sort((x, y) =>
+      x.connection_id < y.connection_id ? -1 : x.connection_id > y.connection_id ? 1 : 0
+    )
+
+  // Walks a list two rows a page, from just before the first row of this run to the end, so that the cases cross page boundaries (a
+  // cursor that repeats or skips a row fails them), and keeps what this run made
   async function walk<Row extends { [key: string]: string }>(
     sql: string,
     args: unknown[],
     key: keyof Row & string,
     mine: ReadonlySet<string>
   ): Promise<Row[]> {
+    const ids = [...mine].sort()
+    // A prefix is smaller than the text it starts: the first row of this run is still after it
+    let after: string | null = (ids[0] ?? '').slice(0, 2)
     const found: Row[] = []
-    let after: string | null = null
+    const seen = new Set<string>()
     for (let guard = 0; guard < 100_000; guard += 1) {
-      const page: { rows: Row[] } = await worker.query<Row>(sql, [...args, after, 1000])
-      const rows = page.rows
-      found.push(...rows.filter(row => mine.has(row[key] ?? '')))
-      const last = rows.at(-1)
-      if (last === undefined || rows.length < 1000) break
-      after = last[key] ?? null
+      const page: { rows: Row[] } = await worker.query<Row>(sql, [...args, after, PAGE])
+      for (const row of page.rows) {
+        const id = row[key] ?? ''
+        // A row twice is a cursor that does not move
+        expect(`${id}`).not.toBe(after ?? '')
+        seen.add(id)
+        if (mine.has(id)) found.push(row)
+      }
+      const tail = page.rows.at(-1)
+      if (tail === undefined || page.rows.length < PAGE) break
+      after = tail[key] ?? null
     }
+    expect(seen.size).toBeGreaterThan(0)
     return found
   }
 
@@ -97,13 +122,12 @@ describe('row-level security, phase 5: what the other lists of the worker return
       'connection_id',
       new Set([onA, onB, off, disabled])
     )
-    expect(rows).toEqual(
-      expect.arrayContaining([
+    expect(byConnection(rows)).toEqual(
+      byConnection([
         { connection_id: onA, store_id: storeA() },
         { connection_id: onB, store_id: storeB() }
       ])
     )
-    expect(rows.map(row => row.connection_id).sort()).toEqual([onA, onB].sort())
   })
 
   it('lists the enabled scheduled reports of every store and no disabled one', async () => {
@@ -115,7 +139,7 @@ describe('row-level security, phase 5: what the other lists of the worker return
             name: `${prefix}-report`,
             metrics: [AnalyticsMetrics.ORDERS_CREATED],
             frequency: ReportFrequency.WEEKLY,
-            format: 'csv',
+            format: ReportFormats.CSV,
             recipients: ['owner@example.invalid'],
             enabled,
             createdBy: 'suite'
@@ -132,11 +156,11 @@ describe('row-level security, phase 5: what the other lists of the worker return
       'id',
       new Set([onA, onB, off])
     )
-    expect([...rows].sort((x, y) => x.id.localeCompare(y.id))).toEqual(
-      [
+    expect(byId(rows)).toEqual(
+      byId([
         { id: onA, store_id: storeA() },
         { id: onB, store_id: storeB() }
-      ].sort((x, y) => x.id.localeCompare(y.id))
+      ])
     )
   })
 
@@ -148,8 +172,8 @@ describe('row-level security, phase 5: what the other lists of the worker return
         data: {
           userId,
           storeId,
-          type: 'message.failed',
-          severity: 'warning',
+          type: NotificationTypes.MESSAGE_FAILED,
+          severity: NotificationSeverity.WARNING,
           messageKey: 'notifications.message.failed',
           ...(pending ? { emailPendingAt: new Date() } : {})
         }
@@ -169,12 +193,17 @@ describe('row-level security, phase 5: what the other lists of the worker return
     expect(rows).toEqual([{ user_id: waiting.id }])
   })
 
-  it('lists the connections of an active installation of an approved plugin, with their store, plugin and update time', async () => {
+  it('lists the connections of an active installation of an approved plugin that are active or in error, with their store and plugin', async () => {
     const live = await createChannelConnection(owner, {
       storeId: storeA(),
       channelType: `${prefix}-chan`
     })
-    const broken = await createChannelConnection(owner, {
+    const failing = await createChannelConnection(owner, {
+      storeId: storeB(),
+      channelType: `${prefix}-chan-e`,
+      status: ChannelConnectionStatus.ERROR
+    })
+    const disconnected = await createChannelConnection(owner, {
       storeId: storeB(),
       channelType: `${prefix}-chan-b`,
       status: ChannelConnectionStatus.DISCONNECTED
@@ -187,6 +216,14 @@ describe('row-level security, phase 5: what the other lists of the worker return
       where: { storeId: storeB(), pluginId: `${prefix}-chan-c` },
       data: { status: PluginInstallationStatus.REVOKED }
     })
+    const suspended = await createChannelConnection(owner, {
+      storeId: storeA(),
+      channelType: `${prefix}-chan-s`
+    })
+    await owner.plugin.update({
+      where: { id: `${prefix}-chan-s` },
+      data: { status: PluginStatus.SUSPENDED }
+    })
     const rows = await walk<{ id: string; store_id: string; plugin_id: string }>(
       'SELECT id, store_id, plugin_id FROM rls_list_active_channel_connections($1::text[], $2, $3, $4, $5)',
       [
@@ -195,25 +232,35 @@ describe('row-level security, phase 5: what the other lists of the worker return
         PluginStatus.APPROVED
       ],
       'id',
-      new Set([live.id, broken.id, revoked.id])
+      new Set([live.id, failing.id, disconnected.id, revoked.id, suspended.id])
     )
-    expect(rows).toEqual([{ id: live.id, store_id: storeA(), plugin_id: `${prefix}-chan` }])
+    expect(byId(rows)).toEqual(
+      byId([
+        { id: live.id, store_id: storeA(), plugin_id: `${prefix}-chan` },
+        { id: failing.id, store_id: storeB(), plugin_id: `${prefix}-chan-e` }
+      ])
+    )
   })
 
-  it('lists a connection once for each store with a guide of the kind and status, whatever the number of guides', async () => {
+  it('lists a connection once for each store with a numbered guide in a polled status, whatever the number of guides', async () => {
     const first = await createShipment(owner, {
       storeId: storeA(),
       status: ShipmentStatus.LABEL_CREATED
     })
     await createShipment(owner, {
       storeId: storeA(),
-      status: ShipmentStatus.LABEL_CREATED,
+      status: ShipmentStatus.IN_TRANSIT,
       connectionId: first.connectionId
     })
-    const other = await createShipment(owner, {
+    const finished = await createShipment(owner, {
       storeId: storeB(),
       status: ShipmentStatus.DELIVERED
     })
+    const unnumbered = await createShipment(owner, {
+      storeId: storeB(),
+      status: ShipmentStatus.LABEL_CREATED
+    })
+    await owner.shipment.update({ where: { id: unnumbered.id }, data: { guideNumber: null } })
     const disabled = await createShipment(owner, {
       storeId: storeB(),
       status: ShipmentStatus.LABEL_CREATED
@@ -224,10 +271,20 @@ describe('row-level security, phase 5: what the other lists of the worker return
     })
     const rows = await walk<{ connection_id: string; store_id: string }>(
       'SELECT connection_id, store_id FROM rls_list_shipment_poll_targets($1, $2::text[], $3, $4, $5)',
-      [ShipmentKind.OUTBOUND, [ShipmentStatus.LABEL_CREATED], CarrierConnectionStatus.ACTIVE],
+      [
+        ShipmentKind.OUTBOUND,
+        [ShipmentStatus.LABEL_CREATED, ShipmentStatus.IN_TRANSIT],
+        CarrierConnectionStatus.ACTIVE
+      ],
       'connection_id',
-      new Set([first.connectionId, other.connectionId, disabled.connectionId])
+      new Set([
+        first.connectionId,
+        finished.connectionId,
+        unnumbered.connectionId,
+        disabled.connectionId
+      ])
     )
+    // One row for the connection with two guides; not the delivered guide, not the one with no number, not the disabled connection
     expect(rows).toEqual([{ connection_id: first.connectionId, store_id: storeA() }])
   })
 })
