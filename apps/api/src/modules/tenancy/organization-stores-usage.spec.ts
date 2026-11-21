@@ -22,13 +22,10 @@ const ALLOWED_ON_CLASS = [
   'apps/api/src/modules/transfers/transfers.controller.ts',
   'apps/api/src/modules/warehouses/warehouses.controller.ts'
 ]
-// The one route that stands on a METHOD: the delete of a plugin of the organization, which has to see the installations of every store
-// (a person's route behind SETTINGS_MANAGE_PLUGINS; the service reads and removes only rows of that plugin, of the organization of the guard)
-const ALLOWED_ON_METHOD = {
-  file: 'apps/api/src/modules/plugins/plugins.controller.ts',
-  method: 'remove'
-}
-const ALLOWED = [...ALLOWED_ON_CLASS, ALLOWED_ON_METHOD.file].sort()
+// The delete of a plugin of the organization used to stand here (it reads the installations of every store). It is now @NoTenantTransaction
+// and opens the context of the whole organization itself, in strict units (`JobContext.inOrganization`), so no route stands on a method.
+const PLUGINS_CONTROLLER = 'apps/api/src/modules/plugins/plugins.controller.ts'
+const ALLOWED = [...ALLOWED_ON_CLASS].sort()
 
 function sources(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
@@ -41,7 +38,7 @@ function sources(dir: string): string[] {
 }
 
 describe('@TenantOfOrganizationStores', () => {
-  it('is used by exactly the controllers of transfers, counts, warehouses and purchase orders, and by the delete of a plugin, and by no plugin-api route', () => {
+  it('is used by exactly the controllers of transfers, counts, warehouses and purchase orders, and by no plugin-api route', () => {
     const users = SCANNED.flatMap(sources)
       .filter(path => {
         const text = readFileSync(path, 'utf8')
@@ -65,21 +62,18 @@ describe('@TenantOfOrganizationStores', () => {
     }
   })
 
-  it('stands on the method remove alone in the controller of the plugins, and on no other route of it', () => {
-    const text = readFileSync(join(ROOT, ALLOWED_ON_METHOD.file), 'utf8')
-    expect(text.split(MARK)).toHaveLength(2)
-    const at = text.indexOf(MARK)
-    // The decorator belongs to the handler that follows it: `remove`, with no other handler between them
-    const after = text.slice(at)
-    expect(after.indexOf(`async ${ALLOWED_ON_METHOD.method}(`)).toBeGreaterThan(-1)
-    expect(after.slice(0, after.indexOf(`async ${ALLOWED_ON_METHOD.method}(`))).not.toMatch(
-      /@(Get|Post|Put|Patch)\(/
-    )
-    const between = after.slice(0, after.indexOf(`async ${ALLOWED_ON_METHOD.method}(`))
-    // Exactly one handler decorator, and no other method, between the mark and `remove`
+  it('is not used by the controller of the plugins any more: its delete opens the context of the organization in the service', () => {
+    const text = readFileSync(join(ROOT, PLUGINS_CONTROLLER), 'utf8')
+    expect(text).not.toContain(MARK)
+    const at = text.indexOf('async remove(')
+    expect(at).toBeGreaterThan(-1)
+    // The mark that stands before the handler is @NoTenantTransaction, with no other handler between them
+    const before = text.slice(0, at)
+    const mark = before.lastIndexOf('@NoTenantTransaction(')
+    expect(mark).toBeGreaterThan(-1)
+    const between = before.slice(mark)
     expect(between.split('@Delete(')).toHaveLength(2)
     expect(between).not.toMatch(/\basync \w+\(/)
-    expect(text.indexOf(MARK)).toBeGreaterThan(text.indexOf('@Controller('))
   })
 
   it('has no plugin route in those controllers: a key is bound to one store and must never see the lines of a sibling', () => {

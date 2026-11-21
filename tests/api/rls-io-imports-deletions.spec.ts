@@ -2,16 +2,19 @@ import { getQueueToken } from '@nestjs/bullmq'
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
+import { AuditAction } from '@platform/core/audit'
 import { PrismaService, RLS_CONTEXT_ENABLED } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
-import { AuthorType } from '@platform/core/domain'
+import { AuthorType, CONVERSATION_RESOURCE_TYPE } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { QueueNames } from '@platform/core/queues'
+import { RemittancesService } from '@platform/core/shipping'
 import { MediaPurpose, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { createCarrierConnection, createConversationOf, createMessage } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
@@ -77,6 +80,8 @@ describe('RLS phase 6: imports and deletions call the bucket with no context ope
   })
 
   const admin = () => api(app, ctx.adminA, ctx.storeA)
+  const importUrl = (profileId: string) =>
+    `${ApiRoutes.remittances.imports}?connectionId=${connectionId}&profileId=${profileId}`
 
   async function profile(): Promise<string> {
     const made = await admin()
@@ -162,5 +167,101 @@ describe('RLS phase 6: imports and deletions call the bucket with no context ope
     expect(opened.every(call => call.call === 'delete' && !call.tenantOpen)).toBe(true)
     expect(await owner.conversation.count({ where: { id: found.id } })).toBe(0)
     expect(await owner.media.count({ where: { id: mediaId } })).toBe(0)
+  })
+  it('rolls the import back when the draft fails: the object is removed from the bucket (no context), and no row is left', async () => {
+    const profileId = await profile()
+    const before = await owner.media.count({
+      where: { storeId: ctx.storeA.id, purpose: MediaPurpose.REMITTANCE_FILE }
+    })
+    const draft = jest
+      .spyOn(app.get(RemittancesService, { strict: false }), 'createDraft')
+      .mockRejectedValueOnce(new Error('the draft could not be written'))
+
+    const response = await admin()
+      .post(importUrl(profileId))
+      .set('Content-Type', 'text/csv')
+      .send('Guia,Monto\nG-3,10.00\n')
+    draft.mockRestore()
+
+    expect(response.status).toBe(HttpStatusCodes.INTERNAL_SERVER_ERROR)
+    // The file was put, then taken out again, both with no tenant context open
+    expect(opened).toEqual([
+      { call: 'put', tenantOpen: false },
+      { call: 'delete', tenantOpen: false }
+    ])
+    // The media row went back with the unit
+    expect(
+      await owner.media.count({
+        where: { storeId: ctx.storeA.id, purpose: MediaPurpose.REMITTANCE_FILE }
+      })
+    ).toBe(before)
+  })
+
+  it('does not hold the unit while the bucket is slow: a put that takes longer than the 15 s of a transaction still imports', async () => {
+    const profileId = await profile()
+    const storage = app.get(StorageService, { strict: false })
+    const slow = jest.spyOn(storage, 'put').mockImplementationOnce(async (...args) => {
+      opened.push({ call: 'put', tenantOpen: guarded.hasTenantContext() })
+      await new Promise(resolve => setTimeout(resolve, 16_000))
+      slow.mockRestore()
+      return storage.put(...args)
+    })
+
+    const response = await admin()
+      .post(importUrl(profileId))
+      .set('Content-Type', 'text/csv')
+      .send('Guia,Monto\nG-4,10.00\n')
+
+    expect(response.status).toBe(CREATED)
+    expect(opened[0]).toEqual({ call: 'put', tenantOpen: false })
+    const draft = response.body as { sourceMediaId: string | null }
+    expect(await owner.media.count({ where: { id: draft.sourceMediaId ?? '' } })).toBe(1)
+  }, 60_000)
+
+  it('keeps the deletion and its audit entry when the bucket fails on a file: the rows are gone, the entry is written', async () => {
+    const storeId = ctx.storeA.id
+    const conversation = await createConversationOf(owner, { storeId })
+    const message = await createMessage(owner, {
+      storeId,
+      conversationId: conversation.id,
+      content: 'where is my parcel',
+      authorType: AuthorType.CUSTOMER
+    })
+    const key = StorageKeys.message(storeId, message.id, 'plain.pdf')
+    await owner.media.create({
+      data: {
+        storeId,
+        purpose: 'message',
+        messageId: message.id,
+        customerId: conversation.customerId,
+        key,
+        filename: 'f',
+        contentType: 'application/octet-stream',
+        fileSize: 10,
+        status: 'clean'
+      }
+    })
+    const storage = app.get(StorageService, { strict: false })
+    jest.spyOn(storage, 'delete').mockRejectedValueOnce(new Error('the bucket is down'))
+
+    const response = await admin().delete(ApiRoutes.conversations.byId(conversation.id))
+
+    expect(response.status).toBe(NO_CONTENT)
+    expect(await owner.conversation.count({ where: { id: conversation.id } })).toBe(0)
+    const entries = await waitForAuditEntries(owner, {
+      action: AuditAction.CONVERSATION_DELETED,
+      resourceType: CONVERSATION_RESOURCE_TYPE,
+      resourceId: conversation.id
+    })
+    expect(entries).toHaveLength(1)
+  })
+
+  it('does not delete a conversation of another store, and writes no entry for it', async () => {
+    const other = await createConversationOf(owner, { storeId: ctx.storeB.id })
+
+    const response = await admin().delete(ApiRoutes.conversations.byId(other.id))
+
+    expect(response.status).toBe(HttpStatusCodes.NOT_FOUND)
+    expect(await owner.conversation.count({ where: { id: other.id } })).toBe(1)
   })
 })

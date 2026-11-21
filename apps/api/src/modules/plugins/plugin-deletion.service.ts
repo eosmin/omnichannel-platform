@@ -155,6 +155,9 @@ export class PluginDeletionService {
 
     // Best effort: the plugin is gone and audited, so a failure here must not turn the answer into an error (a retry would be a 404)
     if (plugin.type === String(PluginCatalogTypes.CHANNEL)) {
+      // Each step says what failed (the picture and the registry are different things), and a failed picture does not stop the registry
+      const warn = (error: unknown, what: string): void =>
+        this.logger.warn({ errorName: error instanceof Error ? error.name : 'unknown' }, what)
       try {
         // Not when the organization registered the id again in the meantime: the picture is the new plugin's
         // An archived plugin keeps its picture: the history it names may still show it
@@ -162,12 +165,13 @@ export class PluginDeletionService {
           this.prisma.client.plugin.count({ where: { id: plugin.id } })
         )
         if (!outcome.archived && again === 0) await this.icons.remove(plugin.id)
+      } catch (error) {
+        warn(error, 'the picture of a deleted plugin could not be removed')
+      }
+      try {
         await this.sync.announceChange()
       } catch (error) {
-        this.logger.warn(
-          { errorName: error instanceof Error ? error.name : 'unknown' },
-          'the registry could not be refreshed after a plugin was deleted'
-        )
+        warn(error, 'the registry could not be refreshed after a plugin was deleted')
       }
     }
   }
