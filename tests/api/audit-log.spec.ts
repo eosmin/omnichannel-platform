@@ -5,13 +5,13 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuditLogResourceTypes, PaginationLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { ExportLimits } from '@platform/core/exports'
 import { ExportStatus, ExportTypes } from '@platform/core/queues'
 
+import { AuditLogService } from '../../apps/api/src/modules/audit-log/audit-log.service'
 import { createRole } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -286,9 +286,9 @@ describe('Audit log viewer', () => {
   })
 
   it('refuses an export larger than one file, with the range to narrow, and queues none', async () => {
-    const prisma = app.get(PrismaService)
+    // Spied on the service, not on the client: under RLS_CONTEXT each request has a client of its own
     const count = jest
-      .spyOn(prisma.client.auditLog, 'count')
+      .spyOn(app.get(AuditLogService), 'countRows')
       .mockResolvedValueOnce(ExportLimits.AUDIT_LOG_MAX_ROWS + 1)
     const before = await owner.export.count({ where: { storeId: ctx.storeA.id } })
 

@@ -98,6 +98,13 @@ export class AuditLogService {
     return auditLogEntryView(row)
   }
 
+  // How many entries of the store the filters find: what a file of them would carry
+  countRows(storeId: string, filters: ExportAuditLogQuery): Promise<number> {
+    return this.prisma.client.auditLog.count({
+      where: auditLogWhere(storeId, readFilters(filters))
+    })
+  }
+
   // The file is made in the background by the worker, which writes `audit_log.exported` when it is ready
   async requestExport(
     storeId: string,
@@ -107,10 +114,7 @@ export class AuditLogService {
     // The file holds the log as it was when it was asked for: with no end, the end is now, or the rows written while the job
     // waits in the queue (the reads of the log among them) would be in it
     const filters = { ...query, before: query.before ?? new Date().toISOString() }
-    const rows = await this.prisma.client.auditLog.count({
-      where: auditLogWhere(storeId, readFilters(filters))
-    })
-    if (rows > ExportLimits.AUDIT_LOG_MAX_ROWS) {
+    if ((await this.countRows(storeId, filters)) > ExportLimits.AUDIT_LOG_MAX_ROWS) {
       throw new PlatformException(
         ErrorCodes.EXPORT_TOO_LARGE,
         'the audit log of that range is larger than one file: narrow the dates',
