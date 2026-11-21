@@ -19,7 +19,13 @@ import { HttpStatusCodes } from '@platform/core/errors'
 import { NoStore, RateLimit, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../../tenancy'
+import {
+  actorOf,
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../../tenancy'
 import type { ChannelConnectionView } from '../channel-connections.service'
 
 import {
@@ -69,6 +75,9 @@ export class ChannelOAuthController {
     return this.oauth.assets(store.id, user.id, sessionId)
   }
 
+  @NoTenantTransaction(
+    'asks the provider of the channel for the credentials of the account and checks it (network): the connection service reads and writes in short units of the store and the provider is asked between them with no context open'
+  )
   @RequirePermissions(Permissions.SETTINGS_EDIT)
   @RateLimit({
     limit: ChannelOAuthLimits.SESSION_LIMIT_PER_MINUTE,

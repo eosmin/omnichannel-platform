@@ -1,11 +1,4 @@
 [
-  "apps/api/src/modules/carriers/carrier-connections.controller.ts#CarrierConnectionsController.test",
-  "apps/api/src/modules/channels/channel-connections.controller.ts#ChannelConnectionsController.test",
-  "apps/api/src/modules/channels/channel-connections.controller.ts#ChannelConnectionsController.updateToken",
-  "apps/api/src/modules/channels/channel-templates.controller.ts#ChannelTemplatesController.list",
-  "apps/api/src/modules/channels/oauth/channel-oauth.controller.ts#ChannelOAuthController.complete",
-  "apps/api/src/modules/channels/plugin-channels.controller.ts#PluginChannelsController.list",
-  "apps/api/src/modules/messages/messages.controller.ts#MessagesController.create",
   "apps/api/src/modules/order-messages/order-messages.controller.ts#OrderMessagesController.send",
   "apps/api/src/modules/order-messages/order-templates.controller.ts#OrderTemplatesController.put",
   "apps/api/src/modules/order-messages/plugin-order-messages.controller.ts#PluginOrderMessagesController.putTemplate",

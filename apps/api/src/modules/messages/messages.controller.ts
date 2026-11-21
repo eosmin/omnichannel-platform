@@ -20,6 +20,7 @@ import { AuditAction } from '@platform/core/audit'
 import { Audit, AuditService } from '@platform/core/audit-module'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import { JobContext } from '@platform/core/database'
 import { type CursorPage, MessageType, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { MULTI_FILE_SEND_ENABLED, NoStore, ZodValidationPipe } from '@platform/core/http'
@@ -47,7 +48,13 @@ import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability } from '@platform/plugins/sdk'
 
 import { ChannelTemplatesService } from '../channels/channel-templates.service'
-import { actorOf, CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
+import {
+  actorOf,
+  CurrentPermissions,
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions
+} from '../tenancy'
 
 import { channelFileLimits } from './channel-file-limits'
 
@@ -58,6 +65,7 @@ import { channelFileLimits } from './channel-file-limits'
 export class MessagesController {
   constructor(
     private readonly messages: MessagesService,
+    private readonly jobs: JobContext,
     private readonly refetches: MediaRefetchService,
     private readonly reactions: AgentReactionsService,
     private readonly changes: MessageChangesService,
@@ -70,6 +78,9 @@ export class MessagesController {
   // 201 for a new message, 200 for the one a repeated idempotencyKey already made
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @NoStore()
+  @NoTenantTransaction(
+    'a template is rendered with the provider (network) before the message is stored, never inside its transaction: the replay check and the creation of the message are each one short unit of the store, and the provider is asked between them with no context open'
+  )
   @Post(ApiRoutes.messages.create)
   @HttpCode(HttpStatusCodes.CREATED)
   async create(
@@ -85,7 +96,9 @@ export class MessagesController {
     // checks it again, but not before the provider is called.
     let rendered: RenderedTemplate | undefined
     if (body.type === MessageType.TEMPLATE) {
-      const replayed = await this.messages.replayOf(store.id, body, viewer)
+      const replayed = await this.jobs.forStoreOrJoin(store.id, () =>
+        this.messages.replayOf(store.id, body, viewer)
+      )
       if (replayed !== null) {
         res.status(HttpStatusCodes.OK)
         return replayed
@@ -93,14 +106,16 @@ export class MessagesController {
       rendered = await this.templates.render(store.id, body, viewer)
     }
     // The channel of the conversation must take the kind of file of a media message
-    const { message, created } = await this.messages.create(
-      store.id,
-      body,
-      viewer,
-      rendered,
-      (channel, capability) => this.registry.hasCapability(channel, capability),
-      channelFileLimits(this.registry, this.multiFileEnabled),
-      channelType => this.registry.limitsOf(channelType)
+    const { message, created } = await this.jobs.forStoreOrJoin(store.id, () =>
+      this.messages.create(
+        store.id,
+        body,
+        viewer,
+        rendered,
+        (channel, capability) => this.registry.hasCapability(channel, capability),
+        channelFileLimits(this.registry, this.multiFileEnabled),
+        channelType => this.registry.limitsOf(channelType)
+      )
     )
     if (!created) res.status(HttpStatusCodes.OK)
     return message

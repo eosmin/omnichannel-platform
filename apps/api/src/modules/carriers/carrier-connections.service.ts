@@ -12,6 +12,7 @@ import { CredentialCipher, generateToken } from '@platform/core/crypto'
 import {
   DatabaseNull,
   isUniqueViolation,
+  JobContext,
   lockStoreForWrite,
   lockStoreScope,
   PrismaService,
@@ -146,6 +147,7 @@ interface LocalSettings {
 export class CarrierConnectionsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly registry: CarrierRegistry,
     private readonly cipher: CredentialCipher,
     private readonly publicApi: PublicApiConfig,
@@ -793,10 +795,14 @@ export class CarrierConnectionsService {
   // words. The credentials that the carrier refused move the connection to `error`; a carrier that did not answer does not
   // change its state.
   async test(storeId: string, connectionId: string): Promise<CarrierTestResult> {
-    const row = await this.rowOf(this.prisma.client, storeId, connectionId)
-    if (row.status === String(CarrierConnectionStatus.DISABLED)) throw notActive()
-    // No credential is sent to a carrier for an installation that was revoked, even if its uninstall left the connection
-    await this.assertInstalled(this.prisma.client, storeId)
+    // The carrier is asked with NO context open (the route is @NoTenantTransaction): each step of the database is a short unit of the store
+    const row = await this.jobs.forStoreOrJoin(storeId, async () => {
+      const found = await this.rowOf(this.prisma.client, storeId, connectionId)
+      if (found.status === String(CarrierConnectionStatus.DISABLED)) throw notActive()
+      // No credential is sent to a carrier for an installation that was revoked, even if its uninstall left the connection
+      await this.assertInstalled(this.prisma.client, storeId)
+      return found
+    })
     const plugin = this.registry.find(row.carrierId)
     if (plugin === undefined) throw notActive()
 
@@ -817,19 +823,21 @@ export class CarrierConnectionsService {
     const checkedAt = new Date()
 
     // Conditional on the connection being on: a disconnect that ran meanwhile is not undone by a late answer
-    await this.prisma.client.carrierConnection.updateMany({
-      where: { id: connectionId, storeId, status: { not: CarrierConnectionStatus.DISABLED } },
-      data:
-        reason === null
-          ? { lastHealthyAt: checkedAt, lastError: null, status: CarrierConnectionStatus.ACTIVE }
-          : {
-              lastError: reason,
-              ...(reason === CarrierHealthReasons.AUTH ||
-              reason === CarrierHealthReasons.CREDENTIALS_UNREADABLE
-                ? { status: CarrierConnectionStatus.ERROR }
-                : {})
-            }
-    })
+    await this.jobs.forStoreOrJoin(storeId, () =>
+      this.prisma.client.carrierConnection.updateMany({
+        where: { id: connectionId, storeId, status: { not: CarrierConnectionStatus.DISABLED } },
+        data:
+          reason === null
+            ? { lastHealthyAt: checkedAt, lastError: null, status: CarrierConnectionStatus.ACTIVE }
+            : {
+                lastError: reason,
+                ...(reason === CarrierHealthReasons.AUTH ||
+                reason === CarrierHealthReasons.CREDENTIALS_UNREADABLE
+                  ? { status: CarrierConnectionStatus.ERROR }
+                  : {})
+              }
+      })
+    )
     return { healthy: reason === null, checkedAt: checkedAt.toISOString(), reason }
   }
 

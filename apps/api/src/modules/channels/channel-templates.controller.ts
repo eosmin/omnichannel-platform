@@ -6,7 +6,12 @@ import { Permissions } from '@platform/core/auth'
 import { uuidSchema } from '@platform/core/domain'
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 
-import { CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import { ChannelTemplatesService, type TemplateView } from './channel-templates.service'
 
@@ -22,6 +27,9 @@ export class ChannelTemplatesController {
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND_TEMPLATE)
   @NoStore()
+  @NoTenantTransaction(
+    'lists the templates the provider approved (network): the service reads the connection in one short unit of the store and asks the provider after it with no context open'
+  )
   @Get(ApiRoutes.channels.templates(':pluginId'))
   list(
     @CurrentStore() store: ResolvedTenant['store'],
