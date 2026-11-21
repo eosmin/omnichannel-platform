@@ -64,12 +64,15 @@ This is run by the OWNER, never by a session or by the CI. It turns on, in this 
 worker refuses to start with the flag ON while its role still skips RLS; with the flag off it only warns, so a rollback does not crash-loop).
 The order is exact. The actions below are lettered (a to e) so that they are not mixed with the numbered sections of this runbook:
 
-(a) `pnpm db:rls:worker-role status` (reads only; shows host, database, the role and the databases of the server it reaches). Rehearse the whole of 3b first in STAGING: some managed
+(a) `pnpm db:rls:worker-role status` (reads only; shows host, database, the role, the databases of the server it reaches and how many sessions of `platform_worker` are open right now). Rehearse the whole of 3b first in STAGING: some managed
    providers do not let you change `BYPASSRLS` (error `42501`), and you need to know it before production.
 (b) Stop the workers and let the queues drain.
-(c) `pnpm db:rls:worker-role nobypass --confirm=<database name>`. The script prints the host, the database and the role before it acts,
-   and it is idempotent. `--confirm` is the ONLY guard: it must equal `current_database()` and the script does NOT refuse a host that is
-   not local, so read the host it prints.
+(c) `pnpm db:rls:worker-role nobypass --confirm=<database name>` (plus `--allow-host=<host>` when the host is not this machine: read the host it prints
+   and type it out). The script prints the host, the database and the role before it acts, and it is idempotent. It REFUSES while any session of
+   `platform_worker` is open in any database of the server (the workers are not stopped: one that runs with the flag off has no guard and
+   would read no row, in silence), and when the role that runs it cannot see other sessions (it needs a superuser or `pg_read_all_stats`:
+   zero would be a guess). `--force-connected` skips that check and is only for the rehearsal in staging. The check is a snapshot: keep the workers
+   stopped until the command ends. A local host (`localhost`, `127.x`, a socket) never asks for `--allow-host`: an SSH tunnel to production looks local, so use the real host name or distrust a tunnel, `--confirm` is the only guard there. A pooler keeps idle sessions open: they count as connections and the refusal is then too strict (safe).
 (d) Start the workers with `WORKER_RLS_CONTEXT=true`.
 (e) Check: the gauge `platform_worker_role_bypasses_rls` is `0`; `status` shows `rolbypassrls = false`; the worker log has no start error.
 
@@ -80,7 +83,7 @@ The credential that can run it (a superuser or a role with `CREATEROLE` admin on
 that one run: never in `.env` or `.env.local`, never in the repository, never in a secret of the CI. `pnpm db:rls:enforce on` refuses to
 run while the worker still skips RLS, so this step comes before section 4 (enforce on).
 
-Back (in this order): `WORKER_RLS_CONTEXT=false`, restart the workers, then `pnpm db:rls:worker-role bypass --confirm=<database name>`.
+Back (in this order): `WORKER_RLS_CONTEXT=false`, restart the workers, then `pnpm db:rls:worker-role bypass --confirm=<database name>` (plus `--allow-host=<host>` when the host is not this machine, as for `nobypass`).
 NEVER run `bypass` while the flag is ON: the worker would refuse to start (the only state the check rejects).
 
 ## 4. Turn the policies on
@@ -103,7 +106,7 @@ when it runs) and, if a migration with an old timestamp brought policies, `SELEC
 1. `pnpm db:rls:enforce off` (or `SELECT rls_set_enforcement(false, ARRAY[]::text[])` as the owner of the database).
 2. Both flags to `false` and restart.
 3. Only if the problem is the worker: the way back of step 3b (`WORKER_RLS_CONTEXT=false`, restart, then
-   `pnpm db:rls:worker-role bypass --confirm=<database name>`; never `bypass` with the flag ON). With the flag off the worker starts with
+   `pnpm db:rls:worker-role bypass --confirm=<database name>` (plus `--allow-host=<host>` when the host is not this machine, as for `nobypass`); never `bypass` with the flag ON). With the flag off the worker starts with
    a warning, not in a crash loop.
 
 Check after each step: `status` shows OFF, and the walk of step 2 passes.

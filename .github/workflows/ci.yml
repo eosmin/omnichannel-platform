@@ -488,7 +488,7 @@ jobs:
         run: pnpm db:migrate
       - name: Take BYPASSRLS from the worker role (this ephemeral database only)
         # The role of the worker is a role of the whole SERVER, so this reaches every database the role can connect to: here, only the
-        # one of this job. `--confirm` is the only guard of the script (it does not refuse a host that is not local); the URL is the
+        # one of this job. the script also refuses a host that is not local (this one is localhost) and any open session of the role (none yet here); the URL is the
         # literal service container of this job (POSTGRES_USER `platform` is its superuser), no secret and no input. It runs BEFORE
         # `db:rls:enforce on`, which refuses to start while the worker skips RLS, and with `WORKER_RLS_CONTEXT=true` in this job.
         run: pnpm db:rls:worker-role nobypass --confirm=platform_ci
@@ -571,7 +571,7 @@ jobs:
         run: pnpm db:migrate
       - name: Take BYPASSRLS from the worker role (this ephemeral database only)
         # The role of the worker is a role of the whole SERVER, so this reaches every database the role can connect to: here, only the
-        # one of this job. `--confirm` is the only guard of the script (it does not refuse a host that is not local); the URL is the
+        # one of this job. the script also refuses a host that is not local (this one is localhost) and any open session of the role (none yet here); the URL is the
         # literal service container of this job (POSTGRES_USER `platform` is its superuser), no secret and no input. It runs BEFORE
         # `db:rls:enforce on`, which refuses to start while the worker skips RLS, and with `WORKER_RLS_CONTEXT=true` in this job.
         run: pnpm db:rls:worker-role nobypass --confirm=platform_ci
