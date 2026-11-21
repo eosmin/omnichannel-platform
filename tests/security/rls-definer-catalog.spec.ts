@@ -90,8 +90,8 @@ describe('row-level security: the SECURITY DEFINER functions of the catalog', ()
         `SELECT p.proname AS name, n.nspname AS schema, p.prorettype = 'trigger'::regtype AS is_trigger,
                 p.proconfig AS config, pg_get_userbyid(p.proowner) AS owner,
                 coalesce((
-                  SELECT array_agg(DISTINCT CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END
-                         ORDER BY CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END)
+                  SELECT array_agg(DISTINCT CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee)::text END
+                         ORDER BY CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee)::text END)
                   FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
                   WHERE a.privilege_type = 'EXECUTE' AND a.grantee <> p.proowner
                 ), ARRAY[]::text[]) AS grantees
