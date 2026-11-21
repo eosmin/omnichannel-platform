@@ -12,16 +12,13 @@ import { Reflector } from '@nestjs/core'
 import type { ThrottlerStorage } from '@nestjs/throttler'
 import type { Counter } from '@prometheus-io/client'
 
-import {
-  RETRY_AFTER_METADATA_KEY,
-  USER_RATE_LIMIT_METADATA_KEY,
-  type UserRateLimitProfile,
-  userRateLimitThrottler
-} from '@platform/core/auth'
+import { USER_RATE_LIMIT_METADATA_KEY, type UserRateLimitProfile } from '@platform/core/auth'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
+
+import { spendUserBudget } from './spend-user-budget'
 
 export const USER_RATE_LIMIT_STORAGE = Symbol('USER_RATE_LIMIT_STORAGE')
 
@@ -53,29 +50,8 @@ export class UserRateLimitGuard implements CanActivate {
         HttpStatusCodes.INTERNAL_SERVER_ERROR
       )
     }
-    let record: Awaited<ReturnType<ThrottlerStorage['increment']>>
-    try {
-      record = await this.storage.increment(
-        user.id,
-        profile.ttlMs,
-        profile.limit,
-        0,
-        userRateLimitThrottler(profile)
-      )
-    } catch (error) {
-      this.logger.error(
-        `per-user rate limit storage failed, letting the request through: ${error instanceof Error ? error.message : 'unknown error'}`
-      )
-      return true
-    }
-    if (!record.isBlocked) return true
-    this.hits.inc({ throttler: userRateLimitThrottler(profile) })
-    throw new PlatformException(
-      ErrorCodes.RATE_LIMIT_EXCEEDED,
-      'Too many requests',
-      HttpStatusCodes.TOO_MANY_REQUESTS,
-      { [RETRY_AFTER_METADATA_KEY]: Math.max(record.timeToBlockExpire, 1) }
-    )
+    await spendUserBudget(this.storage, this.hits, this.logger, user.id, profile)
+    return true
   }
 }
 

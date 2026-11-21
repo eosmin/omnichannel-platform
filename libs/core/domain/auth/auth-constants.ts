@@ -60,6 +60,18 @@ export const UserRateLimits = {
   CUSTOMER_LIST: { name: 'customer_list', limit: 120, ttlMs: 60_000 }
 } as const satisfies Record<string, UserRateLimitProfile>
 
+// The general budget of an authenticated person, counted by the user id after the token, the store and the permission were
+// checked (AuthenticatedUserRateLimitGuard; TDD_05 §3.1; the `user:authenticated` counter), on every route behind AuthGuard and
+// on top of the per-address default. The address does not matter: it holds a person whose token is used from many addresses, which
+// the per-address layer never sees as one. It is far above what the web does (the inbox, polling and the realtime fallback
+// together stay in the tens a minute), so it only stops a script. It does not replace the per-address default, which stays as it
+// is: raising that one for offices is a decision of the owner (IMPLEMENTATION_PLAN.md, Step 7.1).
+export const AuthenticatedUserRateLimit = {
+  name: 'authenticated',
+  limit: 600,
+  ttlMs: 60_000
+} as const satisfies UserRateLimitProfile
+
 // The login profile of D2: 5 a minute per IP, and the same per hashed email, so the endpoint cannot
 // be used to mail-bomb an address from many IPs
 export const MagicLinkThrottle = { limit: 5, ttlMs: 60_000 } as const

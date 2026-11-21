@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common'
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
 
+import { AuthenticatedUserRateLimitGuard } from '@platform/core/http'
+
 import { AccessDenialAuditor } from './access-denial-auditor'
 import { PermissionGuard } from './permission.guard'
 import { TenantContextInterceptor } from './tenant-context.interceptor'
@@ -19,6 +21,8 @@ import { TenantGuard } from './tenant.guard'
     PermissionGuard,
     { provide: APP_GUARD, useExisting: TenantGuard },
     { provide: APP_GUARD, useExisting: PermissionGuard },
+    // After the permission: the general per-user budget (the guard comes from the global ThrottlerPlatformModule)
+    { provide: APP_GUARD, useExisting: AuthenticatedUserRateLimitGuard },
     // After the guards (an interceptor always runs after them): with RLS_CONTEXT on, the handler runs in one tenant transaction
     TenantContextInterceptor,
     { provide: APP_INTERCEPTOR, useExisting: TenantContextInterceptor }
