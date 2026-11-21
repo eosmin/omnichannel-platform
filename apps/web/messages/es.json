@@ -4885,6 +4885,7 @@
       "export": {
         "button": "Exportar CSV",
         "hint": "El archivo trae lo que muestran los filtros, tal como estaba el registro al pedirlo.",
+        "applyFirst": "Aplica primero los filtros: el archivo trae lo que muestra la tabla.",
         "queued": "Se está preparando el archivo del registro de auditoría. Estará listo en el centro de exportaciones.",
         "view": "Ver exportaciones",
         "tooLarge": "El archivo tendría demasiadas entradas. Acota las fechas o los filtros y pídelo de nuevo."

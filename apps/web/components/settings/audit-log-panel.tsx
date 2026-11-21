@@ -54,11 +54,25 @@ export function AuditLogPanel(): ReactElement {
     return member === undefined ? t('actor.unknown', { id: shortId(userId) }) : member.name
   }
 
+  const actorSelectShown = mayReadTeam && members.data !== undefined
+  // The file is for what the table shows: typed filters not applied yet are not part of it
+  const dirty = (Object.keys(draft) as (keyof AuditFilterForm)[]).some(
+    key => draft[key] !== applied[key]
+  )
   const apply = (event: SyntheticEvent): void => {
     event.preventDefault()
-    if (!reversed) setApplied(draft)
+    if (reversed) return
+    exportCsv.reset()
+    // The same filter again is a new reading asked on purpose (the log is never re-read by itself)
+    if (!dirty) {
+      void log.refetch()
+      return
+    }
+    // An actor picked and then hidden (the team failed to load) is not sent: the person cannot see it
+    setApplied(actorSelectShown ? draft : { ...draft, userId: '' })
   }
   const clear = (): void => {
+    exportCsv.reset()
     setDraft(EMPTY_AUDIT_FILTER)
     setApplied(EMPTY_AUDIT_FILTER)
   }
@@ -99,7 +113,7 @@ export function AuditLogPanel(): ReactElement {
             onChange={event => setDraft({ ...draft, action: event.target.value })}
           />
         </div>
-        {mayReadTeam && members.data !== undefined ? (
+        {actorSelectShown && members.data !== undefined ? (
           <div className="flex min-w-48 flex-col gap-1">
             <Label htmlFor="audit-actor">{t('filters.actor')}</Label>
             <select
@@ -157,13 +171,15 @@ export function AuditLogPanel(): ReactElement {
           type="button"
           variant="outline"
           size="sm"
-          disabled={exportCsv.isPending}
+          disabled={exportCsv.isPending || dirty}
           onClick={exportFile}
         >
           <Download />
           {t('export.button')}
         </Button>
-        <p className="text-muted-foreground text-xs">{t('export.hint')}</p>
+        <p className="text-muted-foreground text-xs">
+          {dirty ? t('export.applyFirst') : t('export.hint')}
+        </p>
       </div>
       {isExportTooLarge(exportCsv.error) ? (
         <p role="alert" className="text-destructive text-sm">
@@ -178,11 +194,21 @@ export function AuditLogPanel(): ReactElement {
       ) : log.data === undefined ? (
         <PageLoading />
       ) : rows.length === 0 ? (
-        <p className="text-muted-foreground py-8 text-center text-sm">{t('empty')}</p>
+        log.isPlaceholderData ? (
+          <PageLoading />
+        ) : (
+          <p className="text-muted-foreground py-8 text-center text-sm">{t('empty')}</p>
+        )
       ) : (
         <>
-          <AuditTable rows={rows} actorName={actorName} onOpen={setOpenId} />
-          {log.hasNextPage ? (
+          {/* The rows of the previous filter stay while the new one loads: said, and not offered for more */}
+          <div
+            aria-busy={log.isPlaceholderData}
+            className={log.isPlaceholderData ? 'opacity-50' : ''}
+          >
+            <AuditTable rows={rows} actorName={actorName} onOpen={setOpenId} />
+          </div>
+          {log.hasNextPage && !log.isPlaceholderData ? (
             <div className="flex justify-center">
               <Button
                 type="button"

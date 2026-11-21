@@ -38,8 +38,11 @@ export function useAuditLog(
       fetchAuditLog(apiClient, storeId, filter, pageParam, signal),
     getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
     placeholderData: keepPreviousData,
-    // Reading the log writes an entry of its own: no silent refetch when the window regains focus
-    refetchOnWindowFocus: false
+    // Reading the log writes an entry of its own, so it is never read again behind the person's back: not on focus, not on
+    // reconnect, not on a remount. A new reading is the person's act (Apply filters, or Try again).
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   })
 }
 
@@ -51,7 +54,8 @@ export function useAuditLogEntry(storeId: string, id: string): UseQueryResult<Au
     queryFn: ({ signal }) => fetchAuditLogEntry(apiClient, storeId, id, signal),
     staleTime: Infinity,
     gcTime: 0,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   })
 }
 

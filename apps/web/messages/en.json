@@ -4885,6 +4885,7 @@
       "export": {
         "button": "Export CSV",
         "hint": "The file holds what the filters show, as the log was when you ask for it.",
+        "applyFirst": "Apply the filters first: the file holds what the table shows.",
         "queued": "The audit log file is being prepared. It will be ready in the exports center.",
         "view": "View exports",
         "tooLarge": "The file would have too many entries. Narrow the dates or the filters and ask for it again."
