@@ -33,7 +33,13 @@ import { HttpStatusCodes } from '@platform/core/errors'
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  actorOf,
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import {
   type ListRemittancesQuery,
@@ -105,6 +111,9 @@ export class RemittancesController {
 
   // A draft nobody wants; a confirmed remittance is never deleted (it is voided)
   @RequirePermissions(Permissions.REMITTANCES_MANAGE)
+  @NoTenantTransaction(
+    'removes the file of the draft from the bucket: the rows go in one short unit of the service, and the bucket is called after it with no context open'
+  )
   @Delete(ApiRoutes.remittances.byId(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async discard(

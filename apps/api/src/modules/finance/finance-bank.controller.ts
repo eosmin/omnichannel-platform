@@ -25,6 +25,7 @@ import {
   actorOf,
   CurrentOrganization,
   CurrentStore,
+  NoTenantTransaction,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -150,6 +151,9 @@ export class FinanceBankController {
   // and makes nothing; one with no new line answers 409.
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
   @NoStore()
+  @NoTenantTransaction(
+    'the file arrives over the network and goes to the bucket: the service reads the profile, writes the rows and checks for the import in short units of its own, and the bucket is called with no context open'
+  )
   @Post(ApiRoutes.finance.bank.imports)
   @HttpCode(HttpStatusCodes.CREATED)
   async importFile(
@@ -167,7 +171,7 @@ export class FinanceBankController {
       )
     }
     // The profile first: it says how the bytes become text
-    const profile = await this.profiles.forImport(organization.id, query.profileId)
+    const profile = await this.profiles.forImport(organization.id, store.id, query.profileId)
     const file = await readImportBody(req, BankStatementLimits.MAX_BYTES, {
       invalidCode: ErrorCodes.BANK_STATEMENT_INVALID,
       encoding: profile.encoding

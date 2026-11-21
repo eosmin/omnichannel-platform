@@ -6,7 +6,7 @@ import type { Queue } from 'bullmq'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
 import {
   type BankRowError,
   BankStatementFiles,
@@ -121,6 +121,7 @@ export function bankLineHash(accountId: string, line: ParsedBankLine): string {
 export class FinanceBankImportsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ScanFileJob>
@@ -206,13 +207,15 @@ export class FinanceBankImportsService {
 
     // A file whose lines are all known is refused before anything is uploaded (the check inside the transaction stays: it is the one
     // that holds when two files arrive at the same moment)
-    const known = await this.prisma.client.bankStatementLine.count({
-      where: {
-        organizationId,
-        accountId: profile.accountId,
-        lineHash: { in: hashed.map(entry => entry.hash) }
-      }
-    })
+    const known = await this.jobs.forStoreOrJoin(storeId, () =>
+      this.prisma.client.bankStatementLine.count({
+        where: {
+          organizationId,
+          accountId: profile.accountId,
+          lineHash: { in: hashed.map(entry => entry.hash) }
+        }
+      })
+    )
     if (known === hashed.length) {
       throw resourceConflict('every line of the file was imported before', {
         conflict: FinanceConflicts.BANK_IMPORT_NOTHING_NEW
@@ -240,123 +243,131 @@ export class FinanceBankImportsService {
       `${BankStatementFiles.FILENAME_PREFIX}-${new Date().toISOString().slice(0, 10)}.${kind.extension}`
     )
     const key = StorageKeys.bankStatementFile(storeId, mediaId, filename)
+    // The bucket is called with NO context open: the route is @NoTenantTransaction, so no connection is held while the bytes travel. The
+    // rows are ONE unit of their own: a failure rolls the media row back with the import, and the recovery below reads in a fresh unit
+    // (an aborted transaction answers nothing, which hid the 409 of a race)
     await this.storage.put(key, bytes, kind.contentType)
-    // Once the import exists the file is its evidence and is never removed, whatever fails after
-    let imported = false
+    let view: BankImportView
     try {
-      await this.prisma.client.media.create({
-        data: {
-          id: mediaId,
-          storeId,
-          purpose: MediaPurpose.FINANCE_DOCUMENT,
-          uploadedBy: actor.userId,
-          key,
-          filename,
-          contentType: kind.contentType,
-          fileSize: bytes.length,
-          status: MediaStatus.PENDING
-        }
-      })
-      const created = await this.prisma.transaction(async tx => {
-        // Imports into one account take turns, so two files that repeat the same lines cannot both bring them
-        await lockScope(tx, `${organizationId}:bank_import:${profile.accountId}`)
-        const knownHashes = new Set(
-          (
-            await tx.bankStatementLine.findMany({
-              where: {
+      view = await this.jobs.forStore(
+        storeId,
+        async () => {
+          await this.prisma.client.media.create({
+            data: {
+              id: mediaId,
+              storeId,
+              purpose: MediaPurpose.FINANCE_DOCUMENT,
+              uploadedBy: actor.userId,
+              key,
+              filename,
+              contentType: kind.contentType,
+              fileSize: bytes.length,
+              status: MediaStatus.PENDING
+            }
+          })
+          const created = await this.prisma.transaction(async tx => {
+            // Imports into one account take turns, so two files that repeat the same lines cannot both bring them
+            await lockScope(tx, `${organizationId}:bank_import:${profile.accountId}`)
+            const knownHashes = new Set(
+              (
+                await tx.bankStatementLine.findMany({
+                  where: {
+                    organizationId,
+                    accountId: profile.accountId,
+                    lineHash: { in: hashed.map(entry => entry.hash) }
+                  },
+                  select: { lineHash: true }
+                })
+              ).map(row => row.lineHash)
+            )
+            const fresh = hashed.filter(entry => !knownHashes.has(entry.hash))
+            if (fresh.length === 0) {
+              throw resourceConflict('every line of the file was imported before', {
+                conflict: FinanceConflicts.BANK_IMPORT_NOTHING_NEW
+              })
+            }
+            const row = await tx.bankStatementImport.create({
+              data: {
                 organizationId,
                 accountId: profile.accountId,
-                lineHash: { in: hashed.map(entry => entry.hash) }
+                profileId: profile.id,
+                mediaId,
+                lineCount: hashed.length,
+                newLineCount: fresh.length,
+                firstDay: dayToDate(firstDay),
+                lastDay: dayToDate(lastDay),
+                ...(query.closingBalanceCents === undefined || query.closingOn === undefined
+                  ? {}
+                  : {
+                      closingBalanceCents: query.closingBalanceCents,
+                      closingOn: dayToDate(query.closingOn)
+                    }),
+                createdBy: actor.userId
               },
-              select: { lineHash: true }
+              select: SELECT
             })
-          ).map(row => row.lineHash)
-        )
-        const fresh = hashed.filter(entry => !knownHashes.has(entry.hash))
-        if (fresh.length === 0) {
-          throw resourceConflict('every line of the file was imported before', {
-            conflict: FinanceConflicts.BANK_IMPORT_NOTHING_NEW
+            await tx.bankStatementLine.createMany({
+              data: fresh.map(entry => ({
+                organizationId,
+                importId: row.id,
+                accountId: profile.accountId,
+                lineNo: entry.line.row,
+                postedOn: dayToDate(entry.line.postedOn),
+                amountCents: entry.line.amountCents,
+                description: entry.line.description,
+                reference: entry.line.reference,
+                lineHash: entry.hash
+              }))
+            })
+            return row
           })
-        }
-        const row = await tx.bankStatementImport.create({
-          data: {
-            organizationId,
-            accountId: profile.accountId,
-            profileId: profile.id,
-            mediaId,
-            lineCount: hashed.length,
-            newLineCount: fresh.length,
-            firstDay: dayToDate(firstDay),
-            lastDay: dayToDate(lastDay),
-            ...(query.closingBalanceCents === undefined || query.closingOn === undefined
-              ? {}
-              : {
-                  closingBalanceCents: query.closingBalanceCents,
-                  closingOn: dayToDate(query.closingOn)
-                }),
-            createdBy: actor.userId
-          },
-          select: SELECT
-        })
-        await tx.bankStatementLine.createMany({
-          data: fresh.map(entry => ({
-            organizationId,
-            importId: row.id,
-            accountId: profile.accountId,
-            lineNo: entry.line.row,
-            postedOn: dayToDate(entry.line.postedOn),
-            amountCents: entry.line.amountCents,
-            description: entry.line.description,
-            reference: entry.line.reference,
-            lineHash: entry.hash
-          }))
-        })
-        return row
-      }, BankStatementTransaction)
-      imported = true
-      // A scan that was not queued waits for the hourly cleanup of pending files: it must not fail an import that was made
-      // After the REAL commit (under RLS_CONTEXT the request is one transaction): the scan reads the row of the file
-      await this.prisma.afterCommitStep(this.prisma.client, () =>
-        this.heavyQueue
-          .add(
-            JobNames.SCAN_FILE,
-            { mediaId, storeId },
-            { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+          // A scan that was not queued waits for the hourly cleanup of pending files: it must not fail an import that was made
+          // After the REAL commit (under RLS_CONTEXT the request is one transaction): the scan reads the row of the file
+          await this.prisma.afterCommitStep(this.prisma.client, () =>
+            this.heavyQueue
+              .add(
+                JobNames.SCAN_FILE,
+                { mediaId, storeId },
+                { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+              )
+              .catch(() => undefined)
           )
-          .catch(() => undefined)
-      )
-      this.audit.log({
-        action: AuditAction.FINANCE_BANK_STATEMENT_IMPORTED,
-        actor: { userId: actor.userId },
-        organizationId,
-        storeId,
-        resourceType: FinanceResourceTypes.BANK_IMPORT,
-        resourceId: created.id,
-        metadata: {
-          accountId: profile.accountId,
-          profileId: profile.id,
-          lines: hashed.length,
-          newLines: created.newLineCount,
-          // The person said the order of the day and the month, when every date of the file read in both
-          dateFormatConfirmed: parsed.dateFormatUndecided,
-          mediaId
+          this.audit.log({
+            action: AuditAction.FINANCE_BANK_STATEMENT_IMPORTED,
+            actor: { userId: actor.userId },
+            organizationId,
+            storeId,
+            resourceType: FinanceResourceTypes.BANK_IMPORT,
+            resourceId: created.id,
+            metadata: {
+              accountId: profile.accountId,
+              profileId: profile.id,
+              lines: hashed.length,
+              newLines: created.newLineCount,
+              // The person said the order of the day and the month, when every date of the file read in both
+              dateFormatConfirmed: parsed.dateFormatUndecided,
+              mediaId
+            },
+            ipAddress: actor.ipAddress,
+            userAgent: actor.userAgent
+          })
+          return bankImportView(created)
         },
-        ipAddress: actor.ipAddress,
-        userAgent: actor.userAgent
-      })
-      return bankImportView(created)
+        BankStatementTransaction
+      )
     } catch (error) {
-      if (imported) throw error
       // An error that came after the commit (a dropped connection on the way back) is not "nothing was made": the import exists, and
       // its file is its evidence
-      const exists = await this.prisma.client.bankStatementImport
-        .findFirst({ where: { mediaId, organizationId }, select: { id: true } })
+      const exists = await this.jobs
+        .forStore(storeId, () =>
+          this.prisma.client.bankStatementImport.findFirst({
+            where: { mediaId, organizationId },
+            select: { id: true }
+          })
+        )
         .catch(() => ({ id: 'unknown' }))
       if (exists !== null) throw error
-      // Nothing was made of the file: it is removed, never left behind
-      await this.prisma.client.media
-        .deleteMany({ where: { id: mediaId, storeId } })
-        .catch(() => undefined)
+      // Nothing was made of the file (the media row went with the unit): the object is removed, never left behind
       await this.storage.delete(key).catch(() => undefined)
       // The unique index of the hash is what holds when another request brought the same line at the same moment
       if (isUniqueViolation(error)) {
@@ -366,5 +377,6 @@ export class FinanceBankImportsService {
       }
       throw error
     }
+    return view
   }
 }
