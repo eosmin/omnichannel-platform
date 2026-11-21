@@ -39,7 +39,7 @@ export function fitLine(element: LabelTextElement, text: string, meter: TextMete
 }
 
 // What the standard fonts the label is drawn with can write: Latin-1 and the extra characters of Windows-1252. Anything else
-// would print a wrong glyph or none, so the label is refused instead (a font that covers more is Step 7.7)
+// would print a wrong glyph or none, so the label is refused instead (a font that covers more is Step 7.4)
 const CP1252_EXTRAS = new Set('€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ')
 export function isDrawable(text: string): boolean {
   for (const char of text) {

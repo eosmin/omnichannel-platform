@@ -8,7 +8,7 @@ import { QueueNames } from '@platform/core/queues'
 // here with the reason and the step that gives it one.
 const WITHOUT_PROCESSOR: Readonly<Record<string, string>> = {
   [QueueNames.DEAD_LETTER]:
-    'By design: it keeps exhausted jobs for a person to inspect (Step 7.4 watches it).'
+    'By design: it keeps exhausted jobs for a person to inspect (Step 7.6 watches it).'
 }
 
 function sourceFiles(dir: string): string[] {

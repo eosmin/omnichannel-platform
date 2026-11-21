@@ -60,7 +60,7 @@ export interface StoredObjectPage {
 
 // What S3 answers for an object that is not there: 404. A 403 is NOT "missing": it is a credential or
 // policy failure, which must surface as a server error and not look like a bad upload. (Without
-// s3:ListBucket, S3 answers 403 for a missing key too: the role of the api must hold it, Step 7.3.)
+// s3:ListBucket, S3 answers 403 for a missing key too: the role of the api must hold it, Step 7.5.)
 function statusOf(error: unknown): number | undefined {
   return (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode
 }

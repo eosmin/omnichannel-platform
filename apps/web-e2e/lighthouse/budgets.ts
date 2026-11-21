@@ -10,7 +10,7 @@ export const Budgets = {
 
 // The app is over the script budget today (framework, providers and the inbox shell weigh more than
 // 200 KB of JavaScript, compressed as it travels), so each page is held at its ceiling of Step 3.2
-// plus a margin: a regression still fails. Lower the ceilings as the bundle is split (Step 7.7); the
+// plus a margin: a regression still fails. Lower the ceilings as the bundle is split (Step 7.4); the
 // goal is the 200 KB of TDD_08 §4.4.
 export const ScriptCeilingsKb = {
   LOGIN: 260,

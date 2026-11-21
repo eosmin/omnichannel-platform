@@ -87,8 +87,8 @@ Steps 4.8 to 4.15), and the finance module (`TDD_18_Finance.md`, Steps 4B.1 to 4
 | Subscription, plan, `PlanLimits`, `OrganizationOverride`, `AiCreditBalance`, `AccessLevelGuard`, `QuotaGuard`, `FeatureGuard`, `ChannelGuard`, billable-conversation windows | Steps 0.3, 0.4, 1.1, 1.2, 1.4, 2.6 (trimmed) |
 | Public signup and signup wizard | Steps 1.1, 5.5 |
 | Password login, forgot/reset password, Google login (optional in Phase 2) | Step 1.1 |
-| Internal admin console, staff auth, impersonation, feature flags (`TDD_15`) | Step 7.6, `apps/admin`, staff constants |
-| Load validation (k6) | Step 7.5 |
+| Internal admin console, staff auth, impersonation, feature flags (`TDD_15`) | Step 7.10, `apps/admin`, staff constants |
+| Load validation (k6) | Step 7.7 |
 | AI assist and autonomous chatbot (`TDD_12`) | Steps 8.1, 8.2 |
 | Referral program, SaaS support (`TDD_11` §8, §9) | Steps 8.4, 8.5 |
 
@@ -115,7 +115,7 @@ is the SaaS-phase target. `MVP_TRIM_CHECKLIST.md` §3 lists what changes in thos
 expiry, throttle values, the seed split, the production bootstrap, e2e login through Mailpit,
 Slack alerts, PR approvals, no welcome email, Railway, integration plugins, robust inventory, Row-Level Security (roles in Step 0.4, policies in Step 7.1), shipping as carrier plugins,
 Grafana Cloud, the release flow, the configurable low-stock alert and Postgres 18 on Railway). No design decision is open; two checks happen when their steps start
-(Railway's release mechanism in Step 7.3, Grafana Cloud's limits in Step 7.4). One input is needed
+(Railway's release mechanism in Step 7.5, Grafana Cloud's limits in Step 7.6). One input is needed
 from the owner before Step 4.15: the credentials of Forza and C807 Express and the Forza documentation, which their sales advisors provide
 (the C807 documentation was received on 2026-10-24) (`TDD_17 §14`); everything before it builds with the `local` carrier
 and a fake carrier.
