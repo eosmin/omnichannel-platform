@@ -1,10 +1,17 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import type { Redis } from 'ioredis'
+import { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
+import {
+  JobContext,
+  JobContextGoneError,
+  PrismaService,
+  WorkerLists
+} from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   BenefitBase,
@@ -19,8 +26,11 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { NotificationTypes } from '@platform/core/notifications'
+import { REDIS_CLIENT } from '@platform/core/redis'
 import { closeBenefitPeriods, readGuidePolicy, ShipmentWrites } from '@platform/core/shipping'
 
+import { BenefitCloseScheduler } from '../../apps/worker/src/schedulers/benefit-close.scheduler'
+import { LeaderLockService } from '../../apps/worker/src/schedulers/leader-lock.service'
 import { createCarrierConnection, createReturn, createShipment } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
@@ -28,6 +38,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { inStoreContext } from '../helpers/tenant-context'
+import { createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const POLICY = {
   balanceEnabled: true,
@@ -650,6 +661,104 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       // the period that holds now, starting no earlier than the moment the benefit was switched on
       expect(Date.parse(period.periodStart)).toBeLessThanOrEqual(Date.now())
       expect(Date.parse(period.periodEnd)).toBeGreaterThan(Date.now())
+    })
+  })
+
+  // The daily close as the worker runs it: the connections come from the list of the database, read as platform_worker, and each is
+  // judged in the context of its store. Built on the guarded worker connection, so an access outside a context throws.
+  describe('the daily close of the worker (BenefitCloseScheduler)', () => {
+    let scheduler: BenefitCloseScheduler
+    let jobContext: JobContext
+    let logger: PinoLogger
+    let lists: WorkerLists
+    const closeAt = () => {
+      const now = new Date()
+      return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 2))
+    }
+
+    beforeAll(async () => {
+      const workerPrisma = createGuardedWorkerPrisma()
+      jobContext = new JobContext(workerPrisma)
+      lists = new WorkerLists(workerPrisma)
+      logger = await app.resolve(PinoLogger)
+      scheduler = new BenefitCloseScheduler(
+        new LeaderLockService(app.get<Redis>(REDIS_CLIENT)),
+        workerPrisma,
+        logger,
+        jobContext,
+        lists
+      )
+    })
+
+    afterEach(() => {
+      jest.restoreAllMocks()
+    })
+
+    // The list of the database is read for real, as the worker reads it, but the round only judges the connection of the case: the
+    // database is shared with the other suites, whose connections a round over all of them would close under their feet
+    function onlyConnection(connectionId: string): void {
+      const read = lists.benefitCloseTargets.bind(lists)
+      jest
+        .spyOn(lists, 'benefitCloseTargets')
+        .mockImplementation(async status =>
+          (await read(status)).filter(row => row.connectionId === connectionId)
+        )
+    }
+
+    // A connection with the benefit on, 12 packages delivered and one returned: the close gives that guide back
+    async function connectionToClose(): Promise<{ id: string; returned: string }> {
+      const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      await putPolicy(id)
+      await buy(id, 100, 10_000)
+      for (let index = 0; index < 12; index += 1) await deliveredGuide(id)
+      const returned = await returnedGuide(id, new Date(Date.now() + 60_000))
+      return { id, returned }
+    }
+
+    it('judges the connections the list gives it, once, and a second run gives nothing back again', async () => {
+      const { id, returned } = await connectionToClose()
+      onlyConnection(id)
+      expect(await scheduler.closeAll(closeAt())).toBeGreaterThan(0)
+      const refunds = await movementsOf(id, GuideMovementKind.REFUND)
+      expect(refunds.map(row => row.shipmentId)).toEqual([returned])
+
+      await scheduler.closeAll(closeAt())
+      expect(await movementsOf(id, GuideMovementKind.REFUND)).toHaveLength(1)
+    })
+
+    it('skips a store that is gone when its turn comes, without a word, and judges it on the next run', async () => {
+      const { id } = await connectionToClose()
+      onlyConnection(id)
+      const errors = jest.spyOn(logger, 'error')
+      const forStore = jest
+        .spyOn(jobContext, 'forStore')
+        .mockRejectedValue(new JobContextGoneError('gone'))
+      expect(await scheduler.closeAll(closeAt())).toBe(0)
+      forStore.mockRestore()
+      expect(errors).not.toHaveBeenCalled()
+      expect(await movementsOf(id, GuideMovementKind.REFUND)).toHaveLength(0)
+
+      await scheduler.closeAll(closeAt())
+      expect(await movementsOf(id, GuideMovementKind.REFUND)).toHaveLength(1)
+    })
+
+    it('logs a connection that fails, with no data of the store, writes nothing and leaves it for the next run', async () => {
+      const { id } = await connectionToClose()
+      onlyConnection(id)
+      const errors = jest.spyOn(logger, 'error')
+      const forStore = jest.spyOn(jobContext, 'forStore').mockRejectedValue(new Error('pool down'))
+      expect(await scheduler.closeAll(closeAt())).toBe(0)
+      forStore.mockRestore()
+      // Exactly the connection and the name of the error: no message, no store
+      expect(errors).toHaveBeenCalledTimes(1)
+      expect(errors).toHaveBeenCalledWith(
+        { connectionId: id, errorName: 'Error' },
+        expect.any(String)
+      )
+      expect(await movementsOf(id, GuideMovementKind.REFUND)).toHaveLength(0)
+
+      await scheduler.closeAll(closeAt())
+      expect(await movementsOf(id, GuideMovementKind.REFUND)).toHaveLength(1)
     })
   })
 })
