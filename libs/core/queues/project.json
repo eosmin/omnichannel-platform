@@ -7,6 +7,14 @@
   "targets": {
     "lint": {},
     "type-check": {},
-    "test": {}
+    "test": {
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/tsconfig.spec.json",
+        "{workspaceRoot}/jest.preset.cjs",
+        "{workspaceRoot}/.env.example"
+      ]
+    }
   }
 }

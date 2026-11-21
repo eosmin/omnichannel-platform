@@ -14,7 +14,8 @@
       "{workspaceRoot}/package.json",
       "{workspaceRoot}/pnpm-lock.yaml",
       "{workspaceRoot}/tsconfig.base.json",
-      "{workspaceRoot}/eslint.config.js"
+      "{workspaceRoot}/eslint.config.js",
+      "{workspaceRoot}/eslint-*.cjs"
     ]
   },
   "targetDefaults": {
@@ -27,7 +28,7 @@
       "cache": true,
       "inputs": [
         "default",
-        "^production",
+        "^default",
         "{workspaceRoot}/tsconfig.spec.json",
         "{workspaceRoot}/jest.preset.cjs"
       ],
