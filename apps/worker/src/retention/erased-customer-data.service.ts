@@ -172,22 +172,27 @@ export class ErasedCustomerData {
   }
 
   // The text of the messages of the conversations of the customer: free text, the text waiting for an edit and the metadata (a template keeps
-  // the variables it was filled with, a reply keeps what it quotes). A system line, a product card, the summary of an order and a message that carries the pointer of an order are not touched (they hold the books' data, not words of the person; what an order copied is the debt (b) of the plan). Only a row that still holds something
+  // the variables it was filled with, a reply keeps what it quotes). A system line, a product card and the summary of an order are not touched (they hold the books' data, not words of the person; what an order copied is the debt (b) of the plan); a message of an order keeps only its pointer in the metadata (its text and the variables of its template are cleared). Only a row that still holds something
   private messages(storeId: string, customerId: string, limit: number): Promise<number> {
     const placeholder = ComplianceConfig.ERASED_CONTENT_PLACEHOLDER
+    const pointer = MessageMetadataKeys.ORDER_MESSAGE
     return this.prisma.client.$executeRaw`
       UPDATE messages SET
         content = CASE WHEN content IS NULL THEN NULL ELSE ${placeholder} END,
         pending_content = NULL,
-        metadata = NULL
+        -- A message of an order keeps only its pointer (the thread draws its line from it); the variables of its template are the person's
+        metadata = CASE WHEN jsonb_exists(COALESCE(metadata, '{}'::jsonb), ${pointer}::text)
+          THEN jsonb_build_object(${pointer}::text, metadata -> ${pointer}::text) ELSE NULL END
       WHERE id IN (
         SELECT m.id FROM messages m
         JOIN conversations c ON c.id = m.conversation_id
         WHERE m.store_id = ${storeId} AND c.store_id = ${storeId} AND c.customer_id = ${customerId}
           AND m.type NOT IN (${MessageType.SYSTEM}, ${MessageType.ORDER_SUMMARY}, ${MessageType.PRODUCT_CARD})
-          AND NOT jsonb_exists(COALESCE(m.metadata, '{}'::jsonb), ${MessageMetadataKeys.ORDER_MESSAGE})
           AND ((m.content IS NOT NULL AND m.content <> ${placeholder})
-            OR m.pending_content IS NOT NULL OR m.metadata IS NOT NULL)
+            OR m.pending_content IS NOT NULL
+            OR (m.metadata IS NOT NULL AND m.metadata IS DISTINCT FROM
+                CASE WHEN jsonb_exists(m.metadata, ${pointer}::text)
+                  THEN jsonb_build_object(${pointer}::text, m.metadata -> ${pointer}::text) END))
         LIMIT ${limit})`
   }
 

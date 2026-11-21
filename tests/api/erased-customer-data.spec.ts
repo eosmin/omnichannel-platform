@@ -309,7 +309,7 @@ describe('The data of an erased customer', () => {
     expect(entries).toHaveLength(1)
   })
 
-  it('leaves the summary of an order and a message that carries the pointer of an order as they are', async () => {
+  it('leaves the summary and the card of an order alone, and clears the text of an order message but keeps its pointer', async () => {
     const t = await erasedWithThread()
     const summary = await createMessage(owner, {
       storeId: ctx.storeA.id,
@@ -318,21 +318,32 @@ describe('The data of an erased customer', () => {
       content: 'Order T-1',
       metadata: { order: { number: 'T-1' } }
     })
-    const pointer = await createMessage(owner, {
+    const orderId = randomUUID()
+    // What the order messages write: the text of the template (it carries the name) and the variables it was filled with
+    const orderText = await createMessage(owner, {
       storeId: ctx.storeA.id,
       conversationId: t.conversation.id,
-      type: MessageType.DOCUMENT,
-      content: 'Order T-1 document',
-      metadata: { orderMessage: { orderId: randomUUID(), kind: 'order_summary' } }
+      type: MessageType.TEMPLATE,
+      content: 'Hello Maria Quintanilla, your order T-1 is on its way',
+      metadata: {
+        template: { name: 'order_shipped', variables: ['Maria Quintanilla'] },
+        orderMessage: { orderId, kind: 'order_summary' }
+      }
     })
 
-    await eraser.clear(ctx.storeA.id, t.conversation.customerId)
+    const report = await eraser.clear(ctx.storeA.id, t.conversation.customerId)
 
-    for (const message of [summary, pointer]) {
-      const row = await owner.message.findUniqueOrThrow({ where: { id: message.id } })
-      expect(row.metadata).not.toBeNull()
-      expect(row.content).not.toBe(PLACEHOLDER)
-    }
+    expect(report.cleared).toBe(true)
+    const kept = await owner.message.findUniqueOrThrow({ where: { id: summary.id } })
+    expect(kept).toMatchObject({ content: 'Order T-1', metadata: { order: { number: 'T-1' } } })
+    const cleared = await owner.message.findUniqueOrThrow({ where: { id: orderText.id } })
+    expect(cleared.content).toBe(PLACEHOLDER)
+    // The pointer stays, so the thread still draws the line of the order; the variables of the template go
+    expect(cleared.metadata).toEqual({ orderMessage: { orderId, kind: 'order_summary' } })
+    // And a second run finds nothing more to do in it
+    expect(await eraser.clear(ctx.storeA.id, t.conversation.customerId)).toMatchObject({
+      messages: 0
+    })
   })
 
   it('finishes what a bucket that failed halfway left, on the next run', async () => {
