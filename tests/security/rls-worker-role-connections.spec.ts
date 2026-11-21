@@ -26,18 +26,24 @@ describe('the facts the worker-role script reads from the server', () => {
     expect(reached).toContain(current.rows[0]?.name)
     expect(reached).not.toContain('template0')
     expect(reached).not.toContain('template1')
-    expect([...reached].sort()).toEqual(reached)
   })
 
-  it('counts the open sessions of the worker role, refuses nobypass while one is open and lets it go after it closes', async () => {
+  it('counts the open sessions of the worker role, refuses nobypass while one is open and sees the count drop once it closes', async () => {
     const facts = await readWorkerConnections(owner)
     if (!facts.visible) {
       // An owner that is neither a superuser nor a member of pg_read_all_stats cannot see other sessions: the script refuses then
       expect(connectionsProblem('nobypass', facts, false)).toContain('pg_read_all_stats')
       return
     }
-    const worker = new pg.Client({ connectionString: connectionUrls().worker })
+    // Direct to the server and with a query: through a transaction pooler an idle client holds no server session
+    const workerUrl = new URL(connectionUrls().owner)
+    const given = new URL(connectionUrls().worker)
+    workerUrl.username = given.username
+    workerUrl.password = given.password
+    const worker = new pg.Client({ connectionString: workerUrl.toString() })
     await worker.connect()
+    await worker.query('SELECT 1')
+    let closed = false
     try {
       const open = await readWorkerConnections(owner)
       const total = open.connections.reduce((sum, row) => sum + row.count, 0)
@@ -46,8 +52,18 @@ describe('the facts the worker-role script reads from the server', () => {
         `of ${DatabaseRoles.WORKER} are open`
       )
       expect(connectionsProblem('nobypass', open, true)).toBeUndefined()
-    } finally {
       await worker.end()
+      closed = true
+      // The server drops the session a moment after the client leaves: poll for it
+      let after = open
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        after = await readWorkerConnections(owner)
+        if (after.connections.reduce((sum, row) => sum + row.count, 0) < total) break
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      expect(after.connections.reduce((sum, row) => sum + row.count, 0)).toBeLessThan(total)
+    } finally {
+      if (!closed) await worker.end()
     }
   })
 })

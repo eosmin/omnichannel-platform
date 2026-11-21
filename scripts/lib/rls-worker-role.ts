@@ -1,8 +1,10 @@
+import { DatabaseRoles } from '@platform/core/database-testing'
+
 // The role the worker connects as, and the one thing that decides whether row security binds it: BYPASSRLS. Stage E of the RLS plan takes
 // the attribute away so that the worker meets the same policies as the api. It is NOT a migration: a migration runs by itself in the
 // deploy and would change what the worker sees in production without the owner. The owner changes it with `pnpm db:rls:worker-role`
 // (scripts/rls-worker-role.ts) in the order of docs/RLS_ACTIVATION_RUNBOOK.md, and the CI applies it to the database of the job only.
-export const WORKER_ROLE = 'platform_worker'
+export const WORKER_ROLE = DatabaseRoles.WORKER
 
 export const WORKER_ROLE_MODES = ['status', 'nobypass', 'bypass'] as const
 export type WorkerRoleMode = (typeof WORKER_ROLE_MODES)[number]
@@ -98,7 +100,7 @@ interface Queryable {
   query: (text: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>
 }
 
-const CONNECTIONS_VISIBLE_SQL = `SELECT (rolsuper OR pg_has_role(current_user, 'pg_read_all_stats', 'member')) AS visible
+const CONNECTIONS_VISIBLE_SQL = `SELECT (rolsuper OR pg_has_role(current_user, 'pg_read_all_stats', 'usage')) AS visible
    FROM pg_roles WHERE rolname = current_user`
 // Not its own session, and client sessions only: the autovacuum and replication workers are not the worker of the application
 const CONNECTIONS_SQL = `SELECT datname, count(*)::text AS total FROM pg_stat_activity
@@ -158,7 +160,16 @@ export function connectionsProblem(
   return `${connectionsLine(facts)} of ${WORKER_ROLE} are open: stop the workers and let their queues drain, then run it again (${FORCE_CONNECTED_FLAG} only to rehearse)`
 }
 
-const LOCAL_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+const LOCAL_NAMES: ReadonlySet<string> = new Set(['localhost', '::1', '[::1]'])
+const LOOPBACK_V4 = /^127(\.\d{1,3}){3}$/
+
+// A host that is this machine: empty (the default socket), a unix socket directory, localhost, or a loopback address. Case and a final
+// dot do not change the name
+export function isLocalHost(host: string): boolean {
+  const name = host.trim().toLowerCase().replace(/\.$/, '')
+  return name === '' || name.startsWith('/') || LOCAL_NAMES.has(name) || LOOPBACK_V4.test(name)
+}
+
 export const ALLOW_HOST_FLAG = '--allow-host='
 
 // `--allow-host=<host>` anywhere in the arguments
@@ -175,7 +186,7 @@ export function hostProblem(
   host: string,
   allowed: string | undefined
 ): string | undefined {
-  if (workerRoleStatement(mode) === null || LOCAL_HOSTS.has(host)) return undefined
+  if (workerRoleStatement(mode) === null || isLocalHost(host)) return undefined
   if (allowed === undefined) {
     return `the host ${host} is not this machine: run it again with ${ALLOW_HOST_FLAG}<the host printed above> after reading it`
   }

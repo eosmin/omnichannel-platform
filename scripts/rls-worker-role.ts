@@ -75,7 +75,10 @@ async function run(selected: WorkerRoleMode): Promise<void> {
   await client.connect()
   try {
     const target = new URL(url ?? '')
-    console.log(`database ${decodeURIComponent(target.pathname.slice(1))} on ${target.hostname}`)
+    // The host the client really connects to: a `?host=` parameter of the URL wins over its hostname, so the host that is checked and
+    // printed is the one of the parsed connection parameters, never the one of the URL text
+    const host = client.host
+    console.log(`database ${decodeURIComponent(target.pathname.slice(1))} on ${host}`)
     const before = await readRole(client)
     if (before === undefined) {
       console.error(`the role ${WORKER_ROLE} does not exist. Nothing changed.`)
@@ -94,7 +97,7 @@ async function run(selected: WorkerRoleMode): Promise<void> {
     if (statement !== null) {
       const refused =
         flagProblem(selected, workerEnvForRoleScript()) ??
-        hostProblem(selected, target.hostname, allowedHostOf(argv)) ??
+        hostProblem(selected, host, allowedHostOf(argv)) ??
         confirmProblem(selected, confirmationOf(argv), database) ??
         connectionsProblem(selected, connections, forceConnectedOf(argv))
       if (refused !== undefined) {
@@ -103,9 +106,7 @@ async function run(selected: WorkerRoleMode): Promise<void> {
         process.exitCode = 2
         return
       }
-      console.log(
-        `about to change: host ${target.hostname}, database ${database}, role ${WORKER_ROLE}`
-      )
+      console.log(`about to change: host ${host}, database ${database}, role ${WORKER_ROLE}`)
       if (alreadyAsRequested(selected, before)) {
         console.log(`${selected}: the role already is as asked, nothing changed`)
       } else {

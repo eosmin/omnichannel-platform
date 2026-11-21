@@ -8,6 +8,7 @@ import {
   confirmProblem,
   connectionsProblem,
   connectionsSummary,
+  allowedHostOf,
   flagProblem,
   forceConnectedOf,
   hostProblem,
@@ -219,6 +220,19 @@ describe('hostProblem', () => {
     expect(hostProblem('nobypass', 'db.example.com', undefined)).toContain('--allow-host=')
     expect(hostProblem('nobypass', 'db.example.com', 'db.example.com')).toBeUndefined()
     expect(hostProblem('nobypass', 'db.example.com', 'other.example.com')).toContain('not the host')
+  })
+
+  it('treats the socket, loopback ranges, case and a final dot as this machine', () => {
+    for (const host of ['', '/var/run/postgresql', '127.0.0.2', 'LOCALHOST', 'localhost.']) {
+      expect(hostProblem('nobypass', host, undefined)).toBeUndefined()
+    }
+    expect(hostProblem('nobypass', '0.0.0.0', undefined)).toContain('--allow-host=')
+  })
+
+  it('reads --allow-host and ignores an empty value', () => {
+    expect(allowedHostOf(['nobypass', '--allow-host=db.example.com'])).toBe('db.example.com')
+    expect(allowedHostOf(['nobypass', '--allow-host='])).toBeUndefined()
+    expect(allowedHostOf(['nobypass'])).toBeUndefined()
   })
 
   it('never asks it to read', () => {
