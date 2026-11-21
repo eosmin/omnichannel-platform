@@ -1,6 +1,7 @@
 import { type BrowserContext, test as base } from '@playwright/test'
 
 import { FORWARDED_FOR, newClientIp } from './client-ip'
+import { answeredCookieConsent } from './cookie-consent'
 import { API_URL, WEB_URL } from './env'
 
 const SERVICE_ORIGINS = new Set([new URL(WEB_URL).origin, new URL(API_URL).origin])
@@ -12,6 +13,8 @@ const SERVICE_ORIGINS = new Set([new URL(WEB_URL).origin, new URL(API_URL).origi
 // not share one minute of that limit (the limit itself is a control that stays as it is).
 export async function reachServicesFromOwnAddress(context: BrowserContext): Promise<() => void> {
   let ip = newClientIp()
+  // The cookie banner is the subject of its own spec only; anywhere else it would stand over what a spec clicks
+  await context.addCookies([answeredCookieConsent])
   await context.route(
     url => SERVICE_ORIGINS.has(url.origin),
     route => route.continue({ headers: { ...route.request().headers(), [FORWARDED_FOR]: ip } })

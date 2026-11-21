@@ -223,6 +223,37 @@
     "typePhrase": "Escribe \"{phrase}\" para confirmar",
     "phraseLabel": "Frase de confirmación"
   },
+  "cookieConsent": {
+    "bannerTitle": "Cookies y privacidad",
+    "bannerBody": "Usamos cookies esenciales para que la aplicación funcione. Con tu permiso también usaríamos otras opcionales. Puedes usar la aplicación elijas lo que elijas, y cambiar tu elección cuando quieras.",
+    "accept": "Aceptar todas",
+    "reject": "Solo esenciales",
+    "customize": "Elegir",
+    "openPreferences": "Preferencias de cookies",
+    "panelTitle": "Preferencias de cookies",
+    "panelDescription": "Elige qué cookies opcionales podemos usar. No se usa nada opcional hasta que lo permitas.",
+    "categories": {
+      "necessary": {
+        "label": "Esenciales",
+        "description": "Necesarias para que la aplicación funcione, por ejemplo mantener tu sesión. Siempre activas."
+      },
+      "functional": {
+        "label": "Preferencias",
+        "description": "Recuerdan elecciones como tu idioma y tu última tienda."
+      },
+      "analytics": {
+        "label": "Uso",
+        "description": "Nos ayudan a entender cómo se usa el producto."
+      },
+      "marketing": {
+        "label": "Marketing",
+        "description": "No se usan por ahora."
+      }
+    },
+    "save": "Guardar elección",
+    "saved": "Se guardaron tus preferencias de cookies",
+    "syncFailed": "Tu elección quedó guardada en este navegador. No pudimos enviarla al servidor; lo intentaremos de nuevo."
+  },
   "conversations": {
     "status": {
       "OPEN": "Abierta",

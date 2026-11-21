@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 
 import { PluginWidgetFrames } from '@platform/core/domain'
 
+import { CookieConsentGate } from '../components/cookie-consent/cookie-consent-gate'
 import { AppProviders } from '../components/providers/app-providers'
 import { DestructiveActionProvider } from '../components/shared/destructive-action'
 import { BusyAnnouncer } from '../components/shell/busy-announcer'
@@ -41,6 +42,7 @@ export default async function RootLayout({
           <AppProviders>
             <DestructiveActionProvider>{children}</DestructiveActionProvider>
           </AppProviders>
+          <CookieConsentGate />
           <ToasterHost />
           <BusyAnnouncer />
         </NextIntlClientProvider>

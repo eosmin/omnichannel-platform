@@ -5,6 +5,7 @@ import { API_PREFIX, ApiRoutes, InfraRoutes } from '@platform/core/api'
 import { E2eMagicLinkLimit, E2eUserRateLimit } from '@platform/core/auth'
 import { Locales } from '@platform/core/i18n'
 
+import { answeredCookieConsent } from './support/cookie-consent'
 import {
   API_URL,
   databaseUrls,
@@ -108,4 +109,7 @@ export const englishLocaleCookie = {
   sameSite: 'Lax' as const
 }
 
-export const englishLocale = { cookies: [englishLocaleCookie], origins: [] }
+export const englishLocale = {
+  cookies: [englishLocaleCookie, answeredCookieConsent],
+  origins: []
+}

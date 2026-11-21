@@ -8,6 +8,7 @@ import { type BrowserContext, chromium, type Page } from '@playwright/test'
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 
 import { englishLocaleCookie } from '../playwright.shared'
+import { answeredCookieConsent } from '../support/cookie-consent'
 import { storeIdNamed } from '../support/database'
 import { WEB_URL } from '../support/env'
 import { measure, type PageMetrics } from '../support/lighthouse'
@@ -57,7 +58,7 @@ test.describe('performance budgets', () => {
       baseURL: WEB_URL,
       args: [`--remote-debugging-port=${debuggingPort}`]
     })
-    await context.addCookies([englishLocaleCookie])
+    await context.addCookies([englishLocaleCookie, answeredCookieConsent])
     page = context.pages()[0] ?? (await context.newPage())
   })
   test.afterAll(async () => {
