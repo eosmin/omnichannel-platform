@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { type Permission, Permissions } from '@platform/core/auth'
 import {
+  AuditLogLimits,
   BulkLimits,
   CustomerLimits,
   lowercasedUuidSchema,
@@ -88,3 +89,14 @@ export const ordersExportFiltersSchema = z.strictObject({
   scheduledDeliveryTo: z.iso.date().optional()
 })
 export type OrdersExportFilters = z.output<typeof ordersExportFiltersSchema>
+
+// The audit log as it was when the file was asked for. The range is fixed instants: the worker knows no clock of the store.
+export const auditLogExportFiltersSchema = z.strictObject({
+  action: z.string().min(1).max(AuditLogLimits.ACTION_MAX_LENGTH).optional(),
+  userId: lowercasedUuidSchema.optional(),
+  resourceType: z.string().min(1).max(AuditLogLimits.RESOURCE_TYPE_MAX_LENGTH).optional(),
+  resourceId: z.string().min(1).max(AuditLogLimits.RESOURCE_ID_MAX_LENGTH).optional(),
+  from: z.iso.datetime().optional(),
+  before: z.iso.datetime().optional()
+})
+export type AuditLogExportFilters = z.output<typeof auditLogExportFiltersSchema>

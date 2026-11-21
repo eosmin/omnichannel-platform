@@ -17,6 +17,7 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { ExportFileExtensions } from '@platform/core/exports'
 import {
+  auditLogExportFiltersSchema,
   conversationsExportFiltersSchema,
   customersExportFiltersSchema,
   mediaZipFiltersSchema,
@@ -35,6 +36,7 @@ import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { AnalyticsExportWriter } from './analytics/analytics-export.writer'
+import { auditLogExportSource } from './audit-log-export.source'
 import { conversationsExportSource } from './conversations-export.source'
 import { CsvExportWriter } from './csv-export-writer'
 import { customersExportSource } from './customers-export.source'
@@ -195,6 +197,16 @@ export class ExportGenerator {
       const parsed = ordersExportFiltersSchema.safeParse(filters ?? {})
       if (!parsed.success) return null
       const source = ordersExportSource(this.prisma, this.jobContext, storeId, parsed.data)
+      return {
+        extension: ExportFileExtensions.CSV,
+        count: source.count,
+        write: (key, onProgress) => this.writer.write(key, source, onProgress)
+      }
+    }
+    if (type === ExportTypes.AUDIT_LOG) {
+      const parsed = auditLogExportFiltersSchema.safeParse(filters ?? {})
+      if (!parsed.success) return null
+      const source = auditLogExportSource(this.prisma, this.jobContext, storeId, parsed.data)
       return {
         extension: ExportFileExtensions.CSV,
         count: source.count,
