@@ -10,7 +10,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 // filters by itself, so
 //  - no store in the context RAISES (never an empty answer that looks like "nobody");
 //  - the context of one store never reads a customer of another;
-//  - an absorbed (merged) customer IS found: the order keeps pointing at who made it;
+//  - an absorbed (merged) customer IS found: the order keeps pointing at who made it, and an erased one is NOT (like every other search);
 //  - the answer is bounded (p_limit 1 to 10001, an error outside it, never a clamp) and a pattern is required;
 //  - EXECUTE is for the api and the worker roles, and for nobody else.
 // The calls are made as platform_app, the role of the api.
@@ -103,6 +103,44 @@ describe('the customers function of the orders search under row-level security',
       byPhone.id
     ])
     expect(await idsIn([storeB], `%orfeo ${tag}%`, `%orfeo ${tag}%`, null)).toEqual([alien.id])
+  })
+
+  it('does not find a customer who was erased, by name, e-mail or phone, and still finds a live one by the same branch', async () => {
+    // Its own tag: the e-mails of this case must not match the pattern of the first one
+    const erasedTag = `${tag}er`
+    const live = await createCustomer(owner, {
+      storeId: storeA,
+      name: `Viva ${erasedTag}`,
+      phone: '+503 7777-0002'
+    })
+    await owner.customer.update({
+      where: { id: live.id },
+      data: { email: `live-${erasedTag}@example.invalid` }
+    })
+    const erased = await createCustomer(owner, {
+      storeId: storeA,
+      name: `Olvidada ${erasedTag}`,
+      phone: '+503 7777-0003'
+    })
+    await owner.customer.update({
+      where: { id: erased.id },
+      data: { email: `gone-${erasedTag}@example.invalid`, erasedAt: new Date() }
+    })
+    const none = '%zzzz-none%'
+    // Name, e-mail and phone: each branch finds the live customer and not the erased one
+    expect(await idsIn([storeA], `%viva ${erasedTag}%`, none, null)).toEqual([live.id])
+    expect(await idsIn([storeA], `%olvidada ${erasedTag}%`, none, null)).toEqual([])
+    expect(await idsIn([storeA], none, `%live-${erasedTag}@%`, null)).toEqual([live.id])
+    expect(await idsIn([storeA], none, `%gone-${erasedTag}@%`, null)).toEqual([])
+    expect(await idsIn([storeA], none, none, '%50377770002%')).toEqual([live.id])
+    expect(await idsIn([storeA], none, none, '%50377770003%')).toEqual([])
+    // An absorbed customer who was also erased is not found either
+    const both = await createCustomer(owner, { storeId: storeA, name: `Fusion ${erasedTag}` })
+    await owner.customer.update({
+      where: { id: both.id },
+      data: { mergedIntoId: live.id, erasedAt: new Date() }
+    })
+    expect(await idsIn([storeA], `%fusion ${erasedTag}%`, none, null)).toEqual([])
   })
 
   it('refuses a limit that is missing, zero or past 10001, and a missing name or e-mail pattern', async () => {
