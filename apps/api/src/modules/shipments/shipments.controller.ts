@@ -124,6 +124,9 @@ export class ShipmentsController {
   // by the request (and stored for the days the store keeps merged files), and the answer carries a link good for minutes.
   @NoStore()
   @RequirePermissions(Permissions.SHIPPING_MANAGE)
+  @NoTenantTransaction(
+    'reads the stored labels and puts the merged file in the bucket: the service (shared with the worker) reads and writes in short units of the store and calls the bucket between them with no context open'
+  )
   @Post(ApiRoutes.shipments.mergeLabels)
   @HttpCode(HttpStatusCodes.OK)
   mergeLabels(

@@ -7,7 +7,7 @@ import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import { type UploadUrlResult } from '@platform/core/storage'
 
-import { SkipTenant } from '../tenancy'
+import { NoTenantTransaction, SkipTenant } from '../tenancy'
 
 import { type AvatarUploadView, AvatarUploadsService } from './avatar-uploads.service'
 import {
@@ -35,6 +35,9 @@ export class AvatarController {
     return this.avatars.requestUploadUrl(user.id, body)
   }
 
+  @NoTenantTransaction(
+    'checks the uploaded picture in the bucket and moves it: the service reads and writes in short contexts of the person, and the bucket is called between them with no context open'
+  )
   @Post(ApiRoutes.account.avatarConfirm)
   @HttpCode(HttpStatusCodes.OK)
   confirm(

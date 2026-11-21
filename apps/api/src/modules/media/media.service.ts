@@ -5,7 +5,7 @@ import type { Redis } from 'ioredis'
 
 import type { Permission } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
-import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
 import { FinanceConflicts, FinanceTransactionKind, MediaStatus } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -116,6 +116,7 @@ export class MediaService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly storage: StorageService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ScanFileJob>
@@ -197,12 +198,14 @@ export class MediaService {
     // A retry of a confirmation that already went through answers with the same media. The scan is
     // queued again (under the same job id, so never twice): the first attempt may have died between
     // writing the row and queueing it.
-    const existing = await this.find(storeId, body.mediaId)
+    // Every step of the database is a short unit of its own (the route is @NoTenantTransaction): the bucket and Redis are called between
+    // them with no context open, so no connection is held while they answer
+    const existing = await this.unit(storeId, () => this.find(storeId, body.mediaId))
     if (existing !== null) return this.again(existing, keys, userId, body, storeId)
 
     // The parent is checked again: the request that signed the url was another one. After the retry
     // above, so a retry of a file that was kept is not refused because its product went away since.
-    await this.requireParent(storeId, body, held)
+    await this.unit(storeId, () => this.requireParent(storeId, body, held))
 
     // Only who asked for the signed url confirms it. Same answer as any other bad upload.
     const requester = await this.redis.get(CacheKeys.upload.requester(storeId, body.mediaId))
@@ -231,38 +234,43 @@ export class MediaService {
       throw uploadVerificationFailed()
     }
 
-    let media: MediaRow
-    try {
-      media = await inSavepoint(() =>
-        this.prisma.client.media.create({
-          data: {
-            id: body.mediaId,
-            storeId,
-            purpose: body.purpose,
-            ...parentColumnsOf(body),
-            uploadedBy: userId,
-            key: keys.final,
-            filename,
-            contentType: body.contentType,
-            fileSize: body.fileSizeBytes,
-            status: MediaStatus.PENDING
-          },
-          select: MEDIA_SELECT
-        })
-      )
-    } catch (error) {
-      // The parent was deleted after it was checked: the same answer as a parent that is not there
-      if (isForeignKeyViolation(error)) {
-        throw resourceNotFound(parentNameOf(body.purpose))
+    // The row and the scan job in ONE unit: the job is queued after its commit (afterCommitStep) and never before. A lost race is answered
+    // from the row that the winner wrote, read in the same unit (the failed insert was a savepoint, so the unit is still usable)
+    const written = await this.unit(storeId, async () => {
+      try {
+        const created = await inSavepoint(() =>
+          this.prisma.client.media.create({
+            data: {
+              id: body.mediaId,
+              storeId,
+              purpose: body.purpose,
+              ...parentColumnsOf(body),
+              uploadedBy: userId,
+              key: keys.final,
+              filename,
+              contentType: body.contentType,
+              fileSize: body.fileSizeBytes,
+              status: MediaStatus.PENDING
+            },
+            select: MEDIA_SELECT
+          })
+        )
+        await this.queueScan(storeId, created.id)
+        return { kind: 'created' as const, media: created }
+      } catch (error) {
+        // The parent was deleted after it was checked: the same answer as a parent that is not there
+        if (isForeignKeyViolation(error)) {
+          throw resourceNotFound(parentNameOf(body.purpose))
+        }
+        if (!isUniqueViolation(error)) throw error
+        // Two confirmations at once: the other one won
+        const winner = await this.find(storeId, body.mediaId)
+        if (winner === null) throw uploadVerificationFailed()
+        return { kind: 'winner' as const, media: winner }
       }
-      if (!isUniqueViolation(error)) throw error
-      // Two confirmations at once: the other one won
-      const winner = await this.find(storeId, body.mediaId)
-      if (winner === null) throw uploadVerificationFailed()
-      return this.again(winner, keys, userId, body, storeId)
-    }
-
-    await this.queueScan(storeId, media.id)
+    })
+    if (written.kind === 'winner') return this.again(written.media, keys, userId, body, storeId)
+    const media: MediaRow = written.media
     await this.dropStaging(keys.upload)
     await this.redis.del(CacheKeys.upload.requester(storeId, body.mediaId))
     return view(media)
@@ -414,6 +422,11 @@ export class MediaService {
         { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
       )
     )
+  }
+
+  // One short unit of the store (the route of the confirmation is @NoTenantTransaction); inside a request context it joins it
+  private unit<T>(storeId: string, work: () => Promise<T>): Promise<T> {
+    return this.jobs.forStoreOrJoin(storeId, work)
   }
 
   private find(storeId: string, mediaId: string): Promise<MediaRow | null> {
