@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import {
   ageInDays,
   type AddRemittanceLinesBody,
@@ -59,6 +59,7 @@ const ORDER = [{ createdAt: 'desc' }, { id: 'desc' }] as const
 export class RemittancesApiService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly writes: RemittanceWrites,
     private readonly audit: AuditService,
     private readonly storage: StorageService
@@ -291,20 +292,25 @@ export class RemittancesApiService {
 
   // A draft nobody wants goes with the file it was imported from: the file is the evidence of a remittance, and there is none
   async discard(storeId: string, remittanceId: string): Promise<void> {
-    const draft = await this.prisma.client.codRemittance.findFirst({
-      where: { id: remittanceId, storeId },
-      select: { sourceMediaId: true }
+    // The rows in ONE unit of their own; the bucket is called after it, with no context open (the route is @NoTenantTransaction)
+    const key = await this.jobs.forStoreOrJoin(storeId, async () => {
+      const draft = await this.prisma.client.codRemittance.findFirst({
+        where: { id: remittanceId, storeId },
+        select: { sourceMediaId: true }
+      })
+      await this.writes.discardDraft(storeId, remittanceId)
+      if (draft?.sourceMediaId === null || draft === null) return null
+      const file = await this.prisma.client.media.findFirst({
+        where: { id: draft.sourceMediaId, storeId, purpose: MediaPurpose.REMITTANCE_FILE },
+        select: { id: true, key: true }
+      })
+      if (file === null) return null
+      await this.prisma.client.media.deleteMany({ where: { id: file.id, storeId } })
+      return file.key
     })
-    await this.writes.discardDraft(storeId, remittanceId)
-    if (draft?.sourceMediaId === null || draft === null) return
-    const file = await this.prisma.client.media.findFirst({
-      where: { id: draft.sourceMediaId, storeId, purpose: MediaPurpose.REMITTANCE_FILE },
-      select: { id: true, key: true }
-    })
-    if (file === null) return
-    await this.prisma.client.media.deleteMany({ where: { id: file.id, storeId } })
+    if (key === null) return
     // A failure leaves a stray object that nothing points to: not worth failing a discard that already happened
-    await this.storage.delete(file.key).catch(() => undefined)
+    await this.storage.delete(key).catch(() => undefined)
   }
 
   async confirm(

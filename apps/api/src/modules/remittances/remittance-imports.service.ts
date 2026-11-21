@@ -6,7 +6,7 @@ import type { Queue } from 'bullmq'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import {
   type ImportedLine,
   type ImportRowError,
@@ -88,6 +88,7 @@ function shapeOf(profile: {
 export class RemittanceImportsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly jobs: JobContext,
     private readonly writes: RemittancesService,
     private readonly remittances: RemittancesApiService,
     private readonly storage: StorageService,
@@ -119,9 +120,12 @@ export class RemittanceImportsService {
     file: ImportBody,
     actor: Actor
   ): Promise<RemittanceDetailView> {
-    const profile = await this.prisma.client.remittanceImportProfile.findFirst({
-      where: { id: query.profileId, storeId, connectionId: query.connectionId }
-    })
+    // Its own short unit: the route is @NoTenantTransaction, so no connection is held while the file arrives or the bucket answers
+    const profile = await this.jobs.forStoreOrJoin(storeId, () =>
+      this.prisma.client.remittanceImportProfile.findFirst({
+        where: { id: query.profileId, storeId, connectionId: query.connectionId }
+      })
+    )
     // A profile of another connection or store is not found: it says nothing about which of them it is
     if (profile === null) throw resourceNotFound('import profile')
     const parsed = parseRemittanceFile(file.text, shapeOf(profile))
@@ -144,65 +148,73 @@ export class RemittanceImportsService {
       `${RemittanceImportFiles.FILENAME_PREFIX}-${new Date().toISOString().slice(0, 10)}.${kind.extension}`
     )
     const key = StorageKeys.remittanceFile(storeId, mediaId, filename)
+    // The bucket is called with NO context open. The rows are ONE unit: a failure rolls the media row back with the draft
     await this.storage.put(key, bytes, contentType)
-    // Once the draft exists the file is its evidence and is never removed, whatever fails after
-    let drafted = false
     try {
-      await this.prisma.client.media.create({
-        data: {
-          id: mediaId,
+      return await this.jobs.forStoreOrJoin(storeId, async () => {
+        await this.prisma.client.media.create({
+          data: {
+            id: mediaId,
+            storeId,
+            purpose: MediaPurpose.REMITTANCE_FILE,
+            uploadedBy: actor.userId,
+            key,
+            filename,
+            contentType,
+            fileSize: bytes.length,
+            status: MediaStatus.PENDING
+          }
+        })
+        const created = await this.writes.createDraft(
           storeId,
-          purpose: MediaPurpose.REMITTANCE_FILE,
-          uploadedBy: actor.userId,
-          key,
-          filename,
-          contentType,
-          fileSize: bytes.length,
-          status: MediaStatus.PENDING
-        }
+          {
+            connectionId: query.connectionId,
+            lines: parsed.lines.map(line => ({
+              guideNumber: line.guideNumber,
+              reportedCents: line.reportedCents,
+              ...(line.reportedFeeCents === undefined
+                ? {}
+                : { reportedFeeCents: line.reportedFeeCents })
+            })),
+            ...(parsed.reference === null ? {} : { reference: parsed.reference }),
+            ...(parsed.receivedOn === null ? {} : { receivedOn: parsed.receivedOn })
+          },
+          { type: 'user', id: actor.userId },
+          { importProfileId: profile.id, sourceMediaId: mediaId }
+        )
+        // A scan that was not queued waits for the hourly cleanup of pending files: it must not fail an import that was made
+        await this.queueScan(storeId, mediaId).catch(() => undefined)
+        this.audit.log({
+          action: AuditAction.REMITTANCE_IMPORTED,
+          actor: { userId: actor.userId },
+          storeId,
+          resourceType: ShipmentResourceTypes.REMITTANCE,
+          resourceId: created.id,
+          metadata: {
+            connectionId: query.connectionId,
+            profileId: profile.id,
+            rows: parsed.lines.length,
+            mediaId
+          },
+          ipAddress: actor.ipAddress,
+          userAgent: actor.userAgent
+        })
+        return await this.remittances.get(storeId, created.id)
       })
-      const created = await this.writes.createDraft(
-        storeId,
-        {
-          connectionId: query.connectionId,
-          lines: parsed.lines.map(line => ({
-            guideNumber: line.guideNumber,
-            reportedCents: line.reportedCents,
-            ...(line.reportedFeeCents === undefined
-              ? {}
-              : { reportedFeeCents: line.reportedFeeCents })
-          })),
-          ...(parsed.reference === null ? {} : { reference: parsed.reference }),
-          ...(parsed.receivedOn === null ? {} : { receivedOn: parsed.receivedOn })
-        },
-        { type: 'user', id: actor.userId },
-        { importProfileId: profile.id, sourceMediaId: mediaId }
-      )
-      drafted = true
-      // A scan that was not queued waits for the hourly cleanup of pending files: it must not fail an import that was made
-      await this.queueScan(storeId, mediaId).catch(() => undefined)
-      this.audit.log({
-        action: AuditAction.REMITTANCE_IMPORTED,
-        actor: { userId: actor.userId },
-        storeId,
-        resourceType: ShipmentResourceTypes.REMITTANCE,
-        resourceId: created.id,
-        metadata: {
-          connectionId: query.connectionId,
-          profileId: profile.id,
-          rows: parsed.lines.length,
-          mediaId
-        },
-        ipAddress: actor.ipAddress,
-        userAgent: actor.userAgent
-      })
-      return await this.remittances.get(storeId, created.id)
     } catch (error) {
-      if (drafted) throw error
-      // Nothing was made of the file: it is removed, never left behind (a stray object is found by its prefix)
-      await this.prisma.client.media
-        .deleteMany({ where: { id: mediaId, storeId } })
-        .catch(() => undefined)
+      // An error that came after the commit (a dropped connection on the way back) is not "nothing was made": the draft exists and the
+      // file is its evidence
+      const exists = await this.jobs
+        .forStoreOrJoin(storeId, () =>
+          this.prisma.client.codRemittance.findFirst({
+            where: { storeId, sourceMediaId: mediaId },
+            select: { id: true }
+          })
+        )
+        .catch(() => ({ id: 'unknown' }))
+      if (exists !== null) throw error
+      // Nothing was made of the file (the media row went with the unit): the object is removed, never left behind (a stray object is
+      // found by its prefix)
       await this.storage.delete(key).catch(() => undefined)
       throw error
     }

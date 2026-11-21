@@ -14,8 +14,7 @@ import {
   CurrentStore,
   NoTenantTransaction,
   RequirePermissions,
-  type ResolvedTenant,
-  TenantOfOrganizationStores
+  type ResolvedTenant
 } from '../tenancy'
 
 import {
@@ -83,8 +82,8 @@ export class PluginsController {
   // Removes a plugin the organization registered, with the name typed (the id is the plugin's): only one with no live installation
   // anywhere in the organization; 409 `PLUGIN_IN_USE` otherwise
   @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
-  @TenantOfOrganizationStores(
-    'the installations of a plugin of the organization are in every store of it: with the context of one store the check "revoked everywhere, last webhook sent" and the count of channel connections do not see the sibling stores (the delete then fails on the foreign key at best). The service reads and removes only rows of this plugin, of the organization of the guard'
+  @NoTenantTransaction(
+    'the installations of a plugin of the organization are in every store of it, and the icon of a channel plugin is removed from the bucket: the service reads and removes only rows of this plugin, of the organization of the guard, in units of the whole organization of its own, and calls the bucket and the registry after them with no context open'
   )
   @Delete(ApiRoutes.plugins.byId(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)

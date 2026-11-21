@@ -32,7 +32,13 @@ import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/e
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  actorOf,
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import { isImportContentType, readImportBody } from './remittance-import-body'
 import { type ImportPreviewView, RemittanceImportsService } from './remittance-imports.service'
@@ -113,6 +119,9 @@ export class RemittanceImportsController {
   // The file itself is the body (text/csv, text/tab-separated-values or text/plain, up to 5 MB); the connection and the saved profile
   // that reads it are in the query. Answers 201 with the draft it made; a file with an unreadable row answers 400 and makes nothing.
   @RequirePermissions(Permissions.REMITTANCES_MANAGE)
+  @NoTenantTransaction(
+    'the file arrives over the network and goes to the bucket: the service reads the profile and writes the draft in short units of its own, and the bucket is called with no context open'
+  )
   @Post(ApiRoutes.remittances.imports)
   @HttpCode(HttpStatusCodes.CREATED)
   async importFile(
