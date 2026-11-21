@@ -157,5 +157,12 @@ export function useActionViewer(conversationId: string): ActionViewer {
     () => channels.data?.find(channel => channel.pluginId === channelType)?.capabilities ?? [],
     [channels.data, channelType]
   )
-  return useMemo(() => ({ userId, can, capabilities }), [userId, can, capabilities])
+  // The thread of an erased customer is read only: the api refuses every edit, deletion, reaction and resend (409
+  // CUSTOMER_ERASED), so the rules see no permission and no capability and draw no action
+  const isErased = conversation.data?.customer.isErased === true
+  return useMemo(
+    () =>
+      isErased ? { userId, can: () => false, capabilities: [] } : { userId, can, capabilities },
+    [userId, can, capabilities, isErased]
+  )
 }

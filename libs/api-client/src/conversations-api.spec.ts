@@ -47,7 +47,8 @@ const item = {
     displayIdentity: '5037123',
     username: null,
     avatarUrl: null,
-    isCaution: false
+    isCaution: false,
+    isErased: false
   },
   lastMessage: null,
   tags: []

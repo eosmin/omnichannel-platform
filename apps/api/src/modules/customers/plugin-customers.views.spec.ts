@@ -76,6 +76,7 @@ describe('what a plugin sees of the caution flag of a customer', () => {
     locale: null,
     isCaution: true,
     cautionReason: 'text the team wrote about the person',
+    erasedAt: null,
     identities: [],
     addresses: [],
     tags: [],
@@ -100,9 +101,11 @@ describe('what a plugin sees of the caution flag of a customer', () => {
 
   it('names every field it lets through: a field added to the profile stays out until it is added here', () => {
     const expected = Object.keys(detail)
-      .filter(key => key !== 'cautionReason')
+      .filter(key => key !== 'cautionReason' && key !== 'erasedAt')
       .sort()
 
+    // `erasedAt` is for the screens of the team: a plugin is not told when a customer was erased (Step 7.2-F)
+    expect(Object.keys(pluginCustomerDetail(detail))).not.toContain('erasedAt')
     expect(
       Object.keys(pluginCustomerDetail({ ...detail, extra: 'x' } as CustomerDetail)).sort()
     ).toEqual(expected)

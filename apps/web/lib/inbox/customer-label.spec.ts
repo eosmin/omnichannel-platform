@@ -7,6 +7,7 @@ const customer = (over: Partial<Parameters<typeof customerLabelOf>[0]>) => ({
   username: null,
   avatarUrl: null,
   isCaution: false,
+  isErased: false,
   ...over
 })
 

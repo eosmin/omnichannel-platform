@@ -652,6 +652,26 @@ export function newCustomerIn(
   })
 }
 
+// A customer with a name and one conversation of its own (and a message of the customer), for the cases that read the
+// thread of a customer whose data is erased
+export function newConversationOfCustomerNamed(
+  storeId: string,
+  name: string
+): Promise<{ conversationId: string; customerId: string }> {
+  return withOwner(async owner => {
+    const conversation = await createConversationOf(owner, { storeId, lastMessageAt: new Date() })
+    await owner.customer.update({ where: { id: conversation.customerId }, data: { name } })
+    await createMessage(owner, {
+      storeId,
+      conversationId: conversation.id,
+      content: `Hello from ${name}`,
+      authorType: AuthorType.CUSTOMER,
+      createdAt: new Date()
+    })
+    return { conversationId: conversation.id, customerId: conversation.customerId }
+  })
+}
+
 // The store has a WhatsApp connection, so the channel is among those a handle can be linked on
 export function withWhatsAppChannel(storeId: string): Promise<void> {
   return withOwner(async owner => {

@@ -50,6 +50,8 @@ export interface CustomerDetail {
   locale: string | null
   isCaution: boolean
   cautionReason: string | null
+  // When the personal data was erased (TDD_05 §10.3); null for a customer that was not. The profile shows it as erased.
+  erasedAt: Date | null
   identities: IdentityView[]
   addresses: AddressView[]
   tags: TagView[]
@@ -142,6 +144,7 @@ export async function customerDetail(
       locale: true,
       isCaution: true,
       cautionReason: true,
+      erasedAt: true,
       createdAt: true,
       updatedAt: true,
       identities: { select: IDENTITY_SELECT, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },

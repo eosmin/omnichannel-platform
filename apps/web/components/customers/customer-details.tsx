@@ -1,6 +1,6 @@
 'use client'
 
-import { Pencil, Plus, TriangleAlert, X } from 'lucide-react'
+import { Eraser, Pencil, Plus, TriangleAlert, X } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useState } from 'react'
@@ -23,6 +23,7 @@ import { CustomerAvatar } from '../inbox/customer-avatar'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
+import { ErasedChip } from './erased-chip'
 import type { MergeRequest } from './merge-actions'
 import { MutationError } from './mutation-error'
 
@@ -47,6 +48,9 @@ const CautionDialog = dynamic(
   () => import('./caution-dialog').then(module => module.CautionDialog),
   { ssr: false }
 )
+const EraseDialog = dynamic(() => import('./erase-dialog').then(module => module.EraseDialog), {
+  ssr: false
+})
 const IdentityLinkForm = dynamic(
   () => import('./identity-link-form').then(module => module.IdentityLinkForm),
   { ssr: false }
@@ -187,9 +191,14 @@ export function CustomerDetails({
   const tEdit = useTranslations('customers.edit')
   const tIdentity = useTranslations('customers.identity')
   const tCaution = useTranslations('customers.cautionFlag')
+  const tErasure = useTranslations('customers.erasure')
   const { can } = useStore()
-  const mayEdit = editable && can(ClientPermissions.CUSTOMERS_EDIT)
-  const mayMerge = editable && can(ClientPermissions.CUSTOMERS_MERGE)
+  // An erased customer is read only: the api refuses every write (409), so the controls are not drawn
+  const isErased = customer.erasedAt !== null
+  const mayEdit = editable && !isErased && can(ClientPermissions.CUSTOMERS_EDIT)
+  const mayMerge = editable && !isErased && can(ClientPermissions.CUSTOMERS_MERGE)
+  const mayErase = editable && !isErased && can(ClientPermissions.CUSTOMERS_ERASE)
+  const [isEraseOpen, setEraseOpen] = useState(false)
   const [isEditing, setEditing] = useState(false)
   const [isLinking, setLinking] = useState(false)
   // `absorbedId` is set by "Merge instead", which skips the search for the duplicate
@@ -214,6 +223,11 @@ export function CustomerDetails({
           <CustomerAvatar avatarUrl={null} initials={initialsOfName(name)} />
           <div className="flex min-w-0 flex-1 flex-col">
             <p className="truncate font-semibold">{name ?? anonymousName}</p>
+            {isErased ? (
+              <span className="self-start">
+                <ErasedChip />
+              </span>
+            ) : null}
             {contact.map(line => (
               <p key={line} className="text-muted-foreground truncate text-xs">
                 {line}
@@ -236,6 +250,11 @@ export function CustomerDetails({
           ) : null}
         </div>
       )}
+      {isErased ? (
+        <p role="note" className="bg-muted rounded-md border p-2 text-sm">
+          {tErasure('note')}
+        </p>
+      ) : null}
       {customer.isCaution ? (
         <p
           role="note"
@@ -245,7 +264,7 @@ export function CustomerDetails({
           {customer.cautionReason === null ? null : ` ${customer.cautionReason}`}
         </p>
       ) : null}
-      {editable && can(ClientPermissions.CUSTOMERS_FLAG_CAUTION) ? (
+      {editable && !isErased && can(ClientPermissions.CUSTOMERS_FLAG_CAUTION) ? (
         <Button
           type="button"
           variant="outline"
@@ -256,6 +275,21 @@ export function CustomerDetails({
           <TriangleAlert aria-hidden />
           {tCaution(customer.isCaution ? 'open.clear' : 'open.set')}
         </Button>
+      ) : null}
+      {mayErase ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="text-destructive self-start"
+          onClick={() => setEraseOpen(true)}
+        >
+          <Eraser aria-hidden />
+          {tErasure('open')}
+        </Button>
+      ) : null}
+      {isEraseOpen ? (
+        <EraseDialog customerId={customer.id} onClose={() => setEraseOpen(false)} />
       ) : null}
       {isCautionOpen ? (
         <CautionDialog

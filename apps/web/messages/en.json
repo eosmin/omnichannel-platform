@@ -459,6 +459,32 @@
       "reasonHelp": "Required. Whoever can view customers sees it.",
       "changeReason": "Change the reason",
       "cancel": "Cancel"
+    },
+    "erasure": {
+      "open": "Erase customer data",
+      "chip": "Data erased",
+      "note": "The personal data of this customer was erased. Orders, invoices and the books are kept as the law requires. Nothing can be edited or sent to them.",
+      "title": "Erase the data of this customer?",
+      "description": "This cannot be undone. Read what happens before you confirm.",
+      "erasesTitle": "What is erased",
+      "erases": {
+        "contact": "The name, e-mail, phone and language",
+        "notes": "The notes and the addresses",
+        "fiscal": "The tax data saved for invoices",
+        "messages": "The text and the files of their messages",
+        "handles": "The profile of each channel handle: a new message from it makes a new customer",
+        "caution": "The caution reason, if there is one"
+      },
+      "keepsTitle": "What is kept",
+      "keeps": {
+        "books": "The orders, the invoices and the accounting books, with the data they already copied: the law asks the store to keep them",
+        "threads": "The conversations, as read only threads without content, so the statistics stay",
+        "consent": "The proof of consent, revoked"
+      },
+      "confirmLabel": "Type {word} to confirm",
+      "confirmWord": "ERASE",
+      "submit": "Erase the data for good",
+      "cancel": "Cancel"
     }
   },
   "email": {
@@ -2693,6 +2719,10 @@
       "preparing": "Preparing the plugin panels",
       "blocked": "The plugin panels need the page to be reloaded to show. Reload it when you have saved what you are writing. If they still do not show, allow cookies for this site.",
       "reload": "Reload the page"
+    },
+    "erased": {
+      "chip": "Data erased",
+      "composer": "The data of this customer was erased. You cannot reply or write a note, and nothing is sent to them."
     }
   },
   "exports": {

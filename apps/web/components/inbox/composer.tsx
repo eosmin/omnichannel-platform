@@ -138,6 +138,7 @@ function ComposerShortcuts({
 // follows the messaging window of the channel; an internal note never does.
 export function Composer({ conversationId }: { conversationId: string }): ReactElement | null {
   const t = useTranslations('inbox.composer')
+  const tErased = useTranslations('inbox.erased')
   const errorText = useErrorText()
   const { storeId, can } = useStore()
   const conversation = useConversation(storeId, conversationId)
@@ -275,6 +276,14 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   }, [isWindowClosed])
 
   if (conversation.data === undefined) return null
+  // The api refuses every reply and note of an erased customer (409 CUSTOMER_ERASED): the box is not drawn, the text says why
+  if (conversation.data.customer.isErased) {
+    return (
+      <p role="status" className="text-muted-foreground border-t p-3 text-sm">
+        {tErased('composer')}
+      </p>
+    )
+  }
   if (!mayReply && !mayNote) {
     return <p className="text-muted-foreground border-t p-3 text-sm">{t('readOnly')}</p>
   }

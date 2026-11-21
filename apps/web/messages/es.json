@@ -459,6 +459,32 @@
       "reasonHelp": "Obligatoria. La ven quienes pueden ver a los clientes.",
       "changeReason": "Cambiar la razón",
       "cancel": "Cancelar"
+    },
+    "erasure": {
+      "open": "Borrar datos del cliente",
+      "chip": "Datos borrados",
+      "note": "Los datos personales de este cliente fueron borrados. Los pedidos, las facturas y los libros se conservan como exige la ley. No se puede editar ni enviarle nada.",
+      "title": "¿Borrar los datos de este cliente?",
+      "description": "No se puede deshacer. Lee lo que pasa antes de confirmar.",
+      "erasesTitle": "Lo que se borra",
+      "erases": {
+        "contact": "El nombre, el correo, el teléfono y el idioma",
+        "notes": "Las notas y las direcciones",
+        "fiscal": "Los datos fiscales guardados para las facturas",
+        "messages": "El texto y los archivos de sus mensajes",
+        "handles": "El perfil de cada usuario de canal: un mensaje nuevo suyo crea un cliente nuevo",
+        "caution": "El motivo de precaución, si lo hay"
+      },
+      "keepsTitle": "Lo que se conserva",
+      "keeps": {
+        "books": "Los pedidos, las facturas y los libros contables, con los datos que ya copiaron: la ley pide a la tienda conservarlos",
+        "threads": "Las conversaciones, como hilos de solo lectura sin contenido, para que las estadísticas se mantengan",
+        "consent": "La prueba del consentimiento, revocado"
+      },
+      "confirmLabel": "Escribe {word} para confirmar",
+      "confirmWord": "BORRAR",
+      "submit": "Borrar los datos para siempre",
+      "cancel": "Cancelar"
     }
   },
   "email": {
@@ -2693,6 +2719,10 @@
       "preparing": "Preparando los paneles de los plugins",
       "blocked": "Los paneles de los plugins necesitan recargar la página para mostrarse. Recárgala cuando hayas guardado lo que estás escribiendo. Si siguen sin verse, permite las cookies de este sitio.",
       "reload": "Recargar la página"
+    },
+    "erased": {
+      "chip": "Datos borrados",
+      "composer": "Los datos de este cliente fueron borrados. No puedes responder ni escribir una nota, y no se le envía nada."
     }
   },
   "exports": {

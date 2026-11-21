@@ -17,6 +17,7 @@ import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { useErrorText } from '../../lib/use-error-text'
 import { CautionChip } from '../customers/caution-chip'
 import { useCustomerDrawer } from '../customers/customer-drawer-context'
+import { ErasedChip } from '../customers/erased-chip'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
@@ -144,6 +145,11 @@ function LoadedHeader({
         {customer.isCaution ? (
           <span className="mt-1 self-start">
             <CautionChip />
+          </span>
+        ) : null}
+        {customer.isErased ? (
+          <span className="mt-1 self-start">
+            <ErasedChip />
           </span>
         ) : null}
       </div>
