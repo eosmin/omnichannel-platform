@@ -13,6 +13,7 @@ import {
   baselineGrowth,
   type ExternalIoBaseline,
   fixedEntries,
+  localMethodProblems,
   networkFunctionsOf,
   newlyUnmarked,
   parseClasses,
@@ -106,6 +107,9 @@ for (const route of newlyUnmarked(baseline, current)) {
 }
 for (const name of unknownProviders(classes, EXTERNAL_IO_PROVIDERS)) {
   listFailures.push(`scripts/external-io-providers.ts: no class or field type named ${name}`)
+}
+for (const problem of localMethodProblems(classes, EXTERNAL_IO_PROVIDERS)) {
+  listFailures.push(`scripts/external-io-providers.ts: ${problem}`)
 }
 const pureNames = EXTERNAL_IO_PURE_TYPES.map(entry => entry.name)
 for (const type of unknownFieldTypes(classes, EXTERNAL_IO_PROVIDERS, pureNames)) {
