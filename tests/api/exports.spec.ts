@@ -922,7 +922,11 @@ describe('Exports', () => {
           conversationIds: [keptById.id, movedById.id]
         })
         expect(selection.status).toBe(OK)
+        expect((selection.body as BulkBody).succeeded).toEqual([keptById.id, movedById.id])
         const selectionRow = await lastExport()
+        expect(selectionRow.filters).toMatchObject({
+          conversationIds: [keptById.id, movedById.id]
+        })
         const filtered = await bulk(member, {
           action: BulkActions.EXPORT_CSV,
           filter: { tagId: tag.id }
@@ -946,6 +950,50 @@ describe('Exports', () => {
         expect(byFilter).toContain('reassign-kept-by-id')
         expect(byFilter).not.toContain('reassign-moved-by-id')
         expect(byFilter).not.toContain('reassign-moved-by-filter')
+      })
+
+      it('reads the assignment when the file is written in the other direction too: a filter takes in what the requester now holds, a selection never grows', async () => {
+        const supervisorOnly = await createRole(owner, {
+          storeId: ctx.storeA.id,
+          permissions: [Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_EXPORT]
+        })
+        const member = await createActor(owner, app, {
+          prefix,
+          name: 'bulk-gains',
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          roleId: supervisorOnly.id
+        })
+        const tag = await createTag(owner, { storeId: ctx.storeA.id, name: `${prefix}-gain` })
+        const mine = await seed('gain-mine', { assignedTo: member.id })
+        const gained = await seed('gain-gained', { assignedTo: ctx.adminA.id })
+        for (const conversation of [mine, gained]) {
+          await owner.conversation.update({
+            where: { id: conversation.id },
+            data: { tags: { connect: { id: tag.id } } }
+          })
+        }
+
+        const selection = await bulk(member, {
+          action: BulkActions.EXPORT_CSV,
+          conversationIds: [mine.id, gained.id]
+        })
+        expect((selection.body as BulkBody).succeeded).toEqual([mine.id])
+        const selectionRow = await lastExport()
+        await bulk(member, { action: BulkActions.EXPORT_CSV, filter: { tagId: tag.id } })
+        const filterRow = await lastExport()
+
+        await owner.conversation.update({
+          where: { id: gained.id },
+          data: { assignedTo: member.id }
+        })
+
+        const byIds = await made(selectionRow.id)
+        expect(byIds).toContain('gain-mine')
+        expect(byIds).not.toContain('gain-gained')
+        const byFilter = await made(filterRow.id)
+        expect(byFilter).toContain('gain-mine')
+        expect(byFilter).toContain('gain-gained')
       })
 
       it('writes no file when nothing ticked can be seen', async () => {
