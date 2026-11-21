@@ -129,7 +129,11 @@ export class JobContext {
       const context = this.prisma.currentTenantContext()
       if (context === undefined || !sameSet(context.storeIds, [storeId])) {
         return Promise.reject(
-          new JobContextError('the context of the request is not the one of this store')
+          new JobContextError(
+            context?.storeIds.includes(storeId) === true
+              ? 'the context of the request holds this store and others: it is wider than the one of this store'
+              : 'the context of the request is not the one of this store'
+          )
         )
       }
       return work()
