@@ -3,14 +3,14 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { DataRetentionPolicies, PlatformCleanup } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
-import { DAY_MS } from '@platform/core/domain'
+import { DAY_MS, InvitationStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
 import { inEachStoreStrict } from '../schedulers/store-sweep'
 
 import { type BatchOutcome, categoryRunner, inBatches, PartialRunError } from './retention-batches'
 
-// rls-context: sessions and verification_tokens are global tables; every other table runs inside JobContext.forStore of its store
+// rls-context: sessions, verification_tokens and invitations are global tables (invitations is skipped by the RLS migrations); every other table runs inside JobContext.forStore of its store
 
 export interface PlatformCleanupReport {
   sessions: number
@@ -18,6 +18,7 @@ export interface PlatformCleanupReport {
   webhookDeliveries: number
   metricsHourly: number
   mergedCustomers: number
+  invitations: number
   // The categories that stopped on a full batch: tomorrow takes the rest
   more: string[]
 }
@@ -28,7 +29,8 @@ type Category = Exclude<keyof PlatformCleanupReport, 'more'>
 // because reuse detection needs it), the verification tokens that are expired or were used a day ago, the deliveries of the
 // webhooks past thirty days, the hours of the hourly rollup past ninety days, and the customers a merge
 // absorbed whose window to undo it (`unmergeUntil`) has passed, with their CustomerMerge row (the audit log keeps
-// `customer.merged`). Platform-wide, in batches of PlatformCleanup.BATCH_SIZE; each row is deleted by its own id, so
+// `customer.merged`), and the invitations that nobody accepted and that expired more than
+// `PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS` ago. Platform-wide, in batches of PlatformCleanup.BATCH_SIZE; each row is deleted by its own id, so
 // no store is read as a whole. A category that fails does not stop the others.
 @Injectable()
 export class PlatformCleaner {
@@ -48,6 +50,7 @@ export class PlatformCleaner {
       webhookDeliveries: 0,
       metricsHourly: 0,
       mergedCustomers: 0,
+      invitations: 0,
       more: []
     }
     const failed: Category[] = []
@@ -65,6 +68,10 @@ export class PlatformCleaner {
     ).toISOString()
     const hourlyCutoff = new Date(
       now.getTime() - DataRetentionPolicies.METRICS_HOURLY.defaultDays * DAY_MS
+    ).toISOString()
+
+    const invitationCutoff = new Date(
+      now.getTime() - PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS * DAY_MS
     ).toISOString()
 
     await run('sessions', () =>
@@ -117,6 +124,18 @@ export class PlatformCleaner {
       )
     )
     await run('mergedCustomers', () => this.mergedCustomers(now))
+    // `invitations` is outside RLS (the migrations skip it), so it runs platform-wide like the sessions: a store that
+    // cannot be entered does not stop it
+    await run('invitations', () =>
+      this.batches(
+        () => this.prisma.client.$executeRaw`
+          DELETE FROM invitations WHERE id IN (
+            SELECT id FROM invitations
+            WHERE status IN (${InvitationStatus.PENDING}, ${InvitationStatus.EXPIRED})
+              AND expires_at < (${invitationCutoff}::timestamptz AT TIME ZONE 'UTC')
+            ORDER BY expires_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
+      )
+    )
 
     this.logger.info(report, 'the platform cleanup finished')
     if (report.more.length > 0) {
