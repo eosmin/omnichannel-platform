@@ -288,3 +288,48 @@ describe('baseline helpers', () => {
     ).toEqual(['Gone'])
   })
 })
+
+describe('local methods of a provider', () => {
+  const service = `
+class SignedService {
+  constructor(private readonly storage: StorageService) {}
+  sign(id: string) { return this.storage.downloadUrl(id) }
+  signThenHead(id: string) { return this.storage.downloadUrl(id).then(() => this.storage.head(id)) }
+  head(id: string) { return this.storage.head(id) }
+}
+`
+  const controllerOf = (method: string) => `
+@Controller('files')
+class SignedController {
+  constructor(private readonly signed: SignedService) {}
+  @Get('x')
+  read() { return this.signed.${method}('1') }
+}
+`
+  const keys = (
+    method: string,
+    providers: Parameters<typeof unmarkedExternalRoutes>[1]
+  ): string[] =>
+    unmarkedExternalRoutes(
+      [
+        ...parseClasses('a/signed.service.ts', service),
+        ...parseClasses('a/signed.controller.ts', controllerOf(method))
+      ],
+      providers
+    ).map(r => r.key)
+  const LOCAL = [{ name: 'StorageService', reason: 'the bucket', localMethods: ['downloadUrl'] }]
+  const ALL = [{ name: 'StorageService', reason: 'the bucket' }]
+
+  it('flags a call to any method of the provider when none is declared local', () => {
+    expect(keys('sign', ALL)).toEqual(['a/signed.controller.ts#SignedController.read'])
+  })
+
+  it('does not flag a route that only calls a method declared local', () => {
+    expect(keys('sign', LOCAL)).toEqual([])
+  })
+
+  it('still flags a route that also calls a method that is not local', () => {
+    expect(keys('signThenHead', LOCAL)).toEqual(['a/signed.controller.ts#SignedController.read'])
+    expect(keys('head', LOCAL)).toEqual(['a/signed.controller.ts#SignedController.read'])
+  })
+})

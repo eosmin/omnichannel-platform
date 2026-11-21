@@ -26,6 +26,9 @@ import * as ts from 'typescript'
 export interface ExternalIoProvider {
   readonly name: string
   readonly reason: string
+  // Methods of the provider that compute locally and never touch the network (the presigned URLs of the bucket). A call to one of them
+  // is not I/O; every other method of the class still is. Each needs its reason in scripts/external-io-providers.ts.
+  readonly localMethods?: readonly string[]
 }
 
 interface ClassInfo {
@@ -366,7 +369,8 @@ function callReaches(
   call: Call,
   byName: ReadonlyMap<string, ClassInfo>,
   roots: ReadonlySet<string>,
-  external: ReadonlySet<string>
+  external: ReadonlySet<string>,
+  locals: ReadonlyMap<string, ReadonlySet<string>> = new Map()
 ): boolean {
   const chain = chainOf(owner, byName)
   if (call.field === undefined) {
@@ -374,9 +378,16 @@ function callReaches(
   }
   const target = chain.map(c => c.fields.get(call.field as string)).find(t => t !== undefined)
   if (target === undefined) return false
-  if (roots.has(target)) return true
+  if (roots.has(target)) return locals.get(target)?.has(call.method) !== true
   if (external.has(`${target}.${call.method}`)) return true
   return call.network && !byName.has(target)
+}
+
+// The local methods of each provider, by class name
+function localMethodsOf(
+  providers: readonly ExternalIoProvider[]
+): Map<string, ReadonlySet<string>> {
+  return new Map(providers.map(p => [p.name, new Set(p.localMethods ?? [])]))
 }
 
 // The names of the classes that are external providers: the listed ones and every class of a file that imports a network module. A
@@ -398,8 +409,9 @@ export function externalNodes(
   const roots = providerRoots(classes, providers)
   const byName = new Map(classes.map(c => [c.name, c]))
   const external = new Set<string>()
+  const locals = localMethodsOf(providers)
   const reaches = (owner: ClassInfo, call: Call): boolean =>
-    callReaches(owner, call, byName, roots, external)
+    callReaches(owner, call, byName, roots, external, locals)
   for (let changed = true; changed;) {
     changed = false
     for (const owner of classes) {
@@ -424,13 +436,16 @@ export function unmarkedExternalRoutes(
 ): ExternalRoute[] {
   const external = externalNodes(classes, providers)
   const roots = providerRoots(classes, providers)
+  const locals = localMethodsOf(providers)
   const byName = new Map(classes.map(c => [c.name, c]))
   const routes: ExternalRoute[] = []
   for (const owner of classes) {
     if (!owner.isController || owner.marked) continue
     for (const method of owner.methods) {
       if (method.marked || !method.decorators.some(name => ROUTE_DECORATORS.has(name))) continue
-      const reached = method.calls.find(call => callReaches(owner, call, byName, roots, external))
+      const reached = method.calls.find(call =>
+        callReaches(owner, call, byName, roots, external, locals)
+      )
       const why = method.directIo
         ? 'calls a remote API itself'
         : owner.importsNetwork
