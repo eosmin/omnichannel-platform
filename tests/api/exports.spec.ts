@@ -646,6 +646,10 @@ describe('Exports', () => {
       await owner.export.update({ where: { id: view.id }, data: { requestedBy: lost.id } })
       const hidden = await api(app, lost, ctx.storeA).get(`${ApiRoutes.exports.byId(view.id)}`)
       expect(hidden.status).toBe(NOT_FOUND)
+      // Nor does the Admin of another store, who holds the same permission, see or download it
+      const other = api(app, ctx.adminB, ctx.storeB)
+      expect((await other.get(ApiRoutes.exports.byId(view.id))).status).toBe(NOT_FOUND)
+      expect((await other.get(ApiRoutes.exports.download(view.id))).status).toBe(NOT_FOUND)
     })
   })
 

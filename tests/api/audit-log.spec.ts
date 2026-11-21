@@ -6,7 +6,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { AuditLogResourceTypes } from '@platform/core/domain'
+import { AuditLogResourceTypes, PaginationLimits } from '@platform/core/domain'
 import { ExportStatus, ExportTypes } from '@platform/core/queues'
 
 import { createRole } from '../builders'
@@ -21,6 +21,8 @@ const ACCEPTED = 202
 const FORBIDDEN = 403
 const BAD_REQUEST = 400
 const NOT_FOUND = 404
+// The audit entry is written after the answer: the time to wait before saying that one was NOT written
+const SETTLE_MS = 500
 
 interface EntryBody {
   id: string
@@ -214,9 +216,10 @@ describe('Audit log viewer', () => {
     expect(
       (await asAdmin().get(`${ApiRoutes.organizations.auditLog}?cursor=not-a-cursor`)).status
     ).toBe(BAD_REQUEST)
-    expect((await asAdmin().get(`${ApiRoutes.organizations.auditLog}?limit=101`)).status).toBe(
-      BAD_REQUEST
-    )
+    expect(
+      (await asAdmin().get(`${ApiRoutes.organizations.auditLog}?limit=${PaginationLimits.MAX + 1}`))
+        .status
+    ).toBe(BAD_REQUEST)
   })
 
   it('filters by action, person, resource and range, together', async () => {
@@ -291,6 +294,39 @@ describe('Audit log viewer', () => {
     })
     expect(viewed?.metadata).toEqual({ filters: { action: seen } })
     expect(viewed?.resourceType).toBe(AuditLogResourceTypes.AUDIT_LOG)
+  })
+
+  it('audits the first page of a reading once, not the next pages, and each read of one entry by id, not a refused one', async () => {
+    const kind = `${prefix}.audited-pages`
+    const row = await entry({ storeId: ctx.storeA.id, userId: ctx.adminA.id, action: kind })
+    await entry({ storeId: ctx.storeA.id, userId: ctx.adminA.id, action: kind })
+    const viewedOf = (resourceId?: string) =>
+      waitForAuditEntries(
+        owner,
+        {
+          storeId: ctx.storeA.id,
+          action: AuditAction.AUDIT_LOG_VIEWED,
+          ...(resourceId === undefined
+            ? { metadata: { path: ['filters', 'action'], equals: kind } }
+            : { resourceId })
+        },
+        1
+      )
+
+    const first = await list(`action=${kind}&limit=1`)
+    expect(await viewedOf()).toHaveLength(1)
+    await list(`action=${kind}&limit=1&cursor=${encodeURIComponent(first.nextCursor ?? '')}`)
+    await new Promise(resolve => setTimeout(resolve, SETTLE_MS))
+    expect(await viewedOf()).toHaveLength(1)
+
+    expect((await asAdmin().get(ApiRoutes.organizations.auditLogEntry(row.id))).status).toBe(OK)
+    expect(await viewedOf(row.id)).toHaveLength(1)
+    const refused = await entry({ storeId: ctx.storeB.id, userId: ctx.adminB.id, action: kind })
+    expect((await asAdmin().get(ApiRoutes.organizations.auditLogEntry(refused.id))).status).toBe(
+      NOT_FOUND
+    )
+    await new Promise(resolve => setTimeout(resolve, SETTLE_MS))
+    expect(await owner.auditLog.count({ where: { resourceId: refused.id } })).toBe(0)
   })
 
   it('asks for the same permission to export, and answers with the export of the center', async () => {

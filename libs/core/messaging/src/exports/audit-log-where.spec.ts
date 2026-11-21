@@ -30,15 +30,13 @@ describe('auditLogWhere', () => {
     })
     expect(auditLogWhere(STORE, { before })).toEqual({ storeId: STORE, timestamp: { lt: before } })
   })
-
-  it('cannot be pointed at another store by a filter: the store is not one', () => {
-    const where = auditLogWhere(STORE, { storeId: 'other' } as never)
-    expect(where.storeId).toBe(STORE)
-    expect(auditLogExportFiltersSchema.safeParse({ storeId: 'other' }).success).toBe(false)
-  })
 })
 
 describe('auditLogExportFiltersSchema', () => {
+  it('has no field for the store: the row of the export says it, never the filters', () => {
+    expect(auditLogExportFiltersSchema.safeParse({ storeId: 'other' }).success).toBe(false)
+  })
+
   it('reads what the api writes and refuses what does not fit', () => {
     expect(
       auditLogExportFiltersSchema.safeParse({ action: 'x', from: '2026-01-01T00:00:00.000Z' })
