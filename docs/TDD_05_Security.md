@@ -221,7 +221,8 @@ held by it. These routes therefore have:
    same budget), `SEARCH_CLICKS` 120/min and `CUSTOMER_LIST` 120/min. The address is irrelevant here.
 
 Both answer `429` with `Retry-After` (and `retryAfterSeconds` in the metadata). Each refusal of the second layer adds
-to `platform_rate_limit_hits_total{throttler="user:<profile>"}`. Like the first layer, it lets the request through and
+to `platform_rate_limit_hits_total{throttler="user:<profile>"}`; each counted request also observes the share of the budget already spent in
+`platform_rate_limit_budget_usage_ratio{throttler="user:<profile>"}` (a histogram, buckets 0.05 to 1, the throttler as the only label). Like the first layer, it lets the request through and
 logs when Redis fails: it is a protection, not a dependency. A new route that returns a list or a search over data of a
 store takes both decorators; the guard sits after the global ones, so it needs no `@Public()` handling.
 
@@ -231,7 +232,8 @@ store takes both decorators; the guard sits after the global ones, so it needs n
 top of the per-address default, so a person whose token is used from many addresses is counted as one, and it is counted
 apart from the `@UserRateLimit` profile of a route. Requests with no user (public routes, probes, the plugin API) are not
 counted by it (the per-address layer, or the limit of the credential, is all they have). Like the other layers it lets the request through and logs when Redis fails, answers `429` with
-`Retry-After`, and adds to `platform_rate_limit_hits_total{throttler="user:authenticated"}`.
+`Retry-After`, and adds to `platform_rate_limit_hits_total{throttler="user:authenticated"}`; it observes
+`platform_rate_limit_budget_usage_ratio{throttler="user:authenticated"}` too, which is what the fitting of the quota reads (Step 7.5).
 
 **Plan-aware limits for authenticated traffic.** The tracker is the store (so one busy
 agent cannot starve a colleague) and the limit comes from the effective plan:

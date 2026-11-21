@@ -1125,7 +1125,9 @@ Versioning keeps what the application deletes: the conversation-deletion and ret
 marker. The lifecycle of the production bucket (owner, 2026-11-21) is a rule `NoncurrentVersionExpiration` of 30
 days, so the deleted bytes of a customer do not stay for ever (until they expire a deletion is recoverable by
 whoever holds the bucket), and a rule `AbortIncompleteMultipartUpload` after 7 days, so an upload that never
-finished does not keep its parts:
+finished does not keep its parts. `put-bucket-lifecycle-configuration` REPLACES every rule of the bucket: when the
+bucket already holds others, read them with `get-bucket-lifecycle-configuration` and send the merged set (the replica
+bucket needs versioning, and gets the same rules):
 
 ```bash
 aws s3api put-bucket-lifecycle-configuration --bucket platform-production \
@@ -1133,7 +1135,8 @@ aws s3api put-bucket-lifecycle-configuration --bucket platform-production \
 ```
 
 The sweep that re-encodes the pictures stored before the metadata cleaning (`ExistingPictureSanitizer`) replaces the
-original in place, so versioning is its way back: it does not run in production while the versioning gap above reads 1. Replication is not checked here. The 7-year cold retention of the audit archive is a separate feature and
+original in place, so versioning is its way back: it must not run in production while the versioning gap above reads 1 (the guard that enforces it in the scheduler is
+a task of Step 7.3 of the plan; until it exists, leave the sweep off in production by hand). Replication is not checked here. The 7-year cold retention of the audit archive is a separate feature and
 is not part of this check.
 
 ### 7.4 Kubernetes backups (Phase 2 only)

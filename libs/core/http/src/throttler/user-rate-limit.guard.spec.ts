@@ -61,6 +61,16 @@ describe('UserRateLimitGuard', () => {
     )
   })
 
+  it('records the share of the budget spent, by the throttler of the profile', async () => {
+    const increment = jest.fn().mockResolvedValue({ ...record(false), totalHits: 6 })
+    const { guard, observe } = build(increment)
+    await guard.canActivate(contextOf(limited, { id: 'u1' }))
+    expect(observe).toHaveBeenCalledWith(
+      { throttler: 'user:search' },
+      6 / UserRateLimits.SEARCH.limit
+    )
+  })
+
   it('refuses with a 429 that says how long to wait, and counts the refusal', async () => {
     const { guard, inc } = build(jest.fn().mockResolvedValue(record(true, 17)))
     const refusal: unknown = await guard
