@@ -6,7 +6,6 @@ import type { Redis } from 'ioredis'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions, RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
-import { RLS_CONTEXT_ENABLED } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { MediaStatus } from '@platform/core/domain'
 import { ErrorCodes, HttpHeaders } from '@platform/core/errors'
@@ -297,11 +296,10 @@ describe('Media upload', () => {
       const first = await asAgent().post(ApiRoutes.media.confirmUpload).send(confirmBody(upload))
       spy.mockRestore()
       expect(first.status).toBe(INTERNAL_SERVER_ERROR)
-      // One request, one transaction under RLS_CONTEXT: the row goes with the 500. Without it the row stays, and the retry
-      // takes the path of an existing row. Both are pinned, and either way the retry confirms and queues once.
-      const rolledBack =
-        app.get<boolean | undefined>(RLS_CONTEXT_ENABLED, { strict: false }) === true
-      expect(await owner.media.count({ where: { id: upload.mediaId } })).toBe(rolledBack ? 0 : 1)
+      // The scan is queued by afterCommitStep, after the REAL commit, with or without RLS_CONTEXT: a queue that is down fails the request
+      // after the row was saved, so the row stays in both modes (before, under RLS_CONTEXT the row went with the 500 because the add
+      // ran inside the one transaction of the request) and the retry takes the path of an existing row
+      expect(await owner.media.count({ where: { id: upload.mediaId } })).toBe(1)
 
       const retry = await asAgent().post(ApiRoutes.media.confirmUpload).send(confirmBody(upload))
       expect(retry.status).toBe(OK)
