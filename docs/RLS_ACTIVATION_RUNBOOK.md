@@ -16,7 +16,7 @@ This is run by the OWNER, never by a session or by the CI. It turns on, in this 
 - `DATABASE_REPLICA_URL`, when it is set, names `platform_replica_ro` (the api refuses to start if the role can write on a server
   that is not a standby, or skips row level security; `libs/core/database/src/replica-role.ts`).
 - Never use real customer data to rehearse: staging with synthetic data.
-- `SHOW timezone` on the connections of the api and of the worker answers `UTC`. The timestamp columns hold UTC wall time (written by the Prisma client), and the cutoff of the read receipts of a bulk `MARK_READ` is compared as UTC text, so a connection set to another zone would let a receipt point at a message that arrived after the batch began, or leave one out.
+- `SHOW timezone` answers `UTC` on a session of each role the processes use (`platform_app` through the pooler the api connects by, and `platform_worker`), not on an admin connection. The bulk `MARK_READ` compares its receipt cutoff as UTC text and the Prisma client writes UTC wall time, so the zone of the session only matters for a value a database default writes into those columns: if it is not UTC, set it for the role (`ALTER ROLE ... SET timezone = 'UTC'`) before the activation.
 
 ## 1. Deploy with both flags off
 

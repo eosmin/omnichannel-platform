@@ -129,8 +129,9 @@ describe('RLS phase 6: a bulk action of conversations under enforcement', () => 
     expect(read.toSorted()).toEqual([first, third].toSorted())
   })
 
-  // Measures, it does not judge: the activation waits on this number (more than about 8 s means batches of its own)
-  it('marks as read a bulk of the full limit in one answer, and says how long it took', async () => {
+  // Counts the work and still says how long it took: the activation read the number (about 3 s for 500, five times under the 15 s limit
+  // of the transaction), so it is no longer a judge of time; a batch over that limit comes back as an error, not as the 200 asserted here
+  it('marks as read a bulk of the full limit in one answer, with one lookup of receipts for the batch, and says how long it took', async () => {
     await quietTables(owner, PLAN_SPEC_TABLES)
     const ids = await seed(BulkLimits.MAX_ITEMS)
     // The work is counted, not timed: a batch asks for its receipts and widget notices ONCE (two queries), never one conversation at a
@@ -164,7 +165,10 @@ describe('RLS phase 6: a bulk action of conversations under enforcement', () => 
 
   // ROUND_ROBIN_TO_TEAM goes through the same savepoint per item and reads the loads of the people it shares between: under
   // enforcement the whole bulk is one transaction, so the people and their loads are read inside it
-  it('shares the conversations nobody has between the people named, in the one transaction of the bulk', async () => {
+  it('shares the conversations nobody has between the people named, under enforcement', async () => {
+    const openLoad = (userId: string) =>
+      owner.conversation.count({ where: { storeId: ctx.storeA.id, assignedTo: userId } })
+    const before = [await openLoad(ctx.agentA.id), await openLoad(ctx.adminA.id)] as const
     const ids = await seed(4)
     const response = await bulk({
       action: BulkActions.ROUND_ROBIN_TO_TEAM,
@@ -179,9 +183,14 @@ describe('RLS phase 6: a bulk action of conversations under enforcement', () => 
       where: { id: { in: ids } },
       select: { assignedTo: true }
     })
-    const loadOf = (userId: string) => rows.filter(row => row.assignedTo === userId).length
-    expect(loadOf(ctx.agentA.id) + loadOf(ctx.adminA.id)).toBe(4)
-    expect(Math.abs(loadOf(ctx.agentA.id) - loadOf(ctx.adminA.id))).toBeLessThanOrEqual(1)
+    // The loads of the two people may not be zero (other cases of the file): the four go to the least loaded first, so the gap never
+    // grows past what it was, or past one
+    const after = [await openLoad(ctx.agentA.id), await openLoad(ctx.adminA.id)] as const
+    expect(rows.filter(row => row.assignedTo !== null)).toHaveLength(4)
+    expect(after[0] - before[0] + (after[1] - before[1])).toBe(4)
+    expect(Math.abs(after[0] - after[1])).toBeLessThanOrEqual(
+      Math.max(Math.abs(before[0] - before[1]), 1)
+    )
   })
 
   // A savepoint does not save a transaction that is gone: the answer must be an error, never a 200 that names as done what the

@@ -358,13 +358,13 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
   it('keeps the reads of the batch when the lookup of the receipts fails in the database', async () => {
     const rows = await seed(1)
     const ids = rows.map(row => row.id)
-    // A real database error (22012), raised inside the same transaction as the reads, where the lookup would have run
-    jest
-      .spyOn(
-        ReadReceipts.prototype as unknown as Record<string, (...a: unknown[]) => unknown>,
-        'latestToMarkMany'
-      )
-      .mockImplementation(() => guarded.client.$queryRaw`SELECT 1 / 0`)
+    // A real database error (22012), raised inside the same transaction as the reads, where the lookup would have run; only the first
+    // call fails, so the sibling batch below goes through the real lookups
+    const lookup = jest.spyOn(
+      ReadReceipts.prototype as unknown as Record<string, (...a: unknown[]) => unknown>,
+      'latestToMarkMany'
+    )
+    lookup.mockImplementationOnce(() => guarded.client.$queryRaw`SELECT 1 / 0`)
     const response = await api(app, ctx.adminA, ctx.storeA)
       .post(ApiRoutes.conversations.bulk)
       .send({ action: BulkActions.MARK_READ, conversationIds: ids })
@@ -374,8 +374,17 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
     expect(
       await owner.conversation.count({ where: { id: { in: ids }, unreadCount: { gt: 0 } } })
     ).toBe(0)
-    expect(enqueued).toEqual([])
     expect(JSON.stringify(warnings)).toContain('could not be queued')
+    // A sibling batch that IS told, so that "no receipt for the first" means "the commit ran and left it out"
+    warnings = []
+    const siblings = await seed(1)
+    await bulk(
+      siblings.map(row => row.id),
+      withChannelId(siblings)
+    )
+    const told = new Set(enqueued.map(job => job.conversationId))
+    expect(ids.some(id => told.has(id))).toBe(false)
+    expect(told.size).toBe(withChannelId(siblings))
   }, 60_000)
 
   // A plugin reads without telling the customer that a person saw it: the same batch run as a plugin queues and emits nothing, and
@@ -406,6 +415,12 @@ describe('Bulk MARK_READ: receipts and widget notices by batch', () => {
     )
     expect(result.failed).toEqual([])
     expect(result.succeeded).toHaveLength(pluginRows.length)
+    // The plugin read counts as a read, only nobody is told
+    expect(
+      await owner.conversation.count({
+        where: { id: { in: pluginRows.map(row => row.id) }, unreadCount: { gt: 0 } }
+      })
+    ).toBe(0)
     expect(enqueued).toEqual([])
     expect(emitted).toEqual([])
     const person = await bulk(
