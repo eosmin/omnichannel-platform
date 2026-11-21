@@ -80,7 +80,7 @@ export const STATIC_SECURITY_HEADERS: ReadonlyArray<{ key: string; value: string
   { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=()' },
   // The old twin of `frame-ancestors 'none'`, for the browsers that ignore the CSP directive
   { key: 'X-Frame-Options', value: 'DENY' },
-  // A page of another origin gets no handle on this one; popups stay allowed because the sign-in and the channel
-  // connection flows open one and read it back, which `same-origin` would cut
-  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' }
+  // No window of another origin keeps a handle on this one. Nothing in the app depends on an opener: the OAuth flows
+  // are full-page redirects and downloads open with `noopener`
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' }
 ]

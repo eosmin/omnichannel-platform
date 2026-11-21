@@ -12,7 +12,7 @@ test.describe('security headers of the web app', () => {
     const headers = response.headers()
 
     expect(headers['x-frame-options']).toBe('DENY')
-    expect(headers['cross-origin-opener-policy']).toBe('same-origin-allow-popups')
+    expect(headers['cross-origin-opener-policy']).toBe('same-origin')
     expect(headers['x-content-type-options']).toBe('nosniff')
     expect(headers['strict-transport-security']).toContain('max-age=31536000')
     expect(headers['x-powered-by']).toBeUndefined()
@@ -20,6 +20,15 @@ test.describe('security headers of the web app', () => {
     expect(policy).toContain("frame-ancestors 'none'")
     expect(policy).toContain("object-src 'none'")
     expect(policy).toContain("frame-src 'none'")
+  })
+
+  test('a redirect to the login carries them too', async ({ request }) => {
+    const response = await request.get('/org/stores', { maxRedirects: 0 })
+
+    expect(response.status()).toBeGreaterThanOrEqual(300)
+    expect(response.status()).toBeLessThan(400)
+    expect(response.headers()['x-frame-options']).toBe('DENY')
+    expect(response.headers()['cross-origin-opener-policy']).toBe('same-origin')
   })
 
   test('the nonce of the policy is new on every request', async ({ request }) => {

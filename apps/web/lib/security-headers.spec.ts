@@ -145,10 +145,10 @@ describe('STATIC_SECURITY_HEADERS', () => {
     ])
   })
 
-  it('refuses framing for browsers that ignore frame-ancestors, and keeps popups (the OAuth flows) working', () => {
+  it('refuses framing for browsers that ignore frame-ancestors, and cuts the opener handle of other origins', () => {
     const value = (key: string): string | undefined =>
       STATIC_SECURITY_HEADERS.find(header => header.key === key)?.value
     expect(value('X-Frame-Options')).toBe('DENY')
-    expect(value('Cross-Origin-Opener-Policy')).toBe('same-origin-allow-popups')
+    expect(value('Cross-Origin-Opener-Policy')).toBe('same-origin')
   })
 })
