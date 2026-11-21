@@ -25,7 +25,6 @@ CREATE OR REPLACE FUNCTION public.rls_search_order_customers(
     SELECT c.id
     FROM public.customers c
     WHERE c.store_id = ANY (v_stores)
-      AND c.erased_at IS NULL
       AND (
         c.name ILIKE p_name ESCAPE '\'
         OR c.email ILIKE p_email ESCAPE '\'

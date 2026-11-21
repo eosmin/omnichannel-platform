@@ -105,25 +105,42 @@ describe('the customers function of the orders search under row-level security',
     expect(await idsIn([storeB], `%orfeo ${tag}%`, `%orfeo ${tag}%`, null)).toEqual([alien.id])
   })
 
-  it('does not find a customer who was erased, by name, e-mail or phone, and still finds the same text for a live one', async () => {
-    const live = await owner.customer.create({
-      data: { storeId: storeA, name: `Erasa ${tag}`, email: `live-erased-${tag}@example.invalid` },
-      select: { id: true }
+  it('does not find a customer who was erased, by name, e-mail or phone, and still finds a live one by the same branch', async () => {
+    // Its own tag: the e-mails of this case must not match the pattern of the first one
+    const erasedTag = `${tag}er`
+    const live = await createCustomer(owner, {
+      storeId: storeA,
+      name: `Viva ${erasedTag}`,
+      phone: '+503 7777-0002'
     })
-    const erased = await owner.customer.create({
-      data: {
-        storeId: storeA,
-        name: `Erasa ${tag} olvidada`,
-        email: `gone-erased-${tag}@example.invalid`,
-        phone: '+503 7777-0002',
-        erasedAt: new Date()
-      },
-      select: { id: true }
+    await owner.customer.update({
+      where: { id: live.id },
+      data: { email: `live-${erasedTag}@example.invalid` }
     })
-    expect(await idsIn([storeA], `%erasa ${tag}%`, `%erasa ${tag}%`, null)).toEqual([live.id])
-    expect(await idsIn([storeA], '%zzzz-none%', `%gone-erased-${tag}@%`, null)).toEqual([])
-    expect(await idsIn([storeA], '%zzzz-none%', '%zzzz-none%', '%50377770002%')).toEqual([])
-    expect(erased.id).not.toBe(live.id)
+    const erased = await createCustomer(owner, {
+      storeId: storeA,
+      name: `Olvidada ${erasedTag}`,
+      phone: '+503 7777-0003'
+    })
+    await owner.customer.update({
+      where: { id: erased.id },
+      data: { email: `gone-${erasedTag}@example.invalid`, erasedAt: new Date() }
+    })
+    const none = '%zzzz-none%'
+    // Name, e-mail and phone: each branch finds the live customer and not the erased one
+    expect(await idsIn([storeA], `%viva ${erasedTag}%`, none, null)).toEqual([live.id])
+    expect(await idsIn([storeA], `%olvidada ${erasedTag}%`, none, null)).toEqual([])
+    expect(await idsIn([storeA], none, `%live-${erasedTag}@%`, null)).toEqual([live.id])
+    expect(await idsIn([storeA], none, `%gone-${erasedTag}@%`, null)).toEqual([])
+    expect(await idsIn([storeA], none, none, '%50377770002%')).toEqual([live.id])
+    expect(await idsIn([storeA], none, none, '%50377770003%')).toEqual([])
+    // An absorbed customer who was also erased is not found either
+    const both = await createCustomer(owner, { storeId: storeA, name: `Fusion ${erasedTag}` })
+    await owner.customer.update({
+      where: { id: both.id },
+      data: { mergedIntoId: live.id, erasedAt: new Date() }
+    })
+    expect(await idsIn([storeA], `%fusion ${erasedTag}%`, none, null)).toEqual([])
   })
 
   it('refuses a limit that is missing, zero or past 10001, and a missing name or e-mail pattern', async () => {
