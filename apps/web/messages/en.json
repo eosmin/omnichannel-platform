@@ -252,7 +252,8 @@
     },
     "save": "Save choices",
     "saved": "Your cookie preferences were saved",
-    "syncFailed": "Your choice is saved in this browser. We could not send it to the server; we will try again."
+    "syncFailed": "Your choice is saved in this browser. We could not send it to the server; we will try again.",
+    "panelLoadFailed": "The cookie preferences could not be opened. Try again."
   },
   "conversations": {
     "status": {

@@ -4,26 +4,22 @@ import { type ComponentType, type ReactElement, useEffect, useState } from 'reac
 
 import { COOKIE_PREFERENCES_OPEN_EVENT } from '@platform/core/domain'
 
-import { isSettled } from '../../lib/cookie-consent/cookie-settled'
-
 import type { CookieConsentUiProps } from './cookie-consent-ui'
 
-// This sits in every screen of the app, so the check that almost always ends it is one `includes` on the cookie header, and the
-// banner and its panel are a chunk fetched only when there is something to draw: a visitor who has not answered, a choice that was
-// made for an older policy text, a choice the api does not have yet, or a button that asks for the panel. It is imported by hand
-// and not with `next/dynamic`, which throws in render when the chunk cannot be loaded: a banner must never take the page down.
+// The layout draws this only for a visitor who has something to answer (no answer yet, an answer for an older policy text, or one the
+// api does not have yet: `isSettled` on the cookie header, on the server), so a visitor who already answered ships none of this code.
+// The banner and its panel are a chunk fetched by hand and not with `next/dynamic`, which throws in render when the chunk cannot be
+// loaded: a banner must never take the page down. A button that asks for the panel is answered here (`preventDefault` tells it
+// so); a failed load is tried again on the next ask.
 export function CookieConsentGate(): ReactElement | null {
   const [Loaded, setLoaded] = useState<ComponentType<CookieConsentUiProps> | null>(null)
-  const [requested, setRequested] = useState(false)
   const [panelFirst, setPanelFirst] = useState(false)
-  // A button asks again after a chunk that did not arrive
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    if (!isSettled(document.cookie)) setRequested(true)
-    const onOpen = (): void => {
+    const onOpen = (event: Event): void => {
+      event.preventDefault()
       setPanelFirst(true)
-      setRequested(true)
       setAttempt(count => count + 1)
     }
     window.addEventListener(COOKIE_PREFERENCES_OPEN_EVENT, onOpen)
@@ -31,7 +27,7 @@ export function CookieConsentGate(): ReactElement | null {
   }, [])
 
   useEffect(() => {
-    if (!requested || Loaded !== null) return
+    if (Loaded !== null) return
     let current = true
     import('./cookie-consent-ui').then(
       module => {
@@ -43,7 +39,7 @@ export function CookieConsentGate(): ReactElement | null {
     return () => {
       current = false
     }
-  }, [requested, Loaded, attempt])
+  }, [Loaded, attempt])
 
   return Loaded === null ? null : <Loaded openPanelOnMount={panelFirst} />
 }

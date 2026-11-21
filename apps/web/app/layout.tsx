@@ -11,6 +11,7 @@ import { AppProviders } from '../components/providers/app-providers'
 import { DestructiveActionProvider } from '../components/shared/destructive-action'
 import { BusyAnnouncer } from '../components/shell/busy-announcer'
 import { ToasterHost } from '../components/ui/toaster-host'
+import { isSettled } from '../lib/cookie-consent/cookie-settled'
 import { parseFrameOrigins } from '../lib/plugin-frames'
 
 import './globals.css'
@@ -28,8 +29,9 @@ export default async function RootLayout({
 }): Promise<ReactNode> {
   const locale = await getLocale()
   // What the proxy let the policy frame for this store: the page reads it to know whether a widget can load here
+  const requestHeaders = await headers()
   const frameOrigins = parseFrameOrigins(
-    (await headers()).get(PluginWidgetFrames.ORIGINS_HEADER) ?? undefined,
+    requestHeaders.get(PluginWidgetFrames.ORIGINS_HEADER) ?? undefined,
     []
   ).join(PluginWidgetFrames.COOKIE_SEPARATOR)
   return (
@@ -42,7 +44,7 @@ export default async function RootLayout({
           <AppProviders>
             <DestructiveActionProvider>{children}</DestructiveActionProvider>
           </AppProviders>
-          <CookieConsentGate />
+          {isSettled(requestHeaders.get('cookie') ?? '') ? null : <CookieConsentGate />}
           <ToasterHost />
           <BusyAnnouncer />
         </NextIntlClientProvider>

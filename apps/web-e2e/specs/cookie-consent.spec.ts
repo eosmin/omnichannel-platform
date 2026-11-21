@@ -229,3 +229,38 @@ test.describe('the cookie banner', () => {
     expect(await scrollHeight()).toBe(heightWithout)
   })
 })
+
+// The default context of `test` is a visitor who already answered (everything optional off): the page draws no banner and ships none
+// of its code, and the button fetches the panel when it is asked for
+test.describe('a visitor who already answered', () => {
+  test('changes the choice from the button, which shows what is saved', async ({
+    page,
+    context
+  }) => {
+    await page.goto(AppPaths.login)
+    await expect(page.getByRole('heading', { name: en.login.title })).toBeVisible()
+    await expect(banner(page)).toHaveCount(0)
+
+    await page.getByRole('button', { name: t.openPreferences }).click()
+    const dialog = page.getByRole('dialog', { name: t.panelTitle })
+    await expect(dialog).toBeVisible()
+    const functional = dialog.getByRole('checkbox', { name: t.categories.functional.label })
+    await expect(functional).not.toBeChecked()
+    await functional.check()
+    const call = page.waitForResponse(response => isConsentCall(response.url()))
+    await dialog.getByRole('button', { name: t.save }).click()
+    expect((await call).request().postDataJSON()).toMatchObject({
+      visitorId: ANSWERED_VISITOR_ID,
+      categories: { functional: true, analytics: false, marketing: false }
+    })
+    await expect.poll(() => storedChoice(context)).toContain(`${COOKIE_POLICY_VERSION}.1.100.`)
+
+    // Asked again, the panel opens again with what was just saved
+    await page.getByRole('button', { name: t.openPreferences }).click()
+    await expect(
+      page
+        .getByRole('dialog', { name: t.panelTitle })
+        .getByRole('checkbox', { name: t.categories.functional.label })
+    ).toBeChecked()
+  })
+})

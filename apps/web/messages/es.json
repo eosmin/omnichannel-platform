@@ -252,7 +252,8 @@
     },
     "save": "Guardar elección",
     "saved": "Se guardaron tus preferencias de cookies",
-    "syncFailed": "Tu elección quedó guardada en este navegador. No pudimos enviarla al servidor; lo intentaremos de nuevo."
+    "syncFailed": "Tu elección quedó guardada en este navegador. No pudimos enviarla al servidor; lo intentaremos de nuevo.",
+    "panelLoadFailed": "No se pudieron abrir las preferencias de cookies. Intenta de nuevo."
   },
   "conversations": {
     "status": {
