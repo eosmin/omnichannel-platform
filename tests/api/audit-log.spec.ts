@@ -57,7 +57,7 @@ describe('Audit log viewer', () => {
     resourceType?: string
     resourceId?: string
     timestamp?: Date
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, number | string>
   }): Promise<{ id: string }> {
     return owner.auditLog.create({
       data: {
