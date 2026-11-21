@@ -5,6 +5,8 @@ import type { Locale } from '@platform/core/i18n'
 import { createTranslator, type Translator } from '@platform/core/i18n-server'
 import { type EmailTemplate, EmailTemplates } from '@platform/core/queues'
 
+import { DsrResult, dsrResultSchema } from './dsr-result'
+import { DsrVerification, dsrVerificationSchema } from './dsr-verification'
 import { Invitation, invitationSchema } from './invitation'
 import { MagicLink, magicLinkSchema } from './magic-link'
 import { NotificationDigest, notificationDigestSchema } from './notification-digest'
@@ -76,6 +78,16 @@ export const templateRegistry: Record<EmailTemplate, RegisteredTemplate> = {
       store: inSubject(props.storeName)
     }),
     element: (props, locale, t) => OrderMessage({ ...props, locale, t })
+  }),
+  [EmailTemplates.DSR_VERIFICATION]: define({
+    namespace: 'email.dsrVerification',
+    schema: dsrVerificationSchema,
+    element: (props, locale, t) => DsrVerification({ ...props, locale, t })
+  }),
+  [EmailTemplates.DSR_RESULT]: define({
+    namespace: 'email.dsrResult',
+    schema: dsrResultSchema,
+    element: (props, locale, t) => DsrResult({ ...props, locale, t })
   }),
   [EmailTemplates.SCHEDULED_REPORT]: define({
     namespace: 'email.scheduledReport',

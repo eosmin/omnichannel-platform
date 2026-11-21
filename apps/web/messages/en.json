@@ -576,6 +576,48 @@
         "orders_revenue": "Revenue"
       },
       "notAttached": "The file with the detail is too big for an email: it is in the exports center of the store."
+    },
+    "dsrVerification": {
+      "subject": "Confirm your data request",
+      "heading": "Confirm your request",
+      "body": "Someone asked for {type}. Confirm it with the button below; nothing happens until you do.",
+      "cta": "Confirm the request",
+      "fallback": "If the button does not work, copy this link into your browser:",
+      "expiry": "This link works once and expires in {days} days.",
+      "ignore": "If you did not ask for it, you can ignore this email and nothing will be done.",
+      "types": {
+        "access": "access to your data",
+        "portability": "a copy of your data",
+        "rectification": "correction of your data",
+        "erasure": "erasure of your data",
+        "restriction": "restriction of the use of your data",
+        "objection": "objection to the use of your data"
+      }
+    },
+    "dsrResult": {
+      "subject": "About your data request",
+      "completed": {
+        "heading": "Your request was completed",
+        "body": "Your request for {type} was completed."
+      },
+      "rejected": {
+        "heading": "Your request was not accepted",
+        "body": "Your request for {type} was not accepted. You can write to the store if you want to know why."
+      },
+      "expired": {
+        "heading": "Your request expired",
+        "body": "Your request for {type} was not confirmed in time, so it was closed. You can make a new one."
+      },
+      "retained": "The store keeps {orders} orders and their invoices because the law requires it for tax purposes (legal obligation).",
+      "footer": "This is an automatic message.",
+      "types": {
+        "access": "access to your data",
+        "portability": "a copy of your data",
+        "rectification": "correction of your data",
+        "erasure": "erasure of your data",
+        "restriction": "restriction of the use of your data",
+        "objection": "objection to the use of your data"
+      }
     }
   },
   "errorPage": {
@@ -609,6 +651,10 @@
     "CUSTOMER_UNMERGE_WINDOW_EXPIRED": "The time to undo the merge is over",
     "DSR_ALREADY_COMPLETED": "The data request is already completed",
     "DSR_VERIFICATION_INVALID": "The verification of the data request is not valid",
+    "DSR_SUBJECT_CHANGED": "The customer of this request changed, so it goes back to review",
+    "DSR_BLOCKED_BY_OPEN_WORK": "The customer has open orders, shipments, returns, remittances or balances, so the data cannot be erased yet",
+    "DSR_EXECUTOR_UNAVAILABLE": "Erasure requests cannot be approved yet",
+    "DSR_NOT_REVIEWABLE": "The data request is not in a state that takes this decision",
     "EXPORT_EMPTY": "There are no files to download",
     "REPORT_LIMIT_REACHED": "This store already has the maximum number of scheduled reports",
     "EXPORT_EXPIRED": "The export has expired. Create it again",

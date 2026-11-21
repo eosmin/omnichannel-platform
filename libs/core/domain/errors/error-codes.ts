@@ -301,6 +301,14 @@ export const ErrorCodes = {
   // Compliance
   DSR_VERIFICATION_INVALID: 'DSR_VERIFICATION_INVALID',
   DSR_ALREADY_COMPLETED: 'DSR_ALREADY_COMPLETED',
+  // The customer behind a request no longer matches it (the address changed or the customer was erased): it goes back to review
+  DSR_SUBJECT_CHANGED: 'DSR_SUBJECT_CHANGED',
+  // Open orders, shipments, returns, remittances or balances stop an erasure (the counts travel in the metadata)
+  DSR_BLOCKED_BY_OPEN_WORK: 'DSR_BLOCKED_BY_OPEN_WORK',
+  // Nothing carries out an approved erasure yet (Step 7.2-H2b): approving one would promise what no one will do
+  DSR_EXECUTOR_UNAVAILABLE: 'DSR_EXECUTOR_UNAVAILABLE',
+  // The request is not in a state that takes this decision
+  DSR_NOT_REVIEWABLE: 'DSR_NOT_REVIEWABLE',
 
   // External
   EXTERNAL_SERVICE_ERROR: 'EXTERNAL_SERVICE_ERROR',

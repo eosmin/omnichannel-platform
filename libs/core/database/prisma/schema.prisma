@@ -66,6 +66,7 @@ model Store {
   organizationId String   @map("organization_id")
   name           String
   slug           String
+  dsrPublicKey   String?  @unique @map("dsr_public_key") // The key of the public form of data requests; NULL = none taken
   timezone       String   @default("America/El_Salvador")
   currency       String   @default("USD")
   defaultLocale  String   @default("es") @map("default_locale")
@@ -1726,6 +1727,13 @@ model DataSubjectRequest {
   subjectId              String?   @map("subject_id")
   subjectEmail           String?   @map("subject_email")
   subjectPhone           String?   @map("subject_phone")
+  subjectEmailHash       String?   @map("subject_email_hash") // HMAC of the address that asked: the limit and the duplicate check
+  reviewedBy             String?   @map("reviewed_by")
+  reviewedAt             DateTime? @map("reviewed_at")
+  subjectCustomerIds     String[]  @default([]) @map("subject_customer_ids") // The customers of the store that had the address when the request was made
+  notifyToEncrypted      Bytes?    @map("notify_to_encrypted") // Where the closing mail goes (AES-GCM); NULL once the request ends
+  approvals              Json      @default("[]") // Who approved and when (ids only)
+  erasureDueAt           DateTime? @map("erasure_due_at") // End of the grace period of an approved erasure
   requestedBy            String?   @map("requested_by")
   requestedAt            DateTime  @default(now()) @map("requested_at")
   deadlineAt             DateTime  @map("deadline_at")

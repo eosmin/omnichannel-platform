@@ -576,6 +576,48 @@
         "orders_revenue": "Ingresos"
       },
       "notAttached": "El archivo con el detalle no cabe en un correo: está en el centro de exportaciones de la tienda."
+    },
+    "dsrVerification": {
+      "subject": "Confirma tu solicitud de datos",
+      "heading": "Confirma tu solicitud",
+      "body": "Alguien pidió {type}. Confírmalo con el botón de abajo; no pasa nada hasta que lo hagas.",
+      "cta": "Confirmar la solicitud",
+      "fallback": "Si el botón no funciona, copia este enlace en tu navegador:",
+      "expiry": "Este enlace funciona una sola vez y expira en {days} días.",
+      "ignore": "Si no lo pediste, puedes ignorar este correo y no se hará nada.",
+      "types": {
+        "access": "acceso a tus datos",
+        "portability": "una copia de tus datos",
+        "rectification": "corrección de tus datos",
+        "erasure": "borrado de tus datos",
+        "restriction": "restricción del uso de tus datos",
+        "objection": "oposición al uso de tus datos"
+      }
+    },
+    "dsrResult": {
+      "subject": "Sobre tu solicitud de datos",
+      "completed": {
+        "heading": "Tu solicitud se completó",
+        "body": "Tu solicitud de {type} se completó."
+      },
+      "rejected": {
+        "heading": "Tu solicitud no fue aceptada",
+        "body": "Tu solicitud de {type} no fue aceptada. Puedes escribir a la tienda si quieres saber por qué."
+      },
+      "expired": {
+        "heading": "Tu solicitud venció",
+        "body": "Tu solicitud de {type} no se confirmó a tiempo y se cerró. Puedes hacer una nueva."
+      },
+      "retained": "La tienda conserva {orders} pedidos y sus facturas porque la ley lo exige por razones de impuestos (obligación legal).",
+      "footer": "Este es un mensaje automático.",
+      "types": {
+        "access": "acceso a tus datos",
+        "portability": "una copia de tus datos",
+        "rectification": "corrección de tus datos",
+        "erasure": "borrado de tus datos",
+        "restriction": "restricción del uso de tus datos",
+        "objection": "oposición al uso de tus datos"
+      }
     }
   },
   "errorPage": {
@@ -609,6 +651,10 @@
     "CUSTOMER_UNMERGE_WINDOW_EXPIRED": "Pasó el tiempo para deshacer la fusión",
     "DSR_ALREADY_COMPLETED": "La solicitud de datos ya está completada",
     "DSR_VERIFICATION_INVALID": "La verificación de la solicitud de datos no es válida",
+    "DSR_SUBJECT_CHANGED": "El cliente de esta solicitud cambió, por eso vuelve a revisión",
+    "DSR_BLOCKED_BY_OPEN_WORK": "El cliente tiene pedidos, envíos, devoluciones, remesas o saldos abiertos, por eso todavía no se pueden borrar sus datos",
+    "DSR_EXECUTOR_UNAVAILABLE": "Todavía no se pueden aprobar solicitudes de borrado",
+    "DSR_NOT_REVIEWABLE": "La solicitud de datos no está en un estado que admita esta decisión",
     "EXPORT_EMPTY": "No hay archivos para descargar",
     "REPORT_LIMIT_REACHED": "Esta tienda ya tiene el máximo de reportes programados",
     "EXPORT_EXPIRED": "La exportación expiró. Créala de nuevo",

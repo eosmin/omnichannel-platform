@@ -30,6 +30,8 @@ export const Permissions = {
   CUSTOMERS_FLAG_CAUTION: 'customers:flag_caution',
   // Erase the personal data of a customer (Step 7.2): irreversible, so it is not part of `customers:delete`
   CUSTOMERS_ERASE: 'customers:erase',
+  // Review and decide the data subject requests of the store (Step 7.2-H, TDD_05 §10.2): approving an erasure request erases
+  CUSTOMERS_DSR_REVIEW: 'customers:dsr_review',
 
   // Orders
   ORDERS_VIEW: 'orders:view',

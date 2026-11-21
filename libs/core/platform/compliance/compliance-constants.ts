@@ -1,5 +1,10 @@
 import type { RetentionField } from '@platform/core/domain'
 
+// Whether the executor of approved erasures exists (the sweep of Step 7.2-H2b). A function, not a bare constant read in a condition: the
+// day it ships this returns true and nothing else changes
+export const dsrExecutorAvailable = (): boolean => DSR_EXECUTOR_AVAILABLE
+const DSR_EXECUTOR_AVAILABLE = false
+
 export const ComplianceConfig = {
   DSR_RESPONSE_DEADLINE_DAYS: 30,
   DSR_DEADLINE_ALERT_DAY: 25,
@@ -14,7 +19,15 @@ export const ComplianceConfig = {
   // marked: a write that was in flight when the erasure committed (a reply, an inbound message, a file that was being fetched) lands after the
   // first run, and a lock on the customer in the paths that write would invert the order of the merge (deadlock)
   ERASED_DATA_RECHECK_DELAY_MS: 15 * 60 * 1000,
-  ERASED_DATA_RECHECK_DAYS: 2
+  ERASED_DATA_RECHECK_DAYS: 2,
+  // Approvals an erasure request needs before its grace period starts (Step 7.2-H1, owner decision of the coordinator): one in the
+  // MVP, the audit keeps each approver so a store can ask for two
+  DSR_ERASURE_APPROVALS_REQUIRED: 1,
+  // The public intake (TDD_05 §10.2): what one address, one store and one body may cost, so the form cannot be used to mail a third party
+  DSR_INTAKE_MAX_BODY_BYTES: 2048,
+  DSR_INTAKE_PER_EMAIL_PER_DAY: 3,
+  DSR_INTAKE_PER_STORE_PER_DAY: 50,
+  DSR_INTAKE_JOB_TTL_MS: 60 * 60 * 1000
 } as const
 
 // Platform-wide floors and ceilings. Tenant-configurable values live in RetentionSettings, and

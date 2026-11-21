@@ -8,7 +8,10 @@ export const EmailTemplates = {
   // The generic order email: the rendered text of an order message that could not go through its channel (TDD_17 §4.7)
   ORDER_MESSAGE: 'order-message',
   // A scheduled analytics report: the summary of the period in the body and the file attached (TDD_11 §7.4)
-  SCHEDULED_REPORT: 'scheduled-report'
+  SCHEDULED_REPORT: 'scheduled-report',
+  // A data subject request: the link that confirms it, and the closing notice (TDD_05 §10.2, §10.3)
+  DSR_VERIFICATION: 'dsr-verification',
+  DSR_RESULT: 'dsr-result'
 } as const
 
 export type EmailTemplate = (typeof EmailTemplates)[keyof typeof EmailTemplates]
