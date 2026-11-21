@@ -9,8 +9,9 @@ import { connectionUrls, type OwnerClient } from '@platform/core/database-testin
 import { BulkActions, BulkLimits, ChannelIds } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { Events } from '@platform/core/events'
-import { ConversationsService } from '@platform/core/messaging'
+import { ConversationsService, ReadReceipts } from '@platform/core/messaging'
 
+import { WidgetReadNotifier } from '../../apps/api/src/modules/widget/widget-read-notifier.service'
 import { createConversationOf } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -132,6 +133,13 @@ describe('RLS phase 6: a bulk action of conversations under enforcement', () => 
   it('marks as read a bulk of the full limit in one answer, and says how long it took', async () => {
     await quietTables(owner, PLAN_SPEC_TABLES)
     const ids = await seed(BulkLimits.MAX_ITEMS)
+    // The work is counted, not timed: a batch asks for its receipts and widget notices ONCE (two queries), never one conversation at a
+    // time (about six extra round trips each inside the one 15 s transaction). The 15 s limit itself is the other half: a batch that
+    // went over it comes back as an error, not as the 200 this case expects.
+    const queueForMany = jest.spyOn(ReadReceipts.prototype, 'queueForMany')
+    const notifyMany = jest.spyOn(WidgetReadNotifier.prototype, 'notifyMany')
+    const queueFor = jest.spyOn(ReadReceipts.prototype, 'queueFor')
+    const notify = jest.spyOn(WidgetReadNotifier.prototype, 'notify')
     const startedAt = Date.now()
     const response = await bulk({ action: BulkActions.MARK_READ, conversationIds: ids })
     const elapsedMs = Date.now() - startedAt
@@ -143,11 +151,38 @@ describe('RLS phase 6: a bulk action of conversations under enforcement', () => 
     const body = response.body as BulkBody
     expect(body.failed).toEqual([])
     expect(body.succeeded).toHaveLength(BulkLimits.MAX_ITEMS)
+    expect(queueForMany).toHaveBeenCalledTimes(1)
+    expect(notifyMany).toHaveBeenCalledTimes(1)
+    expect(queueForMany.mock.calls[0]?.[1]).toHaveLength(BulkLimits.MAX_ITEMS)
+    expect(queueFor).not.toHaveBeenCalled()
+    expect(notify).not.toHaveBeenCalled()
     const stillUnread = await owner.conversation.count({
       where: { id: { in: ids }, unreadCount: { gt: 0 } }
     })
     expect(stillUnread).toBe(0)
   }, 120_000)
+
+  // ROUND_ROBIN_TO_TEAM goes through the same savepoint per item and reads the loads of the people it shares between: under
+  // enforcement the whole bulk is one transaction, so the people and their loads are read inside it
+  it('shares the conversations nobody has between the people named, in the one transaction of the bulk', async () => {
+    const ids = await seed(4)
+    const response = await bulk({
+      action: BulkActions.ROUND_ROBIN_TO_TEAM,
+      conversationIds: ids,
+      params: { userIds: [ctx.agentA.id, ctx.adminA.id] }
+    })
+    expect(response.status).toBe(HttpStatusCodes.OK)
+    const body = response.body as BulkBody
+    expect(body.failed).toEqual([])
+    expect(body.succeeded.toSorted()).toEqual([...ids].toSorted())
+    const rows = await owner.conversation.findMany({
+      where: { id: { in: ids } },
+      select: { assignedTo: true }
+    })
+    const loadOf = (userId: string) => rows.filter(row => row.assignedTo === userId).length
+    expect(loadOf(ctx.agentA.id) + loadOf(ctx.adminA.id)).toBe(4)
+    expect(Math.abs(loadOf(ctx.agentA.id) - loadOf(ctx.adminA.id))).toBeLessThanOrEqual(1)
+  })
 
   // A savepoint does not save a transaction that is gone: the answer must be an error, never a 200 that names as done what the
   // rollback then undoes
