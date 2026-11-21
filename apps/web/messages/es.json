@@ -657,6 +657,7 @@
     "FINANCE_PERIOD_ALREADY_CLOSED": "El periodo ya está cerrado",
     "FINANCE_CURRENCY_UNSUPPORTED": "Solo se admite USD",
     "FINANCE_SETUP_REQUIRED": "Las finanzas aún no se han configurado para esta organización",
+    "FINANCE_REPORT_BUSY": "Ya se están preparando reportes de Finanzas de esta organización: espera unos segundos e inténtalo de nuevo",
     "FINANCE_TAX_RATE_NOT_CONFIGURED": "Un producto de este pedido lleva impuesto y no hay una tasa definida para él: define primero una tasa por defecto en Finanzas",
     "FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED": "Cambiar si los precios incluyen el impuesto cambia el total de todo el catálogo: confirma el cambio de modo de precios",
     "PURCHASE_ORDER_INVALID_STATUS_TRANSITION": "La orden de compra no puede pasar a ese estado desde el que tiene",

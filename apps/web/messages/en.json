@@ -657,6 +657,7 @@
     "FINANCE_PERIOD_ALREADY_CLOSED": "The period is closed already",
     "FINANCE_CURRENCY_UNSUPPORTED": "Only USD is supported",
     "FINANCE_SETUP_REQUIRED": "Finance has not been set up for this organization yet",
+    "FINANCE_REPORT_BUSY": "Finance reports are already being prepared for this organization: wait a few seconds and try again",
     "FINANCE_TAX_RATE_NOT_CONFIGURED": "A product of this order is taxed and no tax rate is set for it: choose a default tax rate in Finance first",
     "FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED": "Changing whether the prices include the tax moves the total of the whole catalog: confirm the change of price mode",
     "PURCHASE_ORDER_INVALID_STATUS_TRANSITION": "The purchase order cannot move to that status from where it is",
