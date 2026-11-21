@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { PrismaService, RLS_CONTEXT_ENABLED } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
-import { CarrierId, ChannelConnectionStatus } from '@platform/core/domain'
+import { CarrierId, ChannelConnectionStatus, ShippingPlugin } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { CarrierRegistry, PluginRegistry } from '@platform/plugins/runtime'
 
@@ -65,6 +65,16 @@ describe('RLS phase 6: the provider is asked with no context open', () => {
       healthCheck: context => {
         opened.push({ call: 'carrier.healthCheck', tenantOpen: guarded.hasTenantContext() })
         return check(context)
+      }
+    })
+    // The shipping plugin is installed in the store, as the catalog would do: a carrier connection of a store without it is not asked
+    await owner.pluginInstallation.create({
+      data: {
+        storeId: ctx.storeA.id,
+        pluginId: ShippingPlugin.ID,
+        scopes: [],
+        status: 'active',
+        installedBy: 'suite'
       }
     })
     carrierConnectionId = (
