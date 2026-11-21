@@ -34,6 +34,30 @@ describe('parseEnv', () => {
     expect(env.BULL_BOARD_ENABLED).toBe(false)
   })
 
+  describe('E2E_USER_RATE_LIMIT, the budget per person raised for the e2e suite', () => {
+    it('is unset by default, and the test environment may raise it to a number above the real one', () => {
+      expect(parseEnv(validEnv).E2E_USER_RATE_LIMIT).toBeUndefined()
+      expect(
+        parseEnv({ ...validEnv, NODE_ENV: 'test', E2E_USER_RATE_LIMIT: '100000' })
+          .E2E_USER_RATE_LIMIT
+      ).toBe(100000)
+    })
+
+    it('can only be raised, never lowered to or under the real budget, and never past the bound', () => {
+      for (const value of ['600', '10', '1000001']) {
+        expect(() =>
+          parseEnv({ ...validEnv, NODE_ENV: 'test', E2E_USER_RATE_LIMIT: value })
+        ).toThrow(/E2E_USER_RATE_LIMIT/)
+      }
+    })
+
+    it.each(['development', 'production', 'staging'])('is refused in %s', environment => {
+      expect(() =>
+        parseEnv({ ...validEnv, NODE_ENV: environment, E2E_USER_RATE_LIMIT: '100000' })
+      ).toThrow(/E2E_USER_RATE_LIMIT/)
+    })
+  })
+
   describe('E2E_MAGIC_LINK_LIMIT, the limit of magic links raised for the e2e suite', () => {
     it('is unset by default, and the test environment may raise it to a number', () => {
       expect(parseEnv(validEnv).E2E_MAGIC_LINK_LIMIT).toBeUndefined()

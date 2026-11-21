@@ -1,6 +1,10 @@
 import type { ExecutionContext } from '@nestjs/common'
 
-import { AuthenticatedUserRateLimit } from '@platform/core/auth'
+import {
+  authenticatedUserRateLimitOf,
+  AuthenticatedUserRateLimit,
+  type UserRateLimitProfile
+} from '@platform/core/auth'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 
 import { AuthenticatedUserRateLimitGuard } from './authenticated-user-rate-limit.guard'
@@ -18,9 +22,9 @@ const record = (isBlocked: boolean, wait = 0) => ({
   timeToBlockExpire: wait
 })
 
-function build(increment: jest.Mock) {
+function build(increment: jest.Mock, profile: UserRateLimitProfile = AuthenticatedUserRateLimit) {
   const inc = jest.fn()
-  const guard = new AuthenticatedUserRateLimitGuard({ increment }, { inc } as never)
+  const guard = new AuthenticatedUserRateLimitGuard({ increment }, { inc } as never, profile)
   return { guard, inc }
 }
 
@@ -33,6 +37,20 @@ describe('AuthenticatedUserRateLimitGuard', () => {
       'u1',
       AuthenticatedUserRateLimit.ttlMs,
       AuthenticatedUserRateLimit.limit,
+      0,
+      'user:authenticated'
+    )
+  })
+
+  it('counts with the budget in force when the test environment raised it, and with the real one otherwise', async () => {
+    expect(authenticatedUserRateLimitOf(undefined)).toBe(AuthenticatedUserRateLimit)
+    const increment = jest.fn().mockResolvedValue(record(false))
+    const { guard } = build(increment, authenticatedUserRateLimitOf(100_000))
+    await guard.canActivate(contextOf({ user: { id: 'u1' } }))
+    expect(increment).toHaveBeenCalledWith(
+      'u1',
+      expect.anything(),
+      100_000,
       0,
       'user:authenticated'
     )

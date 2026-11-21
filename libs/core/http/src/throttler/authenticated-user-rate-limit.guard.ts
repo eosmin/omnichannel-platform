@@ -1,8 +1,19 @@
-import { type CanActivate, type ExecutionContext, Inject, Injectable, Logger } from '@nestjs/common'
+import {
+  type CanActivate,
+  type ExecutionContext,
+  Inject,
+  Injectable,
+  Logger,
+  Optional
+} from '@nestjs/common'
 import type { ThrottlerStorage } from '@nestjs/throttler'
 import type { Counter } from '@prometheus-io/client'
 
-import { AuthenticatedUserRateLimit } from '@platform/core/auth'
+import {
+  AUTHENTICATED_USER_RATE_LIMIT,
+  AuthenticatedUserRateLimit,
+  type UserRateLimitProfile
+} from '@platform/core/auth'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
@@ -19,7 +30,11 @@ export class AuthenticatedUserRateLimitGuard implements CanActivate {
 
   constructor(
     @Inject(USER_RATE_LIMIT_STORAGE) private readonly storage: ThrottlerStorage,
-    @InjectMetric(MetricNames.RATE_LIMIT_HITS) private readonly hits: Counter<string>
+    @InjectMetric(MetricNames.RATE_LIMIT_HITS) private readonly hits: Counter<string>,
+    // The budget in force (HttpPlatformModule provides it from the env); the profile of the code where nothing does
+    @Optional()
+    @Inject(AUTHENTICATED_USER_RATE_LIMIT)
+    private readonly profile: UserRateLimitProfile = AuthenticatedUserRateLimit
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -27,7 +42,7 @@ export class AuthenticatedUserRateLimitGuard implements CanActivate {
     if (context.getType() !== 'http') return true
     const { user } = context.switchToHttp().getRequest<AuthenticatedRequest>()
     if (user === undefined) return true
-    await spendUserBudget(this.storage, this.hits, this.logger, user.id, AuthenticatedUserRateLimit)
+    await spendUserBudget(this.storage, this.hits, this.logger, user.id, this.profile)
     return true
   }
 }

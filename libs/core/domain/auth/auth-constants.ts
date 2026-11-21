@@ -72,6 +72,25 @@ export const AuthenticatedUserRateLimit = {
   ttlMs: 60_000
 } as const satisfies UserRateLimitProfile
 
+// What the browser suite may ask for instead of that budget, in NODE_ENV=test only (E2E_USER_RATE_LIMIT): it can only be raised, never
+// turned off, and never past a bound. The suite signs in as the same few people for hundreds of page loads a minute (every page
+// polls), far more than one person does.
+export const E2eUserRateLimit = {
+  min: AuthenticatedUserRateLimit.limit + 1,
+  max: 1_000_000,
+  suite: 100_000
+} as const
+
+// The provider of the budget in force: the profile above unless the test environment raised the limit
+export const AUTHENTICATED_USER_RATE_LIMIT = Symbol('AUTHENTICATED_USER_RATE_LIMIT')
+export function authenticatedUserRateLimitOf(
+  raisedForTests: number | undefined
+): UserRateLimitProfile {
+  return raisedForTests === undefined
+    ? AuthenticatedUserRateLimit
+    : { ...AuthenticatedUserRateLimit, limit: raisedForTests }
+}
+
 // The login profile of D2: 5 a minute per IP, and the same per hashed email, so the endpoint cannot
 // be used to mail-bomb an address from many IPs
 export const MagicLinkThrottle = { limit: 5, ttlMs: 60_000 } as const

@@ -9,6 +9,7 @@ import { MetricsModule } from '@platform/core/metrics-module'
 import { RedisModule } from '@platform/core/redis'
 
 import { AuthPlatformModule } from './auth-platform.module'
+import { AuthenticatedUserRateLimitPlatformModule } from './authenticated-user-rate-limit-platform.module'
 import { HealthModule } from './health/health.module'
 import { HttpErrorsModule } from './http-errors.module'
 import { applyLocalCommandsUrlPolicy } from './local-commands-url-policy'
@@ -62,6 +63,7 @@ export class HttpPlatformModule {
         RedisModule.forRoot({ url: env.REDIS_URL }),
         StoragePlatformModule,
         MagicLinkLimitPlatformModule,
+        AuthenticatedUserRateLimitPlatformModule,
         OutboundFlagsPlatformModule,
         RlsContextPlatformModule,
         ThrottlerPlatformModule, // Before the auth module: the rate limit is checked first
