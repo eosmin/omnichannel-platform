@@ -657,6 +657,7 @@
     "FINANCE_PERIOD_ALREADY_CLOSED": "El periodo ya está cerrado",
     "FINANCE_CURRENCY_UNSUPPORTED": "Solo se admite USD",
     "FINANCE_SETUP_REQUIRED": "Las finanzas aún no se han configurado para esta organización",
+    "FINANCE_REPORT_BUSY": "Ya se están preparando reportes de Finanzas de esta organización: espera unos segundos e inténtalo de nuevo",
     "FINANCE_TAX_RATE_NOT_CONFIGURED": "Un producto de este pedido lleva impuesto y no hay una tasa definida para él: define primero una tasa por defecto en Finanzas",
     "FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED": "Cambiar si los precios incluyen el impuesto cambia el total de todo el catálogo: confirma el cambio de modo de precios",
     "PURCHASE_ORDER_INVALID_STATUS_TRANSITION": "La orden de compra no puede pasar a ese estado desde el que tiene",
@@ -928,7 +929,8 @@
         "body": "No se pudo generar tu exportación. Intenta pedirla de nuevo.",
         "reason": {
           "EXPORT_TOO_LARGE": "La exportación es demasiado grande. Acota los filtros o las fechas y pídela de nuevo.",
-          "EXPORT_EMPTY": "No había nada que exportar con esos filtros."
+          "EXPORT_EMPTY": "No había nada que exportar con esos filtros.",
+          "PERMISSION_DENIED": "Se canceló la exportación: ya no tienes permiso para exportar esto. Consulta a un administrador."
         }
       }
     },
@@ -3196,6 +3198,19 @@
         "requested": "Acceso que pide",
         "events": "Eventos que sigue",
         "newCode": "Obtener un código nuevo",
+        "rotateKey": "Crear una clave de acceso nueva",
+        "apiKey": {
+          "title": "Clave de acceso nueva para {name}",
+          "description": "Cópiala ahora: solo se muestra una vez. La clave anterior dejó de funcionar en el momento en que se creó esta.",
+          "label": "Clave de acceso",
+          "how": "Entrégasela al plugin como su token Bearer. Mientras el plugin no la use, todas sus llamadas son rechazadas."
+        },
+        "rotateKeyConfirm": {
+          "title": "¿Crear una clave de acceso nueva para {name}?",
+          "body": "La clave actual deja de funcionar de inmediato, sin tiempo de gracia: {name} no podrá entrar a tu tienda hasta que se le dé la clave nueva. La clave nueva se muestra una sola vez.",
+          "cancel": "Cancelar",
+          "confirm": "Crear clave nueva"
+        },
         "rotateSecret": "Crear un secreto de comandos nuevo",
         "commandSecret": {
           "title": "Secreto de comandos nuevo de {name}",
