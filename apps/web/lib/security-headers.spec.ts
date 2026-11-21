@@ -109,6 +109,15 @@ describe('buildContentSecurityPolicy', () => {
     )
   })
 
+  it('loads styles, fonts, workers and the manifest from the app only', () => {
+    const policy = buildContentSecurityPolicy(options)
+    expect(directive(policy, 'style-src')).toBe("style-src 'self' 'unsafe-inline'")
+    expect(directive(policy, 'font-src')).toBe("font-src 'self'")
+    expect(directive(policy, 'worker-src')).toBe("worker-src 'self'")
+    expect(directive(policy, 'manifest-src')).toBe("manifest-src 'self'")
+    expect(directive(policy, 'default-src')).toBe("default-src 'self'")
+  })
+
   it('forbids framing, plugins and foreign forms', () => {
     const policy = buildContentSecurityPolicy(options)
     for (const rule of [
@@ -124,13 +133,22 @@ describe('buildContentSecurityPolicy', () => {
 })
 
 describe('STATIC_SECURITY_HEADERS', () => {
-  it('sets the four headers that do not change per request, once each', () => {
+  it('sets the headers that do not change per request, once each', () => {
     const keys = STATIC_SECURITY_HEADERS.map(header => header.key)
     expect(keys).toEqual([
       'Strict-Transport-Security',
       'Referrer-Policy',
       'X-Content-Type-Options',
-      'Permissions-Policy'
+      'Permissions-Policy',
+      'X-Frame-Options',
+      'Cross-Origin-Opener-Policy'
     ])
+  })
+
+  it('refuses framing for browsers that ignore frame-ancestors, and cuts the opener handle of other origins', () => {
+    const value = (key: string): string | undefined =>
+      STATIC_SECURITY_HEADERS.find(header => header.key === key)?.value
+    expect(value('X-Frame-Options')).toBe('DENY')
+    expect(value('Cross-Origin-Opener-Policy')).toBe('same-origin')
   })
 })
