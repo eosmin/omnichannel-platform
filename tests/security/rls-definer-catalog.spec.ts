@@ -21,10 +21,6 @@ const DEFINER_FUNCTIONS: Readonly<Record<string, readonly string[] | typeof TRIG
   apply_journal_line_to_balance: TRIGGER,
   // the purge of the audit trail: the worker only
   purge_audit_logs: [WORKER],
-  // which store owns an id: the worker's alone (the api always has the store from the guard)
-  rls_store_of_media: [WORKER],
-  rls_store_of_export: [WORKER],
-  rls_store_of_scheduled_report: [WORKER],
   // resolvers that find their store before any context exists
   rls_resolve_channel_connection: [APP, WORKER],
   resolve_widget_site: [APP, WORKER],
@@ -75,6 +71,13 @@ interface DefinerRow {
   grantees: string[]
 }
 
+// Dropped by 20270121850000_rls_drop_store_of_resolvers: no role may ask which store owns an arbitrary id, so they must stay absent
+const DROPPED_FUNCTIONS = [
+  'rls_store_of_media',
+  'rls_store_of_export',
+  'rls_store_of_scheduled_report'
+]
+
 describe('row-level security: the SECURITY DEFINER functions of the catalog', () => {
   const raw = new pg.Client({ connectionString: connectionUrls().owner })
   let rows: DefinerRow[] = []
@@ -108,7 +111,7 @@ describe('row-level security: the SECURITY DEFINER functions of the catalog', ()
   })
 
   it('finds the definer functions at all (an empty catalog read would pass every other case)', () => {
-    expect(rows.length).toBeGreaterThan(30)
+    expect(rows.length).toBe(Object.keys(DEFINER_FUNCTIONS).length)
     expect(tablesOwner).not.toBe('')
   })
 
@@ -139,11 +142,17 @@ describe('row-level security: the SECURITY DEFINER functions of the catalog', ()
     expect(wrong).toEqual([])
   })
 
-  it('keeps the trigger functions as triggers, and every other one callable', () => {
+  it('keeps the trigger functions as triggers, with no EXECUTE for a role of the application', () => {
     for (const row of rows) {
-      const expected = DEFINER_FUNCTIONS[row.name]
-      if (expected === TRIGGER) expect(row.is_trigger).toBe(true)
+      if (DEFINER_FUNCTIONS[row.name] !== TRIGGER) continue
+      expect(row.is_trigger).toBe(true)
+      // Only the default (PUBLIC, which cannot call a trigger function) or nobody
+      expect(row.grantees.filter(grantee => grantee !== 'PUBLIC')).toEqual([])
     }
+  })
+
+  it('does not bring back the functions that told the store of any id', () => {
+    expect(rows.map(row => row.name).filter(name => DROPPED_FUNCTIONS.includes(name))).toEqual([])
   })
 
   it('fixes the search_path of each one with pg_temp last', () => {
