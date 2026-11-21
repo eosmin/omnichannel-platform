@@ -49,7 +49,16 @@ export class CookieConsentService {
     const categories = Object.fromEntries(
       ChoosableCookieCategories.map(category => [category, body.categories[category]])
     )
-    const userId = context.userId ?? null
+    // The token is not looked up again on a public route: one still valid for an account that was just deleted would break the
+    // foreign key, and the choice of that browser is still worth keeping, as an anonymous one
+    const account =
+      context.userId === undefined
+        ? null
+        : await this.prisma.client.user.findUnique({
+            where: { id: context.userId },
+            select: { id: true }
+          })
+    const userId = account?.id ?? null
     const latest = await this.prisma.client.cookieConsent.findFirst({
       where: { visitorId: body.visitorId },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

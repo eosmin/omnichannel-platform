@@ -238,6 +238,45 @@ describe('The consents of a customer', () => {
     expect((read.body as ConsentBody).items).toEqual([])
   })
 
+  it('puts a withdrawal after the newest row even when the clock of the writer is behind it', async () => {
+    const customer = await newCustomer()
+    // A row dated in the future: what a clock of another instance that runs ahead would have written
+    const ahead = new Date(Date.now() + 60 * 60 * 1000)
+    await owner.consentRecord.create({
+      data: {
+        storeId: ctx.storeA.id,
+        customerId: customer.id,
+        purpose: ConsentPurposes.ORDER_MESSAGES,
+        legalBasis: LegalBases.CONTRACT,
+        granted: true,
+        grantedAt: ahead,
+        source: ConsentSources.STAFF,
+        createdAt: ahead
+      }
+    })
+    const res = await record(editor, {
+      customerId: customer.id,
+      purpose: ConsentPurposes.ORDER_MESSAGES,
+      granted: false
+    })
+    expect((res.body as RecordedBody).changed).toBe(true)
+    const items = ((await list(viewer, customer.id)).body as ConsentBody).items
+    expect(items[0]).toMatchObject({ granted: false, current: true })
+  })
+
+  it('answers 404 on both routes for a customer that a merge absorbed', async () => {
+    const survivor = await newCustomer()
+    const absorbed = await newCustomer()
+    await owner.customer.update({ where: { id: absorbed.id }, data: { mergedIntoId: survivor.id } })
+    expect((await list(viewer, absorbed.id)).status).toBe(NOT_FOUND)
+    const res = await record(editor, {
+      customerId: absorbed.id,
+      purpose: ConsentPurposes.ORDER_MESSAGES,
+      granted: true
+    })
+    expect(res.status).toBe(NOT_FOUND)
+  })
+
   it('does not lose an answer when two come at once', async () => {
     const customer = await newCustomer()
     const body = { customerId: customer.id, purpose: ConsentPurposes.ORDER_MESSAGES, granted: true }
@@ -325,6 +364,25 @@ describe('The answer to the cookie banner', () => {
     expect(ok.status).toBe(OK)
     const row = await owner.cookieConsent.findFirstOrThrow({ where: { visitorId: id } })
     expect(row.userId).toBe(ctx.adminA.id)
+  })
+
+  it('keeps the choice, as anonymous, of a token whose account was deleted', async () => {
+    const gone = await actorWithPermissions(owner, app, {
+      prefix,
+      organizationId: ctx.orgA.id,
+      storeId: ctx.storeA.id,
+      name: 'deletedAccountCookie',
+      permissions: [Permissions.CUSTOMERS_VIEW]
+    })
+    const id = visitor()
+    await owner.user.delete({ where: { id: gone.id } })
+    const res = await apiWithoutStore(app, gone)
+      .post(ApiRoutes.compliance.cookieConsent)
+      .send(answer(id))
+    expect(res.status).toBe(OK)
+    expect(
+      (await owner.cookieConsent.findFirstOrThrow({ where: { visitorId: id } })).userId
+    ).toBeNull()
   })
 
   it('refuses a policy version the server does not know, a missing category and a bad id', async () => {

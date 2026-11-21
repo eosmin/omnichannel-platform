@@ -95,7 +95,8 @@ export class ConsentService {
 
   async list(storeId: string, customerId: string): Promise<ConsentList> {
     const customer = await this.prisma.client.customer.findFirst({
-      where: { id: customerId, storeId },
+      // A customer absorbed by a merge is not found here either, as it is not for `record`: its rows moved to the survivor
+      where: { id: customerId, storeId, mergedIntoId: null },
       select: { erasedAt: true }
     })
     if (customer === null) throw resourceNotFound('customer')
@@ -131,7 +132,13 @@ export class ConsentService {
       if (latest !== null && holds(latest) === body.granted) {
         return { consent: viewOf(latest, true), changed: false }
       }
-      const now = new Date()
+      // The newest row rules, so the date of a new one is never behind the newest that exists: the clock of another instance a few
+      // milliseconds ahead, or a clock set back, cannot put the withdrawal under the agreement it withdraws
+      const clock = new Date()
+      const now =
+        latest !== null && latest.createdAt >= clock
+          ? new Date(latest.createdAt.getTime() + 1)
+          : clock
       const row = await tx.consentRecord.create({
         data: {
           storeId,
