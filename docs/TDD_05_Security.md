@@ -225,12 +225,12 @@ to `platform_rate_limit_hits_total{throttler="user:<profile>"}`. Like the first 
 logs when Redis fails: it is a protection, not a dependency. A new route that returns a list or a search over data of a
 store takes both decorators; the guard sits after the global ones, so it needs no `@Public()` handling.
 
-**General budget per authenticated user (v1.2 MVP).** After the token, the store and the permission, every route behind the
+**General budget per authenticated user (v1.2 MVP).** Right after the token (before the store and the permission, so their refusals are counted), every route behind the
 `AuthGuard` spends `AuthenticatedUserRateLimit` (600/min per user id, `AuthenticatedUserRateLimitGuard`, registered by
-`TenancyModule` after `PermissionGuard`, counter `user:authenticated`, `libs/core/domain/auth/auth-constants.ts`). It sits on
+`TenancyModule` before `TenantGuard`, counter `user:authenticated`, `libs/core/domain/auth/auth-constants.ts`). It sits on
 top of the per-address default, so a person whose token is used from many addresses is counted as one, and it is counted
 apart from the `@UserRateLimit` profile of a route. Requests with no user (public routes, probes, the plugin API) are not
-counted by it. Like the other layers it lets the request through and logs when Redis fails, answers `429` with
+counted by it (the per-address layer, or the limit of the credential, is all they have). Like the other layers it lets the request through and logs when Redis fails, answers `429` with
 `Retry-After`, and adds to `platform_rate_limit_hits_total{throttler="user:authenticated"}`.
 
 **Plan-aware limits for authenticated traffic.** The tracker is the store (so one busy

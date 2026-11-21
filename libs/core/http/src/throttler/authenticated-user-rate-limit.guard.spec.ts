@@ -5,8 +5,11 @@ import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/e
 
 import { AuthenticatedUserRateLimitGuard } from './authenticated-user-rate-limit.guard'
 
-const contextOf = (request: { user?: { id: string } }): ExecutionContext =>
-  ({ switchToHttp: () => ({ getRequest: () => request }) }) as unknown as ExecutionContext
+const contextOf = (request: { user?: { id: string } }, type = 'http'): ExecutionContext =>
+  ({
+    getType: () => type,
+    switchToHttp: () => ({ getRequest: () => request })
+  }) as unknown as ExecutionContext
 
 const record = (isBlocked: boolean, wait = 0) => ({
   totalHits: 1,
@@ -53,6 +56,13 @@ describe('AuthenticatedUserRateLimitGuard', () => {
     const increment = jest.fn()
     const { guard } = build(increment)
     await expect(guard.canActivate(contextOf({}))).resolves.toBe(true)
+    expect(increment).not.toHaveBeenCalled()
+  })
+
+  it('does not count a websocket message, even when the socket carries a user', async () => {
+    const increment = jest.fn()
+    const { guard } = build(increment)
+    await expect(guard.canActivate(contextOf({ user: { id: 'u1' } }, 'ws'))).resolves.toBe(true)
     expect(increment).not.toHaveBeenCalled()
   })
 
