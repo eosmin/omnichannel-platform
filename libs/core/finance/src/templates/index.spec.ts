@@ -3,6 +3,10 @@ import { financeTemplateCountries, financeTemplateFor } from './index'
 // `FinanceSetupService.setup` answers 409 "set up already" to ANY unique violation of its transaction: the adapter does not expose the name of
 // the constraint in a stable shape, so it cannot tell a concurrent setup from a template that repeats a code. This spec is what keeps the
 // second case out of production for EVERY country that ships (a template of a later country is covered the day it is added to the list).
+it('has at least one template to check (an empty list would run no case below)', () => {
+  expect(financeTemplateCountries().length).toBeGreaterThan(0)
+})
+
 describe.each(financeTemplateCountries())('the finance template of %s', country => {
   const template = financeTemplateFor(country)
 
