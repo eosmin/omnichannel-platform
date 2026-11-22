@@ -225,6 +225,13 @@ describe('the sweep of the data erasures that are due', () => {
       retainedOrders: 1
     })
     expect(toThem[0]?.options.jobId).toBe(dsrResultMailJobId(mine.id))
+    // The mail names no customer, no store data and no request id: the address it goes to, the kind and one count
+    expect(Object.keys(toThem[0]?.data.data ?? {}).sort()).toEqual([
+      'outcome',
+      'requestType',
+      'retainedOrders'
+    ])
+    expect(JSON.stringify(toThem[0]?.data)).not.toContain(mine.customerIds[0] ?? 'x')
     // The audit holds the request and counts, the actor is the system, and no address or name
     const entries = audit.log.mock.calls.map(call => call[0])
     expect(entries.filter(e => e.action === AuditAction.DSR_ERASURE_COMPLETED)).toHaveLength(1)
@@ -417,7 +424,9 @@ describe('the sweep of the data erasures that are due', () => {
     expect(await rowOf(mine.id)).toMatchObject({
       status: DsrStatus.MANUAL_REVIEW,
       erasureDueAt: null,
-      erasureFailureCode: 'blocked_by_open_work'
+      erasureFailureCode: 'blocked_by_open_work',
+      erasureAttempts: 0,
+      erasureAttemptedAt: null
     })
     const returned = audit.log.mock.calls
       .map(call => call[0] as { action: string; metadata?: { openWork?: { orders: number } } })
@@ -496,7 +505,8 @@ describe('the sweep of the data erasures that are due', () => {
     expect(await rowOf(mine.id)).toMatchObject({
       status: DsrStatus.MANUAL_REVIEW,
       erasureDueAt: null,
-      erasureFailureCode: 'undoable_merge'
+      erasureFailureCode: 'undoable_merge',
+      erasureAttempts: 0
     })
   })
 

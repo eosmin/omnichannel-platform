@@ -451,7 +451,9 @@ export class DsrEraseDueSweeper {
   ): Promise<{ count: number }> {
     return tx.dataSubjectRequest.updateMany({
       where: { id: requestId, storeId, status: DsrStatus.IN_PROGRESS },
-      data: this.backToReview(reason)
+      // Nothing was tried (the request itself is not ready: another person, open work, a merge): the try the claim counted is not spent, so the
+      // next approval starts clean
+      data: { ...this.backToReview(reason), erasureAttempts: 0, erasureAttemptedAt: null }
     })
   }
 

@@ -1,4 +1,4 @@
--- Rolls back 20270127200000_dsr_erasure_attempts: drops the three columns of the tries of the erasure sweep.
+-- Rolls back 20270127300000_dsr_erasure_attempts: drops the three columns of the tries of the erasure sweep.
 -- Run it before the code that reads them is brought back. Safe to run twice.
 BEGIN;
 ALTER TABLE "data_subject_requests"
