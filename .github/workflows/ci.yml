@@ -118,6 +118,8 @@ jobs:
       - run: pnpm validate:replica
       # The image hosts of the CSP are written from what the plugins declare; a plugin that changes them must regenerate the file
       - run: pnpm validate:image-hosts
+      # The shard counts (security matrices, the local loop of tests/project.json, e2e slices) and the ClamAV image say the same number everywhere
+      - run: pnpm validate:ci-shards
 
   # The required check. It runs whatever happened upstream (`always()`): a job that failed, was cancelled or
   # was skipped can never read as a pass, and only `success` of both is a green.
@@ -361,25 +363,77 @@ jobs:
           trap report EXIT
           pnpm test:security
 
-      # The latency spec of the search runs in a process of its own (`tests/jest.latency.config.cts`): in the
-      # process of the shard the heap is at its limit and the collections of the garbage land in the measurement.
-      # One job (the last shard) runs it; it is a step of the shard, so `security-tests` waits for it like for the rest
+  # The two specs that need a process of their own, in a job of their own. They used to be steps of the last shard,
+  # which made `security-shard (8/8)` the longest job of the run by about 106 s (latency 61 s, plan specs 45 s: 310-420 s against
+  # 175-300 s for the other seven, measured on the last six green runs of `main`), so the cost of the suite was paid by one
+  # leg while the others waited. Here they run beside the shards, with their own database. The latency spec of the search
+  # runs in a process of its own (`tests/jest.latency.config.cts`): in the process of a shard the heap is at its limit and the
+  # collections of the garbage land in the measurement. The specs that read the plan of a statement with row level security on
+  # take locks (some ACCESS EXCLUSIVE until their rollback): `tests/jest.rls-plan.config.cts`, after the latency spec. A change
+  # of the shard count in the matrix can no longer leave them without a job: they do not depend on it. The required check
+  # is `security-tests`, which waits for this job too
+  security-isolated-specs:
+    name: security-isolated-specs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: platform_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U platform -d platform_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:8.10.1-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      # Object storage: readiness asks the bucket, and the media suites upload to it. The image makes
+      # the bucket from S3_BUCKET; the keys are the ones of .env.example
+      seaweedfs:
+        image: chrislusf/seaweedfs:4.48
+        ports: ['8333:8333']
+        env:
+          AWS_ACCESS_KEY_ID: dev_access_key
+          AWS_SECRET_ACCESS_KEY: dev_secret_key
+          S3_BUCKET: platform-dev
+        options: >-
+          --health-cmd "wget -qO- http://127.0.0.1:8333/healthz"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DIRECT_DATABASE_URL: postgresql://platform:ci_password@localhost:5432/platform_ci
+      DB_APP_PASSWORD: ci_app_password
+      DB_WORKER_PASSWORD: ci_worker_password
+      DB_REPLICA_PASSWORD: ci_replica_password
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      # The SeaweedFS container creates the bucket after its health check passes
+      - name: Wait for the bucket
+        run: pnpm exec tsx scripts/wait-for-bucket.ts
+      - name: Migrate an empty database and give the roles their passwords
+        run: pnpm db:migrate
       - name: Latency specs, in a fresh process
-        # The last shard, whatever the count: a shard count changed in the matrix cannot leave this step without a job
-        if: startsWith(matrix.shard, format('{0}/', strategy.job-total))
         run: pnpm test:latency
-
-      # The specs that read the plan of a statement with row level security on take locks (some ACCESS EXCLUSIVE until their
-      # rollback): a process of their own, after the shard, like the latency spec (`tests/jest.rls-plan.config.cts`)
       - name: Plan specs of row level security, in a fresh process
-        if: ${{ !cancelled() && startsWith(matrix.shard, format('{0}/', strategy.job-total)) }}
+        if: ${{ !cancelled() }}
         run: pnpm test:rls-plan
 
   # The required check. It keeps the name of the job that used to run the whole suite, and it runs whatever
   # happened upstream (`always()`): a shard that failed, was cancelled or was skipped can never read as a pass,
   # and only `success` of the matrix (every shard) is a green.
   security-tests:
-    needs: [security-shards]
+    needs: [security-shards, security-isolated-specs]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -387,10 +441,11 @@ jobs:
       - name: The shards decide
         env:
           SHARDS: ${{ needs.security-shards.result }}
+          ISOLATED: ${{ needs.security-isolated-specs.result }}
         run: |
-          echo "security-shards=$SHARDS"
-          if [ "$SHARDS" = "success" ]; then exit 0; fi
-          echo "::error::The shards of the security suite did not all succeed ($SHARDS)"
+          echo "security-shards=$SHARDS security-isolated-specs=$ISOLATED"
+          if [ "$SHARDS" = "success" ] && [ "$ISOLATED" = "success" ]; then exit 0; fi
+          echo "::error::The security suite did not all succeed (shards: $SHARDS, isolated specs: $ISOLATED)"
           exit 1
 
   # The same suites as `integration-tests` and `security-shards`, but with row level security ENFORCED (ENABLE + FORCE on every table
