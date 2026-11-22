@@ -12,6 +12,4 @@ import type { IsolationExemption } from './lib/isolation'
 // isolation is proved by tests/security/shipping-schema.spec.ts (the database refuses a link across
 // stores, even of the same organization). The plan lists which PR removes which line (Step 4.8, "Left by PR B1").
 
-export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> = {
-  DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' }
-}
+export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> = {}

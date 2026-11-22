@@ -22,6 +22,7 @@ import {
   CountStatus,
   ConversationStatus,
   DeliveryStatus,
+  DsrStatus,
   FinanceSourceType,
   FinanceTransactionKind,
   InventoryAdjustmentReason,
@@ -134,6 +135,8 @@ import {
   createCustomerFiscalData,
   customerOfConsent,
   createConsentRecord,
+  createDataSubjectRequest,
+  DSR_FIXTURE_NOTE,
   survivorOfMerge,
   dropCachedSettings
 } from '../builders'
@@ -716,6 +719,26 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.customerFiscalData.findUnique({ where: { id }, select: { updatedBy: true } }))
         ?.updatedBy === 'isolation-fixture'
+  },
+  // A request for the data of a person (Step 7.2-H1b): the review queue of the store. It is read by its id, and the one route of the suite
+  // that changes it is the approval; the rejection and the cancellation have their own cases in `describe('data subject requests')`.
+  {
+    name: 'dataSubjectRequest',
+    create: createDataSubjectRequest,
+    readPath: id => ApiRoutes.compliance.dsrById(id),
+    listPath: ApiRoutes.compliance.dsr,
+    modify: {
+      path: id => ApiRoutes.compliance.dsrApprove(id),
+      method: 'post',
+      body: { confirm: true, reason: 'isolation-suite' }
+    },
+    untouched: async (owner, id) => {
+      const row = await owner.dataSubjectRequest.findUnique({
+        where: { id },
+        select: { notes: true, status: true }
+      })
+      return row?.notes === DSR_FIXTURE_NOTE && row.status === String(DsrStatus.MANUAL_REVIEW)
+    }
   },
   {
     name: 'customerMerge',
@@ -7294,5 +7317,72 @@ describe('Tenant isolation', () => {
         'Private plugin'
       )
     })
+  })
+
+  // The routes that decide a data request, tried with the id of a request of another store (Step 7.2-H1b, rule 3): the id of another
+  // organization, of a sibling store, and of the own store's claim of one in another store are the same 404 as an id that does not exist, and
+  // the request does not change
+  describe('data subject requests', () => {
+    const decisions: {
+      name: string
+      path: (id: string) => string
+      body: Record<string, unknown>
+      row: (owner: OwnerClient, storeId: string) => Promise<{ id: string }>
+    }[] = [
+      {
+        name: 'approve',
+        path: ApiRoutes.compliance.dsrApprove,
+        body: { confirm: true, reason: 'isolation-suite' },
+        row: (owner, storeId) => createDataSubjectRequest(owner, { storeId })
+      },
+      {
+        name: 'reject',
+        path: ApiRoutes.compliance.dsrReject,
+        body: { reason: 'isolation-suite' },
+        row: (owner, storeId) => createDataSubjectRequest(owner, { storeId })
+      },
+      {
+        name: 'cancel',
+        path: ApiRoutes.compliance.dsrCancel,
+        body: { reason: 'isolation-suite' },
+        row: (owner, storeId) =>
+          createDataSubjectRequest(owner, {
+            storeId,
+            status: DsrStatus.IN_PROGRESS,
+            erasureDueAt: new Date(Date.now() + 86_400_000)
+          })
+      }
+    ]
+
+    it.each(decisions)(
+      "$name: another store's request is a 404 that changes nothing",
+      async decision => {
+        const inB = await decision.row(owner, ctx.storeB.id)
+        const inSibling = await decision.row(owner, ctx.storeA2.id)
+        const missing = await api(app, ctx.adminA, ctx.storeA)
+          .post(decision.path(randomUUID()))
+          .send(decision.body)
+
+        for (const row of [inB, inSibling]) {
+          const response = await api(app, ctx.adminA, ctx.storeA)
+            .post(decision.path(row.id))
+            .send(decision.body)
+          expect(response.status).toBe(404)
+          // Not an existence oracle: the very answer of an id that exists nowhere
+          expect((response.body as { error: unknown }).error).toEqual(
+            (missing.body as { error: unknown }).error
+          )
+          const after = await owner.dataSubjectRequest.findUniqueOrThrow({ where: { id: row.id } })
+          expect(after.notes).toBe(DSR_FIXTURE_NOTE)
+          expect(after.reviewedBy).toBeNull()
+          expect(after.notifyToEncrypted).toBeNull()
+        }
+        // Naming the other store in the header is refused before the request is looked at
+        const naming = await api(app, ctx.adminA, ctx.storeB)
+          .post(decision.path(inB.id))
+          .send(decision.body)
+        expect(naming.status).toBe(403)
+      }
+    )
   })
 })

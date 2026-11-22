@@ -22,6 +22,7 @@ export const Schedules = {
   SANITIZE_EXISTING_DOCUMENTS: '5-55/10 * * * *', // Every 10 minutes, five past: a bounded batch of the PDF, docx and xlsx stored before their cleaning existed
   CLEAN_EXPIRED_EXPORTS: '40 * * * *', // Hourly: the files of exports past their date, and the ones that never got made
   CHECK_DSR_DEADLINES: '0 7 * * *', // 07:00 UTC daily (TDD_05 §10.2)
+  EXPIRE_DSR_REQUESTS: '25 3 * * *', // 03:25 UTC daily: the data requests whose verification link expired unused (Step 7.2-H1b)
   COLLECT_QUEUE_METRICS: '*/15 * * * * *', // Every 15 seconds (6-field cron, @nestjs/schedule)
   RECONCILE_INVENTORY: '0 4 * * *', // 04:00 UTC daily, one job per store (TDD_16 §4.8)
   RECONCILE_FINANCE: '30 4 * * *', // 04:30 UTC daily, one job per organization with books (TDD_18 §11)

@@ -75,6 +75,10 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   await owner.inventoryMovement.deleteMany({ where: ofRun })
   await owner.inventoryLevel.deleteMany({ where: ofRun })
   await owner.orderItemAllocation.deleteMany({ where: ofRun })
+  // The data requests of the run restrict the deletion of their organization (the model has no store row to cascade from)
+  await owner.dataSubjectRequest.deleteMany({
+    where: { organization: { slug: { startsWith: prefix } } }
+  })
   // Shipments and returns restrict the deletion of their order, store and connection, and a return and its return
   // shipment restrict each other: the link is cut first, then the lines, the shipments (their events go with them), the
   // returns and the pickups. The connections and what hangs from them go with their store (cascade).

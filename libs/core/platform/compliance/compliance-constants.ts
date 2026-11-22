@@ -26,7 +26,13 @@ export const ComplianceConfig = {
   // The public intake (TDD_05 §10.2): what one address, one store and one body may cost, so the form cannot be used to mail a third party
   DSR_INTAKE_PER_EMAIL_PER_DAY: 3,
   DSR_INTAKE_PER_STORE_PER_DAY: 50,
-  DSR_INTAKE_JOB_TTL_MS: 60 * 60 * 1000
+  DSR_INTAKE_JOB_TTL_MS: 60 * 60 * 1000,
+  // The review queue (Step 7.2-H1b): the longest reason a reviewer writes, and the page of the list
+  DSR_REVIEW_REASON_MAX_LENGTH: 500,
+  DSR_REVIEW_PAGE_SIZE: 25,
+  DSR_REVIEW_MAX_PAGE_SIZE: 100,
+  // Requests the expiry sweep closes per store and per run; the next run takes the rest
+  DSR_EXPIRE_BATCH: 200
 } as const
 
 // Platform-wide floors and ceilings. Tenant-configurable values live in RetentionSettings, and
@@ -198,5 +204,9 @@ export const DSR_VERIFY_FRAGMENT_KEY = 'token'
 export const DsrResourceTypes = { REQUEST: 'data_subject_request' } as const
 export const DsrSubjectTypes = { CUSTOMER: 'customer' } as const
 export const DsrRejectionReasons = {
-  VERIFICATION_MAIL_NOT_QUEUED: 'verification_mail_not_queued'
+  VERIFICATION_MAIL_NOT_QUEUED: 'verification_mail_not_queued',
+  // The link of the mail was never used before it expired
+  VERIFICATION_EXPIRED: 'verification_expired',
+  // A reviewer decided it; what they wrote is in the notes of the request, never in the audit log
+  REVIEWER_DECISION: 'reviewer_decision'
 } as const
