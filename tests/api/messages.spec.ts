@@ -1599,6 +1599,56 @@ describe('The messages of a conversation', () => {
       expect(JSON.stringify(blind.body)).not.toContain(metadata.orderNumber)
     })
 
+    // Step 7.3 (B9): the routes that read ONE message by its id (the earlier texts and the deleted text) answer "not found" for the
+    // line of an order to who may not read orders, as the thread leaves it out
+    it('is not found by id, in the revisions and in the deleted content, for who may not read orders', async () => {
+      const { id } = await mk()
+      const message = await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: id,
+          type: MessageType.ORDER_SUMMARY,
+          authorType: AuthorType.SYSTEM,
+          content: null,
+          metadata: line(`T-${randomUUID().slice(0, 6)}`),
+          deletedAt: new Date()
+        },
+        select: { id: true }
+      })
+      const held = [
+        Permissions.CONVERSATIONS_VIEW,
+        Permissions.MESSAGES_VIEW,
+        Permissions.MESSAGES_VIEW_DELETED
+      ]
+      const blind = api(
+        app,
+        await actorWithPermissions(owner, app, {
+          prefix,
+          name: `lineBlind${randomUUID().slice(0, 6)}`,
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          permissions: held
+        }),
+        ctx.storeA
+      )
+      const seeing = api(
+        app,
+        await actorWithPermissions(owner, app, {
+          prefix,
+          name: `lineSeeing${randomUUID().slice(0, 6)}`,
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          permissions: [...held, Permissions.ORDERS_VIEW]
+        }),
+        ctx.storeA
+      )
+
+      expect((await blind.get(ApiRoutes.messages.revisions(message.id))).status).toBe(404)
+      expect((await blind.get(ApiRoutes.messages.deletedContent(message.id))).status).toBe(404)
+      expect((await seeing.get(ApiRoutes.messages.revisions(message.id))).status).toBe(200)
+      expect((await seeing.get(ApiRoutes.messages.deletedContent(message.id))).status).toBe(200)
+    })
+
     it('is hidden from a member who reads notes but not orders, and pages over the lines that are left out', async () => {
       const { id } = await mk()
       const at = (minutes: number) => new Date(Date.UTC(2026, 10, 1, 10, minutes))

@@ -1,10 +1,7 @@
-import { Agent, request as httpsRequest } from 'node:https'
-import { isIP } from 'node:net'
 import type { Readable } from 'node:stream'
 
 import { errorCodeOf, PERMANENT_NETWORK_CODES } from './pinned-errors'
-import type { HttpsRequester } from './pinned-https-exchange'
-import { pinnedLookup } from './pinned-lookup'
+import { type HttpsRequester, openPinnedRequest } from './pinned-request'
 import {
   type HostResolver,
   type PublicTarget,
@@ -24,8 +21,6 @@ export class PinnedFetchFailed extends Error {
   }
 }
 
-const HTTPS_PROTOCOL = 'https:'
-const HTTPS_PORT = 443
 // The body is read as it is; a compressed one would be read past its limit once unpacked
 const NO_ENCODING = 'identity'
 
@@ -79,24 +74,12 @@ export async function pinnedHttpsGet(
       !PERMANENT_NETWORK_CODES.has(code)
     )
   }
-  const { url, addresses } = target
-  const send = options.request ?? httpsRequest
-  const host = url.hostname.replace(/^\[|\]$/g, '')
-
   return new Promise<PinnedResponse>((resolve, reject) => {
-    const req = send({
-      protocol: HTTPS_PROTOCOL,
-      hostname: host,
-      port: HTTPS_PORT,
-      path: `${url.pathname}${url.search}`,
+    const req = openPinnedRequest(target, {
       method: 'GET',
       headers: { ...options.headers, accept: options.accept, 'accept-encoding': NO_ENCODING },
-      // A socket of its own: a pooled one, opened for an earlier call, would not go through this lookup
-      agent: new Agent({ keepAlive: false }),
-      lookup: pinnedLookup(addresses),
-      // The certificate is checked against the name of the link, not the address connected to
-      ...(isIP(host) === 0 ? { servername: host } : {}),
-      timeout: options.timeoutMs
+      timeoutMs: options.timeoutMs,
+      request: options.request
     })
     req.on('timeout', () => {
       req.destroy(new PinnedFetchFailed('the server was too slow', true))

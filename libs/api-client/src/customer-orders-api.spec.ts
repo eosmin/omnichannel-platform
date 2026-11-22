@@ -29,8 +29,7 @@ const order = {
 }
 const figures = {
   orders: 1,
-  totalSpentCents: 1999,
-  averageOrderCents: 1999,
+  byCurrency: [{ currency: 'USD', orders: 1, totalSpentCents: 1999, averageOrderCents: 1999 }],
   firstOrderAt: '2026-10-30T10:00:00.000Z',
   lastOrderAt: '2026-10-30T10:00:00.000Z'
 }
@@ -58,7 +57,7 @@ describe('fetchCustomerOrders', () => {
     const page = await fetchCustomerOrders(client, 's1', 'c1', undefined, null)
 
     expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://api.example.com/api/v1/customers/c1/orders')
-    expect(page.figures?.totalSpentCents).toBe(1999)
+    expect(page.figures?.byCurrency[0]?.totalSpentCents).toBe(1999)
   })
 
   it('refuses a page whose order has no total', async () => {

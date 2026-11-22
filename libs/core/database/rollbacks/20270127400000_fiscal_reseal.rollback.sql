@@ -1,4 +1,4 @@
--- Rolls back 20270127200000_fiscal_reseal: drops the re-seal function and gives the guard the form of 20270127100000. Safe to run twice.
+-- Rolls back 20270127400000_fiscal_reseal: drops the re-seal function and gives the guard the form of 20270127100000. Safe to run twice.
 -- ORDER: stop the re-seal (unset CREDENTIALS_ENCRYPTION_KEY_PREVIOUS) first, or roll the code back with this script; a value already
 -- sealed again stays valid (it opens with the current key), so nothing is lost.
 BEGIN;

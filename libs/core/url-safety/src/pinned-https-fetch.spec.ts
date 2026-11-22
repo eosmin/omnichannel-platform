@@ -1,12 +1,9 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 
-import {
-  type HttpsRequester,
-  PinnedExchangeFailed,
-  PinnedExchangeReasons
-} from './pinned-https-exchange'
+import { PinnedExchangeFailed, PinnedExchangeReasons } from './pinned-https-exchange'
 import { createPinnedFetch } from './pinned-https-fetch'
+import type { HttpsRequester } from './pinned-request'
 import { UnsafeUrlError } from './public-url'
 
 type Outcome = { status: number; chunks?: string[]; headers?: Record<string, string> }

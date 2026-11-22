@@ -16,6 +16,7 @@ import { normalBalance, trialBalanceTotals, withRunningBalance } from '@platform
 
 import type { Actor } from '../tenancy'
 
+import { type GateStream, FinanceReportGate } from './finance-report-gate.service'
 import {
   type JournalCsvRow,
   type LedgerCsvRow,
@@ -160,6 +161,7 @@ export class FinanceReportsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly jobContext: JobContext,
+    private readonly gate: FinanceReportGate,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(FinanceReportsService.name)
@@ -403,26 +405,31 @@ export class FinanceReportsService {
     organizationId: string,
     query: JournalCsvQuery,
     actor: Actor
-  ): Promise<AsyncGenerator<JournalCsvRow[]>> {
-    const { rows, maxNumber } = await this.jobContext.inOrganization(organizationId, async () => {
-      const [counted] = await this.prisma.client.$queryRaw<
-        [{ rows: bigint; max_number: bigint | null }]
-      >`
+  ): Promise<GateStream<JournalCsvRow[]>> {
+    // The file takes one of the few places an organization has for files being sent (debt (a) of 7.3-D): the place is held for the whole
+    // download and given back when the stream ends or the client drops
+    return this.gate.openStream(organizationId, async () => {
+      const { rows, maxNumber } = await this.jobContext.inOrganization(organizationId, async () => {
+        const [counted] = await this.prisma.client.$queryRaw<
+          [{ rows: bigint; max_number: bigint | null }]
+        >`
         SELECT COUNT(*)::bigint AS rows, MAX(e.number) AS max_number
         FROM journal_lines l
         JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
         WHERE e.organization_id = ${organizationId}
           AND e.entry_date >= ${query.from}::date AND e.entry_date <= ${query.to}::date`
-      if (counted.rows > BigInt(FinanceReportLimits.MAX_CSV_ROWS)) throw tooLarge()
-      this.auditExport(organizationId, actor, 'journal', {
-        from: query.from,
-        to: query.to,
-        rows: Number(counted.rows)
+        if (counted.rows > BigInt(FinanceReportLimits.MAX_CSV_ROWS)) throw tooLarge()
+        this.auditExport(organizationId, actor, 'journal', {
+          from: query.from,
+          to: query.to,
+          rows: Number(counted.rows)
+        })
+        return { rows: counted.rows, maxNumber: counted.max_number }
       })
-      return { rows: counted.rows, maxNumber: counted.max_number }
+      // Nothing in the range: the file is the header alone
+      const cut = rows === 0n ? null : maxNumber
+      return () => this.journalPages(organizationId, query, cut)
     })
-    // Nothing in the range: the file is the header alone
-    return this.journalPages(organizationId, query, rows === 0n ? null : maxNumber)
   }
 
   private async *journalPages(
@@ -502,6 +509,15 @@ export class FinanceReportsService {
 
   // The CSV of the ledger of one account for a range: its lines with the running balance, from the balance the account held the day before
   async ledgerCsv(
+    organizationId: string,
+    query: LedgerCsvQuery,
+    actor: Actor
+  ): Promise<{ account: LedgerView['account']; rows: LedgerCsvRow[] }> {
+    // It reads up to a whole file in the request: one of the places of the reads of the organization, like the other exports
+    return this.gate.read(organizationId, () => this.readLedgerCsv(organizationId, query, actor))
+  }
+
+  private async readLedgerCsv(
     organizationId: string,
     query: LedgerCsvQuery,
     actor: Actor

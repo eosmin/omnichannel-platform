@@ -29,7 +29,13 @@ import {
   type UpdateStorePreferencesBody
 } from '@platform/core/store-preferences'
 
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  actorOf,
+  CurrentStore,
+  RequireAnyPermission,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import { type BusinessHoursView, BusinessHoursService } from './business-hours.service'
 import {
@@ -277,7 +283,9 @@ export class SettingsController {
     return this.preferences.update(store.id, body, actorOf(user, store, req))
   }
 
-  @RequirePermissions(Permissions.SETTINGS_VIEW)
+  // The two switches decide what the stock block of the order drawer offers, so whoever may read stock reads them too (the
+  // threshold of low stock is stock data as well); changing them stays settings:edit
+  @RequireAnyPermission(Permissions.SETTINGS_VIEW, Permissions.INVENTORY_VIEW)
   @NoStore()
   @Get(ApiRoutes.settings.inventory)
   getInventory(@CurrentStore() store: Store): Promise<InventorySettingsView> {

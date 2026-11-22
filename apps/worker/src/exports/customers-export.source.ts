@@ -18,7 +18,8 @@ import type { CsvSource } from './csv-export-writer'
 // MVP_TRIM_CHECKLIST.md §10 item 25. The notes stay out (their text is internal). The order columns are
 // the figures of the profile (`customerOrderFigures`: only the orders the store has taken on), `total_spent`
 // and `average_order` in integer cents of the order currency (0 and an empty average and dates for a customer
-// with no counted order).
+// with no counted order). A customer with counted orders in two currencies has both columns empty (a sum across currencies is no
+// figure) and `totals_by_currency` ("USD 12000 | EUR 8000") with each currency apart.
 export const CUSTOMER_COLUMNS = [
   'id',
   'name',
@@ -46,7 +47,8 @@ export const CUSTOMER_COLUMNS = [
   'total_spent',
   'average_order',
   'first_order_at',
-  'last_order_at'
+  'last_order_at',
+  'totals_by_currency'
 ] as const
 
 export function customersExportSource(
@@ -162,7 +164,7 @@ export function customersExportSource(
         // The orders of the whole page in ONE grouped read, as the conversation dates are
         const sums = await jobContext.forStore(storeId, () =>
           prisma.client.order.groupBy({
-            by: ['customerId'],
+            by: ['customerId', 'currency'],
             where: {
               storeId,
               customerId: { in: customers.map(customer => customer.id) },
@@ -174,22 +176,25 @@ export function customersExportSource(
             _max: { createdAt: true }
           })
         )
-        const sumOf = new Map(sums.map(sum => [sum.customerId, sum]))
+        const sumsOf = new Map<string, typeof sums>()
+        for (const sum of sums)
+          sumsOf.set(sum.customerId, [...(sumsOf.get(sum.customerId) ?? []), sum])
 
         for (const customer of customers) {
           const home = customer.addresses.find(address => address.isDefault)
           const span = spanOf.get(customer.id)
-          const sum = sumOf.get(customer.id)
           const figures = customerOrderFigures(
-            sum === undefined
-              ? undefined
-              : {
-                  orders: sum._count._all,
-                  totalSpentCents: sum._sum.totalCents ?? 0,
-                  firstOrderAt: sum._min.createdAt,
-                  lastOrderAt: sum._max.createdAt
-                }
+            (sumsOf.get(customer.id) ?? []).map(sum => ({
+              currency: sum.currency,
+              orders: sum._count._all,
+              totalSpentCents: sum._sum.totalCents ?? 0,
+              firstOrderAt: sum._min.createdAt,
+              lastOrderAt: sum._max.createdAt
+            }))
           )
+          // The money is cents of ONE currency: a customer with orders in two has the figures in `totals_by_currency` and
+          // the two plain columns empty, never a sum across currencies
+          const single = figures.byCurrency.length === 1 ? figures.byCurrency[0] : undefined
           yield [
             customer.id,
             customer.name,
@@ -214,10 +219,11 @@ export function customersExportSource(
             span?._min.createdAt,
             span?._max.createdAt,
             figures.orders,
-            figures.totalSpentCents,
-            figures.averageOrderCents,
+            figures.orders === 0 ? 0 : (single?.totalSpentCents ?? null),
+            single?.averageOrderCents ?? null,
             figures.firstOrderAt,
-            figures.lastOrderAt
+            figures.lastOrderAt,
+            figures.byCurrency.map(line => `${line.currency} ${line.totalSpentCents}`).join(' | ')
           ]
         }
       }

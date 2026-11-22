@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type { INestApplication } from '@nestjs/common'
 import type { Redis } from 'ioredis'
 
@@ -77,7 +79,8 @@ describe('The cap of finance report reads per organization', () => {
   afterAll(async () => {
     await redis.del(
       CacheKeys.financeReports.readSlots(ctx.orgA.id),
-      CacheKeys.financeReports.readSlots(ctx.orgB.id)
+      CacheKeys.financeReports.readSlots(ctx.orgB.id),
+      CacheKeys.financeReports.streamSlots(ctx.orgA.id)
     )
     await cleanUp(owner, prefix)
     await app.close()
@@ -192,5 +195,61 @@ describe('The cap of finance report reads per organization', () => {
 
     expect((await asA().get(ApiRoutes.finance.reports.margin).query(RANGE)).status).toBe(OK)
     expect(await slots(ctx.orgA.id)).toBe(0)
+  })
+
+  it('takes a place of the reads for the CSV of a ledger too: a full organization is refused before the account is looked up', async () => {
+    const held = await holdAll(ctx.orgA.id, MOST)
+    const refused = await asA()
+      .get(ApiRoutes.finance.reports.ledgerCsv)
+      .query({ ...RANGE, accountId: randomUUID() })
+    await leave(held)
+
+    expect(refused.status).toBe(TOO_MANY_REQUESTS)
+    expect(await slots(ctx.orgA.id)).toBe(0)
+  })
+
+  // The files of the journal have a cap of their own, apart from the reads (debt (a) of 7.3-D): a download paced by the client must not
+  // take the places of the reports, and a full organization is refused before the file starts
+  describe('the files of the journal', () => {
+    const MOST_FILES = FinanceReportLimits.MAX_CONCURRENT_STREAMS_PER_ORGANIZATION
+    const files = (organizationId: string): Promise<number> =>
+      redis.zcard(CacheKeys.financeReports.streamSlots(organizationId))
+    async function* nothing(): AsyncGenerator<never> {
+      await Promise.resolve()
+      yield* [] as never[]
+    }
+
+    it('refuses the next file with FINANCE_REPORT_BUSY when the organization is sending as many as it may, leaves the reads alone, and gives each place back', async () => {
+      const open = await Promise.all(
+        Array.from({ length: MOST_FILES }, () =>
+          gate.openStream(ctx.orgA.id, () => Promise.resolve(nothing))
+        )
+      )
+      expect(await files(ctx.orgA.id)).toBe(MOST_FILES)
+      expect(await slots(ctx.orgA.id)).toBe(0)
+
+      const refused = await asA().get(ApiRoutes.finance.reports.journalCsv).query(RANGE)
+      const read = await asA().get(ApiRoutes.finance.reports.margin).query(RANGE)
+      const other = await api(app, ctx.adminB, ctx.storeB)
+        .get(ApiRoutes.finance.reports.journalCsv)
+        .query(RANGE)
+
+      expect(refused.status).toBe(TOO_MANY_REQUESTS)
+      expect((refused.body as { error?: { code?: string } }).error?.code).toBe(
+        ErrorCodes.FINANCE_REPORT_BUSY
+      )
+      expect(read.status).toBe(OK)
+      expect(other.status).toBe(OK)
+      // Only the file that was refused left nothing behind: the open ones still hold their places
+      expect(await files(ctx.orgA.id)).toBe(MOST_FILES)
+
+      // The files are empty: asking for the first page ends each one and gives its place back
+      for (const stream of open) expect((await stream.next()).done).toBe(true)
+      expect(await files(ctx.orgA.id)).toBe(0)
+      const again = await asA().get(ApiRoutes.finance.reports.journalCsv).query(RANGE)
+      expect(again.status).toBe(OK)
+      // The file of the request ended: its place went back with the stream
+      expect(await files(ctx.orgA.id)).toBe(0)
+    })
   })
 })

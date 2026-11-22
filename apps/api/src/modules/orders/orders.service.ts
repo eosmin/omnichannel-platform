@@ -85,6 +85,7 @@ import {
   storedRounding,
   taxColumnsOf
 } from './orders-tax'
+import { orderCursorKey, orderCursorWhere, orderListOrderBy } from './orders.list-order'
 import { type ListOrdersQuery, encodeOrderCursor } from './orders.schemas'
 import {
   assertHolds,
@@ -252,56 +253,39 @@ export class OrdersService {
 
   async list(storeId: string, query: ListOrdersQuery): Promise<OrderPage> {
     const { where: resolved, scheduled: range } = await this.resolveFilters(storeId, query)
-    const bySchedule = query[OrderListFilters.SORT] === OrderSorts.SCHEDULED_DELIVERY
+    const sort = query[OrderListFilters.SORT] ?? OrderSorts.NEWEST
+    const bySchedule = sort === OrderSorts.SCHEDULED_DELIVERY
     const { cursor } = query
+    // Every sort ends in the newest and then the id (unique): the position of a row is total, so no page repeats or skips one
     const after = (position: { createdAt: Date; id: string }) => [
       { createdAt: { lt: position.createdAt } },
       { createdAt: position.createdAt, id: { lt: position.id } }
     ]
     // The customers the text names come from a database function (migration rls_search_order_customers), before the read of the orders
     const textCustomers = await orderTextCustomerIds(this.prisma, storeId, resolved.q)
+    const base = {
+      ...orderListWhere(storeId, resolved, textCustomers),
+      ...(range.from === null && range.to === null
+        ? {}
+        : {
+            scheduledDeliveryDate: {
+              ...(range.from === null ? {} : { gte: calendarDayToDate(range.from) }),
+              ...(range.to === null ? {} : { lte: calendarDayToDate(range.to) })
+            }
+          })
+    }
     const rows = await this.prisma.client.order.findMany({
-      where: {
-        ...orderListWhere(storeId, resolved, textCustomers),
-        ...(range.from === null && range.to === null
-          ? {}
-          : {
-              scheduledDeliveryDate: {
-                ...(range.from === null ? {} : { gte: calendarDayToDate(range.from) }),
-                ...(range.to === null ? {} : { lte: calendarDayToDate(range.to) })
-              }
-            }),
-        ...(cursor === undefined
-          ? {}
-          : bySchedule
-            ? // Soonest day first with the orders that have none last: after a day, the later days, the same day
-              // further down, and every order with no day
-              cursor.day === null
-              ? { scheduledDeliveryDate: null, OR: after(cursor) }
-              : {
-                  OR: [
-                    { scheduledDeliveryDate: { gt: calendarDayToDate(cursor.day) } },
-                    { scheduledDeliveryDate: calendarDayToDate(cursor.day), OR: after(cursor) },
-                    { scheduledDeliveryDate: null }
-                  ]
-                }
-            : { OR: after(cursor) })
-      },
+      // The cursor goes in an AND of its own: its OR must not replace one of the filters
+      where: cursor === undefined ? base : { AND: [base, orderCursorWhere(sort, cursor, after)] },
       select: ORDER_LIST_SELECT,
       take: query.limit + 1,
-      orderBy: bySchedule
-        ? [
-            { scheduledDeliveryDate: { sort: 'asc', nulls: 'last' } },
-            { createdAt: 'desc' },
-            { id: 'desc' }
-          ]
-        : [{ createdAt: 'desc' }, { id: 'desc' }]
+      orderBy: orderListOrderBy(sort)
     })
     const hasMore = rows.length > query.limit
     const page = hasMore ? rows.slice(0, query.limit) : rows
     const last = page.at(-1)
     return {
-      data: page.map(summaryView),
+      data: page.map(row => summaryView(row)),
       nextCursor:
         hasMore && last !== undefined
           ? encodeOrderCursor({
@@ -309,6 +293,7 @@ export class OrdersService {
                 bySchedule && last.scheduledDeliveryDate !== null
                   ? last.scheduledDeliveryDate.toISOString().slice(0, 10)
                   : null,
+              key: orderCursorKey(sort, last),
               createdAt: last.createdAt,
               id: last.id
             })

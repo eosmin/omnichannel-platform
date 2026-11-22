@@ -194,7 +194,7 @@ export class InvitationsService {
         ErrorCodes.PERMISSION_DENIED,
         'a member cannot be invited into a role that holds permissions the caller lacks',
         HttpStatusCodes.FORBIDDEN,
-        { permissions: missing }
+        { required: missing }
       )
     }
     const membership = await this.membershipOf(store.id, email)

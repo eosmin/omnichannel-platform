@@ -30,6 +30,7 @@ import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { allDirectoryRows } from '../helpers/directory'
 import { api } from '../helpers/http'
 
 // The channel the builders use for a handle and an account when none is named
@@ -262,9 +263,12 @@ describe('Conversations, search and channels through the plugin API', () => {
       const mine = await row((await mkA()).id)
       const theirs = await row((await createConversationOf(owner, { storeId: ctx.storeB.id })).id)
 
-      const a = await asA('get', PluginApiRoutes.channels.directory).expect(OK)
+      const a = await allDirectoryRows<{ id: string }>(query =>
+        asA('get', PluginApiRoutes.channels.directory).query(query)
+      )
 
-      const ids = (a.body as { id: string }[]).map(entry => entry.id)
+      expect(a.status).toBe(OK)
+      const ids = a.rows.map(entry => entry.id)
       expect(ids).toContain(mine.channelConnectionId)
       expect(ids).not.toContain(theirs.channelConnectionId)
     })

@@ -1,8 +1,38 @@
-import { AuditColdExport, ComplianceConfig, DataRetentionPolicies } from './compliance-constants'
+import {
+  AuditColdExport,
+  ComplianceConfig,
+  DataRetentionPolicies,
+  dsrExecutorAvailable,
+  dsrPublicFlowReady
+} from './compliance-constants'
 
 describe('ComplianceConfig', () => {
   it('alerts before the response deadline', () => {
     expect(ComplianceConfig.DSR_DEADLINE_ALERT_DAY).toBeLessThan(
+      ComplianceConfig.DSR_RESPONSE_DEADLINE_DAYS
+    )
+  })
+})
+
+describe('dsrExecutorAvailable', () => {
+  // The sweep `dsr-erase-due` exists (Step 7.2-H2b-1): an erasure can be approved. The public form stays off until the owner turns the flag on
+  it('is true now that the sweep that carries out an approved erasure ships', () => {
+    expect(dsrExecutorAvailable()).toBe(true)
+  })
+
+  // The public form needs more than the sweep (the alert of day 25, the notices of a request given back, access and portability): its own
+  // switch stays false until H2b-2 ships, and the env schema refuses the flag while it is
+  it('does not open the public flow: that is the switch of the PR that finishes H2b', () => {
+    expect(dsrPublicFlowReady()).toBe(false)
+  })
+})
+
+describe('the grace period of an approved erasure', () => {
+  // The owner's decision (2026-11-22, option C), pinned: a change of this number is a decision, not a refactor. It must also end well inside
+  // the 30 days the law gives to answer, with no extension (the 60-day one is out of the MVP)
+  it('is 7 days and ends inside the response deadline', () => {
+    expect(ComplianceConfig.ERASURE_GRACE_PERIOD_DAYS).toBe(7)
+    expect(ComplianceConfig.ERASURE_GRACE_PERIOD_DAYS).toBeLessThan(
       ComplianceConfig.DSR_RESPONSE_DEADLINE_DAYS
     )
   })

@@ -135,6 +135,11 @@ export class InvitationAcceptService {
         userId: user.id,
         invitedBy: invitation.invitedById
       })
+      this.events.publish(tx, Events.TEAM_DIRECTORY_CHANGED, {
+        storeId: invitation.storeId,
+        membershipId,
+        roleId: null
+      })
       return {
         user,
         membershipId,

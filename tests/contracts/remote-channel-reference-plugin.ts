@@ -234,11 +234,18 @@ export function loopbackExchange(
       url,
       { method: 'POST', headers: options.headers, timeout: options.timeoutMs },
       response => {
+        if (options.discardBody) {
+          response.resume()
+          resolve({ status: response.statusCode ?? 0, body: '' })
+          request.destroy()
+          return
+        }
+        const maxBytes = options.maxResponseBytes
         const chunks: Buffer[] = []
         let size = 0
         response.on('data', (chunk: Buffer) => {
           size += chunk.length
-          if (size > options.maxResponseBytes) {
+          if (size > maxBytes) {
             request.destroy()
             reject(
               new PinnedExchangeFailed(PinnedExchangeReasons.TOO_LARGE, response.statusCode ?? null)

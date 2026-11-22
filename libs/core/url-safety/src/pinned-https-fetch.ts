@@ -1,13 +1,6 @@
-import { Agent, request as httpsRequest } from 'node:https'
-import { isIP } from 'node:net'
-
 import { errorCodeOf } from './pinned-errors'
-import {
-  type HttpsRequester,
-  PinnedExchangeFailed,
-  PinnedExchangeReasons
-} from './pinned-https-exchange'
-import { pinnedLookup } from './pinned-lookup'
+import { PinnedExchangeFailed, PinnedExchangeReasons } from './pinned-https-exchange'
+import { type HttpsRequester, openPinnedRequest } from './pinned-request'
 import {
   type HostResolver,
   type PublicTarget,
@@ -103,10 +96,7 @@ export function createPinnedFetch(options: PinnedFetchOptions): PinnedFetch {
       if (error instanceof UnsafeUrlError || error instanceof PinnedExchangeFailed) throw error
       throw new PinnedExchangeFailed(`${PinnedExchangeReasons.NOT_RESOLVED}:${errorCodeOf(error)}`)
     }
-    const { url, addresses } = target
     const remainingMs = Math.max(1, options.timeoutMs - (Date.now() - startedAt))
-    const send = options.request ?? httpsRequest
-    const host = url.hostname.replace(/^\[|\]$/g, '')
     const payload = typeof body === 'string' ? Buffer.from(body, 'utf8') : undefined
 
     return new Promise<Response>((resolve, reject) => {
@@ -135,23 +125,16 @@ export function createPinnedFetch(options: PinnedFetchOptions): PinnedFetch {
       }
       signal?.addEventListener('abort', onAbort, { once: true })
       try {
-        req = send({
-          protocol: 'https:',
-          hostname: host,
-          port,
-          path: `${url.pathname}${url.search}`,
+        req = openPinnedRequest(target, {
           method,
+          port,
           headers: {
             ...headers,
             'accept-encoding': NO_ENCODING,
             ...(payload === undefined ? {} : { 'content-length': String(payload.length) })
           },
-          // A socket of its own: a pooled one, opened for an earlier call, would not go through this lookup
-          agent: new Agent({ keepAlive: false }),
-          lookup: pinnedLookup(addresses),
-          // The certificate is checked against the name of the address, not the address connected to
-          ...(isIP(host) === 0 ? { servername: host } : {}),
-          timeout: remainingMs
+          timeoutMs: remainingMs,
+          request: options.request
         })
       } catch {
         fail(PinnedExchangeReasons.REQUEST_REFUSED)

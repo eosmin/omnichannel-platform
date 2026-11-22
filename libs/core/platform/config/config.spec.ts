@@ -5,6 +5,8 @@ const validEnv: Record<string, string> = {
   DATABASE_URL: 'postgresql://platform:pw@localhost:6432/platform_dev',
   REDIS_URL: 'redis://localhost:6379',
   JWT_SECRET: 'x'.repeat(32),
+  // A deployed environment needs its own (the cases below take it away); the others do not
+  CONSENT_HASH_KEY: 'h'.repeat(40),
   CREDENTIALS_ENCRYPTION_KEY: 'a'.repeat(64),
   AWS_ACCESS_KEY_ID: 'key',
   AWS_SECRET_ACCESS_KEY: 'secret',
@@ -590,9 +592,96 @@ describe('DSR_PUBLIC_INTAKE_ENABLED, the public intake of data subject requests'
     expect(parseEnv(validEnv).DSR_PUBLIC_INTAKE_ENABLED).toBe(false)
   })
 
-  it('refuses to start when it is on and nothing carries out an approved erasure (Step 7.2-H2b ships the executor)', () => {
+  it('refuses to start when it is on before the whole flow of Step 7.2-H2b is ready (the sweep alone is not enough)', () => {
     expect(() => parseEnv({ ...validEnv, DSR_PUBLIC_INTAKE_ENABLED: 'true' })).toThrow(
       /DSR_PUBLIC_INTAKE_ENABLED/
     )
+  })
+})
+
+describe('CONSENT_HASH_KEY, the key of the cookie banner hashes (Step 7.2-K2)', () => {
+  const withoutKey: Record<string, string> = Object.fromEntries(
+    Object.entries(validEnv).filter(([name]) => name !== 'CONSENT_HASH_KEY')
+  )
+  const OWN_KEY = 'h'.repeat(40)
+  const deployedWithoutKey: Record<string, string> = {
+    ...withoutKey,
+    RESEND_API_KEY: 're_key',
+    FRONTEND_URL: 'https://app.example.com',
+    WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
+    TRUST_PROXY_HOPS: '1'
+  }
+  const deployed: Record<string, string> = { ...deployedWithoutKey, CONSENT_HASH_KEY: OWN_KEY }
+
+  it('may be left out outside a deployed environment, and an empty value counts as left out', () => {
+    expect(parseEnv(withoutKey).CONSENT_HASH_KEY).toBeUndefined()
+    expect(parseEnv({ ...withoutKey, CONSENT_HASH_KEY: '' }).CONSENT_HASH_KEY).toBeUndefined()
+  })
+
+  it.each(['staging', 'production'])('is required in %s', nodeEnv => {
+    expect(() => parseEnv({ ...deployedWithoutKey, NODE_ENV: nodeEnv })).toThrow(/CONSENT_HASH_KEY/)
+    expect(() => parseEnv({ ...deployed, NODE_ENV: nodeEnv })).not.toThrow()
+  })
+
+  it('is refused in a deployed environment when it is the signing secret or the placeholder', () => {
+    expect(() =>
+      parseEnv({
+        ...deployed,
+        NODE_ENV: 'production',
+        CONSENT_HASH_KEY: withoutKey['JWT_SECRET'] ?? ''
+      })
+    ).toThrow(/CONSENT_HASH_KEY/)
+    expect(() =>
+      parseEnv({
+        ...deployed,
+        NODE_ENV: 'production',
+        CONSENT_HASH_KEY: deployed['CREDENTIALS_ENCRYPTION_KEY'] ?? ''
+      })
+    ).toThrow(/CONSENT_HASH_KEY/)
+    expect(() =>
+      parseEnv({
+        ...deployed,
+        NODE_ENV: 'production',
+        CONSENT_HASH_KEY: 'change-me-to-at-least-32-characters-long-value'
+      })
+    ).toThrow(/CONSENT_HASH_KEY/)
+  })
+
+  it('never puts the value of a refused key in the error, message or issues', () => {
+    // The two values that are refused because they are another secret: the very case in which the value is worth hiding
+    for (const value of [
+      withoutKey['JWT_SECRET'] ?? '',
+      withoutKey['CREDENTIALS_ENCRYPTION_KEY'] ?? ''
+    ]) {
+      let thrown: unknown
+      try {
+        parseEnv({ ...deployed, NODE_ENV: 'production', CONSENT_HASH_KEY: value })
+      } catch (error) {
+        thrown = error
+      }
+      expect(thrown).toBeDefined()
+      expect(JSON.stringify(thrown, Object.getOwnPropertyNames(thrown as object))).not.toContain(
+        value
+      )
+      expect(String(thrown)).toMatch(/CONSENT_HASH_KEY/)
+    }
+  })
+
+  it('takes at least 32 characters', () => {
+    expect(() => parseEnv({ ...validEnv, CONSENT_HASH_KEY: 'short' })).toThrow(/CONSENT_HASH_KEY/)
+  })
+})
+
+describe('COOKIE_CONSENT_RETENTION_ENABLED, the sweep of the cookie banner records (Step 7.2-K2)', () => {
+  it('is off unless it is turned on, because the sweep deletes evidence of consent for good', () => {
+    expect(parseEnv(validEnv).COOKIE_CONSENT_RETENTION_ENABLED).toBe(false)
+    expect(
+      parseEnv({ ...validEnv, COOKIE_CONSENT_RETENTION_ENABLED: 'false' })
+        .COOKIE_CONSENT_RETENTION_ENABLED
+    ).toBe(false)
+    expect(
+      parseEnv({ ...validEnv, COOKIE_CONSENT_RETENTION_ENABLED: 'true' })
+        .COOKIE_CONSENT_RETENTION_ENABLED
+    ).toBe(true)
   })
 })

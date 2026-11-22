@@ -29,8 +29,12 @@ interface OrdersPage {
   hasMore: boolean
   figures: {
     orders: number
-    totalSpentCents: number
-    averageOrderCents: number | null
+    byCurrency: {
+      currency: string
+      orders: number
+      totalSpentCents: number
+      averageOrderCents: number
+    }[]
     firstOrderAt: string | null
     lastOrderAt: string | null
   } | null
@@ -81,7 +85,8 @@ describe('The orders of a customer', () => {
     status: OrderStatus,
     totalCents: number,
     createdAt: Date,
-    storeId: string = ctx.storeA.id
+    storeId: string = ctx.storeA.id,
+    currency = 'USD'
   ) {
     sequence += 1
     return owner.order.create({
@@ -92,6 +97,7 @@ describe('The orders of a customer', () => {
         status,
         subtotalCents: totalCents,
         totalCents,
+        currency,
         paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
         createdBy: ctx.adminA.id,
         createdAt,
@@ -140,8 +146,9 @@ describe('The orders of a customer', () => {
       // 1000 + 2500 over two orders; the pending and the cancelled one are not counted
       expect(page.figures).toEqual({
         orders: 2,
-        totalSpentCents: 3500,
-        averageOrderCents: 1750,
+        byCurrency: [
+          { currency: 'USD', orders: 2, totalSpentCents: 3500, averageOrderCents: 1750 }
+        ],
         firstOrderAt: day(1).toISOString(),
         lastOrderAt: day(3).toISOString()
       })
@@ -186,7 +193,10 @@ describe('The orders of a customer', () => {
       expect(second.hasMore).toBe(false)
       expect(second.nextCursor).toBeNull()
       expect(new Set([...first.data, ...second.data].map(order => order.id)).size).toBe(3)
-      expect(first.figures).toMatchObject({ orders: 3, totalSpentCents: 600 })
+      expect(first.figures).toMatchObject({
+        orders: 3,
+        byCurrency: [{ currency: 'USD', totalSpentCents: 600 }]
+      })
       expect(second.figures).toBeNull()
     })
 
@@ -225,7 +235,10 @@ describe('The orders of a customer', () => {
 
       expect(cancelled.data.map(order => order.status)).toEqual([OrderStatus.CANCELLED])
       // The figures are over the whole history, not over the filter
-      expect(cancelled.figures).toMatchObject({ orders: 1, totalSpentCents: 100 })
+      expect(cancelled.figures).toMatchObject({
+        orders: 1,
+        byCurrency: [{ currency: 'USD', totalSpentCents: 100 }]
+      })
       for (const query of [
         { status: 'LOST' },
         { cursor: 'nope' },
@@ -237,6 +250,25 @@ describe('The orders of a customer', () => {
       }
     })
 
+    it('keeps the money of each currency apart and never adds across them (a store that changed its currency)', async () => {
+      const customer = await createCustomer(owner, { storeId: ctx.storeA.id })
+      await makeOrder(customer.id, OrderStatus.CONFIRMED, 1000, day(1))
+      await makeOrder(customer.id, OrderStatus.DELIVERED, 3000, day(2))
+      await makeOrder(customer.id, OrderStatus.DELIVERED, 500, day(3), ctx.storeA.id, 'EUR')
+
+      const response = await asAdmin().get(ApiRoutes.customers.orders(customer.id))
+
+      expect((response.body as OrdersPage).figures).toEqual({
+        orders: 3,
+        byCurrency: [
+          { currency: 'EUR', orders: 1, totalSpentCents: 500, averageOrderCents: 500 },
+          { currency: 'USD', orders: 2, totalSpentCents: 4000, averageOrderCents: 2000 }
+        ],
+        firstOrderAt: day(1).toISOString(),
+        lastOrderAt: day(3).toISOString()
+      })
+    })
+
     it('answers zeros and no average for a customer with no order', async () => {
       const customer = await createCustomer(owner, { storeId: ctx.storeA.id })
 
@@ -245,8 +277,7 @@ describe('The orders of a customer', () => {
       expect((response.body as OrdersPage).data).toEqual([])
       expect((response.body as OrdersPage).figures).toEqual({
         orders: 0,
-        totalSpentCents: 0,
-        averageOrderCents: null,
+        byCurrency: [],
         firstOrderAt: null,
         lastOrderAt: null
       })

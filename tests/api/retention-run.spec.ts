@@ -71,6 +71,8 @@ describe('The retention run of the worker', () => {
   let storage: StorageService
   let enforcer: StoreRetentionEnforcer
   let cleaner: PlatformCleaner
+  // The same cleaner with the sweep of the cookie banner turned on (off by default: the owner decides)
+  let cookieCleaner: PlatformCleaner
   let exporter: AuditColdExporter
   const keys: string[] = []
 
@@ -87,7 +89,20 @@ describe('The retention run of the worker', () => {
       new JobContext(worker),
       app.get(AuditService)
     )
-    cleaner = new PlatformCleaner(worker, new JobContext(worker), logger, app.get(AuditService))
+    cleaner = new PlatformCleaner(
+      worker,
+      new JobContext(worker),
+      logger,
+      app.get(AuditService),
+      false
+    )
+    cookieCleaner = new PlatformCleaner(
+      worker,
+      new JobContext(worker),
+      logger,
+      app.get(AuditService),
+      true
+    )
     exporter = new AuditColdExporter(worker, new WorkerLists(worker), storage, logger)
   })
   afterAll(async () => {
@@ -952,6 +967,68 @@ describe('The retention run of the worker', () => {
       expect(left.map(row => row.id).sort()).toEqual(
         [atTheEdge, justExpired, live, accepted, revoked].sort()
       )
+    })
+
+    it('deletes no answer to the cookie banner while the sweep is off (the default), however old', async () => {
+      const old = await owner.cookieConsent.create({
+        data: {
+          visitorId: `${prefix}-off`,
+          categories: { functional: true, analytics: false, marketing: false },
+          policyVersion: 'test',
+          createdAt: daysAgo(PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS + 1, now)
+        },
+        select: { id: true }
+      })
+      try {
+        const report = await cleaner.run(now)
+        expect(report.cookieConsents).toBe(0)
+        expect(await owner.cookieConsent.count({ where: { id: old.id } })).toBe(1)
+        // The same row goes once the sweep is on, so the case above is the switch and not a row that was never old enough
+        await cookieCleaner.run(now)
+        expect(await owner.cookieConsent.count({ where: { id: old.id } })).toBe(0)
+      } finally {
+        await owner.cookieConsent.deleteMany({ where: { id: old.id } })
+      }
+    })
+
+    it('with the sweep turned on deletes the answers to the cookie banner past the retention, the newest of a visitor too, and keeps the rest', async () => {
+      const days = PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS
+      const answer = async (visitor: string, createdAt: Date): Promise<string> =>
+        (
+          await owner.cookieConsent.create({
+            data: {
+              visitorId: `${prefix}-${visitor}`,
+              categories: { functional: true, analytics: false, marketing: false },
+              policyVersion: 'test',
+              createdAt
+            },
+            select: { id: true }
+          })
+        ).id
+      // A visitor who changed their mind: the old answer is past the window and goes, the new one stays
+      const replaced = await answer('a', daysAgo(days + 30, now))
+      const replacement = await answer('a', daysAgo(10, now))
+      // A visitor who never came back: the only answer is past the window, so it goes too (the choice it proves expired long ago)
+      const abandoned = await answer('b', daysAgo(days + 1, now))
+      // Exactly at the window is not past it
+      const atTheEdge = await answer('c', daysAgo(days, now))
+      const recent = await answer('d', daysAgo(1, now))
+      const all = [replaced, replacement, abandoned, atTheEdge, recent]
+
+      const report = await cookieCleaner.run(now)
+
+      expect(report.cookieConsents).toBeGreaterThanOrEqual(2)
+      const left = await owner.cookieConsent.findMany({
+        where: { id: { in: all } },
+        select: { id: true }
+      })
+      expect(left.map(row => row.id).sort()).toEqual([replacement, atTheEdge, recent].sort())
+      // And it is idempotent: a second run finds nothing of these to take
+      await cookieCleaner.run(now)
+      expect(await owner.cookieConsent.count({ where: { id: { in: all } } })).toBe(3)
+      await owner.cookieConsent.deleteMany({
+        where: { id: { in: [replacement, atTheEdge, recent] } }
+      })
     })
 
     it('deletes the deliveries of a webhook past thirty days and the hours of the rollup past ninety', async () => {

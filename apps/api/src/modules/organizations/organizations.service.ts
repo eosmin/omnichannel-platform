@@ -158,7 +158,7 @@ export class OrganizationsService {
         ErrorCodes.PERMISSION_DENIED,
         'a store is created only by someone who holds what its Admin holds',
         HttpStatusCodes.FORBIDDEN,
-        { permissions: missing }
+        { required: missing }
       )
     }
     const store = await this.writing(() =>

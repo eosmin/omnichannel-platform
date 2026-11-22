@@ -114,6 +114,23 @@ describe('The channel connections of a store', () => {
     return rows
   }
 
+  // Every page of the directory, joined into one answer: the store holds the connections of all the cases, more than a page
+  async function allDirectory(
+    agent = asAgent
+  ): Promise<{ status: number; body: { data: ConnectionBody[] } }> {
+    const data: ConnectionBody[] = []
+    let cursor: string | null = null
+    do {
+      const page: { status: number; body: ConnectionPageBody } = await agent()
+        .get(ApiRoutes.channels.directory)
+        .query({ limit: 100, ...(cursor === null ? {} : { cursor }) })
+      if (page.status !== OK) return { status: page.status, body: { data } }
+      data.push(...page.body.data)
+      cursor = page.body.nextCursor
+    } while (cursor !== null)
+    return { status: OK, body: { data } }
+  }
+
   // A plugin of its own for each test: the registry refuses an id twice
   function register(over: Partial<ChannelPlugin> = {}, connectionId = `acct-${randomUUID()}`) {
     counter += 1
@@ -1098,10 +1115,11 @@ describe('The channel connections of a store', () => {
       })
       const one = await asAdmin().get(ApiRoutes.channels.connectionById(first.id))
       expect((one.body as Named).displayName).toBe('Instagram principal')
-      const directory = await asAgent().get(ApiRoutes.channels.directory)
+      const directory = await allDirectory()
       expect(
-        (directory.body as { id: string; displayName: string }[]).find(item => item.id === first.id)
-          ?.displayName
+        (directory.body as { data: { id: string; displayName: string }[] }).data.find(
+          item => item.id === first.id
+        )?.displayName
       ).toBe('Instagram principal')
     })
 
@@ -1423,6 +1441,80 @@ describe('The channel connections of a store', () => {
       expect(stolen.data.length).toBeGreaterThan(0)
       for (const row of stolen.data) expect(own).toContain(row.id)
     })
+
+    const directoryPage = (query: Record<string, string | number>, agent = asAgent) =>
+      agent().get(ApiRoutes.channels.directory).query(query)
+
+    it('pages the directory by the same position, with no row twice and none lost', async () => {
+      const ids = await seedMany(ctx.storeA.id, 5)
+      const seen: string[] = []
+      let cursor: string | null = null
+      do {
+        const response: { status: number; body: ConnectionPageBody } = await directoryPage({
+          limit: 2,
+          ...(cursor === null ? {} : { cursor })
+        })
+        expect(response.status).toBe(OK)
+        expect(response.body.hasMore).toBe(response.body.nextCursor !== null)
+        // The date of a row only places the next page: the entry does not carry it
+        for (const entry of response.body.data) expect(entry).not.toHaveProperty('createdAt')
+        seen.push(...response.body.data.map(row => row.id))
+        cursor = response.body.nextCursor
+      } while (cursor !== null)
+      expect(new Set(seen).size).toBe(seen.length)
+      expect(seen.filter(id => ids.includes(id))).toEqual(ids)
+      expect(seen).toEqual((await allConnections()).map(row => row.id))
+    })
+
+    it('breaks a tie of dates by the id, so a page boundary inside the tie loses nothing', async () => {
+      const at = new Date(Date.UTC(2000, 0, 1))
+      const tied: string[] = []
+      for (let index = 0; index < 4; index += 1) {
+        const row = await createChannelConnection(owner, {
+          storeId: ctx.storeA.id,
+          channelType: 'test_channel',
+          status: ChannelConnectionStatus.ACTIVE,
+          createdAt: at
+        })
+        tied.push(row.id)
+      }
+      const seen: string[] = []
+      let cursor: string | null = null
+      do {
+        const response: { body: ConnectionPageBody } = await directoryPage({
+          limit: 1,
+          ...(cursor === null ? {} : { cursor })
+        })
+        seen.push(...response.body.data.map(row => row.id))
+        cursor = response.body.nextCursor
+      } while (cursor !== null)
+      expect(seen.filter(id => tied.includes(id))).toEqual([...tied].sort())
+    })
+
+    it('refuses what the list refuses, and a state the directory does not take', async () => {
+      for (const limit of [0, PaginationLimits.MAX + 1, -1, 'x']) {
+        expect((await directoryPage({ limit })).status).toBe(BAD_REQUEST)
+      }
+      expect((await directoryPage({ cursor: 'not-a-cursor' })).status).toBe(BAD_REQUEST)
+      expect((await directoryPage({ state: ChannelConnectionListStates.LIVE })).status).toBe(
+        BAD_REQUEST
+      )
+    })
+
+    it('answers a page of the default size and never another store through its cursor', async () => {
+      await seedMany(ctx.storeA.id, PaginationLimits.DEFAULT + 1)
+      const byDefault = (await directoryPage({})).body as ConnectionPageBody
+      expect(byDefault.data).toHaveLength(PaginationLimits.DEFAULT)
+      expect(byDefault.hasMore).toBe(true)
+      const mineB = await seedMany(ctx.storeB.id, 2)
+      const first = (await directoryPage({ limit: 1 }, asAdminB)).body as ConnectionPageBody
+      const stolen = (await directoryPage({ cursor: first.nextCursor ?? '', limit: 100 }))
+        .body as ConnectionPageBody
+      const own = (await allDirectory()).body.data.map(row => row.id)
+      expect(stolen.data.length).toBeGreaterThan(0)
+      for (const row of stolen.data) expect(own).toContain(row.id)
+      for (const id of mineB) expect(stolen.data.map(row => row.id)).not.toContain(id)
+    })
   })
 
   describe('the directory for an agent', () => {
@@ -1431,11 +1523,11 @@ describe('The channel connections of a store', () => {
       await connect(id)
 
       const settings = await asAgent().get(ApiRoutes.channels.connections)
-      const list = await asAgent().get(ApiRoutes.channels.directory)
+      const list = await allDirectory()
 
       expect(settings.status).toBe(FORBIDDEN)
       expect(list.status).toBe(OK)
-      const item = (list.body as ConnectionBody[]).find(each => each.pluginId === id)
+      const item = list.body.data.find(each => each.pluginId === id)
       expect(Object.keys(item ?? {}).sort()).toEqual([
         'capabilities',
         'descriptor',
@@ -1474,10 +1566,10 @@ describe('The channel connections of a store', () => {
       await connect(takes.id)
       await connect(text.id)
 
-      const list = await asAgent().get(ApiRoutes.channels.directory)
+      const list = await allDirectory()
 
       const mediaOf = (pluginId: string) =>
-        (list.body as { pluginId: string; media: unknown[] }[]).find(
+        (list.body as unknown as { data: { pluginId: string; media: unknown[] }[] }).data.find(
           item => item.pluginId === pluginId
         )?.media
       // The switch for several files is off in the suite: the channel's five become one, as the route says
@@ -1500,9 +1592,9 @@ describe('The channel connections of a store', () => {
       await connect(mine.id)
       await connect(theirs.id, asAdminB)
 
-      const list = await asAgent().get(ApiRoutes.channels.directory)
+      const list = await allDirectory()
 
-      const ids = (list.body as ConnectionBody[]).map(item => item.pluginId)
+      const ids = list.body.data.map(item => item.pluginId)
       expect(ids).toContain(mine.id)
       expect(ids).not.toContain(theirs.id)
     })
@@ -1519,10 +1611,10 @@ describe('The channel connections of a store', () => {
       await connect(missing.id)
       await connect(emoji.id)
 
-      const list = await asAgent().get(ApiRoutes.channels.directory)
+      const list = await allDirectory()
 
       const nameOf = (pluginId: string) =>
-        (list.body as ConnectionBody[]).find(item => item.pluginId === pluginId)?.pluginName
+        list.body.data.find(item => item.pluginId === pluginId)?.pluginName
       expect(list.status).toBe(OK)
       expect(Array.from(nameOf(long.id) ?? '')).toHaveLength(60)
       expect(nameOf(long.id)).toMatch(/^Whatsx+$/)
@@ -1546,12 +1638,10 @@ describe('The channel connections of a store', () => {
         data: { status: PluginInstallationStatus.REVOKED }
       })
 
-      const list = await asAgent().get(ApiRoutes.channels.directory)
+      const list = await allDirectory()
 
       const statusOf = (connection: { body: unknown }) =>
-        (list.body as ConnectionBody[]).find(
-          item => item.id === (connection.body as ConnectionBody).id
-        )?.status
+        list.body.data.find(item => item.id === (connection.body as ConnectionBody).id)?.status
       expect(statusOf(brokenConnection)).toBe(ChannelConnectionStatus.ERROR)
       expect(statusOf(orphanConnection)).toBe(ChannelConnectionStatus.ERROR)
       expect(JSON.stringify(list.body)).not.toContain('SECRET-DETAIL')
@@ -2131,10 +2221,11 @@ describe('The channel connections of a store', () => {
       const { id } = profilePlugin()
       await connectionOf(asAdmin, id)
 
-      const response = await asAgent().get(ApiRoutes.channels.directory)
+      const response = await allDirectory()
 
       expect(response.status).toBe(OK)
-      for (const entry of response.body as object[]) expect(entry).not.toHaveProperty('profile')
+      for (const entry of (response.body as { data: object[] }).data)
+        expect(entry).not.toHaveProperty('profile')
       expect(JSON.stringify(response.body)).not.toContain(SETUP_KEY)
     })
   })

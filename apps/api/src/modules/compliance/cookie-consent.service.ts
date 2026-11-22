@@ -1,11 +1,12 @@
-import { createHmac } from 'node:crypto'
-
 import { Inject, Injectable } from '@nestjs/common'
 
 import {
+  type ConsentHashKey,
+  COOKIE_CONSENT_COOKIE_MAX_AGE_SECONDS,
   COOKIE_CONSENT_HASH_KEY,
   ChoosableCookieCategories,
-  CookieConsentLimits
+  CookieConsentLimits,
+  hashClientAddress
 } from '@platform/core/compliance'
 import { PrismaService } from '@platform/core/database'
 
@@ -30,11 +31,6 @@ function sameChoice(stored: unknown, chosen: Record<string, boolean>): boolean {
   return ChoosableCookieCategories.every(category => row[category] === chosen[category])
 }
 
-// A keyed hash of the address: the proof that a choice came from somewhere, without keeping the address (TDD_05 §10.5)
-export function hashClientAddress(address: string, key: string): string {
-  return createHmac('sha256', key).update(address).digest('hex')
-}
-
 // The record of the cookie banner (TDD_05 §10.5), for people who are not customers: platform users and anonymous visitors. It is
 // not tenant data (no store): the visitor id is a random id the browser made, and the table keeps the history of the choice, so a
 // change is a new row and the newest one rules. Answering the same thing again writes nothing.
@@ -42,7 +38,7 @@ export function hashClientAddress(address: string, key: string): string {
 export class CookieConsentService {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(COOKIE_CONSENT_HASH_KEY) private readonly hashKey: string
+    @Inject(COOKIE_CONSENT_HASH_KEY) private readonly hashKey: ConsentHashKey
   ) {}
 
   async record(body: CookieConsentBody, context: CookieConsentContext): Promise<CookieConsentView> {
@@ -62,10 +58,16 @@ export class CookieConsentService {
     const latest = await this.prisma.client.cookieConsent.findFirst({
       where: { visitorId: body.visitorId },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { categories: true, policyVersion: true, userId: true }
+      select: { categories: true, policyVersion: true, userId: true, createdAt: true }
     })
+    // The same answer again writes nothing, unless the row is older than the choice can be (the cookie lasts a year): then the visitor
+    // is renewing it, and the newest row must say so, or the retention would take the proof of a choice that is still valid
+    const renewing =
+      latest !== null &&
+      Date.now() - latest.createdAt.getTime() > COOKIE_CONSENT_COOKIE_MAX_AGE_SECONDS * 1000
     if (
       latest !== null &&
+      !renewing &&
       latest.policyVersion === body.policyVersion &&
       latest.userId === userId &&
       sameChoice(latest.categories, categories)

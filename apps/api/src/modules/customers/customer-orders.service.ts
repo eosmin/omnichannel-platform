@@ -86,7 +86,9 @@ export class CustomerOrdersService {
         take: limit + 1
       }),
       wantsFigures
-        ? this.prisma.client.order.aggregate({
+        ? this.prisma.client.order.groupBy({
+            // One row per currency: the money of two currencies is never added
+            by: ['currency'],
             where: { storeId, customerId, status: { in: [...CustomerFigureOrderStatuses] } },
             _count: { _all: true },
             _sum: { totalCents: true },
@@ -109,12 +111,15 @@ export class CustomerOrdersService {
       figures:
         aggregate === null
           ? null
-          : customerOrderFigures({
-              orders: aggregate._count._all,
-              totalSpentCents: aggregate._sum.totalCents ?? 0,
-              firstOrderAt: aggregate._min.createdAt,
-              lastOrderAt: aggregate._max.createdAt
-            })
+          : customerOrderFigures(
+              aggregate.map(group => ({
+                currency: group.currency,
+                orders: group._count._all,
+                totalSpentCents: group._sum.totalCents ?? 0,
+                firstOrderAt: group._min.createdAt,
+                lastOrderAt: group._max.createdAt
+              }))
+            )
     }
   }
 }

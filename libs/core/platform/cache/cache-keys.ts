@@ -42,7 +42,10 @@ export const CacheKeys = {
   // The places of the reports of Finance that one organization is reading right now (a sorted set of tokens scored by their last sign of life)
   financeReports: {
     readSlots: (organizationId: string) =>
-      `organization:${organizationId}:finance-reports:read-slots`
+      `organization:${organizationId}:finance-reports:read-slots`,
+    // The files of the journal being sent (a client-paced download has its own cap, apart from the reads)
+    streamSlots: (organizationId: string) =>
+      `organization:${organizationId}:finance-reports:stream-slots`
   },
 
   agent: {
@@ -153,6 +156,9 @@ export const CacheKeys = {
     setupCodeOf: (installationId: string) => `plugin:setup-of:${installationId}`,
     // Events a remote channel plugin reported in the current minute (TDD_10 §6.7.5, the ceiling of 3000 a minute), by installation
     channelEventsWindow: (installationId: string) => `plugin:channel-events:${installationId}`,
+    // The deliveries a plugin installation started in the last 24 hours (`limits.maxWebhooksPerDay`): a sorted set of delivery ids
+    // scored by the instant they started
+    webhookDay: (installationId: string) => `plugin:webhook-day:${installationId}`,
     // A `customer_typing` of a remote channel is passed on at most once per conversation every 2 seconds
     channelTyping: (conversationId: string) => `plugin:channel-typing:${conversationId}`
   },

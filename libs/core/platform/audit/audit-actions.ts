@@ -294,6 +294,8 @@ export const AuditAction = {
   DSR_APPROVED: 'dsr.approved',
   DSR_CANCELLED: 'dsr.cancelled',
   DSR_EXPIRED: 'dsr.expired',
+  // An approved erasure the sweep did not carry out and gave back to the review queue (reason in the metadata)
+  DSR_ERASURE_RETURNED: 'dsr.erasure_returned',
   CONSENT_RECORDED: 'consent.recorded'
 } as const
 

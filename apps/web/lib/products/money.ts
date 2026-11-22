@@ -31,7 +31,9 @@ export function centsToInput(cents: number): string {
 // by 100 only to be handed to the formatter, which writes it with exactly two decimals.
 export function formatCents(
   format: Pick<ReturnType<typeof useFormatter>, 'number'>,
-  cents: number
+  cents: number,
+  // The code the amount was made in (an order keeps the currency of its day); US dollars where the catalog has no other
+  currency = 'USD'
 ): string {
-  return format.number(cents / 100, { style: 'currency', currency: 'USD' })
+  return format.number(cents / 100, { style: 'currency', currency })
 }

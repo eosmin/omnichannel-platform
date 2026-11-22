@@ -585,6 +585,45 @@ describe('The realtime gateway', () => {
       expect(admin.of(RealtimeEvents.CONVERSATION_READ)).toEqual([])
     })
 
+    it('tells a change of the team to every socket of the store, with ids only, and to no other store', async () => {
+      const agent = await asA(ctx.agentA)
+      const withoutTeam = await actorWithPermissions(owner, app, {
+        prefix,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        name: 'noTeamRealtimeA',
+        permissions: [Permissions.CONVERSATIONS_VIEW]
+      })
+      madeActors.push(withoutTeam)
+      const bare = await connect(withoutTeam.token, ctx.storeA.id)
+      const other = await connect(ctx.adminB.token, ctx.storeB.id)
+      const membershipId = randomUUID()
+
+      app.get(EventEmitter2).emit(Events.TEAM_DIRECTORY_CHANGED, {
+        storeId: ctx.storeA.id,
+        membershipId,
+        roleId: null
+      })
+      await until(
+        () =>
+          agent.of(RealtimeEvents.TEAM_DIRECTORY_CHANGED).length === 1 &&
+          bare.of(RealtimeEvents.TEAM_DIRECTORY_CHANGED).length === 1
+      )
+      await sleep(SETTLE_MS)
+
+      // The ids and nothing else: the list of members never travels in the event
+      expect(agent.of(RealtimeEvents.TEAM_DIRECTORY_CHANGED)[0]?.payload).toEqual({
+        membershipId,
+        roleId: null
+      })
+      // The socket that may not read the team hears the same two ids and nothing more
+      expect(bare.of(RealtimeEvents.TEAM_DIRECTORY_CHANGED)[0]?.payload).toEqual({
+        membershipId,
+        roleId: null
+      })
+      expect(other.of(RealtimeEvents.TEAM_DIRECTORY_CHANGED)).toEqual([])
+    })
+
     it('tells an order that was made or changed only to who may read orders, with its ids and nothing else', async () => {
       const readsOrders = await asA(ctx.adminA)
       const withoutOrders = await actorWithPermissions(owner, app, {

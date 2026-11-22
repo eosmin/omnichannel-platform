@@ -1,11 +1,13 @@
 import { type OrderCopyDraft, PaymentMethod } from '@platform/core/domain'
 
 import {
+  type ListQueryRow,
   type OrderDetailView,
   pluginCopyView,
   pluginCreatedView,
   pluginDetailView,
-  pluginPageView
+  pluginPageView,
+  summaryView
 } from './orders.views'
 
 const NOW = new Date('2026-11-15T12:00:00.000Z')
@@ -228,5 +230,29 @@ describe('the answer of a creation and the draft of a copy for a plugin', () => 
     for (const secret of ['the internal note', 'the packing note', 'leave it at the door']) {
       expect(text).not.toContain(secret)
     }
+  })
+})
+
+describe('summaryView', () => {
+  const row = (customer: ListQueryRow['customer']): ListQueryRow =>
+    ({
+      id: 'order-1',
+      orderNumber: 'T-1',
+      customerId: 'customer-1',
+      scheduledDeliveryDate: null,
+      items: [],
+      customer
+    }) as unknown as ListQueryRow
+
+  it('answers an order whose customer the database hides (a null) instead of failing', () => {
+    expect(summaryView(row(null)).customer).toBeNull()
+  })
+
+  it('keeps the name and the caution flag of the customer and drops the sort key', () => {
+    const view = summaryView(
+      row({ id: 'customer-1', name: 'Ana', nameSearch: 'ana', isCaution: false })
+    )
+
+    expect(view.customer).toEqual({ id: 'customer-1', name: 'Ana', isCaution: false })
   })
 })

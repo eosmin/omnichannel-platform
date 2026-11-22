@@ -44,7 +44,7 @@ function OrderRow({
         >
           {tOrders('list.number', { number: order.orderNumber })}
         </Link>
-        <span className="font-medium">{formatCents(format, order.totalCents)}</span>
+        <span className="font-medium">{formatCents(format, order.totalCents, order.currency)}</span>
       </div>
       <div className="flex justify-end">
         <OrderCopyButton orderId={order.id} orderNumber={order.orderNumber} onOpened={onNavigate} />

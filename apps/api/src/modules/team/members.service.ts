@@ -185,6 +185,7 @@ export class MembersService {
       if (isAdminRole(member.role)) await this.requireAnotherAdmin(tx, storeId, membershipId)
 
       await tx.membership.update({ where: { id: membershipId }, data: { roleId } })
+      this.announceDirectoryChange(tx, storeId, membershipId)
       return {
         changed: true as const,
         member: { ...member, role: { ...role, permissions: role.permissions } },
@@ -225,6 +226,7 @@ export class MembersService {
       // Whoever leaves the team leaves their conversations unassigned: nobody is waiting for an
       // answer from someone who can no longer give it
       await this.backToTheQueue(tx, storeId, found.userId, actor)
+      this.announceDirectoryChange(tx, storeId, membershipId)
       // The finished ones (resolved, archived, spam) leave with them too, without an event: nobody
       // waits on them, and a member who worked for years has thousands
       await tx.conversation.updateMany({
@@ -308,6 +310,7 @@ export class MembersService {
       // them up. The finished ones (resolved, archived, spam) keep who handled them: the person
       // comes back, and the record of the work does not change.
       await this.backToTheQueue(tx, storeId, found.userId, actor)
+      this.announceDirectoryChange(tx, storeId, membershipId)
       return found
     })
     // After the commit, so that nothing re-caches the old answer from a row that is still active
@@ -342,6 +345,7 @@ export class MembersService {
         where: { id: membershipId },
         data: { status: MembershipStatus.ACTIVE }
       })
+      this.announceDirectoryChange(tx, storeId, membershipId)
       return found
     })
     await this.tenants.invalidateUser(member.userId, storeId)
@@ -350,6 +354,20 @@ export class MembersService {
       role: member.role.name
     })
     return view({ ...member, status: MembershipStatus.ACTIVE })
+  }
+
+  // The open sessions of the store read the directory again: who can be given a conversation changed. Ids
+  // only, inside the transaction so that the event leaves only if the change commits.
+  private announceDirectoryChange(
+    tx: PrismaTransaction,
+    storeId: string,
+    membershipId: string
+  ): void {
+    this.events.publish(tx, Events.TEAM_DIRECTORY_CHANGED, {
+      storeId,
+      membershipId,
+      roleId: null
+    })
   }
 
   // The conversations of the member that are still being worked go back to the queue and say so the
@@ -399,7 +417,7 @@ export class MembersService {
         ErrorCodes.PERMISSION_DENIED,
         'a member cannot be given or taken a role that holds permissions the caller lacks',
         HttpStatusCodes.FORBIDDEN,
-        { permissions: missing }
+        { required: missing }
       )
     }
   }
