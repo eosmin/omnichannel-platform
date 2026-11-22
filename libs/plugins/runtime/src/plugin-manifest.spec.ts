@@ -5,7 +5,8 @@ import {
   ChannelManifestLimits,
   ManifestChannelCapabilities,
   PluginManifestLimits,
-  PluginWidgetLimits
+  PluginWidgetLimits,
+  WebhookLimits
 } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
 import { allowLocalCommandsUrl } from '@platform/core/url-safety'
@@ -281,6 +282,7 @@ describe('pluginManifestSchema', () => {
 
   describe('the daily cap of webhooks of a stored manifest', () => {
     const { MAX_WEBHOOKS_PER_DAY: MAX, MIN_WEBHOOKS_PER_DAY: MIN } = PluginManifestLimits
+    const CEILING = WebhookLimits.PLUGIN_DAY_CAP_CEILING
 
     // What the manifest declares and the parser of today accepts is read as it is
     it.each([
@@ -306,11 +308,11 @@ describe('pluginManifestSchema', () => {
       [{ limits: { maxWebhooksPerDay: 1.5 } }, 1],
       [{ limits: { maxWebhooksPerDay: 10.9 } }, 10],
       [{ limits: { maxWebhooksPerDay: MAX + 1 } }, MAX],
-      [{ limits: { maxWebhooksPerDay: Number.POSITIVE_INFINITY } }, MAX],
-      [{ limits: { maxWebhooksPerDay: Number.NaN } }, MAX],
-      [{ limits: { maxWebhooksPerDay: '5' } }, MAX],
-      [{ limits: { maxWebhooksPerDay: null } }, MAX],
-      [{ limits: { maxWebhooksPerDay: { n: 5 } } }, MAX]
+      [{ limits: { maxWebhooksPerDay: Number.POSITIVE_INFINITY } }, CEILING],
+      [{ limits: { maxWebhooksPerDay: Number.NaN } }, CEILING],
+      [{ limits: { maxWebhooksPerDay: '5' } }, CEILING],
+      [{ limits: { maxWebhooksPerDay: null } }, CEILING],
+      [{ limits: { maxWebhooksPerDay: { n: 5 } } }, CEILING]
     ])('holds %j to %j', (manifest, expected) => {
       expect(manifestMaxWebhooksPerDay(manifest)).toBe(expected)
     })

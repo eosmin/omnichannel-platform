@@ -123,9 +123,9 @@ describe('heldRateLimit', () => {
   })
 
   // A row an older parser wrote must neither lift the limit nor shut the plugin out for good
-  it('holds a stored value out of the range to its nearest edge', () => {
-    expect(heldRateLimit(0)).toBe(MIN)
-    expect(heldRateLimit(-10)).toBe(MIN)
+  it('lowers a stored value above the range to its top, and gives one that is no sense the default', () => {
+    expect(heldRateLimit(0)).toBe(PluginInstallLimits.DEFAULT_REQUESTS_PER_MINUTE)
+    expect(heldRateLimit(-10)).toBe(PluginInstallLimits.DEFAULT_REQUESTS_PER_MINUTE)
     expect(heldRateLimit(MAX + 1)).toBe(MAX)
     expect(heldRateLimit(10_000_000)).toBe(MAX)
     expect(heldRateLimit(7.9)).toBe(7)

@@ -115,7 +115,9 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     storeId: id,
     conversationId: id,
     userId: id,
-    visibility
+    visibility,
+    // Only the api publishes a plugin's read; kept here so a payload that crosses the bridge never loses it
+    byPlugin: z.literal(true).optional()
   }),
   [Events.CONVERSATION_ATTENTION_CHANGED]: z.object({
     storeId: id,

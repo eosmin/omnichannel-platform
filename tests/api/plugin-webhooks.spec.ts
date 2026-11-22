@@ -604,7 +604,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
     // "no cap" (Step 7.3-B5b, #33)
     it.each([
       ['zero', 0, PluginManifestLimits.MIN_WEBHOOKS_PER_DAY],
-      ['a string', '5', PluginManifestLimits.MAX_WEBHOOKS_PER_DAY],
+      ['a string', '5', WebhookLimits.PLUGIN_DAY_CAP_CEILING],
       [
         'more than the range',
         PluginManifestLimits.MAX_WEBHOOKS_PER_DAY + 1,

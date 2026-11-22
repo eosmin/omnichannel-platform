@@ -52,14 +52,14 @@ export function rateLimitOf(manifest: {
 }
 
 // The requests a minute the guard holds an installation to. The column has no check of its own, so a row an older parser or a hand
-// wrote (zero, a negative, ten million) is held to the range a manifest may ask for today: never read as "no limit" and never as a
-// rate that blocks everything for ever (Step 7.3-B5b, #33)
+// wrote is held to what a manifest may ask for today: a value above the range is lowered to its top, and one that is no sense (zero,
+// a negative, no number) takes the default of an install, never "no limit" and never a rate that shuts the plugin out
+// (Step 7.3-B5b, #33)
 export function heldRateLimit(stored: number): number {
-  if (!Number.isFinite(stored)) return PluginInstallLimits.DEFAULT_REQUESTS_PER_MINUTE
-  return Math.min(
-    PluginManifestLimits.MAX_REQUESTS_PER_MINUTE,
-    Math.max(PluginManifestLimits.MIN_REQUESTS_PER_MINUTE, Math.floor(stored))
-  )
+  if (!Number.isFinite(stored) || stored < PluginManifestLimits.MIN_REQUESTS_PER_MINUTE) {
+    return PluginInstallLimits.DEFAULT_REQUESTS_PER_MINUTE
+  }
+  return Math.min(PluginManifestLimits.MAX_REQUESTS_PER_MINUTE, Math.floor(stored))
 }
 
 // What the platform posts to the webhook endpoint of a plugin before it trusts the address
