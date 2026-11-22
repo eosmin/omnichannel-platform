@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
 import { ApiRoutes } from '@platform/core/api'
-import { MembershipStatus } from '@platform/core/domain'
+import { InvitationEmailStatus, MembershipStatus } from '@platform/core/domain'
 
 // Settings → Team: what the api answers about the members, roles and invitations of a store. Kept with
 // the page and not in `@platform/api-client`, whose barrel the inbox loads whole.
@@ -37,7 +37,9 @@ const invitationSchema = z.object({
   invitedBy: z.string(),
   expiresAt: z.string(),
   createdAt: z.string(),
-  expired: z.boolean()
+  expired: z.boolean(),
+  // Where the email of the invitation stands; never the link
+  emailStatus: z.enum(InvitationEmailStatus)
 })
 export type InvitationView = z.output<typeof invitationSchema>
 

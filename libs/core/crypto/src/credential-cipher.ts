@@ -10,12 +10,13 @@ export type Credentials = z.output<typeof credentialsSchema>
 export class CredentialCipher {
   constructor(private readonly key: Buffer) {}
 
-  seal(credentials: Credentials): Buffer<ArrayBuffer> {
-    return encrypt(JSON.stringify(credentials), this.key)
+  // With `aad` the value is bound to it (the same text is needed to open it); without, the format is the one written before
+  seal(credentials: Credentials, aad?: string): Buffer<ArrayBuffer> {
+    return encrypt(JSON.stringify(credentials), this.key, aad)
   }
 
   // The database is a boundary like any other: what comes out is checked to be an object again
-  open(sealed: Uint8Array): Credentials {
-    return credentialsSchema.parse(JSON.parse(decrypt(sealed, this.key)))
+  open(sealed: Uint8Array, aad?: string): Credentials {
+    return credentialsSchema.parse(JSON.parse(decrypt(sealed, this.key, aad)))
   }
 }

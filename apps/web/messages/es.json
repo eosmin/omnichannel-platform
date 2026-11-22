@@ -3581,6 +3581,12 @@
         "invitedBy": "invitó {name}",
         "expires": "Expira el {date}",
         "expired": "Expiró el {date}",
+        "emailStatus": {
+          "pending": "Correo en camino",
+          "sent": "Correo enviado",
+          "failed": "No se pudo entregar el correo. Reenvía la invitación.",
+          "failedNoAction": "No se pudo entregar el correo. Alguien con permiso para invitar debe reenviarla."
+        },
         "resend": {
           "action": "Reenviar",
           "done": "Se envió una nueva invitación a {email}.",

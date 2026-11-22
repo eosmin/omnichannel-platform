@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type { CredentialCipher } from '@platform/core/crypto'
+import { InvitationEmailStatus } from '@platform/core/domain'
 import { SUPPORTED_LOCALES } from '@platform/core/i18n'
 import { EmailTemplates, type SendEmailJob } from '@platform/core/queues'
 
@@ -36,17 +37,46 @@ export type InvitationEmail = Omit<SendEmailJob, 'to' | 'template' | 'tags'> & {
   tags: { storeId?: string; template: typeof EmailTemplates.INVITATION }
 }
 
+// The seal is bound to the store and the invitation it belongs to (AES-GCM associated data): a sealed email copied to the row of another
+// invitation, or of another store, does not open. Rows sealed before this (format 1, no data) still open: they are a few hours old at most
+// (MAX_ATTEMPTS), so no migration is needed.
+export function invitationOutboxAad(storeId: string, invitationId: string): string {
+  return `invitation-outbox:${storeId}:${invitationId}`
+}
+
 export function sealInvitationEmail(
   cipher: CredentialCipher,
-  email: InvitationEmail
+  email: InvitationEmail,
+  aad: { storeId: string; invitationId: string }
 ): Uint8Array<ArrayBuffer> {
-  return cipher.seal({ ...email })
+  return cipher.seal({ ...email }, invitationOutboxAad(aad.storeId, aad.invitationId))
 }
 
 // The database is a boundary: what comes out is checked again. A row that no longer parses (a key that changed, a template that was
 // renamed) throws, and the delivery counts it as a failed attempt.
-export function openInvitationEmail(cipher: CredentialCipher, sealed: Uint8Array): InvitationEmail {
-  return sealedEmailSchema.parse(cipher.open(sealed))
+export function openInvitationEmail(
+  cipher: CredentialCipher,
+  sealed: Uint8Array,
+  aad: { storeId: string; invitationId: string }
+): InvitationEmail {
+  return sealedEmailSchema.parse(
+    cipher.open(sealed, invitationOutboxAad(aad.storeId, aad.invitationId))
+  )
+}
+
+// What the inviter sees. `waiting` is whether the outbox still holds the email. `sent` only when a sent time exists. An email that used up its
+// attempts with no sent time (the worker gave it up and cleared the outbox) is `failed`. Any other empty outbox (an invitation older than the
+// outbox, or one cleared because it expired) is `not_sent`: the web says nothing about it, as the row already says it expired.
+export function invitationEmailStatusOf(row: {
+  waiting: boolean
+  emailSentAt: Date | null
+  emailAttempts: number
+}): InvitationEmailStatus {
+  if (row.waiting) return InvitationEmailStatus.PENDING
+  if (row.emailSentAt !== null) return InvitationEmailStatus.SENT
+  return row.emailAttempts >= InvitationOutbox.MAX_ATTEMPTS
+    ? InvitationEmailStatus.FAILED
+    : InvitationEmailStatus.NOT_SENT
 }
 
 // How long after a failed attempt the next one may start (`attemptsMade` counts the one that just failed)
