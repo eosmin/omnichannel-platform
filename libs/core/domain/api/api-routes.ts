@@ -630,6 +630,9 @@ export const ApiRoutes = {
   compliance: {
     dsr: '/compliance/dsr',
     dsrById: (id: string) => `/compliance/dsr/${id}`,
+    dsrApprove: (id: string) => `/compliance/dsr/${id}/approve`,
+    dsrReject: (id: string) => `/compliance/dsr/${id}/reject`,
+    dsrCancel: (id: string) => `/compliance/dsr/${id}/cancel`,
     dsrVerify: '/compliance/dsr/verify', // Public, token in body
     consent: '/compliance/consent',
     cookieConsent: '/compliance/cookie-consent'

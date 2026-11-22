@@ -210,7 +210,9 @@ export enum DsrStatus {
   IN_PROGRESS = 'in_progress',
   MANUAL_REVIEW = 'manual_review',
   COMPLETED = 'completed',
-  REJECTED = 'rejected'
+  REJECTED = 'rejected',
+  // An approved erasure that a reviewer pulled back during its grace period (Step 7.2-H1b)
+  CANCELLED = 'cancelled'
 }
 
 export enum VerificationTokenType {

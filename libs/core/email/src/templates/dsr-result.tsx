@@ -9,7 +9,7 @@ import { container, footer, heading, hr, main, paragraph } from './styles'
 // The closing mail of a data request: what was decided and, for an erasure, what the store keeps and why (TDD_05 §10.3: the notice
 // states which records were retained and under which legal basis). Counts only, never a value.
 export const dsrResultSchema = z.object({
-  outcome: z.enum(['completed', 'rejected', 'expired']),
+  outcome: z.enum(['completed', 'rejected', 'expired', 'cancelled']),
   requestType: z.enum([
     'access',
     'portability',

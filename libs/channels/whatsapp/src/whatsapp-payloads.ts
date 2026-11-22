@@ -108,8 +108,7 @@ export function checkMedia(params: SendMediaParams): { kind: MediaKind; contentT
     refuse(ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED)
   }
   if (!Number.isSafeInteger(params.fileSize) || params.fileSize <= 0) refuse()
-  if (params.fileSize > WhatsAppMediaMaxBytes[kind])
-    refuse(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+  if (params.fileSize > WhatsAppMediaMaxBytes[kind]) refuse(ErrorCodes.CHANNEL_FILE_TOO_LARGE)
   // A blank caption is no caption, for every kind
   const caption = params.caption?.trim() ? params.caption : undefined
   if (size(caption ?? '') > WhatsAppLimits.CAPTION_MAX_LENGTH) refuse()

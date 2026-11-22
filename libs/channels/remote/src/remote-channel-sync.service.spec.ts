@@ -18,11 +18,12 @@ const KEY = parseEncryptionKey('ab'.repeat(32))
 const cipher = new CredentialCipher(KEY)
 const seal = (secret: string): Uint8Array => cipher.seal({ [COMMAND_SECRET_FIELD]: secret })
 
+const errorLog = jest.fn()
 const logger = {
   setContext: jest.fn(),
   info: jest.fn(),
   warn: jest.fn(),
-  error: jest.fn()
+  error: errorLog
 } as unknown as PinoLogger
 
 function manifestOf(id: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
@@ -184,6 +185,34 @@ describe('RemoteChannelSync: the registry of remote plugins', () => {
     await sync.refresh()
     expect(registry.has('broken')).toBe(false)
     expect(registry.has('acme_chat')).toBe(true)
+  })
+
+  it('leaves a plugin of the code alone, with no log, even when its installation holds an empty manifest', async () => {
+    const { sync, registry } = setup([
+      { id: 'built_in', manifest: {}, installations: [{ storeId: 's1' }] }
+    ])
+    // A plugin of the code installed in a store (the installation of the fixtures holds `{}`): not a stored manifest to read
+    jest.spyOn(registry, 'has').mockImplementation(id => id === 'built_in')
+    jest.spyOn(registry, 'isRemote').mockReturnValue(false)
+    const syncRemote = jest.spyOn(registry, 'syncRemote')
+    errorLog.mockClear()
+
+    await sync.refresh()
+
+    expect(errorLog).not.toHaveBeenCalled()
+    expect(syncRemote).toHaveBeenCalledWith([], new Set(['built_in']))
+  })
+
+  it('still says so when the stored manifest of a plugin that is not of the code is invalid', async () => {
+    const { sync } = setup([{ id: 'broken', manifest: {}, installations: [{ storeId: 's1' }] }])
+    errorLog.mockClear()
+
+    await sync.refresh()
+
+    expect(errorLog).toHaveBeenCalledWith(
+      { pluginId: 'broken' },
+      expect.stringContaining('a stored channel manifest is not valid')
+    )
   })
 
   it('keeps the working adapter when its stored manifest stops reading, and does not build an unchanged one again', async () => {
