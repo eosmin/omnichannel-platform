@@ -350,7 +350,6 @@ describe('the fields of the database', () => {
     hasHeader: 'a flag of a bank statement import',
     hash: 'sha256 of a ledger entry: an integrity value, not a key to anything',
     iconKey: 'the storage key of an icon, public',
-    idempotencyKey: 'a replay key chosen by the caller, not a credential',
     ipHash: 'a salted hash of an address used to count, not reversible',
     keyPrefix: 'the first characters of an api key, shown in the settings to tell keys apart',
     key: 'the storage key of an object',

@@ -22,10 +22,13 @@ import { LoadFailed } from './states'
 // metadata the writer kept (ids and counts). Everything is drawn as text. Opening it is audited by the api.
 export function AuditEntryDialog({
   id,
+  at,
   actorName,
   onClose
 }: {
   id: string
+  // The instant the list shows for the entry (the api finds an archived one with it)
+  at?: string | undefined
   actorName: (userId: string | null) => string
   onClose: () => void
 }): ReactElement {
@@ -33,7 +36,7 @@ export function AuditEntryDialog({
   const tCommon = useTranslations('common')
   const format = useFormatter()
   const { storeId } = useStore()
-  const entry = useAuditLogEntry(storeId, id)
+  const entry = useAuditLogEntry(storeId, id, at)
   const none = t('none')
   const metadata = entry.data === undefined ? '' : metadataText(entry.data.metadata)
   const fields =

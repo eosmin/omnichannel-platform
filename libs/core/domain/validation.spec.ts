@@ -1,4 +1,4 @@
-import { httpUrl, queryIntSchema, singleLineText } from './validation'
+import { httpUrl, multiLineText, queryIntSchema, singleLineText } from './validation'
 
 const schema = httpUrl(2048)
 
@@ -134,5 +134,26 @@ describe('queryIntSchema', () => {
 
   it('lets the caller start the range at 0', () => {
     expect(queryIntSchema(0, 1_000_000).parse('0')).toBe(0)
+  })
+})
+
+describe('multiLineText', () => {
+  const text = multiLineText(30, 1)
+
+  it('keeps line breaks and trims the ends, reading \\r\\n as \\n', () => {
+    expect(text.parse('  one\r\ntwo\nthree  ')).toBe('one\ntwo\nthree')
+  })
+
+  it.each([
+    ['a NUL', 'a\u0000b'],
+    ['a tab', 'a\tb'],
+    ['an escape', 'a\u001bb'],
+    ['a line separator', 'a\u2028b'],
+    ['a direction override', 'a\u202eb'],
+    ['a zero-width space', 'a\u200bb'],
+    ['nothing', '   '],
+    ['too much', 'x'.repeat(31)]
+  ])('refuses %s', (_name, value) => {
+    expect(text.safeParse(value).success).toBe(false)
   })
 })

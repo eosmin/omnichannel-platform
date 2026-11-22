@@ -26,7 +26,13 @@ export const ComplianceConfig = {
   // The public intake (TDD_05 §10.2): what one address, one store and one body may cost, so the form cannot be used to mail a third party
   DSR_INTAKE_PER_EMAIL_PER_DAY: 3,
   DSR_INTAKE_PER_STORE_PER_DAY: 50,
-  DSR_INTAKE_JOB_TTL_MS: 60 * 60 * 1000
+  DSR_INTAKE_JOB_TTL_MS: 60 * 60 * 1000,
+  // The review queue (Step 7.2-H1b): the longest reason a reviewer writes, and the page of the list
+  DSR_REVIEW_REASON_MAX_LENGTH: 500,
+  DSR_REVIEW_PAGE_SIZE: 25,
+  DSR_REVIEW_MAX_PAGE_SIZE: 100,
+  // Requests the expiry sweep closes per store and per run; the next run takes the rest
+  DSR_EXPIRE_BATCH: 200
 } as const
 
 // Platform-wide floors and ceilings. Tenant-configurable values live in RetentionSettings, and
@@ -105,7 +111,10 @@ export const PlatformCleanup = {
   // replaced by a newer one or from a visitor who never came back, and the address hash and the browser it holds are no longer worth keeping.
   // The newest row of a visitor goes with the rest once it is this old. PROPOSAL, NOT DECIDED: the sweep is OFF until the owner sets the window and turns on `COOKIE_CONSENT_RETENTION_ENABLED`;
   // two years, a year of choice plus a year for a complaint about it
-  COOKIE_CONSENT_RETENTION_DAYS: 730
+  COOKIE_CONSENT_RETENTION_DAYS: 730,
+  // A revoked plugin installation closes its webhook subscription with its last delivery; the cleanup clears the sealed secrets and the endpoint of
+  // one that still holds them this long after it was revoked (the last delivery did not close it: a job lost, a write that failed)
+  REVOKED_PLUGIN_SECRET_GRACE_DAYS: 1
 } as const
 
 // The cold export of the audit log (TDD_05 §9.3): whole calendar months that are entirely past the hot window, the
@@ -124,6 +133,25 @@ export const AuditColdExport = {
   // the lock is let go; a process that dies lets it go at once, because the connection closes
   LOCK_TIMEOUT_MS: 2 * 60 * 60 * 1000,
   LOCK_MAX_WAIT_MS: 5_000
+} as const
+
+// What the viewer of the audit log may read of the cold parts (TDD_05 §9.3) in one request. The archive is read as a stream and
+// only the page being asked for is kept in memory; these are the ceilings of the time and the bytes a request may spend on it.
+// A request that reaches one is refused (never answered with a page that is short of entries it did not reach).
+export const AuditColdRead = {
+  // The prefix every object of the cold export lives under (`StorageKeys.auditArchive`)
+  PREFIX: 'audit/',
+  // Objects the listing of the prefix may return before the read gives up (pages of the bucket listing)
+  MAX_LIST_PAGES: 20,
+  // Parts (objects) one request may open
+  MAX_PARTS: 120,
+  // The bytes of the objects (gzipped) one request may read, and the bytes they may inflate to (a bomb guard)
+  MAX_COMPRESSED_BYTES: 512 * 1024 * 1024,
+  MAX_INFLATED_BYTES: 4 * 1024 * 1024 * 1024,
+  // A line longer than this is not an audit entry of ours: the read stops instead of buffering it
+  MAX_LINE_BYTES: 1024 * 1024,
+  // The time one request may spend reading the archive
+  MAX_READ_MS: 60_000
 } as const
 
 // The advisory lock of the cold export of one month: two runs of the same month (a job given again as stalled, two
@@ -208,5 +236,18 @@ export const DSR_VERIFY_FRAGMENT_KEY = 'token'
 export const DsrResourceTypes = { REQUEST: 'data_subject_request' } as const
 export const DsrSubjectTypes = { CUSTOMER: 'customer' } as const
 export const DsrRejectionReasons = {
-  VERIFICATION_MAIL_NOT_QUEUED: 'verification_mail_not_queued'
+  VERIFICATION_MAIL_NOT_QUEUED: 'verification_mail_not_queued',
+  // The link of the mail was never used before it expired
+  VERIFICATION_EXPIRED: 'verification_expired',
+  // A reviewer decided it; what they wrote is in the notes of the request, never in the audit log
+  REVIEWER_DECISION: 'reviewer_decision'
 } as const
+
+// What the closing notice of a data request says happened (the `outcome` of the `dsr-result` mail)
+export const DsrResultOutcomes = {
+  COMPLETED: 'completed',
+  REJECTED: 'rejected',
+  EXPIRED: 'expired',
+  CANCELLED: 'cancelled'
+} as const
+export type DsrResultOutcome = (typeof DsrResultOutcomes)[keyof typeof DsrResultOutcomes]

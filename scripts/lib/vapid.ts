@@ -8,7 +8,7 @@ export interface VapidPair {
 // A P-256 key pair in the form web push wants: the public key is the uncompressed point (0x04, x, y:
 // 65 bytes) and the private key is the 32-byte scalar, both base64url without padding. It is what
 // `web-push generate-vapid-keys` makes; the spec proves that web-push accepts it. Made here because
-// web-push is a CommonJS package that the ESM scripts cannot import by name.
+// web-push was a CommonJS package that the ESM scripts could not import by name (4.0.0 is ESM, so this could import `generateVAPIDKeys` now; the spec keeps proving that web-push accepts the pair).
 export function generateVapidPair(): VapidPair {
   const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
   const { x, y } = publicKey.export({ format: 'jwk' })

@@ -227,6 +227,7 @@ export function AuditLogPanel(): ReactElement {
         <AuditEntryDialog
           key={openId}
           id={openId}
+          at={rows.find(row => row.id === openId)?.timestamp}
           actorName={actorName}
           onClose={() => setOpenId(null)}
         />

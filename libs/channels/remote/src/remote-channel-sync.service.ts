@@ -268,6 +268,12 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
       const untouched = new Set<string>()
       const signatures = new Map<string, string>()
       for (const row of rows) {
+        // A plugin of the code that a store installed has no manifest of its own to read (the row holds
+        // `{}`): it is not one to build, validate or complain about, and the registry keeps it as it is
+        if (this.registry.has(row.id) && !this.registry.isRemote(row.id)) {
+          untouched.add(row.id)
+          continue
+        }
         const storeIds = [...row.storeIds].sort()
         const stored = await this.manifestOf(row.id, storeIds)
         if (stored === undefined) {

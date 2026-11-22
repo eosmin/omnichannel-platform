@@ -28,6 +28,7 @@ import { NoStore, RateLimit } from '@platform/core/http'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
+import { pluginFailureLog } from '@platform/plugins/sdk'
 
 import { InboundEventQueue } from './inbound-event-queue.service'
 
@@ -120,7 +121,11 @@ export class ChannelWebhookController {
       if (Array.isArray(events)) return events as unknown[] // Each one is checked below
       this.logger.error({ pluginId }, 'a plugin returned something that is not a list of events')
     } catch (error) {
-      this.logger.error({ err: error, pluginId }, 'a plugin could not read a webhook body')
+      // Never the error itself: its message and stack can echo a piece of the customer's payload
+      this.logger.error(
+        { pluginId, ...pluginFailureLog(error) },
+        'a plugin could not read a webhook body'
+      )
     }
     return []
   }

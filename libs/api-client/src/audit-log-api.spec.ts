@@ -86,6 +86,14 @@ describe('fetchAuditLogEntry', () => {
       `https://api.example.com/api/v1/organizations/current/audit-log/${entry.id}`
     )
   })
+
+  it('names the instant of the entry when it has one, so that an archived entry is found by its month', async () => {
+    const { client, fetchImpl } = setup(json(200, entry))
+    await fetchAuditLogEntry(client, 'store-1', entry.id, undefined, '2001-03-02T00:00:00.000Z')
+    expect(urlOf(fetchImpl)).toBe(
+      `https://api.example.com/api/v1/organizations/current/audit-log/${entry.id}?at=2001-03-02T00%3A00%3A00.000Z`
+    )
+  })
 })
 
 describe('requestAuditLogExport', () => {

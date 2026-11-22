@@ -10,7 +10,7 @@ import {
   RetentionResourceTypes
 } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
-import { DAY_MS, InvitationStatus } from '@platform/core/domain'
+import { DAY_MS, InvitationStatus, PluginInstallationStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
 import { inEachStoreStrict } from '../schedulers/store-sweep'
@@ -28,6 +28,8 @@ export interface PlatformCleanupReport {
   mergedCustomers: number
   invitations: number
   cookieConsents: number
+  revokedPluginSecrets: number
+  pluginIdempotencyKeys: number
   // The categories that stopped on a full batch: tomorrow takes the rest
   more: string[]
 }
@@ -36,12 +38,13 @@ type Category = Exclude<keyof PlatformCleanupReport, 'more'>
 
 // What is not a store's to configure (TDD_05 §10.4, daily): the sessions past expiresAt (a consumed row stays until then,
 // because reuse detection needs it), the verification tokens that are expired or were used a day ago, the deliveries of the
-// webhooks past thirty days, the hours of the hourly rollup past ninety days, and the customers a merge
+// webhooks past thirty days, the hours of the hourly rollup past ninety days, the idempotency keys of the plugin API past their day, and the customers a merge
 // absorbed whose window to undo it (`unmergeUntil`) has passed, with their CustomerMerge row (the audit log keeps
 // `customer.merged`), and the invitations that nobody accepted and that expired more than
-// `PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS` ago, and the answers to the cookie banner older than
-// `PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS`. Platform-wide, in batches of PlatformCleanup.BATCH_SIZE; each row is deleted by its own id, so
-// no store is read as a whole. A category that fails does not stop the others.
+// `PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS` ago, and the sealed secrets and the endpoint that a plugin installation revoked more than
+// `PlatformCleanup.REVOKED_PLUGIN_SECRET_GRACE_DAYS` ago still holds (a revoked row without `revoked_at` counts from its `updated_at`). Platform-wide, in batches of PlatformCleanup.BATCH_SIZE; each row is deleted by its own id, so The answers to the cookie banner older than
+// no store is read as a whole. The answers to the cookie banner older than `PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS` go too, but only with
+// `COOKIE_CONSENT_RETENTION_ENABLED` on (off by default). A category that fails does not stop the others.
 @Injectable()
 export class PlatformCleaner {
   constructor(
@@ -65,6 +68,8 @@ export class PlatformCleaner {
       mergedCustomers: 0,
       invitations: 0,
       cookieConsents: 0,
+      revokedPluginSecrets: 0,
+      pluginIdempotencyKeys: 0,
       more: []
     }
     const failed: Category[] = []
@@ -90,6 +95,10 @@ export class PlatformCleaner {
 
     const cookieConsentCutoff = new Date(
       now.getTime() - PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS * DAY_MS
+    ).toISOString()
+
+    const revokedPluginCutoff = new Date(
+      now.getTime() - PlatformCleanup.REVOKED_PLUGIN_SECRET_GRACE_DAYS * DAY_MS
     ).toISOString()
 
     await run('sessions', () =>
@@ -142,6 +151,17 @@ export class PlatformCleaner {
       )
     )
     await run('mergedCustomers', () => this.mergedCustomers(now))
+    // The answers a plugin can still get again (Step 7.3 S4) last PluginIdempotency.TTL_HOURS; the one that is past its date holds
+    // the answer of a write, which can carry customer data, and goes
+    await run('pluginIdempotencyKeys', () =>
+      this.perStore(
+        storeId => this.prisma.client.$executeRaw`
+          DELETE FROM plugin_idempotency_keys WHERE id IN (
+            SELECT id FROM plugin_idempotency_keys
+            WHERE store_id = ${storeId} AND expires_at < (${stamp}::timestamptz AT TIME ZONE 'UTC')
+            ORDER BY expires_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
+      )
+    )
     // `invitations` is outside RLS (the migrations skip it), so it runs platform-wide like the sessions: a store that
     // cannot be entered does not stop it
     await run('invitations', () =>
@@ -168,6 +188,31 @@ export class PlatformCleaner {
         )
       )
     }
+
+    // The secrets that a revoked installation still holds: the sealed secret and the endpoint of its webhooks and the sealed secrets of its commands.
+    // Only a row that is revoked, revoked longer ago than the grace and still holding one of them (so a batch that is done stops matching and the
+    // loop ends); the outer WHERE repeats the predicate, so an installation that was installed again between the select and the update (status and
+    // `revoked_at` change, new secrets) is never cleared by the batch that selected it. Nothing is read of the secrets, only set to NULL.
+    await run('revokedPluginSecrets', () =>
+      this.perStore(
+        storeId => this.prisma.client.$executeRaw`
+          UPDATE plugin_installations SET
+            webhook_endpoint = NULL, webhook_secret = NULL,
+            command_secret = NULL, command_secret_previous = NULL, command_secret_rotated_at = NULL,
+            updated_at = (${stamp}::timestamptz AT TIME ZONE 'UTC')
+          WHERE store_id = ${storeId}
+            AND status = ${PluginInstallationStatus.REVOKED}
+            AND COALESCE(revoked_at, updated_at) < (${revokedPluginCutoff}::timestamptz AT TIME ZONE 'UTC')
+            AND id IN (
+              SELECT id FROM plugin_installations
+              WHERE store_id = ${storeId}
+                AND status = ${PluginInstallationStatus.REVOKED}
+                AND COALESCE(revoked_at, updated_at) < (${revokedPluginCutoff}::timestamptz AT TIME ZONE 'UTC')
+                AND (webhook_endpoint IS NOT NULL OR webhook_secret IS NOT NULL
+                  OR command_secret IS NOT NULL OR command_secret_previous IS NOT NULL)
+              ORDER BY COALESCE(revoked_at, updated_at) LIMIT ${PlatformCleanup.BATCH_SIZE})`
+      )
+    )
 
     this.logger.info(report, 'the platform cleanup finished')
     // One entry for the run. It runs over every store, so it has no store (and no organization): the viewer of one store never reads

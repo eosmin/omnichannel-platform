@@ -67,13 +67,19 @@ export function fetchAuditLogEntry(
   client: ApiClient,
   storeId: string,
   id: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  // The instant the list shows for the entry: an entry older than the hot window is found in the archive by its month
+  at?: string
 ): Promise<AuditLogEntryView> {
-  return client.request(ApiRoutes.organizations.auditLogEntry(encodeURIComponent(id)), {
-    schema: auditLogEntrySchema,
-    storeId,
-    signal
-  })
+  const query = at === undefined ? '' : `?${new URLSearchParams({ at }).toString()}`
+  return client.request(
+    `${ApiRoutes.organizations.auditLogEntry(encodeURIComponent(id))}${query}`,
+    {
+      schema: auditLogEntrySchema,
+      storeId,
+      signal
+    }
+  )
 }
 
 // "Export CSV": queues the file for the filters the screen shows and answers (202) with its row. With no `before` the api
