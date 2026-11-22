@@ -321,6 +321,12 @@ export interface EraseCustomerDataJob extends BaseJob {
   customerId: string
 }
 
+// A request for the data of a person, made on the public form (Step 7.2-H1). The queue carries the request SEALED (AES-GCM, see
+// `sealDsrIntake`): the address of the person is never in the clear in Redis, nor in the name or the id of the job
+export interface DsrIntakeJob extends BaseJob {
+  sealed: string
+}
+
 // dead letter: a copy kept for triage; the failed job itself stays in its original queue
 export interface DeadLetterJob {
   originalQueue: QueueName

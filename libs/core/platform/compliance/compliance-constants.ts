@@ -187,3 +187,17 @@ export type ChoosableCookieCategory = (typeof ChoosableCookieCategories)[number]
 // The key that hashes the address of a visitor in `CookieConsent.ipHash`. Derived from the signing secret with its own label by
 // `CompliancePlatformModule`; the token lives here so that what uses it imports no env.
 export const COOKIE_CONSENT_HASH_KEY = Symbol('COOKIE_CONSENT_HASH_KEY')
+
+// What the public flow of data requests needs from the validated env, derived once (`CompliancePlatformModule`): whether it is on, the key
+// that hashes an address, and the key that seals the job of the intake
+export const DSR_CONFIG = Symbol('DSR_CONFIG')
+export interface DsrConfig {
+  enabled: boolean
+  hashKey: string
+  encryptionKeyHex: string
+}
+
+// The page of the web app that confirms a data request, and the key of the fragment that carries the token (the browser never sends a fragment
+// to a server, so the token stays out of access logs)
+export const DSR_VERIFY_WEB_PATH = '/compliance/dsr/verify'
+export const DSR_VERIFY_FRAGMENT_KEY = 'token'

@@ -28,6 +28,9 @@ const DEFINER_FUNCTIONS: Readonly<Record<string, readonly string[] | typeof TRIG
   resolve_api_key: [APP, WORKER],
   resolve_carrier_connection: [APP, WORKER],
   lookup_plugin_status_of_key: [APP, WORKER],
+  // the public data request flow (Step 7.2-H1): the store of a public key and the request that waits for a token
+  resolve_dsr_store: [APP, WORKER],
+  resolve_dsr_verification: [APP, WORKER],
   // the api only
   rls_store_tables_with_rows: [APP],
   rls_take_disconnected_connection: [APP],

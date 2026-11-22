@@ -24,3 +24,37 @@ CREATE INDEX "ix_dsr_erasure_due" ON "data_subject_requests" ("erasure_due_at") 
 
 CREATE INDEX "ix_dsr_open_by_subject" ON "data_subject_requests" ("store_id", "subject_email_hash", "type")
   WHERE "status" IN ('pending_verification', 'manual_review', 'in_progress');
+
+-- The two lookups of the public flow, which run before there is a tenant context (the pattern of rls_phase1, section 5): the public key
+-- a store gave to its form, and the verification token of a request. Each answers ONE row for an exact key with the ids that open the
+-- context and nothing else. A token is found only while it is unused and not expired, and its request still waits for it.
+CREATE FUNCTION resolve_dsr_store(p_public_key text)
+  RETURNS TABLE (id text, store_id text, organization_id text)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+  AS $$
+    SELECT s.id, s.id, s.organization_id
+    FROM stores s
+    WHERE s.dsr_public_key = p_public_key
+    LIMIT 1
+  $$;
+
+CREATE FUNCTION resolve_dsr_verification(p_token_hash text)
+  RETURNS TABLE (id text, store_id text, organization_id text)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+  AS $$
+    SELECT r.id, r.store_id, r.organization_id
+    FROM verification_tokens t
+    JOIN data_subject_requests r ON r.id = t.subject
+    WHERE t.token_hash = p_token_hash
+      AND t.type = 'dsr_verification'
+      AND t.used_at IS NULL
+      AND t.expires_at > now()
+      AND r.status = 'pending_verification'
+      AND r.store_id IS NOT NULL
+    LIMIT 1
+  $$;
+
+REVOKE ALL ON FUNCTION resolve_dsr_store(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION resolve_dsr_verification(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION resolve_dsr_store(text) TO platform_app, platform_worker;
+GRANT EXECUTE ON FUNCTION resolve_dsr_verification(text) TO platform_app, platform_worker;

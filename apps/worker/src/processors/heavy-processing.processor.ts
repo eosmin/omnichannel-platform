@@ -18,6 +18,7 @@ import {
   type BulkLabelsMergeJob,
   type CancelShipmentJob,
   type EnforceRetentionJob,
+  type DsrIntakeJob,
   type EraseCustomerDataJob,
   type EvaluatePickupsJob,
   type FetchInboundMediaJob,
@@ -45,6 +46,7 @@ import {
 } from '@platform/fiscal/runtime'
 
 import { CarrierEventReplay, type ReplayReport } from '../carriers/carrier-event-replay.service'
+import { DsrIntakeWorker } from '../compliance/dsr-intake.worker'
 import { FinanceChainChecker } from '../finance/finance-chain-checker.service'
 import { FinanceReconciler } from '../finance/finance-reconciler.service'
 import { FiscalReconciler } from '../finance/fiscal-reconciler.service'
@@ -162,6 +164,9 @@ const reportFiscalContingencyJobSchema = exactly<ReportFiscalContingencyJob>()(
 const retentionJobSchema = exactly<EnforceRetentionJob>()(
   z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
 )
+const dsrIntakeJobSchema = exactly<DsrIntakeJob>()(
+  z.object({ sealed: z.string().min(1).max(4096), correlationId: z.string().optional() })
+)
 const eraseCustomerDataJobSchema = exactly<EraseCustomerDataJob>()(
   z.object({ storeId: z.uuid(), customerId: z.uuid(), correlationId: z.string().optional() })
 )
@@ -229,6 +234,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly pickupEvaluator: PickupEvaluator,
     private readonly retention: StoreRetentionEnforcer,
     private readonly erasedData: ErasedCustomerData,
+    private readonly dsrIntake: DsrIntakeWorker,
     private readonly financePosting: FinancePostingService,
     private readonly financeReconciler: FinanceReconciler,
     private readonly financeChain: FinanceChainChecker,
@@ -362,6 +368,13 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
         throw new UnrecoverableError('the retention job does not fit its schema')
       // Rejects when a category failed (after the others ran): the queue asks again and finds what is left
       await this.skipIfGone(job, () => this.retention.enforce(enforce.data.storeId))
+      return
+    }
+    if (job.name === JobNames.DSR_INTAKE) {
+      const intake = dsrIntakeJobSchema.safeParse(job.data)
+      if (!intake.success)
+        throw new UnrecoverableError('the data request job does not fit its schema')
+      await this.dsrIntake.handle(intake.data.sealed)
       return
     }
     if (job.name === JobNames.ERASE_CUSTOMER_DATA) {

@@ -91,6 +91,12 @@ export function authenticatedUserRateLimitOf(
     : { ...AuthenticatedUserRateLimit, limit: raisedForTests }
 }
 
+// The public form of data subject requests (Step 7.2-H1): few a ten minutes from one address, because one request mails a link to a
+// person who may not have asked. The counts per address and per store (ComplianceConfig.DSR_INTAKE_*) are the second layer.
+export const DsrIntakeThrottle = { limit: 5, ttlMs: 600_000 } as const
+// Confirming a request with the token of the mail: the token has 256 bits, so this is only the flood guard
+export const DsrVerifyThrottle = { limit: 20, ttlMs: 600_000 } as const
+
 // The login profile of D2: 5 a minute per IP, and the same per hashed email, so the endpoint cannot
 // be used to mail-bomb an address from many IPs
 export const MagicLinkThrottle = { limit: 5, ttlMs: 60_000 } as const
