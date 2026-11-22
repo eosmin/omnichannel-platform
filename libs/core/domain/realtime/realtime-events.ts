@@ -58,6 +58,8 @@ export const RealtimeEvents = {
   NOTIFICATION: 'notification',
   // An export of the person turned ready or failed: its id only, the page reads the row
   EXPORT_UPDATED: 'export.updated',
+  // Who can be given a conversation changed (a member or a role): the client reads the directory again. Ids only
+  TEAM_DIRECTORY_CHANGED: 'team.directory_changed',
 
   // Client -> server
   HEARTBEAT: 'heartbeat',
@@ -160,6 +162,7 @@ export interface RealtimeEventMap {
 
   [RealtimeEvents.NOTIFICATION]: NotificationRealtimePayload
   [RealtimeEvents.EXPORT_UPDATED]: { exportId: string }
+  [RealtimeEvents.TEAM_DIRECTORY_CHANGED]: { membershipId: string | null; roleId: string | null }
 
   // active: the user did something (typed, navigated) since the last one, so presence stays online
   // instead of turning away. The socket alone only proves the tab is open.
