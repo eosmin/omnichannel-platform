@@ -1,8 +1,9 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 
 import { API_PREFIX, PluginApiRoutes } from '@platform/core/api'
+import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { PLUGIN_API_KEY_TOKEN_PREFIX, RemoteChannelApiLimits } from '@platform/core/domain'
-import { HttpStatusCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 
 import { BodyParserErrorTypes } from './body-parser-error-types'
 
@@ -97,27 +98,34 @@ function readBody(request: Request, limit: number): Promise<Buffer> {
 // key: the key itself is judged later by its guard. A caller without a header of that shape gets the small parser, but one that
 // WRITES the header with a made-up key gets the large one: the cost is one buffer of at most 1 MiB and one JSON parse per request
 // before the guard answers 401, ten times what any other route reads. The key cannot be checked here (it is a database lookup), so
-// the per-address limit of the plugin routes of Step 7.3 is what bounds it (tracked in the plan, PR C4 debt).
+// what bounds it is the limit per address of the keys that do not open the door (`PluginKeyProbeLimiter`, Step 7.3 PR S3): an
+// address that is over it gets the small parser, so the large body is never read for it, and the guard answers it 429 before it
+// looks at the key. The failures are counted after the key is looked up, so a burst of calls that all arrive before the first
+// failure is recorded would all read; the reads in flight of one address are capped as well (`EVENTS_CONCURRENT_READS_PER_ADDRESS`),
+// which is what bounds the memory of that burst.
 // It takes what the other parser takes for this route and nothing more: `application/json` in UTF-8, no content encoding, an
 // object or an array. Anything else is left to Nest's parser, which refuses or ignores it as it does everywhere.
-export const pluginEventsBodyParser: RequestHandler = (
-  request: Request,
-  response: Response,
-  next: NextFunction
-): void => {
+function wantsLargeRead(request: Request): boolean {
   const token = BEARER.exec(request.headers.authorization ?? '')?.[1]
   const encoding = request.headers['content-encoding']
-  if (
+  return !(
     request.method !== 'POST' ||
     request.path !== EVENTS_PATH ||
     token === undefined ||
     !token.startsWith(PLUGIN_API_KEY_TOKEN_PREFIX) ||
     !isUtf8Json(request.headers['content-type']) ||
     (encoding !== undefined && encoding.toLowerCase() !== 'identity')
-  ) {
-    next()
-    return
-  }
+  )
+}
+
+// `done` is called once the body has been read (or refused): the place of the address is given back then, not when the response
+// closes, because the handler of the route runs for as long as it needs after the body is in
+function readLargeBody(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+  done: () => void
+): void {
   readBody(request, RemoteChannelApiLimits.EVENTS_BODY_MAX_BYTES)
     .then(raw => {
       let parsed: unknown
@@ -151,4 +159,77 @@ export const pluginEventsBodyParser: RequestHandler = (
       })
       next(error)
     })
+    .finally(done)
+}
+
+// What the parser asks of the limit of the keys that failed: only how long an address has to wait
+export interface PluginKeyProbeGate {
+  retryAfter: (address: string) => Promise<number>
+}
+
+function tooManyRequests(waitSeconds: number): PlatformException {
+  return new PlatformException(
+    ErrorCodes.RATE_LIMIT_EXCEEDED,
+    'too many requests',
+    HttpStatusCodes.TOO_MANY_REQUESTS,
+    { [RETRY_AFTER_METADATA_KEY]: Math.max(waitSeconds, 1) }
+  )
+}
+
+// The parser with the limits in front, for the one route and only for a call that would read the large body (the shape is judged
+// first, so a call that would not read costs no Redis round trip). An address that has to wait for its failed keys, or that has
+// too many large reads in flight, is answered 429 with the time to wait and never gets a 413 for a good batch (a 413 is a verdict
+// on the batch, which a plugin would not retry). The limiter never throws (it lets the call through when Redis fails), but the
+// answer is guarded anyway: a failed read must not stop the request.
+// The place of an address among the reads in flight (per replica, as the memory is) is taken at once, before the limiter is
+// asked, with its `close` listener registered at the same moment, and it is given back by whichever comes first: the end of the
+// read, an error, a wait of the limiter, or the close of the response (a client that goes away while the limiter answers has no
+// read to end). Giving it back is idempotent, so the count can neither go below zero nor stay stuck.
+export function pluginEventsBodyParser(probes?: PluginKeyProbeGate): RequestHandler {
+  const inFlight = new Map<string, number>()
+  return (request: Request, response: Response, next: NextFunction): void => {
+    if (!wantsLargeRead(request)) {
+      next()
+      return
+    }
+    const address = request.ip ?? ''
+    let held = false
+    const release = (): void => {
+      if (!held) return
+      held = false
+      const left = (inFlight.get(address) ?? 1) - 1
+      if (left <= 0) inFlight.delete(address)
+      else inFlight.set(address, left)
+    }
+    // An unknown address (no `request.ip`) has no count of its own: it would be one for everybody
+    if (address !== '') {
+      const current = inFlight.get(address) ?? 0
+      if (current >= RemoteChannelApiLimits.EVENTS_CONCURRENT_READS_PER_ADDRESS) {
+        next(tooManyRequests(1))
+        return
+      }
+      inFlight.set(address, current + 1)
+      held = true
+      response.once('close', release)
+    }
+    const start = (): void => {
+      // The client that went away while the limit was being asked has nothing to read (and the read of a destroyed request
+      // never ends)
+      if (request.destroyed || response.destroyed) {
+        release()
+        return
+      }
+      readLargeBody(request, response, next, release)
+    }
+    if (probes === undefined) {
+      start()
+      return
+    }
+    probes.retryAfter(address).then(wait => {
+      if (wait > 0) {
+        release()
+        next(tooManyRequests(wait))
+      } else start()
+    }, start)
+  }
 }

@@ -1,4 +1,4 @@
-import { isWithinSchedule, type WeekSchedule } from './business-hours'
+import { isStoreClosed, isWithinSchedule, type WeekSchedule } from './business-hours'
 
 const closed = { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] }
 const weekdays: WeekSchedule = {
@@ -66,5 +66,22 @@ describe('isWithinSchedule', () => {
 
   it('is closed on a day with no ranges', () => {
     expect(isWithinSchedule(closed, 'UTC', new Date('2026-03-02T12:00:00Z'))).toBe(false)
+  })
+})
+
+describe('isStoreClosed', () => {
+  const hours = { timezone: 'UTC', schedule: weekdays }
+
+  it('is closed outside the schedule and open inside it', () => {
+    expect(isStoreClosed(hours, new Date('2026-03-02T08:59:00Z'))).toBe(true)
+    expect(isStoreClosed(hours, new Date('2026-03-02T09:00:00Z'))).toBe(false)
+    expect(isStoreClosed(hours, new Date('2026-03-02T18:00:00Z'))).toBe(true)
+  })
+
+  it('is never closed for a store with no hours or hours that cannot be read', () => {
+    const at = new Date('2026-03-02T03:00:00Z')
+    expect(isStoreClosed(null, at)).toBe(false)
+    expect(isStoreClosed({ timezone: 'UTC', schedule: { mon: 'nine to five' } }, at)).toBe(false)
+    expect(isStoreClosed({ timezone: 'UTC', schedule: null }, at)).toBe(false)
   })
 })

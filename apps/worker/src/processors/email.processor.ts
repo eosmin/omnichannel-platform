@@ -5,11 +5,14 @@ import { ZodError } from 'zod'
 import { EmailService } from '@platform/core/email'
 import { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import {
+  type DeliverInvitationEmailJob,
   JobNames,
   QueueNames,
   type RequestMagicLinkJob,
   type SendEmailJob
 } from '@platform/core/queues'
+
+import { InvitationEmailDelivery } from '../invitations/invitation-email-delivery.service'
 
 import { BaseProcessor } from './base.processor'
 import { ProcessorSupport } from './processor-support'
@@ -18,20 +21,31 @@ import { ProcessorSupport } from './processor-support'
   concurrency: 10,
   limiter: { max: 100, duration: 1000 } // Respect the provider's rate limit
 })
-export class EmailProcessor extends BaseProcessor<SendEmailJob | RequestMagicLinkJob> {
+export class EmailProcessor extends BaseProcessor<
+  SendEmailJob | RequestMagicLinkJob | DeliverInvitationEmailJob
+> {
   constructor(
     support: ProcessorSupport,
     private readonly email: EmailService,
-    private readonly magicLinks: MagicLinkIssuer
+    private readonly magicLinks: MagicLinkIssuer,
+    private readonly invitations: InvitationEmailDelivery
   ) {
     super(QueueNames.EMAIL, support)
   }
 
-  protected async handle(job: Job<SendEmailJob | RequestMagicLinkJob>): Promise<void> {
+  protected async handle(
+    job: Job<SendEmailJob | RequestMagicLinkJob | DeliverInvitationEmailJob>
+  ): Promise<void> {
     switch (job.name) {
       case JobNames.REQUEST_MAGIC_LINK: {
         const { email, correlationId } = job.data as RequestMagicLinkJob
         await this.magicLinks.issue(email, correlationId)
+        return
+      }
+      case JobNames.DELIVER_INVITATION_EMAIL: {
+        const { storeId, invitationId } = job.data as DeliverInvitationEmailJob
+        // A failed delivery is released by the service and tried again by the sweep, so the job itself never retries
+        await this.invitations.deliver(storeId, invitationId)
         return
       }
       case JobNames.SEND_EMAIL:

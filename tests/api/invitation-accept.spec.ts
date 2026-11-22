@@ -18,8 +18,8 @@ import { TenantContextService } from '../../apps/api/src/modules/tenancy'
 import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
-import { emailsOf } from '../helpers/email'
 import { type Actor, anonymousApi, api } from '../helpers/http'
+import { outboxEmailTo } from '../helpers/invitation-email'
 
 interface ErrorBody {
   error: { code: string; metadata?: { reason?: string } }
@@ -63,7 +63,7 @@ describe('Accepting an invitation', () => {
       .post(ApiRoutes.settings.members)
       .send({ email, roleId })
     expect(response.status).toBe(201)
-    const job = emailsOf(app).to(email.toLowerCase()).at(-1)
+    const job = await outboxEmailTo(app, owner, email)
     const token = URL_TOKEN.exec((job?.data as { url: string }).url)?.[1] as string
     return { token, id: (response.body as { id: string }).id }
   }
@@ -145,6 +145,16 @@ describe('Accepting an invitation', () => {
   })
 
   describe('by someone with no account', () => {
+    it('clears the outbox of the invitation: an accepted link is never mailed afterwards', async () => {
+      const email = newEmail()
+      const { token, id } = await invite(email)
+
+      await accept(token, { name: 'Guest' })
+
+      const row = await owner.invitation.findUniqueOrThrow({ where: { id } })
+      expect(row).toMatchObject({ status: 'ACCEPTED', emailOutbox: null })
+    })
+
     it('creates the account, the membership and the session together', async () => {
       const email = newEmail()
       const { token, id } = await invite(email)

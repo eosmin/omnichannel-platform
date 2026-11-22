@@ -10,7 +10,7 @@ import { CustomerDrawerProvider } from '../../components/customers/customer-draw
 import { OrderDrawerProvider } from '../../components/orders/order-drawer-context'
 import { RealtimeProvider } from '../../components/providers/realtime-provider'
 import { StoreProvider } from '../../components/providers/store-context'
-import { StoreTimeZone } from '../../components/providers/time-zone-provider'
+import { StoreTimeZone } from '../../components/providers/store-time-zone'
 import { SearchBox } from '../../components/search/search-box'
 import { SearchProvider } from '../../components/search/search-context'
 import { AppFrame } from '../../components/shell/app-frame'

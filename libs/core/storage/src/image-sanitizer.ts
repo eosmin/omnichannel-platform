@@ -1,11 +1,20 @@
 import sharp from 'sharp'
 
 import {
+  AnimatedImageCleaning,
   FILE_SIGNATURE_WINDOW_BYTES,
   ImageSanitizing,
   matchesDeclaredType,
   UploadLimits
 } from '@platform/core/storage'
+
+import {
+  AnimatedImageMalformed,
+  cleanGif,
+  cleanPng,
+  cleanWebp,
+  pngChunkTypes
+} from './animated-image-cleaner'
 
 // The picture cannot be decoded, is not what it says it is, has too many pixels, does not fit the file
 // limit once cleaned, or came out of the encoder with metadata still in it. It is refused: the
@@ -18,20 +27,59 @@ export class ImageNotSanitizable extends Error {
 
 export type SanitizedImage =
   | { kind: 'sanitized'; body: Buffer }
-  // Left exactly as it came: a type that is not re-encoded, or an animation
+  // Left exactly as it came: a type that is not cleaned, or an animation that carried nothing to cut
   | { kind: 'untouched'; why: 'type' | 'animated' }
 
 // The format the decoder must find in the bytes for each type the sanitizer re-encodes
-const FORMAT_OF: Readonly<Record<string, 'jpeg' | 'png' | 'webp'>> = {
+const FORMAT_OF: Readonly<Record<string, 'jpeg' | 'png' | 'webp' | 'gif'>> = {
   'image/jpeg': 'jpeg',
   'image/png': 'png',
-  'image/webp': 'webp'
+  'image/webp': 'webp',
+  'image/gif': 'gif'
 }
 
 // Whether a type is re-encoded: the caller asks before it reads the file
 export const isSanitizedType = (contentType: string): boolean =>
   ImageSanitizing.CONTENT_TYPES.some(type => type === contentType) &&
   Object.hasOwn(FORMAT_OF, contentType)
+
+// The metadata blocks of an animation cut out of its container (the frames, delays and loop are the same bytes)
+function cleanAnimation(input: Buffer, format: 'gif' | 'webp' | 'png'): Buffer {
+  if (format === 'gif') return cleanGif(input)
+  if (format === 'webp') return cleanWebp(input)
+  return cleanPng(input)
+}
+
+// What the cleaned animation must still be: the same frames at the same size, nothing the cleaning cuts, and its animation chunk
+async function checkCleanedAnimation(
+  before: Buffer,
+  after: Buffer,
+  format: 'gif' | 'webp' | 'png'
+): Promise<void> {
+  if (format === 'png') {
+    const types = pngChunkTypes(after)
+    const dropped = AnimatedImageCleaning.PNG_DROPPED_CHUNKS as readonly string[]
+    if (types.some(type => dropped.includes(type)) || !types.includes('acTL')) {
+      throw new ImageNotSanitizable('the cleaned animation is not what it should be')
+    }
+    return
+  }
+  const options = { limitInputPixels: ImageSanitizing.MAX_INPUT_PIXELS, pages: -1 }
+  const [was, is] = await Promise.all([
+    sharp(before, options).metadata(),
+    sharp(after, options).metadata()
+  ])
+  if (
+    is.format !== format ||
+    is.width !== was.width ||
+    is.height !== was.height ||
+    is.pages !== was.pages ||
+    is.exif !== undefined ||
+    is.xmp !== undefined
+  ) {
+    throw new ImageNotSanitizable('the cleaned animation is not what it should be')
+  }
+}
 
 const PNG_SIGNATURE_BYTES = 8
 const PNG_CHUNK_HEADER_BYTES = 8 // Length and type
@@ -79,6 +127,19 @@ export async function carriesMetadata(body: Buffer): Promise<boolean> {
   const header = await sharp(body, {
     limitInputPixels: ImageSanitizing.MAX_INPUT_PIXELS
   }).metadata()
+  // A gif and an animation are cleaned in the container, not re-encoded: they carry metadata when the walk of the cleaner would cut a block
+  const animated =
+    header.format === 'gif' ||
+    ((header.pages ?? 1) > 1 && header.format === 'webp') ||
+    (header.format === 'png' && isAnimatedPng(body))
+  if (animated) {
+    try {
+      return cleanAnimation(body, header.format as 'gif' | 'webp' | 'png').length !== body.length
+    } catch (error) {
+      if (error instanceof AnimatedImageMalformed) throw new ImageNotSanitizable(error.why)
+      throw error
+    }
+  }
   return (
     header.exif !== undefined ||
     header.xmp !== undefined ||
@@ -149,8 +210,19 @@ async function sanitizeWithinSlot(
     ) {
       throw new ImageNotSanitizable('the size of the picture is missing or too big')
     }
-    if ((header.pages ?? 1) > 1 || (expected === 'png' && isAnimatedPng(input))) {
-      return { kind: 'untouched', why: 'animated' }
+    // A gif and an animation are never re-encoded: the blocks that carry metadata are cut from the container and the rest is copied
+    // byte for byte. The result is read back (same size, same frames) before it replaces anything
+    if (
+      expected === 'gif' ||
+      (header.pages ?? 1) > 1 ||
+      (expected === 'png' && isAnimatedPng(input))
+    ) {
+      const format = expected === 'jpeg' ? undefined : expected
+      if (format === undefined) throw new ImageNotSanitizable('a jpeg cannot be an animation')
+      const body = cleanAnimation(input, format)
+      if (body.length === input.length) return { kind: 'untouched', why: 'animated' }
+      await checkCleanedAnimation(input, body, format)
+      return { kind: 'sanitized', body }
     }
 
     // A png has no quality to lower: it is encoded once
@@ -170,6 +242,7 @@ async function sanitizeWithinSlot(
     return { kind: 'sanitized', body }
   } catch (error) {
     if (error instanceof ImageNotSanitizable) throw error
+    if (error instanceof AnimatedImageMalformed) throw new ImageNotSanitizable(error.why)
     if (isEnvironmentError(error)) throw error
     throw new ImageNotSanitizable(error)
   }

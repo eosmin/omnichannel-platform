@@ -118,7 +118,7 @@ describe('sanitizeImage', () => {
     expect((await sharp(result.body).metadata()).icc).toBeDefined()
   })
 
-  it('leaves an animated webp and a gif exactly as they came', async () => {
+  it('leaves an animated webp and a gif that carry nothing exactly as they came', async () => {
     const frames = sharp(
       Buffer.concat([
         await sharp({ create: { width: 8, height: 8, channels: 3, background: '#f00' } })
@@ -138,10 +138,10 @@ describe('sanitizeImage', () => {
     const gif = await sanitizeImage(animatedGif, 'image/gif')
 
     expect(webp).toEqual({ kind: 'untouched', why: 'animated' })
-    expect(gif).toEqual({ kind: 'untouched', why: 'type' })
+    expect(gif).toEqual({ kind: 'untouched', why: 'animated' })
   })
 
-  it('leaves an animated png alone', async () => {
+  it('leaves an animated png that carries nothing alone', async () => {
     const still = await (await twoColours()).png().toBuffer()
     // An `acTL` chunk before the data is what makes a png animated
     const at = still.indexOf('IDAT') - 4
@@ -254,7 +254,7 @@ describe('sanitizeImage', () => {
 
   it('says which types it cleans, and they are those it has a format for', () => {
     expect(ImageSanitizing.CONTENT_TYPES.every(isSanitizedType)).toBe(true)
-    expect(isSanitizedType('image/gif')).toBe(false)
+    expect(isSanitizedType('image/gif')).toBe(true)
     expect(isSanitizedType('application/pdf')).toBe(false)
   })
 })
