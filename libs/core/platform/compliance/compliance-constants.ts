@@ -123,6 +123,25 @@ export const AuditColdExport = {
   LOCK_MAX_WAIT_MS: 5_000
 } as const
 
+// What the viewer of the audit log may read of the cold parts (TDD_05 §9.3) in one request. The archive is read as a stream and
+// only the page being asked for is kept in memory; these are the ceilings of the time and the bytes a request may spend on it.
+// A request that reaches one is refused (never answered with a page that is short of entries it did not reach).
+export const AuditColdRead = {
+  // The prefix every object of the cold export lives under (`StorageKeys.auditArchive`)
+  PREFIX: 'audit/',
+  // Objects the listing of the prefix may return before the read gives up (pages of the bucket listing)
+  MAX_LIST_PAGES: 20,
+  // Parts (objects) one request may open
+  MAX_PARTS: 120,
+  // The bytes of the objects (gzipped) one request may read, and the bytes they may inflate to (a bomb guard)
+  MAX_COMPRESSED_BYTES: 512 * 1024 * 1024,
+  MAX_INFLATED_BYTES: 4 * 1024 * 1024 * 1024,
+  // A line longer than this is not an audit entry of ours: the read stops instead of buffering it
+  MAX_LINE_BYTES: 1024 * 1024,
+  // The time one request may spend reading the archive
+  MAX_READ_MS: 60_000
+} as const
+
 // The advisory lock of the cold export of one month: two runs of the same month (a job given again as stalled, two
 // replicas, a hand-added job) never export it at the same time
 export const auditColdExportLockKey = (year: number, month: number): string =>

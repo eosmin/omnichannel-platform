@@ -38,3 +38,34 @@ export function auditLogWhere(storeId: string, filters: AuditLogFilters): AuditL
         })
   }
 }
+
+// What `auditLogMatches` reads of an entry
+export interface AuditLogMatchable {
+  storeId: string | null
+  action: string
+  userId: string | null
+  resourceType: string | null
+  resourceId: string | null
+  timestamp: Date
+}
+
+// The same rule as `auditLogWhere`, for an entry that is not in the database (a line of the cold archive): the store first and
+// always (an entry with no store matches nobody), then each filter exactly, and the range as inclusive start and exclusive end.
+// The two are kept together so that the screen shows the same rows from the database and from the archive.
+export function auditLogMatches(
+  storeId: string,
+  filters: AuditLogFilters,
+  entry: AuditLogMatchable
+): boolean {
+  if (entry.storeId !== storeId) return false
+  if (filters.action !== undefined && entry.action !== filters.action) return false
+  if (filters.userId !== undefined && entry.userId !== filters.userId) return false
+  if (filters.resourceType !== undefined && entry.resourceType !== filters.resourceType) {
+    return false
+  }
+  if (filters.resourceId !== undefined && entry.resourceId !== filters.resourceId) return false
+  const at = entry.timestamp.getTime()
+  if (filters.from !== undefined && at < filters.from.getTime()) return false
+  if (filters.before !== undefined && at >= filters.before.getTime()) return false
+  return true
+}
