@@ -40,3 +40,8 @@ export const exportAuditLogQuerySchema = z
   .strictObject(filterFields)
   .refine(rangeIsOrdered, rangeIssue)
 export type ExportAuditLogQuery = z.output<typeof exportAuditLogQuerySchema>
+
+// The instant of the entry, which the list shows: a read by id of an entry older than the hot window finds its month in the
+// archive with it. Any other field is a malformed query.
+export const auditLogEntryQuerySchema = z.strictObject({ at: z.iso.datetime().optional() })
+export type AuditLogEntryQuery = z.output<typeof auditLogEntryQuerySchema>

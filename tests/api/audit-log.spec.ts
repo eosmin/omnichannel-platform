@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { gzipSync } from 'node:zlib'
 
 import type { INestApplication } from '@nestjs/common'
 
@@ -11,6 +12,8 @@ import { AuditLogResourceTypes, PaginationLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { ExportLimits } from '@platform/core/exports'
 import { ExportStatus, ExportTypes } from '@platform/core/queues'
+import { StorageKeys } from '@platform/core/storage'
+import { StorageService } from '@platform/core/storage-module'
 
 import { AuditLogService } from '../../apps/api/src/modules/audit-log/audit-log.service'
 import { createRole } from '../builders'
@@ -406,5 +409,133 @@ describe('Audit log viewer', () => {
         .status
     ).toBe(BAD_REQUEST)
     await owner.export.update({ where: { id: view.id }, data: { status: ExportStatus.FAILED } })
+  })
+  // The cold parts (TDD_05 §9.3): a month the nightly export moved to the bucket is read by the viewer, in one range of its own
+  // (1971, so that no other spec's objects are in it), as streams, once each entry, and only the entries of the store of the request
+  describe('cold parts', () => {
+    const year = 1971
+    const month = 5
+    const keys = [StorageKeys.auditArchive(year, month), StorageKeys.auditArchive(year, month, 2)]
+    const range = `from=${year}-05-01T00:00:00.000Z&before=${year}-06-01T00:00:00.000Z`
+    let storage: StorageService
+    const coldAction = `${prefix}.cold`
+    const line = (data: { id: string; storeId: string | null; at: string }) =>
+      JSON.stringify({
+        id: data.id,
+        action: coldAction,
+        userId: null,
+        storeId: data.storeId,
+        organizationId: null,
+        resourceType: null,
+        resourceId: null,
+        metadata: { archived: 1 },
+        ipAddress: null,
+        userAgent: null,
+        timestamp: data.at
+      })
+    const ids = {
+      first: randomUUID(),
+      second: randomUUID(),
+      lateRow: randomUUID(),
+      other: randomUUID(),
+      none: randomUUID()
+    }
+
+    beforeAll(async () => {
+      storage = app.get(StorageService)
+      // The archive is read only for a store that is older than its months (a store has no entry from before it existed)
+      const old = new Date(`${year - 1}-01-01T00:00:00.000Z`)
+      await owner.store.updateMany({
+        where: { id: { in: [ctx.storeA.id, ctx.storeB.id] } },
+        data: { createdAt: old }
+      })
+      const put = (key: string, lines: string[]) =>
+        storage.put(key, gzipSync(`${lines.join('\n')}\n`), 'application/gzip')
+      await put(keys[0] ?? '', [
+        line({ id: ids.first, storeId: ctx.storeA.id, at: `${year}-05-02T00:00:00.000Z` }),
+        line({ id: ids.second, storeId: ctx.storeA.id, at: `${year}-05-03T00:00:00.000Z` }),
+        line({ id: ids.other, storeId: ctx.storeB.id, at: `${year}-05-04T00:00:00.000Z` }),
+        line({ id: ids.none, storeId: null, at: `${year}-05-05T00:00:00.000Z` })
+      ])
+      // A row written into the month after its first part (a back-dated one) goes in the next part, and a part that was
+      // written twice holds an entry the first one holds
+      await put(keys[1] ?? '', [
+        line({ id: ids.lateRow, storeId: ctx.storeA.id, at: `${year}-05-20T00:00:00.000Z` }),
+        line({ id: ids.second, storeId: ctx.storeA.id, at: `${year}-05-03T00:00:00.000Z` })
+      ])
+    })
+    afterAll(async () => {
+      await Promise.all(keys.map(key => storage.delete(key)))
+    })
+
+    it('lists the entries of the store from every part, newest first and once each, and no other store or no store', async () => {
+      const page = await list(range)
+
+      expect(page.data.map(item => item.id)).toEqual([ids.lateRow, ids.second, ids.first])
+      expect(page.hasMore).toBe(false)
+      expect(page.data[0]).toMatchObject({ action: coldAction, metadata: { archived: 1 } })
+      // Another store reads its own rows of the month, none of these
+      const other = await api(app, ctx.adminB, ctx.storeB).get(
+        `${ApiRoutes.organizations.auditLog}?${range}`
+      )
+      expect((other.body as PageBody).data.map(item => item.id)).toEqual([ids.other])
+    })
+
+    it('pages through the archive with the cursor of the viewer and merges the rows still in the database, once each', async () => {
+      // The same entry as the database holds it (an export whose delete did not finish)
+      await owner.auditLog.create({
+        data: {
+          id: ids.first,
+          action: coldAction,
+          storeId: ctx.storeA.id,
+          timestamp: new Date(`${year}-05-02T00:00:00.000Z`)
+        }
+      })
+      const dbOnly = await entry({
+        storeId: ctx.storeA.id,
+        userId: null,
+        action: coldAction,
+        timestamp: new Date(`${year}-05-10T00:00:00.000Z`)
+      })
+
+      const first = await list(`${range}&limit=2`)
+      expect(first.data.map(item => item.id)).toEqual([ids.lateRow, dbOnly.id])
+      expect(first.hasMore).toBe(true)
+      const second = await list(`${range}&limit=2&cursor=${first.nextCursor ?? ''}`)
+      expect(second.data.map(item => item.id)).toEqual([ids.second, ids.first])
+      expect(second.hasMore).toBe(false)
+    })
+
+    it('reads one archived entry by id with its instant, and only the entry of the store', async () => {
+      const at = `at=${encodeURIComponent(`${year}-05-02T00:00:00.000Z`)}`
+      const found = await asAdmin().get(
+        `${ApiRoutes.organizations.auditLogEntry(ids.second)}?${at}`
+      )
+      // `second` is of 05-03: the month is the same, so it is found by the instant of any day of it
+      expect(found.status).toBe(OK)
+      expect((found.body as EntryBody).id).toBe(ids.second)
+      // Without the instant the archive is not looked in: a 404, as for an entry that does not exist
+      expect((await asAdmin().get(ApiRoutes.organizations.auditLogEntry(ids.second))).status).toBe(
+        NOT_FOUND
+      )
+      // Another store's entry of the same part, and one with no store, are the same 404
+      expect(
+        (await asAdmin().get(`${ApiRoutes.organizations.auditLogEntry(ids.other)}?${at}`)).status
+      ).toBe(NOT_FOUND)
+      expect(
+        (await asAdmin().get(`${ApiRoutes.organizations.auditLogEntry(ids.none)}?${at}`)).status
+      ).toBe(NOT_FOUND)
+      // The instant is an instant and nothing else: any other field is a malformed query
+      expect(
+        (await asAdmin().get(`${ApiRoutes.organizations.auditLogEntry(ids.second)}?at=x`)).status
+      ).toBe(BAD_REQUEST)
+      expect(
+        (
+          await asAdmin().get(
+            `${ApiRoutes.organizations.auditLogEntry(ids.second)}?key=audit/${year}/05/audit-logs.jsonl.gz`
+          )
+        ).status
+      ).toBe(BAD_REQUEST)
+    })
   })
 })

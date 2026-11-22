@@ -24,6 +24,7 @@ import {
   UserRateLimits
 } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import { CustomerErasureService, type ErasureView } from '@platform/core/customer-erasure'
 import { CHANNEL_ANONYMITY, type ChannelAnonymitySource } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { NoStore, RateLimit, UserRateLimit, ZodValidationPipe } from '@platform/core/http'
@@ -59,7 +60,6 @@ import {
 
 import { AddressesService } from './addresses.service'
 import { type CautionView, CustomerCautionService } from './customer-caution.service'
-import { CustomerErasureService, type ErasureView } from './customer-erasure.service'
 import { CustomerMediaService } from './customer-media.service'
 import type { GalleryPage } from './customer-media.views'
 import { CustomerMergePreviewService, type MergePreview } from './customer-merge-preview.service'

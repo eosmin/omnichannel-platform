@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common'
 import { ExportsModule } from '../exports'
 import { TenancyModule } from '../tenancy'
 
+import { AuditLogArchiveReader } from './audit-log-archive.reader'
 import { AuditLogController } from './audit-log.controller'
 import { AuditLogService } from './audit-log.service'
 
@@ -10,6 +11,6 @@ import { AuditLogService } from './audit-log.service'
 @Module({
   imports: [ExportsModule, TenancyModule],
   controllers: [AuditLogController],
-  providers: [AuditLogService]
+  providers: [AuditLogArchiveReader, AuditLogService]
 })
 export class AuditLogModule {}
