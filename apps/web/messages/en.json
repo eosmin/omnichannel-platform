@@ -223,6 +223,38 @@
     "typePhrase": "Type \"{phrase}\" to confirm",
     "phraseLabel": "Confirmation phrase"
   },
+  "cookieConsent": {
+    "bannerTitle": "Cookies and your privacy",
+    "bannerBody": "We use essential cookies to make the app work. With your permission we would also use optional ones. You can use the app whatever you choose, and change your choice at any time.",
+    "accept": "Accept all",
+    "reject": "Only essential",
+    "customize": "Choose",
+    "openPreferences": "Cookie preferences",
+    "panelTitle": "Cookie preferences",
+    "panelDescription": "Choose which optional cookies we may use. Nothing optional is used until you allow it.",
+    "categories": {
+      "necessary": {
+        "label": "Essential",
+        "description": "Needed for the app to work, such as keeping you signed in. Always on."
+      },
+      "functional": {
+        "label": "Preferences",
+        "description": "Remember choices such as your language and your last store."
+      },
+      "analytics": {
+        "label": "Usage",
+        "description": "Help us understand how the product is used."
+      },
+      "marketing": {
+        "label": "Marketing",
+        "description": "Not used at the moment."
+      }
+    },
+    "save": "Save choices",
+    "saved": "Your cookie preferences were saved",
+    "syncFailed": "Your choice is saved in this browser. We could not send it to the server; we will try again.",
+    "panelLoadFailed": "The cookie preferences could not be opened. Try again."
+  },
   "conversations": {
     "status": {
       "OPEN": "Open",

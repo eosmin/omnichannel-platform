@@ -614,7 +614,8 @@ export class OrderMessagesService {
     if (order.customer.erasedAt !== null) return OrderMessageNotSentReasons.CUSTOMER_ERASED
     const latest = await this.prisma.client.consentRecord.findFirst({
       where: { storeId, customerId: order.customerId, purpose: ConsentPurposes.ORDER_MESSAGES },
-      orderBy: { createdAt: 'desc' },
+      // Two answers at the same instant: the refusal rules (a customer who said no is never written to because of a tie), then the id
+      orderBy: [{ createdAt: 'desc' }, { granted: 'asc' }, { id: 'desc' }],
       select: { granted: true, revokedAt: true }
     })
     if (latest !== null && (!latest.granted || latest.revokedAt !== null)) {
