@@ -5,7 +5,7 @@ import type { Queue } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
-import type { AuditService } from '@platform/core/audit-module'
+import { AuditService } from '@platform/core/audit-module'
 import { ComplianceConfig, type DsrConfig, dsrEmailHash } from '@platform/core/compliance'
 import { encrypt, parseEncryptionKey } from '@platform/core/crypto'
 import { CustomerErasureService, DsrOpenWorkService } from '@platform/core/customer-erasure'
@@ -48,7 +48,11 @@ describe('the sweep of the data erasures that are due', () => {
   const mails: Call[] = []
   const jobs: unknown[] = []
   let failMail = false
-  const audit = { log: jest.fn<void, [Record<string, unknown>]>() }
+  // The real service writes the rows (in the transaction of the work); the spy only records what was asked
+  let realAudit: AuditService
+  const audit = {
+    log: jest.fn<void, [Parameters<AuditService['log']>[0]]>(entry => realAudit.log(entry))
+  }
   const logger = { setContext: jest.fn(), error: jest.fn(), info: jest.fn(), warn: jest.fn() }
 
   beforeAll(async () => {
@@ -56,6 +60,7 @@ describe('the sweep of the data erasures that are due', () => {
     app = await createTestApp([])
     ctx = await seedTestContext(owner, app, prefix)
     const prisma = createGuardedWorkerPrisma()
+    realAudit = new AuditService(prisma, logger as unknown as PinoLogger)
     const queueOf = <T>(calls: T[]) => ({
       add: (name: string, data: unknown, options: unknown) => {
         calls.push({ name, data, options } as T)
@@ -245,6 +250,17 @@ describe('the sweep of the data erasures that are due', () => {
         expect(entry.actor).toEqual({ system: true })
     }
     expect(JSON.stringify(entries)).not.toContain('@example.com')
+    // The rows are in the database, written with the commit (no waiting for a detached write)
+    expect(
+      await owner.auditLog.count({
+        where: { action: AuditAction.CUSTOMER_ERASED, resourceId: mine.customerIds[0] ?? '' }
+      })
+    ).toBe(1)
+    expect(
+      await owner.auditLog.count({
+        where: { action: AuditAction.DSR_ERASURE_COMPLETED, resourceId: mine.id }
+      })
+    ).toBe(1)
     expect(JSON.stringify(logger.error.mock.calls)).not.toContain('@example.com')
   })
 
@@ -428,6 +444,11 @@ describe('the sweep of the data erasures that are due', () => {
       erasureAttempts: 0,
       erasureAttemptedAt: null
     })
+    expect(
+      await owner.auditLog.count({
+        where: { action: AuditAction.DSR_ERASURE_RETURNED, resourceId: mine.id }
+      })
+    ).toBe(1)
     const returned = audit.log.mock.calls
       .map(call => call[0] as { action: string; metadata?: { openWork?: { orders: number } } })
       .find(entry => entry.action === AuditAction.DSR_ERASURE_RETURNED)
@@ -481,6 +502,20 @@ describe('the sweep of the data erasures that are due', () => {
       status: DsrStatus.IN_PROGRESS,
       erasureFailureCode: 'TypeError'
     })
+    // The erasure of the first customer was audited inside the transaction that rolled back: no row says someone was erased
+    expect(
+      await owner.auditLog.count({
+        where: {
+          action: AuditAction.CUSTOMER_ERASED,
+          resourceId: { in: mine.customerIds }
+        }
+      })
+    ).toBe(0)
+    expect(
+      await owner.auditLog.count({
+        where: { action: AuditAction.DSR_ERASURE_COMPLETED, resourceId: mine.id }
+      })
+    ).toBe(0)
   })
 
   it('gives the request back without spending its tries when a merge into a customer can still be undone', async () => {

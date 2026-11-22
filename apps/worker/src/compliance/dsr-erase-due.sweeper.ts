@@ -131,15 +131,8 @@ export class DsrEraseDueSweeper {
     const exhausted = await this.jobContext.forStore(storeId, () =>
       this.returnExhausted(storeId, now)
     )
-    for (const row of exhausted) {
-      report.returned += 1
-      this.logReturned(
-        storeId,
-        row.organizationId,
-        row.id,
-        DsrErasureReturnReasons.ATTEMPTS_EXHAUSTED
-      )
-    }
+    // Each was audited in the transaction that gave it back
+    report.returned += exhausted.length
     // The closing notices that a queue that was down left unsent: the erasure is committed, the person still has to be told
     const unsent = await this.jobContext.forStore(storeId, () => this.unsentNoticesOf(storeId))
     for (const requestId of unsent) await this.notify(storeId, requestId, report)
@@ -178,32 +171,12 @@ export class DsrEraseDueSweeper {
         await this.jobContext.forStore(storeId, () => this.releaseClaim(storeId, requestId))
       } else if (attempt.kind === 'completed') {
         report.completed += 1
-        this.audit.log({
-          action: AuditAction.DSR_ERASURE_COMPLETED,
-          actor: { system: true },
-          storeId,
-          organizationId: attempt.organizationId,
-          resourceType: DsrResourceTypes.REQUEST,
-          resourceId: requestId,
-          // Ids and counts only, never a name or an address
-          metadata: {
-            type: DsrType.ERASURE,
-            customers: attempt.customers,
-            retained: attempt.retained,
-            legalBasis: LegalBases.LEGAL_OBLIGATION
-          }
-        })
+        // Audited inside the transaction that ended the request (a death between the commit and a later line cannot lose the entry)
         // After the commit: the person is told only of an erasure that happened
         await this.notify(storeId, requestId, report)
       } else {
+        // Audited inside the transaction that gave the request back
         report.returned += 1
-        this.logReturned(
-          storeId,
-          attempt.organizationId,
-          requestId,
-          attempt.reason,
-          attempt.openWork
-        )
       }
     } catch (error) {
       report.failed += 1
@@ -243,7 +216,15 @@ export class DsrEraseDueSweeper {
           where: { id: row.id, storeId, status: DsrStatus.IN_PROGRESS },
           data: this.backToReview(DsrErasureReturnReasons.ATTEMPTS_EXHAUSTED)
         })
-        if (done.count === 1) given.push(row)
+        if (done.count === 1) {
+          given.push(row)
+          this.logReturned(
+            storeId,
+            row.organizationId,
+            row.id,
+            DsrErasureReturnReasons.ATTEMPTS_EXHAUSTED
+          )
+        }
       }
       return given
     })
@@ -316,7 +297,13 @@ export class DsrEraseDueSweeper {
         this.config.hashKey
       )
       if (!subject.same) {
-        await this.giveBack(tx, storeId, requestId, DsrErasureReturnReasons.SUBJECT_CHANGED)
+        await this.giveBack(
+          tx,
+          storeId,
+          row.organizationId,
+          requestId,
+          DsrErasureReturnReasons.SUBJECT_CHANGED
+        )
         return {
           kind: 'returned',
           organizationId: row.organizationId,
@@ -336,7 +323,13 @@ export class DsrEraseDueSweeper {
           }
         })
         if (undoable > 0) {
-          await this.giveBack(tx, storeId, requestId, DsrErasureReturnReasons.UNDOABLE_MERGE)
+          await this.giveBack(
+            tx,
+            storeId,
+            row.organizationId,
+            requestId,
+            DsrErasureReturnReasons.UNDOABLE_MERGE
+          )
           return {
             kind: 'returned',
             organizationId: row.organizationId,
@@ -349,7 +342,14 @@ export class DsrEraseDueSweeper {
       if (subject.pending.length > 0) {
         const counts = await this.openWork.countOf(tx, storeId, subject.pending)
         if (hasOpenWork(counts)) {
-          await this.giveBack(tx, storeId, requestId, DsrErasureReturnReasons.BLOCKED_BY_OPEN_WORK)
+          await this.giveBack(
+            tx,
+            storeId,
+            row.organizationId,
+            requestId,
+            DsrErasureReturnReasons.BLOCKED_BY_OPEN_WORK,
+            counts
+          )
           return {
             kind: 'returned',
             organizationId: row.organizationId,
@@ -390,6 +390,21 @@ export class DsrEraseDueSweeper {
       })
       // The row is locked and was in progress a moment ago: anything else is a bug, and rolling back undoes the erasures
       if (done.count !== 1) throw new Error('the data request changed under its lock')
+      this.audit.log({
+        action: AuditAction.DSR_ERASURE_COMPLETED,
+        actor: { system: true },
+        storeId,
+        organizationId: row.organizationId,
+        resourceType: DsrResourceTypes.REQUEST,
+        resourceId: requestId,
+        // Ids and counts only, never a name or an address
+        metadata: {
+          type: DsrType.ERASURE,
+          customers: ids.length,
+          retained,
+          legalBasis: LegalBases.LEGAL_OBLIGATION
+        }
+      })
       return {
         kind: 'completed',
         organizationId: row.organizationId,
@@ -423,18 +438,22 @@ export class DsrEraseDueSweeper {
             },
             data: this.backToReview(code)
           })
-          if (done.count !== 1) return null
+          if (done.count !== 1) return false
           const row = await tx.dataSubjectRequest.findFirstOrThrow({
             where: { id: requestId, storeId },
             select: { organizationId: true }
           })
-          return row.organizationId
+          // Audited with the move, in this transaction
+          this.logReturned(
+            storeId,
+            row.organizationId,
+            requestId,
+            DsrErasureReturnReasons.ATTEMPTS_EXHAUSTED
+          )
+          return true
         })
       )
-      if (returned !== null) {
-        report.returned += 1
-        this.logReturned(storeId, returned, requestId, DsrErasureReturnReasons.ATTEMPTS_EXHAUSTED)
-      }
+      if (returned) report.returned += 1
     } catch (error) {
       this.logger.error(
         { storeId, requestId, errorName: errorName(error) },
@@ -443,18 +462,22 @@ export class DsrEraseDueSweeper {
     }
   }
 
-  private giveBack(
+  // Gives the request back and audits it in the same transaction: the entry exists if and only if the request went back
+  private async giveBack(
     tx: PrismaTransaction,
     storeId: string,
+    organizationId: string,
     requestId: string,
-    reason: DsrErasureReturnReason
-  ): Promise<{ count: number }> {
-    return tx.dataSubjectRequest.updateMany({
+    reason: DsrErasureReturnReason,
+    openWork: DsrOpenWork | null = null
+  ): Promise<void> {
+    const done = await tx.dataSubjectRequest.updateMany({
       where: { id: requestId, storeId, status: DsrStatus.IN_PROGRESS },
       // Nothing was tried (the request itself is not ready: another person, open work, a merge): the try the claim counted is not spent, so the
       // next approval starts clean
       data: { ...this.backToReview(reason), erasureAttempts: 0, erasureAttemptedAt: null }
     })
+    if (done.count === 1) this.logReturned(storeId, organizationId, requestId, reason, openWork)
   }
 
   // Back to the queue of the reviewers: the grace period and the approvals are cleared, so a new approval starts the cycle again (an approver
@@ -600,11 +623,12 @@ export class DsrEraseDueSweeper {
         },
         tags: { template: EmailTemplates.DSR_RESULT }
       },
-      // The job holds the address: gone as soon as it is sent, and an hour after a failure
+      // The job holds the address: gone as soon as it is sent or fails
       {
         jobId: dsrResultMailJobId(requestId),
         removeOnComplete: true,
-        removeOnFail: { age: ComplianceConfig.DSR_INTAKE_JOB_TTL_MS / 1000 }
+        // The job holds the address in the clear: it is dropped even when it fails, and the next night's `unsentNoticesOf` queues it again
+        removeOnFail: true
       }
     )
   }
