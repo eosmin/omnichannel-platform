@@ -33,6 +33,13 @@ export interface SendEmailJob extends BaseJob {
   tags: { storeId?: string; template: EmailTemplate } // Echoed back by the Resend webhook (TDD_07 §5.4)
 }
 
+// The email of an invitation is waiting in the outbox of the invitation. The job holds ids only: the link, the token and the address stay
+// sealed in the row and are never in the queue.
+export interface DeliverInvitationEmailJob extends BaseJob {
+  storeId: string
+  invitationId: string
+}
+
 // A magic link was requested. The api does the same for any address (count the limit, queue this),
 // so how long it takes tells nothing about who has an account; the worker does the rest. The job
 // holds the address only, never a token, and is removed once done.

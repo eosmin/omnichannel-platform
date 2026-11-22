@@ -104,6 +104,8 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'organizations.stores': { none: ORGANIZATION },
   'organizations.storeById': { none: ORGANIZATION },
   'organizations.auditLog': { none: ORGANIZATION },
+  'organizations.auditLogExport': { none: ORGANIZATION },
+  'organizations.auditLogEntry': { none: ORGANIZATION },
   'settings.members': { none: TEAM_ADMIN },
   'settings.memberById': { none: TEAM_ADMIN },
   'settings.memberSuspend': { none: TEAM_ADMIN },

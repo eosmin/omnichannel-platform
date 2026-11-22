@@ -3120,6 +3120,25 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.export.findUnique({ where: { id }, select: { id: true } })) !== null
   },
+  // The audit log is read through its viewer (Step 7.2-E): a row is the store's, and a row with no store is nobody's. The table is
+  // immutable, so no route changes an entry and the case has no `modify`.
+  {
+    name: 'auditLog',
+    create: async (owner, { storeId }) => {
+      const admin = await owner.membership.findFirstOrThrow({
+        where: { storeId, role: { name: RoleNames.ADMIN } },
+        select: { userId: true }
+      })
+      return owner.auditLog.create({
+        data: { action: `isolation.${randomUUID()}`, userId: admin.userId, storeId },
+        select: { id: true }
+      })
+    },
+    readPath: ApiRoutes.organizations.auditLogEntry,
+    listPath: ApiRoutes.organizations.auditLog,
+    untouched: async (owner, id) =>
+      (await owner.auditLog.findUnique({ where: { id }, select: { id: true } })) !== null
+  },
   // Notifications are a person's own: the row is made for the Admin of its store (the one the suite
   // acts as) and the only way to change one is to mark it read, naming it in the body. There is no
   // route that reads one by id, so a stranger is only ever answered by the 404 of that route.

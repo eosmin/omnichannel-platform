@@ -11,6 +11,9 @@ export const ExportLimits = {
   ACTIVE_WINDOW_MINUTES: 60,
   // A `pending` export this old will never be made (the job is gone): the cleanup marks it failed
   PENDING_GIVE_UP_HOURS: 24,
+  // Rows an audit log CSV may carry: a file that would be larger is refused with the range to narrow (EXPORT_TOO_LARGE), never cut short,
+  // because a cut file looks like a whole one to an auditor. The count is taken when the file is asked for
+  AUDIT_LOG_MAX_ROWS: 200_000,
   // Rows the cleanup of expired files handles per run
   CLEANUP_BATCH: 100
 } as const

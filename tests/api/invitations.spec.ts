@@ -21,6 +21,7 @@ import { createActor, seedTestContext, type TestContext } from '../helpers/conte
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { emailsOf } from '../helpers/email'
 import { api } from '../helpers/http'
+import { deliveryRequestsFor, outboxEmailTo } from '../helpers/invitation-email'
 
 interface InvitationBody {
   id: string
@@ -71,9 +72,9 @@ describe('Inviting to a store', () => {
     })
 
   // The token that went out in the email: the only copy there is
-  function tokenSentTo(email: string): string {
-    const job = emailsOf(app).to(email.toLowerCase()).at(-1)
-    const token = URL_TOKEN.exec((job?.data as { url: string }).url)?.[1]
+  async function tokenSentTo(email: string): Promise<string> {
+    const job = await outboxEmailTo(app, owner, email)
+    const token = URL_TOKEN.exec((job?.data as { url: string } | undefined)?.url ?? '')?.[1]
     if (token === undefined) throw new Error(`no invitation was sent to ${email}`)
     return token
   }
@@ -101,7 +102,7 @@ describe('Inviting to a store', () => {
         invitedBy: 'adminA',
         expired: false
       })
-      const token = tokenSentTo(email)
+      const token = await tokenSentTo(email)
       const row = await owner.invitation.findUniqueOrThrow({ where: { id: body.id } })
       expect(row).toMatchObject({
         status: 'PENDING',
@@ -121,7 +122,7 @@ describe('Inviting to a store', () => {
       const email = newEmail()
       await invite(email)
 
-      const job = emailsOf(app).to(email).at(-1)
+      const job = await outboxEmailTo(app, owner, email)
 
       expect(job).toMatchObject({
         template: EmailTemplates.INVITATION,
@@ -134,6 +135,69 @@ describe('Inviting to a store', () => {
           expiresInDays: INVITATION_TTL_DAYS
         }
       })
+    })
+
+    it('keeps the email in the outbox of the invitation, sealed: the token is in no column in the clear', async () => {
+      const email = newEmail()
+      const body = (await invite(email)).body as InvitationBody
+
+      const token = await tokenSentTo(email)
+
+      const row = await owner.invitation.findUniqueOrThrow({ where: { id: body.id } })
+      expect(row.emailOutbox).not.toBeNull()
+      expect(Buffer.from(row.emailOutbox ?? []).toString('latin1')).not.toContain(token)
+      expect(Buffer.from(row.emailOutbox ?? []).toString('latin1')).not.toContain(email)
+      expect(row.emailSentAt).toBeNull()
+      expect(await deliveryRequestsFor(app, owner, email)).toBe(1)
+    })
+
+    it('a queue that is down loses nothing: the invitation answers 201 and its email waits in the outbox for the sweep', async () => {
+      const email = newEmail()
+      const failing = jest
+        .spyOn(emailsOf(app), 'add')
+        .mockRejectedValueOnce(new Error('redis is down'))
+
+      const response = await invite(email)
+
+      failing.mockRestore()
+      expect(response.status).toBe(201)
+      const body = response.body as InvitationBody
+      expect(await tokenSentTo(email)).toHaveLength(43)
+      const row = await owner.invitation.findUniqueOrThrow({ where: { id: body.id } })
+      expect(row).toMatchObject({ status: 'PENDING' })
+      expect(row.emailOutbox).not.toBeNull()
+    })
+
+    it('a resend while the queue is down revokes the old link only together with writing the new email', async () => {
+      const email = newEmail()
+      const first = (await invite(email)).body as InvitationBody
+      const oldToken = await tokenSentTo(email)
+      await ageInvitation(first.id)
+      const failing = jest
+        .spyOn(emailsOf(app), 'add')
+        .mockRejectedValueOnce(new Error('redis is down'))
+
+      const second = (await asAdmin().post(ApiRoutes.settings.invitationResend(first.id)))
+        .body as InvitationBody
+
+      failing.mockRestore()
+      const rows = await owner.invitation.findMany({ where: { storeId: ctx.storeA.id, email } })
+      expect(rows.find(row => row.id === first.id)).toMatchObject({
+        status: 'REVOKED',
+        emailOutbox: null
+      })
+      expect(rows.find(row => row.id === second.id)?.emailOutbox).not.toBeNull()
+      expect(await tokenSentTo(email)).not.toBe(oldToken)
+    })
+
+    it('revoking an invitation clears its outbox: a link that was revoked is never mailed', async () => {
+      const email = newEmail()
+      const body = (await invite(email)).body as InvitationBody
+
+      await asAdmin().delete(ApiRoutes.settings.invitationById(body.id))
+
+      const row = await owner.invitation.findUniqueOrThrow({ where: { id: body.id } })
+      expect(row).toMatchObject({ status: 'REVOKED', emailOutbox: null })
     })
 
     it('gives the invitee no access and creates no account until they accept', async () => {
@@ -150,7 +214,7 @@ describe('Inviting to a store', () => {
 
       const response = await invite(email)
 
-      const token = tokenSentTo(email)
+      const token = await tokenSentTo(email)
       expect(JSON.stringify(response.body)).not.toContain(token)
       const entry = await auditEntry(
         AuditAction.MEMBER_INVITED,
@@ -190,20 +254,22 @@ describe('Inviting to a store', () => {
 
       expect(response.status).toBe(409)
       expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.TENANT_INVITEE_SUSPENDED)
-      expect(emailsOf(app).to(suspended.email.toLowerCase())).toHaveLength(0)
+      expect(
+        await owner.invitation.count({ where: { email: suspended.email.toLowerCase() } })
+      ).toBe(0)
     })
 
     it('replaces the pending invitation of the same address: the old link stops being valid', async () => {
       const email = newEmail()
       const first = (await invite(email)).body as InvitationBody
-      const oldToken = tokenSentTo(email)
+      const oldToken = await tokenSentTo(email)
       await ageInvitation(first.id)
 
       const second = (await invite(email)).body as InvitationBody
 
       expect(second.id).not.toBe(first.id)
-      expect(tokenSentTo(email)).not.toBe(oldToken)
-      expect(emailsOf(app).to(email)).toHaveLength(2)
+      expect(await tokenSentTo(email)).not.toBe(oldToken)
+      expect(await deliveryRequestsFor(app, owner, email)).toBe(2)
       const rows = await owner.invitation.findMany({ where: { storeId: ctx.storeA.id, email } })
       expect(rows.map(row => row.status).sort()).toEqual(['PENDING', 'REVOKED'])
       expect(rows.find(row => row.status === 'PENDING')?.id).toBe(second.id)
@@ -217,7 +283,7 @@ describe('Inviting to a store', () => {
 
       expect(again.status).toBe(429)
       expect((again.body as ErrorBody).error.code).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
-      expect(emailsOf(app).to(email)).toHaveLength(1)
+      expect(await deliveryRequestsFor(app, owner, email)).toBe(1)
     })
 
     it('may invite the same address to two stores', async () => {
@@ -335,7 +401,7 @@ describe('Inviting to a store', () => {
     it('issues a new token, ends the old link and sends the email again', async () => {
       const email = newEmail()
       const first = (await invite(email)).body as InvitationBody
-      const oldToken = tokenSentTo(email)
+      const oldToken = await tokenSentTo(email)
       await ageInvitation(first.id)
 
       const response = await resend(first.id)
@@ -348,9 +414,9 @@ describe('Inviting to a store', () => {
         role: { id: ctx.roleIds[RoleNames.AGENT], name: RoleNames.AGENT },
         expired: false
       })
-      const newToken = tokenSentTo(email)
+      const newToken = await tokenSentTo(email)
       expect(newToken).not.toBe(oldToken)
-      expect(emailsOf(app).to(email)).toHaveLength(2)
+      expect(await deliveryRequestsFor(app, owner, email)).toBe(2)
       const rows = await owner.invitation.findMany({ where: { storeId: ctx.storeA.id, email } })
       expect(rows.find(row => row.id === first.id)?.status).toBe('REVOKED')
       expect(rows.find(row => row.id === second.id)).toMatchObject({
@@ -420,7 +486,7 @@ describe('Inviting to a store', () => {
       const entry = await auditEntry(AuditAction.INVITATION_RESENT, second.id)
       expect(entry).toMatchObject({ userId: ctx.adminA.id, storeId: ctx.storeA.id })
       expect(entry?.metadata).toMatchObject({ replacedInvitationId: first.id })
-      expect(JSON.stringify(entry)).not.toContain(tokenSentTo(email))
+      expect(JSON.stringify(entry)).not.toContain(await tokenSentTo(email))
       expect(JSON.stringify(entry)).not.toContain(email)
     })
 
@@ -434,7 +500,7 @@ describe('Inviting to a store', () => {
 
       expect(again.status).toBe(429)
       expect((again.body as ErrorBody).error.code).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
-      expect(emailsOf(app).to(email)).toHaveLength(2)
+      expect(await deliveryRequestsFor(app, owner, email)).toBe(2)
     })
 
     it('answers 404 to a revoked one, an accepted one, a missing one and one of another store', async () => {
@@ -447,13 +513,13 @@ describe('Inviting to a store', () => {
           .post(ApiRoutes.settings.members)
           .send({ email: newEmail(), roleId: ctx.roleIds[RoleNames.AGENT] })
       ).body as InvitationBody
-      const before = emailsOf(app).jobs.length
+      const before = emailsOf(app).deliveries.length
 
       for (const id of [revoked.id, accepted.id, randomUUID(), elsewhere.id]) {
         expect((await resend(id)).status).toBe(404)
       }
 
-      expect(emailsOf(app).jobs).toHaveLength(before)
+      expect(emailsOf(app).deliveries).toHaveLength(before)
       expect(
         (await owner.invitation.findUniqueOrThrow({ where: { id: elsewhere.id } })).status
       ).toBe('PENDING')

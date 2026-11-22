@@ -247,6 +247,8 @@ export const ErrorCodes = {
   EXPORT_EMPTY: 'EXPORT_EMPTY',
   REPORT_LIMIT_REACHED: 'REPORT_LIMIT_REACHED',
   EXPORT_TOO_LARGE: 'EXPORT_TOO_LARGE',
+  // The organization already reads as many finance reports as it may at once (FinanceReportLimits)
+  FINANCE_REPORT_BUSY: 'FINANCE_REPORT_BUSY',
 
   // Finance (TDD_18 §3)
   FINANCE_PERIOD_CLOSED: 'FINANCE_PERIOD_CLOSED',

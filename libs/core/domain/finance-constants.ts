@@ -607,10 +607,19 @@ export type FinanceChainProblem = (typeof FinanceChainProblems)[number]
 
 // The reports and the auditor's files (TDD_18 §10, §11, Step 4B.8)
 export const FinanceReportLimits = {
-  // The unit of the organization in which a report that reads the orders of every store runs (VAT, margin, the books of sales, the
-  // aging): the default of a unit is 15 s, which a wide range of a large organization can pass, and before the unit these reports had no
-  // transaction at all with the switch off. Debt: page the long reads, one unit per page, as the CSV of the journal does
+  // The most one unit of the organization of a report may run (a page of orders, a range of entries, a freeze): the default of a unit is
+  // 15 s. A report is no longer one unit: it is a series of short ones, one per page, so a wide range of a large organization no longer
+  // has to fit in this time as a whole
   READ_UNIT_TIMEOUT_MS: 60_000,
+  // Reports (VAT, margin, aging, the legal books and the files of them) one organization may read at once. Each holds one connection while
+  // a page runs, so three at once leave the pool to the rest of the organization and to the others; the next one is refused with
+  // FINANCE_REPORT_BUSY (a retry in a few seconds), never queued
+  MAX_CONCURRENT_READS_PER_ORGANIZATION: 3,
+  // How long a place of that cap is held without a sign of life: every page renews it, so only a report whose process died stays here this
+  // long. Safe release is `finally` first and this expiry second
+  READ_SLOT_TTL_MS: 120_000,
+  // Seconds the refusal tells the caller to wait before asking again
+  READ_BUSY_RETRY_SECONDS: 5,
   // Lines a CSV of the journal or the ledger carries: a file that would be larger is refused with the range to narrow (EXPORT_TOO_LARGE),
   // never cut short, because a cut file looks like a whole one to an auditor
   MAX_CSV_ROWS: 200_000,
@@ -624,6 +633,10 @@ export const FinanceReportLimits = {
   JOURNAL_PAGE_MAX: 100,
   // Sale entries (and so orders) the margin report reads at once: it walks the range in pages and never holds the orders of a month
   MARGIN_PAGE_SIZE: 500,
+  // Sale entries (and receipts) a legal book reads from the database in one unit: a book is built over its pages, one unit each
+  BOOK_PAGE_SIZE: 500,
+  // Orders the VAT report reads in one unit (it holds the ids of the range and reads their orders by page)
+  VAT_PAGE_SIZE: 2000,
   // The range of days a CSV of the journal or the ledger may cover: a year and a leap day, so a fiscal year always fits. The api
   // refuses a longer one; the screen says so first (a spec compares both)
   CSV_MAX_RANGE_DAYS: 366

@@ -7,7 +7,7 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { Permissions, RoleNames } from '@platform/core/auth'
+import { type Permission, Permissions, RoleNames } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -16,9 +16,11 @@ import {
   BulkActions,
   BulkLimits,
   ChannelIds,
+  MembershipStatus,
   MessageType,
   OrderStatus,
-  PaymentMethod
+  PaymentMethod,
+  PluginInstallationStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { Events } from '@platform/core/events'
@@ -32,6 +34,7 @@ import {
 } from '@platform/core/queues'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
+import { PluginScopes } from '@platform/plugins/sdk'
 
 import { ExportsService } from '../../apps/api/src/modules/exports'
 import { pluginUserId } from '../../apps/api/src/modules/tenancy/actor'
@@ -39,19 +42,21 @@ import { AnalyticsExportWriter } from '../../apps/worker/src/exports/analytics/a
 import { CsvExportWriter } from '../../apps/worker/src/exports/csv-export-writer'
 import { ExpiredExportsCleaner } from '../../apps/worker/src/exports/expired-exports-cleaner.service'
 import { ExportGenerator } from '../../apps/worker/src/exports/export-generator.service'
+import { currentPermissionsOfRequester } from '../../apps/worker/src/exports/export-requester-access'
 import { ZipExportWriter } from '../../apps/worker/src/exports/zip-export-writer'
 import {
   createConversationOf,
   createCustomer,
   createMessage,
   createRole,
-  createTag
+  createTag,
+  ensurePluginInstallation
 } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
-import { api } from '../helpers/http'
+import { type Actor, api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
 import { inStoreContext } from '../helpers/tenant-context'
 import { createWorkerPrisma } from '../helpers/worker-db'
@@ -308,7 +313,9 @@ describe('Exports', () => {
       })
       expect(entry?.userId).toBe(ctx.adminA.id)
       expect(entry?.storeId).toBe(ctx.storeA.id)
-      expect(entry?.metadata).toMatchObject({ rowCount: row.rowCount, filters: { q: 'needle' } })
+      // The text typed to search is never copied into the (immutable) audit entry: only that there was one
+      expect(entry?.metadata).toMatchObject({ rowCount: row.rowCount, filters: { hasText: true } })
+      expect(JSON.stringify(entry?.metadata)).not.toContain('needle')
     })
 
     it('refuses a filter it does not know', async () => {
@@ -585,6 +592,74 @@ describe('Exports', () => {
     })
   })
 
+  describe('the audit log file', () => {
+    it('writes the rows of the store with the columns of the viewer, defuses a formula, and leaves out other stores and rows with no store', async () => {
+      const action = `${prefix}.audit-file`
+      const row = (storeId: string | null, userId: string, extra: Record<string, unknown> = {}) =>
+        owner.auditLog.create({
+          data: { action, storeId, userId, resourceType: 'order', resourceId: 'o-1', ...extra },
+          select: { id: true }
+        })
+      const mine = await row(ctx.storeA.id, ctx.adminA.id, {
+        userAgent: '=HYPERLINK("x")',
+        metadata: { count: 2 }
+      })
+      await row(ctx.storeB.id, ctx.adminB.id)
+      await row(null, ctx.adminA.id)
+
+      const view = await request(`${ApiRoutes.organizations.auditLogExport}?action=${action}`)
+      const file = await made(view.id)
+
+      const lines = file.replace(BOM, '').trim().split('\r\n')
+      expect(lines[0]).toBe(
+        'id,timestamp,action,user_id,resource_type,resource_id,ip_address,user_agent,metadata'
+      )
+      expect(lines).toHaveLength(2)
+      expect(lines[1]).toContain(mine.id)
+      expect(lines[1]).toContain(`'=HYPERLINK`)
+      expect(lines[1]).toContain('""count"":2')
+      const settled = await owner.export.findUniqueOrThrow({ where: { id: view.id } })
+      expect(settled.rowCount).toBe(1)
+    })
+
+    it('needs org:view_audit_log, shows the export to who made it, and audits it as audit_log.exported', async () => {
+      expect(
+        (await api(app, ctx.agentA, ctx.storeA).get(ApiRoutes.organizations.auditLogExport)).status
+      ).toBe(FORBIDDEN)
+      const view = await request(ApiRoutes.organizations.auditLogExport)
+      await made(view.id)
+
+      const [entry] = await waitForAuditEntries(owner, {
+        storeId: ctx.storeA.id,
+        action: AuditAction.AUDIT_LOG_EXPORTED,
+        resourceId: view.id
+      })
+      expect(entry?.userId).toBe(ctx.adminA.id)
+      const list = await asAdmin().get(`${ApiRoutes.exports.list}?type=${ExportTypes.AUDIT_LOG}`)
+      expect((list.body as PageBody).data.map(item => item.id)).toContain(view.id)
+      // A member who cannot read the log does not see the export even if they asked for one before they lost the right
+      const lost = await createActor(owner, app, {
+        prefix,
+        name: 'audit-lost',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: (
+          await createRole(owner, {
+            storeId: ctx.storeA.id,
+            permissions: [Permissions.CUSTOMERS_EXPORT]
+          })
+        ).id
+      })
+      await owner.export.update({ where: { id: view.id }, data: { requestedBy: lost.id } })
+      const hidden = await api(app, lost, ctx.storeA).get(`${ApiRoutes.exports.byId(view.id)}`)
+      expect(hidden.status).toBe(NOT_FOUND)
+      // Nor does the Admin of another store, who holds the same permission, see or download it
+      const other = api(app, ctx.adminB, ctx.storeB)
+      expect((await other.get(ApiRoutes.exports.byId(view.id))).status).toBe(NOT_FOUND)
+      expect((await other.get(ApiRoutes.exports.download(view.id))).status).toBe(NOT_FOUND)
+    })
+  })
+
   describe('telling that an export settled', () => {
     // The events that reach the listeners of the api, the way the bridge would hand them over
     function hear(event: string): jest.Mock {
@@ -740,9 +815,21 @@ describe('Exports', () => {
     })
 
     it('holds only what the member could see when they asked', async () => {
+      const agentRole = await createRole(owner, {
+        storeId: ctx.storeA.id,
+        name: `${prefix}-agent-with-export`,
+        permissions: [Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_EXPORT]
+      })
+      const agent = await createActor(owner, app, {
+        prefix,
+        name: 'agent-with-export',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: agentRole.id
+      })
       const mine = await createConversationOf(owner, {
         storeId: ctx.storeA.id,
-        assignedTo: ctx.agentA.id
+        assignedTo: agent.id
       })
       const nobodys = await createConversationOf(owner, { storeId: ctx.storeA.id })
       const theirs = await createConversationOf(owner, {
@@ -764,12 +851,12 @@ describe('Exports', () => {
       const row = await owner.export.create({
         data: {
           storeId: ctx.storeA.id,
-          requestedBy: ctx.agentA.id,
+          requestedBy: agent.id,
           type: ExportTypes.CONVERSATIONS,
           format: ExportFormats.CSV,
           filters: {
             filter: {},
-            viewer: { userId: ctx.agentA.id, held: [Permissions.CONVERSATIONS_VIEW] }
+            viewer: { userId: agent.id, held: [Permissions.CONVERSATIONS_VIEW] }
           },
           expiresAt: new Date(Date.now() + 86_400_000)
         }
@@ -1500,5 +1587,286 @@ describe('Exports', () => {
   it('leaves the id of a random export a 404', async () => {
     const response = await asAdmin().get(ApiRoutes.exports.byId(randomUUID()))
     expect(response.status).toBe(NOT_FOUND)
+  })
+
+  // The permissions of the requester are read when the file is written, not when it was asked for (debt (a) of Step 7.1)
+  describe('a requester who changed between the request and the file', () => {
+    const STORED_VIEW = [Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_VIEW_ALL]
+
+    async function memberWith(name: string, permissions: Permission[]) {
+      const role = await createRole(owner, {
+        storeId: ctx.storeA.id,
+        name: `${prefix}-${name}`,
+        permissions
+      })
+      const actor = await createActor(owner, app, {
+        prefix,
+        name,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: role.id
+      })
+      return { role, actor }
+    }
+
+    async function asked(actor: Actor, path: string): Promise<ExportBody> {
+      const response = await api(app, actor, ctx.storeA).get(path)
+      expect(response.status).toBe(ACCEPTED)
+      return response.body as ExportBody
+    }
+
+    // The file was never written and the row says why
+    async function cancelled(exportId: string) {
+      await expect(generator.generate(ctx.storeA.id, exportId, false)).rejects.toThrow(
+        'no longer holds'
+      )
+      const row = await owner.export.findUniqueOrThrow({ where: { id: exportId } })
+      expect(row).toMatchObject({
+        status: ExportStatus.FAILED,
+        error: ErrorCodes.PERMISSION_DENIED,
+        key: null,
+        rowCount: null
+      })
+      // The name the generator gives a file of this kind, today
+      const listed = await storage.head(
+        StorageKeys.export(
+          ctx.storeA.id,
+          exportId,
+          `${ExportTypes.CONVERSATIONS}-${new Date().toISOString().slice(0, 10)}.csv`
+        )
+      )
+      expect(listed).toBeNull()
+    }
+
+    it('cancels the file of a member who lost the permission to export, and writes nothing', async () => {
+      const { role, actor } = await memberWith('exp-revoked', [
+        ...STORED_VIEW,
+        Permissions.CONVERSATIONS_EXPORT
+      ])
+      const conversation = await createConversationOf(owner, { storeId: ctx.storeA.id })
+      await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id,
+        content: 'text that must not leave'
+      })
+      const exportRow = await asked(actor, ApiRoutes.conversations.export)
+
+      await owner.permission.deleteMany({
+        where: { roleId: role.id, name: Permissions.CONVERSATIONS_EXPORT }
+      })
+
+      await cancelled(exportRow.id)
+    })
+
+    it('cancels the file of a member whose membership was removed or suspended', async () => {
+      const removed = await memberWith('exp-removed', [Permissions.CUSTOMERS_EXPORT])
+      const suspended = await memberWith('exp-suspended', [Permissions.CUSTOMERS_EXPORT])
+      const first = await asked(removed.actor, ApiRoutes.customers.export)
+      await owner.membership.deleteMany({
+        where: { userId: removed.actor.id, storeId: ctx.storeA.id }
+      })
+      await expect(generator.generate(ctx.storeA.id, first.id, false)).rejects.toThrow(
+        'no longer holds'
+      )
+      expect(await owner.export.findUniqueOrThrow({ where: { id: first.id } })).toMatchObject({
+        status: ExportStatus.FAILED,
+        error: ErrorCodes.PERMISSION_DENIED,
+        key: null
+      })
+
+      await owner.export.updateMany({
+        where: { storeId: ctx.storeA.id, status: ExportStatus.PENDING },
+        data: { status: ExportStatus.FAILED }
+      })
+      const second = await asked(suspended.actor, ApiRoutes.customers.export)
+      await owner.membership.updateMany({
+        where: { userId: suspended.actor.id, storeId: ctx.storeA.id },
+        data: { status: MembershipStatus.SUSPENDED }
+      })
+      await expect(generator.generate(ctx.storeA.id, second.id, false)).rejects.toThrow(
+        'no longer holds'
+      )
+      expect(await owner.export.findUniqueOrThrow({ where: { id: second.id } })).toMatchObject({
+        status: ExportStatus.FAILED,
+        error: ErrorCodes.PERMISSION_DENIED,
+        key: null
+      })
+    })
+
+    it('cancels the file when the role was changed for one without the kind', async () => {
+      const { actor } = await memberWith('exp-rolechange', [
+        Permissions.ORDERS_VIEW,
+        Permissions.ORDERS_EXPORT
+      ])
+      const exportRow = await asked(actor, ApiRoutes.orders.export)
+      const other = await createRole(owner, {
+        storeId: ctx.storeA.id,
+        name: `${prefix}-exp-viewer-only`,
+        permissions: [Permissions.ORDERS_VIEW]
+      })
+      await owner.membership.updateMany({
+        where: { userId: actor.id, storeId: ctx.storeA.id },
+        data: { roleId: other.id }
+      })
+
+      await expect(generator.generate(ctx.storeA.id, exportRow.id, false)).rejects.toThrow(
+        'no longer holds'
+      )
+      expect(await owner.export.findUniqueOrThrow({ where: { id: exportRow.id } })).toMatchObject({
+        status: ExportStatus.FAILED,
+        error: ErrorCodes.PERMISSION_DENIED,
+        key: null
+      })
+    })
+
+    it('narrows the conversations file to the view the member holds now: VIEW_ALL lost, the conversation of someone else is out', async () => {
+      const { role, actor } = await memberWith('exp-narrowed', [
+        ...STORED_VIEW,
+        Permissions.CONVERSATIONS_EXPORT
+      ])
+      const mine = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        assignedTo: actor.id
+      })
+      const theirs = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        assignedTo: ctx.adminA.id
+      })
+      await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: mine.id,
+        content: 'my own thread'
+      })
+      await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: theirs.id,
+        content: 'the thread of another agent'
+      })
+      const exportRow = await asked(actor, ApiRoutes.conversations.export)
+      // Frozen in the row with VIEW_ALL; lost before the file is written
+      const frozen = (await owner.export.findUniqueOrThrow({ where: { id: exportRow.id } }))
+        .filters as { viewer: { held: string[] } }
+      expect(frozen.viewer.held).toContain(Permissions.CONVERSATIONS_VIEW_ALL)
+      await owner.permission.deleteMany({
+        where: { roleId: role.id, name: Permissions.CONVERSATIONS_VIEW_ALL }
+      })
+
+      const file = await made(exportRow.id)
+
+      expect(file).toContain('my own thread')
+      expect(file).not.toContain('the thread of another agent')
+    })
+
+    it('does not widen the file for a member who was promoted in the gap', async () => {
+      const { role, actor } = await memberWith('exp-promoted', [
+        Permissions.CONVERSATIONS_VIEW,
+        Permissions.CONVERSATIONS_EXPORT
+      ])
+      const theirs = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        assignedTo: ctx.adminA.id
+      })
+      await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: theirs.id,
+        content: 'the thread of a colleague'
+      })
+      const exportRow = await asked(actor, ApiRoutes.conversations.export)
+      await owner.permission.create({
+        data: { roleId: role.id, name: Permissions.CONVERSATIONS_VIEW_ALL }
+      })
+
+      const file = await made(exportRow.id)
+
+      expect(file).not.toContain('the thread of a colleague')
+    })
+
+    it('cancels the file of a plugin whose installation is no longer active, and of one that lost its scopes', async () => {
+      const installation = await ensurePluginInstallation(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${prefix}-exports-plugin`
+      })
+      const row = await owner.export.create({
+        data: {
+          storeId: ctx.storeA.id,
+          requestedBy: pluginUserId(installation.id),
+          type: ExportTypes.CUSTOMERS,
+          format: ExportFormats.CSV,
+          filters: {},
+          expiresAt: new Date(Date.now() + 86_400_000)
+        }
+      })
+      // Active but with no scope: it holds no permission
+      await expect(generator.generate(ctx.storeA.id, row.id, false)).rejects.toThrow(
+        'no longer holds'
+      )
+      await owner.export.update({
+        where: { id: row.id },
+        data: { status: ExportStatus.PENDING, error: null }
+      })
+      await owner.pluginInstallation.update({
+        where: { id: installation.id },
+        data: { scopes: [PluginScopes.EXPORTS_READ], status: PluginInstallationStatus.REVOKED }
+      })
+      await expect(generator.generate(ctx.storeA.id, row.id, false)).rejects.toThrow(
+        'no longer holds'
+      )
+      expect(await owner.export.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({
+        status: ExportStatus.FAILED,
+        error: ErrorCodes.PERMISSION_DENIED,
+        key: null
+      })
+    })
+
+    it('reads what a plugin holds from its ACTIVE installation of the store of the row: status, scopes and store decide', async () => {
+      const installation = await ensurePluginInstallation(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${prefix}-exports-plugin-held`
+      })
+      await owner.pluginInstallation.update({
+        where: { id: installation.id },
+        data: { scopes: [PluginScopes.EXPORTS_WRITE, PluginScopes.ANALYTICS_READ] }
+      })
+      const requester = pluginUserId(installation.id)
+      const read = (storeId: string) =>
+        currentPermissionsOfRequester(
+          workerPrisma,
+          new JobContext(workerPrisma),
+          storeId,
+          requester
+        )
+
+      expect(await read(ctx.storeA.id)).toEqual(
+        expect.arrayContaining([Permissions.ANALYTICS_VIEW, Permissions.ANALYTICS_EXPORT])
+      )
+      expect(await read(ctx.storeB.id)).toBeNull()
+      await owner.pluginInstallation.update({
+        where: { id: installation.id },
+        data: { status: PluginInstallationStatus.REVOKED }
+      })
+      expect(await read(ctx.storeA.id)).toBeNull()
+    })
+
+    it('reads the permissions of the store of the row: a membership in another store does not count', async () => {
+      const { actor } = await memberWith('exp-otherstore', [Permissions.CUSTOMERS_EXPORT])
+      const exportRow = await asked(actor, ApiRoutes.customers.export)
+      await owner.membership.updateMany({
+        where: { userId: actor.id, storeId: ctx.storeA.id },
+        data: { storeId: ctx.storeB.id, organizationId: ctx.orgB.id }
+      })
+
+      await expect(generator.generate(ctx.storeA.id, exportRow.id, false)).rejects.toThrow(
+        'no longer holds'
+      )
+    })
+
+    it('still makes the file for a requester who holds the permissions now (no regression)', async () => {
+      const { actor } = await memberWith('exp-intact', [Permissions.CUSTOMERS_EXPORT])
+      const exportRow = await asked(actor, ApiRoutes.customers.export)
+
+      const file = await made(exportRow.id)
+
+      expect(file.startsWith(BOM)).toBe(true)
+    })
   })
 })

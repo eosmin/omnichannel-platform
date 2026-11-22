@@ -39,6 +39,12 @@ export const CacheKeys = {
       `store:${storeId}:plugin-widget:requests:${userId}:${installationId}`
   },
 
+  // The places of the reports of Finance that one organization is reading right now (a sorted set of tokens scored by their last sign of life)
+  financeReports: {
+    readSlots: (organizationId: string) =>
+      `organization:${organizationId}:finance-reports:read-slots`
+  },
+
   agent: {
     convCount: (storeId: string, agentId: string) => `store:${storeId}:agent:${agentId}:conv:count`,
     permissions: (userId: string, storeId: string) => `perms:${userId}:${storeId}`

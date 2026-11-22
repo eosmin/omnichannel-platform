@@ -5,15 +5,24 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
 import {
   AuditColdExport,
   auditColdExportLockKey,
   DataRetentionPolicies,
-  PlatformCleanup
+  orderDocumentCutoff,
+  PlatformCleanup,
+  RetentionResourceTypes
 } from '@platform/core/compliance'
 import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
-import { ConversationStatus, InvitationStatus } from '@platform/core/domain'
+import {
+  ConversationStatus,
+  FinanceSourceType,
+  FiscalDocumentStatus,
+  InvitationStatus,
+  LegalBookKind
+} from '@platform/core/domain'
 import { ImageVariants, MediaPurpose, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -29,7 +38,9 @@ import {
   createOrder,
   createWebhook
 } from '../builders'
+import { createFinanceFixture, createPeriod, postTestEntry, simpleEntry } from '../builders/finance'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 
@@ -66,8 +77,14 @@ describe('The retention run of the worker', () => {
     ctx = await seedTestContext(owner, app, prefix)
     worker = new PrismaService({ databaseUrl: connectionUrls().worker })
     storage = app.get(StorageService)
-    enforcer = new StoreRetentionEnforcer(worker, storage, logger, new JobContext(worker))
-    cleaner = new PlatformCleaner(worker, new JobContext(worker), logger)
+    enforcer = new StoreRetentionEnforcer(
+      worker,
+      storage,
+      logger,
+      new JobContext(worker),
+      app.get(AuditService)
+    )
+    cleaner = new PlatformCleaner(worker, new JobContext(worker), logger, app.get(AuditService))
     exporter = new AuditColdExporter(worker, new WorkerLists(worker), storage, logger)
   })
   afterAll(async () => {
@@ -140,6 +157,56 @@ describe('The retention run of the worker', () => {
       expect(await owner.media.count({ where: { id: old.mediaId } })).toBe(0)
       expect(await storage.head(old.key)).toBeNull()
       expect(await storage.head(old.thumb)).toBeNull()
+    })
+
+    it('writes one system entry for the run, with the store and the counts, and none for a run that deleted nothing', async () => {
+      const startedAt = new Date()
+      const old = await conversationWithFile(ctx.storeA.id, {
+        status: ConversationStatus.RESOLVED,
+        lastMessageAt: daysAgo(800)
+      })
+      const where = {
+        action: AuditAction.RETENTION_RUN,
+        storeId: ctx.storeA.id,
+        timestamp: { gte: startedAt }
+      }
+
+      const report = await enforcer.enforce(ctx.storeA.id)
+
+      const entries = await waitForAuditEntries(owner, where)
+      expect(entries).toHaveLength(1)
+      const [entry] = entries
+      expect(entry).toMatchObject({
+        userId: null,
+        organizationId: null,
+        resourceType: RetentionResourceTypes.STORE,
+        resourceId: ctx.storeA.id
+      })
+      expect(entry?.metadata).toEqual({
+        counts: expect.objectContaining({ conversations: report.conversations }) as unknown,
+        more: report.more,
+        failed: []
+      })
+      // Counts only: nothing that names a row of the customer
+      expect(JSON.stringify(entry?.metadata)).not.toContain(old.conversationId)
+      expect(JSON.stringify(entry?.metadata)).not.toContain(old.messageId)
+      // The other store has no entry from this run
+      expect(
+        await owner.auditLog.count({
+          where: {
+            action: AuditAction.RETENTION_RUN,
+            storeId: ctx.storeB.id,
+            timestamp: { gte: startedAt }
+          }
+        })
+      ).toBe(0)
+
+      // Nothing left to delete: the run leaves no entry
+      const again = await enforcer.enforce(ctx.storeA.id)
+      expect(again.conversations).toBe(0)
+      // The writes of the audit are detached: wait for those in flight before saying that none was made
+      await app.get(AuditService).onModuleDestroy()
+      expect(await owner.auditLog.count({ where })).toBe(1)
     })
 
     // The summary or the label of an order, sent in the conversation as a message: the file belongs to the order (TDD_05 §10.4: an order is
@@ -481,11 +548,302 @@ describe('The retention run of the worker', () => {
 
       expect(await owner.customer.count({ where: { id: customer.id } })).toBe(1)
     })
+
+    // The documents of an order past the legal period of the books (TDD_05 §10.3): a sweep, with the periods in calendar years
+    describe('the documents of orders past the legal period', () => {
+      const now = new Date()
+      const cutoff = orderDocumentCutoff(now)
+      const sevenYearsAndADay = new Date(cutoff.getTime() - DAY_MS)
+      const sixYearsElevenMonths = new Date(cutoff.getTime() + 30 * DAY_MS)
+
+      // A document of an order, both made at `madeAt`, with its object in the bucket
+      async function orderDocumentMadeAt(
+        storeId: string,
+        madeAt: Date,
+        purpose: string = MediaPurpose.ORDER
+      ) {
+        const order = await createOrder(owner, { storeId })
+        await owner.order.update({ where: { id: order.id }, data: { createdAt: madeAt } })
+        const mediaId = randomUUID()
+        const key = await putObject(StorageKeys.message(storeId, mediaId, 'summary.pdf'))
+        await owner.media.create({
+          data: {
+            id: mediaId,
+            storeId,
+            purpose,
+            orderId: order.id,
+            key,
+            createdAt: madeAt,
+            filename: 'summary.pdf',
+            contentType: 'application/pdf',
+            fileSize: 1
+          }
+        })
+        return { orderId: order.id, mediaId, key }
+      }
+
+      const rowExists = async (mediaId: string) =>
+        (await owner.media.count({ where: { id: mediaId } })) === 1
+
+      it('deletes the document of seven years and a day, with its object, and keeps the one of six years and eleven months', async () => {
+        const old = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const young = await orderDocumentMadeAt(ctx.storeA.id, sixYearsElevenMonths)
+
+        const report = await enforcer.enforce(ctx.storeA.id, now)
+
+        expect(report.orderDocuments).toBe(1)
+        expect(await rowExists(old.mediaId)).toBe(false)
+        expect(await storage.head(old.key)).toBeNull()
+        expect(await rowExists(young.mediaId)).toBe(true)
+        expect(await storage.head(young.key)).not.toBeNull()
+        // The order itself is never touched
+        expect(await owner.order.count({ where: { id: old.orderId } })).toBe(1)
+      })
+
+      it('keeps a document that is old when its ORDER is not (the later of the two dates rules)', async () => {
+        const document = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        await owner.order.update({
+          where: { id: document.orderId },
+          data: { createdAt: sixYearsElevenMonths }
+        })
+
+        await enforcer.enforce(ctx.storeA.id, now)
+
+        expect(await rowExists(document.mediaId)).toBe(true)
+      })
+
+      it('is the same for an order of a customer that was erased', async () => {
+        const document = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const order = await owner.order.findUniqueOrThrow({
+          where: { id: document.orderId },
+          select: { customerId: true }
+        })
+        await owner.customer.update({
+          where: { id: order.customerId },
+          data: { erasedAt: new Date() }
+        })
+
+        await enforcer.enforce(ctx.storeA.id, now)
+
+        expect(await rowExists(document.mediaId)).toBe(false)
+      })
+
+      it('never deletes the document of an order that has a fiscal document, of any status', async () => {
+        const document = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        await owner.fiscalDocument.create({
+          data: {
+            organizationId: ctx.orgA.id,
+            storeId: ctx.storeA.id,
+            orderId: document.orderId,
+            receiverEncrypted: Buffer.from('x'),
+            providerId: 'test-provider',
+            environment: 'sandbox',
+            issuerSnapshot: {},
+            linesSnapshot: [],
+            sequenceNumber: 700_000 + (await owner.fiscalDocument.count()),
+            documentType: 'pending',
+            status: FiscalDocumentStatus.VOIDED,
+            voidReason: 'test',
+            voidedAt: new Date(),
+            totalCents: 100,
+            taxCents: 0
+          }
+        })
+
+        const report = await enforcer.enforce(ctx.storeA.id, now)
+
+        expect(report.orderDocuments).toBe(0)
+        expect(report.orderDocumentsHeld).toBeGreaterThanOrEqual(1)
+        expect(await rowExists(document.mediaId)).toBe(true)
+        expect(await storage.head(document.key)).not.toBeNull()
+      })
+
+      it('cannot meet a file of an order that is the evidence of a fiscal document: the database refuses that row, and the sweep names the owner columns as a second guard', async () => {
+        const evidence = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const other = await orderDocumentMadeAt(ctx.storeA.id, sixYearsElevenMonths)
+        const document = await owner.fiscalDocument.create({
+          data: {
+            organizationId: ctx.orgA.id,
+            storeId: ctx.storeA.id,
+            orderId: other.orderId,
+            receiverEncrypted: Buffer.from('x'),
+            providerId: 'test-provider',
+            environment: 'sandbox',
+            issuerSnapshot: {},
+            linesSnapshot: [],
+            sequenceNumber: 800_000 + (await owner.fiscalDocument.count()),
+            documentType: 'pending',
+            status: FiscalDocumentStatus.VOIDED,
+            voidReason: 'test',
+            voidedAt: new Date(),
+            totalCents: 100,
+            taxCents: 0
+          },
+          select: { id: true }
+        })
+
+        // chk_media_fiscal_evidence: a fiscal document owns only a file whose purpose is its evidence
+        await expect(
+          owner.media.update({
+            where: { id: evidence.mediaId },
+            data: { fiscalDocumentId: document.id }
+          })
+        ).rejects.toThrow(/chk_media_fiscal_evidence/)
+        // The file stays what it was: an order document of an old order, and the sweep takes it
+        await enforcer.enforce(ctx.storeA.id, now)
+        expect(await rowExists(evidence.mediaId)).toBe(false)
+      })
+
+      it('never deletes the document of an order whose sale is in a period with a legal book taken, and takes the one of a period with none', async () => {
+        const sealed = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const open = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const fixture = await createFinanceFixture(owner, ctx.orgA.id)
+        const openPeriodId = await createPeriod(owner, ctx.orgA.id, 2026, 10)
+        await postTestEntry(
+          owner,
+          simpleEntry(fixture, 1000, {
+            sourceType: FinanceSourceType.ORDER,
+            sourceId: sealed.orderId,
+            idempotencyKey: `order:${sealed.orderId}:sale`
+          })
+        )
+        await postTestEntry(
+          owner,
+          simpleEntry(fixture, 1000, {
+            periodId: openPeriodId,
+            entryDate: '2026-10-10',
+            sourceType: FinanceSourceType.ORDER,
+            sourceId: open.orderId,
+            idempotencyKey: `order:${open.orderId}:sale`
+          })
+        )
+        // A legal book taken for the period of the first entry only (a book that is taken is frozen for ever: the database refuses to change it)
+        await owner.financeBookSnapshot.create({
+          data: {
+            organizationId: ctx.orgA.id,
+            periodId: fixture.periodId,
+            bookKind: LegalBookKind.SALES_CONSUMERS,
+            layoutVersion: 0,
+            closedAt: new Date(),
+            book: {},
+            contentSha256: 'a'.repeat(64),
+            createdBy: 'test'
+          }
+        })
+
+        const report = await enforcer.enforce(ctx.storeA.id, now)
+
+        expect(await rowExists(sealed.mediaId)).toBe(true)
+        expect(await storage.head(sealed.key)).not.toBeNull()
+        expect(await rowExists(open.mediaId)).toBe(false)
+        expect(report.orderDocumentsHeld).toBeGreaterThanOrEqual(1)
+      })
+
+      it('leaves the row when the bucket refuses, and takes it on the next run (the bucket first, the row after)', async () => {
+        const document = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const failing = jest
+          .spyOn(storage, 'delete')
+          .mockRejectedValueOnce(new Error('bucket down'))
+
+        const first = await enforcer.enforce(ctx.storeA.id, now)
+        failing.mockRestore()
+
+        expect(first.orderDocuments).toBe(0)
+        expect(await rowExists(document.mediaId)).toBe(true)
+
+        const second = await enforcer.enforce(ctx.storeA.id, now)
+        expect(second.orderDocuments).toBe(1)
+        expect(await rowExists(document.mediaId)).toBe(false)
+        expect(await storage.head(document.key)).toBeNull()
+      })
+
+      it('is idempotent, and finishes a row whose object is already gone', async () => {
+        const document = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        await storage.delete(document.key)
+
+        const first = await enforcer.enforce(ctx.storeA.id, now)
+        const again = await enforcer.enforce(ctx.storeA.id, now)
+
+        expect(first.orderDocuments).toBe(1)
+        expect(again.orderDocuments).toBe(0)
+      })
+
+      it('touches the documents of no other store', async () => {
+        const mine = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const theirs = await orderDocumentMadeAt(ctx.storeB.id, sevenYearsAndADay)
+
+        await enforcer.enforce(ctx.storeA.id, now)
+
+        expect(await rowExists(mine.mediaId)).toBe(false)
+        expect(await rowExists(theirs.mediaId)).toBe(true)
+        expect(await storage.head(theirs.key)).not.toBeNull()
+      })
+
+      it('is not reached by the nightly category of the files of messages: a file with an owner stays even when it says it is a message file', async () => {
+        const document = await orderDocumentMadeAt(
+          ctx.storeA.id,
+          daysAgo(800),
+          MediaPurpose.MESSAGE
+        )
+
+        await enforcer.enforce(ctx.storeA.id, now)
+
+        expect(await rowExists(document.mediaId)).toBe(true)
+      })
+
+      it('writes the count in the entry of the run, and no id or text', async () => {
+        const startedAt = new Date()
+        await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+
+        await enforcer.enforce(ctx.storeA.id, now)
+
+        const [entry] = await waitForAuditEntries(owner, {
+          action: AuditAction.RETENTION_RUN,
+          storeId: ctx.storeA.id,
+          timestamp: { gte: startedAt }
+        })
+        const metadata = entry?.metadata as { counts: Record<string, number> }
+        expect(metadata.counts['orderDocuments']).toBe(1)
+      })
+    })
   })
 
   describe('of the platform (PlatformCleaner)', () => {
     // A clock in 2001: only the rows this suite makes, dated before it, are past their date
     const now = new Date('2001-06-15T12:00:00Z')
+
+    it('writes one system entry with no store and the counts of the run', async () => {
+      const startedAt = new Date()
+      await owner.session.create({
+        data: {
+          userId: ctx.adminA.id,
+          familyId: randomUUID(),
+          refreshTokenHash: randomUUID(),
+          expiresAt: daysAgo(1, now),
+          familyExpiresAt: daysAgo(1, now)
+        }
+      })
+
+      const report = await cleaner.run(now)
+
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.PLATFORM_CLEANUP_RUN,
+        timestamp: { gte: startedAt }
+      })
+      const entry = entries.find(
+        candidate =>
+          (candidate.metadata as { counts?: { sessions?: number } } | null)?.counts?.sessions ===
+          report.sessions
+      )
+      expect(entry).toMatchObject({
+        userId: null,
+        storeId: null,
+        organizationId: null,
+        resourceType: RetentionResourceTypes.PLATFORM
+      })
+      expect(entry?.metadata).toMatchObject({ failed: [] })
+      expect(report.sessions).toBeGreaterThanOrEqual(1)
+    })
 
     it('deletes the sessions past expiresAt and keeps the live ones', async () => {
       const make = (expiresAt: Date) =>

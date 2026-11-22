@@ -19,6 +19,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'organizations.stores': { step: '3.6' },
   'organizations.storeById': { step: '3.6' },
   'organizations.auditLog': { step: '7.2' },
+  'organizations.auditLogExport': { step: '7.2' },
+  'organizations.auditLogEntry': { step: '7.2' },
   'invitations.byToken': { step: '3.1' },
   'invitations.accept': { step: '3.1' },
   'conversations.list': { step: '3.2' },
@@ -353,7 +355,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'plugins.consent': { step: '5.6' }, // PR W1: the consent screen
   'plugins.setupCode': { step: '5.6' }, // PR W1: the owner asks for a new code
   'plugins.commandSecret': { step: '5.6' }, // PR W1: the owner rotates the secret of a channel plugin
-  'plugins.apiKey': { step: '7.3' }, // PR 7.3-B2: the button that rotates the API key (HC-216); the route comes first
+  'plugins.apiKey': { step: '7.3' }, // PR 7.3-B2: the button in the plugin detail that rotates the API key (HC-216)
   'pluginWidgets.list': { step: '5.7' },
   'pluginWidgets.sessions': { step: '5.7' },
   'pluginWidgets.bridge': { step: '5.7' },

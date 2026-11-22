@@ -4,19 +4,20 @@ import type { Counter } from '@prometheus-io/client'
 import { UnrecoverableError } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { errorName } from '@platform/channels/connections'
 import {
   type AnalyticsFileFormat,
   analyticsExportFiltersSchema,
   ReportFormatExtensions
 } from '@platform/core/analytics'
 import { AuditService } from '@platform/core/audit-module'
+import { type Permission } from '@platform/core/auth'
 import { JobContext, PrismaService } from '@platform/core/database'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { ErrorCodes, errorName, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { ExportFileExtensions } from '@platform/core/exports'
+import { ExportFileExtensions, ExportTypePermissions } from '@platform/core/exports'
 import {
+  auditLogExportFiltersSchema,
   conversationsExportFiltersSchema,
   customersExportFiltersSchema,
   mediaZipFiltersSchema,
@@ -35,15 +36,29 @@ import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { AnalyticsExportWriter } from './analytics/analytics-export.writer'
+import { auditLogExportSource } from './audit-log-export.source'
 import { conversationsExportSource } from './conversations-export.source'
 import { CsvExportWriter } from './csv-export-writer'
 import { customersExportSource } from './customers-export.source'
 import { ExportProgress } from './export-progress'
 import { auditActorOfRequester, auditViaOfRequester } from './export-requester'
+import {
+  accessOfRequester,
+  currentPermissionsOfRequester,
+  fileStillCovered,
+  narrowedViewer
+} from './export-requester-access'
 import { publishExportSettled } from './export-settled'
 import { mediaZipSource, ZipEmptyError, ZipTooLargeError } from './media-zip-export.source'
 import { ordersExportSource } from './orders-export.source'
 import { ZipExportWriter } from './zip-export-writer'
+
+// The requester lost a permission while the file was written: the row is failed and the file gone, and trying again finds the same
+class PermissionLostError extends UnrecoverableError {
+  constructor() {
+    super('the requester of the export lost its permissions while it was written')
+  }
+}
 
 type ExportRow = NonNullable<Awaited<ReturnType<PrismaService['client']['export']['findUnique']>>>
 
@@ -53,6 +68,8 @@ interface ExportPlan {
   // What the file will hold, counted before it is written
   count: () => Promise<number>
   write: (key: string, onProgress: (done: number) => void) => Promise<{ rowCount: number }>
+  // The permissions the file is made with: those of its kind, and the view it was narrowed to. Checked again before the row turns ready.
+  used: readonly Permission[]
 }
 
 // Makes the file of an export row (TDD_07 §7). The row is the whole job: the kind, the filters and who
@@ -89,7 +106,35 @@ export class ExportGenerator {
     // Already settled: a job that arrives twice makes the file once
     if (row.status !== ExportStatus.PENDING) return
 
-    const plan = this.planOf(row)
+    // Who asked may have lost the permission, or the place in the store, since: what the file holds is decided now, not at the request.
+    // Nothing is written for a requester who may no longer take this kind out (not even a count), and the row says so.
+    let held: readonly Permission[] | null
+    try {
+      held = await currentPermissionsOfRequester(
+        this.prisma,
+        this.jobContext,
+        row.storeId,
+        row.requestedBy
+      )
+    } catch (error) {
+      // A read that fails on the last attempt settles the row: a row left pending holds the requester's place in the active ceiling
+      this.logger.error(
+        { exportId, errorName: errorName(error) },
+        'the permissions of the requester of an export could not be read'
+      )
+      if (lastAttempt) await this.fail(row)
+      throw error
+    }
+    if (!accessOfRequester(row.type, held).allowed || held === null) {
+      this.logger.warn(
+        { exportId, storeId, type: row.type },
+        'an export was cancelled: its requester no longer holds the permissions of its kind'
+      )
+      await this.fail(row, ErrorCodes.PERMISSION_DENIED)
+      throw new UnrecoverableError('the requester of the export no longer holds its permissions')
+    }
+
+    const plan = this.planOf(row, held)
     if (plan === null) {
       await this.fail(row)
       throw new UnrecoverableError('the export row does not fit its kind')
@@ -110,6 +155,27 @@ export class ExportGenerator {
       // A retry starts over: the bar of the attempt that died must not stay where it was
       progress.start()
       const { rowCount } = await plan.write(key, done => progress.report(done))
+      // The permissions were read before the file was written, which can take long: read again now, before the row points at the file.
+      // A requester who lost any of them in between gets no file, and the file is deleted (the download is also gated live).
+      let covered: boolean
+      try {
+        covered = await this.stillCovered(row, plan.used)
+      } catch (error) {
+        // A read that fails is not a yes. The file is made and no row points at it: it goes now, because a retry on another day
+        // writes under another name and would never overwrite it
+        await this.discard(key)
+        throw error
+      }
+      if (!covered) {
+        this.logger.warn(
+          { exportId, storeId, type: row.type },
+          'an export was cancelled: its requester lost permissions while the file was written'
+        )
+        // The file first: a row that fails to settle must not leave the file behind
+        await this.discard(key)
+        await this.fail(row, ErrorCodes.PERMISSION_DENIED)
+        throw new PermissionLostError()
+      }
       const settled = await this.jobContext.forStore(row.storeId, () =>
         this.prisma.client.export.updateMany({
           // Not over a row that settled meanwhile
@@ -139,12 +205,14 @@ export class ExportGenerator {
           type: row.type,
           format: row.format,
           rowCount,
-          filters: row.filters ?? {},
+          filters: auditFiltersOf(row.filters),
           ...auditViaOfRequester(row.requestedBy)
         }
       })
       await this.announce(Events.EXPORT_READY, row)
     } catch (error) {
+      // Already settled and its file deleted where it was thrown
+      if (error instanceof PermissionLostError) throw error
       this.logger.error({ exportId, errorName: errorName(error) }, 'an export could not be written')
       // A text that names too many customers (it grew since the request) finds the same on every attempt: the export says so and stops
       if (error instanceof PlatformException && error.code === ErrorCodes.SEARCH_TOO_BROAD) {
@@ -169,8 +237,10 @@ export class ExportGenerator {
   }
 
   // null when the row holds a kind this step does not make, or filters that do not fit their schema
-  private planOf(row: ExportRow): ExportPlan | null {
+  private planOf(row: ExportRow, held: readonly Permission[]): ExportPlan | null {
     const { type, storeId, filters } = row
+    const kindPermissions: readonly Permission[] =
+      ExportTypePermissions[type as keyof typeof ExportTypePermissions] ?? []
     if (type === ExportTypes.CUSTOMERS) {
       const parsed = customersExportFiltersSchema.safeParse(filters ?? {})
       if (!parsed.success) return null
@@ -178,17 +248,23 @@ export class ExportGenerator {
       return {
         extension: ExportFileExtensions.CSV,
         count: source.count,
-        write: (key, onProgress) => this.writer.write(key, source, onProgress)
+        write: (key, onProgress) => this.writer.write(key, source, onProgress),
+        used: kindPermissions
       }
     }
     if (type === ExportTypes.CONVERSATIONS) {
       const parsed = conversationsExportFiltersSchema.safeParse(filters)
       if (!parsed.success) return null
-      const source = conversationsExportSource(this.prisma, this.jobContext, storeId, parsed.data)
+      const viewer = narrowedViewer(parsed.data.viewer, held)
+      const source = conversationsExportSource(this.prisma, this.jobContext, storeId, {
+        ...parsed.data,
+        viewer
+      })
       return {
         extension: ExportFileExtensions.CSV,
         count: source.count,
-        write: (key, onProgress) => this.writer.write(key, source, onProgress)
+        write: (key, onProgress) => this.writer.write(key, source, onProgress),
+        used: [...kindPermissions, ...viewer.held]
       }
     }
     if (type === ExportTypes.ORDERS) {
@@ -198,7 +274,19 @@ export class ExportGenerator {
       return {
         extension: ExportFileExtensions.CSV,
         count: source.count,
-        write: (key, onProgress) => this.writer.write(key, source, onProgress)
+        write: (key, onProgress) => this.writer.write(key, source, onProgress),
+        used: kindPermissions
+      }
+    }
+    if (type === ExportTypes.AUDIT_LOG) {
+      const parsed = auditLogExportFiltersSchema.safeParse(filters ?? {})
+      if (!parsed.success) return null
+      const source = auditLogExportSource(this.prisma, this.jobContext, storeId, parsed.data)
+      return {
+        extension: ExportFileExtensions.CSV,
+        count: source.count,
+        write: (key, onProgress) => this.writer.write(key, source, onProgress),
+        used: kindPermissions
       }
     }
     if (type === ExportTypes.ANALYTICS) {
@@ -216,20 +304,37 @@ export class ExportGenerator {
             row.format as AnalyticsFileFormat,
             analytics,
             onProgress
-          )
+          ),
+        used: kindPermissions
       }
     }
     if (type === ExportTypes.MEDIA_ZIP) {
       const parsed = mediaZipFiltersSchema.safeParse(filters)
       if (!parsed.success) return null
-      const source = mediaZipSource(this.prisma, this.jobContext, storeId, parsed.data)
+      const viewer = narrowedViewer(parsed.data.viewer, held)
+      const source = mediaZipSource(this.prisma, this.jobContext, storeId, {
+        ...parsed.data,
+        viewer
+      })
       return {
         extension: ExportFileExtensions.ZIP,
         count: source.count,
-        write: (key, onProgress) => this.zipWriter.write(key, source, onProgress)
+        write: (key, onProgress) => this.zipWriter.write(key, source, onProgress),
+        used: [...kindPermissions, ...viewer.held]
       }
     }
     return null
+  }
+
+  // Reads the permissions of the requester again. A read that fails is not a yes: the error goes up (the catch discards the file).
+  private async stillCovered(row: ExportRow, used: readonly Permission[]): Promise<boolean> {
+    const held = await currentPermissionsOfRequester(
+      this.prisma,
+      this.jobContext,
+      row.storeId,
+      row.requestedBy
+    )
+    return fileStillCovered(row.type, used, held)
   }
 
   // A file with personal data that no `ready` row points to is never deleted by the cleanup
@@ -272,4 +377,12 @@ export class ExportGenerator {
       )
     }
   }
+}
+
+// The filters of an export as the audit entry keeps them. The entry is immutable and the erasure of a customer cannot reach it, so
+// the text a person typed to search (a name, an e-mail, a phone) is never copied into it: only that there was one.
+function auditFiltersOf(filters: unknown): Record<string, unknown> {
+  if (filters === null || typeof filters !== 'object' || Array.isArray(filters)) return {}
+  const { q, ...rest } = filters as Record<string, unknown>
+  return q === undefined ? rest : { ...rest, hasText: true }
 }

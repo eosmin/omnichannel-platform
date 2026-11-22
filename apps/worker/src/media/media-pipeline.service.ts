@@ -6,6 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import sharp from 'sharp'
 
 import { JobContext, PrismaService } from '@platform/core/database'
+import { isSanitizedDocumentType, sanitizeDocument } from '@platform/core/document-sanitizer'
 import { MediaStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -150,6 +151,11 @@ export class MediaPipeline {
     if (isSanitizedType(media.contentType) && media.purpose !== String(MediaPurpose.AVATAR)) {
       if (!(await this.sanitize(media, scope))) return
     }
+    // A PDF, a docx or an xlsx loses its properties (author, program, dates, thumbnail) the same way, unless it is financial evidence,
+    // which is kept as it came. A document that cannot be cleaned without risk is kept and logged, never refused
+    if (isSanitizedDocumentType(media.contentType) && !isEvidenceMedia(media.purpose)) {
+      if (!(await this.sanitizeDocumentFile(media, scope))) return
+    }
     // A PDF that stays as the receipt of a transaction must not run anything when it is opened (TAX-436)
     if (
       media.contentType === PdfInspection.CONTENT_TYPE &&
@@ -207,6 +213,50 @@ export class MediaPipeline {
       this.prisma.client.media.updateMany({
         where: { id: media.id, status: MediaStatus.PENDING },
         data: { fileSize: cleaned.body.length, scanResult: { sanitized: true } }
+      })
+    )
+    return moved.count > 0
+  }
+
+  // Replaces the uploaded document with the same document without its properties (see `sanitizeDocument`). The new bytes are made and
+  // read back in memory first and the object is written only then, so a failure leaves the original in the bucket. Safe to run twice
+  // (the mark keeps a retry from rewriting it). A document it cannot clean is left as it came: the scan goes on. False when the row moved on or the file is gone, and the scan must stop.
+  private async sanitizeDocumentFile(
+    media: {
+      id: string
+      key: string
+      contentType: string
+      storeId: string | null
+      scanResult: unknown
+    },
+    scope: MediaScope
+  ): Promise<boolean> {
+    if (hasSanitizedMark(media.scanResult)) return true
+    const original = await this.storage.read(media.key, UploadLimits.MAX_FILE_SIZE_BYTES)
+    if (original === null) {
+      if (await this.isGone(media.id, scope)) return false
+      throw new Error('the file to clean is not in the bucket')
+    }
+    const cleaned = await sanitizeDocument(original, media.contentType)
+    if (cleaned.kind === 'untouched' && cleaned.why !== 'already_clean') {
+      if (cleaned.why === 'not_cleanable') {
+        this.logger.warn(
+          { mediaId: media.id, storeId: media.storeId },
+          'a document could not be cleaned of its properties and was kept as it came'
+        )
+      }
+      return true
+    }
+    // Written only now, with bytes that were made and read back; a failure of the bucket leaves the original and the queue retries. A
+    // document that is clean already (a retry after the write whose row update failed) only gets its row made true and marked
+    const body = cleaned.kind === 'sanitized' ? cleaned.body : original
+    if (cleaned.kind === 'sanitized') {
+      await this.storage.put(media.key, body, media.contentType)
+    }
+    const moved = await this.within(scope, () =>
+      this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.PENDING },
+        data: { fileSize: body.length, scanResult: { sanitized: true } }
       })
     )
     return moved.count > 0

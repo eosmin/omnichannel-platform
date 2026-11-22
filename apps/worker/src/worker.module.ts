@@ -6,6 +6,7 @@ import { RemoteChannelsLibModule } from '@platform/channels/remote'
 import { AuditModule } from '@platform/core/audit-module'
 import { LedgerModule } from '@platform/core/finance-ledger'
 import {
+  CryptoPlatformModule,
   DigestPlatformModule,
   EmailPlatformModule,
   HttpPlatformModule,
@@ -29,6 +30,7 @@ import { ExportsModule } from './exports/exports.module'
 import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { WORKER_RLS_CONTEXT_ON, WorkerRoleCheck } from './health/worker-role.check'
 import { InboundModule } from './inbound/inbound.module'
+import { InvitationEmailDelivery } from './invitations/invitation-email-delivery.service'
 import { MediaModule } from './media/media.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { MessageChangeSender } from './outbound/message-change-sender.service'
@@ -57,6 +59,7 @@ import { ExpiredExportsScheduler } from './schedulers/expired-exports.scheduler'
 import { FinanceChainScheduler } from './schedulers/finance-chain.scheduler'
 import { FinanceReconcileScheduler } from './schedulers/finance-reconcile.scheduler'
 import { InventoryReconcileScheduler } from './schedulers/inventory-reconcile.scheduler'
+import { InvitationEmailScheduler } from './schedulers/invitation-email.scheduler'
 import { LeaderLockService } from './schedulers/leader-lock.service'
 import { OrphanMediaScheduler } from './schedulers/orphan-media.scheduler'
 import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.scheduler'
@@ -78,6 +81,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     AuditModule,
     QueuesPlatformModule,
     EmailPlatformModule,
+    CryptoPlatformModule,
     DigestPlatformModule,
     ChannelConnectionsLibModule,
     RemoteChannelsLibModule,
@@ -127,6 +131,8 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     OutboundProcessor,
     MagicLinkIssuer,
     EmailProcessor,
+    InvitationEmailDelivery,
+    InvitationEmailScheduler,
     CarrierEventsProcessor,
     ChannelHealthScheduler,
     TokenExpiryScheduler,

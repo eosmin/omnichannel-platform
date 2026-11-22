@@ -66,6 +66,7 @@ export const ClientPermissions = {
   ORDERS_SEND_MESSAGES: 'orders:send_messages',
   ORDERS_VIEW: 'orders:view',
   ORG_MANAGE_STORES: 'org:manage_stores',
+  ORG_VIEW_AUDIT_LOG: 'org:view_audit_log',
   ORG_MANAGE_WAREHOUSES: 'org:manage_warehouses',
   PRODUCTS_CREATE: 'products:create',
   PRODUCTS_DELETE: 'products:delete',

@@ -36,6 +36,23 @@ export const CarrierWebhookThrottle = { limit: 600, ttlMs: 60_000 } as const
 // limit of the installation (PluginApiKeyGuard) are what authenticate and bound each call, so this is only the flood guard
 export const PluginApiIpThrottle = { limit: 3000, ttlMs: 60_000 } as const
 
+// The keys that did not open the door, per address (Step 7.3, PR S3). The flood guard above counts every call, good or bad, so it
+// has to be far above what a plugin does; a made-up key costs a database lookup (and, on the events route, a read of up to 1 MiB)
+// before the guard answers 401, so the failures have their own, much lower limit. Only a failure is counted: a plugin with a good
+// key from the same address is not slowed by its own traffic. Past the limit the address is refused with 429 before the key is
+// looked up and before the large body is read, for the rest of the window. `name` is the counter in Redis and the `throttler` label
+// of the metric.
+export const PluginApiKeyProbeThrottle = {
+  name: 'plugin_key_probe',
+  limit: 30,
+  ttlMs: 60_000
+} as const
+
+// Every refusal of a key (missing, malformed, unknown, revoked, disabled or of a suspended plugin) takes at least this long, so the
+// time of the answer does not say how far the lookup went. It is above what the lookups take; the probe limit bounds how many
+// requests per address can wait on it.
+export const PluginApiKeyRefusalFloorMs = 100
+
 // The routes that can be used to enumerate what a store holds (the search, the click of a result, the list of customers) are
 // limited in two layers (TDD_05 §3.1). The first is per address, before anybody is authenticated: it is only the flood guard, so
 // it is far above the default, because an office shares one address and many people type in a search box at once. It cannot be

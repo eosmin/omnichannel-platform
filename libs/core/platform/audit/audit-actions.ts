@@ -54,6 +54,13 @@ export const AuditAction = {
   // Written by purge_audit_logs() itself (the database function the cold export deletes through), never by the application
   AUDIT_LOG_PURGED: 'audit_log.purged',
 
+  // The nightly jobs of the worker, one entry for each run with the counts of what it deleted (never the rows nor who they belonged to).
+  // The retention run is of one store (its entry carries the store, so the viewer of that store reads it); the platform cleanup and the
+  // sweep of erased customers run over the whole platform and their entries have no store (the tenant viewer does not read them)
+  RETENTION_RUN: 'retention.run',
+  PLATFORM_CLEANUP_RUN: 'platform_cleanup.run',
+  ERASED_CUSTOMER_SWEEP_RUN: 'customer.erased_sweep_run',
+
   // Data modification
   CUSTOMER_DELETED: 'customer.deleted',
   // The personal data of a customer was erased (Step 7.2); the entry carries counts, never the data

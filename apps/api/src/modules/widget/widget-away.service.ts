@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
-import { isWithinSchedule, weekScheduleSchema } from '@platform/core/domain'
+import { isStoreClosed } from '@platform/core/domain'
 
 import type { WidgetSite } from './widget-sites.service'
 import { WidgetTenant } from './widget-tenant'
@@ -22,9 +22,6 @@ export class WidgetAway {
         select: { timezone: true, schedule: true }
       })
     )
-    if (hours === null) return false
-    const schedule = weekScheduleSchema.safeParse(hours.schedule)
-    if (!schedule.success) return false
-    return !isWithinSchedule(schedule.data, hours.timezone, at)
+    return isStoreClosed(hours, at)
   }
 }

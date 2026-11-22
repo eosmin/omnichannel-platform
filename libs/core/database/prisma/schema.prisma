@@ -306,6 +306,13 @@ model Invitation {
   expiresAt      DateTime  @map("expires_at")
   acceptedAt     DateTime? @map("accepted_at")
   createdAt      DateTime  @default(now()) @map("created_at")
+  // The outbox of its email (Step 7.1-H): the email still to send, sealed; null once sent or given up.
+  // Partial index ix_invitations_email_pending (store_id, created_at) WHERE email_outbox IS NOT NULL: raw SQL in its migration, as the one of §5
+  emailOutbox    Bytes?    @map("email_outbox")
+  emailClaimedAt DateTime? @map("email_claimed_at")
+  emailAttempts  Int       @default(0) @map("email_attempts")
+  emailRetryAt   DateTime? @map("email_retry_at") // Not before: the backoff after a failed attempt
+  emailSentAt    DateTime? @map("email_sent_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)

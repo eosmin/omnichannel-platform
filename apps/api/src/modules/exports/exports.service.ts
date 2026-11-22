@@ -47,7 +47,8 @@ export const ExportListPermissions: [Permission, ...Permission[]] = [
   Permissions.ANALYTICS_EXPORT,
   Permissions.CUSTOMERS_EXPORT,
   Permissions.MEDIA_DOWNLOAD_ALL,
-  Permissions.ORDERS_EXPORT
+  Permissions.ORDERS_EXPORT,
+  Permissions.ORG_VIEW_AUDIT_LOG
 ]
 
 export interface RequestExport {
