@@ -55,6 +55,9 @@ export const ComplianceConfig = {
   DSR_NOTICE_MAX_ATTEMPTS: 3,
   // A closing mail that was queued is not queued again for this long (the mail job spends its three attempts in minutes)
   DSR_NOTICE_LEASE_MS: 60 * 60 * 1000,
+  // A notice that was queued and neither confirmed nor failed after this long was lost with its job (a stalled job, a payload the processor
+  // refused, a queue that lost it): it is given up, visibly, instead of waiting for ever
+  DSR_NOTICE_STALE_HOURS: 24,
   // The export of an access or portability request (Step 7.2-H2b-2): tries before the request goes back to the review queue, how long a try
   // keeps the request before another sweep may take it, the most one export may hold (rows of each kind of record, bytes of the file) and
   // how long the link the reviewer gets lives
@@ -99,6 +102,8 @@ export function dsrNoticeStatusOf(row: {
 export const DsrFailureCodes = {
   ADDRESS_UNREADABLE: 'address_unreadable',
   MAIL_FAILED: 'mail_failed',
+  // A notice that was queued and never confirmed nor failed
+  MAIL_LOST: 'mail_lost',
   EXPORT_TOO_LARGE: 'export_too_large',
   EXPORT_FAILED: 'export_failed'
 } as const

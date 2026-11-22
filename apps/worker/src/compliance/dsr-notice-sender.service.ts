@@ -9,6 +9,7 @@ import {
   DSR_CONFIG,
   type DsrConfig,
   dsrNoticeJob,
+  DsrFailureCodes,
   DsrResultOutcomes,
   openDsrNotifyAddress
 } from '@platform/core/compliance'
@@ -70,9 +71,43 @@ export class DsrNoticeSender {
     return rows.map(row => row.id)
   }
 
+  // A notice queued longer ago than `DSR_NOTICE_STALE_HOURS` that nobody confirmed or failed, and that has no tries left to queue again (its
+  // address is gone, as after a rejection, or its count reached the limit)
+  async giveUpStale(storeId: string): Promise<number> {
+    const staleEnd = new Date(Date.now() - ComplianceConfig.DSR_NOTICE_STALE_HOURS * 3_600_000)
+    const rows = await this.jobContext.forStore(storeId, () =>
+      this.prisma.transaction(tx =>
+        tx.dataSubjectRequest.findMany({
+          where: {
+            storeId,
+            noticeSentAt: null,
+            noticeQueuedAt: { lt: staleEnd },
+            OR: [
+              { notifyToEncrypted: null },
+              { noticeAttempts: { gte: ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS } }
+            ]
+          },
+          orderBy: [{ noticeQueuedAt: 'asc' }, { id: 'asc' }],
+          take: ComplianceConfig.DSR_ERASE_BATCH,
+          select: { id: true }
+        })
+      )
+    )
+    for (const row of rows) await this.notices.giveUp(storeId, row.id, DsrFailureCodes.MAIL_LOST)
+    return rows.length
+  }
+
   // Queues the notices of a store that are still owed; returns how many were queued. Never throws: one that cannot be queued waits for tomorrow
   async sendPending(storeId: string): Promise<{ queued: number; failed: number }> {
     const result = { queued: 0, failed: 0 }
+    // First the notices that will never be confirmed: they are given up, so they are not queued once more
+    await this.giveUpStale(storeId).catch((error: unknown) => {
+      result.failed += 1
+      this.logger.error(
+        { storeId, errorName: errorName(error) },
+        'the stale closing notices of a store could not be given up'
+      )
+    })
     for (const requestId of await this.pendingOf(storeId)) {
       const done = await this.send(storeId, requestId)
       if (done === 'queued') result.queued += 1
@@ -106,7 +141,8 @@ export class DsrNoticeSender {
           // The lease: a run that overlaps this one (or the next pass of the same one) sees a notice that is on its way and leaves it alone
           await tx.dataSubjectRequest.updateMany({
             where: { id: requestId, storeId },
-            data: { noticeQueuedAt: new Date() }
+            // The tries are counted when the notice is queued, in the same write: a job that never reaches the processor is counted too
+            data: { noticeQueuedAt: new Date(), noticeAttempts: { increment: 1 } }
           })
           return 'queued' as const
         })

@@ -696,15 +696,22 @@ describe('the sweep of the data erasures that are due', () => {
       )
     })
 
-    it('asks for the mail again on the next night when the processor ran out of attempts, and gives the person up visibly after the last one', async () => {
+    const backdateQueued = (id: string, hours: number) =>
+      owner.dataSubjectRequest.update({
+        where: { id },
+        data: { noticeQueuedAt: new Date(Date.now() - hours * HOUR_MS) }
+      })
+
+    it('counts every queueing, asks for the mail again after each failure, and gives the person up visibly after the last one', async () => {
       const mine = await requestOfStoreA([addressOf('retry')])
       await sweeper.run()
       mails.length = 0
 
       for (let night = 1; night < ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS; night += 1) {
+        // The first queueing counted one; the processor says the mail failed all its attempts
         await ledger.failed(ctx.storeA.id, mine.id, 'mail_failed')
         const waiting = await rowOf(mine.id)
-        // Still pending: the address is kept and the sweep queues the mail once more
+        expect(waiting.noticeAttempts).toBe(night)
         expect(dsrNoticeStatusOf(waiting)).toBe('pending')
         expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(0)
         await sweeper.run()
@@ -713,7 +720,6 @@ describe('the sweep of the data erasures that are due', () => {
         ).toHaveLength(night)
       }
 
-      // The last failure: the address is cleared, the request says the person was never told, the reviewers are told once
       await ledger.failed(ctx.storeA.id, mine.id, 'mail_failed')
       const row = await rowOf(mine.id)
       expect(row.notifyToEncrypted).toBeNull()
@@ -725,13 +731,62 @@ describe('the sweep of the data erasures that are due', () => {
           where: { action: AuditAction.DSR_NOTICE_FAILED, resourceId: mine.id }
         })
       ).toBe(1)
-      // Given up on: no more mail, no more alerts
       mails.length = 0
       await sweeper.run()
       expect(mails.filter(mail => mail.options.jobId === dsrResultMailJobId(mine.id))).toHaveLength(
         0
       )
       expect(JSON.stringify(published)).not.toContain('@example.com')
+    })
+
+    it('gives up a notice whose job never reached the processor (nothing confirmed or failed it) after the tries and the stale hours, and says so once', async () => {
+      const mine = await requestOfStoreA([addressOf('lost')])
+      await sweeper.run()
+      // The job vanished each time (a stalled job, a payload the processor refused): the lease runs out and the sweep queues it again, counting
+      for (let night = 2; night <= ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS; night += 1) {
+        await backdateQueued(mine.id, 2)
+        await sweeper.run()
+        expect((await rowOf(mine.id)).noticeAttempts).toBe(night)
+      }
+      expect(dsrNoticeStatusOf(await rowOf(mine.id))).toBe('pending')
+
+      // Tries spent and a day without an answer: given up, with the event
+      await backdateQueued(mine.id, ComplianceConfig.DSR_NOTICE_STALE_HOURS + 1)
+      mails.length = 0
+      await sweeper.run()
+
+      const row = await rowOf(mine.id)
+      expect(dsrNoticeStatusOf(row)).toBe('failed')
+      expect(row.notifyToEncrypted).toBeNull()
+      expect(mails.filter(mail => mail.options.jobId === dsrResultMailJobId(mine.id))).toHaveLength(
+        0
+      )
+      expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(1)
+      await sweeper.run()
+      expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(1)
+    })
+
+    it('gives up the notice of a rejection (no address left) that was queued and never answered', async () => {
+      const mine = await requestOfStoreA([addressOf('rejected')])
+      await owner.dataSubjectRequest.update({
+        where: { id: mine.id },
+        data: {
+          status: DsrStatus.REJECTED,
+          notifyToEncrypted: null,
+          erasureDueAt: null,
+          completedAt: new Date(),
+          noticeAttempts: 1,
+          noticeQueuedAt: new Date(
+            Date.now() - (ComplianceConfig.DSR_NOTICE_STALE_HOURS + 1) * HOUR_MS
+          )
+        }
+      })
+      expect(dsrNoticeStatusOf(await rowOf(mine.id))).toBe('pending')
+
+      await sweeper.run()
+
+      expect(dsrNoticeStatusOf(await rowOf(mine.id))).toBe('failed')
+      expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(1)
     })
 
     it('queues a notice that a queue that was down left unsent, on the next night, once', async () => {
@@ -758,7 +813,8 @@ describe('the sweep of the data erasures that are due', () => {
 
       const row = await rowOf(mine.id)
       expect(row.noticeFailedAt).toBeNull()
-      expect(row.noticeAttempts).toBe(0)
+      // Only the queueing was counted: a late failure changes nothing
+      expect(row.noticeAttempts).toBe(1)
       expect(dsrNoticeStatusOf(row)).toBe('sent')
       expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(0)
     })

@@ -16,7 +16,6 @@ import {
   dsrNoticeJob,
   DsrFailureCodes,
   dsrNoticeStatusOf,
-  type DsrNoticeStatus,
   DsrResultOutcomes,
   openDsrNotifyAddress,
   DsrResourceTypes,
@@ -25,7 +24,7 @@ import {
 } from '@platform/core/compliance'
 import { checkDsrSubject, DsrOpenWorkService } from '@platform/core/customer-erasure'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { DAY_MS, DsrStatus, DsrType } from '@platform/core/domain'
+import { DAY_MS, type DsrRequestViewContract, DsrStatus, DsrType } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -50,34 +49,7 @@ const approvalsSchema = z.array(z.object({ userId: z.string(), at: z.iso.datetim
 
 // A request as the review queue shows it. No address (it is never stored in the clear), no name: the customers are named by id, and the
 // team reads them where it reads customers.
-export interface DsrRequestView {
-  id: string
-  type: string
-  status: string
-  requestedAt: string
-  deadlineAt: string
-  verifiedAt: string | null
-  reviewedAt: string | null
-  reviewedBy: string | null
-  requestedBy: string | null
-  erasureDueAt: string | null
-  // Why an approved erasure came back to review (a name or a reason, never a message); null when it did not
-  erasureFailureCode: string | null
-  completedAt: string | null
-  rejectionReason: string | null
-  // Whether the person was told how their request ended (the mail processor confirmed it): `failed` means they were NEVER told and a
-  // reviewer has to reach them another way (TDD_05 §10.3, Step 7.2-H2b-2)
-  noticeStatus: DsrNoticeStatus
-  // For an access or portability request: the file is ready (not yet expired), until when, and why the export failed (a code, never a message)
-  exportReady: boolean
-  exportExpiresAt: string | null
-  exportFailureCode: string | null
-  // What the store kept and under which legal basis, with the counts of what was exported or kept; null when it does not fit
-  retainedRecordsSummary: { legalBasis: string; orders: number; conversations: number } | null
-  subjectCustomerIds: string[]
-  approvals: { userId: string; at: string }[]
-  notes: string | null
-}
+export type DsrRequestView = DsrRequestViewContract
 export interface DsrRequestDetail extends DsrRequestView {
   // What an erasure would wait for, counted now. null for a kind that erases nothing and for a request that has ended
   openWork: DsrOpenWork | null
@@ -548,7 +520,7 @@ export class DsrReviewService {
     await this.emailQueue.add(job.name, job.data, job.opts)
     await tx.dataSubjectRequest.updateMany({
       where: { id: row.id, storeId },
-      data: { noticeQueuedAt: new Date() }
+      data: { noticeQueuedAt: new Date(), noticeAttempts: { increment: 1 } }
     })
   }
 }

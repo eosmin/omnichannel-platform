@@ -43,8 +43,11 @@ export class DsrNoticeLedger {
     )
   }
 
+  // The mail job ran out of attempts in the mail queue. The count of the tries of the notice is written when the notice is QUEUED (it is
+  // persisted before the mail is processed, so a job that never reaches the processor is counted too: `DsrNoticeSender.send`), so this only
+  // marks the failure and frees the notice to be queued again. A request with no address left, or with its tries spent, is given up here.
   async failed(storeId: string, requestId: string, code: string): Promise<void> {
-    await this.jobContext.forStore(storeId, () =>
+    const final = await this.jobContext.forStore(storeId, () =>
       this.prisma.transaction(async tx => {
         const done = await tx.dataSubjectRequest.updateMany({
           where: {
@@ -54,63 +57,41 @@ export class DsrNoticeLedger {
             // A request that was never verified has no closing notice to fail
             status: { not: DsrStatus.PENDING_VERIFICATION }
           },
-          data: {
-            noticeFailedAt: new Date(),
-            noticeAttempts: { increment: 1 },
-            noticeQueuedAt: null
-          }
+          data: { noticeFailedAt: new Date(), noticeQueuedAt: null }
         })
-        if (done.count !== 1) return
+        if (done.count !== 1) return false
         const row = await tx.dataSubjectRequest.findFirstOrThrow({
           where: { id: requestId, storeId },
-          select: {
-            organizationId: true,
-            type: true,
-            noticeAttempts: true,
-            notifyToEncrypted: true
-          }
+          select: { noticeAttempts: true, notifyToEncrypted: true }
         })
-        const retry =
-          row.notifyToEncrypted !== null &&
-          row.noticeAttempts < ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS
-        if (retry) return
-        // Final: the address is not kept for ever
-        await tx.dataSubjectRequest.updateMany({
-          where: { id: requestId, storeId, noticeSentAt: null },
-          data: { notifyToEncrypted: null }
-        })
-        this.audit.log({
-          action: AuditAction.DSR_NOTICE_FAILED,
-          actor: { system: true },
-          storeId,
-          organizationId: row.organizationId,
-          resourceType: DsrResourceTypes.REQUEST,
-          resourceId: requestId,
-          metadata: { type: row.type, reason: code, attempts: row.noticeAttempts }
-        })
-        this.events.publish(tx, Events.DSR_NOTICE_FAILED, {
-          storeId,
-          requestId,
-          type: row.type,
-          reason: code
-        })
+        return (
+          row.notifyToEncrypted === null ||
+          row.noticeAttempts >= ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS
+        )
       })
     )
-    this.logger.warn(
-      { requestId, code },
-      'the closing notice of a data request ran out of attempts'
-    )
+    this.logger.warn({ requestId, code }, 'the closing notice of a data request failed')
+    if (final) await this.giveUp(storeId, requestId, code)
   }
 
-  // An address that could not be opened (a key that changed) can never be mailed: the same end, at once, without waiting for attempts
-  async unreadable(storeId: string, requestId: string): Promise<void> {
+  // The person will not be told by mail: the address is cleared (it is not kept for ever), the request says so, and the reviewers are told ONCE.
+  // Used when the mail failed its last attempt, when the address does not open (a key that changed) and when a notice that was queued was never
+  // confirmed nor failed (the job was lost) for longer than `DSR_NOTICE_STALE_HOURS`.
+  async giveUp(storeId: string, requestId: string, reason: string): Promise<void> {
     await this.jobContext.forStore(storeId, () =>
       this.prisma.transaction(async tx => {
         const done = await tx.dataSubjectRequest.updateMany({
-          where: { id: requestId, storeId, noticeSentAt: null },
+          where: {
+            id: requestId,
+            storeId,
+            noticeSentAt: null,
+            // The compare-and-swap of the giving up: a second run finds the notice already failed
+            OR: [{ noticeFailedAt: null }, { notifyToEncrypted: { not: null } }]
+          },
           data: {
             noticeFailedAt: new Date(),
             noticeAttempts: ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS,
+            noticeQueuedAt: null,
             notifyToEncrypted: null
           }
         })
@@ -126,15 +107,20 @@ export class DsrNoticeLedger {
           organizationId: row.organizationId,
           resourceType: DsrResourceTypes.REQUEST,
           resourceId: requestId,
-          metadata: { type: row.type, reason: DsrFailureCodes.ADDRESS_UNREADABLE }
+          metadata: { type: row.type, reason }
         })
         this.events.publish(tx, Events.DSR_NOTICE_FAILED, {
           storeId,
           requestId,
           type: row.type,
-          reason: DsrFailureCodes.ADDRESS_UNREADABLE
+          reason
         })
       })
     )
+  }
+
+  // An address that could not be opened can never be mailed: the same end, at once, without waiting for attempts
+  unreadable(storeId: string, requestId: string): Promise<void> {
+    return this.giveUp(storeId, requestId, DsrFailureCodes.ADDRESS_UNREADABLE)
   }
 }

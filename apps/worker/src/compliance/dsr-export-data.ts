@@ -136,7 +136,11 @@ export async function collectDsrExport(
               storeId,
               conversationId: { in: conversations.map(conversation => conversation.id) },
               // What the store wrote to itself, and what was deleted or thrown away, is not the person's data
-              type: { not: MessageType.INTERNAL_NOTE },
+              // Not the person's data: what the team wrote to itself, and the system lines (they can name a team member, like the export of
+              // conversations leaves them out) and the order summaries
+              type: {
+                notIn: [MessageType.INTERNAL_NOTE, MessageType.SYSTEM, MessageType.ORDER_SUMMARY]
+              },
               deletedAt: null,
               discardedAt: null
             },

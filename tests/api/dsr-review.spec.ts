@@ -13,7 +13,14 @@ import {
 } from '@platform/core/compliance'
 import { encrypt, parseEncryptionKey } from '@platform/core/crypto'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { DAY_MS, DsrStatus, DsrType, OrderStatus, PaymentStatus } from '@platform/core/domain'
+import {
+  DAY_MS,
+  DSR_REQUEST_VIEW_KEYS,
+  DsrStatus,
+  DsrType,
+  OrderStatus,
+  PaymentStatus
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { EmailTemplates } from '@platform/core/queues'
 
@@ -694,6 +701,17 @@ describe('The review queue of the data requests', () => {
     }
     const link = (id: string, actor: Actor = ctx.adminA, store = ctx.storeA) =>
       api(app, actor, store).get(ApiRoutes.compliance.dsrExport(id))
+
+    it('answers exactly the fields of the contract the web draws against', async () => {
+      const { id } = await inReview({ type: DsrType.ACCESS })
+      const detail = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.compliance.dsrById(id))
+      const listed = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.compliance.dsr)
+
+      const keys = (body: object): string[] => Object.keys(body).sort()
+      expect(keys(detail.body as object)).toEqual([...DSR_REQUEST_VIEW_KEYS, 'openWork'].sort())
+      const first = (listed.body as { data: object[] }).data[0] ?? {}
+      expect(keys(first)).toEqual([...DSR_REQUEST_VIEW_KEYS].sort())
+    })
 
     it('gives a short signed link to the file, audits who asked, and shows the file as ready', async () => {
       const id = await finishedExport()

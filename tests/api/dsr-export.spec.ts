@@ -97,6 +97,7 @@ describe('the export of the data requests of access and portability', () => {
         objects.set(key, body)
         return Promise.resolve()
       },
+      head: (key: string) => Promise.resolve(objects.has(key) ? { size: 1 } : null),
       delete: (key: string) => {
         deleted.push(key)
         objects.delete(key)
@@ -577,5 +578,62 @@ describe('the export of the data requests of access and portability', () => {
     expect(text).not.toContain('Foreign Collect')
     expect(text).not.toContain('Sibling Collect')
     expect(content.counts).toMatchObject({ customers: 1, conversations: 1 })
+  })
+
+  it('deletes the file a try left behind when the request goes back to review with its tries spent', async () => {
+    const mine = await personOfStoreA('orphan')
+    const id = await approvedExport({
+      customerIds: [mine.customerId],
+      email: mine.email,
+      attempts: ComplianceConfig.DSR_EXPORT_MAX_ATTEMPTS,
+      attemptedAt: new Date(Date.now() - 2 * HOUR_MS)
+    })
+    objects.set(StorageKeys.dsrExport(id), Buffer.from('a ZIP the dead try left'))
+
+    await runner.run()
+
+    expect((await rowOf(id)).status).toBe(DsrStatus.MANUAL_REVIEW)
+    expect(objects.has(StorageKeys.dsrExport(id))).toBe(false)
+  })
+
+  it('finds and deletes the file of an export that ended rejected or cancelled with no key, and leaves the other objects', async () => {
+    const mine = await personOfStoreA('late')
+    const rejected = await approvedExport({
+      customerIds: [mine.customerId],
+      email: mine.email,
+      status: DsrStatus.REJECTED
+    })
+    await owner.dataSubjectRequest.update({
+      where: { id: rejected },
+      data: { completedAt: new Date() }
+    })
+    objects.set(StorageKeys.dsrExport(rejected), Buffer.from('left by a try'))
+    objects.set('compliance/dsr/someone-else/export.zip', Buffer.from('not ours to touch'))
+
+    const report = await runner.run()
+
+    expect(report.purged).toBeGreaterThanOrEqual(1)
+    expect(objects.has(StorageKeys.dsrExport(rejected))).toBe(false)
+    expect(objects.has('compliance/dsr/someone-else/export.zip')).toBe(true)
+  })
+
+  it('leaves the system lines and the order summaries out of the file', async () => {
+    const mine = await personOfStoreA('system')
+    const conversation = await owner.conversation.findFirstOrThrow({
+      where: { customerId: mine.customerId },
+      select: { id: true }
+    })
+    await createMessage(owner, {
+      storeId: ctx.storeA.id,
+      conversationId: conversation.id,
+      content: 'SYSTEM line naming Agent Smith',
+      authorType: AuthorType.SYSTEM,
+      type: MessageType.SYSTEM
+    })
+    const id = await approvedExport({ customerIds: [mine.customerId], email: mine.email })
+
+    await runner.run()
+
+    expect(JSON.stringify(filesOf(id))).not.toContain('Agent Smith')
   })
 })

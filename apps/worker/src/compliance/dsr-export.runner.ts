@@ -35,6 +35,8 @@ import { DsrNoticeSender } from './dsr-notice-sender.service'
 // rls-context: the stores are listed from `stores`; every read and write of a request and of a customer runs inside JobContext.forStore
 
 const EXPORT_TYPES: readonly string[] = [DsrType.ACCESS, DsrType.PORTABILITY]
+// How long after a request ended its file is still looked for when no key points at it
+const ORPHAN_LOOKBACK_DAYS = 30
 
 export interface DsrExportReport {
   exported: number
@@ -118,6 +120,9 @@ export class DsrExportRunner {
     }
     await phase(async () => {
       report.purged += await this.purgeExpired(storeId, now)
+    })
+    await phase(async () => {
+      report.purged += await this.purgeOrphans(storeId, now)
     })
     await phase(async () => {
       report.returned += await this.returnExhausted(storeId)
@@ -377,7 +382,7 @@ export class DsrExportRunner {
 
   // An export that used all its tries without ending (the last one killed the process, so no one recorded the failure) goes back to review
   private async returnExhausted(storeId: string): Promise<number> {
-    return this.jobContext.forStore(storeId, () =>
+    const given = await this.jobContext.forStore(storeId, () =>
       this.prisma.transaction(async tx => {
         const rows = await tx.dataSubjectRequest.findMany({
           where: {
@@ -402,9 +407,61 @@ export class DsrExportRunner {
             DsrFailureCodes.EXPORT_FAILED
           )
         }
-        return rows.length
+        return rows
       })
     )
+    // A try that died between the put and the commit may have left its ZIP, and no row points at it: it goes with the return to review
+    for (const row of given) await this.deleteObject(storeId, row.id)
+    return given.length
+  }
+
+  // Deleting a key that is not there is not an error; one that cannot be deleted is logged and the next run looks again (`purgeOrphans`)
+  private async deleteObject(storeId: string, requestId: string): Promise<void> {
+    await this.storage.delete(StorageKeys.dsrExport(requestId)).catch((error: unknown) => {
+      this.logger.error(
+        { storeId, requestId, errorName: errorName(error) },
+        'the file of a data export could not be deleted'
+      )
+    })
+  }
+
+  // The file of an export that ended without a key (rejected or cancelled after a try left a ZIP, or a delete that failed): the key of a request
+  // is built from its id, so the object is looked for there. Only the requests that ended in the last 30 days, so the sweep stays small
+  private async purgeOrphans(storeId: string, now: Date): Promise<number> {
+    const since = new Date(now.getTime() - ORPHAN_LOOKBACK_DAYS * DAY_MS)
+    const rows = await this.jobContext.forStore(storeId, () =>
+      this.prisma.transaction(tx =>
+        tx.dataSubjectRequest.findMany({
+          where: {
+            storeId,
+            type: { in: [...EXPORT_TYPES] },
+            status: { in: [DsrStatus.REJECTED, DsrStatus.CANCELLED] },
+            resultKey: null,
+            completedAt: { gte: since }
+          },
+          orderBy: [{ completedAt: 'desc' }, { id: 'asc' }],
+          take: ComplianceConfig.DSR_EXPORT_BATCH,
+          select: { id: true, organizationId: true, type: true }
+        })
+      )
+    )
+    let purged = 0
+    for (const row of rows) {
+      const key = StorageKeys.dsrExport(row.id)
+      if ((await this.storage.head(key).catch(() => null)) === null) continue
+      await this.deleteObject(storeId, row.id)
+      purged += 1
+      this.audit.log({
+        action: AuditAction.DSR_EXPORT_PURGED,
+        actor: { system: true },
+        storeId,
+        organizationId: row.organizationId,
+        resourceType: DsrResourceTypes.REQUEST,
+        resourceId: row.id,
+        metadata: { type: row.type, orphan: true }
+      })
+    }
+    return purged
   }
 
   // The file of an export whose link date passed is deleted and the key cleared. The object goes first (deleting a missing key is not an

@@ -19,6 +19,8 @@ import {
 import { JobContext, PrismaService } from '@platform/core/database'
 import { DsrStatus, VerificationTokenType } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
 import { QueueNames, type SendEmailJob } from '@platform/core/queues'
 
@@ -40,6 +42,7 @@ export class DsrExpireSweeper {
     private readonly prisma: PrismaService,
     private readonly jobContext: JobContext,
     private readonly audit: AuditService,
+    private readonly events: DomainEvents,
     @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig,
     private readonly logger: PinoLogger
@@ -161,6 +164,12 @@ export class DsrExpireSweeper {
           resourceId: requestId,
           metadata: { type: row.type, reason: DsrFailureCodes.ADDRESS_UNREADABLE }
         })
+        this.events.publish(tx, Events.DSR_NOTICE_FAILED, {
+          storeId,
+          requestId,
+          type: row.type,
+          reason: DsrFailureCodes.ADDRESS_UNREADABLE
+        })
       }
       if (to !== null) {
         const store = await tx.store.findUnique({
@@ -180,7 +189,7 @@ export class DsrExpireSweeper {
         await this.emailQueue.add(job.name, job.data, job.opts)
         await tx.dataSubjectRequest.updateMany({
           where: { id: requestId, storeId },
-          data: { noticeQueuedAt: new Date() }
+          data: { noticeQueuedAt: new Date(), noticeAttempts: { increment: 1 } }
         })
       }
       return { id: requestId, type: row.type, organizationId: row.organizationId }
