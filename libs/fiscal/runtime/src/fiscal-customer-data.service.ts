@@ -23,6 +23,7 @@ import {
   receiverOf,
   receiverRecord
 } from './fiscal-rules'
+import { openSealed, type SealedRef } from './sealed-open'
 
 // The record as text with its keys in order (the address too), so the same data sent in another order is the same data
 const canonical = (record: Record<string, unknown>): string =>
@@ -63,7 +64,7 @@ export class FiscalCustomerDataService {
       select: { dataEncrypted: true }
     })
     if (row === null) return null
-    return maskedCustomerFiscalData(this.open(row.dataEncrypted))
+    return maskedCustomerFiscalData(this.open(row.dataEncrypted, { customerId }))
   }
 
   async put(
@@ -92,7 +93,7 @@ export class FiscalCustomerDataService {
       })
       // A row that cannot be opened is never merged into silently (the fields the patch does not name would be lost): the person clears it
       // first (DELETE does not open it) and writes the data again
-      const current = row === null ? receiverOf({}) : this.open(row.dataEncrypted)
+      const current = row === null ? receiverOf({}) : this.open(row.dataEncrypted, { customerId })
       const next: FiscalReceiver = {
         name: 'name' in patch ? (patch.name ?? null) : current.name,
         taxId: 'taxId' in patch ? (patch.taxId ?? null) : current.taxId,
@@ -232,11 +233,10 @@ export class FiscalCustomerDataService {
 
   // A row that cannot be opened (a key that changed) is an error to fix by writing the data again, never an empty answer that a person
   // would read as "this customer has no tax id"
-  private open(sealed: Uint8Array): FiscalReceiver {
+  private open(sealed: Uint8Array, ref: SealedRef): FiscalReceiver {
     try {
-      return receiverOf(this.cipher.open(sealed))
-    } catch (error) {
-      this.logger.error({ err: errorName(error) }, 'the fiscal data of a customer cannot be opened')
+      return receiverOf(openSealed(this.cipher, this.logger, sealed, 'customer-data', ref))
+    } catch {
       throw new PlatformException(
         ErrorCodes.FISCAL_CUSTOMER_DATA_INVALID,
         'the fiscal data of the customer cannot be read: write it again',

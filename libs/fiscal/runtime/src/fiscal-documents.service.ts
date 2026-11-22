@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
@@ -89,6 +89,7 @@ import {
   sameIssuer
 } from './fiscal-rules'
 import { cappedResponse, type Json, plainText, record, toJson } from './json'
+import { openSealed, type SealedRef } from './sealed-open'
 import { withTimeout } from './with-timeout'
 
 // The fields of an issuer that a provider is told about (the row of the issuer and the snapshot a document keeps of it)
@@ -528,10 +529,11 @@ export class FiscalDocumentsService {
     })
     if (row === null) return null
     try {
-      return receiverOf(this.cipher.open(row.dataEncrypted))
-    } catch (error) {
-      // The name of the error only, so a key that no longer opens rows shows in the logs
-      this.logger.error({ err: errorName(error) }, 'the fiscal data of a customer cannot be opened')
+      return receiverOf(
+        openSealed(this.cipher, this.logger, row.dataEncrypted, 'customer-data', { customerId })
+      )
+    } catch {
+      // `openSealed` logged the name of the error, the cause and the ids
       throw new PlatformException(
         ErrorCodes.FISCAL_CUSTOMER_DATA_INVALID,
         'the fiscal data of the customer cannot be read: write it again',
@@ -865,9 +867,15 @@ export class FiscalDocumentsService {
     }
     const { doc, issuer, provider, original } = claimed
     if (original === 'voided') {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.ORIGINAL_VOIDED, {
-        beforeSending: true
-      })
+      await this.reject(
+        doc.id,
+        organizationId,
+        doc.claimToken,
+        FiscalRejectionReasons.ORIGINAL_VOIDED,
+        {
+          beforeSending: true
+        }
+      )
       return
     }
     // The document was made for a provider and an environment: an issuer that changed since (and has not been remade by a retry) is
@@ -881,6 +889,7 @@ export class FiscalDocumentsService {
       await this.reject(
         doc.id,
         organizationId,
+        doc.claimToken,
         issuer === null || provider === undefined
           ? FiscalRejectionReasons.PROVIDER_UNAVAILABLE
           : FiscalRejectionReasons.ISSUER_CHANGED,
@@ -889,11 +898,21 @@ export class FiscalDocumentsService {
       return
     }
     const credentials =
-      issuer.credentialsEncrypted === null ? {} : this.openCredentials(issuer.credentialsEncrypted)
+      issuer.credentialsEncrypted === null
+        ? {}
+        : this.openCredentials(issuer.credentialsEncrypted, 'issuer-credentials', {
+            organizationId
+          })
     if (credentials === null) {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.CREDENTIALS_UNREADABLE, {
-        beforeSending: true
-      })
+      await this.reject(
+        doc.id,
+        organizationId,
+        doc.claimToken,
+        FiscalRejectionReasons.CREDENTIALS_UNREADABLE,
+        {
+          beforeSending: true
+        }
+      )
       return
     }
     // The identity of the issuer is the one the document was made with
@@ -911,40 +930,64 @@ export class FiscalDocumentsService {
       await this.sendKept(organizationId, doc, provider, context)
       return
     }
-    const receiver = this.openReceiver(doc.receiverEncrypted)
+    const receiver = this.openReceiver(doc.receiverEncrypted, doc.id)
     const parts = record(doc.linesSnapshot)
     const sale = saleOf(doc, parts)
     // The provider never sees a sale whose parts do not add up to what the order took
     // The bound of the tax of the shipping is asked only of a sale that was never sent: one that may already be at the authority is consulted
     // below and is not refused here for a rule it was not built under
     if (!saleAddsUp(sale) || (original === null && doc.attempts === 0 && !shippingTaxFits(sale))) {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.SALE_INCONSISTENT, {
-        beforeSending: true
-      })
+      await this.reject(
+        doc.id,
+        organizationId,
+        doc.claimToken,
+        FiscalRejectionReasons.SALE_INCONSISTENT,
+        {
+          beforeSending: true
+        }
+      )
       return
     }
     // A credit note with nothing in it is a return that did not fit its sale (made so on purpose, to be seen): it is never sent
     if (original !== null && sale.lines.length === 0) {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.RETURN_INCONSISTENT, {
-        beforeSending: true
-      })
+      await this.reject(
+        doc.id,
+        organizationId,
+        doc.claimToken,
+        FiscalRejectionReasons.RETURN_INCONSISTENT,
+        {
+          beforeSending: true
+        }
+      )
       return
     }
     // The number the document carries: the next one of the series the provider's manifest names, kept for this document from now on (a
     // document refused and corrected keeps its number), or the correlative of the organization when the provider declares no series
     const numbered = await this.correlativeOf(organizationId, doc, provider, issuerInput, receiver)
     if (numbered === null) {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.BUILD_FAILED, {
-        beforeSending: true
-      })
+      await this.reject(
+        doc.id,
+        organizationId,
+        doc.claimToken,
+        FiscalRejectionReasons.BUILD_FAILED,
+        {
+          beforeSending: true
+        }
+      )
       return
     }
     // Another attempt took the document over and decided it: nothing is left for this one to do
     if (numbered === 'stale') return
     if (numbered === 'exhausted') {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.SEQUENCE_EXHAUSTED, {
-        beforeSending: true
-      })
+      await this.reject(
+        doc.id,
+        organizationId,
+        doc.claimToken,
+        FiscalRejectionReasons.SEQUENCE_EXHAUSTED,
+        {
+          beforeSending: true
+        }
+      )
       return
     }
     const payment = paymentOfSnapshot(
@@ -991,24 +1034,42 @@ export class FiscalDocumentsService {
       })
     )
     if (built === null) {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.BUILD_FAILED, {
-        beforeSending: true
-      })
+      await this.reject(
+        doc.id,
+        organizationId,
+        doc.claimToken,
+        FiscalRejectionReasons.BUILD_FAILED,
+        {
+          beforeSending: true
+        }
+      )
       return
     }
     // The series was chosen from the type the provider said the document is: a document of another type would carry a number of a series
     // that is not its own, so it is never sent
     if (numbered.documentType !== null && built.documentType !== numbered.documentType) {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.BUILD_FAILED, {
-        beforeSending: true
-      })
+      await this.reject(
+        doc.id,
+        organizationId,
+        doc.claimToken,
+        FiscalRejectionReasons.BUILD_FAILED,
+        {
+          beforeSending: true
+        }
+      )
       return
     }
     if (built.missingReceiverFields.length > 0) {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.RECEIVER_INCOMPLETE, {
-        built,
-        beforeSending: true
-      })
+      await this.reject(
+        doc.id,
+        organizationId,
+        doc.claimToken,
+        FiscalRejectionReasons.RECEIVER_INCOMPLETE,
+        {
+          built,
+          beforeSending: true
+        }
+      )
       return
     }
     if (route.kind === 'attach') {
@@ -1023,7 +1084,7 @@ export class FiscalDocumentsService {
   // (the same code answers "duplicate" and the consultation follows).
   private async keepInContingency(
     organizationId: string,
-    doc: { id: string },
+    doc: { id: string; claimToken: string },
     provider: FiscalDocumentProvider,
     built: BuiltDocument,
     context: ProviderContext,
@@ -1040,6 +1101,7 @@ export class FiscalDocumentsService {
       return this.requeueAndFail(
         organizationId,
         doc.id,
+        doc.claimToken,
         'the open contingency holds the most documents an event takes'
       )
     }
@@ -1054,6 +1116,7 @@ export class FiscalDocumentsService {
       return this.requeueAndFail(
         organizationId,
         doc.id,
+        doc.claimToken,
         'the fiscal provider could not sign the document in contingency'
       )
     }
@@ -1061,6 +1124,7 @@ export class FiscalDocumentsService {
       await this.reject(
         doc.id,
         organizationId,
+        doc.claimToken,
         typeof deferred.reason === 'string' ? deferred.reason : '',
         { built, beforeSending: true }
       )
@@ -1069,6 +1133,7 @@ export class FiscalDocumentsService {
     const kept = await this.contingencies.attach(
       organizationId,
       doc.id,
+      doc.claimToken,
       route.contingency.id,
       built,
       deferred.providerData,
@@ -1079,6 +1144,7 @@ export class FiscalDocumentsService {
     return this.requeueAndFail(
       organizationId,
       doc.id,
+      doc.claimToken,
       kept === FiscalContingencyAttachResult.FULL
         ? 'the open contingency holds the most documents an event takes'
         : 'the contingency ended while the document was made'
@@ -1090,6 +1156,7 @@ export class FiscalDocumentsService {
     organizationId: string,
     doc: {
       id: string
+      claimToken: string
       documentType: string
       builtPayloadEncrypted: Uint8Array | null
       attempts: number
@@ -1100,11 +1167,19 @@ export class FiscalDocumentsService {
   ): Promise<void> {
     let payload: Record<string, unknown> | null = null
     if (doc.builtPayloadEncrypted !== null)
-      payload = this.openCredentials(doc.builtPayloadEncrypted)
-    if (payload === null) {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.BUILD_FAILED, {
-        beforeSending: true
+      payload = this.openCredentials(doc.builtPayloadEncrypted, 'built-payload', {
+        documentId: doc.id
       })
+    if (payload === null) {
+      await this.reject(
+        doc.id,
+        organizationId,
+        doc.claimToken,
+        FiscalRejectionReasons.BUILD_FAILED,
+        {
+          beforeSending: true
+        }
+      )
       return
     }
     const built: BuiltDocument = {
@@ -1120,7 +1195,7 @@ export class FiscalDocumentsService {
   // Returns whether the document was taken up again.
   private async openContingencyAndRetry(
     organizationId: string,
-    doc: { id: string; attempts: number; contingencyId?: string | null },
+    doc: { id: string; claimToken: string; attempts: number; contingencyId?: string | null },
     provider: FiscalDocumentProvider,
     context: ProviderContext
   ): Promise<boolean> {
@@ -1142,8 +1217,13 @@ export class FiscalDocumentsService {
     if (route.kind !== 'attach') return false
     await this.inUnit(organizationId, () =>
       this.prisma.client.fiscalDocument.updateMany({
-        where: { id: doc.id, organizationId, status: FiscalDocumentStatus.SUBMITTED },
-        data: { status: FiscalDocumentStatus.QUEUED }
+        where: {
+          id: doc.id,
+          organizationId,
+          status: FiscalDocumentStatus.SUBMITTED,
+          claimToken: doc.claimToken
+        },
+        data: { status: FiscalDocumentStatus.QUEUED, claimToken: null }
       })
     )
     await this.submit(organizationId, doc.id)
@@ -1154,7 +1234,7 @@ export class FiscalDocumentsService {
   // answer does to the document
   private async deliver(
     organizationId: string,
-    doc: { id: string; attempts: number; contingencyId?: string | null },
+    doc: { id: string; claimToken: string; attempts: number; contingencyId?: string | null },
     provider: FiscalDocumentProvider,
     built: BuiltDocument,
     context: ProviderContext
@@ -1170,19 +1250,25 @@ export class FiscalDocumentsService {
         return this.requeueAndFail(
           organizationId,
           doc.id,
+          doc.claimToken,
           'the fiscal provider did not answer the consultation'
         )
       }
       if (consulted?.state === FiscalConsultState.ACCEPTED) {
         if (!hasNumber(consulted.externalNumber)) {
-          await this.reject(doc.id, organizationId, FiscalRejectionReasons.PROVIDER_ANSWER_INVALID)
+          await this.reject(
+            doc.id,
+            organizationId,
+            doc.claimToken,
+            FiscalRejectionReasons.PROVIDER_ANSWER_INVALID
+          )
           return
         }
-        await this.accept(doc.id, organizationId, built, consulted)
+        await this.accept(doc.id, organizationId, doc.claimToken, built, consulted)
         return
       }
       if (consulted?.state === FiscalConsultState.REJECTED) {
-        await this.reject(doc.id, organizationId, consulted.reason, {
+        await this.reject(doc.id, organizationId, doc.claimToken, consulted.reason, {
           built,
           response: consulted.response,
           byAuthority: true
@@ -1198,16 +1284,22 @@ export class FiscalDocumentsService {
     if (result.outcome === FiscalSubmitOutcome.ACCEPTED) {
       // An acceptance with no number could never be invalidated: it is not kept as one
       if (!hasNumber(result.externalNumber)) {
-        await this.reject(doc.id, organizationId, FiscalRejectionReasons.PROVIDER_ANSWER_INVALID)
+        await this.reject(
+          doc.id,
+          organizationId,
+          doc.claimToken,
+          FiscalRejectionReasons.PROVIDER_ANSWER_INVALID
+        )
         return
       }
-      await this.accept(doc.id, organizationId, built, result)
+      await this.accept(doc.id, organizationId, doc.claimToken, built, result)
       return
     }
     if (result.outcome === FiscalSubmitOutcome.REJECTED) {
       await this.reject(
         doc.id,
         organizationId,
+        doc.claimToken,
         typeof result.reason === 'string' ? result.reason : '',
         result.neverSent === true
           ? { built, response: result.response, beforeSending: true }
@@ -1218,7 +1310,12 @@ export class FiscalDocumentsService {
     // The authority did not answer on every attempt the lifecycle waits for: a contingency opens and the document is made again in it
     if (await this.openContingencyAndRetry(organizationId, doc, provider, context)) return
     // The authority did not answer: back to the queue, and the job fails so that the backoff of the queue spaces the next attempt
-    await this.requeueAndFail(organizationId, doc.id, 'the fiscal provider did not answer')
+    await this.requeueAndFail(
+      organizationId,
+      doc.id,
+      doc.claimToken,
+      'the fiscal provider did not answer'
+    )
   }
 
   // The number a document carries in the series its provider's manifest declares (`FiscalSequenceDeclaration`). A provider that declares
@@ -1232,7 +1329,7 @@ export class FiscalDocumentsService {
   // attempt took it over and decided it): nothing is taken then, so a late attempt never spends a number.
   private async correlativeOf(
     organizationId: string,
-    doc: { id: string; kind: string; sequenceNumber: number },
+    doc: { id: string; kind: string; sequenceNumber: number; claimToken: string },
     provider: FiscalDocumentProvider,
     issuer: FiscalIssuerInput,
     receiver: FiscalReceiver
@@ -1271,11 +1368,16 @@ export class FiscalDocumentsService {
       await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${doc.id} AND organization_id = ${organizationId} FOR UPDATE`
       const current = await tx.fiscalDocument.findFirst({
         where: { id: doc.id, organizationId },
-        select: { correlative: true, correlativeScopeKey: true, status: true }
+        select: { correlative: true, correlativeScopeKey: true, status: true, claimToken: true }
       })
       if (current === null) return null
       // Only the attempt that holds the claim numbers a document
-      if (current.status !== (FiscalDocumentStatus.SUBMITTED as string)) return 'stale' as const
+      if (
+        current.status !== (FiscalDocumentStatus.SUBMITTED as string) ||
+        current.claimToken !== doc.claimToken
+      ) {
+        return 'stale' as const
+      }
       // Already numbered in this series (an earlier attempt, a corrected document of the same type): the same number
       if (current.correlative !== null && current.correlativeScopeKey === key) {
         return { correlative: current.correlative, documentType: resolvedType }
@@ -1367,12 +1469,18 @@ export class FiscalDocumentsService {
   private async requeueAndFail(
     organizationId: string,
     documentId: string,
+    claimToken: string,
     message: string
   ): Promise<never> {
     await this.inUnit(organizationId, () =>
       this.prisma.client.fiscalDocument.updateMany({
-        where: { id: documentId, organizationId, status: FiscalDocumentStatus.SUBMITTED },
-        data: { status: FiscalDocumentStatus.QUEUED }
+        where: {
+          id: documentId,
+          organizationId,
+          status: FiscalDocumentStatus.SUBMITTED,
+          claimToken
+        },
+        data: { status: FiscalDocumentStatus.QUEUED, claimToken: null }
       })
     )
     throw new Error(message)
@@ -1469,15 +1577,28 @@ export class FiscalDocumentsService {
           receiverEncrypted = new Uint8Array(parent.receiverEncrypted)
         }
       }
-      const updated = await tx.fiscalDocument.update({
-        where: { id: doc.id },
+      // The owner token is written by the same statement that moves the document, and only over the state this attempt read: a claim that
+      // changed since is not taken twice. Every later write of this attempt compares the token.
+      const claimToken = randomUUID()
+      const taken = await tx.fiscalDocument.updateMany({
+        where: { id: doc.id, organizationId, status: doc.status, claimToken: doc.claimToken },
         data: {
           status: FiscalDocumentStatus.SUBMITTED,
           attempts: { increment: 1 },
+          claimToken,
           ...(receiverEncrypted === undefined ? {} : { receiverEncrypted })
         }
       })
-      return { doc: { ...updated, attempts: doc.attempts }, issuer, provider, original }
+      if (taken.count !== 1) return 'busy' as const
+      const updated = await tx.fiscalDocument.findFirstOrThrow({
+        where: { id: doc.id, organizationId }
+      })
+      return {
+        doc: { ...updated, attempts: doc.attempts, claimToken },
+        issuer,
+        provider,
+        original
+      }
     })
   }
 
@@ -1494,6 +1615,7 @@ export class FiscalDocumentsService {
   private async accept(
     documentId: string,
     organizationId: string,
+    claimToken: string,
     built: BuiltDocument,
     result: {
       externalNumber: string
@@ -1511,10 +1633,20 @@ export class FiscalDocumentsService {
       await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${documentId} AND organization_id = ${organizationId} FOR UPDATE`
       const doc = await tx.fiscalDocument.findFirstOrThrow({
         where: { id: documentId, organizationId },
-        select: { orderId: true, kind: true, returnId: true, status: true, createdAt: true }
+        select: {
+          orderId: true,
+          kind: true,
+          returnId: true,
+          status: true,
+          createdAt: true,
+          claimToken: true
+        }
       })
       // Another attempt decided first (this one was taken over): what is decided is not decided twice
-      if (doc.status !== (FiscalDocumentStatus.SUBMITTED as string)) {
+      if (
+        doc.status !== (FiscalDocumentStatus.SUBMITTED as string) ||
+        doc.claimToken !== claimToken
+      ) {
         this.logger.warn(
           { documentId },
           'the acceptance of a fiscal document was skipped: it was not being submitted'
@@ -1530,6 +1662,7 @@ export class FiscalDocumentsService {
         where: { id: documentId },
         data: {
           status: FiscalDocumentStatus.ACCEPTED,
+          claimToken: null,
           documentType: built.documentType,
           externalNumber: plainText(result.externalNumber),
           providerData,
@@ -1571,6 +1704,7 @@ export class FiscalDocumentsService {
   private async reject(
     documentId: string,
     organizationId: string,
+    claimToken: string,
     reason: string,
     options: {
       built?: BuiltDocument
@@ -1591,7 +1725,10 @@ export class FiscalDocumentsService {
         where: { id: documentId, organizationId }
       })
       // Another attempt decided first (this one was taken over): what is decided is not decided twice
-      if (doc.status !== (FiscalDocumentStatus.SUBMITTED as string)) {
+      if (
+        doc.status !== (FiscalDocumentStatus.SUBMITTED as string) ||
+        doc.claimToken !== claimToken
+      ) {
         this.logger.warn(
           { documentId },
           'the rejection of a fiscal document was skipped: it was not being submitted'
@@ -1607,6 +1744,7 @@ export class FiscalDocumentsService {
         where: { id: documentId },
         data: {
           status: FiscalDocumentStatus.REJECTED,
+          claimToken: null,
           rejectionReason: kept,
           ...(options.built === undefined
             ? {}
@@ -1682,7 +1820,7 @@ export class FiscalDocumentsService {
       }
       // A receiver that cannot be opened is not merged over: the change would be laid on an empty one and drop what was stored. The
       // person then writes the whole receiver (every field sent, null to leave one empty), or the api refuses with a reason.
-      const opened = this.tryOpenReceiver(doc.receiverEncrypted)
+      const opened = this.tryOpenReceiver(doc.receiverEncrypted, doc.id)
       if (opened === null && !WHOLE_RECEIVER_FIELDS.every(field => field in patch)) {
         throw new PlatformException(
           ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -2020,7 +2158,9 @@ export class FiscalDocumentsService {
         const credentials =
           issuer.credentialsEncrypted === null
             ? {}
-            : this.openCredentials(issuer.credentialsEncrypted)
+            : this.openCredentials(issuer.credentialsEncrypted, 'issuer-credentials', {
+                organizationId
+              })
         if (credentials === null) {
           throw new PlatformException(
             ErrorCodes.FISCAL_ISSUER_INVALID,
@@ -2314,13 +2454,18 @@ export class FiscalDocumentsService {
 
   // A document as a provider is shown it: what was built, readable; null when the sealed copy cannot be opened
   private storedOf(doc: {
+    id: string
     documentType: string
     externalNumber: string | null
     providerData: unknown
     builtPayloadEncrypted: Uint8Array | null
   }): StoredFiscalDocument | null {
     const payload =
-      doc.builtPayloadEncrypted === null ? null : this.openCredentials(doc.builtPayloadEncrypted)
+      doc.builtPayloadEncrypted === null
+        ? null
+        : this.openCredentials(doc.builtPayloadEncrypted, 'built-payload', {
+            documentId: doc.id
+          })
     if (payload === null || payload['unreadable'] === true) return null
     return {
       documentType: doc.documentType,
@@ -2773,22 +2918,26 @@ export class FiscalDocumentsService {
 
   // A row whose receiver cannot be opened reads as an empty receiver: one bad row never breaks the list, and the document that holds
   // it is refused for its missing data until a person writes the receiver again
-  private openReceiver(sealed: Uint8Array): FiscalReceiver {
-    return this.tryOpenReceiver(sealed) ?? receiverOf({})
+  private openReceiver(sealed: Uint8Array, documentId: string): FiscalReceiver {
+    return this.tryOpenReceiver(sealed, documentId) ?? receiverOf({})
   }
 
   // The receiver, or null when it cannot be opened (a rotated key, a damaged row)
-  private tryOpenReceiver(sealed: Uint8Array): FiscalReceiver | null {
+  private tryOpenReceiver(sealed: Uint8Array, documentId: string): FiscalReceiver | null {
     try {
-      return receiverOf(this.cipher.open(sealed))
+      return receiverOf(openSealed(this.cipher, this.logger, sealed, 'receiver', { documentId }))
     } catch {
       return null
     }
   }
 
-  private openCredentials(sealed: Uint8Array): Record<string, unknown> | null {
+  private openCredentials(
+    sealed: Uint8Array,
+    what: string,
+    ref: SealedRef
+  ): Record<string, unknown> | null {
     try {
-      return this.cipher.open(sealed)
+      return openSealed(this.cipher, this.logger, sealed, what, ref)
     } catch {
       return null
     }
@@ -2876,7 +3025,7 @@ export class FiscalDocumentsService {
     receiverEncrypted: Uint8Array
     replacedBy: { id: string }[]
   }): FiscalDocumentView {
-    const receiver = this.openReceiver(row.receiverEncrypted)
+    const receiver = this.openReceiver(row.receiverEncrypted, row.id)
     const kind = row.kind as FiscalDocumentKind
     const status = row.status as FiscalDocumentStatus
     const replacedByDocumentId = row.replacedBy[0]?.id ?? null

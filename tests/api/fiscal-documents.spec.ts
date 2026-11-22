@@ -1170,6 +1170,115 @@ describe('The fiscal documents (Step 4B.7)', () => {
 
     // HC-205: the key of an invalidation carries its reason, so a second request with another reason must not reach the authority while
     // the first one holds the document
+    // Step 7.3-S11a: the claim of a submission has an owner. An attempt that was taken over (its lease ended) can no longer decide the
+    // document: every write of an attempt compares the token it was given with the one the row holds.
+    describe('the owner token of a claim', () => {
+      type Late = {
+        reject(id: string, org: string, token: string, reason: string): Promise<void>
+        accept(
+          id: string,
+          org: string,
+          token: string,
+          built: {
+            documentType: string
+            payload: Record<string, unknown>
+            missingReceiverFields: string[]
+          },
+          result: { externalNumber: string }
+        ): Promise<void>
+        requeueAndFail(org: string, id: string, token: string, message: string): Promise<never>
+      }
+      const late = () => documents as unknown as Late
+      const built = { documentType: 'x', payload: {}, missingReceiverFields: [] }
+      const heldBy = async (documentId: string, token: string) => {
+        await owner.fiscalDocument.update({
+          where: { id: documentId },
+          data: { status: FiscalDocumentStatus.SUBMITTED, claimToken: token, attempts: 1 }
+        })
+      }
+      const stateOf = (documentId: string) =>
+        owner.fiscalDocument.findUniqueOrThrow({
+          where: { id: documentId },
+          select: { status: true, claimToken: true, externalNumber: true, rejectionReason: true }
+        })
+
+      it('refuses the refusal, the acceptance and the requeue of an attempt that was taken over', async () => {
+        const { documentId } = await sale()
+        await heldBy(documentId, 'owner-b')
+        await late().reject(documentId, ctx.orgA.id, 'owner-a', 'LATE')
+        await late().accept(documentId, ctx.orgA.id, 'owner-a', built, { externalNumber: 'LATE-1' })
+        await expect(
+          late().requeueAndFail(ctx.orgA.id, documentId, 'owner-a', 'late')
+        ).rejects.toThrow('late')
+        expect(await stateOf(documentId)).toEqual({
+          status: FiscalDocumentStatus.SUBMITTED,
+          claimToken: 'owner-b',
+          externalNumber: null,
+          rejectionReason: null
+        })
+      })
+
+      it('lets the owner decide, and the decision leaves no token', async () => {
+        const { documentId } = await sale()
+        await heldBy(documentId, 'owner-b')
+        await late().accept(documentId, ctx.orgA.id, 'owner-b', built, { externalNumber: 'OK-1' })
+        expect(await stateOf(documentId)).toMatchObject({
+          status: FiscalDocumentStatus.ACCEPTED,
+          claimToken: null,
+          externalNumber: 'OK-1'
+        })
+        const other = await sale()
+        await heldBy(other.documentId, 'owner-b')
+        await late().reject(other.documentId, ctx.orgA.id, 'owner-b', 'NO')
+        expect(await stateOf(other.documentId)).toMatchObject({
+          status: FiscalDocumentStatus.REJECTED,
+          claimToken: null
+        })
+        const queued = await sale()
+        await heldBy(queued.documentId, 'owner-b')
+        await expect(
+          late().requeueAndFail(ctx.orgA.id, queued.documentId, 'owner-b', 'again')
+        ).rejects.toThrow('again')
+        expect(await stateOf(queued.documentId)).toMatchObject({
+          status: FiscalDocumentStatus.QUEUED,
+          claimToken: null
+        })
+      })
+
+      it('takes over an expired claim with a new token, and the old owner then decides nothing', async () => {
+        const { documentId } = await sale()
+        await patchReceiver(documentId, { taxId: `${SimulatorRules.UNAVAILABLE}-9`, name: 'Ana' })
+        await heldBy(documentId, 'owner-a')
+        await owner.$executeRaw`UPDATE fiscal_documents SET updated_at = now() - interval '1 day' WHERE id = ${documentId}`
+        // The takeover: the provider is down, so the attempt that took it over gives it back and fails
+        await expect(documents.submit(ctx.orgA.id, documentId)).rejects.toThrow(/did not answer/)
+        expect((await stateOf(documentId)).claimToken).toBeNull()
+        await late().accept(documentId, ctx.orgA.id, 'owner-a', built, { externalNumber: 'LATE-2' })
+        expect((await stateOf(documentId)).status).toBe(FiscalDocumentStatus.QUEUED)
+      })
+
+      it('lets one of two concurrent claimants send, and the other waits', async () => {
+        const { documentId } = await sale()
+        const outcomes = await Promise.allSettled([
+          documents.submit(ctx.orgA.id, documentId),
+          documents.submit(ctx.orgA.id, documentId)
+        ])
+        expect(outcomes.filter(o => o.status === 'fulfilled').length).toBeGreaterThanOrEqual(1)
+        const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+        expect(row.status).toBe(FiscalDocumentStatus.ACCEPTED)
+        expect(row.attempts).toBe(1)
+        expect(row.claimToken).toBeNull()
+      })
+
+      it('refuses, in the database, a decided document that holds a token', async () => {
+        const { documentId } = await sale()
+        await documents.submit(ctx.orgA.id, documentId)
+        await expect(
+          owner.fiscalDocument.update({ where: { id: documentId }, data: { claimToken: 'x' } })
+        ).rejects.toThrow()
+      })
+    })
+
     // The guard of the database: an accepted document holds or frees a claim and nothing else
     it('lets an accepted document change only the claim of its invalidation', async () => {
       const { documentId } = await sale()

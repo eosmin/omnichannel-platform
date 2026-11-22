@@ -3253,6 +3253,7 @@ model FiscalDocument {
   voidedAt              DateTime? @map("voided_at")
   voidClaimKey          String?   @map("void_claim_key") // the idempotency key of the invalidation that holds the document, until voidClaimUntil
   voidClaimUntil        DateTime? @map("void_claim_until") // the lease of that claim: no other invalidation of this document is sent before it
+  claimToken            String?   @map("claim_token") // the owner of the claim of a submission (random, written with the claim, compared by every write of that attempt); null when nobody holds it
   voidResponse          Json?     @map("void_response") // what the authority answered to the invalidation: the evidence of the void, kept apart because the accepted row cannot change
   issuedAt              DateTime? @map("issued_at")
   contingencyId         String?   @map("contingency_id") // set when the document was made in contingency (the deferred model); fixed for ever once it is
