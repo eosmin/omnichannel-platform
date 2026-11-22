@@ -547,8 +547,8 @@ describe('The review queue of the data requests', () => {
       const [mail] = emailsOf(app).to(email)
       expect(mail?.dsrNotice).toEqual({ requestId: id, storeId: ctx.storeA.id })
       expect(JSON.stringify({ ...mail, to: null })).not.toContain(email)
-      // Nothing confirmed it yet: the request does not say it was told
-      expect((response.body as { noticeStatus?: string }).noticeStatus).toBe('none')
+      // Nothing confirmed it yet: the mail is on its way, and the request does not say it was told
+      expect((response.body as { noticeStatus?: string }).noticeStatus).toBe('pending')
     })
 
     it('cancels nothing that is not an approved erasure still inside its grace period', async () => {

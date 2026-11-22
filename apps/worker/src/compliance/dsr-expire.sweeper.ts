@@ -10,6 +10,7 @@ import {
   DSR_CONFIG,
   type DsrConfig,
   dsrNoticeJob,
+  DsrFailureCodes,
   DsrRejectionReasons,
   DsrResultOutcomes,
   openDsrNotifyAddress,
@@ -146,6 +147,20 @@ export class DsrExpireSweeper {
       // An address that does not open (a key that changed) is not mailed, and must not keep the request open for ever
       if (row.notifyToEncrypted !== null && to === null) {
         this.logger.error({ requestId }, 'the address of a data request could not be opened')
+        // Said, not silent: the request shows that the person was never told
+        await tx.dataSubjectRequest.updateMany({
+          where: { id: requestId, storeId },
+          data: { noticeFailedAt: now, noticeAttempts: ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS }
+        })
+        this.audit.log({
+          action: AuditAction.DSR_NOTICE_FAILED,
+          actor: { system: true },
+          storeId,
+          organizationId: row.organizationId,
+          resourceType: DsrResourceTypes.REQUEST,
+          resourceId: requestId,
+          metadata: { type: row.type, reason: DsrFailureCodes.ADDRESS_UNREADABLE }
+        })
       }
       if (to !== null) {
         const store = await tx.store.findUnique({
@@ -163,6 +178,10 @@ export class DsrExpireSweeper {
           requestType: row.type
         })
         await this.emailQueue.add(job.name, job.data, job.opts)
+        await tx.dataSubjectRequest.updateMany({
+          where: { id: requestId, storeId },
+          data: { noticeQueuedAt: new Date() }
+        })
       }
       return { id: requestId, type: row.type, organizationId: row.organizationId }
     })

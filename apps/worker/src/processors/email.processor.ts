@@ -5,6 +5,7 @@ import { ZodError } from 'zod'
 
 import { DsrFailureCodes } from '@platform/core/compliance'
 import { EmailService } from '@platform/core/email'
+import { errorName } from '@platform/core/errors'
 import { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import {
   type DeliverInvitationEmailJob,
@@ -104,7 +105,7 @@ export class EmailProcessor extends BaseProcessor<
       await this.notices.sent(notice.storeId, notice.requestId)
     } catch (error) {
       this.logger.error(
-        { requestId: notice.requestId, errorName: errorOf(error) },
+        { requestId: notice.requestId, errorName: errorName(error) },
         'the closing notice of a data request left but could not be recorded'
       )
     }
@@ -115,11 +116,9 @@ export class EmailProcessor extends BaseProcessor<
       await this.notices.failed(notice.storeId, notice.requestId, DsrFailureCodes.MAIL_FAILED)
     } catch (error) {
       this.logger.error(
-        { requestId: notice.requestId, errorName: errorOf(error) },
+        { requestId: notice.requestId, errorName: errorName(error) },
         'the failure of a closing notice could not be recorded'
       )
     }
   }
 }
-
-const errorOf = (error: unknown): string => (error instanceof Error ? error.name : 'unknown')

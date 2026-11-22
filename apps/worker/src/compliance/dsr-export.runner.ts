@@ -103,11 +103,30 @@ export class DsrExportRunner {
     until: number,
     report: DsrExportReport
   ): Promise<void> {
-    report.purged += await this.purgeExpired(storeId, now)
-    report.returned += await this.returnExhausted(storeId)
-    const sent = await this.notices.sendPending(storeId)
-    report.notified += sent.queued
-    report.failed += sent.failed
+    // Each phase on its own: one that fails must not keep the others (the legal deadline runs) from happening tonight
+    const phase = async (work: () => Promise<void>): Promise<void> => {
+      try {
+        await work()
+      } catch (error) {
+        if (error instanceof JobContextGoneError) throw error
+        report.failed += 1
+        this.logger.error(
+          { storeId, errorName: errorName(error) },
+          'a phase of the export of data requests failed'
+        )
+      }
+    }
+    await phase(async () => {
+      report.purged += await this.purgeExpired(storeId, now)
+    })
+    await phase(async () => {
+      report.returned += await this.returnExhausted(storeId)
+    })
+    await phase(async () => {
+      const sent = await this.notices.sendPending(storeId)
+      report.notified += sent.queued
+      report.failed += sent.failed
+    })
     const candidates = await this.jobContext.forStore(storeId, () => this.candidatesOf(storeId))
     for (const requestId of candidates) {
       if (Date.now() > until) return
@@ -195,6 +214,13 @@ export class DsrExportRunner {
         { storeId, requestId, errorName: errorName(error) },
         'the export of a data request failed'
       )
+      // The object may have been written before the transaction failed: no row points at it, so it goes now (a failure to delete is logged)
+      await this.storage.delete(StorageKeys.dsrExport(requestId)).catch((deleteError: unknown) => {
+        this.logger.error(
+          { storeId, requestId, errorName: errorName(deleteError) },
+          'the file of a failed data export could not be deleted'
+        )
+      })
       // A file too large will be too large tomorrow: back to the reviewers at once, not after three tries
       if (
         await this.recordFailure(storeId, requestId, code, error instanceof DsrExportTooLargeError)

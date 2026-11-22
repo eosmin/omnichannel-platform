@@ -47,7 +47,13 @@ export class DsrNoticeLedger {
     await this.jobContext.forStore(storeId, () =>
       this.prisma.transaction(async tx => {
         const done = await tx.dataSubjectRequest.updateMany({
-          where: { id: requestId, storeId, noticeSentAt: null },
+          where: {
+            id: requestId,
+            storeId,
+            noticeSentAt: null,
+            // A request that was never verified has no closing notice to fail
+            status: { not: DsrStatus.PENDING_VERIFICATION }
+          },
           data: {
             noticeFailedAt: new Date(),
             noticeAttempts: { increment: 1 },
@@ -60,13 +66,10 @@ export class DsrNoticeLedger {
           select: {
             organizationId: true,
             type: true,
-            status: true,
             noticeAttempts: true,
             notifyToEncrypted: true
           }
         })
-        // A request that was not ended has no closing notice to give up on (a mail of another kind was marked by mistake): nothing more to do
-        if (row.status === String(DsrStatus.PENDING_VERIFICATION)) return
         const retry =
           row.notifyToEncrypted !== null &&
           row.noticeAttempts < ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS

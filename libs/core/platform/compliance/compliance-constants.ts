@@ -83,11 +83,15 @@ export type DsrNoticeStatus = (typeof DsrNoticeStatuses)[keyof typeof DsrNoticeS
 export function dsrNoticeStatusOf(row: {
   noticeSentAt: Date | null
   noticeFailedAt: Date | null
+  noticeQueuedAt?: Date | null
   notifyToEncrypted: Uint8Array | null
 }): DsrNoticeStatus {
   if (row.noticeSentAt !== null) return DsrNoticeStatuses.SENT
   if (row.noticeFailedAt !== null && row.notifyToEncrypted === null) return DsrNoticeStatuses.FAILED
-  if (row.notifyToEncrypted !== null) return DsrNoticeStatuses.PENDING
+  // The sealed address is kept, or a mail was queued whose address was already cleared (rejection, cancellation, expiry): on its way, not confirmed
+  if (row.notifyToEncrypted !== null || (row.noticeQueuedAt ?? null) !== null) {
+    return DsrNoticeStatuses.PENDING
+  }
   return DsrNoticeStatuses.NONE
 }
 

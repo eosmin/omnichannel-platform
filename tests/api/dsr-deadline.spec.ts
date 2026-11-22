@@ -169,4 +169,20 @@ describe('the alert of the data requests that are close to their deadline', () =
 
     expect(alertsOf(id)).toHaveLength(1)
   })
+
+  it('raises one alert for each request even when two runs list it before either claims it', async () => {
+    const ids = await Promise.all(
+      Array.from({ length: 5 }, () => request({ status: DsrStatus.MANUAL_REVIEW, ageDays: 28 }))
+    )
+    const internals = checker as unknown as {
+      checkStore: (storeId: string, now: Date) => Promise<number>
+    }
+
+    await Promise.all([
+      internals.checkStore(ctx.storeA.id, new Date()),
+      internals.checkStore(ctx.storeA.id, new Date())
+    ])
+
+    for (const id of ids) expect(alertsOf(id)).toHaveLength(1)
+  })
 })

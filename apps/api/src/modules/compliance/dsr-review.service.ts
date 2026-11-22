@@ -103,6 +103,7 @@ const SELECT = {
   rejectionReason: true,
   noticeSentAt: true,
   noticeFailedAt: true,
+  noticeQueuedAt: true,
   resultKey: true,
   resultExpiresAt: true,
   exportFailureCode: true,
@@ -531,5 +532,9 @@ export class DsrReviewService {
       requestType: row.type
     })
     await this.emailQueue.add(job.name, job.data, job.opts)
+    await tx.dataSubjectRequest.updateMany({
+      where: { id: row.id, storeId },
+      data: { noticeQueuedAt: new Date() }
+    })
   }
 }
