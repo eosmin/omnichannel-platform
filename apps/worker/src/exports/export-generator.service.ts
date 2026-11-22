@@ -157,13 +157,23 @@ export class ExportGenerator {
       const { rowCount } = await plan.write(key, done => progress.report(done))
       // The permissions were read before the file was written, which can take long: read again now, before the row points at the file.
       // A requester who lost any of them in between gets no file, and the file is deleted (the download is also gated live).
-      if (!(await this.stillCovered(row, plan.used))) {
+      let covered: boolean
+      try {
+        covered = await this.stillCovered(row, plan.used)
+      } catch (error) {
+        // A read that fails is not a yes. The file is made and no row points at it: it goes now, because a retry on another day
+        // writes under another name and would never overwrite it
+        await this.discard(key)
+        throw error
+      }
+      if (!covered) {
         this.logger.warn(
           { exportId, storeId, type: row.type },
           'an export was cancelled: its requester lost permissions while the file was written'
         )
-        await this.fail(row, ErrorCodes.PERMISSION_DENIED)
+        // The file first: a row that fails to settle must not leave the file behind
         await this.discard(key)
+        await this.fail(row, ErrorCodes.PERMISSION_DENIED)
         throw new PermissionLostError()
       }
       const settled = await this.jobContext.forStore(row.storeId, () =>

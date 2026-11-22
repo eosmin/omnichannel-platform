@@ -10,6 +10,22 @@ const STORE = '0b8e7a52-6d1f-4a63-8c4e-2f9d3b7a1e55'
 const USER = '6f1c2b7e-3c1a-4d57-9a38-0d5f7a6b1c11'
 const EXPORT = '9d3b7a1e-55aa-4c63-8c4e-2f9d3b7a1e01'
 
+const conversationsRow = {
+  id: EXPORT,
+  storeId: STORE,
+  requestedBy: USER,
+  type: ExportTypes.CONVERSATIONS,
+  format: 'csv',
+  filters: {
+    filter: {},
+    viewer: {
+      userId: USER,
+      held: [Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_VIEW_ALL]
+    }
+  },
+  status: ExportStatus.PENDING
+}
+
 const row = {
   id: EXPORT,
   storeId: STORE,
@@ -33,14 +49,19 @@ function membershipOf(...names: string[]): unknown {
 
 // The generator with every collaborator faked: `reads` are the answers of the membership, one for each time the permissions of the
 // requester are read (before the file is written, and again before the row turns ready)
-function build(reads: unknown[], write: () => Promise<{ rowCount: number }>) {
+function build(
+  reads: unknown[],
+  write: () => Promise<{ rowCount: number }>,
+  exportRow: unknown = row
+) {
   const membership = { findFirst: jest.fn() }
   for (const read of reads) membership.findFirst.mockResolvedValueOnce(read)
   const updateMany = jest.fn().mockResolvedValue({ count: 1 })
   const prisma = {
     client: {
-      export: { findFirst: jest.fn().mockResolvedValue(row), updateMany },
+      export: { findFirst: jest.fn().mockResolvedValue(exportRow), updateMany },
       membership,
+      message: { count: jest.fn().mockResolvedValue(0) },
       pluginInstallation: { findFirst: jest.fn() }
     },
     transaction: jest.fn((work: (tx: unknown) => unknown) => Promise.resolve(work({})))
@@ -100,14 +121,14 @@ describe('the permissions of the requester when the file of an export is finishe
     expect(t.storage.delete).toHaveBeenCalledTimes(1)
   })
 
-  it('refuses, fails closed, when the second read cannot be made on the last attempt', async () => {
+  it('rethrows and deletes the file when the second read cannot be made on the last attempt', async () => {
     const t = build([membershipOf(Permissions.CUSTOMERS_EXPORT)], () =>
       Promise.resolve({ rowCount: 1 })
     )
     t.membership.findFirst.mockRejectedValueOnce(new Error('database down'))
     await expect(t.generator.generate(STORE, EXPORT, true)).rejects.toThrow('database down')
     expect(t.updateMany).not.toHaveBeenCalledWith(IS_READY)
-    expect(t.storage.delete).toHaveBeenCalledTimes(1)
+    expect(t.storage.delete).toHaveBeenCalled()
   })
 
   it('does not put the id of the person in the log of the refusal', async () => {
@@ -116,5 +137,50 @@ describe('the permissions of the requester when the file of an export is finishe
     )
     await t.generator.generate(STORE, EXPORT, false).catch(() => undefined)
     expect(JSON.stringify(t.logger.warn.mock.calls)).not.toContain(USER)
+  })
+
+  it('deletes the file, even when it is not the last attempt, when the second read cannot be made', async () => {
+    const t = build([membershipOf(Permissions.CUSTOMERS_EXPORT)], () =>
+      Promise.resolve({ rowCount: 1 })
+    )
+    t.membership.findFirst.mockRejectedValueOnce(new Error('database down'))
+    await expect(t.generator.generate(STORE, EXPORT, false)).rejects.toThrow('database down')
+    expect(t.storage.delete).toHaveBeenCalledTimes(1)
+    expect(t.updateMany).not.toHaveBeenCalledWith(IS_READY)
+  })
+
+  it('deletes the file before it fails the row, so a row that cannot be settled leaves no file', async () => {
+    const t = build([membershipOf(Permissions.CUSTOMERS_EXPORT), null], () =>
+      Promise.resolve({ rowCount: 1 })
+    )
+    t.updateMany.mockRejectedValue(new Error('database down'))
+    await expect(t.generator.generate(STORE, EXPORT, false)).rejects.toThrow('database down')
+    expect(t.storage.delete).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not turn a conversations file ready when the requester lost the view of every conversation while it was written', async () => {
+    const both = membershipOf(
+      Permissions.CONVERSATIONS_VIEW,
+      Permissions.CONVERSATIONS_EXPORT,
+      Permissions.CONVERSATIONS_VIEW_ALL
+    )
+    const lessView = membershipOf(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_EXPORT)
+    const t = build([both, lessView], () => Promise.resolve({ rowCount: 1 }), conversationsRow)
+    await expect(t.generator.generate(STORE, EXPORT, false)).rejects.toBeInstanceOf(
+      UnrecoverableError
+    )
+    expect(t.updateMany).not.toHaveBeenCalledWith(IS_READY)
+    expect(t.storage.delete).toHaveBeenCalledTimes(1)
+  })
+
+  it('turns a conversations file ready while the view it was made with is still held', async () => {
+    const both = membershipOf(
+      Permissions.CONVERSATIONS_VIEW,
+      Permissions.CONVERSATIONS_EXPORT,
+      Permissions.CONVERSATIONS_VIEW_ALL
+    )
+    const t = build([both, both], () => Promise.resolve({ rowCount: 1 }), conversationsRow)
+    await t.generator.generate(STORE, EXPORT, false)
+    expect(t.updateMany).toHaveBeenCalledWith(IS_READY)
   })
 })
