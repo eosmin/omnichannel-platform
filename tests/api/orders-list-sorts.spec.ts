@@ -24,6 +24,8 @@ interface Seeded {
   totalCents: number
   createdAt: Date
   nameSearch: string | null
+  // The day of delivery: the same for three orders, another for one, and none (NULL) for the rest
+  day: Date | null
 }
 
 interface PageBody {
@@ -91,7 +93,14 @@ describe('Orders list: keyset sorts by total and by customer', () => {
         },
         select: { id: true }
       })
-      seeded.push({ id: order.id, totalCents, createdAt, nameSearch: customer.nameSearch })
+      // Three orders share a day, one has another, and the rest have none: equal keys and NULLs in the same sort
+      const position = seeded.length
+      const day =
+        position < 3 ? new Date('2026-12-01') : position === 3 ? new Date('2026-12-02') : null
+      if (day !== null) {
+        await owner.order.update({ where: { id: order.id }, data: { scheduledDeliveryDate: day } })
+      }
+      seeded.push({ id: order.id, totalCents, createdAt, nameSearch: customer.nameSearch, day })
     }
   })
   afterAll(async () => {
@@ -104,6 +113,12 @@ describe('Orders list: keyset sorts by total and by customer', () => {
     b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1)
 
   const expected: Record<string, (a: Seeded, b: Seeded) => number> = {
+    // Soonest day first, the orders with no day (NULL) last, then the newest and the id
+    [OrderSorts.SCHEDULED_DELIVERY]: (a, b) => {
+      if (a.day === null && b.day !== null) return 1
+      if (a.day !== null && b.day === null) return -1
+      return (a.day?.getTime() ?? 0) - (b.day?.getTime() ?? 0) || byNewestThenId(a, b)
+    },
     [OrderSorts.TOTAL_HIGHEST]: (a, b) => b.totalCents - a.totalCents || byNewestThenId(a, b),
     [OrderSorts.CUSTOMER_NAME]: (a, b) => {
       // A customer without a name has the empty search name: first
@@ -128,9 +143,11 @@ describe('Orders list: keyset sorts by total and by customer', () => {
     throw new Error('the pages did not end')
   }
 
-  const cases = [OrderSorts.TOTAL_HIGHEST, OrderSorts.CUSTOMER_NAME].flatMap(sort =>
-    PAGE_SIZES.map(size => [sort, size] as const)
-  )
+  const cases = [
+    OrderSorts.TOTAL_HIGHEST,
+    OrderSorts.CUSTOMER_NAME,
+    OrderSorts.SCHEDULED_DELIVERY
+  ].flatMap(sort => PAGE_SIZES.map(size => [sort, size] as const))
   it.each(cases)(
     'pages the sort %s by %i without repeating nor skipping a row, in the order of its keys and ties',
     async (sort, size) => {
