@@ -27,6 +27,11 @@ import type { NotificationFilter } from '@platform/core/notifications'
 
 import { apiClient } from '../api'
 
+import { applyRead } from './mark-read-cache'
+
+// The segment of `QueryKeys.notifications.filtered` that sits between the store and the filter
+const LIST_SEGMENT = 'list'
+
 export function useNotificationList(
   storeId: string,
   filter: NotificationFilter,
@@ -50,11 +55,24 @@ export function useUnreadCount(storeId: string): UseQueryResult<number> {
   })
 }
 
-// Marking changes the list (the dot, the "Unread" tab) and the count: `list` is the prefix of both
-function useRefreshAfter(storeId: string): () => void {
+// Marking changes the lines already loaded (the dot, the "Unread" tab) and the count. The loaded
+// lines are patched in place (`applyRead`): refetching `list` would read every page of every tab the
+// person opened again. Only the count is read again, because the api knows how many are left.
+// `ids` null is "mark all".
+function useRefreshAfter(storeId: string): (ids: readonly string[] | null) => void {
   const queryClient = useQueryClient()
-  return () => {
-    void queryClient.invalidateQueries({ queryKey: QueryKeys.notifications.list(storeId) })
+  return ids => {
+    const readAt = new Date().toISOString()
+    const named = ids === null ? null : new Set(ids)
+    const lists = queryClient.getQueriesData<InfiniteData<NotificationPageView, string | null>>({
+      queryKey: [...QueryKeys.notifications.list(storeId), LIST_SEGMENT]
+    })
+    for (const [key, data] of lists) {
+      const filter = key[3]
+      if (data === undefined || typeof filter !== 'string') continue
+      queryClient.setQueryData(key, applyRead(data, filter, named, readAt))
+    }
+    void queryClient.invalidateQueries({ queryKey: QueryKeys.notifications.unread(storeId) })
   }
 }
 
@@ -67,7 +85,7 @@ export function useMarkRead(
   const refresh = useRefreshAfter(storeId)
   return useMutation({
     mutationFn: (id: string) => markNotificationsRead(apiClient, storeId, [id]),
-    onSuccess: refresh,
+    onSuccess: (_updated, id) => refresh([id]),
     onError
   })
 }
@@ -76,7 +94,7 @@ export function useMarkAllRead(storeId: string): UseMutationResult<number, Error
   const refresh = useRefreshAfter(storeId)
   return useMutation({
     mutationFn: () => markAllNotificationsRead(apiClient, storeId),
-    onSuccess: refresh
+    onSuccess: () => refresh(null)
   })
 }
 

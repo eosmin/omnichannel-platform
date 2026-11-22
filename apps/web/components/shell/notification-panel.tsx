@@ -16,10 +16,14 @@ import {
   useNotificationList
 } from '../../lib/notifications/use-notification-data'
 import { toast } from '../../lib/toast'
+import { useNow } from '../../lib/use-now'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
 import { SheetDescription, SheetHeader, SheetTitle } from '../ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
+
+// How often an open panel moves its "5 min ago" on; the text changes by the minute at most
+const CLOCK_TICK_MS = 30_000
 
 const TABS: readonly NotificationFilter[] = [
   NotificationFilters.ALL,
@@ -45,6 +49,7 @@ export function NotificationPanel({
   const list = useNotificationList(storeId, filter, open)
   const markAll = useMarkAllRead(storeId)
   const items = list.data?.pages.flatMap(page => page.data) ?? []
+  const now = useNow(CLOCK_TICK_MS, open)
   return (
     <>
       <SheetHeader>
@@ -86,6 +91,7 @@ export function NotificationPanel({
                 key={item.id}
                 storeId={storeId}
                 item={item}
+                now={now}
                 onNavigate={onNavigate}
               />
             ))}
@@ -123,10 +129,12 @@ export function NotificationPanel({
 function NotificationRow({
   storeId,
   item,
+  now,
   onNavigate
 }: {
   storeId: string
   item: NotificationView
+  now: Date
   onNavigate: () => void
 }): ReactElement {
   const t = useTranslations()
@@ -170,7 +178,7 @@ function NotificationRow({
             {t(keys.body as MessageKey, item.params)}
           </span>
           <span className="text-muted-foreground text-xs">
-            {relativeTime(new Date(item.createdAt), new Date(), locale)}
+            {relativeTime(new Date(item.createdAt), now, locale)}
           </span>
         </span>
       </button>

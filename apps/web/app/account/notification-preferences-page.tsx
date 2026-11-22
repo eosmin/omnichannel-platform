@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { type ReactElement, useId, useMemo } from 'react'
+import { type ReactElement, useId, useMemo, useState } from 'react'
 
 import type { NotificationSettingsView, TypePreferenceView } from '@platform/api-client'
 import { DigestFrequency } from '@platform/core/domain'
@@ -44,11 +44,13 @@ function supportedTimeZones(): string[] {
 export function NotificationPreferencesPage(): ReactElement | null {
   const t = useTranslations('account.notifications')
   const { data: profile } = useProfile()
-  // The account area has no store of its own: the matrix is the one of the store last opened
-  const lastStoreId = readLastStoreId()
+  // The account area has no store of its own: the page starts on the store last opened, and the
+  // person's pick stays until they change it. It is state and not a read of the last store on each
+  // render, so a tab on another store cannot move this one under the person's hands.
+  const [picked, setPicked] = useState<string | null>(() => readLastStoreId())
   if (profile === undefined) return null
   const membership =
-    profile.memberships.find(entry => entry.storeId === lastStoreId) ?? profile.memberships[0]
+    profile.memberships.find(entry => entry.storeId === picked) ?? profile.memberships[0]
   if (membership === undefined) {
     return (
       <section className="mx-auto max-w-3xl">
@@ -57,10 +59,30 @@ export function NotificationPreferencesPage(): ReactElement | null {
       </section>
     )
   }
-  return <Preferences storeId={membership.storeId} storeName={membership.storeName} />
+  return (
+    <Preferences
+      // A new store is a new page: nothing typed or loading carries over from the other one
+      key={membership.storeId}
+      storeId={membership.storeId}
+      storeName={membership.storeName}
+      stores={profile.memberships.map(entry => ({ id: entry.storeId, name: entry.storeName }))}
+      onPickStore={setPicked}
+    />
+  )
 }
 
-function Preferences({ storeId, storeName }: { storeId: string; storeName: string }): ReactElement {
+function Preferences({
+  storeId,
+  storeName,
+  stores,
+  onPickStore
+}: {
+  storeId: string
+  storeName: string
+  stores: readonly { id: string; name: string }[]
+  onPickStore: (storeId: string) => void
+}): ReactElement {
+  const storeSelectId = useId()
   const t = useTranslations('account.notifications')
   const errorText = useErrorText()
   const tAll = useTranslations()
@@ -110,6 +132,23 @@ function Preferences({ storeId, storeName }: { storeId: string; storeName: strin
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
         <p className="text-muted-foreground text-sm">{t('forStore', { store: storeName })}</p>
+        {stores.length > 1 && (
+          <div className="flex flex-col gap-1.5 pt-2">
+            <Label htmlFor={storeSelectId}>{t('storePicker')}</Label>
+            <select
+              id={storeSelectId}
+              className={SELECT_CLASS}
+              value={storeId}
+              onChange={event => onPickStore(event.target.value)}
+            >
+              {stores.map(store => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <p className="text-muted-foreground text-sm">{t('hint')}</p>
       </header>
 
