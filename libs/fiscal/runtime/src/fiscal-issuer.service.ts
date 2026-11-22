@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -9,13 +10,15 @@ import {
   type FiscalIssueOn,
   FiscalLimits,
   FiscalResourceTypes,
-  FiscalSeriesScopeKeys
+  FiscalSeriesScopeKeys,
+  SealedValueKind
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import type { FiscalIssuerInput } from '@platform/fiscal/sdk'
 
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
 import { toJson, record } from './json'
+import { openSealed } from './sealed-open'
 import { withTimeout } from './with-timeout'
 
 export interface FiscalActor {
@@ -84,8 +87,11 @@ export class FiscalIssuerService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly cipher: CredentialCipher,
-    private readonly providers: FiscalProviderRegistry
-  ) {}
+    private readonly providers: FiscalProviderRegistry,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(FiscalIssuerService.name)
+  }
 
   // The series of the organization, in the order a person reads them (provider, environment, document type, establishment, point of sale);
   // the hashed key breaks a tie so the list does not move between reads. Filtered by the organization of the request.
@@ -142,10 +148,15 @@ export class FiscalIssuerService {
     }
   }
 
-  private storedCredentials(sealed: Uint8Array | null): Record<string, unknown> {
+  private storedCredentials(
+    sealed: Uint8Array | null,
+    organizationId: string
+  ): Record<string, unknown> {
     if (sealed === null) return {}
     try {
-      return this.cipher.open(sealed)
+      return openSealed(this.cipher, this.logger, sealed, SealedValueKind.ISSUER_CREDENTIALS, {
+        organizationId
+      })
     } catch {
       throw new PlatformException(
         ErrorCodes.FISCAL_ISSUER_INVALID,
@@ -257,7 +268,8 @@ export class FiscalIssuerService {
             { problems: ['credentials'] }
           )
         }
-        const credentials = sent ?? this.storedCredentials(existing?.credentialsEncrypted ?? null)
+        const credentials =
+          sent ?? this.storedCredentials(existing?.credentialsEncrypted ?? null, organizationId)
         // A provider that throws, or that does not answer in a few seconds (the row is locked meanwhile), is an issuer that does not pass:
         // never a 500, and never a lock held for long. Validating reads the fields and the certificate; it never reaches the authority.
         const check = (await withTimeout(

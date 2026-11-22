@@ -13,11 +13,29 @@ const IV_BYTES = 12
 const TAG_BYTES = 16
 const HEADER_BYTES = 1 + IV_BYTES
 
+// Why a sealed value did not open, as a code that carries no data (never the value, never a fragment of it). AES-GCM cannot tell a key that
+// changed from a row that was altered (both fail the authentication tag): `KEY_MISMATCH` is both until a previous key is held to try
+// (Step 7.3-S11b); a row whose bytes are not even shaped like a sealed value is `ROW_DAMAGED`; a key that is not there is `KEY_MISSING`.
+export const DecryptionFailure = {
+  KEY_MISSING: 'key_missing',
+  KEY_MISMATCH: 'key_mismatch',
+  ROW_DAMAGED: 'row_damaged'
+} as const
+export type DecryptionFailure = (typeof DecryptionFailure)[keyof typeof DecryptionFailure]
+
 export class DecryptionError extends Error {
-  constructor(reason: string) {
+  constructor(
+    reason: string,
+    readonly failure: DecryptionFailure = DecryptionFailure.ROW_DAMAGED
+  ) {
     super(`cannot decrypt: ${reason}`)
     this.name = 'DecryptionError'
   }
+}
+
+// The failure code of anything an open threw; a stray error is a damaged row (it is never read for its message)
+export function failureOf(error: unknown): DecryptionFailure {
+  return error instanceof DecryptionError ? error.failure : DecryptionFailure.ROW_DAMAGED
 }
 
 // CREDENTIALS_ENCRYPTION_KEY is 64 hex characters. The key is a parameter, never read from the
@@ -40,7 +58,9 @@ export function encrypt(plaintext: string, key: Buffer, aad?: string): Buffer<Ar
 }
 
 export function decrypt(payload: Uint8Array, key: Buffer, aad?: string): string {
-  assertKey(key)
+  if (key.length !== KEY_BYTES) {
+    throw new DecryptionError('the encryption key must be 32 bytes', DecryptionFailure.KEY_MISSING)
+  }
   const bytes = Buffer.from(payload)
   if (bytes.length < HEADER_BYTES + TAG_BYTES) throw new DecryptionError('payload too short')
   const version = bytes[0]
@@ -50,7 +70,7 @@ export function decrypt(payload: Uint8Array, key: Buffer, aad?: string): string 
   // A bound value never opens without its associated data. A plain (version 1) value has no data to check: it opens even when `aad` is given,
   // which is the compatibility with what was sealed before the data existed (a caller that must refuse version 1 has to check the format itself)
   if (version === FORMAT_VERSION_BOUND && aad === undefined) {
-    throw new DecryptionError('missing associated data')
+    throw new DecryptionError('missing associated data', DecryptionFailure.KEY_MISMATCH)
   }
 
   const iv = bytes.subarray(1, HEADER_BYTES)
@@ -64,7 +84,7 @@ export function decrypt(payload: Uint8Array, key: Buffer, aad?: string): string 
     return Buffer.concat([decipher.update(body), decipher.final()]).toString('utf8')
   } catch {
     // The auth tag did not match: a wrong key or a tampered payload. The cause adds nothing.
-    throw new DecryptionError('wrong key or altered data')
+    throw new DecryptionError('wrong key or altered data', DecryptionFailure.KEY_MISMATCH)
   }
 }
 
