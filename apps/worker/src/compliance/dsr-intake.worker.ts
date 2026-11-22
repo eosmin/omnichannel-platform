@@ -9,6 +9,9 @@ import {
   ComplianceConfig,
   DSR_CONFIG,
   DSR_VERIFY_FRAGMENT_KEY,
+  DsrRejectionReasons,
+  DsrResourceTypes,
+  DsrSubjectTypes,
   DSR_VERIFY_WEB_PATH,
   type DsrConfig,
   type DsrIntake,
@@ -86,7 +89,7 @@ export class DsrIntakeWorker {
             storeId: store.storeId,
             type: intake.type,
             status: DsrStatus.PENDING_VERIFICATION,
-            subjectType: 'customer',
+            subjectType: DsrSubjectTypes.CUSTOMER,
             subjectEmailHash: emailHash,
             subjectCustomerIds: customers.map(customer => customer.id),
             // Where the closing notice goes: sealed, and set to NULL when the request ends (the address is never kept in the clear)
@@ -114,7 +117,7 @@ export class DsrIntakeWorker {
       actor: { system: true },
       storeId: store.storeId,
       organizationId: store.organizationId,
-      resourceType: 'data_subject_request',
+      resourceType: DsrResourceTypes.REQUEST,
       resourceId: outcome.requestId,
       metadata: { type: intake.type }
     })
@@ -139,7 +142,7 @@ export class DsrIntakeWorker {
         where: { id: requestId, storeId, status: DsrStatus.PENDING_VERIFICATION },
         data: {
           status: DsrStatus.REJECTED,
-          rejectionReason: 'verification_mail_not_queued',
+          rejectionReason: DsrRejectionReasons.VERIFICATION_MAIL_NOT_QUEUED,
           notifyToEncrypted: null,
           subjectEmailHash: null
         }

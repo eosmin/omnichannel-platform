@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { DSR_CONFIG, type DsrConfig } from '@platform/core/compliance'
+import { DSR_CONFIG, type DsrConfig, DsrResourceTypes } from '@platform/core/compliance'
 import { hashToken } from '@platform/core/crypto'
 import { contextOf, PrismaService, resolveDsrVerification } from '@platform/core/database'
 import { DsrStatus, VerificationTokenType } from '@platform/core/domain'
@@ -72,7 +72,7 @@ export class DsrVerifyService {
       actor: { system: true },
       storeId: found.storeId,
       organizationId: found.organizationId,
-      resourceType: 'data_subject_request',
+      resourceType: DsrResourceTypes.REQUEST,
       resourceId: found.id
     })
     return { verified: true }

@@ -192,3 +192,11 @@ export interface DsrConfig {
 // to a server, so the token stays out of access logs)
 export const DSR_VERIFY_WEB_PATH = '/compliance/dsr/verify'
 export const DSR_VERIFY_FRAGMENT_KEY = 'token'
+
+// What a data subject request is called where a text is needed (the kind of resource of an audit entry, who the request is about), and why
+// the flow itself closes a request. Never typed at a call site (rule 1).
+export const DsrResourceTypes = { REQUEST: 'data_subject_request' } as const
+export const DsrSubjectTypes = { CUSTOMER: 'customer' } as const
+export const DsrRejectionReasons = {
+  VERIFICATION_MAIL_NOT_QUEUED: 'verification_mail_not_queued'
+} as const
