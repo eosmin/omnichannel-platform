@@ -1,3 +1,4 @@
+import { isSecretName } from './redact-secrets'
 import {
   declaredRedactedKeys,
   isSecretHeader,
@@ -56,5 +57,17 @@ describe('the secrets of a webhook that nobody lists', () => {
   it('has no provider in its lists', () => {
     const all = [...SENSITIVE_QUERY_PARAMS, ...REPORT_REDACTED_HEADERS]
     expect(all.filter(name => /hub|meta|instagram|whatsapp|messenger/i.test(name))).toEqual([])
+  })
+})
+
+describe('the names of the data request flow (Step 7.2-H1a)', () => {
+  it.each([
+    'dsrPublicKey',
+    'dsr_public_key',
+    'subjectEmailHash',
+    'subject_email_hash',
+    'emailHash'
+  ])('redacts %s, whatever its spelling', name => {
+    expect(isSecretName(name)).toBe(true)
   })
 })
