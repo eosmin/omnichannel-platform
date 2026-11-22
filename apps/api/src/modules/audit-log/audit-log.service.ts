@@ -45,22 +45,24 @@ export class AuditLogService {
     query: ListAuditLogQuery
   ): Promise<CursorPage<AuditLogEntryView>> {
     const { cursor, limit, ...filters } = query
-    const hot = await this.prisma.client.auditLog.findMany({
-      where: {
-        ...auditLogWhere(storeId, readFilters(filters)),
-        ...(cursor === undefined
-          ? {}
-          : {
-              OR: [
-                { timestamp: { lt: cursor.createdAt } },
-                { timestamp: cursor.createdAt, id: { lt: cursor.id } }
-              ]
-            })
-      },
-      select: AUDIT_LOG_COLUMNS,
-      take: limit + 1,
-      orderBy: [{ timestamp: 'desc' }, { id: 'desc' }]
-    })
+    const hot = await this.inStore(storeId, () =>
+      this.prisma.client.auditLog.findMany({
+        where: {
+          ...auditLogWhere(storeId, readFilters(filters)),
+          ...(cursor === undefined
+            ? {}
+            : {
+                OR: [
+                  { timestamp: { lt: cursor.createdAt } },
+                  { timestamp: cursor.createdAt, id: { lt: cursor.id } }
+                ]
+              })
+        },
+        select: AUDIT_LOG_COLUMNS,
+        take: limit + 1,
+        orderBy: [{ timestamp: 'desc' }, { id: 'desc' }]
+      })
+    )
     // The months older than the hot window live in the bucket once the nightly export has moved them. They are read only when
     // the database cannot fill the page with entries newer than every archived one: a page of recent entries never lists the bucket
     const rows = (await this.mayHoldArchived(storeId, hot, limit, filters))
@@ -104,10 +106,12 @@ export class AuditLogService {
   // One entry of the store. An entry of another store, one with no store and one that does not exist are the same 404.
   // `at` is the instant of an entry of the archive (older than the hot window): the month of it is the only one that is read
   async get(storeId: string, actor: Actor, id: string, at?: string): Promise<AuditLogEntryView> {
-    const found = await this.prisma.client.auditLog.findFirst({
-      where: { id, storeId },
-      select: AUDIT_LOG_COLUMNS
-    })
+    const found = await this.inStore(storeId, () =>
+      this.prisma.client.auditLog.findFirst({
+        where: { id, storeId },
+        select: AUDIT_LOG_COLUMNS
+      })
+    )
     const row =
       found ?? (at === undefined ? null : await this.archive.findById(storeId, id, new Date(at)))
     if (row === null) throw resourceNotFound('audit log entry')
@@ -121,6 +125,12 @@ export class AuditLogService {
       userAgent: actor.userAgent
     })
     return auditLogEntryView(row)
+  }
+
+  // The routes read the bucket, so they hold no transaction of the request open (NoTenantTransaction): each read of the database is
+  // one short context of the store
+  private inStore<T>(storeId: string, work: () => Promise<T>): Promise<T> {
+    return this.prisma.tenantTransaction({ storeIds: [storeId], organizationIds: [] }, work)
   }
 
   // The archive holds only whole months that ended before the start of the month the hot window ends in (`AuditColdExport`)
@@ -139,10 +149,9 @@ export class AuditLogService {
       return false
     }
     // A store that was created after the archive's bound has no entry that old: it never reads the archive
-    const store = await this.prisma.client.store.findFirst({
-      where: { id: storeId },
-      select: { createdAt: true }
-    })
+    const store = await this.inStore(storeId, () =>
+      this.prisma.client.store.findFirst({ where: { id: storeId }, select: { createdAt: true } })
+    )
     return store !== null && store.createdAt.getTime() < bound.getTime()
   }
 

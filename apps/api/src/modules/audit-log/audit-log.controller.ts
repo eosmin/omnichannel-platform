@@ -9,7 +9,7 @@ import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import type { ExportView } from '../exports'
-import { actorOf, CurrentStore, RequirePermissions } from '../tenancy'
+import { actorOf, CurrentStore, NoTenantTransaction, RequirePermissions } from '../tenancy'
 
 import {
   type AuditLogEntryQuery,
@@ -30,6 +30,9 @@ export class AuditLogController {
 
   @RequirePermissions(Permissions.ORG_VIEW_AUDIT_LOG)
   @NoStore()
+  @NoTenantTransaction(
+    'the archive of the audit log is read from the bucket (streams of up to a minute), never inside the transaction of the request: each read of the database is one short context of the store'
+  )
   @Get(ApiRoutes.organizations.auditLog)
   list(
     @CurrentStore() store: { id: string },
@@ -56,6 +59,9 @@ export class AuditLogController {
   // Declared after the export: `export` is not an id (and the id is a UUID, or the request is refused)
   @RequirePermissions(Permissions.ORG_VIEW_AUDIT_LOG)
   @NoStore()
+  @NoTenantTransaction(
+    'the archive of the audit log is read from the bucket (streams of up to a minute), never inside the transaction of the request: each read of the database is one short context of the store'
+  )
   @Get(ApiRoutes.organizations.auditLogEntry(':id'))
   get(
     @CurrentStore() store: { id: string },
