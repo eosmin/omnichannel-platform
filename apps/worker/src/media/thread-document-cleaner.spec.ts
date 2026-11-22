@@ -242,12 +242,16 @@ describe('ThreadDocumentCleaner', () => {
     try {
       const cleaner = cleanerOf('spins-then-ends.cjs', { timeoutMs: 200, stopTimeoutMs: 300 })
       await expect(cleaner.clean(bytes, PDF)).rejects.toThrow('the document thread did not stop')
+      // The sweep asks this before it counts an attempt: it is true while the thread lives, for every cleaner of the process
+      expect(cleaner.isBusy()).toBe(true)
+      expect(cleanerOf('answer.cjs').isBusy()).toBe(true)
       // It is still running: no second thread of memory beside it
       await expect(cleanerOf('answer.cjs').clean(bytes, PDF)).rejects.toThrow(
         'a document thread is still running'
       )
       // Once it is gone the cleaner takes documents again
       await new Promise(resolve => setTimeout(resolve, 1500))
+      expect(cleaner.isBusy()).toBe(false)
       await expect(cleanerOf('answer.cjs').clean(bytes, PDF)).resolves.toEqual({
         kind: 'sanitized',
         body: bytes
