@@ -51,7 +51,7 @@ describe('consentHashKeyNameOf', () => {
     expect(consentHashKeyNameOf(OWN_KEY)).not.toContain(OWN_KEY.slice(0, 8))
   })
 
-  it('has a fixed format, and is not the plain SHA-256 of the key (a chosen key could be guessed from it)', () => {
+  it('has a fixed format, and is not the plain SHA-256 of the key (domain separation, not a hardening: the entropy of the key is what protects it)', () => {
     const plain = `k${createHash('sha256').update(OWN_KEY).digest('hex').slice(0, 8)}`
     expect(consentHashKeyNameOf(OWN_KEY)).not.toBe(plain)
     // A fixed vector: if the derivation changes, every row written under an own key stops naming its key

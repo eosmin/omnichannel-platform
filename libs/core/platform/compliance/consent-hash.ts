@@ -16,8 +16,10 @@ export interface ConsentHashKey {
 // The label of the key derived from the signing secret: its own, so the signing secret itself is never the key of anything else
 const DERIVED_KEY_LABEL = 'cookie-consent-ip-hash-key:v1'
 
-// The name of an own key: the same key always has the same name and a new key never has the old one. A keyed digest with a label of its own,
-// not a bare SHA-256 of the key: a key a person chose (and wrote in a file) could otherwise be guessed offline from the name in each row
+// The name of an own key: the same key always has the same name and a new key never has the old one. A keyed digest with a label of its own:
+// domain separation (the name is not the digest anything else makes of the key), NOT a hardening. Like any one-way function of the key it
+// lets someone who holds a row try candidate keys against its 32 bits, so what protects the key is its entropy: at least 32 characters,
+// generated with `openssl rand -hex 32`, never a phrase a person chose
 const KEY_NAME_LABEL = 'consent-hash-key-name:v1'
 export const consentHashKeyNameOf = (key: string): string =>
   `k${createHmac('sha256', key).update(KEY_NAME_LABEL).digest('hex').slice(0, 8)}`
