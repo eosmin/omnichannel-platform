@@ -90,6 +90,29 @@ describe('ProcessorSupport', () => {
       )
     })
 
+    it('copies the email of a magic link without its address or its link', async () => {
+      const { support, deadLetterAdd } = build()
+      const job = {
+        ...jobOf(3, 3),
+        name: JobNames.SEND_EMAIL,
+        data: {
+          to: 'x@example.com',
+          data: { url: 'https://app.example.com/auth/magic#token=secret' }
+        }
+      }
+
+      await support.failedAttempt(
+        QueueNames.AUTH_EMAIL,
+        job as unknown as Job,
+        new Error('provider down')
+      )
+
+      expect(deadLetterAdd).toHaveBeenCalledWith(
+        JobNames.EXHAUSTED,
+        expect.objectContaining({ originalQueue: QueueNames.AUTH_EMAIL, originalData: null })
+      )
+    })
+
     it('copies a job that can never succeed at once, without waiting for its attempts', async () => {
       const { support, deadLetterAdd } = build()
 

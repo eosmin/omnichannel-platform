@@ -6,6 +6,7 @@ import { EmailService } from '@platform/core/email'
 import { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import {
   type DeliverInvitationEmailJob,
+  EmailQueue,
   JobNames,
   QueueNames,
   type RequestMagicLinkJob,
@@ -17,9 +18,10 @@ import { InvitationEmailDelivery } from '../invitations/invitation-email-deliver
 import { BaseProcessor } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
+// The provider's rate limit is shared with the auth-email queue: the two limits add up to it (EmailProviderBudget)
 @Processor(QueueNames.EMAIL, {
-  concurrency: 10,
-  limiter: { max: 100, duration: 1000 } // Respect the provider's rate limit
+  concurrency: EmailQueue.CONCURRENCY,
+  limiter: { max: EmailQueue.LIMIT_MAX, duration: EmailQueue.LIMIT_DURATION_MS }
 })
 export class EmailProcessor extends BaseProcessor<
   SendEmailJob | RequestMagicLinkJob | DeliverInvitationEmailJob

@@ -76,7 +76,9 @@ export class ProcessorSupport {
       originalQueue: queue,
       originalJobName: job.name as JobName, // Job.name is a string; only our own producers add jobs to these queues
       originalJobId: job.id,
-      originalData: REDACTED_JOBS.has(job.name) ? null : job.data,
+      // Every job of the auth-email queue holds an address, and the email of a link holds the link: none is kept in the dead-letter queue
+      originalData:
+        REDACTED_JOBS.has(job.name) || queue === QueueNames.AUTH_EMAIL ? null : job.data,
       error: error.message,
       failedAt: new Date().toISOString()
     }
