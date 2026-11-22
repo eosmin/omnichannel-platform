@@ -182,6 +182,32 @@ export interface FiscalDocumentPage {
   attention: { rejected: number; stuck: number }
 }
 
+// The sealed receiver of a document with the masks that describe it: a document that copies the receiver of another copies the masks with it
+const RECEIVER_AND_MASKS = {
+  receiverEncrypted: true,
+  receiverNameMasked: true,
+  receiverTaxIdMasked: true,
+  receiverMaskedAt: true
+} as const
+interface SaleReceiver {
+  id: string
+  receiverEncrypted: Uint8Array
+  receiverNameMasked: string | null
+  receiverTaxIdMasked: string | null
+  receiverMaskedAt: Date | null
+}
+function copiedMasksOf(row: Omit<SaleReceiver, 'id'>): {
+  receiverNameMasked: string | null
+  receiverTaxIdMasked: string | null
+  receiverMaskedAt: Date | null
+} {
+  return {
+    receiverNameMasked: row.receiverNameMasked,
+    receiverTaxIdMasked: row.receiverTaxIdMasked,
+    receiverMaskedAt: row.receiverMaskedAt
+  }
+}
+
 const SELECT = {
   id: true,
   storeId: true,
@@ -657,7 +683,7 @@ export class FiscalDocumentsService {
         ? await this.soleLiveSale(tx, organizationId, orderId)
         : await tx.fiscalDocument.findFirst({
             where: { id: parentOverride.id, organizationId },
-            select: { id: true, receiverEncrypted: true }
+            select: { id: true, ...RECEIVER_AND_MASKS }
           })
     if (parent === null) return null
     const live = await tx.fiscalDocument.findFirst({
@@ -703,6 +729,7 @@ export class FiscalDocumentsService {
         linesSnapshot: note.linesSnapshot,
         // The receiver of a credit note is the one of the sale document it cancels
         receiverEncrypted: new Uint8Array(parent.receiverEncrypted),
+        ...copiedMasksOf(parent),
         currency: note.currency,
         totalCents: note.totalCents,
         taxCents: note.taxCents
@@ -1561,6 +1588,7 @@ export class FiscalDocumentsService {
         | null
         | 'voided' = null
       let receiverEncrypted: Uint8Array<ArrayBuffer> | undefined
+      let copiedMasks: ReturnType<typeof copiedMasksOf> | undefined
       if (doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)) {
         const parent =
           doc.parentDocumentId === null
@@ -1583,6 +1611,7 @@ export class FiscalDocumentsService {
           }
           // The receiver of the note is the one of the document it cancels, as that document has it now
           receiverEncrypted = new Uint8Array(parent.receiverEncrypted)
+          copiedMasks = copiedMasksOf(parent)
         }
       }
       // The owner token is written by the same statement that moves the document, and only over the state this attempt read: a claim that
@@ -1594,15 +1623,10 @@ export class FiscalDocumentsService {
           status: FiscalDocumentStatus.SUBMITTED,
           attempts: { increment: 1 },
           claimToken,
-          // The receiver of the note changes to the parent's: the masks of the old one are no longer true, and are calculated again
-          ...(receiverEncrypted === undefined
+          // The receiver of the note changes to the parent's, and so do the masks: they are the ones of the same bytes
+          ...(receiverEncrypted === undefined || copiedMasks === undefined
             ? {}
-            : {
-                receiverEncrypted,
-                receiverNameMasked: null,
-                receiverTaxIdMasked: null,
-                receiverMaskedAt: null
-              })
+            : { receiverEncrypted, ...copiedMasks })
         }
       })
       if (taken.count !== 1) return 'busy' as const
@@ -2325,8 +2349,8 @@ export class FiscalDocumentsService {
     tx: PrismaTransaction,
     organizationId: string,
     orderId: string
-  ): Promise<{ sale: { id: string; receiverEncrypted: Uint8Array } | null; pair: boolean }> {
-    const read = (): Promise<{ id: string; receiverEncrypted: Uint8Array }[]> =>
+  ): Promise<{ sale: SaleReceiver | null; pair: boolean }> {
+    const read = (): Promise<SaleReceiver[]> =>
       tx.fiscalDocument.findMany({
         where: {
           organizationId,
@@ -2334,7 +2358,7 @@ export class FiscalDocumentsService {
           kind: FiscalDocumentKind.SALE,
           status: { not: FiscalDocumentStatus.VOIDED }
         },
-        select: { id: true, receiverEncrypted: true },
+        select: { id: true, ...RECEIVER_AND_MASKS },
         take: 2
       })
     let live = await read()
@@ -2351,7 +2375,7 @@ export class FiscalDocumentsService {
     tx: PrismaTransaction,
     organizationId: string,
     orderId: string
-  ): Promise<{ id: string; receiverEncrypted: Uint8Array } | null> {
+  ): Promise<SaleReceiver | null> {
     return (await this.liveSaleOf(tx, organizationId, orderId)).sale
   }
 
@@ -2360,7 +2384,7 @@ export class FiscalDocumentsService {
     tx: PrismaTransaction,
     organizationId: string,
     orderId: string
-  ): Promise<{ id: string; receiverEncrypted: Uint8Array } | null> {
+  ): Promise<SaleReceiver | null> {
     const { sale, pair } = await this.liveSaleOf(tx, organizationId, orderId)
     if (pair) {
       throw new PlatformException(
@@ -2628,6 +2652,7 @@ export class FiscalDocumentsService {
           issuerSnapshot: toJson(this.issuerInput(issuer)),
           linesSnapshot: sale.linesSnapshot,
           receiverEncrypted: new Uint8Array(old.receiverEncrypted),
+          ...copiedMasksOf(old),
           currency: sale.currency,
           totalCents: sale.totalCents,
           taxCents: sale.taxCents

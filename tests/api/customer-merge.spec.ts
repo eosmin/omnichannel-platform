@@ -270,7 +270,7 @@ describe('Merging customers', () => {
       expect(await owners(row.id)).toEqual({ [row.id]: s.survivor.id })
     })
 
-    it('loses nothing when both have it: each keeps its own row, before the merge, after it and after the unmerge', async () => {
+    it('keeps both rows while the merge can be undone when both have one: each stays with its own customer, after the merge and after the unmerge', async () => {
       const s = await twoAnas()
       const mine = await sealedRow(s.survivor.id, 'survivor')
       const theirs = await sealedRow(s.absorbed.id, 'absorbed')

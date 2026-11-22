@@ -1,4 +1,4 @@
--- Rolls back 20270127500000_fiscal_masked_receiver: drops the mask function and the three masked columns and gives the guard the form of
+-- Rolls back 20270127700000_fiscal_masked_receiver: drops the mask function and the three masked columns and gives the guard the form of
 -- 20270127400000. Safe to run twice. The masks are derived (the sealed receiver holds the truth), so nothing is lost; the lists open the
 -- sealed receiver again. ORDER: roll the code back with this script or after it (the code reads the columns).
 BEGIN;
@@ -75,11 +75,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- The re-seal of one decided or live document, in one statement that the guard recognises. The caller (the worker) has already opened the
--- old value, sealed it again with the current key and checked that the new value opens to the same text; here the swap is compare-and-swap
--- (the old bytes are in the WHERE), so a row that changed meanwhile is left alone and the call says so. The organization must be one of the
--- context of the caller. The setting that opens the door of the guard lives only inside this function: it is set, the statement runs, and it
--- is put back before the function returns.
 DROP FUNCTION IF EXISTS fiscal_mask_document(text, text, bytea, text, text);
 DROP INDEX IF EXISTS fiscal_documents_receiver_unmasked_idx;
 ALTER TABLE fiscal_documents DROP COLUMN IF EXISTS receiver_name_masked, DROP COLUMN IF EXISTS receiver_tax_id_masked, DROP COLUMN IF EXISTS receiver_masked_at;

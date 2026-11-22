@@ -291,7 +291,8 @@ export class CustomerMergeService {
         WHERE customer_id = ${absorbedId} AND store_id = ${storeId} RETURNING id`
     )
     // The fiscal data (sealed, one row per customer) moves only to a survivor that has none; one that has its own keeps it, and the
-    // absorbed customer keeps its row. One statement, filtered by store: the row never changes store and a row of another store is not seen.
+    // absorbed customer keeps its row for the window of the unmerge (the cleanup that deletes the absorbed customer deletes it with it:
+    // limit (4) of Step 7.3-S11b-2 in the plan). One statement, filtered by store: the row never changes store and a row of another store is not seen.
     const fiscalDataIds = ids(
       await tx.$queryRaw<{ id: string }[]>`
         UPDATE customer_fiscal_data SET customer_id = ${survivorId}

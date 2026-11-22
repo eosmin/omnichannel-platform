@@ -65,7 +65,7 @@ type Attempt =
       kind: 'completed'
       organizationId: string
       customers: number
-      retained: { orders: number; conversations: number }
+      retained: { orders: number; conversations: number; fiscalDocuments: number }
     }
   | {
       kind: 'returned'

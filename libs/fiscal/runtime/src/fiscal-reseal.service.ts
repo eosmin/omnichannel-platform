@@ -37,6 +37,9 @@ export interface FiscalResealReport {
   resealed: number
   // Documents whose masked receiver was calculated by this run (Step 7.3-S11b-2)
   masked: number
+  // Receivers that opened with no key for the mask (a damaged row, a retired key), by code. Apart from `failed` on purpose: a row that can
+  // never get a mask is tried again every night, and must not fail the job of the books for ever (the screens open such a row as before)
+  maskFailed: Record<string, number>
   conflicts: number
   // Values that opened with neither key (or could not be sealed again): left exactly as they were, by the code of the failure
   failed: Record<string, number>
@@ -60,6 +63,7 @@ const emptyReport = (enabled: boolean): FiscalResealReport => ({
   current: 0,
   resealed: 0,
   masked: 0,
+  maskFailed: {},
   conflicts: 0,
   failed: {},
   truncated: false
@@ -208,17 +212,21 @@ export class FiscalResealService {
         } catch (error) {
           const code =
             error instanceof DecryptionError ? failureOf(error) : FISCAL_RESEAL_WRITE_FAILED
-          report.failed[code] = (report.failed[code] ?? 0) + 1
-          this.logger.error(
-            {
-              errorName: errorName(error),
-              failure: code,
-              what: SealedValueKind.RECEIVER,
-              organizationId,
-              rowId: row.id
-            },
-            'the masked receiver of a document was not calculated'
-          )
+          const seen = Object.values(report.maskFailed).reduce((sum, n) => sum + n, 0)
+          report.maskFailed[code] = (report.maskFailed[code] ?? 0) + 1
+          // The first few of a run name their row; a night full of them is one line per row for nothing
+          if (seen < FiscalReseal.MAX_MASK_FAILURES_LOGGED) {
+            this.logger.warn(
+              {
+                errorName: errorName(error),
+                failure: code,
+                what: SealedValueKind.RECEIVER,
+                organizationId,
+                rowId: row.id
+              },
+              'the masked receiver of a document was not calculated'
+            )
+          }
         }
       }
       const last = rows.at(-1)

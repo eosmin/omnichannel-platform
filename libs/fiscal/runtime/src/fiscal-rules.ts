@@ -683,6 +683,7 @@ export function maskedReceiverView(receiver: FiscalReceiver): {
   return {
     name: maskReceiverName(receiver.name),
     taxIdMasked: maskReceiverTaxId(receiver.taxId),
-    complete: receiver.name !== null
+    // The same predicate as the stored masks: a name with no letters is no name
+    complete: maskReceiverName(receiver.name) !== null
   }
 }

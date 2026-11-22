@@ -74,6 +74,9 @@ BEGIN
        OR NEW.lines_snapshot IS DISTINCT FROM OLD.lines_snapshot
        OR NEW.receiver_encrypted IS DISTINCT FROM OLD.receiver_encrypted
        OR NEW.built_payload_encrypted IS DISTINCT FROM OLD.built_payload_encrypted
+       OR NEW.receiver_name_masked IS DISTINCT FROM OLD.receiver_name_masked
+       OR NEW.receiver_tax_id_masked IS DISTINCT FROM OLD.receiver_tax_id_masked
+       OR NEW.receiver_masked_at IS DISTINCT FROM OLD.receiver_masked_at
        OR NEW.response IS DISTINCT FROM OLD.response
        OR NEW.currency IS DISTINCT FROM OLD.currency
        OR NEW.total_cents IS DISTINCT FROM OLD.total_cents

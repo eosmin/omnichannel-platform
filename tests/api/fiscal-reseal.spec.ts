@@ -41,6 +41,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
   // A value shaped like a sealed one (version byte, IV, tag), whatever its content
   const shaped = (): Buffer => Buffer.concat([Buffer.from([1]), randomBytes(40)])
   const raw = new pg.Client({ connectionString: connectionUrls().owner })
+  const RECEIVER_FIXTURE = { taxId: '0614-010101-101-1', name: 'Ana Receptora' }
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -196,8 +197,9 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
 
     const report = await service(rotated()).run(ctx.orgA.id, unit)
 
-    // The receiver nobody opens is counted by the re-seal and again by the step of the masks (each is a run of its own over it)
-    expect(report.failed).toEqual({ key_mismatch: 2 })
+    // The receiver nobody opens is a failure of the re-seal; the step of the masks counts it apart and does not make the job fail again
+    expect(report.failed).toEqual({ key_mismatch: 1 })
+    expect(report.maskFailed).toEqual({ key_mismatch: 1 })
     expect(report.resealed).toBe(1)
     // No mask is guessed for it, and the one that opens has its mask
     const lostMasks = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: lost } })
@@ -231,13 +233,11 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
   })
 
   describe('the masked receiver of the documents', () => {
-    const RECEIVER = { taxId: '0614-010101-101-1', name: 'Ana Receptora' }
-
     it('calculates the masks of a live, an accepted and a voided document with the current key alone, changes nothing else, and a second run finds nothing', async () => {
       const made = {
-        live: await makeDocument('queued', newCipher, RECEIVER),
-        accepted: await makeDocument('accepted', newCipher, RECEIVER),
-        voided: await makeDocument('voided', newCipher, RECEIVER)
+        live: await makeDocument('queued', newCipher, RECEIVER_FIXTURE),
+        accepted: await makeDocument('accepted', newCipher, RECEIVER_FIXTURE),
+        voided: await makeDocument('voided', newCipher, RECEIVER_FIXTURE)
       }
       const before = await owner.fiscalDocument.findMany({
         where: { id: { in: Object.values(made) } }
@@ -247,7 +247,8 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
 
       expect(report.masked).toBe(3)
       // The receiver left unreadable by an earlier case is counted by its code, with no content
-      expect(report.failed).toEqual({ key_mismatch: 1 })
+      expect(report.failed).toEqual({})
+      expect(report.maskFailed).toEqual({ key_mismatch: 1 })
       expect(JSON.stringify(report)).not.toMatch(/Receptora|0614/)
       for (const row of before) {
         const after = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: row.id } })
@@ -276,7 +277,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
     })
 
     it('says in the table that a mask has one shape and a time, whoever writes it', async () => {
-      const id = await makeDocument('queued', newCipher, RECEIVER)
+      const id = await makeDocument('queued', newCipher, RECEIVER_FIXTURE)
       const write = (name: string | null, tax: string | null, at: string | null) =>
         raw.query(
           'UPDATE fiscal_documents SET receiver_name_masked = $2, receiver_tax_id_masked = $3, receiver_masked_at = $4 WHERE id = $1',
@@ -614,6 +615,22 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
         ).rejects.toMatchObject({
           message: expect.stringContaining('only the sealed and masked columns') as string
         })
+      } finally {
+        await raw.query('ROLLBACK').catch(() => undefined)
+      }
+    })
+
+    it('does not let an accepted document be voided and have a mask changed in the same statement', async () => {
+      const id = await makeDocument('accepted', newCipher, RECEIVER_FIXTURE)
+      await raw.query('BEGIN')
+      try {
+        await expect(
+          raw.query(
+            `UPDATE fiscal_documents SET status = 'voided', void_reason = 'x', voided_by = $2, voided_at = now(),
+               receiver_name_masked = 'X***********', receiver_masked_at = now() WHERE id = $1`,
+            [id, randomUUID()]
+          )
+        ).rejects.toMatchObject({ message: expect.stringContaining('immutable') as string })
       } finally {
         await raw.query('ROLLBACK').catch(() => undefined)
       }

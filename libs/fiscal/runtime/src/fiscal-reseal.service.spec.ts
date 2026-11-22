@@ -12,7 +12,11 @@ import { FiscalResealService, type FiscalResealUnit } from './fiscal-reseal.serv
 describe('FiscalResealService (what the database run cannot show)', () => {
   const oldKey = randomBytes(32)
   const newKey = randomBytes(32)
-  const logger = { setContext: () => undefined, error: () => undefined } as unknown as PinoLogger
+  const logger = {
+    setContext: () => undefined,
+    error: () => undefined,
+    warn: () => undefined
+  } as unknown as PinoLogger
   const unit: FiscalResealUnit = work => work()
   const audit = { log: jest.fn() }
 
@@ -132,7 +136,8 @@ describe('FiscalResealService (what the database run cannot show)', () => {
     const errors: unknown[] = []
     const loud = {
       setContext: () => undefined,
-      error: (entry: unknown) => errors.push(entry)
+      error: (entry: unknown) => errors.push(entry),
+      warn: (entry: unknown) => errors.push(entry)
     } as unknown as PinoLogger
     const service = new FiscalResealService(
       prisma as never,
@@ -146,7 +151,8 @@ describe('FiscalResealService (what the database run cannot show)', () => {
     // The previous key opens it for the re-seal (which found nothing here), never for a mask
     expect(queryRaw).not.toHaveBeenCalled()
     expect(report.masked).toBe(0)
-    expect(report.failed).toEqual({ key_mismatch: 1 })
+    expect(report.failed).toEqual({})
+    expect(report.maskFailed).toEqual({ key_mismatch: 1 })
     expect(JSON.stringify(errors)).not.toMatch(/Receptora|0614/)
   })
 

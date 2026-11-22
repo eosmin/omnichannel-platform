@@ -28,12 +28,14 @@ export class FiscalResealer {
       })
     )
     const failed = Object.values(report.failed).reduce((sum, n) => sum + n, 0)
-    if (report.enabled || report.masked > 0 || failed > 0) {
+    const maskFailed = Object.values(report.maskFailed).reduce((sum, n) => sum + n, 0)
+    if (report.enabled || report.masked > 0 || failed > 0 || maskFailed > 0) {
       this.logger.info(
         { organizationId, ...report },
         'the fiscal values were checked for the previous key and the masks'
       )
     }
+    // A mask that cannot be calculated is in the log and the report, never a failed job: it would fail every night and nothing retries can fix
     if (failed > 0) {
       throw new Error(
         `${failed} fiscal values were not sealed again or masked (see the log by code)`
