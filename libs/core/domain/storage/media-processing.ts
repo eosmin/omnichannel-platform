@@ -162,6 +162,8 @@ export const ExistingDocumentSweep = {
   MAX_ATTEMPTS: ExistingPictureSweep.MAX_ATTEMPTS,
   // Under the lock of its schedule, as the sweep of pictures
   MAX_RUN_MS: 420_000,
+  // What the sweep answers for a document it did not finish and did not mark: the object or the row changed under it (never written to a row)
+  CHANGED: 'changed',
   Outcomes: {
     ALREADY_CLEAN: ExistingPictureSweep.Outcomes.ALREADY_CLEAN,
     // Kept as it came: encrypted, signed, damaged or too big once opened (the reason is in the log of `sanitizeDocument`)

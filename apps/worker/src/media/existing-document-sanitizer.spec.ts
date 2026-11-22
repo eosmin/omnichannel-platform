@@ -117,6 +117,10 @@ describe('ExistingDocumentSanitizer', () => {
       })
     }),
     read: jest.fn((key: string) => Promise.resolve(bucket.get(key) ?? null)),
+    delete: jest.fn((key: string) => {
+      bucket.delete(key)
+      return Promise.resolve()
+    }),
     put: jest.fn((key: string, body: Buffer) => {
       if (failPutOn.has(key)) return Promise.reject(new Error('the bucket refused the write'))
       puts.push(key)
@@ -134,6 +138,9 @@ describe('ExistingDocumentSanitizer', () => {
   const prisma = {
     client: {
       media: {
+        findFirst: jest.fn((args: { where: { id: string } }) =>
+          Promise.resolve(rows.find(candidate => candidate.id === args.where.id) ?? null)
+        ),
         findMany: jest.fn((args: { where: Record<string, unknown>; take: number }) => {
           findManyArgs.push(args)
           return Promise.resolve(
@@ -283,6 +290,44 @@ describe('ExistingDocumentSanitizer', () => {
       [ExistingPictureSweep.CLEANED_KEY]: true,
       [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.ALREADY_CLEAN
     })
+  })
+
+  it('takes back the file it wrote when the row was deleted while the file was written, so a deleted file does not come back', async () => {
+    const row = store('d1', await pdfWithMarkers())
+    // The row is deleted (a deletion of the conversation) in the middle of the write
+    storage.put.mockImplementationOnce((key: string, body: Buffer) => {
+      bucket.set(key, body)
+      rows.splice(rows.indexOf(row), 1)
+      return Promise.resolve()
+    })
+
+    const report = await sanitizer.runScoped([STORE])
+
+    expect(report.cleaned).toBe(0)
+    expect(bucket.has(row.key)).toBe(false)
+  })
+
+  it('keeps the file it wrote when the row moved on but still exists', async () => {
+    const row = store('d1', await pdfWithMarkers())
+    storage.put.mockImplementationOnce((key: string, body: Buffer) => {
+      bucket.set(key, body)
+      row.scanResult = { [ExistingPictureSweep.CLEANED_KEY]: true } // another writer finished the row
+      return Promise.resolve()
+    })
+
+    await sanitizer.runScoped([STORE])
+
+    expect(bucket.has(row.key)).toBe(true)
+  })
+
+  it('makes the size of the row true when it only marks a file that a crash left cleaned', async () => {
+    const clean = await cleanPdf()
+    const row = store('d1', clean)
+    row.fileSize = clean.length + 500 // the size from before the cleaning
+
+    await sanitizer.runScoped([STORE])
+
+    expect(row.fileSize).toBe(clean.length)
   })
 
   it('leaves as it is, and marks, a document that cannot be cleaned without risk', async () => {

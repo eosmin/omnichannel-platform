@@ -55,7 +55,8 @@ interface Candidate {
 
 // What a sweep did with a document besides rewriting it: the outcome it marked, or that the document changed under it and was left unmarked
 type Left =
-  (typeof ExistingDocumentSweep.Outcomes)[keyof typeof ExistingDocumentSweep.Outcomes] | 'changed'
+  | (typeof ExistingDocumentSweep.Outcomes)[keyof typeof ExistingDocumentSweep.Outcomes]
+  | typeof ExistingDocumentSweep.CHANGED
 
 // A row the sweep has not finished with: no `scan_result` at all (stored before the cleaning existed, or kept as it came by the scan because it
 // could not be cleaned), or one that failed fewer than MAX_ATTEMPTS times. The same condition guards every write, so a row that another
@@ -183,7 +184,7 @@ export class ExistingDocumentSanitizer {
   private async sweepOne(row: Candidate, storeId: string): Promise<Left | undefined> {
     // Evidence and any type the cleaner does not take are never read: the query does not select them, and this is the second lock on the door
     if (isEvidenceMedia(row.purpose) || !isSanitizedDocumentType(row.contentType)) {
-      return 'changed'
+      return ExistingDocumentSweep.CHANGED
     }
     const seen = await this.storage.head(row.key)
     const original =
@@ -198,9 +199,14 @@ export class ExistingDocumentSanitizer {
     // An error of the machine propagates: it is a failure to try again, never a mark
     const cleaned = await sanitizeDocument(original, row.contentType)
     if (cleaned.kind === 'untouched') {
-      if (cleaned.why === 'already_clean') {
+      if (cleaned.why === ExistingDocumentSweep.Outcomes.ALREADY_CLEAN) {
         // A crash between the write and the mark, or a document that never carried anything: only the mark is written
-        return this.mark(row.id, storeId, ExistingDocumentSweep.Outcomes.ALREADY_CLEAN)
+        return this.mark(
+          row.id,
+          storeId,
+          ExistingDocumentSweep.Outcomes.ALREADY_CLEAN,
+          original.length
+        )
       }
       this.logger.warn(
         { mediaId: row.id, storeId, why: cleaned.why },
@@ -216,7 +222,7 @@ export class ExistingDocumentSanitizer {
         { mediaId: row.id, storeId },
         'a stored document changed while it was being cleaned and was left as it is'
       )
-      return 'changed'
+      return ExistingDocumentSweep.CHANGED
     }
     // The original is replaced only now, with bytes that were produced and read back; a failure here leaves it in the bucket and the row unmarked
     await this.storage.put(row.key, cleaned.body, row.contentType)
@@ -235,9 +241,19 @@ export class ExistingDocumentSanitizer {
         { mediaId: row.id, storeId },
         'the row of a cleaned document changed or went while its file was written'
       )
-      return 'changed'
+      await this.takeBackIfRowGone(row.id, row.key, storeId)
+      return ExistingDocumentSweep.CHANGED
     }
     return undefined
+  }
+
+  // The write is not atomic with the check of the ETag (Step 7.3): if the row was deleted (a conversation or a customer erased) while the file
+  // was written, the write brought back a file that should be gone, so it is removed. A row that still exists is left with its file.
+  private async takeBackIfRowGone(mediaId: string, key: string, storeId: string): Promise<void> {
+    const still = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.media.findFirst({ where: { id: mediaId, storeId }, select: { id: true } })
+    )
+    if (still === null) await this.storage.delete(key)
   }
 
   // Counts a failure on the row; at MAX_ATTEMPTS it ends as `failed` (logged at error level) and the sweep stops taking it
@@ -276,11 +292,18 @@ export class ExistingDocumentSanitizer {
   }
 
   // Writes the outcome of a document that was not rewritten, only while the row is not finished: a mark never replaces another one
-  private async mark(mediaId: string, storeId: string, outcome: Left): Promise<Left> {
+  private async mark(
+    mediaId: string,
+    storeId: string,
+    outcome: Left,
+    fileSize?: number
+  ): Promise<Left> {
     await this.jobContext.forStore(storeId, () =>
       this.prisma.client.media.updateMany({
         where: { id: mediaId, storeId, status: MediaStatus.CLEAN, ...NOT_FINISHED },
         data: {
+          // A file that a crash left cleaned: the row learns its true size, as the scan does on its retry
+          ...(fileSize === undefined ? {} : { fileSize }),
           scanResult:
             outcome === ExistingDocumentSweep.Outcomes.ALREADY_CLEAN
               ? {
