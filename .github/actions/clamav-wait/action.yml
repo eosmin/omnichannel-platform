@@ -1,7 +1,8 @@
 name: Wait for ClamAV
 description: >-
   Waits until the container that clamav-start began answers its health check. It fails the job, with what the
-  start and the container said, if the container never exists, stops, turns unhealthy or is not healthy in 6 minutes.
+  start and the container said, as soon as the start gave up (three tries), the container stops or turns unhealthy,
+  or if it is not healthy in 6 minutes.
 runs:
   using: composite
   steps:
@@ -19,6 +20,11 @@ runs:
               break
               ;;
           esac
+          # The start tried three times and gave up: nothing will ever answer, so do not wait the six minutes
+          if [ "$(cat "$RUNNER_TEMP/clamav-start.status" 2>/dev/null)" = "failed" ]; then
+            status="the start gave up"
+            break
+          fi
           sleep 4
         done
         echo "::error::ClamAV did not become healthy (state: $status)"

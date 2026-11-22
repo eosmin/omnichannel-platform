@@ -9,10 +9,18 @@ export const webEnvSchema = z.object({
   // The bucket host the browser uploads to and draws files from (signed urls): it joins the CSP
   NEXT_PUBLIC_STORAGE_URL: z.url({ protocol: /^https?$/ }),
   // The Docker build always sets the variable: an empty one means no key, as an absent one does
+  // A key of the wrong shape would fail in the browser (`PushManager.subscribe`), not at build: the public half of a pair
+  // from `pnpm vapid:generate` is an uncompressed P-256 point, 65 bytes starting with 0x04, which is 87 base64url
+  // characters starting with `B` (the api and the worker check the pair with the same rule, `PushLimits.VAPID_PUBLIC_BYTES`;
+  // the web does not import libs/core, so the shape is written as one pattern, small enough for the budget of the inbox)
   NEXT_PUBLIC_VAPID_PUBLIC_KEY: z
     .string()
+    .regex(
+      /^B[\w-]{86}$/,
+      'the public key of a VAPID pair: 87 base64url characters, as `pnpm vapid:generate` prints'
+    )
     .optional()
-    .transform(value => (value === '' ? undefined : value)),
+    .or(z.literal('').transform(() => undefined)),
   NEXT_PUBLIC_SENTRY_DSN: z.url().optional(),
   NEXT_PUBLIC_WIDGET_SCRIPT_URL: z.url()
 })
