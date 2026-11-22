@@ -20,12 +20,14 @@ import { RetentionWorkerModule } from '../retention/retention.module'
 import { ShippingWorkerModule } from '../shipping/shipping.module'
 
 import { ClamavClient } from './clamav.client'
+import { ExistingDocumentSanitizer } from './existing-document-sanitizer.service'
 import { ExistingPictureSanitizer } from './existing-picture-sanitizer.service'
 import { InboundMediaFetcher } from './inbound-media-fetcher.service'
 import { MediaPipeline } from './media-pipeline.service'
 import { OriginMediaFetcher } from './origin-media-fetcher.service'
 import { OrphanMediaCleaner } from './orphan-media-cleaner.service'
 import { UnavailableFileMarker } from './unavailable-file-marker.service'
+import { VersionedBucketGuard } from './versioned-bucket.guard'
 
 // The storage, the database and the logger come from the platform module of the worker; the queue of
 // the heavy jobs from QueuesPlatformModule; the address of ClamAV from VirusScanPlatformModule.
@@ -63,8 +65,15 @@ import { UnavailableFileMarker } from './unavailable-file-marker.service'
     OriginMediaFetcher,
     OrphanMediaCleaner,
     ExistingPictureSanitizer,
+    ExistingDocumentSanitizer,
+    VersionedBucketGuard,
     HeavyProcessingProcessor
   ],
-  exports: [OrphanMediaCleaner, ExistingPictureSanitizer]
+  exports: [
+    OrphanMediaCleaner,
+    ExistingPictureSanitizer,
+    ExistingDocumentSanitizer,
+    VersionedBucketGuard
+  ]
 })
 export class MediaModule {}

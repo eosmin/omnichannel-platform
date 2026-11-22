@@ -7,6 +7,7 @@ import { ErrorCodes, type ErrorResponse, HttpStatusCodes } from '@platform/core/
 import { type AuthenticatedRequest, correlationIdMiddleware } from '@platform/core/logger'
 import { useHttpMetrics } from '@platform/core/metrics-module'
 
+import { carrierWebhookBodyParser } from './carrier-webhook-body-parser'
 import { pluginEventsBodyParser } from './plugin-events-body-parser'
 import { apiSecurityHeaders } from './security-headers'
 import { PluginKeyProbeLimiter } from './throttler/plugin-key-probe-limiter'
@@ -45,6 +46,8 @@ export async function configureHttpApp(
   // Before the app initializes, so before Nest's 100 KB parser: it takes the one route of the plugins that needs more
   // The limit of the keys that failed is asked before its large body is read; an app without the throttler module has no limit to ask
   app.use(pluginEventsBodyParser(probeLimiterOf(app)))
+  // The webhook of a carrier: a body that is not JSON gets the uniform 401 and not the 400 of the parser
+  app.use(carrierWebhookBodyParser())
   // The leading slash matters: without it Nest 12 leaves its not-found handler out and an unknown
   // route answers with Express's HTML page instead of the error contract
   app.setGlobalPrefix(API_PREFIX, {

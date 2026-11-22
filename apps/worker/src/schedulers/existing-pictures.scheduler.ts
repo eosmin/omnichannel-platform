@@ -2,11 +2,12 @@ import { Injectable } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { PinoLogger } from 'nestjs-pino'
 
-import { errorName } from '@platform/channels/connections'
+import { errorName } from '@platform/core/errors'
 import { LockNames, Schedules } from '@platform/core/queues'
 import { ExistingPictureSweep } from '@platform/core/storage'
 
 import { ExistingPictureSanitizer } from '../media/existing-picture-sanitizer.service'
+import { VersionedBucketGuard } from '../media/versioned-bucket.guard'
 
 import { LeaderLockService } from './leader-lock.service'
 
@@ -20,6 +21,7 @@ export class ExistingPicturesScheduler {
   constructor(
     private readonly locks: LeaderLockService,
     private readonly sanitizer: ExistingPictureSanitizer,
+    private readonly guard: VersionedBucketGuard,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(ExistingPicturesScheduler.name)
@@ -29,6 +31,8 @@ export class ExistingPicturesScheduler {
   async run(): Promise<void> {
     try {
       await this.locks.withLock(LockNames.SANITIZE_EXISTING_PICTURES, LOCK_SECONDS, async () => {
+        // The sweep re-encodes customer pictures: it takes no batch unless the bucket can bring the original back (`VersionedBucketGuard`)
+        if (!(await this.guard.allows(LockNames.SANITIZE_EXISTING_PICTURES))) return
         const report = await this.sanitizer.run()
         const handled = report.cleaned + report.alreadyClean + report.skipped
         if (handled + report.failed >= ExistingPictureSweep.MAX_PER_RUN) {

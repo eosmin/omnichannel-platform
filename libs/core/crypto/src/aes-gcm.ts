@@ -1,8 +1,12 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 
 // Layout of the stored bytes: [1 byte format version][12 byte IV][ciphertext][16 byte auth tag].
-// The version byte lets a later algorithm or layout coexist with rows written today.
-const FORMAT_VERSION = 1
+// The version byte lets a later algorithm or layout coexist with rows written today:
+//  - version 1: no associated data (what every row written before Step 7.3-S17 holds, and what a seal without `aad` still writes);
+//  - version 2: the GCM tag also covers the associated data (`aad`), so a sealed value moved to another row does not open.
+// An open accepts both: a version 1 row opens as it always did, a version 2 row opens only with the same `aad` it was sealed with.
+const FORMAT_VERSION_PLAIN = 1
+const FORMAT_VERSION_BOUND = 2
 const ALGORITHM = 'aes-256-gcm'
 const KEY_BYTES = 32
 const IV_BYTES = 12
@@ -25,25 +29,37 @@ export function parseEncryptionKey(hex: string): Buffer {
   return Buffer.from(hex, 'hex')
 }
 
-export function encrypt(plaintext: string, key: Buffer): Buffer<ArrayBuffer> {
+export function encrypt(plaintext: string, key: Buffer, aad?: string): Buffer<ArrayBuffer> {
   assertKey(key)
   const iv = randomBytes(IV_BYTES)
   const cipher = createCipheriv(ALGORITHM, key, iv)
+  if (aad !== undefined) cipher.setAAD(Buffer.from(aad, 'utf8'))
   const body = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
-  return Buffer.concat([Buffer.from([FORMAT_VERSION]), iv, body, cipher.getAuthTag()])
+  const version = aad === undefined ? FORMAT_VERSION_PLAIN : FORMAT_VERSION_BOUND
+  return Buffer.concat([Buffer.from([version]), iv, body, cipher.getAuthTag()])
 }
 
-export function decrypt(payload: Uint8Array, key: Buffer): string {
+export function decrypt(payload: Uint8Array, key: Buffer, aad?: string): string {
   assertKey(key)
   const bytes = Buffer.from(payload)
   if (bytes.length < HEADER_BYTES + TAG_BYTES) throw new DecryptionError('payload too short')
-  if (bytes[0] !== FORMAT_VERSION) throw new DecryptionError('unknown format version')
+  const version = bytes[0]
+  if (version !== FORMAT_VERSION_PLAIN && version !== FORMAT_VERSION_BOUND) {
+    throw new DecryptionError('unknown format version')
+  }
+  // A bound value never opens without its associated data. A plain (version 1) value has no data to check: it opens even when `aad` is given,
+  // which is the compatibility with what was sealed before the data existed (a caller that must refuse version 1 has to check the format itself)
+  if (version === FORMAT_VERSION_BOUND && aad === undefined) {
+    throw new DecryptionError('missing associated data')
+  }
 
   const iv = bytes.subarray(1, HEADER_BYTES)
   const body = bytes.subarray(HEADER_BYTES, bytes.length - TAG_BYTES)
   const tag = bytes.subarray(bytes.length - TAG_BYTES)
   const decipher = createDecipheriv(ALGORITHM, key, iv)
   decipher.setAuthTag(tag)
+  if (version === FORMAT_VERSION_BOUND && aad !== undefined)
+    decipher.setAAD(Buffer.from(aad, 'utf8'))
   try {
     return Buffer.concat([decipher.update(body), decipher.final()]).toString('utf8')
   } catch {

@@ -52,7 +52,9 @@ export class InvitationEmailDelivery {
     if (claimed === null) return 'skipped'
     try {
       // The invitation is never read from a different store than the one of the job, and a row that is no longer pending was cleared by the claim
-      await this.email.send(openInvitationEmail(this.cipher, claimed.sealed))
+      await this.email.send(
+        openInvitationEmail(this.cipher, claimed.sealed, { storeId, invitationId })
+      )
     } catch (error) {
       // Log first: a release that fails (the database at the same moment) must not hide why the email failed
       this.logger.warn(

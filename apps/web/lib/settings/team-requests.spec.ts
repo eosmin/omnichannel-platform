@@ -55,7 +55,8 @@ const invitation = {
   invitedBy: 'Ana',
   expiresAt: '2026-11-08T10:00:00.000Z',
   createdAt: '2026-11-01T10:00:00.000Z',
-  expired: false
+  expired: false,
+  emailStatus: 'sent'
 }
 
 function bodyOf(init: RequestInit | undefined): unknown {

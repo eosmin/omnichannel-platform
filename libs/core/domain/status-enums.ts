@@ -86,6 +86,15 @@ export enum InvitationStatus {
   REVOKED = 'REVOKED'
 }
 
+// Where the email of an invitation stands, read by the person who invited (Step 7.3-S17): derived from the outbox of the row, never stored
+export enum InvitationEmailStatus {
+  PENDING = 'pending',
+  SENT = 'sent',
+  FAILED = 'failed',
+  // No email on its way, none sent, none given up: an invitation older than the outbox, or one whose outbox was cleared by its expiry. Nothing is said about it
+  NOT_SENT = 'not_sent'
+}
+
 export enum ChannelConnectionStatus {
   ACTIVE = 'active',
   ERROR = 'error',

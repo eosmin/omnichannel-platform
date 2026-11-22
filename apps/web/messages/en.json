@@ -3628,6 +3628,12 @@
         "invitedBy": "invited by {name}",
         "expires": "Expires {date}",
         "expired": "Expired {date}",
+        "emailStatus": {
+          "pending": "Email on its way",
+          "sent": "Email sent",
+          "failed": "The email could not be delivered. Resend the invitation.",
+          "failedNoAction": "The email could not be delivered. Someone who can invite must resend it."
+        },
         "resend": {
           "action": "Resend",
           "done": "A new invitation was sent to {email}.",
