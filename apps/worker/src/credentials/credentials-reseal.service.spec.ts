@@ -18,7 +18,7 @@ describe('CredentialsResealService (what the database run cannot show)', () => {
   const audit = { log: jest.fn() }
 
   // Only the table of the webhooks holds rows; every other target reads nothing
-  function prismaWith(rows: { id: string; secret: Uint8Array }[], swapped: number) {
+  function prismaWith(rows: { id: string; secret: Uint8Array<ArrayBuffer> }[], swapped: number) {
     const updateMany = jest.fn().mockResolvedValue({ count: swapped })
     const findMany = jest.fn().mockImplementation((args: { where?: { id?: { gt: string } } }) => {
       const gt = args.where?.id?.gt
@@ -102,7 +102,7 @@ describe('CredentialsResealService (what the database run cannot show)', () => {
     const prisma = prismaWith(rows, 1)
     // The swap of a row changes what the next read returns
     prisma.updateMany.mockImplementation(
-      (args: { where: { id: string }; data: { secret: Uint8Array } }) => {
+      (args: { where: { id: string }; data: { secret: Uint8Array<ArrayBuffer> } }) => {
         const row = rows.find(r => r.id === args.where.id)
         if (row !== undefined) row.secret = args.data.secret
         return Promise.resolve({ count: 1 })
@@ -140,11 +140,13 @@ describe('CredentialsResealService (what the database run cannot show)', () => {
               webhooks.filter(after(a.where?.id?.gt)).slice(0, CredentialsReseal.PAGE_SIZE)
             )
           ),
-          updateMany: jest.fn((a: { where: { id: string }; data: { secret: Uint8Array } }) => {
-            const row = webhooks.find(r => r.id === a.where.id)
-            if (row !== undefined) row.secret = a.data.secret
-            return Promise.resolve({ count: 1 })
-          })
+          updateMany: jest.fn(
+            (a: { where: { id: string }; data: { secret: Uint8Array<ArrayBuffer> } }) => {
+              const row = webhooks.find(r => r.id === a.where.id)
+              if (row !== undefined) row.secret = a.data.secret
+              return Promise.resolve({ count: 1 })
+            }
+          )
         },
         pluginInstallation: {
           findMany: jest.fn((a: { where?: { id?: { gt: string } } }) =>
@@ -161,7 +163,7 @@ describe('CredentialsResealService (what the database run cannot show)', () => {
             )
           ),
           updateMany: jest.fn(
-            (a: { where: { id: string }; data: { webhookSecret?: Uint8Array } }) => {
+            (a: { where: { id: string }; data: { webhookSecret?: Uint8Array<ArrayBuffer> } }) => {
               const row = installs.find(r => r.id === a.where.id)
               if (row !== undefined && a.data.webhookSecret !== undefined) {
                 row.secret = a.data.webhookSecret
