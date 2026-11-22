@@ -595,10 +595,9 @@ describe('CONSENT_HASH_KEY, the key of the cookie banner hashes (Step 7.2-K2)', 
   }
   const deployed: Record<string, string> = { ...deployedWithoutKey, CONSENT_HASH_KEY: OWN_KEY }
 
-  it('may be left out outside a deployed environment, and has an id', () => {
-    const env = parseEnv(withoutKey)
-    expect(env.CONSENT_HASH_KEY).toBeUndefined()
-    expect(env.CONSENT_HASH_KEY_ID).toBe('c1')
+  it('may be left out outside a deployed environment, and an empty value counts as left out', () => {
+    expect(parseEnv(withoutKey).CONSENT_HASH_KEY).toBeUndefined()
+    expect(parseEnv({ ...withoutKey, CONSENT_HASH_KEY: '' }).CONSENT_HASH_KEY).toBeUndefined()
   })
 
   it.each(['staging', 'production'])('is required in %s', nodeEnv => {
@@ -618,18 +617,19 @@ describe('CONSENT_HASH_KEY, the key of the cookie banner hashes (Step 7.2-K2)', 
       parseEnv({
         ...deployed,
         NODE_ENV: 'production',
+        CONSENT_HASH_KEY: deployed['CREDENTIALS_ENCRYPTION_KEY'] ?? ''
+      })
+    ).toThrow(/CONSENT_HASH_KEY/)
+    expect(() =>
+      parseEnv({
+        ...deployed,
+        NODE_ENV: 'production',
         CONSENT_HASH_KEY: 'change-me-to-at-least-32-characters-long-value'
       })
     ).toThrow(/CONSENT_HASH_KEY/)
   })
 
-  it('takes at least 32 characters and an id of lower-case letters and digits', () => {
+  it('takes at least 32 characters', () => {
     expect(() => parseEnv({ ...validEnv, CONSENT_HASH_KEY: 'short' })).toThrow(/CONSENT_HASH_KEY/)
-    expect(parseEnv({ ...validEnv, CONSENT_HASH_KEY_ID: 'c2' }).CONSENT_HASH_KEY_ID).toBe('c2')
-    for (const id of ['', 'C2', 'c 2', 'c:2', 'x'.repeat(17)]) {
-      expect(() => parseEnv({ ...validEnv, CONSENT_HASH_KEY_ID: id })).toThrow(
-        /CONSENT_HASH_KEY_ID/
-      )
-    }
   })
 })

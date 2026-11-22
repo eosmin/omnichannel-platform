@@ -20,8 +20,7 @@ import { env } from '@platform/core/config/env'
       useFactory: (): ConsentHashKey =>
         consentHashKeyOf({
           jwtSecret: env.JWT_SECRET,
-          consentHashKey: env.CONSENT_HASH_KEY,
-          consentHashKeyId: env.CONSENT_HASH_KEY_ID
+          consentHashKey: env.CONSENT_HASH_KEY
         })
     },
     {

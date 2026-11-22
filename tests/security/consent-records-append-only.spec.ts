@@ -64,7 +64,7 @@ describe('consent_records is append-only', () => {
       const { id } = await fresh()
       await expect(
         owner.$executeRawUnsafe(
-          'UPDATE consent_records SET revoked_at = now(), granted = false WHERE id = $1',
+          "UPDATE consent_records SET revoked_at = granted_at + interval '1 second', granted = false WHERE id = $1",
           id
         )
       ).rejects.toThrow(refused)
@@ -88,10 +88,40 @@ describe('consent_records is append-only', () => {
       expect((await rowOf(id)).customerId).toBe(customerId)
     })
 
+    it('moves customer_id only to a customer of the same store', async () => {
+      const { id, customerId } = await fresh()
+      const foreign = await createCustomer(owner, { storeId: otherStoreId })
+      await expect(
+        owner.$executeRawUnsafe(
+          'UPDATE consent_records SET customer_id = $1 WHERE id = $2',
+          foreign.id,
+          id
+        )
+      ).rejects.toThrow(refused)
+      expect((await rowOf(id)).customerId).toBe(customerId)
+    })
+
+    it('sets revoked_at to a believable instant: not before the grant, not in the future', async () => {
+      const { id } = await fresh()
+      await expect(
+        owner.$executeRawUnsafe(
+          "UPDATE consent_records SET revoked_at = granted_at - interval '1 day' WHERE id = $1",
+          id
+        )
+      ).rejects.toThrow(refused)
+      await expect(
+        owner.$executeRawUnsafe(
+          "UPDATE consent_records SET revoked_at = (now() AT TIME ZONE 'UTC') + interval '2 days' WHERE id = $1",
+          id
+        )
+      ).rejects.toThrow(refused)
+      expect((await rowOf(id)).revokedAt).toBeNull()
+    })
+
     it('sets revoked_at once, and never moves or clears it', async () => {
       const { id } = await fresh()
       await owner.$executeRawUnsafe(
-        'UPDATE consent_records SET revoked_at = now() WHERE id = $1',
+        "UPDATE consent_records SET revoked_at = granted_at + interval '1 second' WHERE id = $1",
         id
       )
       const revokedAt = (await rowOf(id)).revokedAt
@@ -144,7 +174,7 @@ describe('consent_records is append-only', () => {
         )
       ).rejects.toThrow(refused)
       await owner.$executeRawUnsafe(
-        'UPDATE consent_records SET revoked_at = now(), ip_address = NULL, user_agent = NULL WHERE id = $1',
+        "UPDATE consent_records SET revoked_at = (now() AT TIME ZONE 'UTC'), ip_address = NULL, user_agent = NULL WHERE id = $1",
         withBoth.id
       )
       const cleared = await rowOf(withBoth.id)
@@ -192,6 +222,31 @@ describe('consent_records is append-only', () => {
         await client.query('ROLLBACK').catch(() => undefined)
         await client.end()
       }
+    })
+
+    it('refuses a delete that another trigger makes while the customer and the store are alive', async () => {
+      const { id } = await fresh()
+      const client = new pg.Client({ connectionString: connectionUrls().owner })
+      await client.connect()
+      try {
+        // Inside a transaction that is rolled back: a table with a trigger that deletes the row, at depth 2, as a side effect
+        await client.query('BEGIN')
+        await client.query('CREATE TABLE k2_probe (note text)')
+        await client.query(
+          `CREATE FUNCTION k2_probe_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+           BEGIN DELETE FROM consent_records WHERE id = NEW.note; RETURN NEW; END $$`
+        )
+        await client.query(
+          'CREATE TRIGGER k2_probe_trg AFTER INSERT ON k2_probe FOR EACH ROW EXECUTE FUNCTION k2_probe_delete()'
+        )
+        await expect(client.query('INSERT INTO k2_probe VALUES ($1)', [id])).rejects.toThrow(
+          refused
+        )
+      } finally {
+        await client.query('ROLLBACK').catch(() => undefined)
+        await client.end()
+      }
+      expect(await owner.consentRecord.count({ where: { id } })).toBe(1)
     })
 
     it('lets the row go with its customer', async () => {

@@ -130,14 +130,13 @@ export const envSchema = z
     JWT_SECRET: z.string().min(32),
     // The key that hashes the address of a visitor who answers the cookie banner (`cookie_consents.ip_hash`, Step 7.2-K2): its own secret,
     // so that a leak of the signing secret does not also give the addresses back by brute force. A deployed environment must set it (it
-    // must not be JWT_SECRET); a laptop or a test run may leave it out and the key is derived from JWT_SECRET, as before. Generate with
-    // `openssl rand -hex 32`. Rotating it: set the new value with a new CONSENT_HASH_KEY_ID; rows written before keep their old id.
-    CONSENT_HASH_KEY: z.string().min(32).optional(),
-    // Names the key in each hash it makes (`<id>:<hex>`), so a row says which key to use to check it. Change it with the key
-    CONSENT_HASH_KEY_ID: z
-      .string()
-      .regex(/^[a-z0-9]{1,16}$/)
-      .default('c1'),
+    // must not be JWT_SECRET or CREDENTIALS_ENCRYPTION_KEY); a laptop or a test run may leave it out (an empty value counts as left out) and the
+    // key is derived from JWT_SECRET, as before. Generate with `openssl rand -hex 32`. Each hash it makes names the key by a digest of the
+    // key, so rotating it is only setting a new value: rows before keep the name of the old key.
+    CONSENT_HASH_KEY: z.preprocess(
+      value => (value === '' ? undefined : value),
+      z.string().min(32).optional()
+    ),
     // Written as "15m" or "7d", read by the code in seconds
     JWT_EXPIRES_IN: duration('15m'),
     REFRESH_TOKEN_EXPIRES_IN: duration('7d'),
@@ -421,13 +420,14 @@ export const envSchema = z
     if (
       env.CONSENT_HASH_KEY === undefined ||
       env.CONSENT_HASH_KEY === env.JWT_SECRET ||
+      env.CONSENT_HASH_KEY === env.CREDENTIALS_ENCRYPTION_KEY ||
       env.CONSENT_HASH_KEY.startsWith(PLACEHOLDER_JWT_SECRET_PREFIX)
     ) {
       // Its own key, never the signing secret and never the placeholder of `.env.example`
       ctx.issues.push({
         code: 'custom',
         message:
-          'a deployed environment needs its own CONSENT_HASH_KEY (at least 32 characters, not JWT_SECRET, not the placeholder)',
+          'a deployed environment needs its own CONSENT_HASH_KEY (at least 32 characters, not JWT_SECRET or CREDENTIALS_ENCRYPTION_KEY, not the placeholder)',
         path: ['CONSENT_HASH_KEY'],
         input: env.CONSENT_HASH_KEY
       })

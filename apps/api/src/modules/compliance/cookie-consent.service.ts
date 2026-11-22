@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 
 import {
   type ConsentHashKey,
+  COOKIE_CONSENT_COOKIE_MAX_AGE_SECONDS,
   COOKIE_CONSENT_HASH_KEY,
   ChoosableCookieCategories,
   CookieConsentLimits,
@@ -57,10 +58,16 @@ export class CookieConsentService {
     const latest = await this.prisma.client.cookieConsent.findFirst({
       where: { visitorId: body.visitorId },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { categories: true, policyVersion: true, userId: true }
+      select: { categories: true, policyVersion: true, userId: true, createdAt: true }
     })
+    // The same answer again writes nothing, unless the row is older than the choice can be (the cookie lasts a year): then the visitor
+    // is renewing it, and the newest row must say so, or the retention would take the proof of a choice that is still valid
+    const renewing =
+      latest !== null &&
+      Date.now() - latest.createdAt.getTime() > COOKIE_CONSENT_COOKIE_MAX_AGE_SECONDS * 1000
     if (
       latest !== null &&
+      !renewing &&
       latest.policyVersion === body.policyVersion &&
       latest.userId === userId &&
       sameChoice(latest.categories, categories)
