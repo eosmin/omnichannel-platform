@@ -297,6 +297,8 @@ export interface DsrConfig {
   enabled: boolean
   hashKey: string
   encryptionKeyHex: string
+  // The key before a rotation, while one is on: what was sealed with it still opens until the re-seal reaches it (Step 7.3-S11c)
+  previousEncryptionKeyHex?: string
 }
 
 // The page of the web app that confirms a data request, and the key of the fragment that carries the token (the browser never sends a fragment

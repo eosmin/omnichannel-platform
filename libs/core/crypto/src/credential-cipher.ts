@@ -56,6 +56,32 @@ export class CredentialCipher {
     }
   }
 
+  // A sealed TEXT (not a set of credentials): the address a closing mail goes to. Same key, same format, same rule as the sets above
+  sealText(text: string, aad?: string): Buffer<ArrayBuffer> {
+    return encrypt(text, this.key, aad)
+  }
+
+  // Opens a sealed text with the current key, or with the previous one while a rotation is on; says which opened it. Throws what the
+  // CURRENT key threw when neither opens it (see openRotating)
+  openTextRotating(sealed: Uint8Array, aad?: string): { text: string; sealedWith: SealedWith } {
+    try {
+      return { text: decrypt(sealed, this.key, aad), sealedWith: SealedWith.CURRENT }
+    } catch (error) {
+      const previous = this.previousKey
+      if (previous === undefined || failureOf(error) !== DecryptionFailure.KEY_MISMATCH) throw error
+      try {
+        return { text: decrypt(sealed, previous, aad), sealedWith: SealedWith.PREVIOUS }
+      } catch {
+        throw error
+      }
+    }
+  }
+
+  // A text that must open with the current key alone (the check of a value that was sealed again)
+  openText(sealed: Uint8Array, aad?: string): string {
+    return decrypt(sealed, this.key, aad)
+  }
+
   private parse(text: string): Credentials {
     // What opened but is not a set of credentials is a damaged row; the parser's own message is dropped (it may quote the value)
     try {

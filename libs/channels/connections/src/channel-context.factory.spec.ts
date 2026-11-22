@@ -54,4 +54,16 @@ describe('ChannelContextFactory', () => {
 
     expect(() => factory.contextFor(row)).toThrow(CredentialsUnreadableError)
   })
+
+  it('opens credentials sealed with the previous key while a rotation is on, and not without it', () => {
+    const rotated = new CredentialCipher(Buffer.alloc(32, 2), Buffer.alloc(32, 1))
+    const row = rowSealedWith(sealer, { token: 'old-key' })
+
+    expect(new ChannelContextFactory(rotated).contextFor(row).credentials).toEqual({
+      token: 'old-key'
+    })
+    expect(() => new ChannelContextFactory(reader).contextFor(row)).toThrow(
+      CredentialsUnreadableError
+    )
+  })
 })

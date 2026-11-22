@@ -261,6 +261,8 @@ export const AuditAction = {
   FISCAL_EVIDENCE_READ: 'fiscal.evidence_read',
   // A sealed fiscal value sealed again with the current key after a rotation (the platform is the actor; the kind and the row, never the value)
   FISCAL_VALUE_RESEALED: 'fiscal.value_resealed',
+  // A sealed credential, secret or address outside the fiscal area sealed again with the current key after a rotation (the platform is the actor; the column and the row, never the value)
+  CREDENTIALS_VALUE_RESEALED: 'credentials.value_resealed',
   FISCAL_ISSUER_CHANGE_CONFIRMED: 'fiscal.issuer_change_confirmed',
   FINANCE_TRANSACTION_RECORDED: 'finance.transaction_recorded',
   FINANCE_TRANSACTION_VOIDED: 'finance.transaction_voided',

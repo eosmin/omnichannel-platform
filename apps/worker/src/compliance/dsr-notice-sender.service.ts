@@ -135,7 +135,13 @@ export class DsrNoticeSender {
           })
           const sealed = row.notifyToEncrypted
           const to =
-            sealed === null ? null : openDsrNotifyAddress(sealed, this.config.encryptionKeyHex)
+            sealed === null
+              ? null
+              : openDsrNotifyAddress(
+                  sealed,
+                  this.config.encryptionKeyHex,
+                  this.config.previousEncryptionKeyHex
+                )
           if (to === null) return 'unreadable' as const
           await this.queueMail(tx, storeId, requestId, row.type, to, row.retainedRecordsSummary)
           // The lease: a run that overlaps this one (or the next pass of the same one) sees a notice that is on its way and leaves it alone

@@ -48,7 +48,7 @@ export class ChannelContextFactory {
   contextFor(row: ConnectionRow): ChannelContext {
     let credentials
     try {
-      credentials = this.cipher.open(row.credentials)
+      credentials = this.cipher.openRotating(row.credentials).credentials
     } catch {
       // Nothing of the original error travels on: its text names the cipher
       throw new CredentialsUnreadableError()

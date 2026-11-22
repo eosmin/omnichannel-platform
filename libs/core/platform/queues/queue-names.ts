@@ -82,6 +82,8 @@ export const JobNames = {
   POST_FINANCE_EVENT: 'post-finance-event',
   // The daily check of the books of one organization (TDD_18 §6.1, §11): the sweep of sources with no entry and the balances
   RECONCILE_FINANCE: 'reconcile-finance',
+  // The nightly re-seal of the sealed credentials of one organization with the current key, while a previous key is held (Step 7.3-S11c)
+  RESEAL_CREDENTIALS: 'reseal-credentials',
   // The weekly check of the hash chain of the journal of one organization (TDD_18 §11): read only, it opens or clears an incident
   VERIFY_LEDGER_CHAIN: 'verify-ledger-chain',
   // Builds, signs and submits the fiscal document of a sale through the provider of the issuer (TDD_18 §8.3)
@@ -158,6 +160,10 @@ export const postFinanceEventJobId = (kind: string, sourceId: string, day: strin
 // One check of the books per organization and UTC day: the schedule run twice (two replicas, a restart) asks for the same job
 export const reconcileFinanceJobId = (organizationId: string, day: string): string =>
   `${JobNames.RECONCILE_FINANCE}-${organizationId}-${day}`
+
+// One re-seal of the credentials per organization and UTC day: asked twice, it is one job
+export const resealCredentialsJobId = (organizationId: string, day: string): string =>
+  `${JobNames.RESEAL_CREDENTIALS}-${organizationId}-${day}`
 
 // One check of the chain per organization and UTC day (the schedule fires on one day a week): asked twice, it is one job
 export const verifyLedgerChainJobId = (organizationId: string, day: string): string =>

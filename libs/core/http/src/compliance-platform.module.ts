@@ -35,7 +35,10 @@ import { env } from '@platform/core/config/env'
       useFactory: (): DsrConfig => ({
         enabled: env.DSR_PUBLIC_INTAKE_ENABLED && dsrPublicFlowReady(),
         hashKey: dsrHashKeyOf(env.JWT_SECRET),
-        encryptionKeyHex: env.CREDENTIALS_ENCRYPTION_KEY
+        encryptionKeyHex: env.CREDENTIALS_ENCRYPTION_KEY,
+        ...(env.CREDENTIALS_ENCRYPTION_KEY_PREVIOUS === undefined
+          ? {}
+          : { previousEncryptionKeyHex: env.CREDENTIALS_ENCRYPTION_KEY_PREVIOUS })
       })
     }
   ],

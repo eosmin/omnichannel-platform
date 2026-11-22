@@ -203,7 +203,7 @@ export class RemoteChannelSync implements RemoteSecretSource, OnModuleInit, OnMo
     if (row?.commandSecret == null) return null
     try {
       const open = (sealed: Uint8Array): string => {
-        const secret = this.cipher.open(sealed)[COMMAND_SECRET_FIELD]
+        const secret = this.cipher.openRotating(sealed).credentials[COMMAND_SECRET_FIELD]
         if (typeof secret !== 'string' || secret === '') throw new Error('not a secret')
         return secret
       }

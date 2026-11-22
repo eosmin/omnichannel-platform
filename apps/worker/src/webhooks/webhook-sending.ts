@@ -78,7 +78,7 @@ export class UnreadableSecret extends Error {
 export function openSecret(cipher: CredentialCipher, sealed: Uint8Array): string {
   let secret: unknown
   try {
-    secret = cipher.open(sealed)['secret']
+    secret = cipher.openRotating(sealed).credentials['secret']
   } catch {
     // A wrong key, damaged bytes or JSON that is not what was sealed: all of them are a secret nobody can read
     throw new UnreadableSecret()

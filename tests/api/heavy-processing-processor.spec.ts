@@ -27,6 +27,7 @@ describe('HeavyProcessingProcessor', () => {
   const reconcileFinance = jest.fn().mockResolvedValue(undefined)
   const reconcileFiscal = jest.fn().mockResolvedValue(undefined)
   const resealFiscal = jest.fn().mockResolvedValue(undefined)
+  const resealCredentials = jest.fn().mockResolvedValue(undefined)
   const checkChain = jest.fn().mockResolvedValue(undefined)
   const submitFiscal = jest.fn().mockResolvedValue(undefined)
   const reportContingency = jest.fn().mockResolvedValue('reported')
@@ -56,7 +57,8 @@ describe('HeavyProcessingProcessor', () => {
     { reconcile: reconcileFiscal } as never, // the daily check of the fiscal documents: what it is handed is what is tested
     { reconcile: resealFiscal } as never, // the re-seal of a rotation of the key: what it is handed is what is tested
     { submit: submitFiscal } as never, // the fiscal documents: what it is handed is what is tested
-    { report: reportContingency, reportExhausted: reportContingencyExhausted } as never // the contingency of the issuer: what it is handed is what is tested
+    { report: reportContingency, reportExhausted: reportContingencyExhausted } as never, // the contingency of the issuer: what it is handed is what is tested
+    { reconcile: resealCredentials } as never // the re-seal of the sealed credentials of a rotation of the key: what it is handed is what is tested
   )
 
   const base = {
@@ -211,6 +213,37 @@ describe('HeavyProcessingProcessor', () => {
         submit({ organizationId: ORG_ID, documentId: DOCUMENT_ID, ...patch })
       ).rejects.toBeInstanceOf(UnrecoverableError)
       expect(submitFiscal).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('reseal-credentials jobs', () => {
+    const ORG_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const reseal = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.RESEAL_CREDENTIALS,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 3 }
+      } as unknown as ProcessorJob)
+
+    it('hands the organization to the re-seal of the credentials, nothing else', async () => {
+      resealCredentials.mockClear()
+      await reseal({ organizationId: ORG_ID })
+      expect(resealCredentials).toHaveBeenCalledWith(ORG_ID)
+    })
+
+    it('lets the failure of the re-seal reach the queue, so that it is tried again', async () => {
+      resealCredentials.mockRejectedValueOnce(new Error('2 sealed values were not sealed again'))
+      await expect(reseal({ organizationId: ORG_ID })).rejects.toThrow('not sealed again')
+      expect(resealCredentials).toHaveBeenLastCalledWith(ORG_ID)
+    })
+
+    it('rejects, without a retry, a job that is not an organization id', async () => {
+      resealCredentials.mockClear()
+      await expect(reseal({ organizationId: 'not-an-id' })).rejects.toBeInstanceOf(
+        UnrecoverableError
+      )
+      expect(resealCredentials).not.toHaveBeenCalled()
     })
   })
 

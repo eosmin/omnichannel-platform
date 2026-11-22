@@ -481,7 +481,11 @@ export class DsrReviewService {
     outcome: DsrResultOutcome
   ): Promise<void> {
     if (row.notifyToEncrypted === null) return
-    const to = openDsrNotifyAddress(row.notifyToEncrypted, this.config.encryptionKeyHex)
+    const to = openDsrNotifyAddress(
+      row.notifyToEncrypted,
+      this.config.encryptionKeyHex,
+      this.config.previousEncryptionKeyHex
+    )
     // An address that does not open (a key that changed) cannot be mailed, and must not keep the request from being decided. It is marked, so the
     // reviewer sees that the person was NOT told and reaches them another way (Step 7.2-H2b-2)
     if (to === null) {

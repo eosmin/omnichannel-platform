@@ -185,6 +185,10 @@ export interface PostFinanceEventJob extends BaseJob {
 export interface ReconcileFinanceJob extends BaseJob {
   organizationId: string
 }
+// The nightly re-seal of the sealed credentials of one organization after a rotation of the key (Step 7.3-S11c): ids only, never a secret
+export interface ResealCredentialsJob extends BaseJob {
+  organizationId: string
+}
 // The weekly check of the hash chain of one organization's journal (TDD_18 §11): read only; a break opens an incident that stops the close
 export interface VerifyLedgerChainJob extends BaseJob {
   organizationId: string

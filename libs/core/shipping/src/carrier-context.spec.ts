@@ -41,4 +41,13 @@ describe('buildCarrierContext', () => {
       buildCarrierContext({ ...base, credentials: other.seal({ a: 1 }), contact: null }, cipher)
     ).toThrow(CarrierCredentialsUnreadableError)
   })
+
+  it('opens credentials sealed with the previous key while a rotation is on', () => {
+    const rotated = new CredentialCipher(Buffer.alloc(32, 9), Buffer.alloc(32, 7))
+    const context = buildCarrierContext(
+      { ...base, credentials: cipher.seal({ apiKey: 'k-old' }), contact: null },
+      rotated
+    )
+    expect(context.credentials).toEqual({ apiKey: 'k-old' })
+  })
 })
