@@ -22,7 +22,7 @@ import { displayTimeZone } from '../../lib/time-zone'
 // `useProfile` so that nothing can run without one): the login and the invitation pages must not ask for it.
 // The browser zone is read after the first render, which keeps the zone of the server until then, so what the
 // server drew and the first render of the browser are the same.
-// The store the person is working in says its zone through this (see `StoreTimeZone`); outside a store
+// The store the person is working in says its zone through this (see `StoreTimeZone` in `store-time-zone.tsx`); outside a store
 // there is nobody to say it
 export const ReportStoreZone = createContext<(zone: string | undefined) => void>(() => undefined)
 
