@@ -24,7 +24,8 @@ export function dsrHashKeyOf(secret: string): string {
 export const dsrIntakeSchema = z.object({
   storeKey: z.string().min(16).max(128),
   type: z.enum(DsrType),
-  email: z.email().max(254),
+  // A pasted address often carries a space or capitals: trimmed and lower-cased first, then checked
+  email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
   locale: z.custom<Locale>(value => SUPPORTED_LOCALES.some(locale => locale === value))
 })
 export type DsrIntake = z.infer<typeof dsrIntakeSchema>

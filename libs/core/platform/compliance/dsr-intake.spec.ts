@@ -1,5 +1,6 @@
 import {
   dsrEmailHash,
+  dsrIntakeSchema,
   dsrHashKeyOf,
   type DsrIntake,
   normalizeDsrEmail,
@@ -55,5 +56,18 @@ describe('sealDsrIntake and openDsrIntake', () => {
   it('refuses a payload that opens but does not fit (a language the store does not speak)', () => {
     const odd = sealDsrIntake({ ...intake, locale: 'xx' as DsrIntake['locale'] }, KEY)
     expect(openDsrIntake(odd, KEY)).toBeNull()
+  })
+})
+
+describe('dsrIntakeSchema', () => {
+  it('reads a pasted address with spaces and capitals as the lower-case address', () => {
+    const parsed = dsrIntakeSchema.parse({ ...intake, email: '  Ana.Perez@Example.COM ' })
+    expect(parsed.email).toBe('ana.perez@example.com')
+  })
+
+  it('refuses a body that is not an address, a kind or a language of the platform', () => {
+    expect(dsrIntakeSchema.safeParse({ ...intake, email: 'not-an-address' }).success).toBe(false)
+    expect(dsrIntakeSchema.safeParse({ ...intake, type: 'sell' }).success).toBe(false)
+    expect(dsrIntakeSchema.safeParse({ ...intake, locale: 'fr' }).success).toBe(false)
   })
 })
