@@ -328,7 +328,7 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
       await documents.submit(ctx.orgA.id, order.documentId)
       await documents.submit(ctx.orgA.id, note?.id ?? '')
       const view = await getDocument(note?.id ?? '')
-      expect(view.receiver.taxIdMasked).toBe(`${'*'.repeat(13)}01-1`)
+      expect(view.receiver.taxIdMasked).toBe('********1011')
       expect(view.documentType).toBe(SimulatorDocumentTypes.CREDIT_NOTE)
     })
 

@@ -228,6 +228,114 @@ describe('Merging customers', () => {
     expect(back.customerId).toBe(s.absorbed.id)
   })
 
+  describe('the sealed fiscal data of a customer (one row per customer)', () => {
+    const sealedRow = (customerId: string, label: string) =>
+      owner.customerFiscalData.create({
+        data: { storeId: storeId(), customerId, dataEncrypted: Buffer.from(`sealed-${label}`) }
+      })
+    const owners = async (...ids: string[]) =>
+      Object.fromEntries(
+        (await owner.customerFiscalData.findMany({ where: { id: { in: ids } } })).map(row => [
+          row.id,
+          row.customerId
+        ])
+      )
+    const unmerge = async (survivorId: string) => {
+      const mergeRow = await owner.customerMerge.findFirstOrThrow({ where: { survivorId } })
+      return asAdmin().post(ApiRoutes.customers.unmerge(survivorId)).send({ mergeId: mergeRow.id })
+    }
+
+    it('moves to the survivor when only the absorbed customer has it, and goes back on unmerge', async () => {
+      const s = await twoAnas()
+      const row = await sealedRow(s.absorbed.id, 'absorbed')
+      expect((await merge(s.survivor.id, s.absorbed.id)).status).toBe(OK)
+      expect(await owners(row.id)).toEqual({ [row.id]: s.survivor.id })
+      // The sealed bytes are the same ones, never opened
+      expect(
+        Buffer.from(
+          (await owner.customerFiscalData.findUniqueOrThrow({ where: { id: row.id } }))
+            .dataEncrypted
+        ).toString()
+      ).toBe('sealed-absorbed')
+      expect((await unmerge(s.survivor.id)).status).toBe(OK)
+      expect(await owners(row.id)).toEqual({ [row.id]: s.absorbed.id })
+    })
+
+    it('stays with the survivor when only the survivor has it, and the unmerge does not move it', async () => {
+      const s = await twoAnas()
+      const row = await sealedRow(s.survivor.id, 'survivor')
+      expect((await merge(s.survivor.id, s.absorbed.id)).status).toBe(OK)
+      expect(await owners(row.id)).toEqual({ [row.id]: s.survivor.id })
+      expect((await unmerge(s.survivor.id)).status).toBe(OK)
+      expect(await owners(row.id)).toEqual({ [row.id]: s.survivor.id })
+    })
+
+    it('loses nothing when both have it: each keeps its own row, before the merge, after it and after the unmerge', async () => {
+      const s = await twoAnas()
+      const mine = await sealedRow(s.survivor.id, 'survivor')
+      const theirs = await sealedRow(s.absorbed.id, 'absorbed')
+      expect((await merge(s.survivor.id, s.absorbed.id)).status).toBe(OK)
+      expect(await owners(mine.id, theirs.id)).toEqual({
+        [mine.id]: s.survivor.id,
+        [theirs.id]: s.absorbed.id
+      })
+      expect((await unmerge(s.survivor.id)).status).toBe(OK)
+      expect(await owners(mine.id, theirs.id)).toEqual({
+        [mine.id]: s.survivor.id,
+        [theirs.id]: s.absorbed.id
+      })
+    })
+
+    it('moves nothing when neither has it, and leaves the row of another store where it was', async () => {
+      const s = await twoAnas()
+      const stranger = await createCustomer(owner, { storeId: ctx.storeB.id })
+      const other = await owner.customerFiscalData.create({
+        data: {
+          storeId: ctx.storeB.id,
+          customerId: stranger.id,
+          dataEncrypted: Buffer.from('sealed-other-store')
+        }
+      })
+      expect((await merge(s.survivor.id, s.absorbed.id)).status).toBe(OK)
+      expect(
+        await owner.customerFiscalData.count({
+          where: { customerId: { in: [s.survivor.id, s.absorbed.id] } }
+        })
+      ).toBe(0)
+      expect(await owners(other.id)).toEqual({ [other.id]: stranger.id })
+      expect((await unmerge(s.survivor.id)).status).toBe(OK)
+      expect(await owners(other.id)).toEqual({ [other.id]: stranger.id })
+    })
+
+    it('does not move the row of a customer of another store, whatever the request says', async () => {
+      const s = await twoAnas()
+      const stranger = await createCustomer(owner, { storeId: ctx.storeB.id })
+      const other = await owner.customerFiscalData.create({
+        data: {
+          storeId: ctx.storeB.id,
+          customerId: stranger.id,
+          dataEncrypted: Buffer.from('sealed-other-store')
+        }
+      })
+      const refused = await merge(s.survivor.id, stranger.id)
+      expect(refused.status).toBeGreaterThanOrEqual(BAD_REQUEST)
+      expect(await owners(other.id)).toEqual({ [other.id]: stranger.id })
+    })
+
+    it('does not take a row back from the survivor when the absorbed customer made its own since', async () => {
+      const s = await twoAnas()
+      const moved = await sealedRow(s.absorbed.id, 'absorbed')
+      expect((await merge(s.survivor.id, s.absorbed.id)).status).toBe(OK)
+      const newer = await sealedRow(s.absorbed.id, 'newer')
+      expect((await unmerge(s.survivor.id)).status).toBe(OK)
+      // One row per customer: the one that moved stays where it is, the newer one is untouched
+      expect(await owners(moved.id, newer.id)).toEqual({
+        [moved.id]: s.survivor.id,
+        [newer.id]: s.absorbed.id
+      })
+    })
+  })
+
   it('takes the fields the user chose from the absorbed customer', async () => {
     const s = await twoAnas()
 

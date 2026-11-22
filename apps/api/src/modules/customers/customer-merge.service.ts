@@ -290,6 +290,14 @@ export class CustomerMergeService {
         UPDATE consent_records SET customer_id = ${survivorId}
         WHERE customer_id = ${absorbedId} AND store_id = ${storeId} RETURNING id`
     )
+    // The fiscal data (sealed, one row per customer) moves only to a survivor that has none; one that has its own keeps it, and the
+    // absorbed customer keeps its row. One statement, filtered by store: the row never changes store and a row of another store is not seen.
+    const fiscalDataIds = ids(
+      await tx.$queryRaw<{ id: string }[]>`
+        UPDATE customer_fiscal_data SET customer_id = ${survivorId}
+        WHERE customer_id = ${absorbedId} AND store_id = ${storeId}
+          AND NOT EXISTS (SELECT 1 FROM customer_fiscal_data WHERE customer_id = ${survivorId}) RETURNING id`
+    )
     const noteIds = ids(
       await tx.$queryRaw<{ id: string }[]>`
         UPDATE customer_notes SET customer_id = ${survivorId}
@@ -331,6 +339,7 @@ export class CustomerMergeService {
       noteIds,
       mediaIds,
       consentIds,
+      fiscalDataIds,
       fieldChoices: Object.fromEntries(
         Object.entries(body.fieldChoices).filter(([, source]) => source !== undefined)
       ) as Record<string, string>
@@ -371,6 +380,13 @@ export class CustomerMergeService {
     await tx.order.updateMany(fromSurvivorInStore(snapshot.orderIds))
     await tx.media.updateMany(fromSurvivorInStore(snapshot.mediaIds))
     await tx.consentRecord.updateMany(fromSurvivorInStore(snapshot.consentIds))
+    // The fiscal data goes back only if it is still on the survivor and the absorbed customer has none now (one row per customer)
+    if (snapshot.fiscalDataIds.length > 0) {
+      await tx.$executeRaw`
+        UPDATE customer_fiscal_data SET customer_id = ${absorbedId}
+        WHERE id = ANY(${snapshot.fiscalDataIds}::text[]) AND customer_id = ${survivorId} AND store_id = ${storeId}
+          AND NOT EXISTS (SELECT 1 FROM customer_fiscal_data WHERE customer_id = ${absorbedId})`
+    }
     await tx.customerNote.updateMany(fromSurvivor(snapshot.noteIds))
     await tx.address.updateMany(fromSurvivor(snapshot.addressIds))
     await tx.address.updateMany({

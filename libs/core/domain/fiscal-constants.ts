@@ -356,6 +356,13 @@ export const SealedValueKind = {
 } as const
 export type SealedValueKind = (typeof SealedValueKind)[keyof typeof SealedValueKind]
 
+// How often the same sealed value that does not open is logged (Step 7.3-S11b-2): a document that cannot be opened is tried again by every
+// retry of the submit, and a line per try would bury the rest. One line per value, cause and window; the map that remembers them is bounded.
+export const SealedOpenLog = {
+  WINDOW_MS: 15 * 60 * 1000,
+  MAX_REMEMBERED: 1000
+} as const
+
 // The re-seal of the fiscal values after a rotation of CREDENTIALS_ENCRYPTION_KEY (Step 7.3-S11b). The names are the database's: the
 // function that swaps the sealed columns of a decided document and the transaction-local setting that only that function turns on
 export const FiscalReseal = {

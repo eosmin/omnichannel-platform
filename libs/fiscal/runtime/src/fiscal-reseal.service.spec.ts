@@ -100,6 +100,56 @@ describe('FiscalResealService (what the database run cannot show)', () => {
     expect(prisma.findMany).not.toHaveBeenCalled()
   })
 
+  it('calculates no mask from a receiver that only the previous key opens, and counts it by code without its content', async () => {
+    const sealedOld = new CredentialCipher(oldKey).seal({
+      name: 'Ana Receptora',
+      taxId: '0614-010101-101-1'
+    })
+    const queryRaw = jest.fn()
+    const documents = {
+      // The re-seal reads nothing of the documents; only the step of the masks finds this one
+      findMany: jest
+        .fn()
+        .mockImplementation((args: { where: { receiverMaskedAt?: null } }) =>
+          Promise.resolve(
+            args.where.receiverMaskedAt === null
+              ? [{ id: 'doc-1', receiverEncrypted: new Uint8Array(sealedOld) }]
+              : []
+          )
+        ),
+      updateMany: jest.fn()
+    }
+    const empty = { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() }
+    const prisma = {
+      client: {
+        customerFiscalData: empty,
+        fiscalDocument: documents,
+        fiscalIssuer: empty,
+        fiscalContingency: empty,
+        $queryRaw: queryRaw
+      }
+    }
+    const errors: unknown[] = []
+    const loud = {
+      setContext: () => undefined,
+      error: (entry: unknown) => errors.push(entry)
+    } as unknown as PinoLogger
+    const service = new FiscalResealService(
+      prisma as never,
+      new CredentialCipher(newKey, oldKey),
+      audit as never,
+      loud
+    )
+
+    const report = await service.run('org-1', unit)
+
+    // The previous key opens it for the re-seal (which found nothing here), never for a mask
+    expect(queryRaw).not.toHaveBeenCalled()
+    expect(report.masked).toBe(0)
+    expect(report.failed).toEqual({ key_mismatch: 1 })
+    expect(JSON.stringify(errors)).not.toMatch(/Receptora|0614/)
+  })
+
   it('stops at the cap of values sealed again, says truncated, and a second run goes on and ends clean', async () => {
     const old = new CredentialCipher(oldKey)
     const cipher = new CredentialCipher(newKey, oldKey)

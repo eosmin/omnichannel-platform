@@ -95,7 +95,12 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
         environment: 'sandbox',
         issuerSnapshot: {},
         linesSnapshot: { lines: [] },
-        receiverEncrypted: new Uint8Array(sealer.seal({ taxId: content['taxId'] ?? 'T-1' })),
+        receiverEncrypted: new Uint8Array(
+          sealer.seal({
+            taxId: content['taxId'] ?? 'T-1',
+            ...(content['name'] === undefined ? {} : { name: content['name'] })
+          })
+        ),
         builtPayloadEncrypted: new Uint8Array(sealer.seal({ payload: content })),
         totalCents: 1999,
         taxCents: 0,
@@ -191,8 +196,19 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
 
     const report = await service(rotated()).run(ctx.orgA.id, unit)
 
-    expect(report.failed).toEqual({ key_mismatch: 1 })
+    // The receiver nobody opens is counted by the re-seal and again by the step of the masks (each is a run of its own over it)
+    expect(report.failed).toEqual({ key_mismatch: 2 })
     expect(report.resealed).toBe(1)
+    // No mask is guessed for it, and the one that opens has its mask
+    const lostMasks = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: lost } })
+    expect(lostMasks).toMatchObject({
+      receiverMaskedAt: null,
+      receiverNameMasked: null,
+      receiverTaxIdMasked: null
+    })
+    expect(
+      (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: fine } })).receiverMaskedAt
+    ).not.toBeNull()
     const after = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: lost } })
     expect(Buffer.from(after.receiverEncrypted).equals(Buffer.from(before.receiverEncrypted))).toBe(
       true
@@ -212,6 +228,68 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
   it('does nothing and reads nothing when no previous key is held', async () => {
     const report = await service(newCipher).run(ctx.orgA.id, unit)
     expect(report).toMatchObject({ enabled: false, scanned: 0, resealed: 0 })
+  })
+
+  describe('the masked receiver of the documents', () => {
+    const RECEIVER = { taxId: '0614-010101-101-1', name: 'Ana Receptora' }
+
+    it('calculates the masks of a live, an accepted and a voided document with the current key alone, changes nothing else, and a second run finds nothing', async () => {
+      const made = {
+        live: await makeDocument('queued', newCipher, RECEIVER),
+        accepted: await makeDocument('accepted', newCipher, RECEIVER),
+        voided: await makeDocument('voided', newCipher, RECEIVER)
+      }
+      const before = await owner.fiscalDocument.findMany({
+        where: { id: { in: Object.values(made) } }
+      })
+      // No previous key is held: the masks are looked for all the same
+      const report = await service(newCipher).run(ctx.orgA.id, unit)
+
+      expect(report.masked).toBe(3)
+      // The receiver left unreadable by an earlier case is counted by its code, with no content
+      expect(report.failed).toEqual({ key_mismatch: 1 })
+      expect(JSON.stringify(report)).not.toMatch(/Receptora|0614/)
+      for (const row of before) {
+        const after = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: row.id } })
+        expect(after.receiverNameMasked).toBe('A***********')
+        expect(after.receiverTaxIdMasked).toBe('********1011')
+        expect(after.receiverMaskedAt).not.toBeNull()
+        // Only the masked columns changed: the sealed ones are the same bytes, and so is the status
+        expect(
+          Buffer.from(after.receiverEncrypted).equals(Buffer.from(row.receiverEncrypted))
+        ).toBe(true)
+        expect(after.status).toBe(row.status)
+        expect(after.totalCents).toBe(row.totalCents)
+      }
+      const again = await service(newCipher).run(ctx.orgA.id, unit)
+      expect(again.masked).toBe(0)
+      expect(again.conflicts).toBe(0)
+    })
+
+    it('keeps a receiver with no name or tax id as "calculated" with both masks empty, and a short tax id shows nothing', async () => {
+      const none = await makeDocument('accepted', newCipher, { taxId: '12345678' })
+      await service(newCipher).run(ctx.orgA.id, unit)
+      const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: none } })
+      // Eight digits are fewer than nine: not a single digit of it is shown
+      expect(row).toMatchObject({ receiverNameMasked: null, receiverTaxIdMasked: null })
+      expect(row.receiverMaskedAt).not.toBeNull()
+    })
+
+    it('says in the table that a mask has one shape and a time, whoever writes it', async () => {
+      const id = await makeDocument('queued', newCipher, RECEIVER)
+      const write = (name: string | null, tax: string | null, at: string | null) =>
+        raw.query(
+          'UPDATE fiscal_documents SET receiver_name_masked = $2, receiver_tax_id_masked = $3, receiver_masked_at = $4 WHERE id = $1',
+          [id, name, tax, at]
+        )
+      const now = new Date().toISOString()
+      // A mask with no time, a name that shows more than its letter, a tax id that shows more than four digits
+      await expect(write('A***********', null, null)).rejects.toMatchObject({ code: '23514' })
+      await expect(write('Ana Receptora', null, now)).rejects.toMatchObject({ code: '23514' })
+      await expect(write(null, '*****1234567', now)).rejects.toMatchObject({ code: '23514' })
+      await expect(write(null, '********12ab', now)).rejects.toMatchObject({ code: '23514' })
+      await expect(write('A***********', '********1011', now)).resolves.toBeDefined()
+    })
   })
 
   describe('the guard of a reported contingency', () => {
@@ -290,7 +368,14 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
       [
         'fiscal_documents',
         'accepted',
-        ['receiver_encrypted', 'built_payload_encrypted', 'updated_at']
+        [
+          'receiver_encrypted',
+          'built_payload_encrypted',
+          'receiver_name_masked',
+          'receiver_tax_id_masked',
+          'receiver_masked_at',
+          'updated_at'
+        ]
       ],
       ['fiscal_contingencies', 'reported', ['responsible_encrypted', 'updated_at']]
     ] as const)(
@@ -342,6 +427,197 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
         expect(tried.length).toBe(columns.rows.length - sealed.length)
       }
     )
+
+    const MASKED = ['receiver_name_masked', 'receiver_tax_id_masked', 'receiver_masked_at'] as const
+    const maskedValue = (column: string): string =>
+      column === 'receiver_masked_at'
+        ? 'now()'
+        : column === 'receiver_name_masked'
+          ? "'Z***********'"
+          : "'********9999'"
+
+    it.each(
+      ['platform_app', 'platform_worker'].flatMap(role => MASKED.map(column => [role, column]))
+    )(
+      'with the setting on but no function, %s cannot change %s of a decided document',
+      async (role, column) => {
+        await expect(
+          asRole(role, async () => {
+            await raw.query(`SELECT set_config('${FiscalReseal.SETTING}', 'on', true)`)
+            await raw.query(
+              `UPDATE fiscal_documents SET "${column}" = ${maskedValue(column)} WHERE id = $1`,
+              [documentId]
+            )
+          })
+        ).rejects.toMatchObject({ message: expect.stringContaining('immutable') as string })
+        // And without the setting at all
+        await expect(
+          asRole(role, () =>
+            raw.query(
+              `UPDATE fiscal_documents SET "${column}" = ${maskedValue(column)} WHERE id = $1`,
+              [documentId]
+            )
+          )
+        ).rejects.toMatchObject({ message: expect.stringContaining('immutable') as string })
+      }
+    )
+
+    describe('the function that writes a mask', () => {
+      const callMask = (
+        role: string,
+        organizationId: string,
+        receiver: Buffer,
+        name: string | null,
+        tax: string | null
+      ) =>
+        asRole(role, () =>
+          raw.query<{ changed: boolean }>(
+            'SELECT fiscal_mask_document($1, $2, $3::bytea, $4, $5) AS changed',
+            [organizationId, documentId, receiver, name, tax]
+          )
+        )
+      const currentReceiver = async (): Promise<Buffer> =>
+        Buffer.from(
+          (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } }))
+            .receiverEncrypted
+        )
+
+      it('is for the worker only, and only for an organization in its context', async () => {
+        const receiver = await currentReceiver()
+        await expect(
+          callMask('platform_app', ctx.orgA.id, receiver, 'A***********', null)
+        ).rejects.toMatchObject({ code: '42501' })
+        await expect(
+          callMask('platform_worker', ctx.orgB.id, receiver, 'A***********', null)
+        ).rejects.toMatchObject({ code: '42501' })
+      })
+
+      it('writes the three columns once, by compare-and-swap, and leaves a document whose receiver changed alone', async () => {
+        const receiver = await currentReceiver()
+        const stale = await callMask(
+          'platform_worker',
+          ctx.orgA.id,
+          Buffer.from('not the row'),
+          'A***********',
+          null
+        )
+        expect(stale.rows[0]?.changed).toBe(false)
+        expect(
+          (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } }))
+            .receiverMaskedAt
+        ).toBeNull()
+        // The write is rolled back by asRole; the owner reads the row as the transaction left it
+        await raw.query('BEGIN')
+        try {
+          await raw.query("SELECT set_config('app.organization_ids', $1, true)", [ctx.orgA.id])
+          await raw.query('SET LOCAL ROLE platform_worker')
+          const first = await raw.query<{ changed: boolean }>(
+            'SELECT fiscal_mask_document($1, $2, $3::bytea, $4, $5) AS changed',
+            [ctx.orgA.id, documentId, receiver, 'A***********', '********1011']
+          )
+          expect(first.rows[0]?.changed).toBe(true)
+          // A second call finds the mask already there: it changes nothing
+          const second = await raw.query<{ changed: boolean }>(
+            'SELECT fiscal_mask_document($1, $2, $3::bytea, $4, $5) AS changed',
+            [ctx.orgA.id, documentId, receiver, 'B***********', '********0000']
+          )
+          expect(second.rows[0]?.changed).toBe(false)
+          const row = await raw.query<{ n: string; t: string }>(
+            'SELECT receiver_name_masked AS n, receiver_tax_id_masked AS t FROM fiscal_documents WHERE id = $1',
+            [documentId]
+          )
+          expect(row.rows[0]).toEqual({ n: 'A***********', t: '********1011' })
+        } finally {
+          await raw.query('ROLLBACK').catch(() => undefined)
+        }
+      })
+
+      it('writes no text that is not a mask (a letter and a fill, a fill and four digits), whatever the worker sends', async () => {
+        const receiver = await currentReceiver()
+        for (const [name, tax] of [
+          ['Ana Receptora', null],
+          ['A', null],
+          [null, '0614-010101-101-1'],
+          [null, '061401010110']
+        ] as const) {
+          await expect(
+            callMask('platform_worker', ctx.orgA.id, receiver, name, tax)
+          ).rejects.toMatchObject({ code: '23514' })
+        }
+        await expect(
+          callMask('platform_worker', ctx.orgA.id, receiver, null, null)
+        ).resolves.toBeDefined()
+      })
+
+      it('puts the setting back to off before it returns, so the same transaction cannot go on writing a decided document', async () => {
+        const receiver = await currentReceiver()
+        await raw.query('BEGIN')
+        try {
+          await raw.query("SELECT set_config('app.organization_ids', $1, true)", [ctx.orgA.id])
+          await raw.query('SET LOCAL ROLE platform_worker')
+          await raw.query('SELECT fiscal_mask_document($1, $2, $3::bytea, $4, $5)', [
+            ctx.orgA.id,
+            documentId,
+            receiver,
+            'A***********',
+            null
+          ])
+          const setting = await raw.query<{ v: string }>(
+            `SELECT current_setting('${FiscalReseal.SETTING}', true) AS v`
+          )
+          expect(setting.rows[0]?.v).not.toBe('on')
+          await expect(
+            raw.query(
+              "UPDATE fiscal_documents SET receiver_name_masked = 'Z***********' WHERE id = $1",
+              [documentId]
+            )
+          ).rejects.toMatchObject({ message: expect.stringContaining('immutable') as string })
+        } finally {
+          await raw.query('ROLLBACK').catch(() => undefined)
+        }
+      })
+    })
+
+    // The door is "the setting is on AND the statement runs as the owner of the re-seal function". The owner is the owner of every definer
+    // function, so the door admits whatever one of them writes. What keeps that safe is the closed list below: a new function of this owner
+    // that writes to these two tables is refused here until a person has read it.
+    it('has exactly three functions of the owner that write a fiscal document or contingency, and the worker cannot make another pass the door', async () => {
+      const writers = await raw.query<{ name: string }>(
+        `SELECT p.proname AS name
+           FROM pg_proc p
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.prokind = 'f' AND p.prorettype <> 'trigger'::regtype
+            AND p.prosrc ~* '(update|insert[[:space:]]+into|delete[[:space:]]+from)[[:space:]]+(public\\.)?fiscal_(documents|contingencies)([^a-z_]|$)'
+          ORDER BY p.proname`
+      )
+      expect(writers.rows.map(row => row.name)).toEqual([
+        'fiscal_mask_document',
+        'fiscal_reseal_contingency',
+        'fiscal_reseal_document'
+      ])
+      // The attempt: the worker sets the setting by hand and calls ANOTHER definer function of the same owner that writes a decided
+      // document. The statement runs as the owner, so the door is open; the guard then compares the whole row and refuses what is not a
+      // sealed or masked column. (A function that writes only those columns would pass, which is why the list above is closed.)
+      await raw.query('BEGIN')
+      try {
+        await raw.query(
+          `CREATE FUNCTION pg_temp.write_total(p_id text) RETURNS void LANGUAGE sql SECURITY DEFINER
+             SET search_path = pg_catalog, public, pg_temp
+             AS $f$ UPDATE public.fiscal_documents SET total_cents = total_cents + 1 WHERE id = p_id $f$`
+        )
+        await raw.query('GRANT EXECUTE ON FUNCTION pg_temp.write_total(text) TO platform_worker')
+        await raw.query("SELECT set_config('app.organization_ids', $1, true)", [ctx.orgA.id])
+        await raw.query('SET LOCAL ROLE platform_worker')
+        await raw.query(`SELECT set_config('${FiscalReseal.SETTING}', 'on', true)`)
+        await expect(
+          raw.query('SELECT pg_temp.write_total($1)', [documentId])
+        ).rejects.toMatchObject({
+          message: expect.stringContaining('only the sealed and masked columns') as string
+        })
+      } finally {
+        await raw.query('ROLLBACK').catch(() => undefined)
+      }
+    })
 
     it('without the setting, the worker and the application roles cannot change a sealed column of a decided document at all', async () => {
       for (const role of ['platform_app', 'platform_worker']) {
@@ -401,7 +677,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
       expect(answer.rows[0]?.changed).toBe(false)
     })
 
-    it('lets the door change the two sealed columns and nothing else, and closes it when the function returns', async () => {
+    it('lets the door change the sealed and the masked columns and nothing else, and closes it when the function returns', async () => {
       // As the owner of the function (the only role the door admits), by hand: the sealed columns pass, any other column does not
       await raw.query('BEGIN')
       try {
@@ -411,7 +687,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
             documentId
           ])
         ).rejects.toMatchObject({
-          message: expect.stringContaining('only the sealed columns') as string
+          message: expect.stringContaining('only the sealed and masked columns') as string
         })
       } finally {
         await raw.query('ROLLBACK').catch(() => undefined)
@@ -422,7 +698,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
         await expect(
           raw.query("UPDATE fiscal_documents SET status = 'voided' WHERE id = $1", [documentId])
         ).rejects.toMatchObject({
-          message: expect.stringContaining('only the sealed columns') as string
+          message: expect.stringContaining('only the sealed and masked columns') as string
         })
       } finally {
         await raw.query('ROLLBACK').catch(() => undefined)

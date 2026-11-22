@@ -23,12 +23,8 @@ test.describe('Finance → a business document with a sealed receiver', () => {
   // The worker makes the document and sends it after the screen answers: each wait below is up to a minute
   test.setTimeout(180_000)
   const run = randomUUID().slice(0, 8)
-  // What the list and the detail show of a receiver's name: the first letter of each word (`maskPersonName`)
-  const maskedName = (name: string): string =>
-    name
-      .split(' ')
-      .map(word => `${word.charAt(0)}${'*'.repeat(word.length - 1)}`)
-      .join(' ')
+  // What the list and the detail show of a receiver's name: its first letter and a fixed fill (`maskReceiverName`), so the length never shows
+  const maskedName = (name: string): string => `${name.charAt(0)}${'*'.repeat(11)}`
   const ownerEmail = `e2e-finance-receiver-owner-${run}@example.com`
   let storeId = ''
   let sale = {

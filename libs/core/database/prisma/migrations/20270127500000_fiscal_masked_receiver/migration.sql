@@ -5,6 +5,15 @@
 -- AlterTable
 ALTER TABLE "fiscal_documents" ADD COLUMN "receiver_name_masked" TEXT, ADD COLUMN "receiver_tax_id_masked" TEXT, ADD COLUMN "receiver_masked_at" TIMESTAMP(3);
 
+-- A mask with no time is never kept: the time says "calculated", and a document with no time has no mask in the clear
+ALTER TABLE "fiscal_documents" ADD CONSTRAINT "fiscal_documents_receiver_mask_calculated_chk"
+  CHECK ("receiver_masked_at" IS NOT NULL OR ("receiver_name_masked" IS NULL AND "receiver_tax_id_masked" IS NULL));
+-- A mask has ONE shape, whoever writes it: a letter and eleven fills for a name, eight fills and four digits for a tax id. The worker that
+-- writes it through fiscal_mask_document cannot put any other text in the clear (the database cannot open the sealed receiver to check it).
+ALTER TABLE "fiscal_documents" ADD CONSTRAINT "fiscal_documents_receiver_mask_shape_chk"
+  CHECK (("receiver_name_masked" IS NULL OR "receiver_name_masked" ~ '^.[*]{11}$')
+    AND ("receiver_tax_id_masked" IS NULL OR "receiver_tax_id_masked" ~ '^[*]{8}[0-9]{4}$'));
+
 -- The rows the job still has to calculate (a document with a mask never appears here)
 CREATE INDEX "fiscal_documents_receiver_unmasked_idx" ON "fiscal_documents"("organization_id", "id") WHERE "receiver_masked_at" IS NULL;
 
@@ -81,12 +90,6 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
--- The re-seal of one decided or live document, in one statement that the guard recognises. The caller (the worker) has already opened the
--- old value, sealed it again with the current key and checked that the new value opens to the same text; here the swap is compare-and-swap
--- (the old bytes are in the WHERE), so a row that changed meanwhile is left alone and the call says so. The organization must be one of the
--- context of the caller. The setting that opens the door of the guard lives only inside this function: it is set, the statement runs, and it
--- is put back before the function returns.
 
 -- Writes the mask of one document whose mask is not calculated yet, by compare-and-swap (the receiver it was calculated from is in the WHERE and
 -- the mask must still be missing). Only the worker calls it, for an organization in its context; it uses the door of the guard.
