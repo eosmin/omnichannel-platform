@@ -640,6 +640,10 @@
         "heading": "Tu solicitud expiró",
         "body": "Tu solicitud de {type} no se confirmó a tiempo y se cerró. Puedes hacer una nueva."
       },
+      "cancelled": {
+        "heading": "Tu solicitud fue cancelada",
+        "body": "Tu solicitud de {type} fue cancelada y no se borró nada. Puedes escribir a la tienda si quieres saber por qué."
+      },
       "retained": "La tienda conserva {orders} pedidos y sus facturas porque la ley lo exige por razones de impuestos (obligación legal).",
       "footer": "Este es un mensaje automático.",
       "types": {

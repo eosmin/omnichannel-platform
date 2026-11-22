@@ -25,6 +25,7 @@ import { officialRedactedKeys, PluginRegistry, PluginsModule } from '@platform/p
 
 import { AnalyticsModule } from './analytics/analytics.module'
 import { CarriersWorkerModule } from './carriers/carriers.module'
+import { DsrWorkerModule } from './compliance/dsr.module'
 import { ExportsModule } from './exports/exports.module'
 import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { WORKER_RLS_CONTEXT_ON, WorkerRoleCheck } from './health/worker-role.check'
@@ -53,6 +54,7 @@ import { BenefitCloseScheduler } from './schedulers/benefit-close.scheduler'
 import { BulkLabelsScheduler } from './schedulers/bulk-labels.scheduler'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
+import { DsrExpireScheduler } from './schedulers/dsr-expire.scheduler'
 import { EmailDigestScheduler } from './schedulers/email-digest.scheduler'
 import { ExistingDocumentsScheduler } from './schedulers/existing-documents.scheduler'
 import { ExistingPicturesScheduler } from './schedulers/existing-pictures.scheduler'
@@ -92,6 +94,8 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     InboundModule,
     MediaModule,
     ExportsModule,
+    // The sweep of the data requests that were never confirmed is run by its scheduler below
+    DsrWorkerModule,
     NotificationsModule,
     AnalyticsModule,
     CarriersWorkerModule,
@@ -142,6 +146,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     ExistingPicturesScheduler,
     ExistingDocumentsScheduler,
     ExpiredExportsScheduler,
+    DsrExpireScheduler,
     EmailDigestScheduler,
     ReportDispatchScheduler,
     SnoozeWakeScheduler,
