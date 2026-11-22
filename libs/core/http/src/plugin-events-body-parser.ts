@@ -118,7 +118,14 @@ function wantsLargeRead(request: Request): boolean {
   )
 }
 
-function readLargeBody(request: Request, response: Response, next: NextFunction): void {
+// `done` is called once the body has been read (or refused): the place of the address is given back then, not when the response
+// closes, because the handler of the route runs for as long as it needs after the body is in
+function readLargeBody(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+  done: () => void
+): void {
   readBody(request, RemoteChannelApiLimits.EVENTS_BODY_MAX_BYTES)
     .then(raw => {
       let parsed: unknown
@@ -152,6 +159,7 @@ function readLargeBody(request: Request, response: Response, next: NextFunction)
       })
       next(error)
     })
+    .finally(done)
 }
 
 // What the parser asks of the limit of the keys that failed: only how long an address has to wait
@@ -172,7 +180,11 @@ function tooManyRequests(waitSeconds: number): PlatformException {
 // first, so a call that would not read costs no Redis round trip). An address that has to wait for its failed keys, or that has
 // too many large reads in flight, is answered 429 with the time to wait and never gets a 413 for a good batch (a 413 is a verdict
 // on the batch, which a plugin would not retry). The limiter never throws (it lets the call through when Redis fails), but the
-// answer is guarded anyway: a failed read must not stop the request. The count of reads in flight is per replica, as the memory is.
+// answer is guarded anyway: a failed read must not stop the request.
+// The place of an address among the reads in flight (per replica, as the memory is) is taken at once, before the limiter is
+// asked, with its `close` listener registered at the same moment, and it is given back by whichever comes first: the end of the
+// read, an error, a wait of the limiter, or the close of the response (a client that goes away while the limiter answers has no
+// read to end). Giving it back is idempotent, so the count can neither go below zero nor stay stuck.
 export function pluginEventsBodyParser(probes?: PluginKeyProbeGate): RequestHandler {
   const inFlight = new Map<string, number>()
   return (request: Request, response: Response, next: NextFunction): void => {
@@ -181,32 +193,43 @@ export function pluginEventsBodyParser(probes?: PluginKeyProbeGate): RequestHand
       return
     }
     const address = request.ip ?? ''
-    const start = (): void => {
-      // An unknown address (no `request.ip`) has no count of its own: it would be one for everybody
-      if (address === '') {
-        readLargeBody(request, response, next)
-        return
-      }
+    let held = false
+    const release = (): void => {
+      if (!held) return
+      held = false
+      const left = (inFlight.get(address) ?? 1) - 1
+      if (left <= 0) inFlight.delete(address)
+      else inFlight.set(address, left)
+    }
+    // An unknown address (no `request.ip`) has no count of its own: it would be one for everybody
+    if (address !== '') {
       const current = inFlight.get(address) ?? 0
       if (current >= RemoteChannelApiLimits.EVENTS_CONCURRENT_READS_PER_ADDRESS) {
         next(tooManyRequests(1))
         return
       }
       inFlight.set(address, current + 1)
-      response.once('close', () => {
-        const left = (inFlight.get(address) ?? 1) - 1
-        if (left <= 0) inFlight.delete(address)
-        else inFlight.set(address, left)
-      })
-      readLargeBody(request, response, next)
+      held = true
+      response.once('close', release)
+    }
+    const start = (): void => {
+      // The client that went away while the limit was being asked has nothing to read (and the read of a destroyed request
+      // never ends)
+      if (request.destroyed || response.destroyed) {
+        release()
+        return
+      }
+      readLargeBody(request, response, next, release)
     }
     if (probes === undefined) {
       start()
       return
     }
     probes.retryAfter(address).then(wait => {
-      if (wait > 0) next(tooManyRequests(wait))
-      else start()
+      if (wait > 0) {
+        release()
+        next(tooManyRequests(wait))
+      } else start()
     }, start)
   }
 }

@@ -233,7 +233,7 @@ describe('the large reads of one address in flight', () => {
   function call(
     handler: RequestHandler,
     ip: string | undefined
-  ): { next: jest.Mock; response: EventEmitter } {
+  ): { next: jest.Mock; request: EventEmitter; response: EventEmitter } {
     const request = Object.assign(new EventEmitter(), {
       method: 'POST',
       path: `${API_PREFIX}${PluginApiRoutes.channel.events}`,
@@ -245,8 +245,9 @@ describe('the large reads of one address in flight', () => {
     const response = Object.assign(new EventEmitter(), { setHeader: jest.fn() })
     const next = jest.fn()
     handler(request as never, response as never, next)
-    return { next, response }
+    return { next, request, response }
   }
+  const tick = (): Promise<void> => new Promise(resolve => setImmediate(resolve))
   // A read that is in flight has not called next yet; a refusal has, at once, with the 429
   const refused = (next: jest.Mock): boolean => {
     const calls = next.mock.calls as unknown[][]
@@ -263,6 +264,74 @@ describe('the large reads of one address in flight', () => {
 
     inFlight[0]?.response.emit('close')
     expect(call(handler, '203.0.113.7').next.mock.calls.length).toBe(0)
+  })
+
+  it('takes no place for a client that went away while the limit was being asked, so the aborts never fill the cap', async () => {
+    const waits: Array<(seconds: number) => void> = []
+    const handler = pluginEventsBodyParser({
+      retryAfter: () => new Promise<number>(resolve => waits.push(resolve))
+    })
+
+    // As many aborts as the cap, each gone before the limit answers
+    const aborted = Array.from({ length: cap }, () => {
+      const started = call(handler, '203.0.113.7')
+      // The client goes away while the limit is being asked: the response closes, and the place it took is given back
+      Object.assign(started.response, { destroyed: true })
+      started.response.emit('close')
+      return started
+    })
+    for (const resolve of waits) resolve(0)
+    await new Promise(resolve => setImmediate(resolve))
+    expect(aborted.every(({ next }) => next.mock.calls.length === 0)).toBe(true)
+
+    // The address still reads: no place was left taken
+    const fresh = call(handler, '203.0.113.7')
+    waits[waits.length - 1]?.(0)
+    await new Promise(resolve => setImmediate(resolve))
+    expect(refused(fresh.next)).toBe(false)
+  })
+
+  it('gives the place back when the body has been read, not when the response closes: the handler runs after', async () => {
+    const handler = pluginEventsBodyParser()
+    const reads = Array.from({ length: cap }, () => call(handler, '203.0.113.7'))
+    expect(refused(call(handler, '203.0.113.7').next)).toBe(true)
+
+    // The first body is in: its handler may run for long, but the address has a place again
+    reads[0]?.request.emit('end')
+    await tick()
+    expect(reads[0]?.next).toHaveBeenCalledWith()
+
+    const ninth = call(handler, '203.0.113.7')
+    expect(ninth.next.mock.calls.length).toBe(0)
+  })
+
+  it('gives each place back once: a close after the end, or an error, never takes the count below or leaves it stuck', async () => {
+    const handler = pluginEventsBodyParser()
+    const reads = Array.from({ length: cap }, () => call(handler, '203.0.113.7'))
+
+    // One read ends and its response closes afterwards: one place back, not two
+    reads[0]?.request.emit('end')
+    await tick()
+    reads[0]?.response.emit('close')
+    reads[0]?.response.emit('close')
+    expect(call(handler, '203.0.113.7').next.mock.calls.length).toBe(0)
+    expect(refused(call(handler, '203.0.113.7').next)).toBe(true)
+
+    // A read that fails gives its place back too
+    reads[1]?.request.emit('error', new Error('socket hang up'))
+    await tick()
+    expect(reads[1]?.next).toHaveBeenCalledTimes(1)
+    expect(call(handler, '203.0.113.7').next.mock.calls.length).toBe(0)
+    expect(refused(call(handler, '203.0.113.7').next)).toBe(true)
+  })
+
+  it('gives the place back when the limit makes the address wait', async () => {
+    const handler = pluginEventsBodyParser({ retryAfter: () => Promise.resolve(20) })
+    const waiting = Array.from({ length: cap + 2 }, () => call(handler, '203.0.113.7'))
+    await tick()
+
+    // Every one was answered 429 by the wait (none by the cap, which would have been 1 second): the places came back
+    expect(waiting.every(({ next }) => next.mock.calls.length === 1)).toBe(true)
   })
 
   it('counts each address on its own, and none for a call with no address', () => {
