@@ -6502,7 +6502,8 @@
       },
       "titleLoading": "Asiento",
       "loading": "Cargando el asiento…",
-      "belongsToPurchase": "Este asiento pertenece a una compra o a un pago a proveedor. Deshazlo desde la compra."
+      "belongsToPurchase": "Este asiento pertenece a una compra o a un pago a proveedor. Deshazlo desde la compra.",
+      "openOrder": "Abrir el pedido"
     },
     "manual": {
       "title": "Escribir un asiento",

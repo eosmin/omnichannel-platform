@@ -87,6 +87,15 @@ export enum FiscalDocumentStatus {
   VOIDED = 'voided'
 }
 
+// The families of permissions the finance area draws pages for. The api reads the organization from X-Store-Id but checks the
+// permissions of THAT store, so each family is asked through a store where the person holds one of its own permissions (a person
+// with `finance:*` in one store and `fiscal:*` in another needs a different store for each).
+export enum FinanceAreaFamily {
+  BOOKS = 'books',
+  PURCHASES = 'purchases',
+  FISCAL = 'fiscal'
+}
+
 export enum FinanceSourceType {
   ORDER = 'order',
   SHIPMENT = 'shipment',

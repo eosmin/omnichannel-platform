@@ -1,12 +1,10 @@
 'use client'
 
-import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useRef, useState } from 'react'
 
 import {
   ApiError,
-  AppPaths,
   type FiscalDocumentDetailView,
   type FiscalDocumentView,
   type FiscalProviderView
@@ -30,6 +28,7 @@ import {
 import { useFiscalErrorText } from '../../lib/fiscal/use-fiscal-error-text'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
+import { OrderLink } from '../finance/order-link'
 import { useStore } from '../providers/store-context'
 import { LoadFailed, PageLoading } from '../settings/states'
 import { Button } from '../ui/button'
@@ -150,12 +149,10 @@ function DocumentBody({
         <Item label={t('issuedAt')}>{when(document.issuedAt)}</Item>
         <Item label={t('attempts')}>{String(document.attempts)}</Item>
         <Item label={t('order')}>
-          <Link
-            href={AppPaths.store.order(document.storeId, document.orderId)}
-            className="text-primary underline underline-offset-2"
-          >
+          {/* Only for who may read the orders of the store of the document: the link of a person without them would end at "no access" */}
+          <OrderLink storeId={document.storeId} orderId={document.orderId} fallback={t('none')}>
             {t('openOrder')}
-          </Link>
+          </OrderLink>
         </Item>
         {document.kind === FiscalDocumentKind.CREDIT_NOTE ? (
           <Item label={t('cancels')}>{t('cancelsDocument')}</Item>
