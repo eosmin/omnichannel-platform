@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 
 import { CryptoPlatformModule } from '@platform/core/http'
 
+import { PluginWebhookDayCap } from './plugin-webhook-day-cap'
 import { PluginWebhookDeliverer } from './plugin-webhook-deliverer.service'
 import { TenantWebhookDeliverer } from './tenant-webhook-deliverer.service'
 
@@ -10,7 +11,7 @@ import { TenantWebhookDeliverer } from './tenant-webhook-deliverer.service'
 // the bus, the metrics and the logger are the global modules of the worker.
 @Module({
   imports: [CryptoPlatformModule],
-  providers: [PluginWebhookDeliverer, TenantWebhookDeliverer],
+  providers: [PluginWebhookDeliverer, PluginWebhookDayCap, TenantWebhookDeliverer],
   exports: [PluginWebhookDeliverer, TenantWebhookDeliverer]
 })
 export class WebhooksWorkerModule {}

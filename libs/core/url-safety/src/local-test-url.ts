@@ -114,11 +114,20 @@ function loopbackExchange(url: URL, options: PinnedExchangeOptions): Promise<Pin
         req.destroy()
         return
       }
+      if (options.discardBody) {
+        response.resume()
+        finish(() => {
+          resolve({ status, body: '' })
+        })
+        req.destroy()
+        return
+      }
+      const maxBytes = options.maxResponseBytes
       const chunks: Buffer[] = []
       let size = 0
       response.on('data', (chunk: Buffer) => {
         size += chunk.length
-        if (size > options.maxResponseBytes) {
+        if (size > maxBytes) {
           finish(() => {
             reject(new PinnedExchangeFailed(PinnedExchangeReasons.TOO_LARGE, status))
           })

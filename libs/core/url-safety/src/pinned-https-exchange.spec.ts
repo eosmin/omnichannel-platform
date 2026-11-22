@@ -2,11 +2,11 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 
 import {
-  type HttpsRequester,
   PinnedExchangeFailed,
   PinnedExchangeReasons,
   pinnedHttpsExchange
 } from './pinned-https-exchange'
+import type { HttpsRequester } from './pinned-request'
 import { UnsafeUrlError } from './public-url'
 
 const resolvesTo =
@@ -225,5 +225,50 @@ describe('pinnedHttpsExchange', () => {
     } finally {
       jest.useRealTimers()
     }
+  })
+
+  describe('discardBody', () => {
+    const discarding = (outcome: Outcome) => {
+      const fake = fakeRequest(outcome)
+      const result = pinnedHttpsExchange('https://hooks.example.com/in', {
+        body: '{}',
+        headers: {},
+        timeoutMs: 1000,
+        discardBody: true,
+        resolve: resolvesTo('8.8.8.8'),
+        request: fake.request
+      })
+      return { ...fake, result }
+    }
+
+    it('resolves with the status and an empty body, without reading what the other side sends', async () => {
+      const { result } = discarding({ status: 202, chunks: ['x'.repeat(10_000)] })
+
+      await expect(result).resolves.toEqual({ status: 202, body: '' })
+    })
+
+    it('still fails an answer that is not a 2xx, with its status', async () => {
+      const { result } = discarding({ status: 503 })
+
+      await expect(result).rejects.toMatchObject({
+        reason: PinnedExchangeReasons.BAD_STATUS,
+        status: 503
+      })
+    })
+
+    it('still refuses an address that is not public', async () => {
+      const fake = fakeRequest({ status: 200 })
+      const result = pinnedHttpsExchange('https://hooks.example.com/in', {
+        body: '{}',
+        headers: {},
+        timeoutMs: 1000,
+        discardBody: true,
+        resolve: resolvesTo('10.0.0.5'),
+        request: fake.request
+      })
+
+      await expect(result).rejects.toBeInstanceOf(UnsafeUrlError)
+      expect(fake.calls).toHaveLength(0)
+    })
   })
 })

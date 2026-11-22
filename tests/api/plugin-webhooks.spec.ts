@@ -2,12 +2,14 @@ import { createHmac, randomInt, randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 import type { Counter } from '@prometheus-io/client'
+import type { Redis } from 'ioredis'
 import type { PinoLogger } from 'nestjs-pino'
 import supertest from 'supertest'
 
 import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { CacheKeys } from '@platform/core/cache'
 import { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService, JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -26,11 +28,13 @@ import { Events } from '@platform/core/events'
 import { WebhookMetricTarget } from '@platform/core/metrics'
 import { NotificationTypes } from '@platform/core/notifications'
 import { JobNames, QueueNames, type TriggerPluginWebhookJob } from '@platform/core/queues'
+import { REDIS_CLIENT } from '@platform/core/redis'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { PluginChallengeService } from '../../apps/api/src/modules/plugins/plugin-challenge.service'
 import { WebhookDispatcher } from '../../apps/api/src/modules/tenant-webhooks/webhook-dispatcher'
 import { WebhookPostFailed } from '../../apps/worker/src/webhooks/pinned-https-post'
+import { PluginWebhookDayCap } from '../../apps/worker/src/webhooks/plugin-webhook-day-cap'
 import { PluginWebhookDeliverer } from '../../apps/worker/src/webhooks/plugin-webhook-deliverer.service'
 import { WebhookOutcome } from '../../apps/worker/src/webhooks/webhook-sending'
 import { actorWithPermissions } from '../helpers/actors'
@@ -69,9 +73,12 @@ describe('The webhooks of an integration plugin and its revocation', () => {
   let ctx: TestContext
   let queue: CapturedQueue
   let deliverer: PluginWebhookDeliverer
+  let dayCap: PluginWebhookDayCap
   let cipher: CredentialCipher
   let counter = 0
   const goneCounted: string[] = []
+  // The keys of the daily cap that the cases left in Redis: removed when each case ends
+  const capKeys: string[] = []
   // Which wall refuses the log row of a deleted installation depends on the role of the connection: a role that skips row-level
   // security (BYPASSRLS or a superuser) reaches the foreign key (23503 → P2003, a deletion at once); one that does not is refused by
   // the policy (42501) first and counted. The worker of the suites skips it until E-2 takes the bypass away, so the cases read the role.
@@ -106,6 +113,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       warn: () => undefined,
       error: (...args: unknown[]) => errorLogged.push(args)
     } as unknown as PinoLogger
+    dayCap = new PluginWebhookDayCap(app.get<Redis>(REDIS_CLIENT))
     deliverer = new PluginWebhookDeliverer(
       app.get(PrismaService),
       cipher,
@@ -115,7 +123,8 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       new JobContext(app.get(PrismaService)),
       {
         inc: (labels: { target: string }) => goneCounted.push(labels.target)
-      } as unknown as Counter<string>
+      } as unknown as Counter<string>,
+      dayCap
     )
   })
   afterAll(async () => {
@@ -125,6 +134,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
     await owner.$disconnect()
   })
   afterEach(async () => {
+    if (capKeys.length > 0) await app.get<Redis>(REDIS_CLIENT).del(...capKeys.splice(0))
     queue.jobs.length = 0
     goneCounted.length = 0
     errorLogged.length = 0
@@ -186,6 +196,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       .expect(CREATED)
     const offer = (installed.body as { setup: { code: string } }).setup
     const setup = (await exchange(offer.code).expect(OK)).body as SetupResult
+    capKeys.push(CacheKeys.plugin.webhookDay(setup.installationId))
     return { id, setup }
   }
   const dispatcher = () => app.get(WebhookDispatcher)
@@ -450,14 +461,15 @@ describe('The webhooks of an integration plugin and its revocation', () => {
     it('holds the deliveries of a day to the cap of the manifest: the next is dropped, not failed, and a retry of one that began still goes', async () => {
       const { setup } = await setUp({ limits: { maxWebhooksPerDay: 2 } })
       const post = answers(200)
-      const deliver = (attempt: number, at: number) =>
-        deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), attempt, {
-          post,
-          now: () => at
-        })
+      const began = jobFor(setup.installationId, ctx.storeA.id)
+      const deliver = (
+        attempt: number,
+        at: number,
+        job = jobFor(setup.installationId, ctx.storeA.id)
+      ) => deliverer.deliver(job, attempt, { post, now: () => at })
       const now = Date.now()
 
-      expect(await deliver(1, now)).toBe(WebhookOutcome.DELIVERED)
+      expect(await deliver(1, now, began)).toBe(WebhookOutcome.DELIVERED)
       expect(await deliver(1, now)).toBe(WebhookOutcome.DELIVERED)
       expect(await deliver(1, now)).toBe(WebhookOutcome.SKIPPED)
       expect(post).toHaveBeenCalledTimes(2)
@@ -472,12 +484,78 @@ describe('The webhooks of an integration plugin and its revocation', () => {
         where: { id: setup.installationId }
       })
       expect(row.webhookConsecutiveFailures).toBe(0)
-      // A delivery that began is finished
-      expect(await deliver(2, now)).toBe(WebhookOutcome.DELIVERED)
+      // A delivery that began is finished: its retry finds its place by the id of the delivery
+      expect(await deliver(2, now, began)).toBe(WebhookOutcome.DELIVERED)
       // A day later the first two are out of the window
       expect(await deliver(1, now + WebhookLimits.PLUGIN_DAY_MS + 60_000)).toBe(
         WebhookOutcome.DELIVERED
       )
+    })
+
+    it('never passes the cap when deliveries arrive at the same instant: of ten at once, only the places of the day go', async () => {
+      const { setup } = await setUp({ limits: { maxWebhooksPerDay: 3 } })
+      const post = answers(200)
+      const now = Date.now()
+
+      const outcomes = await Promise.all(
+        Array.from({ length: 10 }, () =>
+          deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, {
+            post,
+            now: () => now
+          })
+        )
+      )
+
+      expect(outcomes.filter(outcome => outcome === WebhookOutcome.DELIVERED)).toHaveLength(3)
+      expect(outcomes.filter(outcome => outcome === WebhookOutcome.SKIPPED)).toHaveLength(7)
+      expect(post).toHaveBeenCalledTimes(3)
+      const log = await logOf(setup.installationId)
+      expect(log.filter(entry => entry.attempt === 1)).toHaveLength(3)
+      expect(log.filter(entry => entry.attempt === 0)).toHaveLength(7)
+    })
+
+    it('counts a delivery once when the same job runs again, and keeps the cap of each installation apart', async () => {
+      const { setup } = await setUp({ limits: { maxWebhooksPerDay: 1 } })
+      const post = answers(200)
+      const job = jobFor(setup.installationId, ctx.storeA.id)
+      const now = Date.now()
+
+      expect(await deliverer.deliver(job, 1, { post, now: () => now })).toBe(
+        WebhookOutcome.DELIVERED
+      )
+      // The same job again (a stalled one that the queue took back) holds its place
+      expect(await deliverer.deliver(job, 1, { post, now: () => now })).toBe(
+        WebhookOutcome.DELIVERED
+      )
+      // Another delivery of the same installation is over the cap
+      expect(
+        await deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, {
+          post,
+          now: () => now
+        })
+      ).toBe(WebhookOutcome.SKIPPED)
+    })
+
+    it('does not pass the cap on the strength of a retry: a delivery that never took a place because Redis failed must take one', async () => {
+      const { setup } = await setUp({ limits: { maxWebhooksPerDay: 1 } })
+      const post = answers(200)
+      const now = Date.now()
+      const filler = jobFor(setup.installationId, ctx.storeA.id)
+      expect(await deliverer.deliver(filler, 1, { post, now: () => now })).toBe(
+        WebhookOutcome.DELIVERED
+      )
+      const late = jobFor(setup.installationId, ctx.storeA.id)
+      const down = jest.spyOn(dayCap, 'take').mockRejectedValueOnce(new Error('redis is down'))
+
+      // The first try cannot take its place and is thrown to the queue, which tries it again as the second
+      await expect(deliverer.deliver(late, 1, { post, now: () => now })).rejects.toThrow(
+        'redis is down'
+      )
+      expect(await deliverer.deliver(late, 2, { post, now: () => now })).toBe(
+        WebhookOutcome.SKIPPED
+      )
+      down.mockRestore()
+      expect(post).toHaveBeenCalledTimes(1)
     })
 
     it('has no cap when the manifest names none', async () => {

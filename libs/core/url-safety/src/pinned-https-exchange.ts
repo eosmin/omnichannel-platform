@@ -1,8 +1,5 @@
-import { Agent, request as httpsRequest } from 'node:https'
-import { isIP } from 'node:net'
-
 import { errorCodeOf } from './pinned-errors'
-import { pinnedLookup } from './pinned-lookup'
+import { type HttpsRequester, openPinnedRequest } from './pinned-request'
 import {
   type HostResolver,
   type PublicTarget,
@@ -30,14 +27,17 @@ export class PinnedExchangeFailed extends Error {
   }
 }
 
-export type HttpsRequester = typeof httpsRequest
+// What the exchange does with the answer: it is read up to a ceiling that the caller must state (an address that streams must not
+// fill memory), or it is never read: a 2xx then resolves with an empty body as soon as its status is known, and the socket is
+// dropped (for a caller that only needs to know the other side took the request, a webhook delivery).
+export type PinnedAnswerReading =
+  | { maxResponseBytes: number; discardBody?: false }
+  | { discardBody: true; maxResponseBytes?: undefined }
 
-export interface PinnedExchangeOptions {
+export type PinnedExchangeOptions = PinnedAnswerReading & {
   body: string
   headers: Readonly<Record<string, string>>
   timeoutMs: number
-  // The answer is read up to this many bytes; a longer one fails (an address that streams must not fill memory)
-  maxResponseBytes: number
   // The answer of any status is read (up to the same ceiling) and returned, for a caller that decides by the status and the body
   // of a refusal (TDD_10 §6.7.4). Without it only a 2xx resolves and any other status is a `bad_status` failure.
   anyStatus?: boolean
@@ -50,8 +50,6 @@ export interface PinnedExchangeResult {
   status: number
   body: string
 }
-
-const HTTPS_PORT = 443
 
 function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined
@@ -81,10 +79,7 @@ export async function pinnedHttpsExchange(
     if (error instanceof UnsafeUrlError || error instanceof PinnedExchangeFailed) throw error
     throw new PinnedExchangeFailed(`${PinnedExchangeReasons.NOT_RESOLVED}:${errorCodeOf(error)}`)
   }
-  const { url, addresses } = target
   const remainingMs = Math.max(1, options.timeoutMs - (Date.now() - startedAt))
-  const send = options.request ?? httpsRequest
-  const host = url.hostname.replace(/^\[|\]$/g, '')
   const payload = Buffer.from(options.body, 'utf8')
 
   return new Promise<PinnedExchangeResult>((resolve, reject) => {
@@ -99,19 +94,11 @@ export async function pinnedHttpsExchange(
     }
     let req: ReturnType<HttpsRequester>
     try {
-      req = send({
-        protocol: 'https:',
-        hostname: host,
-        port: HTTPS_PORT,
-        path: `${url.pathname}${url.search}`,
+      req = openPinnedRequest(target, {
         method: 'POST',
         headers: { ...options.headers, 'content-length': String(payload.length) },
-        // A socket of its own: a pooled one, opened for an earlier call, would not go through this lookup
-        agent: new Agent({ keepAlive: false }),
-        lookup: pinnedLookup(addresses),
-        // The certificate is checked against the name of the address, not the address connected to
-        ...(isIP(host) === 0 ? { servername: host } : {}),
-        timeout: remainingMs
+        timeoutMs: remainingMs,
+        request: options.request
       })
     } catch {
       reject(new PinnedExchangeFailed(PinnedExchangeReasons.REQUEST_REFUSED))
@@ -144,11 +131,21 @@ export async function pinnedHttpsExchange(
         req.destroy()
         return
       }
+      if (options.discardBody) {
+        // The answer is not read, and the socket is not kept: nothing the other side sends after its status is waited for
+        response.resume()
+        finish(() => {
+          resolve({ status, body: '' })
+        })
+        req.destroy()
+        return
+      }
+      const maxBytes = options.maxResponseBytes
       const chunks: Buffer[] = []
       let size = 0
       response.on('data', (chunk: Buffer) => {
         size += chunk.length
-        if (size > options.maxResponseBytes) {
+        if (size > maxBytes) {
           finish(() => {
             reject(new PinnedExchangeFailed(PinnedExchangeReasons.TOO_LARGE, status))
           })
