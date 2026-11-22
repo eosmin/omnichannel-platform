@@ -12,7 +12,8 @@ export const ComplianceConfig = {
   DSR_VERIFICATION_TOKEN_DAYS: 7,
   DSR_EXPORT_LINK_DAYS: 7,
   BREACH_NOTIFICATION_HOURS: 72,
-  ERASURE_GRACE_PERIOD_DAYS: 30,
+  // Owner, 2026-11-22 (option C): an approved erasure waits 7 days, cancelable, before the sweep carries it out. Always read this constant
+  ERASURE_GRACE_PERIOD_DAYS: 7,
   UNMERGE_WINDOW_DAYS: 30,
   ERASED_CONTENT_PLACEHOLDER: '[erased]', // Written into Message.content on erasure
   // The clearing of the data of an erased customer runs again shortly after the first time and, in the sweep, for this many days after it was

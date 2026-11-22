@@ -8,6 +8,17 @@ describe('ComplianceConfig', () => {
   })
 })
 
+describe('the grace period of an approved erasure', () => {
+  // The owner's decision (2026-11-22, option C), pinned: a change of this number is a decision, not a refactor. It must also end well inside
+  // the 30 days the law gives to answer, with no extension (the 60-day one is out of the MVP)
+  it('is 7 days and ends inside the response deadline', () => {
+    expect(ComplianceConfig.ERASURE_GRACE_PERIOD_DAYS).toBe(7)
+    expect(ComplianceConfig.ERASURE_GRACE_PERIOD_DAYS).toBeLessThan(
+      ComplianceConfig.DSR_RESPONSE_DEADLINE_DAYS
+    )
+  })
+})
+
 describe('DataRetentionPolicies', () => {
   it('keeps orders for the tax period and never lets them be configured', () => {
     expect(DataRetentionPolicies.ORDERS).toEqual({ defaultDays: 2555, configurable: false })
