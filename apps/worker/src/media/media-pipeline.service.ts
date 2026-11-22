@@ -241,11 +241,14 @@ export class MediaPipeline {
     }
     const cleaned = await this.documents.clean(original, media.contentType)
     if (cleaned.kind === 'untouched' && cleaned.why !== 'already_clean') {
-      // `not_cleanable`, or `timed_out` (the thread was killed at its deadline): either way the document stays as it came, with its ids in the log
-      this.logger.warn(
-        { mediaId: media.id, storeId: media.storeId, why: cleaned.why },
-        'a document could not be cleaned of its properties and was kept as it came'
-      )
+      // `not_cleanable`, or `timed_out` (the thread was killed at its deadline, 30 s against well under a second for a real document): either
+      // way the document stays as it came, with its ids in the log
+      if (cleaned.why !== 'type') {
+        this.logger.warn(
+          { mediaId: media.id, storeId: media.storeId, why: cleaned.why },
+          'a document could not be cleaned of its properties and was kept as it came'
+        )
+      }
       return true
     }
     // Written only now, with bytes that were made and read back; a failure of the bucket leaves the original and the queue retries. A

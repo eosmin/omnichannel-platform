@@ -253,6 +253,21 @@ export const DocumentSanitizing = {
   THREAD_STACK_MB: 4,
   // The file of the thread, next to `main.js` in the bundle of the worker (a second entry of its rspack configuration)
   THREAD_ENTRY_FILE: 'document-thread.js',
+  // The error code Node gives a thread that passed its memory limit
+  THREAD_OUT_OF_MEMORY_CODE: 'ERR_WORKER_OUT_OF_MEMORY',
+  // What the thread answers (`document-cleaner.ts`): the bytes it made, why it left the document, or an error of the machine
+  ThreadReplies: {
+    SANITIZED: 'sanitized',
+    UNTOUCHED: 'untouched',
+    ENVIRONMENT: 'environment'
+  },
+  // Why a document was left as it came
+  Untouched: {
+    TYPE: 'type',
+    ALREADY_CLEAN: 'already_clean',
+    NOT_CLEANABLE: 'not_cleanable',
+    TIMED_OUT: 'timed_out'
+  },
   CORE_PROPERTIES_PATH: 'docProps/core.xml',
   // The end of the type of the relationship that names each part (the whole type is a URL of the Open Packaging Conventions)
   CORE_RELATIONSHIP_SUFFIX: '/core-properties',

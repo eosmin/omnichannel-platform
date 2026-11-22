@@ -238,6 +238,16 @@ export class ExistingDocumentSanitizer {
           original.length
         )
       }
+      if (cleaned.why === DocumentSanitizing.Untouched.TIMED_OUT) {
+        // The thread was killed at its deadline. Not a verdict on the file: a slow worker can do it to a good one. The row is left unmarked
+        // with the attempt already written (`begin`), so the next run takes it again, and after MAX_ATTEMPTS it is given up (the alert of
+        // the rows given up with no mark counts it); a file that always hangs is never parsed more than that
+        this.logger.warn(
+          { mediaId: row.id, storeId, attempt },
+          'a stored document passed the deadline of its thread and was left as it is for a later run'
+        )
+        return ExistingDocumentSweep.CHANGED
+      }
       this.logger.warn(
         { mediaId: row.id, storeId, why: cleaned.why },
         'a stored document could not be cleaned of its properties and was left as it is'

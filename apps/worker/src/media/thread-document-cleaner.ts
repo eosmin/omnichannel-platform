@@ -33,7 +33,7 @@ export const defaultThreadOptions = (): DocumentThreadOptions => ({
   stackMb: DocumentSanitizing.THREAD_STACK_MB
 })
 
-const OUT_OF_MEMORY = 'ERR_WORKER_OUT_OF_MEMORY'
+const { ThreadReplies, Untouched } = DocumentSanitizing
 
 // Cleans a document on a thread that exists for that one document (`DocumentCleaner`). The parse is synchronous, so a hostile or huge file would
 // hold the event loop of the worker for as long as it runs: here it holds a thread that is killed at the deadline (`terminate`, which stops
@@ -57,7 +57,7 @@ export class ThreadDocumentCleaner extends DocumentCleaner {
   ): Promise<SanitizedDocument> {
     // A file over the limit is not read by anybody (the callers read with the limit): nothing to start a thread for
     if (input.length > maxBytes) {
-      return Promise.resolve({ kind: 'untouched', why: 'not_cleanable' })
+      return Promise.resolve({ kind: ThreadReplies.UNTOUCHED, why: Untouched.NOT_CLEANABLE })
     }
     return withDecodeSlot(() => this.runThread(input, contentType, maxBytes))
   }
@@ -106,20 +106,21 @@ export class ThreadDocumentCleaner extends DocumentCleaner {
         settle()
       }
       const timer = setTimeout(() => {
-        finish(() => resolve({ kind: 'untouched', why: 'timed_out' }))
+        finish(() => resolve({ kind: ThreadReplies.UNTOUCHED, why: Untouched.TIMED_OUT }))
       }, options.timeoutMs)
 
       worker.once('message', (reply: unknown) => {
         finish(() => {
           const answer = this.accept(reply, maxBytes)
-          if (answer === 'environment') reject(new Error('the document thread failed'))
+          if (answer === ThreadReplies.ENVIRONMENT) reject(new Error('the document thread failed'))
           else resolve(answer)
         })
       })
       worker.once('error', (error: NodeJS.ErrnoException) => {
         finish(() => {
           // The memory limit of the thread is the document's doing; anything else that escapes the thread is not a verdict on the document
-          if (error.code === OUT_OF_MEMORY) resolve({ kind: 'untouched', why: 'not_cleanable' })
+          if (error.code === DocumentSanitizing.THREAD_OUT_OF_MEMORY_CODE)
+            resolve({ kind: ThreadReplies.UNTOUCHED, why: Untouched.NOT_CLEANABLE })
           else reject(new Error('the document thread failed'))
         })
       })
@@ -132,25 +133,33 @@ export class ThreadDocumentCleaner extends DocumentCleaner {
   }
 
   // The message of the thread is data from a process that parsed a hostile file: its shape and its size are checked before it is used
-  private accept(reply: unknown, maxBytes: number): SanitizedDocument | 'environment' {
+  private accept(
+    reply: unknown,
+    maxBytes: number
+  ): SanitizedDocument | typeof ThreadReplies.ENVIRONMENT {
     const message = reply as Partial<DocumentThreadReply> | null
-    if (message === null || typeof message !== 'object') return 'environment'
-    if (message.kind === 'environment') return 'environment'
-    if (message.kind === 'untouched') {
+    if (message === null || typeof message !== 'object') return ThreadReplies.ENVIRONMENT
+    if (message.kind === ThreadReplies.ENVIRONMENT) return ThreadReplies.ENVIRONMENT
+    if (message.kind === ThreadReplies.UNTOUCHED) {
       const why = message.why
-      if (why === 'type' || why === 'already_clean' || why === 'not_cleanable') {
-        return { kind: 'untouched', why }
+      if (
+        why === Untouched.TYPE ||
+        why === Untouched.ALREADY_CLEAN ||
+        why === Untouched.NOT_CLEANABLE
+      ) {
+        return { kind: ThreadReplies.UNTOUCHED, why }
       }
-      return 'environment'
+      return ThreadReplies.ENVIRONMENT
     }
-    if (message.kind === 'sanitized' && message.body instanceof Uint8Array) {
+    if (message.kind === ThreadReplies.SANITIZED && message.body instanceof Uint8Array) {
       // A result over the limit is a document that is not worth the rewrite, as `sanitizeDocumentInline` decides for its own result
-      if (message.body.byteLength > maxBytes) return { kind: 'untouched', why: 'not_cleanable' }
+      if (message.body.byteLength > maxBytes)
+        return { kind: ThreadReplies.UNTOUCHED, why: Untouched.NOT_CLEANABLE }
       return {
-        kind: 'sanitized',
+        kind: ThreadReplies.SANITIZED,
         body: Buffer.from(message.body.buffer, message.body.byteOffset, message.body.byteLength)
       }
     }
-    return 'environment'
+    return ThreadReplies.ENVIRONMENT
   }
 }

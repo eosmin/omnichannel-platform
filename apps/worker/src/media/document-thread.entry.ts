@@ -1,5 +1,7 @@
 import { isMainThread, parentPort, workerData } from 'node:worker_threads'
 
+import { DocumentSanitizing } from '@platform/core/storage'
+
 import type { DocumentThreadInput, DocumentThreadReply } from './document-cleaner'
 import { replyFor } from './document-thread.reply'
 
@@ -10,10 +12,13 @@ import { replyFor } from './document-thread.reply'
 if (!isMainThread && parentPort !== null) {
   const port = parentPort
   void replyFor(workerData as DocumentThreadInput).then(reply => {
-    if (reply.kind === 'sanitized') {
+    if (reply.kind === DocumentSanitizing.ThreadReplies.SANITIZED) {
       // The bytes move to the parent, they are not copied
       const body = new Uint8Array(reply.body)
-      port.postMessage({ kind: 'sanitized', body } satisfies DocumentThreadReply, [body.buffer])
+      port.postMessage(
+        { kind: DocumentSanitizing.ThreadReplies.SANITIZED, body } satisfies DocumentThreadReply,
+        [body.buffer]
+      )
     } else {
       port.postMessage(reply)
     }

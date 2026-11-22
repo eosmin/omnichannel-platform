@@ -258,6 +258,8 @@ jobs:
           pnpm exec tsx scripts/smoke-http.ts http://localhost:8082
           # The templates render in the bundle too, not only under ts-jest
           pnpm exec tsx scripts/smoke-email.ts
+          # The thread that parses a document is a file of the bundle (document-thread.js): it must be there and answer
+          pnpm exec tsx scripts/smoke-document-thread.ts
       - name: Service logs
         if: failure()
         run: |

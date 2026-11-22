@@ -176,12 +176,13 @@ describe('ExistingDocumentSanitizer', () => {
     }
   }
   const logger = { setContext: jest.fn(), warn: jest.fn(), error: jest.fn(), info: jest.fn() }
+  const cleaner = new InlineDocumentCleaner()
   const sanitizer = new ExistingDocumentSanitizer(
     prisma as unknown as PrismaService,
     { forStore: (_id: string, work: () => Promise<unknown>) => work() } as unknown as JobContext,
     storage as unknown as StorageService,
     logger as unknown as PinoLogger,
-    new InlineDocumentCleaner()
+    cleaner
   )
 
   function store(
@@ -366,6 +367,29 @@ describe('ExistingDocumentSanitizer', () => {
     expect(report).toEqual({ cleaned: 0, alreadyClean: 0, skipped: 0, failed: 0 })
     expect(storage.read.mock.calls.length).toBe(readsBefore) // it was not opened a fourth time
     expect(bucket.get(row.key)).toBe(dirty)
+  })
+
+  it('does not mark a document whose thread passed its deadline: it is tried again, and given up after the last attempt', async () => {
+    const dirty = await pdfWithMarkers()
+    const row = store('d1', dirty)
+    const timedOut = jest
+      .spyOn(cleaner, 'clean')
+      .mockResolvedValue({ kind: 'untouched', why: 'timed_out' })
+    try {
+      for (let attempt = 1; attempt <= ExistingDocumentSweep.MAX_ATTEMPTS; attempt += 1) {
+        const report = await sanitizer.runScoped([STORE])
+        expect(report).toEqual({ cleaned: 0, alreadyClean: 0, skipped: 1, failed: 0 })
+        // Not `not_cleanable`: a slow worker can cut a good file; only the attempt is written
+        expect(row.scanResult).toEqual({ [ExistingPictureSweep.ATTEMPTS_KEY]: attempt })
+      }
+      const calls = timedOut.mock.calls.length
+      await sanitizer.runScoped([STORE])
+      expect(timedOut.mock.calls.length).toBe(calls) // a file that always hangs is not parsed a fourth time
+    } finally {
+      timedOut.mockRestore()
+    }
+    expect(bucket.get(row.key)).toBe(dirty)
+    expect(storage.put).not.toHaveBeenCalled()
   })
 
   it('does not cut a slow document at the budget of the run: it finishes clean with no attempt left on the row, and the next one is not opened', async () => {
