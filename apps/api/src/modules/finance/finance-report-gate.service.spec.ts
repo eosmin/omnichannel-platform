@@ -244,6 +244,19 @@ describe('FinanceReportGate', () => {
       await next.dispose()
     })
 
+    it('does not take the place again when the transport gave it back while a page was being read', async () => {
+      const redis = new FakeRedis()
+      const gate = gateOf(redis)
+      const stream = await gate.openStream('org-1', prepared(3))
+      await stream.next()
+      // The response closed: the controller gave the place back by hand, and the generator still pulls its next page
+      await stream.dispose()
+      expect(redis.held()).toBe(0)
+      await stream.next()
+      await stream.return(undefined)
+      expect(redis.held()).toBe(0)
+    })
+
     it('gives the place back when a page fails, and when the check of the request fails', async () => {
       const redis = new FakeRedis()
       const gate = gateOf(redis)

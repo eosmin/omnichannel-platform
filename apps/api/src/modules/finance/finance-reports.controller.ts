@@ -224,21 +224,38 @@ export class FinanceReportsController {
     @Req() req: AuthenticatedRequest,
     @Res({ passthrough: true }) res: Response
   ): Promise<StreamableFile> {
-    const pages = await this.reports.journalCsv(organization.id, query, actorOf(user, store, req))
-    attachment(res, `journal-${query.from}-${query.to}`)
+    // The listener goes first: the place is taken INSIDE `reports.journalCsv` (then the count and its audit row run), and a client that goes
+    // away during that await has closed already when the stream arrives, so a listener registered afterwards would never hear it
+    let pages: Awaited<ReturnType<FinanceReportsService['journalCsv']>> | undefined
+    const open: { stream?: Readable } = {}
+    let gone = false
+    res.once('close', () => {
+      gone = true
+      if (!res.writableFinished) open.stream?.destroy()
+      void pages?.dispose()
+    })
+    try {
+      pages = await this.reports.journalCsv(organization.id, query, actorOf(user, store, req))
+      attachment(res, `journal-${query.from}-${query.to}`)
+    } catch (error) {
+      // Whatever failed after the place was taken gives it back (the generator never started, so its `finally` will not)
+      await pages?.dispose()
+      throw error
+    }
+    const source = pages
     async function* chunks(): AsyncGenerator<string> {
       yield journalCsvHeader()
-      for await (const page of pages) yield journalCsvRows(page)
+      for await (const page of source) yield journalCsvRows(page)
+    }
+    const stream = Readable.from(chunks())
+    open.stream = stream
+    if (gone) {
+      // The client left before there was a stream to close: the place goes back now and nothing is written
+      stream.destroy()
+      await pages.dispose()
     }
     // A page that fails after the headers went must not end the body as if it were whole: the connection is destroyed, so the client sees
     // an aborted download and never a short file with a clean end
-    const stream = Readable.from(chunks())
-    // A client that goes away leaves the pipe paused with the generator suspended: close the stream and give the place of the file back
-    // (the generator may never have started, and then its `finally` never runs)
-    res.once('close', () => {
-      if (!res.writableFinished) stream.destroy()
-      void pages.dispose()
-    })
     return new StreamableFile(stream).setErrorHandler((error, response) => {
       // On Express the handler response is the ServerResponse: its connection is dropped, with no terminating chunk
       ;(response as unknown as Response).destroy(error)

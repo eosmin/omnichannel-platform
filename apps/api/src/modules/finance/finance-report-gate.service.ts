@@ -133,7 +133,8 @@ export class FinanceReportGate {
       throw error
     }
     const renew = async (): Promise<void> => {
-      if (!taken) return
+      // A place the transport already gave back is never taken again: the page in hand is the last one of a file nobody reads
+      if (!taken || released) return
       if (!(await this.renew(STREAMS, organizationId, token))) {
         await this.acquire(STREAMS, organizationId, token)
       }

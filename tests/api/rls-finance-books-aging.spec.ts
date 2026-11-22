@@ -39,8 +39,16 @@ interface BookBody {
   totals: Record<string, number>
   contentSha256: string
 }
+interface AgingRow {
+  partyName: string | null
+  bucketsCents: string[]
+  unappliedCents: string
+  totalCents: string
+}
 interface AgingBody {
-  rows: { partyName: string | null; totalCents: string }[]
+  rows: AgingRow[]
+  bucketsCents: string[]
+  unappliedCents: string
   totalCents: string
   missingRoles: string[]
 }
@@ -61,10 +69,22 @@ describe('RLS phase 6: the books and the aging read the whole organization under
   let accounts: Record<string, string> = {}
   let januaryId = ''
   let supplierId = ''
+  // Organization B has books of its own, with a sale and a payable that must never show up in A's reads
+  let accountsB: Record<string, string> = {}
+  let januaryB = ''
   let sequence = 5000
 
   // A sale of 1999 (230 of tax in the price) in one store, with its entry of the day and an accepted fiscal document of the type
-  async function sale(storeId: string, documentType: string, external: string): Promise<void> {
+  async function sale(
+    storeId: string,
+    documentType: string,
+    external: string,
+    side: { organizationId: string; periodId: string; accounts: Record<string, string> } = {
+      organizationId: ctx.orgA.id,
+      periodId: januaryId,
+      accounts
+    }
+  ): Promise<void> {
     const order = await createOrder(owner, { storeId })
     await owner.order.update({
       where: { id: order.id },
@@ -75,21 +95,21 @@ describe('RLS phase 6: the books and the aging read the whole organization under
       data: { taxTreatment: 'taxed', taxRateBps: 1300, taxCents: 230 }
     })
     const entry = await postTestEntry(owner, {
-      organizationId: ctx.orgA.id,
-      periodId: januaryId,
+      organizationId: side.organizationId,
+      periodId: side.periodId,
       entryDate: '2026-01-10',
       type: JournalEntryType.SALE,
       sourceType: FinanceSourceType.ORDER,
       sourceId: order.id,
       idempotencyKey: FinancePostingKey.ORDER_SALE(order.id),
       lines: [
-        { accountId: accounts[CASH] ?? '', debitCents: 1999 },
-        { accountId: accounts[SALES] ?? '', creditCents: 1999 }
+        { accountId: side.accounts[CASH] ?? '', debitCents: 1999 },
+        { accountId: side.accounts[SALES] ?? '', creditCents: 1999 }
       ]
     })
     await owner.fiscalDocument.create({
       data: {
-        organizationId: ctx.orgA.id,
+        organizationId: side.organizationId,
         storeId,
         orderId: order.id,
         journalEntryId: entry.id,
@@ -191,6 +211,65 @@ describe('RLS phase 6: the books and the aging read the whole organization under
     // One sale to a taxpayer in each store of the organization: the book must list both, whichever store the header names
     await sale(ctx.storeA.id, SimulatorDocumentTypes.BUSINESS, 'CCF-A')
     await sale(ctx.storeA2.id, SimulatorDocumentTypes.BUSINESS, 'CCF-A2')
+    // A second payable line for a second supplier, 15 days after the first: the aging has two parties and two ages
+    const second = await owner.supplier.create({
+      data: { organizationId: ctx.orgA.id, name: 'Segundo proveedor del suite' },
+      select: { id: true }
+    })
+    await postTestEntry(owner, {
+      organizationId: ctx.orgA.id,
+      periodId: januaryId,
+      entryDate: '2026-01-20',
+      type: JournalEntryType.PURCHASE_RECEIPT,
+      lines: [
+        { accountId: accounts[INVENTORY] ?? '', debitCents: 500 },
+        {
+          accountId: accounts[PAYABLE] ?? '',
+          creditCents: 500,
+          partyType: PartyType.SUPPLIER,
+          partyId: second.id
+        }
+      ]
+    })
+    // Organization B: its own books, a sale to a taxpayer and a payable with a supplier of its own (a figure nobody could mistake)
+    const setupB = await api(setupApp, ctx.adminB, ctx.storeB)
+      .post(ApiRoutes.finance.setup)
+      .send({ countryCode: FinanceCountryCodes.EL_SALVADOR, accountingStartDate: START })
+    expect(setupB.status).toBe(CREATED)
+    const rowsB = await owner.ledgerAccount.findMany({
+      where: { organizationId: ctx.orgB.id },
+      select: { id: true, code: true }
+    })
+    accountsB = Object.fromEntries(rowsB.map(row => [row.code, row.id]))
+    const periodB = await owner.fiscalPeriod.findFirst({
+      where: { organizationId: ctx.orgB.id, year: 2026, month: 1 },
+      select: { id: true }
+    })
+    januaryB = periodB?.id ?? (await createPeriod(owner, ctx.orgB.id, 2026, 1))
+    await sale(ctx.storeB.id, SimulatorDocumentTypes.BUSINESS, 'CCF-B', {
+      organizationId: ctx.orgB.id,
+      periodId: januaryB,
+      accounts: accountsB
+    })
+    const supplierB = await owner.supplier.create({
+      data: { organizationId: ctx.orgB.id, name: 'Proveedor de la otra organizacion' },
+      select: { id: true }
+    })
+    await postTestEntry(owner, {
+      organizationId: ctx.orgB.id,
+      periodId: januaryB,
+      entryDate: '2026-01-05',
+      type: JournalEntryType.PURCHASE_RECEIPT,
+      lines: [
+        { accountId: accountsB[INVENTORY] ?? '', debitCents: 777_777 },
+        {
+          accountId: accountsB[PAYABLE] ?? '',
+          creditCents: 777_777,
+          partyType: PartyType.SUPPLIER,
+          partyId: supplierB.id
+        }
+      ]
+    })
 
     guarded = new PrismaService({
       databaseUrl: connectionUrls().app,
@@ -227,7 +306,6 @@ describe('RLS phase 6: the books and the aging read the whole organization under
   }
   const bookRoute = (kind: LegalBookKind): string =>
     `${ApiRoutes.finance.books.byKind(kind)}?periodId=${januaryId}`
-  const agingRoute = `${ApiRoutes.finance.reports.aging}?kind=${AgingKind.PAYABLES}&asOf=2026-01-31`
 
   it('lists the sales of both stores in the taxpayers book, with the header of either store, the same as an unguarded read', async () => {
     const fromA = await read(app, ctx.adminA, ctx.storeA, bookRoute(LegalBookKind.SALES_TAXPAYERS))
@@ -247,6 +325,7 @@ describe('RLS phase 6: the books and the aging read the whole organization under
     for (const answer of [fromA, fromA2, plain]) expect(answer.status).toBe(OK)
     for (const answer of [fromA, fromA2]) {
       const body = answer.body as BookBody
+      // The sale of organization B (CCF-B) is in neither answer
       expect(body.rows).toHaveLength(2)
       expect(body.totals[LegalBookField.TOTAL]).toBe(3998)
       expect(body.totals[LegalBookField.TAX]).toBe(460)
@@ -274,20 +353,48 @@ describe('RLS phase 6: the books and the aging read the whole organization under
     expect(fromA2.text).toBe(fromA.text)
     expect(fromA.text).toContain('CCF-A')
     expect(fromA.text).toContain('CCF-A2')
+    expect(fromA.text).not.toContain('CCF-B')
   })
 
-  it('ages the payable of the supplier with the header of either store, the same as an unguarded read', async () => {
-    const fromA = await read(app, ctx.adminA, ctx.storeA, agingRoute)
-    const fromA2 = await read(app, ctx.adminA2, ctx.storeA2, agingRoute)
-    const plain = await read(setupApp, ctx.adminA, ctx.storeA, agingRoute)
+  // Every row and the view add up: the buckets and what is unapplied are the total, for each party and for the whole list, whichever day it is
+  // read on (a line 15 days newer falls in another bucket once the day is far enough)
+  const adds = (row: { bucketsCents: string[]; unappliedCents: string; totalCents: string }) =>
+    row.bucketsCents.reduce((sum, cents) => sum + BigInt(cents), 0n) + BigInt(row.unappliedCents)
 
-    for (const answer of [fromA, fromA2, plain]) expect(answer.status).toBe(OK)
-    for (const answer of [fromA, fromA2]) {
-      const body = answer.body as AgingBody
-      expect(body.missingRoles).toEqual([])
-      expect(body.rows.map(row => row.partyName)).toEqual(['Proveedor del suite'])
-      expect(body.totalCents).toBe('1130')
+  it.each(['2026-01-31', '2026-03-15', '2026-05-30'])(
+    'ages the payables of both suppliers of the organization, never the one of the other, and the buckets add up to the total (as of %s)',
+    async asOf => {
+      const route = `${ApiRoutes.finance.reports.aging}?kind=${AgingKind.PAYABLES}&asOf=${asOf}`
+      const fromA = await read(app, ctx.adminA, ctx.storeA, route)
+      const fromA2 = await read(app, ctx.adminA2, ctx.storeA2, route)
+      const plain = await read(setupApp, ctx.adminA, ctx.storeA, route)
+
+      for (const answer of [fromA, fromA2, plain]) expect(answer.status).toBe(OK)
+      for (const answer of [fromA, fromA2]) {
+        const body = answer.body as AgingBody
+        expect(body.missingRoles).toEqual([])
+        expect(body.rows.map(row => row.partyName).sort()).toEqual([
+          'Proveedor del suite',
+          'Segundo proveedor del suite'
+        ])
+        // 1130 + 500: the 777 777 of organization B is not here
+        expect(body.totalCents).toBe('1630')
+        for (const row of body.rows) expect(adds(row)).toBe(BigInt(row.totalCents))
+        expect(adds(body)).toBe(BigInt(body.totalCents))
+        expect(body.rows.reduce((sum, row) => sum + BigInt(row.totalCents), 0n)).toBe(
+          BigInt(body.totalCents)
+        )
+      }
+      expect(fromA.body).toEqual(plain.body)
     }
-    expect(fromA.body).toEqual(plain.body)
+  )
+
+  it('spreads the two payables over different buckets once the days pass', async () => {
+    const route = `${ApiRoutes.finance.reports.aging}?kind=${AgingKind.PAYABLES}&asOf=2026-03-15`
+    const body = (await read(app, ctx.adminA, ctx.storeA, route)).body as AgingBody
+    const used = body.bucketsCents.filter(cents => BigInt(cents) !== 0n)
+
+    // 69 and 54 days old: not the same bucket, so the sum by bucket is not one lump
+    expect(used.length).toBeGreaterThanOrEqual(2)
   })
 })
