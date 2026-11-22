@@ -111,6 +111,7 @@ const STEPS: AffectedStep[] = [
   { name: 'validate:enqueue-after-commit', command: ['validate:enqueue-after-commit'] },
   { name: 'validate:replica', command: ['validate:replica'] },
   { name: 'validate:image-hosts', command: ['validate:image-hosts'] },
+  { name: 'validate:ci-shards', command: ['validate:ci-shards'] },
   // Pure code, a second to run: a contract that breaks is seen before the push and not in CI
   { name: 'test:contracts', command: ['test:contracts'] }
 ]

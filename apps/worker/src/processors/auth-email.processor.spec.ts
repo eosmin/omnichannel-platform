@@ -2,11 +2,20 @@ import { type Job, UnrecoverableError } from 'bullmq'
 import { ZodError } from 'zod'
 
 import type { EmailService } from '@platform/core/email'
+import { Locales } from '@platform/core/i18n'
 import type { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
-import { JobNames, type RequestMagicLinkJob } from '@platform/core/queues'
+import { EmailTemplates, JobNames, type RequestMagicLinkJob } from '@platform/core/queues'
 
 import { AuthEmailProcessor } from './auth-email.processor'
 import type { ProcessorSupport } from './processor-support'
+
+const emailJob = {
+  template: EmailTemplates.MAGIC_LINK,
+  to: 'a@example.com',
+  locale: Locales.ES,
+  data: {},
+  tags: { template: EmailTemplates.MAGIC_LINK }
+}
 
 function build() {
   const email = { send: jest.fn((_data: unknown) => Promise.resolve()) }
@@ -24,6 +33,23 @@ function build() {
 }
 
 describe('AuthEmailProcessor', () => {
+  it.each([
+    [JobNames.SEND_EMAIL, { template: 'magic-link', to: 'a@example.com' }],
+    [JobNames.REQUEST_MAGIC_LINK, { email: 7 }]
+  ])(
+    'does not retry the %s job that does not fit, and says nothing of its data',
+    async (name, data) => {
+      const { email, magicLinks, handle } = build()
+
+      const error: unknown = await handle({ name, data }).catch((caught: unknown) => caught)
+
+      expect(error).toBeInstanceOf(UnrecoverableError)
+      expect((error as Error).message).not.toContain('a@example')
+      expect(email.send).not.toHaveBeenCalled()
+      expect(magicLinks.issue).not.toHaveBeenCalled()
+    }
+  )
+
   it('hands a request for a magic link to the issuer, with its correlation id, and sends nothing itself', async () => {
     const { email, magicLinks, handle } = build()
     const job = {
@@ -39,11 +65,9 @@ describe('AuthEmailProcessor', () => {
 
   it('sends the email of the link the issuer wrote', async () => {
     const { email, magicLinks, handle } = build()
-    const data = { template: 'magic-link', to: 'a@example.com' }
+    await handle({ name: JobNames.SEND_EMAIL, data: emailJob })
 
-    await handle({ name: JobNames.SEND_EMAIL, data })
-
-    expect(email.send).toHaveBeenCalledWith(data)
+    expect(email.send).toHaveBeenCalledWith(emailJob)
     expect(magicLinks.issue).not.toHaveBeenCalled()
   })
 
@@ -51,7 +75,7 @@ describe('AuthEmailProcessor', () => {
     const { email, handle } = build()
     email.send.mockRejectedValueOnce(new ZodError([]))
 
-    await expect(handle({ name: JobNames.SEND_EMAIL, data: {} })).rejects.toThrow(
+    await expect(handle({ name: JobNames.SEND_EMAIL, data: emailJob })).rejects.toThrow(
       UnrecoverableError
     )
   })

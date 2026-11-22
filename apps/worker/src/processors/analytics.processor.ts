@@ -5,13 +5,21 @@ import { z } from 'zod'
 import { AnalyticsEventNames, RollupLimits } from '@platform/core/analytics'
 import { JobContext } from '@platform/core/database'
 import { searchClickDataSchema, searchEventDataSchema } from '@platform/core/domain'
-import { JobNames, QueueNames, type RollupJob, type TrackAnalyticsJob } from '@platform/core/queues'
+import {
+  exactly,
+  JobNames,
+  jobCorrelationIdSchema,
+  QueueNames,
+  type RollupJob,
+  type TrackAnalyticsJob
+} from '@platform/core/queues'
 
 import { AnalyticsEventWriter } from '../analytics/analytics-event.writer'
 import { AnalyticsRollupService } from '../analytics/analytics-rollup.service'
 import { isAligned, RollupGranularities, type RollupGranularity } from '../analytics/rollup-periods'
 
 import { BaseProcessor } from './base.processor'
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 // Checked against the job type of the queue: a field added there and not here fails to compile
@@ -21,29 +29,33 @@ const rawEventSchema = z.object({
   data: z.record(z.string(), z.unknown()),
   // An offset is read and written back in UTC, so a producer need not format its date our way
   timestamp: z.iso.datetime({ offset: true }).transform(value => new Date(value).toISOString()),
-  correlationId: z.string().optional(),
+  correlationId: jobCorrelationIdSchema,
   eventKey: z.string().min(1).max(255).optional()
 })
 
-const rollupSchema: z.ZodType<RollupJob, unknown> = z.object({
-  storeId: z.uuid(),
-  periodStart: z.iso.datetime(),
-  periodEnd: z.iso.datetime(),
-  correlationId: z.string().optional()
-})
+const rollupSchema = exactly<RollupJob>()(
+  z.object({
+    storeId: z.uuid(),
+    periodStart: z.iso.datetime(),
+    periodEnd: z.iso.datetime(),
+    correlationId: jobCorrelationIdSchema
+  })
+)
 
 // The search events have their own job and their own data checks: through this one they would be written with any data
 const SEARCH_EVENTS: readonly string[] = [
   AnalyticsEventNames.SEARCH_PERFORMED,
   AnalyticsEventNames.SEARCH_CLICKED
 ]
-const trackEventSchema: z.ZodType<TrackAnalyticsJob, unknown> = rawEventSchema.refine(
-  job => !SEARCH_EVENTS.includes(job.event),
-  { message: 'a search event is queued as a search job' }
+const trackEventSchema = exactly<TrackAnalyticsJob>()(
+  rawEventSchema.refine(job => !SEARCH_EVENTS.includes(job.event), {
+    message: 'a search event is queued as a search job'
+  })
 )
 
 // The search event is a TRACK_SEARCH job: the same shape as a raw event, but only ever `search.performed` or
-// `search.clicked`, each with the data the search route queues (`searchEventDataSchema`, `searchClickDataSchema`)
+// `search.clicked`, each with the data the search route queues (`searchEventDataSchema`, `searchClickDataSchema`). Not `exactly`: the data is
+// narrower than the job type's `Record<string, unknown>`, so the two are assignable one way only; the keys are the ones of `rawEventSchema`.
 const trackSearchSchema: z.ZodType<TrackAnalyticsJob, unknown> = z.union([
   rawEventSchema.extend({
     event: z.literal(AnalyticsEventNames.SEARCH_PERFORMED),
@@ -80,7 +92,7 @@ export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob | Rollup
     if (trackSchema !== undefined) {
       const parsed = trackSchema.safeParse(job.data)
       if (!parsed.success) {
-        throw new UnrecoverableError(`the ${job.name} job does not fit its schema`)
+        throw new JobRejectedError('the analytics job does not fit its schema')
       }
       const event = parsed.data
       await this.skipIfGone(job, () =>
@@ -93,7 +105,7 @@ export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob | Rollup
       throw new UnrecoverableError('the analytics queue does not know this job')
     }
     const parsed = rollupSchema.safeParse(job.data)
-    if (!parsed.success) throw new UnrecoverableError('the rollup job does not fit its schema')
+    if (!parsed.success) throw new JobRejectedError('the rollup job does not fit its schema')
     const start = new Date(parsed.data.periodStart)
     const end = new Date(parsed.data.periodEnd)
     // Only a whole hour or a whole UTC day: a job cannot write a period the schedulers never ask for

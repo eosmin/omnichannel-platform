@@ -2,8 +2,14 @@ import { OnWorkerEvent, WorkerHost } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 
 import { JobContextGoneError, JobContextMismatchError } from '@platform/core/database'
-import type { BaseJob, QueueName } from '@platform/core/queues'
+import {
+  hasPayloadLimit,
+  jobPayloadFits,
+  type BaseJob,
+  type QueueName
+} from '@platform/core/queues'
 
+import { JobRejectedError } from './job-rejected.error'
 import type { ProcessorSupport } from './processor-support'
 
 // The attempt that is running is the last one the job has: what it cannot do now it will not do
@@ -24,6 +30,11 @@ export abstract class BaseProcessor<T extends BaseJob> extends WorkerHost {
   protected abstract handle(job: Job<T>): Promise<void>
 
   async process(job: Job<T>): Promise<void> {
+    // Before any schema reads the payload: one that is past the limit of its queue will not shrink when it is tried again. The error
+    // names the queue's limit and never what the job held.
+    if (hasPayloadLimit(this.queue) && !jobPayloadFits(job.data, this.queue)) {
+      throw new JobRejectedError('the job payload is larger than its queue allows')
+    }
     try {
       await this.support.run(this.queue, job, current => this.handle(current))
     } catch (error) {

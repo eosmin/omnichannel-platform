@@ -63,6 +63,8 @@ export async function readInEachStore<T>(
 // The sweep that DELETES or decides by what it does not find (retention, purges, orphan files): every store, one context at a time, and ANY
 // failure of a store aborts the whole sweep (a store that could not be read is not "a store with nothing to do"). Only a store that was
 // deleted between the list and its turn is skipped: there is nothing of it left. `work` opens its own contexts (forStore) and keeps its tallies.
+// The one sweep with its own, more lenient loop is `ErasedCustomerSweep`: it acts only on customers that carry `erased_at`, so a store it cannot read
+// deletes nothing; it goes on with the other stores and fails the run at the end. A sweep that decides by what it does not find uses this one.
 export async function inEachStoreStrict(
   prisma: PrismaService,
   work: (storeId: string) => Promise<void>

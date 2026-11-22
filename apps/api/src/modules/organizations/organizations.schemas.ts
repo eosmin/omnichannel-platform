@@ -5,6 +5,7 @@ import {
   isSupportedCurrency,
   lowercasedUuidSchema,
   OrganizationLimits,
+  singleLineText,
   timezoneSchema
 } from '@platform/core/domain'
 import { SUPPORTED_LOCALES } from '@platform/core/i18n'
@@ -19,7 +20,7 @@ function hasSlug(name: string): boolean {
   }
 }
 
-const name = z.string().trim().min(1).max(OrganizationLimits.NAME_MAX_LENGTH)
+const name = singleLineText(OrganizationLimits.NAME_MAX_LENGTH, 1)
 const storeName = name.refine(hasSlug, { message: 'the name needs a letter or a digit' })
 const timezone = timezoneSchema
 const currency = z.string().refine(isSupportedCurrency, { message: 'a current ISO 4217 currency' })

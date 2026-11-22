@@ -41,6 +41,9 @@ export interface ScriptedAnswer {
   hangUp?: boolean
   // Answers with this many bytes of filler instead of a body
   oversizeBytes?: number
+  // A `message.send` that the plugin DID take (its key is kept, the message exists) and then fails to say so: this status,
+  // or 0 to hang up. It is the doubt a plugin must survive: the platform sends the same key again and gets the first message
+  failAfterSendWith?: number
 }
 
 export interface ReferencePlugin {
@@ -51,6 +54,8 @@ export interface ReferencePlugin {
   refused: number
   // Sends the plugin took a second time under the same idempotency key (it answers the first answer again)
   duplicates: number
+  // The message each idempotency key made: one entry per key, however many times it came
+  messages: ReadonlyMap<string, string>
   // The secrets it verifies with: one, or two while a rotation is open
   secrets: string[]
   // The next request is answered by this and not by the plugin
@@ -97,6 +102,7 @@ export async function startReferencePlugin(
     received: [],
     refused: 0,
     duplicates: 0,
+    messages: sends,
     secrets,
     clock,
     script: answer => {
@@ -178,6 +184,14 @@ export async function startReferencePlugin(
           counter += 1
           const externalId = `ref-${counter}`
           if (key !== null) sends.set(key, externalId)
+          if (next?.failAfterSendWith === 0) {
+            request.socket.destroy()
+            return
+          }
+          if (next?.failAfterSendWith !== undefined) {
+            answer(next.failAfterSendWith, {})
+            return
+          }
           answer(200, { externalId, status: 'sent' })
           return
         }
