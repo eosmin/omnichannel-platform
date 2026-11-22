@@ -1,6 +1,11 @@
 import pg from 'pg'
 
-import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  ensureStore,
+  type OwnerClient,
+  DatabaseRoles
+} from '@platform/core/database-testing'
 import {
   ChannelConnectionStatus,
   PluginCatalogTypes,
@@ -91,7 +96,7 @@ describe('rls_take_disconnected_connection', () => {
     try {
       await raw.query("SET LOCAL lock_timeout = '20s'")
       await raw.query('ALTER TABLE channel_connections ENABLE ROW LEVEL SECURITY')
-      await raw.query('SET LOCAL ROLE platform_app')
+      await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
       await raw.query(
         "SELECT set_config('app.store_ids', $1, true), set_config('app.organization_ids', '', true), set_config('app.user_id', '', true)",
         [stores.join(',')]
@@ -261,8 +266,8 @@ describe('rls_take_disconnected_connection', () => {
       result: string
     }>(
       `SELECT p.prosecdef AS secdef, p.proconfig AS config, pg_get_userbyid(p.proowner) AS owner,
-              has_function_privilege('platform_app', p.oid, 'EXECUTE') AS app,
-              has_function_privilege('platform_worker', p.oid, 'EXECUTE') AS worker,
+              has_function_privilege('${DatabaseRoles.APP}', p.oid, 'EXECUTE') AS app,
+              has_function_privilege('${DatabaseRoles.WORKER}', p.oid, 'EXECUTE') AS worker,
               has_function_privilege('public', p.oid, 'EXECUTE') AS pub,
               p.provolatile AS volatility, p.prosrc AS source, pg_get_function_result(p.oid) AS result
          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -272,8 +277,8 @@ describe('rls_take_disconnected_connection', () => {
     const fn = rows[0]
     expect(fn?.secdef).toBe(true)
     expect(fn?.config).toEqual(['search_path=pg_catalog, public, pg_temp'])
-    expect(fn?.owner).not.toBe('platform_app')
-    expect(fn?.owner).not.toBe('platform_worker')
+    expect(fn?.owner).not.toBe(DatabaseRoles.APP)
+    expect(fn?.owner).not.toBe(DatabaseRoles.WORKER)
     expect({ app: fn?.app, worker: fn?.worker, pub: fn?.pub }).toEqual({
       app: true,
       worker: false,

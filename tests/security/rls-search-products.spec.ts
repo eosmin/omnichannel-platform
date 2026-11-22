@@ -1,6 +1,6 @@
 import pg from 'pg'
 
-import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
+import { connectionUrls, type OwnerClient, DatabaseRoles } from '@platform/core/database-testing'
 import { ProductMatchKinds, ProductSearchConfig, SearchDatabaseErrors } from '@platform/core/domain'
 
 import { createProduct, createProductVariant } from '../builders'
@@ -282,10 +282,10 @@ describe('the product search functions of row-level security', () => {
   it('can be called by the api and by nobody else', async () => {
     const { rows } = await statsDb.query<{ app: boolean; worker: boolean; pub: boolean }>(
       `SELECT
-         has_function_privilege('platform_app', 'public.rls_search_products(text, text, text, boolean, integer)', 'EXECUTE')
-           AND has_function_privilege('platform_app', 'public.rls_search_product_matches(text, integer, text, text)', 'EXECUTE') AS app,
-         has_function_privilege('platform_worker', 'public.rls_search_products(text, text, text, boolean, integer)', 'EXECUTE')
-           OR has_function_privilege('platform_worker', 'public.rls_search_product_matches(text, integer, text, text)', 'EXECUTE') AS worker,
+         has_function_privilege('${DatabaseRoles.APP}', 'public.rls_search_products(text, text, text, boolean, integer)', 'EXECUTE')
+           AND has_function_privilege('${DatabaseRoles.APP}', 'public.rls_search_product_matches(text, integer, text, text)', 'EXECUTE') AS app,
+         has_function_privilege('${DatabaseRoles.WORKER}', 'public.rls_search_products(text, text, text, boolean, integer)', 'EXECUTE')
+           OR has_function_privilege('${DatabaseRoles.WORKER}', 'public.rls_search_product_matches(text, integer, text, text)', 'EXECUTE') AS worker,
          has_function_privilege('public', 'public.rls_search_products(text, text, text, boolean, integer)', 'EXECUTE')
            OR has_function_privilege('public', 'public.rls_search_product_matches(text, integer, text, text)', 'EXECUTE') AS pub`
     )

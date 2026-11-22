@@ -6,7 +6,7 @@ import pg from 'pg'
 
 import { CredentialCipher } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
-import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
+import { connectionUrls, type OwnerClient, DatabaseRoles } from '@platform/core/database-testing'
 import { FiscalReseal } from '@platform/core/domain'
 import { FiscalResealService, type FiscalResealUnit } from '@platform/fiscal/runtime'
 
@@ -230,7 +230,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
         }
       }
       await expect(
-        inRole('platform_worker', async () => {
+        inRole(DatabaseRoles.WORKER, async () => {
           await raw.query(`SELECT set_config('${FiscalReseal.SETTING}', 'on', true)`)
           await raw.query(
             'UPDATE fiscal_contingencies SET responsible_encrypted = $2::bytea WHERE id = $1',
@@ -239,7 +239,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
         })
       ).rejects.toMatchObject({ message: expect.stringContaining('does not change') as string })
       await expect(
-        inRole('platform_app', () =>
+        inRole(DatabaseRoles.APP, () =>
           raw.query('SELECT fiscal_reseal_contingency($1, $2, $3::bytea, $4::bytea)', [
             ctx.orgA.id,
             row.id,
@@ -274,7 +274,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
     }
     const swapSql = `UPDATE fiscal_documents SET receiver_encrypted = $2::bytea WHERE id = $1`
 
-    it.each(['platform_app', 'platform_worker'])(
+    it.each([DatabaseRoles.APP, DatabaseRoles.WORKER])(
       'is not opened by the setting alone for %s: the swap is still refused',
       async role => {
         await expect(
@@ -344,7 +344,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
     )
 
     it('without the setting, the worker and the application roles cannot change a sealed column of a decided document at all', async () => {
-      for (const role of ['platform_app', 'platform_worker']) {
+      for (const role of [DatabaseRoles.APP, DatabaseRoles.WORKER]) {
         await expect(
           asRole(role, () => raw.query(swapSql, [documentId, shaped()]))
         ).rejects.toMatchObject({ message: expect.stringContaining('immutable') as string })
@@ -353,7 +353,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
 
     it('is not reached by the application role through the function: only the worker may call it', async () => {
       await expect(
-        asRole('platform_app', () =>
+        asRole(DatabaseRoles.APP, () =>
           raw.query(
             `SELECT ${FiscalReseal.FUNCTION}($1, $2, $3::bytea, $4::bytea, NULL::bytea, NULL::bytea)`,
             [ctx.orgA.id, documentId, Buffer.from('a'), Buffer.from('b')]
@@ -364,7 +364,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
 
     it('refuses the function for an organization that is not in the context of the worker', async () => {
       await expect(
-        asRole('platform_worker', () =>
+        asRole(DatabaseRoles.WORKER, () =>
           raw.query(
             `SELECT ${FiscalReseal.FUNCTION}($1, $2, $3::bytea, $4::bytea, NULL::bytea, NULL::bytea)`,
             [ctx.orgB.id, documentId, Buffer.from('a'), Buffer.from('b')]
@@ -380,7 +380,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
       )
       const { r, p } = current.rows[0] ?? { r: Buffer.alloc(0), p: null }
       const call = (newReceiver: Buffer, oldPayload: Buffer | null, newPayload: Buffer | null) =>
-        asRole('platform_worker', () =>
+        asRole(DatabaseRoles.WORKER, () =>
           raw.query(
             `SELECT ${FiscalReseal.FUNCTION}($1, $2, $3::bytea, $4::bytea, $5::bytea, $6::bytea)`,
             [ctx.orgA.id, documentId, r, newReceiver, oldPayload, newPayload]
@@ -392,7 +392,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
     })
 
     it('swaps nothing when the old bytes are not the ones in the row (compare-and-swap)', async () => {
-      const answer = await asRole('platform_worker', () =>
+      const answer = await asRole(DatabaseRoles.WORKER, () =>
         raw.query<{ changed: boolean }>(
           `SELECT ${FiscalReseal.FUNCTION}($1, $2, $3::bytea, $4::bytea, NULL::bytea, NULL::bytea) AS changed`,
           [ctx.orgA.id, documentId, Buffer.from('not the row'), shaped()]

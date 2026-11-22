@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common'
 import pg from 'pg'
 
 import type { OwnerClient } from '@platform/core/database-testing'
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, DatabaseRoles } from '@platform/core/database-testing'
 import {
   ConversationHiddenStatuses,
   MessageType,
@@ -317,12 +317,12 @@ describe('the search functions of row-level security', () => {
     const { rows } = await appDb.query<{ role: string; allowed: boolean }>(
       `SELECT r AS role, has_function_privilege(r,
          'public.rls_search_customer_list(text, text, text, boolean, text, text, integer)', 'EXECUTE') AS allowed
-       FROM unnest(ARRAY['platform_app', 'platform_worker', 'platform_replica_ro', 'public']) AS r`
+       FROM unnest(ARRAY['${DatabaseRoles.APP}', '${DatabaseRoles.WORKER}', '${DatabaseRoles.REPLICA}', 'public']) AS r`
     )
     expect(Object.fromEntries(rows.map(row => [row.role, row.allowed]))).toEqual({
-      platform_app: true,
-      platform_worker: true,
-      platform_replica_ro: false,
+      [DatabaseRoles.APP]: true,
+      [DatabaseRoles.WORKER]: true,
+      [DatabaseRoles.REPLICA]: false,
       public: false
     })
   })

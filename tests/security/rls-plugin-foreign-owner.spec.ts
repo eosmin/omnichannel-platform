@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import pg from 'pg'
 
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, DatabaseRoles } from '@platform/core/database-testing'
 import { PluginCatalogTypes, PluginPricingModels, PluginStatus } from '@platform/core/domain'
 
 // Row-Level Security, PR B of the plugins (migration 20270123100000_rls_plugin_foreign_owner): the function that tells the registration of
@@ -67,7 +67,7 @@ describe('row-level security, plugins: rls_plugin_foreign_owner', () => {
       await insertPlugin(ids.mine, mine)
       await insertPlugin(ids.other, other)
       await insertPlugin(ids.official, null)
-      await raw.query(`SET LOCAL ROLE ${options.role ?? 'platform_app'}`)
+      await raw.query(`SET LOCAL ROLE ${options.role ?? DatabaseRoles.APP}`)
       await raw.query(
         "SELECT set_config('app.store_ids', '', true), set_config('app.organization_ids', $1, true)",
         [
@@ -100,8 +100,8 @@ describe('row-level security, plugins: rls_plugin_foreign_owner', () => {
       config: string[]
       definer: boolean
     }>(
-      `SELECT has_function_privilege('platform_app', $1::regprocedure, 'EXECUTE') AS app,
-              has_function_privilege('platform_worker', $1::regprocedure, 'EXECUTE') AS worker,
+      `SELECT has_function_privilege('${DatabaseRoles.APP}', $1::regprocedure, 'EXECUTE') AS app,
+              has_function_privilege('${DatabaseRoles.WORKER}', $1::regprocedure, 'EXECUTE') AS worker,
               has_function_privilege('public', $1::regprocedure, 'EXECUTE') AS pub,
               p.proconfig AS config, p.prosecdef AS definer
        FROM pg_proc p WHERE p.oid = $1::regprocedure`,
@@ -153,7 +153,7 @@ describe('row-level security, plugins: rls_plugin_foreign_owner', () => {
       async ({ other, query }) => {
         await expect(foreign(query, other)).rejects.toMatchObject({ code: '42501' })
       },
-      { role: 'platform_worker' }
+      { role: DatabaseRoles.WORKER }
     )
   })
 })

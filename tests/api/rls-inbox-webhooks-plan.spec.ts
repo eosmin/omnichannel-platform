@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto'
 
 import pg from 'pg'
 
-import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  ensureStore,
+  type OwnerClient,
+  DatabaseRoles
+} from '@platform/core/database-testing'
 import { ChannelIds, ConversationHiddenStatuses, ConversationStatus } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
 
@@ -146,7 +151,7 @@ describe('the plan of the inbox and of the delivery log with row-level security 
       }
       await raw.query('SET LOCAL enable_seqscan = off')
       await raw.query('SET LOCAL enable_bitmapscan = off')
-      await raw.query('SET LOCAL ROLE platform_app')
+      await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
       await raw.query(
         "SELECT set_config('app.store_ids', $1, true), set_config('app.user_id', $2, true)",
         [storeA, agent]

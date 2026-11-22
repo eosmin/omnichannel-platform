@@ -1,7 +1,9 @@
+import { DatabaseRoles } from '../testing/connection-urls'
+
 import { replicaRoleProblem, type ReplicaRoleFacts } from './replica-role'
 
 const READ_ONLY_ROLE: ReplicaRoleFacts = {
-  roleName: 'platform_replica_ro',
+  roleName: DatabaseRoles.REPLICA,
   isSuperuser: false,
   bypassesRls: false,
   canWrite: false,
@@ -17,7 +19,7 @@ describe('replicaRoleProblem', () => {
     expect(
       replicaRoleProblem({
         ...READ_ONLY_ROLE,
-        roleName: 'platform_app',
+        roleName: DatabaseRoles.APP,
         canWrite: true,
         inRecovery: true
       })
@@ -27,11 +29,11 @@ describe('replicaRoleProblem', () => {
   it('refuses a role that can write on a server that is not a standby, naming the role', () => {
     const problem = replicaRoleProblem({
       ...READ_ONLY_ROLE,
-      roleName: 'platform_app',
+      roleName: DatabaseRoles.APP,
       canWrite: true
     })
-    expect(problem).toContain('platform_app')
-    expect(problem).toContain('platform_replica_ro')
+    expect(problem).toContain(DatabaseRoles.APP)
+    expect(problem).toContain(DatabaseRoles.REPLICA)
   })
 
   it.each([
