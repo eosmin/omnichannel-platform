@@ -72,6 +72,28 @@ describe('ThreadDocumentCleaner', () => {
     })
   })
 
+  it('does not take bytes the thread can still change: memory shared with it is refused', async () => {
+    await expect(cleanerOf('shared-memory.cjs').clean(bytes, PDF)).rejects.toThrow(
+      'the document thread failed'
+    )
+  })
+
+  it('does not take a result that does not begin as the type of the document', async () => {
+    await expect(cleanerOf('wrong-type.cjs').clean(bytes, PDF)).rejects.toThrow(
+      'the document thread failed'
+    )
+  })
+
+  it('survives a thread that holds gigabytes of buffers, which the heap limit of the thread does not count', async () => {
+    const result = await cleanerOf('buffers.cjs', { timeoutMs: 20_000 }).clean(bytes, PDF)
+    expect(result).toEqual({ kind: 'untouched', why: 'not_cleanable' })
+    // The thread is gone and so is its memory: the process still works
+    await expect(cleanerOf('answer.cjs').clean(bytes, PDF)).resolves.toEqual({
+      kind: 'sanitized',
+      body: bytes
+    })
+  })
+
   it('does not trust the shape of what the thread sends', async () => {
     await expect(cleanerOf('garbage.cjs').clean(bytes, PDF)).rejects.toThrow(
       'the document thread failed'
@@ -98,7 +120,9 @@ describe('ThreadDocumentCleaner', () => {
     // The process that runs this spec has variables (PATH at least): none of them is in the thread
     const result = await cleanerOf('sees.cjs').clean(bytes, PDF)
     expect(result.kind).toBe('sanitized')
-    const seen = JSON.parse(result.kind === 'sanitized' ? result.body.toString('utf8') : '{}') as {
+    const seen = JSON.parse(
+      result.kind === 'sanitized' ? result.body.toString('utf8').slice('%PDF-'.length) : '{}'
+    ) as {
       env: string[]
       argv: string[]
       execArgv: string[]

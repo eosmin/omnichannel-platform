@@ -6,4 +6,4 @@ const seen = JSON.stringify({
   argv: process.argv.slice(2),
   execArgv: process.execArgv
 })
-parentPort.postMessage({ kind: 'sanitized', body: new Uint8Array(Buffer.from(seen)) })
+parentPort.postMessage({ kind: 'sanitized', body: new Uint8Array(Buffer.from('%PDF-' + seen)) })

@@ -38,6 +38,15 @@ export const defaultThreadOptions = (): DocumentThreadOptions => ({
 
 const { ThreadReplies, Untouched } = DocumentSanitizing
 
+// Whether the bytes begin as a document of the type they are said to be (what the cleaner writes: a PDF, or a zip for a docx and an xlsx)
+const startsAsItsType = (body: Buffer, contentType: string): boolean =>
+  contentType === DocumentSanitizing.PDF_CONTENT_TYPE
+    ? body.subarray(0, DocumentSanitizing.PDF_MAGIC.length).toString('latin1') ===
+      DocumentSanitizing.PDF_MAGIC
+    : body
+        .subarray(0, DocumentSanitizing.ZIP_MAGIC.length)
+        .equals(Buffer.from(DocumentSanitizing.ZIP_MAGIC))
+
 // The threads of this process that have not exited yet. `terminate()` cannot interrupt a thread inside a synchronous native call (inflate) until
 // it returns, so a thread can outlive its document: the cleaner then waits for it only up to `stopTimeoutMs` and, while it is alive, takes no
 // new document (it throws, the caller retries): two threads of memory are never alive together
@@ -145,7 +154,7 @@ export class ThreadDocumentCleaner extends DocumentCleaner {
 
       worker.once('message', (reply: unknown) => {
         finish(() => {
-          const answer = this.accept(reply, maxBytes)
+          const answer = this.accept(reply, maxBytes, contentType)
           if (answer === ThreadReplies.ENVIRONMENT) reject(new Error('the document thread failed'))
           else resolve(answer)
         })
@@ -169,7 +178,8 @@ export class ThreadDocumentCleaner extends DocumentCleaner {
   // The message of the thread is data from a process that parsed a hostile file: its shape and its size are checked before it is used
   private accept(
     reply: unknown,
-    maxBytes: number
+    maxBytes: number,
+    contentType: string
   ): SanitizedDocument | typeof ThreadReplies.ENVIRONMENT {
     const message = reply as Partial<DocumentThreadReply> | null
     if (message === null || typeof message !== 'object') return ThreadReplies.ENVIRONMENT
@@ -186,13 +196,18 @@ export class ThreadDocumentCleaner extends DocumentCleaner {
       return ThreadReplies.ENVIRONMENT
     }
     if (message.kind === ThreadReplies.SANITIZED && message.body instanceof Uint8Array) {
+      // Memory the thread could still write to (a SharedArrayBuffer) is never taken: the bytes would change after they are checked, while
+      // they are uploaded. A plain ArrayBuffer was moved to this thread by the message and is not the thread's any more
+      if (!(message.body.buffer instanceof ArrayBuffer)) return ThreadReplies.ENVIRONMENT
       // A result over the limit is a document that is not worth the rewrite, as `sanitizeDocumentInline` decides for its own result
-      if (message.body.byteLength > maxBytes)
+      if (message.body.byteLength > maxBytes) {
         return { kind: ThreadReplies.UNTOUCHED, why: Untouched.NOT_CLEANABLE }
-      return {
-        kind: ThreadReplies.SANITIZED,
-        body: Buffer.from(message.body.buffer, message.body.byteOffset, message.body.byteLength)
       }
+      // A copy, made after the size was read, and what is checked next is the copy
+      const body = Buffer.from(message.body)
+      return startsAsItsType(body, contentType)
+        ? { kind: ThreadReplies.SANITIZED, body }
+        : ThreadReplies.ENVIRONMENT
     }
     return ThreadReplies.ENVIRONMENT
   }

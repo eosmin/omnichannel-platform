@@ -235,6 +235,9 @@ export const DocumentSanitizing = {
   PDF_CONTENT_TYPE: 'application/pdf',
   // The key a digital signature of a PDF always has (the byte range it covers): a PDF with it is not rewritten
   PDF_SIGNATURE_MARK: '/ByteRange',
+  // How a document the cleaner wrote begins: a PDF, and the zip of a docx or an xlsx (the parent checks what comes back from the thread)
+  PDF_MAGIC: '%PDF-',
+  ZIP_MAGIC: [0x50, 0x4b, 0x03, 0x04],
   DOCX_CONTENT_TYPE: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   XLSX_CONTENT_TYPE: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   // The sum of what a zip may inflate to: a bigger one is not opened (a zip bomb); the document stays as it came
