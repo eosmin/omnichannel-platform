@@ -206,6 +206,22 @@ describe('The review queue of the data requests', () => {
       expect((paged.body as { data: unknown[] }).data).toEqual([])
     })
 
+    it('reads the page size as a whole number in digits only, and keeps the line breaks of a reason', async () => {
+      for (const limit of ['1e2', '0x10', ' 5', '5.0', '0', '101']) {
+        const response = await asAdmin().get(ApiRoutes.compliance.dsr).query({ limit })
+        expect(response.status).toBe(BAD_REQUEST)
+      }
+      const { id } = await inReview()
+      const lines = await reject(id).catch(() => null)
+      expect(lines?.status).toBe(OK)
+      const multi = await inReview()
+      const response = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.compliance.dsrReject(multi.id))
+        .send({ reason: 'first line\r\nsecond line' })
+      expect(response.status).toBe(OK)
+      expect((await rowOf(multi.id)).notes).toBe('first line\nsecond line')
+    })
+
     it('pages by the date, newest first, and filters by status and kind', async () => {
       const first = await inReview({ type: DsrType.ACCESS })
       const second = await inReview({ type: DsrType.ACCESS })
@@ -284,7 +300,11 @@ describe('The review queue of the data requests', () => {
         { confirm: false, reason: REASON },
         { confirm: true, reason: '   ' },
         { confirm: true, reason: 'x'.repeat(ComplianceConfig.DSR_REVIEW_REASON_MAX_LENGTH + 1) },
-        { confirm: true, reason: REASON, storeId: ctx.storeB.id }
+        { confirm: true, reason: REASON, storeId: ctx.storeB.id },
+        // A NUL is a 400 here, not a 500 of the database; the other controls and the direction overrides are refused too
+        { confirm: true, reason: 'a\u0000b' },
+        { confirm: true, reason: 'a\tb' },
+        { confirm: true, reason: 'a\u202eb' }
       ]) {
         const response = await approve(id, ctx.adminA, body)
         expect(response.status).toBe(BAD_REQUEST)

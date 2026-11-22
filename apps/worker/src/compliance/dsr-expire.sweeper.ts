@@ -3,7 +3,6 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { errorName } from '@platform/channels/connections'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import {
@@ -17,6 +16,7 @@ import {
 } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { DsrStatus, VerificationTokenType } from '@platform/core/domain'
+import { errorName } from '@platform/core/errors'
 import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
 import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
 
@@ -123,8 +123,8 @@ export class DsrExpireSweeper {
               AND t.used_at IS NULL AND t.expires_at > ${now})
         FOR UPDATE OF r SKIP LOCKED`
       if (locked.length === 0) return null
-      const row = await tx.dataSubjectRequest.findUniqueOrThrow({
-        where: { id: requestId },
+      const row = await tx.dataSubjectRequest.findFirstOrThrow({
+        where: { id: requestId, storeId },
         select: { type: true, organizationId: true, notifyToEncrypted: true }
       })
       const done = await tx.dataSubjectRequest.updateMany({

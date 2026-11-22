@@ -7,7 +7,13 @@ import {
   COOKIE_POLICY_VERSION,
   dsrIntakeSchema
 } from '@platform/core/compliance'
-import { DsrStatus, DsrType, lowercasedUuidSchema } from '@platform/core/domain'
+import {
+  DsrStatus,
+  DsrType,
+  lowercasedUuidSchema,
+  multiLineText,
+  queryIntSchema
+} from '@platform/core/domain'
 
 const purposeSchema = z.enum(Object.values(ConsentPurposes) as [string, ...string[]])
 
@@ -55,11 +61,7 @@ export type DsrVerifyBody = z.infer<typeof dsrVerifyBodySchema>
 
 // The review queue of the data requests (Step 7.2-H1b). What a reviewer types is free text about a person: it is kept in the row and is
 // never copied to the audit log or a log line.
-const reviewReasonSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(ComplianceConfig.DSR_REVIEW_REASON_MAX_LENGTH)
+const reviewReasonSchema = multiLineText(ComplianceConfig.DSR_REVIEW_REASON_MAX_LENGTH, 1)
 
 // Approving is a written decision: the box is ticked and the reason is given
 export const dsrApproveBodySchema = z
@@ -74,12 +76,9 @@ export const listDsrQuerySchema = z
   .object({
     status: z.enum(DsrStatus).optional(),
     type: z.enum(DsrType).optional(),
-    limit: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(ComplianceConfig.DSR_REVIEW_MAX_PAGE_SIZE)
-      .default(ComplianceConfig.DSR_REVIEW_PAGE_SIZE),
+    limit: queryIntSchema(1, ComplianceConfig.DSR_REVIEW_MAX_PAGE_SIZE).default(
+      ComplianceConfig.DSR_REVIEW_PAGE_SIZE
+    ),
     cursor: lowercasedUuidSchema.optional()
   })
   .strict()

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { PinoLogger } from 'nestjs-pino'
 
-import { errorName } from '@platform/channels/connections'
+import { errorName } from '@platform/core/errors'
 import { LockNames, Schedules } from '@platform/core/queues'
 
 import { DsrExpireSweeper } from '../compliance/dsr-expire.sweeper'

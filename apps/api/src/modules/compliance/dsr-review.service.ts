@@ -96,8 +96,8 @@ const SELECT = {
 
 type Row = Awaited<ReturnType<typeof readRow>>
 
-function readRow(tx: PrismaTransaction, id: string) {
-  return tx.dataSubjectRequest.findUniqueOrThrow({ where: { id }, select: SELECT })
+function readRow(tx: PrismaTransaction, storeId: string, id: string) {
+  return tx.dataSubjectRequest.findFirstOrThrow({ where: { id, storeId }, select: SELECT })
 }
 
 const iso = (date: Date | null): string | null => (date === null ? null : date.toISOString())
@@ -244,8 +244,8 @@ export class DsrReviewService {
       const now = new Date()
       const next = [...approvals, { userId: actor.userId, at: now.toISOString() }]
       const complete = next.length >= ComplianceConfig.DSR_ERASURE_APPROVALS_REQUIRED
-      await tx.dataSubjectRequest.update({
-        where: { id },
+      await tx.dataSubjectRequest.updateMany({
+        where: { id, storeId },
         data: {
           approvals: next,
           reviewedBy: actor.userId,
@@ -261,7 +261,7 @@ export class DsrReviewService {
             : {})
         }
       })
-      return { view: viewOf(await readRow(tx, id)), counts }
+      return { view: viewOf(await readRow(tx, storeId, id)), counts }
     })
 
     this.audit.log({
@@ -311,7 +311,7 @@ export class DsrReviewService {
       })
       if (done.count !== 1) throw notReviewable(row.status)
       await this.mailResult(tx, storeId, row, DsrResultOutcomes.REJECTED)
-      return viewOf(await readRow(tx, id))
+      return viewOf(await readRow(tx, storeId, id))
     })
     this.logEnd(AuditAction.DSR_REJECTED, storeId, view, actor)
     return view
@@ -343,7 +343,7 @@ export class DsrReviewService {
       })
       if (done.count !== 1) throw notReviewable(row.status)
       await this.mailResult(tx, storeId, row, DsrResultOutcomes.CANCELLED)
-      return viewOf(await readRow(tx, id))
+      return viewOf(await readRow(tx, storeId, id))
     })
     this.logEnd(AuditAction.DSR_CANCELLED, storeId, view, actor)
     return view
@@ -372,7 +372,7 @@ export class DsrReviewService {
     const found = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM data_subject_requests WHERE id = ${id} AND store_id = ${storeId} FOR UPDATE`
     if (found.length === 0) throw resourceNotFound('data request')
-    return readRow(tx, id)
+    return readRow(tx, storeId, id)
   }
 
   // The customers the request names still are the people that asked: not erased, not merged away, and each still has the address that made
