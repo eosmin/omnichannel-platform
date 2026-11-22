@@ -124,6 +124,14 @@ const unsupported = (what: string): PlatformException =>
 // own, so the change is made here. A reply that reached the customer changes only when the channel
 // takes the change: the request is stored as queued, the worker asks the plugin, and the thread shows
 // whether it was taken. The message of a customer is never changed from here.
+// The line of an order in the thread is for who holds orders:view (the thread leaves it out for the rest): a route that
+// reads one message by its id answers "not found" for it, like for a note the viewer may not read
+function mayReadOrderLine(viewer: Viewer, type: string): boolean {
+  return (
+    type !== MessageType.ORDER_SUMMARY.valueOf() || viewer.held.includes(Permissions.ORDERS_VIEW)
+  )
+}
+
 @Injectable()
 export class MessageChangesService {
   constructor(
@@ -327,7 +335,8 @@ export class MessageChangesService {
       message.deletedAt === null ||
       message.contentPurgedAt !== null ||
       (message.type === MessageType.INTERNAL_NOTE.valueOf() &&
-        !viewer.held.includes(Permissions.MESSAGES_INTERNAL_NOTE))
+        !viewer.held.includes(Permissions.MESSAGES_INTERNAL_NOTE)) ||
+      !mayReadOrderLine(viewer, message.type)
     ) {
       throw resourceNotFound('deleted message')
     }
@@ -352,7 +361,8 @@ export class MessageChangesService {
       message === null ||
       !canSee(viewer, message.conversation) ||
       (message.type === MessageType.INTERNAL_NOTE.valueOf() &&
-        !viewer.held.includes(Permissions.MESSAGES_INTERNAL_NOTE))
+        !viewer.held.includes(Permissions.MESSAGES_INTERNAL_NOTE)) ||
+      !mayReadOrderLine(viewer, message.type)
     ) {
       throw resourceNotFound('message')
     }

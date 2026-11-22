@@ -1288,7 +1288,9 @@
         "sort": "Ordenar por",
         "sorts": {
           "newest": "Más recientes primero",
-          "scheduled_delivery": "Entrega programada"
+          "scheduled_delivery": "Entrega programada",
+          "total_highest": "Mayor total primero",
+          "customer_name": "Nombre del cliente"
         },
         "created": "Creado entre",
         "createdFrom": "Creado desde",

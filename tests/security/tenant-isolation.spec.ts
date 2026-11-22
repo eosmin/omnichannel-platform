@@ -4768,9 +4768,11 @@ describe('Tenant isolation', () => {
       const ids = (list.body as { data: { id: string }[] }).data.map(order => order.id)
       expect(ids).toEqual([own.id])
       // The figures add up the orders of the store only
-      expect((list.body as { figures: { totalSpentCents: number } }).figures.totalSpentCents).toBe(
-        1000
-      )
+      expect(
+        (
+          list.body as { figures: { byCurrency: { totalSpentCents: number }[] } }
+        ).figures.byCurrency.map(line => line.totalSpentCents)
+      ).toEqual([1000])
       const entries = (timeline.body as { data: { type: string; id: string }[] }).data
       expect(entries.filter(entry => entry.type === 'order').map(entry => entry.id)).toEqual([
         own.id
