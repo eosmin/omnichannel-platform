@@ -160,7 +160,7 @@ describe('whatsapp payloads', () => {
         ['application/pdf', 100 * MB + 1]
       ])('refuses a %s of %i bytes, over what Meta takes', (contentType, fileSize) => {
         const error = refusalOf(() => checkMedia({ ...media, contentType, fileSize }))
-        expect(error.code).toBe(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+        expect(error.code).toBe(ErrorCodes.CHANNEL_FILE_TOO_LARGE)
         expect(error.retryable).toBe(false)
       })
 
