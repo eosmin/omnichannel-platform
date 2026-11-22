@@ -56,7 +56,7 @@ type Attempt =
       kind: 'completed'
       organizationId: string
       customers: number
-      retained: { orders: number; conversations: number }
+      retained: { orders: number; conversations: number; fiscalDocuments: number }
     }
   | {
       kind: 'returned'
@@ -366,11 +366,16 @@ export class DsrEraseDueSweeper {
       }
 
       const ids = row.subjectCustomerIds
-      const [orders, conversations] = await Promise.all([
+      const [orders, conversations, fiscalDocuments] = await Promise.all([
         tx.order.count({ where: { storeId, customerId: { in: ids } } }),
-        tx.conversation.count({ where: { storeId, customerId: { in: ids } } })
+        tx.conversation.count({ where: { storeId, customerId: { in: ids } } }),
+        // The fiscal documents of those orders are kept whole, as the law asks (legal obligation), and with them the masked receiver they
+        // keep in the clear (a letter and four digits at most: less than the sealed receiver, which is kept too). The erasure does not touch
+        // them and the summary says so (Step 7.3-S11b-2). Basis: the mask is part of the record of the fiscal document that the law obliges to keep, and
+        // is used for nothing but the lists of that document; the closing mail still names only the orders (plan, limit 7)
+        tx.fiscalDocument.count({ where: { storeId, order: { customerId: { in: ids } } } })
       ])
-      const retained = { orders, conversations }
+      const retained = { orders, conversations, fiscalDocuments }
       // The sealed address STAYS until the closing mail is queued (`notify`, after this commit): a queue that is down leaves the request ended
       // with its address, and the next night sends the mail. The mail is never queued before the erasure is committed, so it cannot announce
       // an erasure that rolled back.

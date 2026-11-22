@@ -78,3 +78,8 @@ except the backup.
 - The guard of a decided fiscal document (and of a reported contingency) is not relaxed for anything but this job: only the functions
   `fiscal_reseal_document` and `fiscal_reseal_contingency` (the worker role alone) can swap the two sealed columns, and only for the same content (the job checks that the new value opens to the same text before it
   writes).
+- The same nightly run also calculates the masked receiver of the documents that have none yet (`masked` in the report) with the CURRENT
+  key alone, never the previous one, and through the function `fiscal_mask_document` (the third function the guard admits, worker only).
+  A document whose receiver opens with neither key keeps no mask and is counted in `failed`; it is not an extra step of the rotation, and
+  the screens open that row as before. The three columns it writes are in the clear by design: a letter and fill for the name, fill and
+  four digits for the tax id (and only when it has nine or more digits).

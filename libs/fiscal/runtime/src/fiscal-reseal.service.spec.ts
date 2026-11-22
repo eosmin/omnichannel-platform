@@ -12,7 +12,11 @@ import { FiscalResealService, type FiscalResealUnit } from './fiscal-reseal.serv
 describe('FiscalResealService (what the database run cannot show)', () => {
   const oldKey = randomBytes(32)
   const newKey = randomBytes(32)
-  const logger = { setContext: () => undefined, error: () => undefined } as unknown as PinoLogger
+  const logger = {
+    setContext: () => undefined,
+    error: () => undefined,
+    warn: () => undefined
+  } as unknown as PinoLogger
   const unit: FiscalResealUnit = work => work()
   const audit = { log: jest.fn() }
 
@@ -87,7 +91,7 @@ describe('FiscalResealService (what the database run cannot show)', () => {
     expect(where.store).toEqual({ organizationId: 'org-1' })
   })
 
-  it('reads nothing at all without a previous key', async () => {
+  it('reads no sealed value to seal again without a previous key (only the masks are looked for)', async () => {
     const prisma = prismaWith(new Uint8Array(), 1)
     const service = new FiscalResealService(
       prisma as never,
@@ -98,6 +102,114 @@ describe('FiscalResealService (what the database run cannot show)', () => {
     const report = await service.run('org-1', unit)
     expect(report.enabled).toBe(false)
     expect(prisma.findMany).not.toHaveBeenCalled()
+  })
+
+  it('calculates no mask from a receiver that only the previous key opens, and counts it by code without its content', async () => {
+    const sealedOld = new CredentialCipher(oldKey).seal({
+      name: 'Ana Receptora',
+      taxId: '0614-010101-101-1'
+    })
+    const queryRaw = jest.fn()
+    const documents = {
+      // The re-seal reads nothing of the documents; only the step of the masks finds this one
+      findMany: jest
+        .fn()
+        .mockImplementation((args: { where: { receiverMaskedAt?: null } }) =>
+          Promise.resolve(
+            args.where.receiverMaskedAt === null
+              ? [{ id: 'doc-1', receiverEncrypted: new Uint8Array(sealedOld) }]
+              : []
+          )
+        ),
+      updateMany: jest.fn()
+    }
+    const empty = { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() }
+    const prisma = {
+      client: {
+        customerFiscalData: empty,
+        fiscalDocument: documents,
+        fiscalIssuer: empty,
+        fiscalContingency: empty,
+        $queryRaw: queryRaw
+      }
+    }
+    const errors: unknown[] = []
+    const loud = {
+      setContext: () => undefined,
+      error: (entry: unknown) => errors.push(entry),
+      warn: (entry: unknown) => errors.push(entry)
+    } as unknown as PinoLogger
+    const service = new FiscalResealService(
+      prisma as never,
+      new CredentialCipher(newKey, oldKey),
+      audit as never,
+      loud
+    )
+
+    const report = await service.run('org-1', unit)
+
+    // The previous key opens it for the re-seal (which found nothing here), never for a mask
+    expect(queryRaw).not.toHaveBeenCalled()
+    expect(report.masked).toBe(0)
+    expect(report.failed).toEqual({})
+    expect(report.maskFailed).toEqual({ key_mismatch: 1 })
+    expect(JSON.stringify(errors)).not.toMatch(/Receptora|0614/)
+  })
+
+  it('masks the healthy receiver behind more unreadable ones than the cap of masks written, and counts each unreadable by code', async () => {
+    const stranger = new CredentialCipher(randomBytes(32))
+    const lost = new Uint8Array(stranger.seal({ name: 'Nobody', taxId: '0614-010101-101-1' }))
+    const healthy = new Uint8Array(
+      new CredentialCipher(newKey).seal({ name: 'Ana', taxId: '0614-010101-101-1' })
+    )
+    const unreadable = FiscalReseal.MAX_VALUES_PER_KIND + 150
+    // Ids in order: the unreadable ones first, the healthy one last (the cursor of the run is the id)
+    const all = [
+      ...Array.from({ length: unreadable }, (_, i) => ({
+        id: `a${String(i).padStart(6, '0')}`,
+        receiverEncrypted: lost
+      })),
+      { id: 'z-healthy', receiverEncrypted: healthy }
+    ]
+    const queryRaw = jest.fn().mockResolvedValue([{ changed: true }])
+    const documents = {
+      findMany: jest
+        .fn()
+        .mockImplementation(
+          (args: { where: { receiverMaskedAt?: null; id?: { gt: string } }; take: number }) =>
+            Promise.resolve(
+              args.where.receiverMaskedAt === null
+                ? all
+                    .filter(row => args.where.id === undefined || row.id > args.where.id.gt)
+                    .slice(0, args.take)
+                : []
+            )
+        ),
+      updateMany: jest.fn()
+    }
+    const empty = { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() }
+    const prisma = {
+      client: {
+        customerFiscalData: empty,
+        fiscalDocument: documents,
+        fiscalIssuer: empty,
+        fiscalContingency: empty,
+        $queryRaw: queryRaw
+      }
+    }
+    const service = new FiscalResealService(
+      prisma as never,
+      new CredentialCipher(newKey),
+      audit as never,
+      logger
+    )
+
+    const report = await service.run('org-1', unit)
+
+    expect(report.masked).toBe(1)
+    expect(report.maskFailed).toEqual({ key_mismatch: unreadable })
+    expect(report.truncated).toBe(false)
+    expect(queryRaw).toHaveBeenCalledTimes(1)
   })
 
   it('stops at the cap of values sealed again, says truncated, and a second run goes on and ends clean', async () => {

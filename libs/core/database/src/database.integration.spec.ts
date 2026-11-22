@@ -384,12 +384,28 @@ describe('database roles', () => {
 })
 
 describe('schema shape', () => {
-  it('has search_vector only on messages, customers and products', async () => {
+  it('has search_vector only on customers and products (messages dropped it in Step 7.3-S14)', async () => {
     await withClient(urls.owner, async owner => {
       const { rows } = await owner.query<{ table_name: string }>(
-        "SELECT table_name FROM information_schema.columns WHERE column_name = 'search_vector' ORDER BY 1"
+        "SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'search_vector' ORDER BY 1"
       )
-      expect(rows.map(row => row.table_name)).toEqual(['customers', 'messages', 'products'])
+      expect(rows.map(row => row.table_name)).toEqual(['customers', 'products'])
+    })
+  })
+
+  it('has neither messages.search_vector nor idx_messages_search (Step 7.3-S14)', async () => {
+    await withClient(urls.owner, async owner => {
+      const { rows } = await owner.query<{ name: string }>(
+        `SELECT indexname AS name FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'messages' AND indexname = 'idx_messages_search'
+         UNION ALL SELECT column_name FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'search_vector'`
+      )
+      expect(rows).toEqual([])
+      // The table is still there: an empty answer is not the answer of a renamed table
+      const content = await owner.query(
+        "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'content'"
+      )
+      expect(content.rowCount).toBe(1)
     })
   })
 
