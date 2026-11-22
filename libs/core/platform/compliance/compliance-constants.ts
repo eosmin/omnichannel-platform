@@ -99,7 +99,10 @@ export const PlatformCleanup = {
   // An invitation that nobody accepted stays in the list of the team as expired (it is how the person is
   // invited again); it is deleted this long after it expired (MVP_TRIM_CHECKLIST §10 item 21). An accepted or
   // revoked one is the history of who joined and is not touched here
-  EXPIRED_INVITATION_GRACE_DAYS: 30
+  EXPIRED_INVITATION_GRACE_DAYS: 30,
+  // A revoked plugin installation closes its webhook subscription with its last delivery; the cleanup clears the sealed secrets and the endpoint of
+  // one that still holds them this long after it was revoked (the last delivery did not close it: a job lost, a write that failed)
+  REVOKED_PLUGIN_SECRET_GRACE_DAYS: 1
 } as const
 
 // The cold export of the audit log (TDD_05 §9.3): whole calendar months that are entirely past the hot window, the
@@ -118,6 +121,25 @@ export const AuditColdExport = {
   // the lock is let go; a process that dies lets it go at once, because the connection closes
   LOCK_TIMEOUT_MS: 2 * 60 * 60 * 1000,
   LOCK_MAX_WAIT_MS: 5_000
+} as const
+
+// What the viewer of the audit log may read of the cold parts (TDD_05 §9.3) in one request. The archive is read as a stream and
+// only the page being asked for is kept in memory; these are the ceilings of the time and the bytes a request may spend on it.
+// A request that reaches one is refused (never answered with a page that is short of entries it did not reach).
+export const AuditColdRead = {
+  // The prefix every object of the cold export lives under (`StorageKeys.auditArchive`)
+  PREFIX: 'audit/',
+  // Objects the listing of the prefix may return before the read gives up (pages of the bucket listing)
+  MAX_LIST_PAGES: 20,
+  // Parts (objects) one request may open
+  MAX_PARTS: 120,
+  // The bytes of the objects (gzipped) one request may read, and the bytes they may inflate to (a bomb guard)
+  MAX_COMPRESSED_BYTES: 512 * 1024 * 1024,
+  MAX_INFLATED_BYTES: 4 * 1024 * 1024 * 1024,
+  // A line longer than this is not an audit entry of ours: the read stops instead of buffering it
+  MAX_LINE_BYTES: 1024 * 1024,
+  // The time one request may spend reading the archive
+  MAX_READ_MS: 60_000
 } as const
 
 // The advisory lock of the cold export of one month: two runs of the same month (a job given again as stalled, two
