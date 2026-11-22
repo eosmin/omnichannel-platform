@@ -44,4 +44,25 @@ test.describe('security headers of the web app', () => {
     expect(second).toBeDefined()
     expect(first).not.toBe(second)
   })
+
+  // The layout reads the cookie of the cookie banner to decide what to send, so the answer depends on a cookie: no shared cache may
+  // keep it
+  test('a page is private and never stored, for a visitor who answered and for one who did not', async ({
+    request,
+    playwright,
+    baseURL
+  }) => {
+    const answered = await request.get(AppPaths.login)
+    const anonymous = await playwright.request.newContext({ baseURL: baseURL ?? '' })
+    try {
+      const first = await anonymous.get(AppPaths.login)
+      for (const response of [answered, first]) {
+        const cacheControl = response.headers()['cache-control'] ?? ''
+        expect(cacheControl).toContain('private')
+        expect(cacheControl).toContain('no-store')
+      }
+    } finally {
+      await anonymous.dispose()
+    }
+  })
 })

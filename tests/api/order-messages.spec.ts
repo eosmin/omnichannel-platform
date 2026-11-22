@@ -723,6 +723,34 @@ describe('Order messages', () => {
       expect(await send(scenario)).toMatchObject({ status: OrderMessageOutcomeStatus.SENT })
     })
 
+    it('lets the refusal rule when two answers of a customer carry the same instant, whatever their ids', async () => {
+      await template(OrderMessageKind.ORDER_SHIPPED, 'Va {{orderNumber}}')
+      const scenario = await scene({ channel: NO_WINDOW })
+      const at = new Date(Date.now() - HOUR_MS)
+      const record = (id: string, granted: boolean) =>
+        owner.consentRecord.create({
+          data: {
+            id,
+            storeId: ctx.storeA.id,
+            customerId: scenario.customerId,
+            purpose: ConsentPurposes.ORDER_MESSAGES,
+            legalBasis: LegalBases.CONTRACT,
+            granted,
+            ...(granted ? { grantedAt: at } : { revokedAt: at }),
+            source: 'test',
+            createdAt: at
+          }
+        })
+      // The refusal has the LOWER id: it still rules, whatever order the database would have returned the tie in
+      await record('00000000-0000-4000-8000-0000000000a1', false)
+      await record('00000000-0000-4000-8000-0000000000b2', true)
+
+      expect(await send(scenario)).toEqual({
+        status: OrderMessageOutcomeStatus.NOT_SENT,
+        reason: OrderMessageNotSentReasons.CONSENT_REVOKED
+      })
+    })
+
     it('does not take a consent of another purpose, nor one of another customer, for a refusal', async () => {
       await template(OrderMessageKind.ORDER_SHIPPED, 'Va {{orderNumber}}')
       const scenario = await scene({ channel: NO_WINDOW })

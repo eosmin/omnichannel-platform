@@ -101,6 +101,7 @@ describe('Media gallery', () => {
     const prisma = createWorkerPrisma()
     const { events, audit } = await workerServices(app, prisma)
     const subjectMissing = { inc: jest.fn() } as unknown as Counter<string>
+    const discardFailed = { inc: jest.fn() } as unknown as Counter<string>
     generator = new ExportGenerator(
       prisma,
       new CsvExportWriter(storage),
@@ -116,7 +117,8 @@ describe('Media gallery', () => {
       events,
       logger,
       new JobContext(prisma),
-      subjectMissing
+      subjectMissing,
+      discardFailed
     )
   })
   afterAll(async () => {
