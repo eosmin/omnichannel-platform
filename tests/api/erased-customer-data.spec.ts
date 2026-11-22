@@ -6,7 +6,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { ComplianceConfig } from '@platform/core/compliance'
+import { ComplianceConfig, RetentionRun } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, MessageType } from '@platform/core/domain'
@@ -483,6 +483,17 @@ describe('The data of an erased customer', () => {
       }))
       await owner.message.createMany({ data: rows })
 
+      // The cap of a job lowered to two batches, so that this thread is past it: the job path stops there and the budgeted run goes on
+      const cap = RetentionRun as { MAX_BATCHES: number }
+      const original = cap.MAX_BATCHES
+      cap.MAX_BATCHES = 2
+      try {
+        const job = await eraser.clear(ctx.storeA.id, t.conversation.customerId)
+        expect(job).toMatchObject({ cleared: false, unfinished: true })
+        expect(job.messages).toBe(1000)
+      } finally {
+        cap.MAX_BATCHES = original
+      }
       const report = await eraser.clear(
         ctx.storeA.id,
         t.conversation.customerId,
@@ -490,7 +501,7 @@ describe('The data of an erased customer', () => {
       )
 
       expect(report).toMatchObject({ cleared: true, unfinished: false })
-      expect(report.messages).toBeGreaterThanOrEqual(1200)
+      expect(report.messages).toBeGreaterThanOrEqual(200)
       expect(
         await owner.message.count({
           where: { conversationId: t.conversation.id, content: SAID }
@@ -552,7 +563,7 @@ describe('The data of an erased customer', () => {
       const inB = await erasedWithThread(ctx.storeB.id)
       const jobContext = new JobContext(worker)
       const forStore = jobContext.forStore.bind(jobContext)
-      jest
+      const spy = jest
         .spyOn(jobContext, 'forStore')
         .mockImplementation((storeId, work) =>
           storeId === ctx.storeA.id
@@ -567,7 +578,11 @@ describe('The data of an erased customer', () => {
         app.get(AuditService)
       )
 
-      await expect(sweep.run()).rejects.toThrow('could not enter')
+      try {
+        await expect(sweep.run()).rejects.toThrow('could not enter')
+      } finally {
+        spy.mockRestore()
+      }
 
       // The store that could be entered was swept; the one that could not is untouched and waits
       expect(
@@ -585,7 +600,6 @@ describe('The data of an erased customer', () => {
           (entry.metadata as { failed?: string[] } | null)?.failed?.includes('stores')
         )
       ).toBe(true)
-      jest.restoreAllMocks()
     })
 
     it('starts no store and no customer after its time budget, and is no failure', async () => {
@@ -608,9 +622,10 @@ describe('The data of an erased customer', () => {
 
     it('counts a customer that the time budget stopped as unfinished, never as failed', async () => {
       const t = await erasedWithThread()
-      const stopped = {
-        clear: jest.fn(() => Promise.resolve({ cleared: false, skipped: false, unfinished: true }))
-      } as unknown as ErasedCustomerData
+      const clear = jest.fn(() =>
+        Promise.resolve({ cleared: false, skipped: false, unfinished: true })
+      )
+      const stopped = { clear } as unknown as ErasedCustomerData
       const sweep = new ErasedCustomerSweep(
         worker,
         new JobContext(worker),
@@ -621,7 +636,11 @@ describe('The data of an erased customer', () => {
 
       const report = await sweep.run(Date.now() + 120_000)
 
-      expect(t.conversation.customerId).toBeTruthy()
+      expect(clear).toHaveBeenCalledWith(
+        ctx.storeA.id,
+        t.conversation.customerId,
+        expect.any(Number)
+      )
       expect(report.unfinished).toBeGreaterThanOrEqual(1)
       expect(report.failed).toBe(0)
     })

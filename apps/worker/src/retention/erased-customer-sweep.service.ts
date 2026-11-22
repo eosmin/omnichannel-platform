@@ -22,6 +22,9 @@ import { runAuditMetadata, runHasNews } from './run-audit'
 
 // At most this many customers a store, a night: the rest waits for the next one
 const CUSTOMERS_PER_STORE = 50
+// The most one customer may take of the night's budget: a thread so big that it does not fit is continued the next night, and the customers
+// after it (and the stores after its store) are not starved by it
+const CUSTOMER_BUDGET_MS = 5 * 60 * 1000
 
 // The names an entry of the sweep gives to what stopped or failed (the keys of the report that count what was done are its own)
 const SweepAuditNames = { CUSTOMERS: 'customers', STORES: 'stores' } as const
@@ -64,7 +67,15 @@ export class ErasedCustomerSweep {
     const more: string[] = []
     const failedRun: string[] = []
     const recheckFrom = new Date(Date.now() - ComplianceConfig.ERASED_DATA_RECHECK_DAYS * DAY_MS)
-    const stores = await this.sweepStores(report, recheckFrom, until, more)
+    let stores: { failed: number; total: number }
+    try {
+      stores = await this.sweepStores(report, recheckFrom, until, more)
+    } catch (error) {
+      // The list of the stores itself failed: the night's sweep is said to have failed, not only logged
+      failedRun.push(SweepAuditNames.STORES)
+      this.audit.log(this.entryOf(report, more, failedRun))
+      throw error
+    }
     if (stores.failed > 0) {
       // The stores that could not be entered did not stop the others: what was cleared is said, the failure is too, and the run fails loudly
       failedRun.push(SweepAuditNames.STORES)
@@ -153,7 +164,11 @@ export class ErasedCustomerSweep {
       }
       report.customers += 1
       try {
-        const done = await this.data.clear(storeId, customer.id, until)
+        const done = await this.data.clear(
+          storeId,
+          customer.id,
+          Math.min(until, Date.now() + CUSTOMER_BUDGET_MS)
+        )
         if (done.cleared) report.cleared += 1
         else if (done.skipped) report.skipped += 1
         else if (done.unfinished) {

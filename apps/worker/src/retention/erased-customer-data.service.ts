@@ -291,7 +291,15 @@ export class ErasedCustomerData {
         })
       )
       const removable: string[] = []
+      const handled: typeof rows = []
+      let stopped = false
       for (const file of rows) {
+        // A batch of files is many calls to the bucket: the budget is asked between files too, so one batch never outlasts the lock
+        if (Date.now() > until) {
+          stopped = true
+          break
+        }
+        handled.push(file)
         const { keys, foreign } = objectKeysOf(storeId, file)
         // A key outside the prefix of the store is not ours to delete: it stays in the bucket and said in the log
         if (foreign.length > 0) {
@@ -317,7 +325,7 @@ export class ErasedCustomerData {
         else left += 1
       }
       // A row that stays (a key that is not ours, a bucket that failed) is the trace of an object, not a place to keep the text of the person
-      const kept = rows.filter(file => !removable.includes(file.id)).map(file => file.id)
+      const kept = handled.filter(file => !removable.includes(file.id)).map(file => file.id)
       if (kept.length > 0) {
         await this.jobContext.forStore(storeId, () =>
           this.prisma.client.media.updateMany({
@@ -332,6 +340,7 @@ export class ErasedCustomerData {
         )
         deleted += removed.count
       }
+      if (stopped) return { deleted, left, more: true }
       after = rows.at(-1)?.id ?? after
       if (rows.length < RetentionRun.BATCH_SIZE) return { deleted, left, more: false }
     }
