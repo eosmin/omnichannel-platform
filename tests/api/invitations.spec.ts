@@ -376,6 +376,8 @@ describe('Inviting to a store', () => {
       const waiting = (await invite(newEmail())).body as InvitationBody
       const sent = (await invite(newEmail())).body as InvitationBody
       const failed = (await invite(newEmail())).body as InvitationBody
+      const cleared = (await invite(newEmail())).body as InvitationBody
+      await owner.invitation.update({ where: { id: cleared.id }, data: { emailOutbox: null } })
       expect(waiting.emailStatus).toBe(InvitationEmailStatus.PENDING)
       await owner.invitation.update({
         where: { id: sent.id },
@@ -393,6 +395,8 @@ describe('Inviting to a store', () => {
       expect(rows.find(row => row.id === waiting.id)?.emailStatus).toBe('pending')
       expect(rows.find(row => row.id === sent.id)?.emailStatus).toBe('sent')
       expect(rows.find(row => row.id === failed.id)?.emailStatus).toBe('failed')
+      // An outbox cleared by the expiry, never sent and not given up: neither sent nor failed
+      expect(rows.find(row => row.id === cleared.id)?.emailStatus).toBe('not_sent')
       const text = JSON.stringify(response.body)
       expect(text).not.toMatch(/emailOutbox|email_outbox|\/invitations\/[A-Za-z0-9_-]{20,}/)
     })

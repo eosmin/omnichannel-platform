@@ -34,6 +34,19 @@ describe('the outbox of an invitation email', () => {
     )
   })
 
+  it('does not open a bound email whose format byte was lowered to 1, with or without the data', () => {
+    const sealed = sealInvitationEmail(cipher, email, here)
+    const downgraded = Buffer.from(sealed)
+    downgraded[0] = 1
+    expect(() => openInvitationEmail(cipher, downgraded, here)).toThrow(DecryptionError)
+    // A reader that has no data (the generic open) fails too: the tag was computed over the data
+    expect(() => cipher.open(downgraded)).toThrow(DecryptionError)
+  })
+
+  it('does not open a bound email at all without its data', () => {
+    expect(() => cipher.open(sealInvitationEmail(cipher, email, here))).toThrow(DecryptionError)
+  })
+
   it('still opens what was sealed before the seal was bound', () => {
     const legacy = cipher.seal({ ...email })
     expect(openInvitationEmail(cipher, legacy, here)).toEqual(email)
@@ -51,7 +64,12 @@ describe('the outbox of an invitation email', () => {
     expect(invitationEmailStatusOf({ waiting: false, emailSentAt: null, emailAttempts: 12 })).toBe(
       InvitationEmailStatus.FAILED
     )
-    // An invitation from before the outbox, or one cleared by its expiry: not a failure
-    expect(invitationEmailStatusOf({ ...none, waiting: false })).toBe(InvitationEmailStatus.SENT)
+    // An invitation from before the outbox, or one cleared by its expiry: not a failure, and not "sent" either
+    expect(invitationEmailStatusOf({ ...none, waiting: false })).toBe(
+      InvitationEmailStatus.NOT_SENT
+    )
+    expect(invitationEmailStatusOf({ waiting: false, emailSentAt: null, emailAttempts: 5 })).toBe(
+      InvitationEmailStatus.NOT_SENT
+    )
   })
 })

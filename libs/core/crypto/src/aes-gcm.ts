@@ -47,7 +47,8 @@ export function decrypt(payload: Uint8Array, key: Buffer, aad?: string): string 
   if (version !== FORMAT_VERSION_PLAIN && version !== FORMAT_VERSION_BOUND) {
     throw new DecryptionError('unknown format version')
   }
-  // A bound value never opens without its associated data, and a plain one never pretends to have it
+  // A bound value never opens without its associated data. A plain (version 1) value has no data to check: it opens even when `aad` is given,
+  // which is the compatibility with what was sealed before the data existed (a caller that must refuse version 1 has to check the format itself)
   if (version === FORMAT_VERSION_BOUND && aad === undefined) {
     throw new DecryptionError('missing associated data')
   }

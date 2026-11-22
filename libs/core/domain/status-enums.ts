@@ -90,7 +90,9 @@ export enum InvitationStatus {
 export enum InvitationEmailStatus {
   PENDING = 'pending',
   SENT = 'sent',
-  FAILED = 'failed'
+  FAILED = 'failed',
+  // No email on its way, none sent, none given up: an invitation older than the outbox, or one whose outbox was cleared by its expiry. Nothing is said about it
+  NOT_SENT = 'not_sent'
 }
 
 export enum ChannelConnectionStatus {

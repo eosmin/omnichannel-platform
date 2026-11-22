@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
 import { ClientPermissions } from '@platform/core/auth'
+import { InvitationEmailStatus } from '@platform/core/domain'
 
 import { useRoleLabel } from '../../lib/role-label'
 import { retryAfterSecondsOf } from '../../lib/settings/team-errors'
@@ -88,7 +89,7 @@ function InvitationRow({
   const role = roles.find(candidate => candidate.id === invitation.role.id)
   const canResend = role !== undefined && canGrant(role, can)
   // An email that was given up does not go by itself: the resend is the way out, so it is the main action of the row
-  const emailFailed = invitation.emailStatus === 'failed'
+  const emailFailed = invitation.emailStatus === InvitationEmailStatus.FAILED
   const busy = resend.isPending || revoke.isPending
 
   const doResend = (): void => {
@@ -143,7 +144,7 @@ function InvitationRow({
             <MailWarning aria-hidden className="size-3.5" />
             {canInvite && canResend ? t('emailStatus.failed') : t('emailStatus.failedNoAction')}
           </span>
-        ) : (
+        ) : invitation.emailStatus === InvitationEmailStatus.NOT_SENT ? null : (
           <span className="text-muted-foreground text-xs">
             {t(`emailStatus.${invitation.emailStatus}`)}
           </span>

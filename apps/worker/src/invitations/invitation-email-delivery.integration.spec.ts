@@ -240,6 +240,31 @@ describe('InvitationEmailDelivery', () => {
     expect(send).toHaveBeenCalledTimes(2)
   })
 
+  it('fails closed on a format it cannot read (a replica of a previous release), keeps the link, and a reader that can sends it after the backoff', async () => {
+    // A replica of the release before the bound seal rejects format 2 as an unknown version: here the same refusal, with a version byte
+    // no release knows. The row must keep its outbox, count the attempt and wait, never be cleared or sent
+    const { id } = await pending()
+    const good = (await state(id)).email_outbox
+    if (good === null) throw new Error('the outbox is empty')
+    const unreadable = Buffer.from(good)
+    unreadable[0] = 9
+    await owner.query('UPDATE invitations SET email_outbox = $2 WHERE id = $1', [id, unreadable])
+    const failedAt = new Date()
+
+    expect(await delivery.deliver(storeId, id, failedAt)).toBe('failed')
+    expect(send).not.toHaveBeenCalled()
+    const afterFailure = await state(id)
+    expect(afterFailure.email_outbox).not.toBeNull()
+    expect(afterFailure.email_attempts).toBe(1)
+    expect(afterFailure.email_sent_at).toBeNull()
+
+    // The deploy finishes: a reader that knows the format takes the row (the sweep retries it after the backoff)
+    await owner.query('UPDATE invitations SET email_outbox = $2 WHERE id = $1', [id, good])
+    const later = new Date(failedAt.getTime() + invitationRetryDelayMs(1) + 1000)
+    expect(await delivery.deliver(storeId, id, later)).toBe('sent')
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
   it('doubles the backoff with every failed attempt, up to a cap', () => {
     expect(invitationRetryDelayMs(1)).toBe(InvitationOutbox.RETRY_BASE_MS)
     expect(invitationRetryDelayMs(2)).toBe(2 * InvitationOutbox.RETRY_BASE_MS)

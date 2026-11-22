@@ -64,19 +64,19 @@ export function openInvitationEmail(
   )
 }
 
-// What the inviter sees. `waiting` is whether the outbox still holds the email. Only an email that used up its attempts (the worker gave it up
-// and cleared the outbox) is `failed`: an invitation older than the outbox (no outbox, no sent time, no attempts) was mailed by the path
-// that existed before it, and one whose outbox was cleared because it expired is shown as expired by the row itself, so neither is called failed.
+// What the inviter sees. `waiting` is whether the outbox still holds the email. `sent` only when a sent time exists. An email that used up its
+// attempts with no sent time (the worker gave it up and cleared the outbox) is `failed`. Any other empty outbox (an invitation older than the
+// outbox, or one cleared because it expired) is `not_sent`: the web says nothing about it, as the row already says it expired.
 export function invitationEmailStatusOf(row: {
   waiting: boolean
   emailSentAt: Date | null
   emailAttempts: number
 }): InvitationEmailStatus {
   if (row.waiting) return InvitationEmailStatus.PENDING
-  if (row.emailSentAt === null && row.emailAttempts >= InvitationOutbox.MAX_ATTEMPTS) {
-    return InvitationEmailStatus.FAILED
-  }
-  return InvitationEmailStatus.SENT
+  if (row.emailSentAt !== null) return InvitationEmailStatus.SENT
+  return row.emailAttempts >= InvitationOutbox.MAX_ATTEMPTS
+    ? InvitationEmailStatus.FAILED
+    : InvitationEmailStatus.NOT_SENT
 }
 
 // How long after a failed attempt the next one may start (`attemptsMade` counts the one that just failed)
