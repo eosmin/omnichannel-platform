@@ -1,3 +1,4 @@
+// rls-context: every database access of this service happens inside `unit` (JobContext.inOrganization, opened by CredentialsResealer), one short unit per page and per value
 import { isDeepStrictEqual } from 'node:util'
 
 import { Injectable } from '@nestjs/common'
