@@ -3016,6 +3016,7 @@
         "webhooks": "Outgoing integrations",
         "apiKeys": "API keys",
         "retention": "Data retention",
+        "auditLog": "Audit log",
         "safety": "Safety and confirmations"
       },
       "org": {
@@ -4863,6 +4864,61 @@
           "expiryPast": "The last day cannot be before today.",
           "expiryInvalid": "That is not a valid day."
         }
+      }
+    },
+    "auditLog": {
+      "title": "Audit log",
+      "intro": "Who did what in this store, newest first. Each entry keeps ids, counts and the name of the action, never the name or the text of a customer. Reading the log is itself recorded.",
+      "caption": "Entries of the audit log of the store, newest first",
+      "filters": {
+        "label": "Filters of the audit log",
+        "action": "Action",
+        "actionPlaceholder": "order.created",
+        "actor": "Person",
+        "anyActor": "Anyone",
+        "from": "From",
+        "to": "To",
+        "apply": "Apply filters",
+        "clear": "Clear filters",
+        "reversed": "The first day is after the last one."
+      },
+      "columns": {
+        "when": "When",
+        "actor": "Who",
+        "action": "Action",
+        "resource": "On what",
+        "details": "Details"
+      },
+      "actor": {
+        "system": "System or plugin",
+        "unknown": "Someone no longer on the team ({id})"
+      },
+      "noResource": "None",
+      "open": "Details",
+      "loadMore": "Load more",
+      "empty": "No entries match these filters.",
+      "export": {
+        "button": "Export CSV",
+        "hint": "The file holds what the filters show, as the log was when you ask for it.",
+        "applyFirst": "Apply the filters first: the file holds what the table shows.",
+        "queued": "The audit log file is being prepared. It will be ready in the exports center.",
+        "view": "View exports",
+        "tooLarge": "The file would have too many entries. Narrow the dates or the filters and ask for it again."
+      },
+      "entry": {
+        "title": "Audit log entry",
+        "description": "What the log kept for this action.",
+        "when": "When",
+        "actor": "Who",
+        "action": "Action",
+        "resourceType": "Resource type",
+        "resourceId": "Resource id",
+        "ip": "IP address",
+        "userAgent": "Browser",
+        "id": "Entry id",
+        "none": "None",
+        "metadata": "Metadata",
+        "noMetadata": "This entry has no metadata."
       }
     },
     "retention": {

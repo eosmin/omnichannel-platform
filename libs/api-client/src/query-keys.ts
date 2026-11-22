@@ -260,6 +260,11 @@ export const QueryKeys = {
   returnReception: {
     batch: (storeId: string, batchId: string) => ['return-reception', storeId, batchId] as const
   },
+  auditLog: {
+    all: (storeId: string) => ['audit-log', storeId] as const,
+    list: (storeId: string, filter: object) => ['audit-log', storeId, 'list', filter] as const,
+    entry: (storeId: string, id: string) => ['audit-log', storeId, 'entry', id] as const
+  },
   exports: {
     all: (storeId: string) => ['exports', storeId] as const,
     list: (storeId: string, type: string | null, status: string | null) =>
