@@ -387,6 +387,38 @@ describe('Sending only the text under a file again', () => {
       expect((await row(id)).captionState).toBe(CaptionState.UNCONFIRMED)
     })
 
+    it('tries a remote-style doubt again with the same key, and leaves the text unconfirmed after the last attempt (N-39-06)', async () => {
+      const { id, job } = await queued()
+      const keys: (string | undefined)[] = []
+      // What RemoteChannelPlugin throws on a 5xx or a timeout of a send that carried an Idempotency-Key
+      sendMessage = (_ctx, params) => {
+        keys.push(params.idempotencyKey)
+        return Promise.reject(
+          new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+            retryable: true,
+            outcomeUnknown: true,
+            idempotent: true
+          })
+        )
+      }
+
+      await expect(sender.sendCaption(job, false)).rejects.toThrow()
+      // The doubt is repeated: the text waits for its next attempt, with no verdict yet
+      expect((await row(id)).captionState).toBe(CaptionState.QUEUED)
+
+      await sender.sendCaption(job, true)
+
+      // The same key both times, so the plugin that promised to deduplicate makes one message
+      expect(keys).toHaveLength(2)
+      expect(keys[0]).toEqual(expect.stringContaining(id))
+      expect(keys[1]).toBe(keys[0])
+      // It may have gone: never thrown away as failed, and the echo of the owner settles it
+      expect(await row(id)).toMatchObject({
+        captionState: CaptionState.UNCONFIRMED,
+        captionChannelMessageId: null
+      })
+    })
+
     it('settles an answer it cannot read as unconfirmed', async () => {
       const { id, job } = await queued()
       sendMessage = () => Promise.resolve({} as ChannelMessageResult)

@@ -15,11 +15,17 @@ import {
 } from '@platform/core/queues'
 import { QueuesRegistry } from '@platform/core/queues-module'
 
+import { JobRejectedError } from './job-rejected.error'
+
 const MS_PER_SECOND = 1000
 
-// Jobs whose data is an address typed by whoever asked, account or not: the dead-letter copy keeps
-// the name, the id and the error, never the address
-const REDACTED_JOBS: ReadonlySet<string> = new Set([JobNames.REQUEST_MAGIC_LINK])
+// Jobs whose data is an address typed by whoever asked, account or not, or an email with its text and its links (a data subject request's
+// verification link holds a token): the dead-letter copy keeps the name, the id and the error, never the data. Neither is replayed from the
+// dead-letter queue (nothing reads `originalData` back; TDD_07 §4's replay is not built and must not replay these).
+const REDACTED_JOBS: ReadonlySet<string> = new Set([
+  JobNames.REQUEST_MAGIC_LINK,
+  JobNames.SEND_EMAIL
+])
 
 // What every processor shares (TDD_07 §1.5): structured logging, the queue metrics and the route to
 // the dead-letter queue once the attempts are spent.
@@ -78,7 +84,12 @@ export class ProcessorSupport {
       originalJobId: job.id,
       // Every job of the auth-email queue holds an address, and the email of a link holds the link: none is kept in the dead-letter queue
       originalData:
-        REDACTED_JOBS.has(job.name) || queue === QueueNames.AUTH_EMAIL ? null : job.data,
+        REDACTED_JOBS.has(job.name) ||
+        queue === QueueNames.AUTH_EMAIL ||
+        // A payload the processor refused on entry (too large, or not its job type) is not copied: it may be of any size and shape
+        error instanceof JobRejectedError
+          ? null
+          : job.data,
       error: error.message,
       failedAt: new Date().toISOString()
     }

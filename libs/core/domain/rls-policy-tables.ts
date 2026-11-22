@@ -70,6 +70,7 @@ export const RlsPolicyTables: readonly string[] = [
   'orders',
   'payment_method_accounts',
   'pickup_requests',
+  'plugin_idempotency_keys',
   'plugin_installations',
   'plugins',
   'product_variants',

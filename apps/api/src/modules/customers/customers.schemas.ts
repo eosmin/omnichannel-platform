@@ -117,14 +117,14 @@ export const mergeCustomersSchema = z.strictObject({
 
 export const unmergeCustomersSchema = z.strictObject({ mergeId: lowercasedUuidSchema })
 
-const addressField = text().min(1).max(CustomerLimits.ADDRESS_FIELD_MAX_LENGTH)
+const addressField = singleLineText(CustomerLimits.ADDRESS_FIELD_MAX_LENGTH, 1)
 const addressBody = {
-  label: text().min(1).max(CustomerLimits.ADDRESS_LABEL_MAX_LENGTH),
+  label: singleLineText(CustomerLimits.ADDRESS_LABEL_MAX_LENGTH, 1),
   line1: addressField,
   line2: addressField,
   city: addressField,
   state: addressField,
-  postalCode: text().min(1).max(CustomerLimits.ADDRESS_POSTAL_CODE_MAX_LENGTH),
+  postalCode: singleLineText(CustomerLimits.ADDRESS_POSTAL_CODE_MAX_LENGTH, 1),
   // ISO 3166-1 alpha-2
   country: z
     .string()

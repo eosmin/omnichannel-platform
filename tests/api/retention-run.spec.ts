@@ -38,7 +38,8 @@ import {
   createInvitation,
   createMessage,
   createOrder,
-  createWebhook
+  createWebhook,
+  ensurePluginInstallation
 } from '../builders'
 import { createFinanceFixture, createPeriod, postTestEntry, simpleEntry } from '../builders/finance'
 import { createTestApp } from '../helpers/app'
@@ -1192,6 +1193,34 @@ describe('The retention run of the worker', () => {
       expect(await owner.customer.count({ where: { id: past.survivor.id } })).toBe(1)
       expect(await owner.customer.count({ where: { id: within.absorbed.id } })).toBe(1)
       expect(await owner.customerMerge.count({ where: { id: within.row.id } })).toBe(1)
+    })
+
+    it('deletes the idempotency keys of the plugin API that are past their day, and keeps the others', async () => {
+      const installation = await ensurePluginInstallation(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: 'test_channel'
+      })
+      const row = (key: string, expiresAt: Date) =>
+        owner.pluginIdempotencyKey.create({
+          data: {
+            storeId: ctx.storeA.id,
+            installationId: installation.id,
+            key: `${prefix}-${key}`,
+            requestHash: 'h',
+            state: 'completed',
+            responseStatus: 201,
+            expiresAt
+          },
+          select: { id: true }
+        })
+      const expired = await row('expired', daysAgo(1, now))
+      const live = await row('live', new Date(now.getTime() + 3_600_000))
+
+      const report = await cleaner.run(now)
+
+      expect(report.pluginIdempotencyKeys).toBeGreaterThanOrEqual(1)
+      expect(await owner.pluginIdempotencyKey.count({ where: { id: expired.id } })).toBe(0)
+      expect(await owner.pluginIdempotencyKey.count({ where: { id: live.id } })).toBe(1)
     })
 
     it('deletes only the row of a merge that was undone, and never a live customer', async () => {

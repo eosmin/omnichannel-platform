@@ -8,10 +8,10 @@ import { Permissions, RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { MediaStatus } from '@platform/core/domain'
-import { ErrorCodes, HttpHeaders } from '@platform/core/errors'
+import { ErrorCodes, HttpHeaders, HttpStatusCodes } from '@platform/core/errors'
 import { JobNames, QueueNames } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
-import { StorageKeys, UploadLimits } from '@platform/core/storage'
+import { QUOTA_WINDOW_MS, StorageKeys, UploadLimits } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { actorWithPermissions } from '../helpers/actors'
@@ -38,13 +38,8 @@ interface ErrorBody {
   error: { code: string; metadata?: Record<string, unknown> }
 }
 
-const OK = 200
-const BAD_REQUEST = 400
-const INTERNAL_SERVER_ERROR = 500
-const UNAUTHORIZED = 401
-const FORBIDDEN = 403
-const GONE = 410
-const TOO_MANY_REQUESTS = 429
+const { OK, BAD_REQUEST, INTERNAL_SERVER_ERROR, UNAUTHORIZED, FORBIDDEN, GONE, TOO_MANY_REQUESTS } =
+  HttpStatusCodes
 
 // 1x1 transparent PNG
 const PNG = Buffer.from(
@@ -197,7 +192,7 @@ describe('Media upload', () => {
       const redis = app.get<Redis>(REDIS_CLIENT)
       const storeKey = CacheKeys.upload.storeQuota(
         ctx.storeA.id,
-        Math.floor(Date.now() / 3_600_000)
+        Math.floor(Date.now() / QUOTA_WINDOW_MS)
       )
       const storeBefore = Number(await redis.get(storeKey))
       const refused = await ask()
@@ -208,7 +203,7 @@ describe('Media upload', () => {
       expect(codeOf(refused.body)).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
       // It says when to come back: the seconds left of the hour, as the other refusals of the limits do
       const retryAfter = (refused.body as ErrorBody).error.metadata?.[RETRY_AFTER_METADATA_KEY]
-      const secondsLeft = Math.ceil((3_600_000 - (Date.now() % 3_600_000)) / 1000)
+      const secondsLeft = Math.ceil((QUOTA_WINDOW_MS - (Date.now() % QUOTA_WINDOW_MS)) / 1000)
       expect(retryAfter).toEqual(expect.any(Number))
       // and the same in the header, for the clients that read headers
       expect(refused.headers[HttpHeaders.RETRY_AFTER.toLowerCase()]).toBe(String(retryAfter))
