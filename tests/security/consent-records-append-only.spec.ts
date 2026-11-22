@@ -194,9 +194,7 @@ describe('consent_records is append-only', () => {
   describe('a DELETE or a TRUNCATE', () => {
     it('refuses a statement that deletes the row itself, to the owner too', async () => {
       const { id } = await fresh()
-      await expect(
-        owner.$executeRawUnsafe('DELETE FROM consent_records WHERE id = $1', id)
-      ).rejects.toThrow(refused)
+      await expect(owner.consentRecord.delete({ where: { id } })).rejects.toThrow(refused)
       expect(await owner.consentRecord.count({ where: { id } })).toBe(1)
     })
 
@@ -234,7 +232,7 @@ describe('consent_records is append-only', () => {
         await client.query('CREATE TABLE k2_probe (note text)')
         await client.query(
           `CREATE FUNCTION k2_probe_delete() RETURNS trigger LANGUAGE plpgsql AS $$
-           BEGIN DELETE FROM consent_records WHERE id = NEW.note; RETURN NEW; END $$`
+           BEGIN EXECUTE 'DELETE FROM consent_records WHERE id = $1' USING NEW.note; RETURN NEW; END $$`
         )
         await client.query(
           'CREATE TRIGGER k2_probe_trg AFTER INSERT ON k2_probe FOR EACH ROW EXECUTE FUNCTION k2_probe_delete()'
