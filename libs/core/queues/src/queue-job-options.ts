@@ -28,6 +28,14 @@ export const QueueJobOptions: Record<QueueName, DefaultJobOptions> = {
     attempts: CustomerProfileFetch.ATTEMPTS,
     backoff: { type: 'exponential', delay: CustomerProfileFetch.BACKOFF_MS }
   },
+  // Every job of this queue holds an address, and the email of a link holds the link: none is kept once done or given up, whatever the producer says
+  [QueueNames.AUTH_EMAIL]: {
+    ...base,
+    removeOnComplete: true,
+    removeOnFail: true,
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 2000 }
+  },
   [QueueNames.EMAIL]: { ...base, attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
   [QueueNames.WEBHOOKS]: { ...base, attempts: 5, backoff: { type: 'exponential', delay: 1000 } },
   [QueueNames.NOTIFICATIONS]: { ...base, attempts: 5, backoff: { type: 'fixed', delay: 5000 } },

@@ -109,7 +109,7 @@ describe('MagicLinkIssuer', () => {
     })
     expect(data.expiresInMinutes).toBe(MAGIC_LINK_TTL_MINUTES)
     // The job holds the raw token: it must not stay in Redis once sent
-    expect(options).toEqual({ removeOnComplete: true })
+    expect(options).toEqual({ removeOnComplete: true, removeOnFail: true })
   })
 
   it('does not carry a correlation id it was not given, and falls back to the default language', async () => {

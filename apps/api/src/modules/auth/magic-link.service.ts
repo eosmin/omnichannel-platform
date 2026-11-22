@@ -32,7 +32,7 @@ export class MagicLinkService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessions: SessionService,
-    @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<RequestMagicLinkJob>,
+    @InjectQueue(QueueNames.AUTH_EMAIL) private readonly emailQueue: Queue<RequestMagicLinkJob>,
     @Inject(getStorageToken()) private readonly throttleStorage: ThrottlerStorage,
     @Inject(MAGIC_LINK_EMAIL_LIMIT) private readonly emailLimit: number,
     private readonly logger: PinoLogger

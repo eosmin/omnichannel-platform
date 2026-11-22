@@ -11,9 +11,13 @@
 
 ### 1.1 Queue design
 
-Nine queues, separated by priority and failure characteristics. The ninth, `customer-profiles`
+Ten queues, separated by priority and failure characteristics. The ninth, `customer-profiles`
 (Step 2.8, PR 1c-2), reads the name and photo of a customer from the channel with 5 at a time,
 3 attempts and exp 60s: a provider that answers slowly fills it and delays no message.
+The tenth, `auth-email` (Step 7.3-S9), carries the magic link (its lookup job and the email it sends)
+with 10 at a time and 3 attempts exp 2s, so a burst of digests or invitations never delays a login.
+It shares the email provider with `email`: the limiters add up to the provider's 100 a second
+(30 for `auth-email`, 70 for `email`; `EmailProviderBudget`), and the dead-letter copy of its jobs keeps no data.
 A slow analytics job must never delay a password reset email, and an autonomous chatbot
 turn must never wait behind a virus scan.
 
@@ -58,6 +62,7 @@ const base: DefaultJobOptions = {
 
 export const QueueJobOptions: Record<QueueName, DefaultJobOptions> = {
   [QueueNames.INBOUND]:          { ...base, attempts: 5, backoff: { type: 'exponential', delay: 1000 } },
+  [QueueNames.AUTH_EMAIL]:       { ...base, attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
   [QueueNames.EMAIL]:            { ...base, attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
   [QueueNames.WEBHOOKS]:         { ...base, attempts: 5, backoff: { type: 'exponential', delay: 1000 } },
   [QueueNames.NOTIFICATIONS]:    { ...base, attempts: 5, backoff: { type: 'fixed', delay: 5000 } },

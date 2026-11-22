@@ -154,10 +154,10 @@ export async function startAuthTestApp(
 
   const tenants = tenantFixtures(asOwner, runId)
   let counter = 0
-  const queueHandle = new Queue(QueueNames.EMAIL, {
+  const queueHandle = new Queue(QueueNames.AUTH_EMAIL, {
     connection: { url: REDIS_URL },
     prefix,
-    defaultJobOptions: QueueJobOptions[QueueNames.EMAIL]
+    defaultJobOptions: QueueJobOptions[QueueNames.AUTH_EMAIL]
   })
 
   // Oldest first: BullMQ lists the waiting jobs newest first, and ids grow with each job

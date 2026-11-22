@@ -29,9 +29,16 @@ describe('QueueJobOptions', () => {
     })
   })
 
+  it('keeps no job of the auth-email queue once done or given up: they hold an address and a link', () => {
+    expect(QueueJobOptions[QueueNames.AUTH_EMAIL]).toMatchObject({
+      removeOnComplete: true,
+      removeOnFail: true
+    })
+  })
+
   it('keeps failed jobs of every working queue, so they can be retried from Bull Board', () => {
     for (const name of Object.values(QueueNames)) {
-      if (name === QueueNames.DEAD_LETTER) continue
+      if (name === QueueNames.DEAD_LETTER || name === QueueNames.AUTH_EMAIL) continue
       expect(QueueJobOptions[name].removeOnFail).toEqual({ count: 5000 })
     }
   })

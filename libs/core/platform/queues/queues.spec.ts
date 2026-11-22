@@ -2,8 +2,8 @@ import { JobNames, QueueNames, reconcileInventoryJobId } from './queue-names'
 import { LockNames, Schedules } from './schedules'
 
 describe('QueueNames', () => {
-  it('has nine queues plus the dead-letter queue and no AI queue', () => {
-    expect(Object.keys(QueueNames)).toHaveLength(10)
+  it('has ten queues plus the dead-letter queue and no AI queue', () => {
+    expect(Object.keys(QueueNames)).toHaveLength(11)
     expect(Object.keys(QueueNames)).toContain('DEAD_LETTER')
     expect(Object.keys(QueueNames)).not.toContain('AI')
   })

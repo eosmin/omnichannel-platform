@@ -11,6 +11,7 @@ import { FinanceReconciler } from './finance/finance-reconciler.service'
 import { FiscalReconciler } from './finance/fiscal-reconciler.service'
 import { InvitationEmailDelivery } from './invitations/invitation-email-delivery.service'
 import { AnalyticsProcessor } from './processors/analytics.processor'
+import { AuthEmailProcessor } from './processors/auth-email.processor'
 import { CustomerProfileProcessor } from './processors/customer-profile.processor'
 import { EmailProcessor } from './processors/email.processor'
 import { NotificationsProcessor } from './processors/notifications.processor'
@@ -26,6 +27,8 @@ describe('WorkerModule', () => {
     const moduleRef = await Test.createTestingModule({ imports: [WorkerModule] }).compile()
 
     expect(moduleRef.get(OutboundProcessor)).toBeInstanceOf(OutboundProcessor)
+    // The magic link is consumed on its own queue: without this processor in the module, logins would wait for ever
+    expect(moduleRef.get(AuthEmailProcessor, { strict: false })).toBeInstanceOf(AuthEmailProcessor)
     // It lives in a module of its own: the one that asks the registry for the plugin of a connection
     expect(moduleRef.get(CustomerProfileProcessor, { strict: false })).toBeInstanceOf(
       CustomerProfileProcessor

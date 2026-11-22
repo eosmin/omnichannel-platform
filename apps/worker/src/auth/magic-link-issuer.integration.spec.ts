@@ -49,7 +49,7 @@ describe('MagicLinkIssuer as the worker role', () => {
           useValue: new PrismaService({ databaseUrl: connectionUrls().worker })
         },
         {
-          provide: getQueueToken(QueueNames.EMAIL),
+          provide: getQueueToken(QueueNames.AUTH_EMAIL),
           useValue: {
             add: (name: string, data: Record<string, unknown>, options: unknown) => {
               added.push({ name, data, options })
@@ -94,6 +94,8 @@ describe('MagicLinkIssuer as the worker role', () => {
       locale: 'en',
       correlationId: 'corr-1'
     })
+    // Neither a sent nor a failed job keeps the link in Redis
+    expect(job?.options).toEqual({ removeOnComplete: true, removeOnFail: true })
     const token = new URLSearchParams(
       new URL(String((job?.data['data'] as { url: string }).url)).hash.slice(1)
     ).get('token')

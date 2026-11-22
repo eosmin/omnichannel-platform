@@ -40,6 +40,7 @@ import { ReactionSender } from './outbound/reaction-sender.service'
 import { ReactionStatusWriter } from './outbound/reaction-status.writer'
 import { ReadReceiptSender } from './outbound/read-receipt-sender.service'
 import { TypingSender } from './outbound/typing-sender.service'
+import { AuthEmailProcessor } from './processors/auth-email.processor'
 import { CarrierEventsProcessor } from './processors/carrier-events.processor'
 import { EmailProcessor } from './processors/email.processor'
 import { OutboundProcessor } from './processors/outbound.processor'
@@ -129,6 +130,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     OutboundProcessor,
     MagicLinkIssuer,
     EmailProcessor,
+    AuthEmailProcessor,
     InvitationEmailDelivery,
     InvitationEmailScheduler,
     CarrierEventsProcessor,
