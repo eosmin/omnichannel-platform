@@ -6,6 +6,14 @@
 // have an `orderId`, so they are never named here and keep their row and their objects. The `message` link that they lose is the
 // foreign key's own (`Media.message` is SET NULL when the message goes). TDD_05 §10.4: orders are never touched by the retention of a tenant.
 // The same goes for a file that belongs to the books (a receipt of a transaction, the evidence of a fiscal document): it is never the conversation's.
+// A file with an owner other than a message belongs to that owner and never goes by a rule about messages or conversations: an order
+// (its summary or its label), a transaction of the books (a receipt), a fiscal document (its evidence). Each of the three must be empty.
+export const FILE_WITHOUT_OWNER = {
+  orderId: null,
+  financeTransactionId: null,
+  fiscalDocumentId: null
+} as const
+
 export interface ConversationFilesWhere {
   storeId: string
   orderId: null
@@ -24,9 +32,7 @@ export function filesOfConversationsWhere(
   const ids = [...conversationIds]
   return {
     storeId,
-    orderId: null,
-    financeTransactionId: null,
-    fiscalDocumentId: null,
+    ...FILE_WITHOUT_OWNER,
     OR: [{ message: { conversationId: { in: ids } } }, { origin: { conversationId: { in: ids } } }]
   }
 }
