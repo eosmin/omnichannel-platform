@@ -1,6 +1,7 @@
 import { InjectQueue } from '@nestjs/bullmq'
 import { Inject, Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
+import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -12,19 +13,26 @@ import {
   type Permission
 } from '@platform/core/auth'
 import { AUTH_SETTINGS, type AuthSettings } from '@platform/core/auth-module'
-import { generateToken, hashToken } from '@platform/core/crypto'
+import { CredentialCipher, generateToken, hashToken } from '@platform/core/crypto'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import { InvitationStatus, isSuspended, MembershipStatus } from '@platform/core/domain'
+import { type InvitationEmail, sealInvitationEmail } from '@platform/core/email'
 import {
   resourceConflict,
   ErrorCodes,
+  errorName,
   HttpStatusCodes,
   resourceNotFound,
   PlatformException
 } from '@platform/core/errors'
 import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
 import { roleLabelOf } from '@platform/core/i18n-server'
-import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
+import {
+  type DeliverInvitationEmailJob,
+  EmailTemplates,
+  JobNames,
+  QueueNames
+} from '@platform/core/queues'
 
 import { normalizeEmail } from '../auth/magic-link.service'
 import { type Actor, missingPermissions } from '../tenancy'
@@ -78,9 +86,13 @@ export class InvitationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
-    @Inject(AUTH_SETTINGS) private readonly settings: AuthSettings
-  ) {}
+    @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<DeliverInvitationEmailJob>,
+    @Inject(AUTH_SETTINGS) private readonly settings: AuthSettings,
+    private readonly cipher: CredentialCipher,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(InvitationsService.name)
+  }
 
   async list(storeId: string): Promise<InvitationView[]> {
     const rows = await this.prisma.client.invitation.findMany({
@@ -171,7 +183,6 @@ export class InvitationsService {
     await this.requireCooldownPassed(store.id, email)
 
     const token = generateToken()
-    const invitation = await this.replacePending(store, email, role.id, token, actor, replacing)
     const [inviter, destination] = await Promise.all([
       this.prisma.client.user.findUniqueOrThrow({
         where: { id: actor.userId },
@@ -179,27 +190,46 @@ export class InvitationsService {
       }),
       this.localeFor(store.id, email)
     ])
-    // After the REAL commit (under RLS_CONTEXT the request is one transaction): a mail must never go out for an invitation that was not saved
-    await this.prisma.afterCommitStep(this.prisma.client, () =>
-      this.emailQueue.add(
-        JobNames.SEND_EMAIL,
-        {
-          template: EmailTemplates.INVITATION,
-          to: email,
-          locale: destination,
-          data: {
-            url: this.linkFor(token),
-            inviterName: inviter.name,
-            storeName: store.name,
-            roleName: roleLabelOf(destination, role.name),
-            expiresInDays: INVITATION_TTL_DAYS
-          },
-          tags: { template: EmailTemplates.INVITATION }
-        },
-        // The job holds the raw token: once sent it has no reason to stay in the queue
-        { removeOnComplete: true }
-      )
+    // The email is sealed and written WITH the invitation (outbox): the row that revokes the old link and the row that holds the new
+    // email are one transaction, so a queue that is down can never leave the invitee with no live link and no email on its way
+    const outbox = sealInvitationEmail(this.cipher, {
+      template: EmailTemplates.INVITATION,
+      to: email,
+      locale: destination,
+      data: {
+        url: this.linkFor(token),
+        inviterName: inviter.name,
+        storeName: store.name,
+        roleName: roleLabelOf(destination, role.name),
+        expiresInDays: INVITATION_TTL_DAYS
+      },
+      tags: { storeId: store.id, template: EmailTemplates.INVITATION }
+    } satisfies InvitationEmail)
+    const invitation = await this.replacePending(
+      store,
+      email,
+      role.id,
+      token,
+      actor,
+      replacing,
+      outbox
     )
+    // After the REAL commit (under RLS_CONTEXT the request is one transaction): ask the worker to deliver now. The job holds ids only
+    // (never the token). If the queue is down nothing is lost: the sweep of the worker delivers what waits in the outbox.
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      try {
+        await this.emailQueue.add(
+          JobNames.DELIVER_INVITATION_EMAIL,
+          { storeId: store.id, invitationId: invitation.id },
+          { jobId: `invitation-email-${invitation.id}`, removeOnComplete: true }
+        )
+      } catch (error) {
+        this.logger.warn(
+          { invitationId: invitation.id, errorName: errorName(error) },
+          'the delivery of an invitation email was not queued; the sweep will deliver it'
+        )
+      }
+    })
     this.audit.log({
       action,
       actor: { userId: actor.userId },
@@ -221,7 +251,7 @@ export class InvitationsService {
   async revoke(storeId: string, invitationId: string, actor: Actor): Promise<void> {
     const { count } = await this.prisma.client.invitation.updateMany({
       where: { id: invitationId, storeId, status: InvitationStatus.PENDING },
-      data: { status: InvitationStatus.REVOKED }
+      data: { status: InvitationStatus.REVOKED, emailOutbox: null }
     })
     if (count === 0) throw resourceNotFound('invitation')
     this.audit.log({
@@ -262,7 +292,8 @@ export class InvitationsService {
     roleId: string,
     token: string,
     actor: Actor,
-    replacing: string | null
+    replacing: string | null,
+    outbox: Uint8Array<ArrayBuffer>
   ) {
     try {
       return await this.prisma.transaction(async tx => {
@@ -270,13 +301,13 @@ export class InvitationsService {
           // A revoke or an accept that got here first ends the resend: it must not bring back access
           const claimed = await tx.invitation.updateMany({
             where: { id: replacing, storeId: store.id, status: InvitationStatus.PENDING },
-            data: { status: InvitationStatus.REVOKED }
+            data: { status: InvitationStatus.REVOKED, emailOutbox: null }
           })
           if (claimed.count === 0) throw resourceNotFound('invitation')
         }
         await tx.invitation.updateMany({
           where: { storeId: store.id, email, status: InvitationStatus.PENDING },
-          data: { status: InvitationStatus.REVOKED }
+          data: { status: InvitationStatus.REVOKED, emailOutbox: null }
         })
         return tx.invitation.create({
           data: {
@@ -286,6 +317,7 @@ export class InvitationsService {
             roleId,
             tokenHash: hashToken(token),
             invitedById: actor.userId,
+            emailOutbox: outbox,
             expiresAt: new Date(Date.now() + INVITATION_TTL_DAYS * MS_PER_DAY)
           },
           select: INVITATION_SELECT

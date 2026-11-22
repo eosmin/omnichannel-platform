@@ -34,6 +34,8 @@ import { inEachStoreStrict } from '../schedulers/store-sweep'
 // rls-context: the rows of a store are read and written inside JobContext.forStore (a store that fails aborts the whole sweep); the media
 // without a store (avatars) go through the definers of WorkerLists, which no context can see
 
+type ListedObjects = Awaited<ReturnType<StorageService['list']>>['objects']
+
 const HOUR_MS = 3_600_000
 const AVATAR_KEYS_PER_CALL = 1000
 const MINUTE_MS = 60_000
@@ -215,22 +217,11 @@ export class OrphanMediaCleaner {
 
   // One listing of the stores' root, or of the root of one store. Only the whole root is resumed from where
   // the last run stopped: the cursor is the schedule's, and a run limited to some stores has its own start.
-  private async sweepStoreRoot(root: string, now: Date, resumable: boolean): Promise<number> {
+  private sweepStoreRoot(root: string, now: Date, resumable: boolean): Promise<number> {
     const cutoff = now.getTime() - UploadLimits.UNCONFIRMED_UPLOAD_TTL_HOURS * HOUR_MS
-    const cursor = this.cursorOf(CacheKeys.mediaCleanup.cursor(), resumable)
-    let deleted = 0
-    let token = await cursor.read()
-    for (let pages = 0; pages < UploadLimits.ORPHAN_LIST_PAGES_PER_RUN; pages++) {
-      let page
-      try {
-        page = await this.storage.list(root, token)
-      } catch (error) {
-        // A token the bucket refuses would fail every run: start over from the top next time
-        await cursor.clear()
-        throw error
-      }
-      token = page.next
-      const old = page.objects.flatMap(object => {
+    return this.sweepRoot(root, CacheKeys.mediaCleanup.cursor(), resumable, async objects => {
+      let deleted = 0
+      const old = objects.flatMap(object => {
         const parsed = parseMediaObjectKey(object.key)
         return parsed !== null && object.lastModified.getTime() < cutoff
           ? [{ key: object.key, ...parsed }]
@@ -255,7 +246,34 @@ export class OrphanMediaCleaner {
           this.logger.warn({ errorName: errorName(error) }, 'a stray object could not be deleted')
         }
       }
-      // The progress is kept page by page: a failure later does not send the next run back to the top
+      return deleted
+    })
+  }
+
+  // The paging loop of the sweeps of the bucket (Step 7.1-H: one helper where there were two copies). It lists `root` page by page from
+  // the cursor of the schedule (`cursorKey`; a run limited to some prefixes is not `resumable` and starts at the top), hands each page's
+  // objects to `deletePage`, which returns how many files it deleted, and keeps the progress page by page: a failure later does not send
+  // the next run back to the top. It stops at the end of the listing, at ORPHAN_LIST_PAGES_PER_RUN pages or at ORPHAN_CLEANUP_BATCH deletions.
+  private async sweepRoot(
+    root: string,
+    cursorKey: string,
+    resumable: boolean,
+    deletePage: (objects: ListedObjects) => Promise<number>
+  ): Promise<number> {
+    const cursor = this.cursorOf(cursorKey, resumable)
+    let deleted = 0
+    let token = await cursor.read()
+    for (let pages = 0; pages < UploadLimits.ORPHAN_LIST_PAGES_PER_RUN; pages++) {
+      let page
+      try {
+        page = await this.storage.list(root, token)
+      } catch (error) {
+        // A token the bucket refuses would fail every run: start over from the top next time
+        await cursor.clear()
+        throw error
+      }
+      token = page.next
+      deleted += await deletePage(page.objects)
       await cursor.save(token)
       if (token === undefined || deleted >= UploadLimits.ORPHAN_CLEANUP_BATCH) break
     }
@@ -309,25 +327,15 @@ export class OrphanMediaCleaner {
     return deleted
   }
 
-  private async sweepUsersRoot(root: string, now: Date, resumable: boolean): Promise<number> {
+  private sweepUsersRoot(root: string, now: Date, resumable: boolean): Promise<number> {
     const cutoff = now.getTime() - UploadLimits.UNCONFIRMED_UPLOAD_TTL_HOURS * HOUR_MS
-    const cursor = this.cursorOf(CacheKeys.mediaCleanup.avatarCursor(), resumable)
-    let deleted = 0
-    let token = await cursor.read()
-    for (let pages = 0; pages < UploadLimits.ORPHAN_LIST_PAGES_PER_RUN; pages++) {
-      let page
-      try {
-        page = await this.storage.list(root, token)
-      } catch (error) {
-        await cursor.clear()
-        throw error
-      }
-      token = page.next
+    return this.sweepRoot(root, CacheKeys.mediaCleanup.avatarCursor(), resumable, async objects => {
+      let deleted = 0
       // A final avatar file (users/<id>/avatar/<media>/...) is stray when the row of its media id does not
       // point at it: there is no row (the row of a replaced picture goes first and its file second, and a
       // failure in between leaves it), or the worker re-encoded the picture and the file it was made from
       // was not deleted
-      const finals = page.objects.flatMap(object => {
+      const finals = objects.flatMap(object => {
         const parsed = parseAvatarKey(object.key)
         return parsed !== null && object.lastModified.getTime() < cutoff
           ? [{ key: object.key, mediaId: parsed.mediaId }]
@@ -344,7 +352,7 @@ export class OrphanMediaCleaner {
       const strayFinals = new Set(
         finals.filter(object => !alive.has(object.key)).map(object => object.key)
       )
-      for (const object of page.objects) {
+      for (const object of objects) {
         const stagingStray =
           parseAvatarUploadKey(object.key) !== null && object.lastModified.getTime() < cutoff
         if (!stagingStray && !strayFinals.has(object.key)) continue
@@ -355,10 +363,8 @@ export class OrphanMediaCleaner {
           this.logger.warn({ errorName: errorName(error) }, 'a stray avatar upload was not deleted')
         }
       }
-      await cursor.save(token)
-      if (token === undefined || deleted >= UploadLimits.ORPHAN_CLEANUP_BATCH) break
-    }
-    return deleted
+      return deleted
+    })
   }
 
   // An avatar that was uploaded and confirmed but never became anyone's picture, or that the scan
