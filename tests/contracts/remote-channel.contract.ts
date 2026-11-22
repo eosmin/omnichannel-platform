@@ -381,6 +381,30 @@ export function testRemoteChannelContract(
         expect(invalid.refused).toBe(true)
       })
 
+      it('sends the same key again after a doubt, and the plugin that took the first send makes no second message (TDD_10 §6.7.4)', async () => {
+        // The plugin took the message and then failed to say so: first a 5xx, then a hang-up
+        for (const [key, failure] of [
+          ['d-1', 503],
+          ['d-2', 0]
+        ] as const) {
+          harness.service.script({ failAfterSendWith: failure })
+          const doubt = await failureOf(send(key))
+          // The adapter calls it a doubt it may repeat: it carried the key the plugin promised to deduplicate
+          expect(doubt.outcomeUnknown).toBe(true)
+          expect(doubt.retryable).toBe(true)
+          expect(doubt.idempotent).toBe(true)
+
+          const again = await send(key)
+
+          expect(again.status).toBe('sent')
+          expect(harness.service.received.filter(c => c.idempotencyKey === key)).toHaveLength(2)
+          // The second answer is the first message, not a new one: the customer sees it once
+          expect(harness.service.messages.get(key)).toBe(again.externalId)
+        }
+        expect(harness.service.duplicates).toBe(2)
+        expect(new Set(harness.service.messages.values()).size).toBe(2)
+      })
+
       it('does not follow a redirect: a 3xx is a refusal', async () => {
         harness.service.script({ status: 302, body: {} })
 

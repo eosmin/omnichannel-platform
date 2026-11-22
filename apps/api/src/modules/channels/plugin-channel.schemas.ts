@@ -1,6 +1,10 @@
 import { z } from 'zod'
 
-import { REMOTE_CONNECTION_ID_PATTERN, RemoteChannelApiLimits } from '@platform/core/domain'
+import {
+  REMOTE_CONNECTION_ID_PATTERN,
+  RemoteChannelApiLimits,
+  singleLineText
+} from '@platform/core/domain'
 
 // `:connectionId` of the routes: the plugin's own identifier of the account (TDD_10 §6.7.5)
 export const connectionIdParamSchema = z
@@ -12,7 +16,7 @@ export const connectionIdParamSchema = z
 // What a plugin says about the account: its name and a little data about it. The credentials of the account stay in the plugin
 // and have no place here: a field that is not listed is refused.
 export const putConnectionSchema = z.strictObject({
-  displayName: z.string().trim().min(1).max(RemoteChannelApiLimits.DISPLAY_NAME_MAX_LENGTH),
+  displayName: singleLineText(RemoteChannelApiLimits.DISPLAY_NAME_MAX_LENGTH, 1),
   metadata: z
     .record(z.string(), z.json())
     .refine(

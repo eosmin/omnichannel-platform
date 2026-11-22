@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import { DatabaseRoles, ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import { FinanceSourceType, JournalEntryType, PurchaseOrderStatus } from '@platform/core/domain'
 
 import {
@@ -445,7 +445,7 @@ describe('The tables of purchases', () => {
           await owner.$queryRaw<{ allowed: boolean }[]>`
             SELECT has_column_privilege(${role}, ${table}, ${name}, 'UPDATE') AS allowed`
         )[0]?.allowed === true
-      for (const role of ['platform_app', 'platform_worker']) {
+      for (const role of [DatabaseRoles.APP, DatabaseRoles.WORKER]) {
         for (const table of [
           'purchase_receipts',
           'purchase_receipt_lines',
