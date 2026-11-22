@@ -196,18 +196,42 @@ describe('AuditLogArchiveReader', () => {
   })
 
   it('keeps the text of a corrupt line out of the error and the log', async () => {
-    const secret = '203.0.113.77'
+    // The error of the parser quotes the few characters that follow the bad token: the secret sits inside that window
+    const secret = '7.7.7.7'
     const { reader, logger } = bucket({
-      [MARCH]: gzipSync(`{"storeId":"${STORE}","ip":"${secret}","id":x}\n`)
+      [MARCH]: gzipSync(`{"storeId":"${STORE}","id":x${secret}}\n`)
     })
 
     const error: unknown = await reader.readPage(STORE, {}, undefined, 10).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(PlatformException)
-    expect(JSON.stringify([(error as Error).message, logger.error.mock.calls])).not.toContain(
-      secret
+    // An Error is read with its message, as a logger that serializes errors does
+    const asText = JSON.stringify([(error as Error).message, logger.error.mock.calls], (_k, v) =>
+      v instanceof Error ? { name: v.name, message: v.message } : (v as unknown)
     )
+    expect(asText).not.toContain(secret)
     expect(JSON.stringify(logger.error.mock.calls)).toContain('errorName')
+  })
+
+  it('does not list a row of another store that quotes the id of this one', async () => {
+    const { reader } = bucket({
+      [MARCH]: gzipSync(
+        `${JSON.stringify({
+          id: 'b-row',
+          action: 'order.created',
+          userId: null,
+          storeId: OTHER,
+          resourceType: null,
+          resourceId: null,
+          metadata: { storeId: STORE },
+          ipAddress: null,
+          userAgent: null,
+          timestamp: '2001-03-02T00:00:00.000Z'
+        })}\n`
+      )
+    })
+
+    expect(await reader.readPage(STORE, {}, undefined, 10)).toEqual([])
   })
 
   it('refuses a part that listed and is gone', async () => {
