@@ -19,7 +19,10 @@ export const PushLimits = {
   AUTH_BYTES: 16,
   VAPID_PUBLIC_BYTES: 65,
   VAPID_PRIVATE_BYTES: 32,
-  MAX_USER_AGENT_LENGTH: 512
+  MAX_USER_AGENT_LENGTH: 512,
+  // A browser the push service refuses for good (not gone: a payload or a key it will not take) this many times in a row is dropped;
+  // one delivered push resets the count. A person who still wants push registers again from the switch.
+  MAX_REFUSALS: 5
 } as const
 
 // The worker posts to the endpoint a browser gave the api, so an endpoint is a url the server will
