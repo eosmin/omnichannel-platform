@@ -53,6 +53,7 @@ import { BulkLabelsScheduler } from './schedulers/bulk-labels.scheduler'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
 import { EmailDigestScheduler } from './schedulers/email-digest.scheduler'
+import { ExistingDocumentsScheduler } from './schedulers/existing-documents.scheduler'
 import { ExistingPicturesScheduler } from './schedulers/existing-pictures.scheduler'
 import { ExpiredExportsScheduler } from './schedulers/expired-exports.scheduler'
 import { FinanceChainScheduler } from './schedulers/finance-chain.scheduler'
@@ -137,6 +138,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     DeletedMessagePurgeScheduler,
     OrphanMediaScheduler,
     ExistingPicturesScheduler,
+    ExistingDocumentsScheduler,
     ExpiredExportsScheduler,
     EmailDigestScheduler,
     ReportDispatchScheduler,

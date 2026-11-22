@@ -153,6 +153,33 @@ export const ExistingPictureSweep = {
   }
 } as const
 
+// The sweep that cleans the documents (PDF, docx, xlsx) stored before their cleaning existed (`ExistingDocumentSanitizer`, Step 7.1): the same
+// pattern as the sweep of pictures, with the same marks in the row (`ExistingPictureSweep.CLEANED_KEY`, `OUTCOME_KEY`, `ATTEMPTS_KEY`), but a
+// smaller batch, because a document is parsed whole and synchronously (`sanitizeDocument` runs in the decode slot, one at a time per process)
+export const ExistingDocumentSweep = {
+  BATCH_PER_STORE: 10,
+  MAX_PER_RUN: 40,
+  MAX_ATTEMPTS: ExistingPictureSweep.MAX_ATTEMPTS,
+  // Under the lock of its schedule, as the sweep of pictures
+  MAX_RUN_MS: 420_000,
+  Outcomes: {
+    ALREADY_CLEAN: ExistingPictureSweep.Outcomes.ALREADY_CLEAN,
+    // Kept as it came: encrypted, signed, damaged or too big once opened (the reason is in the log of `sanitizeDocument`)
+    NOT_CLEANABLE: ExistingPictureSweep.Outcomes.NOT_CLEANABLE,
+    FAILED: ExistingPictureSweep.Outcomes.FAILED,
+    MISSING: ExistingPictureSweep.Outcomes.MISSING
+  }
+} as const
+
+// The guard of the sweeps that rewrite a stored file (pictures and documents): in a deployed environment they run only while the bucket
+// shows versioning on, the one way back for an original that was rewritten (owner's decision, 2026-11-21; TDD_03 §7.3). The question is asked
+// again on every run, and one that is not answered in time counts as off
+export const StoredFileSweepGuard = {
+  INSPECT_TIMEOUT_MS: 5000
+} as const
+// The injection token of the guard's switch: true in a deployed environment (set by the storage platform module, the one place that reads the env)
+export const SWEEP_NEEDS_VERSIONING = Symbol('SWEEP_NEEDS_VERSIONING')
+
 // Media.scanResult.reason of a file that was refused before the scan because it cannot be decoded and
 // so cannot be cleaned of its metadata: it is never stored, never served
 export const MediaRejectionReasons = {

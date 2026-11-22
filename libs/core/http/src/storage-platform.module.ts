@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common'
 
 import { env } from '@platform/core/config/env'
 import { isDeployedEnvironment } from '@platform/core/env-rules'
+import { SWEEP_NEEDS_VERSIONING } from '@platform/core/storage'
 import { StorageModule } from '@platform/core/storage-module'
 
 import { BUCKET_PROTECTION_CHECK_ENABLED, BucketProtectionCheck } from './bucket-protection.check'
@@ -23,8 +24,10 @@ import { BUCKET_PROTECTION_CHECK_ENABLED, BucketProtectionCheck } from './bucket
   ],
   providers: [
     { provide: BUCKET_PROTECTION_CHECK_ENABLED, useValue: isDeployedEnvironment(env.NODE_ENV) },
+    // The sweeps that rewrite a stored file run in a deployed environment only while the bucket has versioning (the guard of the worker)
+    { provide: SWEEP_NEEDS_VERSIONING, useValue: isDeployedEnvironment(env.NODE_ENV) },
     BucketProtectionCheck
   ],
-  exports: [StorageModule]
+  exports: [StorageModule, SWEEP_NEEDS_VERSIONING]
 })
 export class StoragePlatformModule {}
