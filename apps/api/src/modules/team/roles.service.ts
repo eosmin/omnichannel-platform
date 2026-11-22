@@ -119,12 +119,16 @@ export class RolesService {
         select: ROLE_SELECT
       })
       // What the holders of the role may do changed, and with it who can be given a conversation: the
-      // directory is read again by every open session (ids only), and only if this commits
-      this.events.publish(tx, Events.TEAM_DIRECTORY_CHANGED, {
-        storeId,
-        membershipId: null,
-        roleId
-      })
+      // directory is read again by every open session (ids only), and only if this commits. A rename, or a
+      // list that holds the same permissions, changes nothing of the sort.
+      const given = new Set(body.permissions ?? currentNames)
+      if (given.size !== currentNames.length || currentNames.some(name => !given.has(name))) {
+        this.events.publish(tx, Events.TEAM_DIRECTORY_CHANGED, {
+          storeId,
+          membershipId: null,
+          roleId
+        })
+      }
       return { before: currentNames, after: updated }
     })
     // Everybody who holds the role has a new set of permissions, whatever the cache says

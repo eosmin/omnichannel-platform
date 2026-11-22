@@ -593,6 +593,21 @@ describe('The team of a store', () => {
       expect(heard).toEqual([{ storeId: ctx.storeA.id, membershipId: null, roleId }])
     })
 
+    it('says nothing when a role is only renamed or keeps the same permissions', async () => {
+      const roleId = await roleWith(ctx.storeA.id, [Permissions.TEAM_VIEW])
+
+      const heard = await hearing(async () => {
+        await asAdmin()
+          .patch(ApiRoutes.settings.roleById(roleId))
+          .send({ name: `${prefix}-${next('renamed')}` })
+        await asAdmin()
+          .patch(ApiRoutes.settings.roleById(roleId))
+          .send({ permissions: [Permissions.TEAM_VIEW] })
+      })
+
+      expect(heard).toEqual([])
+    })
+
     it('says nothing when the change is refused or changes nothing', async () => {
       const boss = await manager()
       const { membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
