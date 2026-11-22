@@ -38,7 +38,8 @@ type Category = Exclude<keyof PlatformCleanupReport, 'more'>
 // webhooks past thirty days, the hours of the hourly rollup past ninety days, and the customers a merge
 // absorbed whose window to undo it (`unmergeUntil`) has passed, with their CustomerMerge row (the audit log keeps
 // `customer.merged`), and the invitations that nobody accepted and that expired more than
-// `PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS` ago. Platform-wide, in batches of PlatformCleanup.BATCH_SIZE; each row is deleted by its own id, so
+// `PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS` ago, and the sealed secrets and the endpoint that a plugin installation revoked more than
+// `PlatformCleanup.REVOKED_PLUGIN_SECRET_GRACE_DAYS` ago still holds (a revoked row without `revoked_at` counts from its `updated_at`). Platform-wide, in batches of PlatformCleanup.BATCH_SIZE; each row is deleted by its own id, so
 // no store is read as a whole. A category that fails does not stop the others.
 @Injectable()
 export class PlatformCleaner {
@@ -160,18 +161,19 @@ export class PlatformCleaner {
         storeId => this.prisma.client.$executeRaw`
           UPDATE plugin_installations SET
             webhook_endpoint = NULL, webhook_secret = NULL,
-            command_secret = NULL, command_secret_previous = NULL, command_secret_rotated_at = NULL
+            command_secret = NULL, command_secret_previous = NULL, command_secret_rotated_at = NULL,
+            updated_at = (${stamp}::timestamptz AT TIME ZONE 'UTC')
           WHERE store_id = ${storeId}
             AND status = ${PluginInstallationStatus.REVOKED}
-            AND revoked_at < (${revokedPluginCutoff}::timestamptz AT TIME ZONE 'UTC')
+            AND COALESCE(revoked_at, updated_at) < (${revokedPluginCutoff}::timestamptz AT TIME ZONE 'UTC')
             AND id IN (
               SELECT id FROM plugin_installations
               WHERE store_id = ${storeId}
                 AND status = ${PluginInstallationStatus.REVOKED}
-                AND revoked_at < (${revokedPluginCutoff}::timestamptz AT TIME ZONE 'UTC')
+                AND COALESCE(revoked_at, updated_at) < (${revokedPluginCutoff}::timestamptz AT TIME ZONE 'UTC')
                 AND (webhook_endpoint IS NOT NULL OR webhook_secret IS NOT NULL
                   OR command_secret IS NOT NULL OR command_secret_previous IS NOT NULL)
-              ORDER BY revoked_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
+              ORDER BY COALESCE(revoked_at, updated_at) LIMIT ${PlatformCleanup.BATCH_SIZE})`
       )
     )
 

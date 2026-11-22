@@ -1085,12 +1085,36 @@ describe('The retention run of the worker', () => {
           status: PluginInstallationStatus.PENDING_SETUP,
           revokedAt: daysAgo(5, now)
         })
+        // Each column alone is enough to be selected, and a row with nothing left is not counted
+        const onlyPrevious = await installation(ctx.storeA.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: daysAgo(2, now)
+        })
+        await owner.pluginInstallation.update({
+          where: { id: onlyPrevious },
+          data: { webhookEndpoint: null, webhookSecret: null, commandSecret: null }
+        })
+        const onlyEndpoint = await installation(ctx.storeB.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: daysAgo(2, now)
+        })
+        await owner.pluginInstallation.update({
+          where: { id: onlyEndpoint },
+          data: { webhookSecret: null, commandSecret: null, commandSecretPrevious: null }
+        })
+        // Revoked with no `revoked_at` (a write that did not record it): it counts from its last change, here set long ago
+        const undated = await installation(ctx.storeA.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: null
+        })
+        await owner.$executeRaw`UPDATE plugin_installations SET updated_at = ${daysAgo(9, now)} WHERE id = ${undated}`
 
         const report = await cleaner.run(now)
 
-        expect(report.revokedPluginSecrets).toBeGreaterThanOrEqual(2)
-        expect(await held(oldA)).toEqual([null, null, null, null])
-        expect(await held(oldB)).toEqual([null, null, null, null])
+        expect(report.revokedPluginSecrets).toBeGreaterThanOrEqual(5)
+        for (const id of [oldA, oldB, onlyPrevious, onlyEndpoint, undated]) {
+          expect(await held(id)).toEqual([null, null, null, null])
+        }
         for (const id of [young, live, again]) {
           expect((await held(id)).every(value => value !== null)).toBe(true)
         }
