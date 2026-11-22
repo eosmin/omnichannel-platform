@@ -19,6 +19,7 @@ export const Schedules = {
   PURGE_DELETED_MESSAGES: '20 * * * *', // Hourly: the text of a deleted message past its retention
   CLEAN_ORPHAN_MEDIA: '50 * * * *', // Hourly: stray uploads, stuck scans, files of infected rows
   SANITIZE_EXISTING_PICTURES: '*/10 * * * *', // Every 10 minutes: a bounded batch of the pictures stored before the cleaning of metadata existed
+  SANITIZE_EXISTING_DOCUMENTS: '5-55/10 * * * *', // Every 10 minutes, five past: a bounded batch of the PDF, docx and xlsx stored before their cleaning existed
   CLEAN_EXPIRED_EXPORTS: '40 * * * *', // Hourly: the files of exports past their date, and the ones that never got made
   CHECK_DSR_DEADLINES: '0 7 * * *', // 07:00 UTC daily (TDD_05 §10.2)
   COLLECT_QUEUE_METRICS: '*/15 * * * * *', // Every 15 seconds (6-field cron, @nestjs/schedule)
