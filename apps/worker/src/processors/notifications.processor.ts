@@ -20,6 +20,7 @@ import { RemittanceChecker } from '../notifications/remittance-checker.service'
 import { WebPushSender } from '../notifications/web-push-sender.service'
 
 import { BaseProcessor } from './base.processor'
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 type NotificationsJob =
@@ -43,27 +44,26 @@ export class NotificationsProcessor extends BaseProcessor<NotificationsJob> {
     switch (job.name) {
       case JobNames.SEND_WEB_PUSH: {
         const parsed = sendWebPushJobSchema.safeParse(job.data)
-        if (!parsed.success)
-          throw new UnrecoverableError('the web push job does not fit its schema')
+        if (!parsed.success) throw new JobRejectedError('the web push job does not fit its schema')
         await this.push.send(parsed.data.userId, parsed.data.notificationId)
         return
       }
       case JobNames.QUEUE_EMAIL_DIGEST: {
         const parsed = queueEmailDigestJobSchema.safeParse(job.data)
-        if (!parsed.success) throw new UnrecoverableError('the email job does not fit its schema')
+        if (!parsed.success) throw new JobRejectedError('the email job does not fit its schema')
         await this.digest.handleQueued(parsed.data.userId, parsed.data.notificationId, new Date())
         return
       }
       case JobNames.SEND_EMAIL_DIGEST: {
         const parsed = sendEmailDigestJobSchema.safeParse(job.data)
-        if (!parsed.success) throw new UnrecoverableError('the digest job does not fit its schema')
+        if (!parsed.success) throw new JobRejectedError('the digest job does not fit its schema')
         await this.digest.sendDigest(parsed.data.userId, parsed.data.frequency, new Date())
         return
       }
       case JobNames.CHECK_REMITTANCES: {
         const parsed = checkRemittancesJobSchema.safeParse(job.data)
         if (!parsed.success)
-          throw new UnrecoverableError('the remittance check does not fit its schema')
+          throw new JobRejectedError('the remittance check does not fit its schema')
         const { storeId } = parsed.data
         await this.skipIfGone(job, () =>
           this.jobContext.forStore(storeId, () => this.remittances.check(storeId, new Date()))

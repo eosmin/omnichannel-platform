@@ -19,6 +19,7 @@ import {
 import { InvitationEmailDelivery } from '../invitations/invitation-email-delivery.service'
 
 import { BaseProcessor } from './base.processor'
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 // The provider's rate limit is shared with the auth-email queue: the two limits add up to it (EmailProviderBudget)
@@ -47,14 +48,14 @@ export class EmailProcessor extends BaseProcessor<
       case JobNames.REQUEST_MAGIC_LINK: {
         const parsed = requestMagicLinkJobSchema.safeParse(job.data)
         if (!parsed.success)
-          throw new UnrecoverableError('the magic link job does not fit its schema')
+          throw new JobRejectedError('the magic link job does not fit its schema')
         await this.magicLinks.issue(parsed.data.email, parsed.data.correlationId)
         return
       }
       case JobNames.DELIVER_INVITATION_EMAIL: {
         const parsed = deliverInvitationEmailJobSchema.safeParse(job.data)
         if (!parsed.success)
-          throw new UnrecoverableError('the invitation job does not fit its schema')
+          throw new JobRejectedError('the invitation job does not fit its schema')
         const { storeId, invitationId } = parsed.data
         // A failed delivery is released by the service and tried again by the sweep, so the job itself never retries
         await this.invitations.deliver(storeId, invitationId)
@@ -62,7 +63,7 @@ export class EmailProcessor extends BaseProcessor<
       }
       case JobNames.SEND_EMAIL: {
         const parsed = sendEmailJobSchema.safeParse(job.data)
-        if (!parsed.success) throw new UnrecoverableError('the email job does not fit its schema')
+        if (!parsed.success) throw new JobRejectedError('the email job does not fit its schema')
         await this.sendEmail(parsed.data)
         return
       }
@@ -78,7 +79,7 @@ export class EmailProcessor extends BaseProcessor<
     } catch (error) {
       // A payload the template rejects will be rejected again: retrying it only delays the dead letter
       if (error instanceof ZodError)
-        throw new UnrecoverableError('the email data does not fit its template')
+        throw new JobRejectedError('the email data does not fit its template')
       throw error
     }
   }

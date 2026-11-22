@@ -9,6 +9,7 @@ import {
   type QueueName
 } from '@platform/core/queues'
 
+import { JobRejectedError } from './job-rejected.error'
 import type { ProcessorSupport } from './processor-support'
 
 // The attempt that is running is the last one the job has: what it cannot do now it will not do
@@ -32,7 +33,7 @@ export abstract class BaseProcessor<T extends BaseJob> extends WorkerHost {
     // Before any schema reads the payload: one that is past the limit of its queue will not shrink when it is tried again. The error
     // names the queue's limit and never what the job held.
     if (hasPayloadLimit(this.queue) && !jobPayloadFits(job.data, this.queue)) {
-      throw new UnrecoverableError('the job payload is larger than its queue allows')
+      throw new JobRejectedError('the job payload is larger than its queue allows')
     }
     try {
       await this.support.run(this.queue, job, current => this.handle(current))

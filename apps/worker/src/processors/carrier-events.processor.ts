@@ -23,6 +23,7 @@ import { PluginWebhookDeliverer } from '../webhooks/plugin-webhook-deliverer.ser
 import { TenantWebhookDeliverer } from '../webhooks/tenant-webhook-deliverer.service'
 
 import { BaseProcessor } from './base.processor'
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 // The keys of the job type, checked when it is compiled: zod drops what it is not told about. The store comes from the
@@ -111,7 +112,7 @@ export class CarrierEventsProcessor extends BaseProcessor<WebhooksQueueJob> {
   private async handleWebhook(job: Job<WebhooksQueueJob>): Promise<void> {
     const parsed = webhookJobSchema.safeParse(job.data)
     // The job crossed Redis: what does not fit now will not fit when it is tried again
-    if (!parsed.success) throw new UnrecoverableError('the webhook job does not fit its schema')
+    if (!parsed.success) throw new JobRejectedError('the webhook job does not fit its schema')
     // A failure that may pass throws and BullMQ asks again; every attempt is a row of the delivery log
     await this.skipIfGone(job, () =>
       this.webhooks.deliver(parsed.data, job.attemptsMade + 1, {
@@ -123,7 +124,7 @@ export class CarrierEventsProcessor extends BaseProcessor<WebhooksQueueJob> {
   private async handlePluginWebhook(job: Job<WebhooksQueueJob>): Promise<void> {
     const parsed = pluginWebhookJobSchema.safeParse(job.data)
     if (!parsed.success) {
-      throw new UnrecoverableError('the plugin webhook job does not fit its schema')
+      throw new JobRejectedError('the plugin webhook job does not fit its schema')
     }
     await this.skipIfGone(job, () =>
       this.pluginWebhooks.deliver(parsed.data, job.attemptsMade + 1, {
@@ -135,8 +136,7 @@ export class CarrierEventsProcessor extends BaseProcessor<WebhooksQueueJob> {
   private async handleCarrierEvent(job: Job<WebhooksQueueJob>): Promise<void> {
     const parsed = carrierEventJobSchema.safeParse(job.data)
     // The job crossed Redis: what does not fit now will not fit when it is tried again
-    if (!parsed.success)
-      throw new UnrecoverableError('the carrier event job does not fit its schema')
+    if (!parsed.success) throw new JobRejectedError('the carrier event job does not fit its schema')
     const applied: { outcome?: CarrierEventHandledType } = {}
     await this.skipIfGone(job, async () => {
       applied.outcome = await this.applier.apply(parsed.data, ShipmentEventSource.WEBHOOK)

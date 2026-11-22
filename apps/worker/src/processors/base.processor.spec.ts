@@ -8,6 +8,7 @@ import {
 import { JobPayloadLimits, QueueNames } from '@platform/core/queues'
 
 import { BaseProcessor } from './base.processor'
+import { JobRejectedError } from './job-rejected.error'
 import type { ProcessorSupport } from './processor-support'
 
 class Probe extends BaseProcessor<{ correlationId?: string }> {
@@ -68,7 +69,7 @@ describe('BaseProcessor and the errors of the context', () => {
 
     const error: unknown = await probe.process(big).catch((caught: unknown) => caught)
 
-    expect(error).toBeInstanceOf(UnrecoverableError)
+    expect(error).toBeInstanceOf(JobRejectedError)
     expect((error as Error).message).not.toContain(secret)
     expect(work).not.toHaveBeenCalled()
   })

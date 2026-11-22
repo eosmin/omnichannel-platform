@@ -19,6 +19,7 @@ import { AnalyticsRollupService } from '../analytics/analytics-rollup.service'
 import { isAligned, RollupGranularities, type RollupGranularity } from '../analytics/rollup-periods'
 
 import { BaseProcessor } from './base.processor'
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 // Checked against the job type of the queue: a field added there and not here fails to compile
@@ -91,7 +92,7 @@ export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob | Rollup
     if (trackSchema !== undefined) {
       const parsed = trackSchema.safeParse(job.data)
       if (!parsed.success) {
-        throw new UnrecoverableError('the analytics job does not fit its schema')
+        throw new JobRejectedError('the analytics job does not fit its schema')
       }
       const event = parsed.data
       await this.skipIfGone(job, () =>
@@ -104,7 +105,7 @@ export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob | Rollup
       throw new UnrecoverableError('the analytics queue does not know this job')
     }
     const parsed = rollupSchema.safeParse(job.data)
-    if (!parsed.success) throw new UnrecoverableError('the rollup job does not fit its schema')
+    if (!parsed.success) throw new JobRejectedError('the rollup job does not fit its schema')
     const start = new Date(parsed.data.periodStart)
     const end = new Date(parsed.data.periodEnd)
     // Only a whole hour or a whole UTC day: a job cannot write a period the schedulers never ask for

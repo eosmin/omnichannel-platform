@@ -19,6 +19,7 @@ import { ChannelReceipts } from '../outbound/channel-receipts.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
 import { processChannelEventJobSchema } from './inbound-job.schema'
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 // The worker half of TDD_10 §4: the controller of the api queued what the plugin normalized, and this
@@ -46,7 +47,7 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
   private async handleEvent(job: Job<ProcessChannelEventJob>): Promise<void> {
     const parsed = processChannelEventJobSchema.safeParse(job.data)
     // What does not fit now will not fit when it is tried again: it goes to the dead letter queue
-    if (!parsed.success) throw new UnrecoverableError('the channel event does not fit its schema')
+    if (!parsed.success) throw new JobRejectedError('the channel event does not fit its schema')
     const { pluginId, event, receivedAt } = parsed.data
 
     switch (event.type) {

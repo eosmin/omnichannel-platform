@@ -12,6 +12,7 @@ import {
 import { ProfileFetcher } from '../inbound/profile-fetcher.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 // The worker half of the name and photo of a customer. It has a queue of its own so that a slow
@@ -32,7 +33,7 @@ export class CustomerProfileProcessor extends BaseProcessor<FetchCustomerProfile
     }
     const parsed = fetchCustomerProfileJobSchema.safeParse(job.data)
     // The job crossed Redis: what does not fit now will not fit when it is tried again
-    if (!parsed.success) throw new UnrecoverableError('the profile job does not fit its schema')
+    if (!parsed.success) throw new JobRejectedError('the profile job does not fit its schema')
     // A store deleted after the job was queued is a read with nothing left to do
     await this.skipIfGone(job, () => this.fetcher.fetch(parsed.data, isLastAttempt(job)))
   }

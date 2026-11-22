@@ -57,9 +57,9 @@ describe('the processors of the worker read their jobs with an exact schema', ()
   it.each(processorFiles.map(file => [file.name, file.source]))(
     '%s refuses a job with a fixed message: no template literal, no message of a parser',
     (_name, source) => {
-      const refusals = [...source.matchAll(/new UnrecoverableError\(([^)]*)\)/g)].map(
-        match => match[1] ?? ''
-      )
+      const refusals = [
+        ...source.matchAll(/new (?:Unrecoverable|JobRejected)Error\(([^)]*)\)/g)
+      ].map(match => match[1] ?? '')
       for (const argument of refusals) {
         expect(argument).not.toMatch(/`/)
         // A ZodError's message lists the paths and values it met; the message of another error is the job context's own
