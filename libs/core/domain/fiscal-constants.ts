@@ -345,3 +345,13 @@ export const FiscalSweepLimits = {
   QUEUED_STALL_MINUTES: 60,
   SUBMITTED_STALL_MINUTES: 15
 } as const
+
+// Which sealed value of the fiscal area a log line says could not be opened (the label an operator filters on after a key change)
+export const SealedValueKind = {
+  RECEIVER: 'receiver',
+  BUILT_PAYLOAD: 'built-payload',
+  ISSUER_CREDENTIALS: 'issuer-credentials',
+  CUSTOMER_DATA: 'customer-data',
+  RESPONSIBLE: 'responsible'
+} as const
+export type SealedValueKind = (typeof SealedValueKind)[keyof typeof SealedValueKind]

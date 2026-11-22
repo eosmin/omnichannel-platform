@@ -18,7 +18,8 @@ import {
   FiscalEvidenceContentType,
   FiscalEvidenceKind,
   FiscalLimits,
-  MediaStatus
+  MediaStatus,
+  SealedValueKind
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
@@ -26,6 +27,7 @@ import { MediaPurpose, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { record, toJson } from './json'
+import { openSealed } from './sealed-open'
 
 // What a kind of evidence is made from and in which states of the document it exists: the document as it was built and what the
 // authority answered to its acceptance exist once the document is accepted (and stay when it is voided), the answer to the invalidation
@@ -204,6 +206,7 @@ export class FiscalEvidenceService {
       this.prisma.client.fiscalDocument.findFirst({
         where: { id: documentId, organizationId },
         select: {
+          id: true,
           sequenceNumber: true,
           documentType: true,
           externalNumber: true,
@@ -259,6 +262,7 @@ export class FiscalEvidenceService {
   private contentOf(
     kind: FiscalEvidenceKind,
     doc: {
+      id: string
       documentType: string
       externalNumber: string | null
       providerData: unknown
@@ -275,7 +279,15 @@ export class FiscalEvidenceService {
       if (doc.builtPayloadEncrypted === null) return null
       let payload: Record<string, unknown>
       try {
-        payload = this.cipher.open(doc.builtPayloadEncrypted)
+        payload = openSealed(
+          this.cipher,
+          this.logger,
+          doc.builtPayloadEncrypted,
+          SealedValueKind.BUILT_PAYLOAD,
+          {
+            documentId: doc.id
+          }
+        )
       } catch {
         return null
       }
