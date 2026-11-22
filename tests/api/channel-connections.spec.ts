@@ -114,6 +114,23 @@ describe('The channel connections of a store', () => {
     return rows
   }
 
+  // Every page of the directory, joined into one answer: the store holds the connections of all the cases, more than a page
+  async function allDirectory(
+    agent = asAgent
+  ): Promise<{ status: number; body: { data: ConnectionBody[] } }> {
+    const data: ConnectionBody[] = []
+    let cursor: string | null = null
+    do {
+      const page: { status: number; body: ConnectionPageBody } = await agent()
+        .get(ApiRoutes.channels.directory)
+        .query({ limit: 100, ...(cursor === null ? {} : { cursor }) })
+      if (page.status !== OK) return { status: page.status, body: { data } }
+      data.push(...page.body.data)
+      cursor = page.body.nextCursor
+    } while (cursor !== null)
+    return { status: OK, body: { data } }
+  }
+
   // A plugin of its own for each test: the registry refuses an id twice
   function register(over: Partial<ChannelPlugin> = {}, connectionId = `acct-${randomUUID()}`) {
     counter += 1
@@ -1098,7 +1115,7 @@ describe('The channel connections of a store', () => {
       })
       const one = await asAdmin().get(ApiRoutes.channels.connectionById(first.id))
       expect((one.body as Named).displayName).toBe('Instagram principal')
-      const directory = await asAgent().get(ApiRoutes.channels.directory)
+      const directory = await allDirectory()
       expect(
         (directory.body as { data: { id: string; displayName: string }[] }).data.find(
           item => item.id === first.id
@@ -1503,11 +1520,11 @@ describe('The channel connections of a store', () => {
       await connect(id)
 
       const settings = await asAgent().get(ApiRoutes.channels.connections)
-      const list = await asAgent().get(ApiRoutes.channels.directory)
+      const list = await allDirectory()
 
       expect(settings.status).toBe(FORBIDDEN)
       expect(list.status).toBe(OK)
-      const item = (list.body as { data: ConnectionBody[] }).data.find(each => each.pluginId === id)
+      const item = list.body.data.find(each => each.pluginId === id)
       expect(Object.keys(item ?? {}).sort()).toEqual([
         'capabilities',
         'descriptor',
@@ -1546,7 +1563,7 @@ describe('The channel connections of a store', () => {
       await connect(takes.id)
       await connect(text.id)
 
-      const list = await asAgent().get(ApiRoutes.channels.directory)
+      const list = await allDirectory()
 
       const mediaOf = (pluginId: string) =>
         (list.body as { data: { pluginId: string; media: unknown[] }[] }).data.find(
@@ -1572,9 +1589,9 @@ describe('The channel connections of a store', () => {
       await connect(mine.id)
       await connect(theirs.id, asAdminB)
 
-      const list = await asAgent().get(ApiRoutes.channels.directory)
+      const list = await allDirectory()
 
-      const ids = (list.body as { data: ConnectionBody[] }).data.map(item => item.pluginId)
+      const ids = list.body.data.map(item => item.pluginId)
       expect(ids).toContain(mine.id)
       expect(ids).not.toContain(theirs.id)
     })
@@ -1591,11 +1608,10 @@ describe('The channel connections of a store', () => {
       await connect(missing.id)
       await connect(emoji.id)
 
-      const list = await asAgent().get(ApiRoutes.channels.directory)
+      const list = await allDirectory()
 
       const nameOf = (pluginId: string) =>
-        (list.body as { data: ConnectionBody[] }).data.find(item => item.pluginId === pluginId)
-          ?.pluginName
+        list.body.data.find(item => item.pluginId === pluginId)?.pluginName
       expect(list.status).toBe(OK)
       expect(Array.from(nameOf(long.id) ?? '')).toHaveLength(60)
       expect(nameOf(long.id)).toMatch(/^Whatsx+$/)
@@ -1619,12 +1635,10 @@ describe('The channel connections of a store', () => {
         data: { status: PluginInstallationStatus.REVOKED }
       })
 
-      const list = await asAgent().get(ApiRoutes.channels.directory)
+      const list = await allDirectory()
 
       const statusOf = (connection: { body: unknown }) =>
-        (list.body as { data: ConnectionBody[] }).data.find(
-          item => item.id === (connection.body as ConnectionBody).id
-        )?.status
+        list.body.data.find(item => item.id === (connection.body as ConnectionBody).id)?.status
       expect(statusOf(brokenConnection)).toBe(ChannelConnectionStatus.ERROR)
       expect(statusOf(orphanConnection)).toBe(ChannelConnectionStatus.ERROR)
       expect(JSON.stringify(list.body)).not.toContain('SECRET-DETAIL')
@@ -2204,7 +2218,7 @@ describe('The channel connections of a store', () => {
       const { id } = profilePlugin()
       await connectionOf(asAdmin, id)
 
-      const response = await asAgent().get(ApiRoutes.channels.directory)
+      const response = await allDirectory()
 
       expect(response.status).toBe(OK)
       for (const entry of (response.body as { data: object[] }).data)

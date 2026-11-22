@@ -332,6 +332,9 @@ export class ChannelConnectionsService {
         ...(cursor === undefined
           ? {}
           : {
+              // The bound by date lets the index start at the cursor: the OR alone is read row by row from the
+              // first of the store
+              createdAt: { gte: cursor.createdAt },
               OR: [
                 { createdAt: { gt: cursor.createdAt } },
                 { createdAt: cursor.createdAt, id: { gt: cursor.id } }
@@ -371,6 +374,9 @@ export class ChannelConnectionsService {
         ...(cursor === undefined
           ? {}
           : {
+              // The bound by date lets the index start at the cursor: the OR alone is read row by row from the
+              // first of the store
+              createdAt: { gte: cursor.createdAt },
               OR: [
                 { createdAt: { gt: cursor.createdAt } },
                 { createdAt: cursor.createdAt, id: { gt: cursor.id } }
