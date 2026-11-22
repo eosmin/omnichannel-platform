@@ -105,10 +105,13 @@ describe('FiscalResealService (what the database run cannot show)', () => {
     const cipher = new CredentialCipher(newKey, oldKey)
     const total = FiscalReseal.MAX_VALUES_PER_KIND + 1
     // Rows by id, as the table holds them: the swap of a row changes what the next read returns
-    const rows = Array.from({ length: total }, (_, i) => ({
-      id: `row-${String(i).padStart(6, '0')}`,
-      dataEncrypted: new Uint8Array(old.seal({ n: i }))
-    }))
+    const rows: { id: string; dataEncrypted: Uint8Array }[] = Array.from(
+      { length: total },
+      (_, i) => ({
+        id: `row-${String(i).padStart(6, '0')}`,
+        dataEncrypted: new Uint8Array(old.seal({ n: i }))
+      })
+    )
     const customerFiscalData = {
       findMany: jest.fn().mockImplementation((args: { where: { id?: { gt: string } } }) => {
         const after = args.where.id?.gt
