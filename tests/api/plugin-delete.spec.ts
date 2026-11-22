@@ -9,6 +9,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import {
   PLUGIN_REVOKE_CONFIRMATION,
   PluginCatalogTypes,
+  PluginInstallationStatus,
   PluginPricingModels,
   PluginRegistrationLimits,
   PluginStatus
@@ -17,6 +18,7 @@ import { ErrorCodes } from '@platform/core/errors'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { PluginChallengeService } from '../../apps/api/src/modules/plugins/plugin-challenge.service'
+import { PluginInstallationsService } from '../../apps/api/src/modules/plugins/plugin-installations.service'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -36,6 +38,10 @@ interface ErrorBody {
 }
 interface InstallBody {
   setup: { code: string } | null
+}
+
+interface CatalogRows {
+  catalogRows: (store: unknown, pluginId?: string) => Promise<unknown>
 }
 
 // Step 5.6 PR W1-2: `DELETE /plugins/:id`, the removal of a plugin the organization registered
@@ -540,31 +546,104 @@ describe('Deleting a plugin of the organization', () => {
     expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(0)
   })
 
-  // The install takes the row of the plugin FOR SHARE and the deletion takes it FOR UPDATE (Step 7.3-B5b, #30): whichever gets the row
-  // first wins and the other is told why, whatever the order the requests arrive in
-  it('answers one of two clear outcomes, never a 500, when an install and the deletion of the same plugin arrive together', async () => {
-    for (let round = 0; round < 8; round += 1) {
-      const id = await register()
-      const [installed, deleted] = await Promise.all([
+  // The two locks of Step 7.3-B5b (#30), proved with a transaction of the test that HOLDS the row while the request arrives, so the
+  // order does not depend on two requests meeting by luck. `held` runs the request, shows that it has not answered while the lock is
+  // held, releases it and hands back the answer.
+  const HELD_MS = 400
+  const whileHolding = async (
+    hold: (tx: Parameters<Parameters<OwnerClient['$transaction']>[0]>[0]) => Promise<void>,
+    request: () => PromiseLike<supertest.Response>
+  ): Promise<supertest.Response> => {
+    let answer: Promise<supertest.Response> | null = null
+    let answeredWhileHeld = true
+    // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+    await owner.$transaction(
+      async tx => {
+        await hold(tx)
+        answer = Promise.resolve(request())
+        answeredWhileHeld = await Promise.race([
+          answer.then(() => true),
+          new Promise<boolean>(resolve => setTimeout(() => resolve(false), HELD_MS))
+        ])
+      },
+      { timeout: 30_000, maxWait: 30_000 }
+    )
+    expect(answeredWhileHeld).toBe(false)
+    if (answer === null) throw new Error('the request was never sent')
+    return answer
+  }
+  const lockRow = (tx: Parameters<Parameters<OwnerClient['$transaction']>[0]>[0], id: string) =>
+    tx.$queryRaw`SELECT id FROM plugins WHERE id = ${id} FOR UPDATE`
+
+  // The archive of a plugin takes the row FOR UPDATE first; the install must wait for it and then read the plugin as archived. With a
+  // plain read the install saw the plugin approved, waited only at the foreign key and ended with an installation on an archived plugin.
+  it('makes an install wait for the archive that holds the row and then find the plugin gone', async () => {
+    const id = await register()
+    const installed = await whileHolding(
+      async tx => {
+        await lockRow(tx, id)
+        await tx.plugin.update({ where: { id }, data: { status: PluginStatus.ARCHIVED } })
+      },
+      () =>
         asAdmin()
           .post(ApiRoutes.plugins.install)
-          .send({ pluginId: id, scopes: [PluginScopes.ORDERS_READ] }),
-        remove(id)
-      ])
+          .send({ pluginId: id, scopes: [PluginScopes.ORDERS_READ] })
+    )
 
-      const outcome = `${installed.status}/${deleted.status}`
-      // The install got the row first: the plugin stays, with its pending installation, and the deletion says it is in use. Or the
-      // deletion did: the plugin and the installation are gone and the install says it does not exist.
-      expect([`${CREATED}/${CONFLICT}`, `${NOT_FOUND}/${NO_CONTENT}`]).toContain(outcome)
-      if (installed.status === CREATED) {
-        expect(codeOf(deleted.body)).toBe(ErrorCodes.PLUGIN_IN_USE)
-        expect(await exists(id)).toBe(true)
-        expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(1)
-      } else {
-        expect(codeOf(installed.body)).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
-        expect(await exists(id)).toBe(false)
-        expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(0)
-      }
+    expect(installed.status).toBe(NOT_FOUND)
+    expect(codeOf(installed.body)).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
+    expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(0)
+  })
+
+  // An install that holds the row and has written its installation but not committed: the deletion answers 409 once it commits. This pins
+  // the outcome, not the `FOR UPDATE` of the deletion: with that lock removed the foreign key of the installation is mapped to the same
+  // 409, so the lock stays as defense in depth (it stops the installations being read before an install lands) and no test can see it
+  // (measured in Step 7.3-B5b, written in the plan).
+  it('makes the deletion wait for an install that holds the row, and then refuses it as in use', async () => {
+    const id = await register()
+    const deleted = await whileHolding(
+      async tx => {
+        await tx.$queryRaw`SELECT id FROM plugins WHERE id = ${id} FOR SHARE`
+        await tx.pluginInstallation.create({
+          data: {
+            storeId: ctx.storeA.id,
+            pluginId: id,
+            scopes: [],
+            status: PluginInstallationStatus.PENDING_SETUP,
+            installedBy: ctx.adminA.id
+          }
+        })
+      },
+      () => remove(id)
+    )
+
+    expect(deleted.status).toBe(CONFLICT)
+    expect(codeOf(deleted.body)).toBe(ErrorCodes.PLUGIN_IN_USE)
+    expect(await exists(id)).toBe(true)
+    expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(1)
+  })
+
+  // The detail and the answer of an install name one plugin: neither builds the catalog of the store (debt (d) of W1: a store with many
+  // plugins paid for all of them to draw one)
+  it('reads one plugin for its detail and for an install, never the catalog of the store', async () => {
+    const id = await register()
+    const service = app.get(PluginInstallationsService)
+    const catalog = jest.spyOn(service, 'catalog')
+    const rows = jest.spyOn(service as unknown as CatalogRows, 'catalogRows')
+    try {
+      await asAdmin().get(ApiRoutes.plugins.byId(id)).expect(OK)
+      await asAdmin()
+        .post(ApiRoutes.plugins.install)
+        .send({ pluginId: id, scopes: [PluginScopes.ORDERS_READ] })
+        .expect(CREATED)
+
+      expect(catalog).not.toHaveBeenCalled()
+      // The one read of the install answer names its plugin
+      expect(rows.mock.calls.length).toBeGreaterThan(0)
+      expect(rows.mock.calls.every(call => call[1] === id)).toBe(true)
+    } finally {
+      catalog.mockRestore()
+      rows.mockRestore()
     }
   })
 })
