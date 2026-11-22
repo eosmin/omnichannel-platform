@@ -6,6 +6,7 @@ import { isWebhookEvent, ShipmentEventSource } from '@platform/core/domain'
 import { type EventName, Events } from '@platform/core/events'
 import {
   exactly,
+  jobCorrelationIdSchema,
   JobNames,
   QueueNames,
   type TriggerPluginWebhookJob,
@@ -32,7 +33,7 @@ const carrierEventJobSchema = exactly<ProcessCarrierEventJob>()(
     connectionId: z.uuid(),
     event: carrierEventSchema,
     receivedAt: z.iso.datetime({ offset: true }),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 

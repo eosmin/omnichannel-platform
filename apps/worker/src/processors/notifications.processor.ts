@@ -1,16 +1,18 @@
 import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
-import { z } from 'zod'
 
 import { JobContext } from '@platform/core/database'
-import { DigestFrequency } from '@platform/core/domain'
 import {
   type CheckRemittancesJob,
+  checkRemittancesJobSchema,
   JobNames,
   QueueNames,
   type QueueEmailDigestJob,
+  queueEmailDigestJobSchema,
   type SendEmailDigestJob,
-  type SendWebPushJob
+  sendEmailDigestJobSchema,
+  type SendWebPushJob,
+  sendWebPushJobSchema
 } from '@platform/core/queues'
 
 import { EmailDigestService } from '../notifications/email-digest.service'
@@ -19,10 +21,6 @@ import { WebPushSender } from '../notifications/web-push-sender.service'
 
 import { BaseProcessor } from './base.processor'
 import { ProcessorSupport } from './processor-support'
-
-const notificationJobSchema = z.object({ userId: z.uuid(), notificationId: z.uuid() })
-const checkRemittancesJobSchema = z.object({ storeId: z.uuid() })
-const digestJobSchema = z.object({ userId: z.uuid(), frequency: z.enum(DigestFrequency) })
 
 type NotificationsJob =
   SendWebPushJob | QueueEmailDigestJob | SendEmailDigestJob | CheckRemittancesJob
@@ -44,20 +42,20 @@ export class NotificationsProcessor extends BaseProcessor<NotificationsJob> {
     // The job crossed Redis: what does not fit now will not fit when it is tried again
     switch (job.name) {
       case JobNames.SEND_WEB_PUSH: {
-        const parsed = notificationJobSchema.safeParse(job.data)
+        const parsed = sendWebPushJobSchema.safeParse(job.data)
         if (!parsed.success)
           throw new UnrecoverableError('the web push job does not fit its schema')
         await this.push.send(parsed.data.userId, parsed.data.notificationId)
         return
       }
       case JobNames.QUEUE_EMAIL_DIGEST: {
-        const parsed = notificationJobSchema.safeParse(job.data)
+        const parsed = queueEmailDigestJobSchema.safeParse(job.data)
         if (!parsed.success) throw new UnrecoverableError('the email job does not fit its schema')
         await this.digest.handleQueued(parsed.data.userId, parsed.data.notificationId, new Date())
         return
       }
       case JobNames.SEND_EMAIL_DIGEST: {
-        const parsed = digestJobSchema.safeParse(job.data)
+        const parsed = sendEmailDigestJobSchema.safeParse(job.data)
         if (!parsed.success) throw new UnrecoverableError('the digest job does not fit its schema')
         await this.digest.sendDigest(parsed.data.userId, parsed.data.frequency, new Date())
         return

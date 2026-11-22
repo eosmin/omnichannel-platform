@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import {
   exactly,
+  jobCorrelationIdSchema,
   type ExportAuditLogsJob,
   type GenerateExportJob,
   type GenerateScheduledReportJob,
@@ -20,18 +21,18 @@ import { ProcessorSupport } from './processor-support'
 
 // The store is required: a job with none fails (and goes to the dead-letter queue), it is never looked up
 const exportJobSchema = exactly<GenerateExportJob>()(
-  z.object({ exportId: z.uuid(), storeId: z.uuid(), correlationId: z.string().optional() })
+  z.object({ exportId: z.uuid(), storeId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 const reportJobSchema = exactly<GenerateScheduledReportJob>()(
   z.object({
     reportId: z.uuid(),
     day: z.iso.date(),
     storeId: z.uuid(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const auditExportJobSchema = exactly<ExportAuditLogsJob>()(
-  z.object({ before: z.iso.datetime(), correlationId: z.string().optional() })
+  z.object({ before: z.iso.datetime(), correlationId: jobCorrelationIdSchema })
 )
 
 // One at a time: an export reads a whole table and the worker holds little memory

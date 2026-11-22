@@ -6,11 +6,14 @@ import { EmailService } from '@platform/core/email'
 import { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import {
   type DeliverInvitationEmailJob,
+  deliverInvitationEmailJobSchema,
   EmailQueue,
   JobNames,
   QueueNames,
   type RequestMagicLinkJob,
-  type SendEmailJob
+  requestMagicLinkJobSchema,
+  type SendEmailJob,
+  sendEmailJobSchema
 } from '@platform/core/queues'
 
 import { InvitationEmailDelivery } from '../invitations/invitation-email-delivery.service'
@@ -42,22 +45,30 @@ export class EmailProcessor extends BaseProcessor<
       // Rollout only (Step 7.3-S9): the magic link has its own queue now, but a job that an api of the previous release queued here is still
       // served. Remove this case one release after the worker and the api run the new code (plan, Step 7.3-S9 note)
       case JobNames.REQUEST_MAGIC_LINK: {
-        const { email, correlationId } = job.data as RequestMagicLinkJob
-        await this.magicLinks.issue(email, correlationId)
+        const parsed = requestMagicLinkJobSchema.safeParse(job.data)
+        if (!parsed.success)
+          throw new UnrecoverableError('the magic link job does not fit its schema')
+        await this.magicLinks.issue(parsed.data.email, parsed.data.correlationId)
         return
       }
       case JobNames.DELIVER_INVITATION_EMAIL: {
-        const { storeId, invitationId } = job.data as DeliverInvitationEmailJob
+        const parsed = deliverInvitationEmailJobSchema.safeParse(job.data)
+        if (!parsed.success)
+          throw new UnrecoverableError('the invitation job does not fit its schema')
+        const { storeId, invitationId } = parsed.data
         // A failed delivery is released by the service and tried again by the sweep, so the job itself never retries
         await this.invitations.deliver(storeId, invitationId)
         return
       }
-      case JobNames.SEND_EMAIL:
-        await this.sendEmail(job.data as SendEmailJob)
+      case JobNames.SEND_EMAIL: {
+        const parsed = sendEmailJobSchema.safeParse(job.data)
+        if (!parsed.success) throw new UnrecoverableError('the email job does not fit its schema')
+        await this.sendEmail(parsed.data)
         return
+      }
       default:
         // Never read an unknown job as an email: it would only fail the template and be retried
-        throw new UnrecoverableError(`the email queue has no job named ${job.name}`)
+        throw new UnrecoverableError('the email queue does not know this job')
     }
   }
 
@@ -66,7 +77,8 @@ export class EmailProcessor extends BaseProcessor<
       await this.email.send(data)
     } catch (error) {
       // A payload the template rejects will be rejected again: retrying it only delays the dead letter
-      if (error instanceof ZodError) throw new UnrecoverableError(error.message)
+      if (error instanceof ZodError)
+        throw new UnrecoverableError('the email data does not fit its template')
       throw error
     }
   }

@@ -26,6 +26,7 @@ import {
   type MediaScope,
   type PostFinanceEventJob,
   exactly,
+  jobCorrelationIdSchema,
   JobNames,
   QueueNames,
   type PollShipmentStatusJob,
@@ -94,7 +95,7 @@ const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
     locationsByConnection: bulkLocationsByConnectionSchema.optional(),
     pickup: shipmentPickupSchema.optional(),
     canOverridePrice: z.boolean(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const cancelShipmentJobSchema = exactly<CancelShipmentJob>()(
@@ -102,7 +103,7 @@ const cancelShipmentJobSchema = exactly<CancelShipmentJob>()(
     storeId: z.uuid(),
     shipmentId: z.uuid(),
     requestedBy: z.uuid().nullable(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const syncPickupJobSchema = exactly<SyncPickupJob>()(
@@ -110,31 +111,31 @@ const syncPickupJobSchema = exactly<SyncPickupJob>()(
     storeId: z.uuid(),
     pickupId: z.uuid(),
     requestedBy: z.uuid().nullable(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const evaluatePickupsJobSchema = exactly<EvaluatePickupsJob>()(
-  z.object({ minute: z.number().int().positive(), correlationId: z.string().optional() })
+  z.object({ minute: z.number().int().positive(), correlationId: jobCorrelationIdSchema })
 )
 const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
   z.object({
     storeId: z.uuid(),
     originId: z.uuid(),
     slot: z.enum(Object.values(OriginMediaSlots) as [OriginMediaSlot, ...OriginMediaSlot[]]),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const reconcileJobSchema = exactly<ReconcileInventoryJob>()(
-  z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
+  z.object({ storeId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 const reconcileFinanceJobSchema = exactly<ReconcileFinanceJob>()(
-  z.object({ organizationId: z.uuid(), correlationId: z.string().optional() })
+  z.object({ organizationId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 export const verifyLedgerChainJobSchema = exactly<VerifyLedgerChainJob>()(
   z.object({
     organizationId: z.uuid(),
     requestedBy: z.uuid().optional(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const postFinanceJobSchema = exactly<PostFinanceEventJob>()(
@@ -144,38 +145,38 @@ const postFinanceJobSchema = exactly<PostFinanceEventJob>()(
     sourceId: z.uuid(),
     kind: z.enum(FinanceEventKind),
     occurredAt: z.iso.datetime().optional(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const submitFiscalJobSchema = exactly<SubmitFiscalDocumentJob>()(
   z.object({
     organizationId: z.uuid(),
     documentId: z.uuid(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const reportFiscalContingencyJobSchema = exactly<ReportFiscalContingencyJob>()(
   z.object({
     organizationId: z.uuid(),
     contingencyId: z.uuid(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const retentionJobSchema = exactly<EnforceRetentionJob>()(
-  z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
+  z.object({ storeId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 const dsrIntakeJobSchema = exactly<DsrIntakeJob>()(
-  z.object({ sealed: z.string().min(1).max(4096), correlationId: z.string().optional() })
+  z.object({ sealed: z.string().min(1).max(4096), correlationId: jobCorrelationIdSchema })
 )
 const eraseCustomerDataJobSchema = exactly<EraseCustomerDataJob>()(
-  z.object({ storeId: z.uuid(), customerId: z.uuid(), correlationId: z.string().optional() })
+  z.object({ storeId: z.uuid(), customerId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 const pollJobSchema = exactly<PollShipmentStatusJob>()(
   z.object({
     storeId: z.uuid(),
     connectionId: z.uuid(),
     includeOld: z.boolean(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const reprocessJobSchema = exactly<ReprocessCarrierEventsJob>()(
@@ -184,7 +185,7 @@ const reprocessJobSchema = exactly<ReprocessCarrierEventsJob>()(
     connectionId: z.uuid(),
     providerCode: z.string().min(1).max(CarrierStatusLimits.PROVIDER_CODE_MAX_LENGTH),
     requestedBy: z.uuid().optional(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 // A scan and the variants of an image take the same job. Its database work is the context of a store, or of the person for an avatar
@@ -194,7 +195,7 @@ const mediaJobSchema = z
     mediaId: z.uuid(),
     storeId: z.uuid().optional(),
     userId: z.uuid().optional(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
   .refine(job => (job.storeId === undefined) !== (job.userId === undefined), {
     message: 'a media job names a store or a person, and only one'
@@ -212,7 +213,7 @@ const fetchJobSchema = exactly<FetchInboundMediaJob>()(
     mediaId: z.string().optional(),
     contentType: z.string(),
     filename: z.string().nullable(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 
