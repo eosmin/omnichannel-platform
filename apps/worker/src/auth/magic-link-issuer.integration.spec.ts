@@ -94,6 +94,8 @@ describe('MagicLinkIssuer as the worker role', () => {
       locale: 'en',
       correlationId: 'corr-1'
     })
+    // Neither a sent nor a failed job keeps the link in Redis
+    expect(job?.options).toEqual({ removeOnComplete: true, removeOnFail: true })
     const token = new URLSearchParams(
       new URL(String((job?.data['data'] as { url: string }).url)).hash.slice(1)
     ).get('token')

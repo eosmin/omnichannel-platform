@@ -91,6 +91,39 @@ describe('AuthController', () => {
       expect(without).toEqual(withAccount)
     })
 
+    it('answers with the same status, body and headers for an account that exists and one that does not', async () => {
+      const known = await test.createUser()
+      const raw = async (
+        email: string
+      ): Promise<{ status: number; body: string; headers: string }> => {
+        const response = await fetch(`${test.url}${API_PREFIX}${ApiRoutes.auth.magicLinkRequest}`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-forwarded-for': freshIp(),
+            'user-agent': 'jest-http'
+          },
+          body: JSON.stringify({ email })
+        })
+        // What differs on every answer by itself (the moment, the id of the request) is not the account
+        const volatile = new Set(['date', 'x-request-id', 'x-correlation-id', 'etag'])
+        const headers = [...response.headers.entries()]
+          .filter(([name]) => !volatile.has(name))
+          .sort(([a], [b]) => a.localeCompare(b))
+        return {
+          status: response.status,
+          body: await response.text(),
+          headers: JSON.stringify(headers)
+        }
+      }
+
+      const withAccount = await raw(known.email)
+      const without = await raw(`nobody-${randomUUID()}@example.com`)
+
+      expect(withAccount.status).toBe(202)
+      expect(without).toEqual(withAccount)
+    })
+
     it('logs in through the link and returns the session and the user', async () => {
       const { user, accessToken, refreshToken } = await login()
 

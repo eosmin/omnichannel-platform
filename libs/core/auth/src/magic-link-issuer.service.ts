@@ -84,9 +84,10 @@ export class MagicLinkIssuer {
           tags: { template: EmailTemplates.MAGIC_LINK },
           ...(correlationId === undefined ? {} : { correlationId })
         },
-        // The job holds the raw token: once sent it has no reason to stay for the 24 hours that the
-        // queue keeps completed jobs. (A failed job keeps it, and the token expires in minutes.)
-        { removeOnComplete: true }
+        // The job holds the raw token: sent or given up, it has no reason to stay in Redis (the default keeps completed jobs for 24 hours
+        // and failed ones for good). The dead-letter copy of an auth-email job keeps no data. While it waits or is retried it is in Redis, as
+        // the plan says (Step 7.3-S9, left (e))
+        { removeOnComplete: true, removeOnFail: true }
       )
     )
     this.logger.info({ userId: user.id }, 'magic link sent')
