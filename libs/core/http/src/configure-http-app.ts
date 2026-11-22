@@ -1,4 +1,4 @@
-import { type INestApplication, RequestMethod } from '@nestjs/common'
+import { type INestApplication, Logger as NestLogger, RequestMethod } from '@nestjs/common'
 import type { Response } from 'express'
 import { Logger } from 'nestjs-pino'
 
@@ -9,7 +9,21 @@ import { useHttpMetrics } from '@platform/core/metrics-module'
 
 import { pluginEventsBodyParser } from './plugin-events-body-parser'
 import { apiSecurityHeaders } from './security-headers'
+import { PluginKeyProbeLimiter } from './throttler/plugin-key-probe-limiter'
 import { webCors } from './web-cors.middleware'
+
+function probeLimiterOf(app: INestApplication): PluginKeyProbeLimiter | undefined {
+  try {
+    return app.get(PluginKeyProbeLimiter, { strict: false })
+  } catch {
+    // An app without the throttler module (a test, a tool) has no limit to ask. Said in the log so that a refactor that drops the
+    // provider from a real app does not leave the large read of the events route unbounded without anyone knowing
+    new NestLogger(configureHttpApp.name).warn(
+      'PluginKeyProbeLimiter is not available: the events body parser runs without the limit of the failed keys'
+    )
+    return undefined
+  }
+}
 
 interface Fallback {
   use: (handler: (req: AuthenticatedRequest, res: Response) => void) => void
@@ -29,7 +43,8 @@ export async function configureHttpApp(
   app.use(correlationIdMiddleware)
   useHttpMetrics(app)
   // Before the app initializes, so before Nest's 100 KB parser: it takes the one route of the plugins that needs more
-  app.use(pluginEventsBodyParser)
+  // The limit of the keys that failed is asked before its large body is read; an app without the throttler module has no limit to ask
+  app.use(pluginEventsBodyParser(probeLimiterOf(app)))
   // The leading slash matters: without it Nest 12 leaves its not-found handler out and an unknown
   // route answers with Express's HTML page instead of the error contract
   app.setGlobalPrefix(API_PREFIX, {
