@@ -100,8 +100,8 @@ export function useLineStocks(
   return { byProduct, isLoading: enabled && results.some(result => result.isPending), failed }
 }
 
-// The two switches of the store that decide how a line may be served (a split, negative stock). Settings → Inventory
-// needs `settings:view`, so only a member who holds it can have the choice checked on the screen.
+// The two switches of the store that decide how a line may be served (a split, negative stock). The read of Settings → Inventory
+// takes `settings:view` or `inventory:view`, so the member who sees the stock has the choice checked on the screen.
 export function useStockSwitches(
   storeId: string,
   enabled: boolean

@@ -229,11 +229,17 @@ export const OrderGuideFilters = {
 } as const
 export type OrderGuideFilter = (typeof OrderGuideFilters)[keyof typeof OrderGuideFilters]
 
-// The orders of GET /orders come newest first unless the caller asks for the days of delivery, soonest first
+// The orders of GET /orders come newest first unless the caller asks for another order: the days of delivery (soonest
+// first), the biggest total first, or the name of the customer (A to Z, an order whose customer has no name last).
+// Every sort breaks its ties by the newest and then the id, so a keyset page never repeats nor skips a row.
 export const OrderSorts = {
   NEWEST: 'newest',
-  SCHEDULED_DELIVERY: 'scheduled_delivery'
+  SCHEDULED_DELIVERY: 'scheduled_delivery',
+  TOTAL_HIGHEST: 'total_highest',
+  CUSTOMER_NAME: 'customer_name'
 } as const
+// The longest key a cursor of the sort by customer may carry (the search form of a name; names are bounded far below it)
+export const OrderCursorKeyMaxLength = 512
 export type OrderSort = (typeof OrderSorts)[keyof typeof OrderSorts]
 
 export const OrderResourceTypes = {

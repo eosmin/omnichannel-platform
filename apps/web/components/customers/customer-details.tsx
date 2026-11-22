@@ -160,16 +160,29 @@ function OrderFigures({ customerId }: { customerId: string }): ReactElement | nu
         <dt>{t('stats.orders')}</dt>
         <dd>{figures.orders}</dd>
       </div>
-      <div className="flex justify-between text-sm">
+      {/* The money is one line per currency: a store that changed its currency has orders in two, and they are never added */}
+      <div className="flex justify-between gap-3 text-sm">
         <dt>{t('stats.totalSpent')}</dt>
-        <dd>{formatCents(format, figures.totalSpentCents)}</dd>
+        <dd className="text-right">
+          {figures.byCurrency.length === 0
+            ? formatCents(format, 0)
+            : figures.byCurrency.map(line => (
+                <div key={line.currency}>
+                  {formatCents(format, line.totalSpentCents, line.currency)}
+                </div>
+              ))}
+        </dd>
       </div>
-      <div className="flex justify-between text-sm">
+      <div className="flex justify-between gap-3 text-sm">
         <dt>{t('stats.averageOrder')}</dt>
-        <dd>
-          {figures.averageOrderCents === null
+        <dd className="text-right">
+          {figures.byCurrency.length === 0
             ? t('stats.none')
-            : formatCents(format, figures.averageOrderCents)}
+            : figures.byCurrency.map(line => (
+                <div key={line.currency}>
+                  {formatCents(format, line.averageOrderCents, line.currency)}
+                </div>
+              ))}
         </dd>
       </div>
     </>

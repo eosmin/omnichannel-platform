@@ -25,7 +25,7 @@ export const ORDER_LIST_SELECT = {
   createdAt: true,
   updatedAt: true,
   // Who made the order, for the column of the list: the name only (the contact data is in the detail)
-  customer: { select: { id: true, name: true, isCaution: true } },
+  customer: { select: { id: true, name: true, nameSearch: true, isCaution: true } },
   // The "price modified" badge of the list: one row is enough to know
   items: { where: { originalUnitPriceCents: { not: null } }, select: { id: true }, take: 1 }
 } as const
@@ -249,9 +249,21 @@ export interface OrderPage {
   hasMore: boolean
 }
 
-export function summaryView({ items, scheduledDeliveryDate, ...order }: ListRow): OrderSummaryView {
+// What the list reads: the row plus the sort key of the customer
+export interface ListQueryRow extends Omit<ListRow, 'customer'> {
+  customer: ListRow['customer'] & { nameSearch: string | null }
+}
+
+export function summaryView({
+  items,
+  scheduledDeliveryDate,
+  ...order
+}: ListQueryRow): OrderSummaryView {
+  // `nameSearch` is the sort key of the list by customer: it goes to the cursor and never to the client
+  const { id, name, isCaution } = order.customer
   return {
     ...order,
+    customer: { id, name, isCaution },
     scheduledDeliveryDate:
       scheduledDeliveryDate === null ? null : dateToCalendarDay(scheduledDeliveryDate),
     priceModified: items.length > 0

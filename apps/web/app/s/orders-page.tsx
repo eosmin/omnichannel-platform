@@ -245,7 +245,7 @@ function Row({
         <ShippingCells order={order} connections={shipping.connections} guides={shipping.guides} />
       )}
       <td className="py-2 text-right text-sm whitespace-nowrap tabular-nums">
-        {formatCents(format, order.totalCents)}
+        {formatCents(format, order.totalCents, order.currency)}
       </td>
     </tr>
   )

@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto'
 
-import { OrderStatus, PaymentMethod, PaymentStatus } from '@platform/core/domain'
+import { OrderSorts, OrderStatus, PaymentMethod, PaymentStatus } from '@platform/core/domain'
 
 import {
+  encodeOrderCursor,
+  listOrdersQuerySchema,
   pluginCancelOrderSchema,
   pluginChangeOrderStatusSchema,
   pluginCreateOrderSchema,
+  pluginListOrdersQuerySchema,
   pluginRecordOrderPaymentSchema,
   pluginUpdateOrderSchema
 } from './orders.schemas'
@@ -112,5 +115,59 @@ describe('what a plugin may write of an order', () => {
     expect(refusedFields(status)).toEqual(['notifyCustomer'])
     expect(refusedFields(cancel)).toEqual(['notifyCustomer'])
     expect(pluginCancelOrderSchema.safeParse({ cancellationReason: 'no' }).success).toBe(true)
+  })
+})
+
+describe('the sorts of the orders list', () => {
+  const at = new Date('2026-06-01T10:00:00.000Z')
+  const id = randomUUID()
+  const cursorWith = (key: number | string | null): string =>
+    encodeOrderCursor({ day: null, key, createdAt: at, id })
+
+  it('accepts a plugin sorting by total, not by customer (the order of the names would show how they compare)', () => {
+    expect(pluginListOrdersQuerySchema.safeParse({ sort: OrderSorts.TOTAL_HIGHEST }).success).toBe(
+      true
+    )
+    expect(pluginListOrdersQuerySchema.safeParse({ sort: OrderSorts.CUSTOMER_NAME }).success).toBe(
+      false
+    )
+  })
+
+  it('reads the cursor of a page made before the keys existed (three parts)', () => {
+    const old = Buffer.from(JSON.stringify([null, at.toISOString(), id])).toString('base64url')
+    const parsed = listOrdersQuerySchema.safeParse({ cursor: old })
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.cursor?.key).toBeNull()
+  })
+
+  it.each([
+    [OrderSorts.TOTAL_HIGHEST, 5000, true],
+    [OrderSorts.TOTAL_HIGHEST, null, false],
+    [OrderSorts.TOTAL_HIGHEST, 'ana', false],
+    [OrderSorts.CUSTOMER_NAME, 'ana', true],
+    [OrderSorts.CUSTOMER_NAME, null, true],
+    [OrderSorts.CUSTOMER_NAME, 5000, false],
+    [OrderSorts.NEWEST, null, true],
+    [OrderSorts.NEWEST, 5000, false],
+    [OrderSorts.SCHEDULED_DELIVERY, 'ana', false]
+  ])('sort %s with a cursor key of %p: accepted is %p', (sort, key, accepted) => {
+    expect(listOrdersQuerySchema.safeParse({ sort, cursor: cursorWith(key) }).success).toBe(
+      accepted
+    )
+  })
+
+  it('refuses a key that is not a total in cents or a bounded name', () => {
+    expect(
+      listOrdersQuerySchema.safeParse({
+        sort: OrderSorts.TOTAL_HIGHEST,
+        cursor: cursorWith(-1)
+      }).success
+    ).toBe(false)
+    expect(
+      listOrdersQuerySchema.safeParse({
+        sort: OrderSorts.CUSTOMER_NAME,
+        cursor: cursorWith('x'.repeat(513))
+      }).success
+    ).toBe(false)
   })
 })

@@ -125,7 +125,29 @@ describe('The inventory settings of a store', () => {
     expect(other.allowNegativeStock).toBe(false)
   })
 
-  it('asks for settings:view to read and settings:edit to change', async () => {
+  it('lets a member who holds inventory:view read the switches and never change them', async () => {
+    const stocker = await actorWithPermissions(owner, app, {
+      prefix,
+      name: 'stockViewer',
+      organizationId: ctx.orgA.id,
+      storeId: ctx.storeA.id,
+      permissions: [Permissions.INVENTORY_VIEW]
+    })
+    const asStocker = api(app, stocker, ctx.storeA)
+
+    expect((await asStocker.get(ApiRoutes.settings.inventory)).status).toBe(OK)
+    expect(
+      (await asStocker.patch(ApiRoutes.settings.inventory).send({ allowNegativeStock: true }))
+        .status
+    ).toBe(FORBIDDEN)
+    // Another store of the same organization is not theirs: the read answers the store of the request, and a
+    // member with no role there is refused
+    expect((await api(app, stocker, ctx.storeB).get(ApiRoutes.settings.inventory)).status).toBe(
+      FORBIDDEN
+    )
+  })
+
+  it('asks for settings:view or inventory:view to read and settings:edit to change', async () => {
     const reader = await actorWithPermissions(owner, app, {
       prefix,
       name: 'settingsReader',

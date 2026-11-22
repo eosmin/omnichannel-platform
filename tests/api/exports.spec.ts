@@ -288,16 +288,17 @@ describe('Exports', () => {
       const file = await made(view.id)
 
       const orderCells = (id: string) =>
-        (file.split('\r\n').find(line => line.startsWith(id)) ?? '').split(',').slice(-5)
-      // orders, total_spent, average_order (1750.5 rounds to 1751), first_order_at, last_order_at
+        (file.split('\r\n').find(line => line.startsWith(id)) ?? '').split(',').slice(-6)
+      // orders, total_spent, average_order (1750.5 rounds to 1751), first_order_at, last_order_at, totals_by_currency
       expect(orderCells(buyer.id)).toEqual([
         '2',
         '3501',
         '1751',
         '2026-01-01T10:00:00.000Z',
-        '2026-01-03T10:00:00.000Z'
+        '2026-01-03T10:00:00.000Z',
+        'USD 3501'
       ])
-      expect(orderCells(idle.id)).toEqual(['0', '0', '', '', ''])
+      expect(orderCells(idle.id)).toEqual(['0', '0', '', '', '', ''])
       // One grouped read for the page, not one per customer
       expect(groupByCalls).toBe(1)
       opened.mockRestore()

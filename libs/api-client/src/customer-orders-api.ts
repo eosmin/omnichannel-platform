@@ -20,10 +20,18 @@ const customerOrderSchema = z.object({
 export type CustomerOrderView = z.output<typeof customerOrderSchema>
 
 // Over every order that counts (CustomerFigureOrderStatuses), not only the page. Null on a page past the first one.
-const customerOrderFiguresSchema = z.object({
+const customerCurrencyFiguresSchema = z.object({
+  currency: z.string(),
   orders: z.number().int(),
   totalSpentCents: z.number().int(),
-  averageOrderCents: z.number().int().nullable(),
+  averageOrderCents: z.number().int()
+})
+export type CustomerCurrencyFiguresView = z.output<typeof customerCurrencyFiguresSchema>
+
+// The money is one line per currency: it is never added across currencies
+const customerOrderFiguresSchema = z.object({
+  orders: z.number().int(),
+  byCurrency: z.array(customerCurrencyFiguresSchema),
   firstOrderAt: z.string().nullable(),
   lastOrderAt: z.string().nullable()
 })
