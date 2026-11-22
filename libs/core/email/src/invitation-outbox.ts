@@ -78,3 +78,11 @@ export function invitationEmailStatusOf(row: {
   }
   return InvitationEmailStatus.SENT
 }
+
+// How long after a failed attempt the next one may start (`attemptsMade` counts the one that just failed)
+export function invitationRetryDelayMs(attemptsMade: number): number {
+  return Math.min(
+    InvitationOutbox.RETRY_BASE_MS * 2 ** Math.max(attemptsMade - 1, 0),
+    InvitationOutbox.RETRY_MAX_MS
+  )
+}
