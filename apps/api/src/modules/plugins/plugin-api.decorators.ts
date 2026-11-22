@@ -3,7 +3,8 @@ import {
   createParamDecorator,
   type ExecutionContext,
   SetMetadata,
-  UseGuards
+  UseGuards,
+  UseInterceptors
 } from '@nestjs/common'
 
 import { PluginApiIpThrottle } from '@platform/core/auth'
@@ -18,17 +19,19 @@ import { pluginUserId } from '../tenancy/actor'
 
 import { PluginApiKeyGuard } from './plugin-api-key.guard'
 import { PLUGIN_SCOPES_KEY } from './plugin-api.keys'
+import { PluginIdempotencyInterceptor } from './plugin-idempotency.interceptor'
 import { permissionsOfScopes } from './plugin-install-rules'
 
 // The mark of a route of the plugin API: the key of an installation is the credential, and the scopes listed are all of them
 // needed (not any). It makes the route public for the two global guards (a plugin has no user and no X-Store-Id: the key names
 // the store) and puts PluginApiKeyGuard in their place, which also checks every @RequirePermissions of the route against what the
-// scopes grant. A route with no scope at all (the one that says who the key is) lists none on purpose.
+// scopes grant. A write that carries `Idempotency-Key` is made once per installation and key (PluginIdempotencyInterceptor). A route with no scope at all (the one that says who the key is) lists none on purpose.
 export const PluginApi = (...scopes: PluginScope[]): MethodDecorator & ClassDecorator =>
   applyDecorators(
     Public(),
     RateLimit(PluginApiIpThrottle),
     UseGuards(PluginApiKeyGuard),
+    UseInterceptors(PluginIdempotencyInterceptor),
     SetMetadata(PLUGIN_SCOPES_KEY, scopes)
   )
 

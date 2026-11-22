@@ -26,6 +26,7 @@ export interface PlatformCleanupReport {
   metricsHourly: number
   mergedCustomers: number
   invitations: number
+  pluginIdempotencyKeys: number
   // The categories that stopped on a full batch: tomorrow takes the rest
   more: string[]
 }
@@ -34,7 +35,7 @@ type Category = Exclude<keyof PlatformCleanupReport, 'more'>
 
 // What is not a store's to configure (TDD_05 §10.4, daily): the sessions past expiresAt (a consumed row stays until then,
 // because reuse detection needs it), the verification tokens that are expired or were used a day ago, the deliveries of the
-// webhooks past thirty days, the hours of the hourly rollup past ninety days, and the customers a merge
+// webhooks past thirty days, the hours of the hourly rollup past ninety days, the idempotency keys of the plugin API past their day, and the customers a merge
 // absorbed whose window to undo it (`unmergeUntil`) has passed, with their CustomerMerge row (the audit log keeps
 // `customer.merged`), and the invitations that nobody accepted and that expired more than
 // `PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS` ago. Platform-wide, in batches of PlatformCleanup.BATCH_SIZE; each row is deleted by its own id, so
@@ -59,6 +60,7 @@ export class PlatformCleaner {
       metricsHourly: 0,
       mergedCustomers: 0,
       invitations: 0,
+      pluginIdempotencyKeys: 0,
       more: []
     }
     const failed: Category[] = []
@@ -132,6 +134,17 @@ export class PlatformCleaner {
       )
     )
     await run('mergedCustomers', () => this.mergedCustomers(now))
+    // The answers a plugin can still get again (Step 7.3 S4) last PluginIdempotency.TTL_HOURS; the one that is past its date holds
+    // the answer of a write, which can carry customer data, and goes
+    await run('pluginIdempotencyKeys', () =>
+      this.perStore(
+        storeId => this.prisma.client.$executeRaw`
+          DELETE FROM plugin_idempotency_keys WHERE id IN (
+            SELECT id FROM plugin_idempotency_keys
+            WHERE store_id = ${storeId} AND expires_at < (${stamp}::timestamptz AT TIME ZONE 'UTC')
+            ORDER BY expires_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
+      )
+    )
     // `invitations` is outside RLS (the migrations skip it), so it runs platform-wide like the sessions: a store that
     // cannot be entered does not stop it
     await run('invitations', () =>
