@@ -208,7 +208,8 @@ describe('Deleting a plugin of the organization', () => {
     status: response.status,
     body: JSON.parse(
       JSON.stringify(response.body, (key, value: unknown) =>
-        key === 'requestId' || key === 'timestamp' ? undefined : value
+        // One per request, so it differs between any two answers; code, message and the rest of the body are compared whole
+        key === 'requestId' || key === 'correlationId' || key === 'timestamp' ? undefined : value
       ).replaceAll(id, '<id>')
     ) as unknown,
     headers: Object.fromEntries(
