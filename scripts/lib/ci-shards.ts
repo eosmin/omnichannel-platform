@@ -91,7 +91,7 @@ function needsOf(workflow: string, job: string): string[] {
 
 // The jest of a shard runs its files one after the other (the specs share one database), but not in the process of jest itself: every
 // spec file adds its app to the heap and jest 30 never gives it back (about 100 MB a file, 3.7-3.8 GB after 31 files of a 4 GB heap, in
-// every shard), so the one worker is replaced when it holds too much. Jest runs in band, and ignores the limit, unless `maxWorkers` is
+// every shard), so the one worker is replaced when its `heapUsed` passes the limit (jest-worker reads `process.memoryUsage().heapUsed` of the child). Jest runs in band, and ignores the limit, unless `maxWorkers` is
 // above one OR the limit is set: `--maxWorkers=1` with `--workerIdleMemoryLimit` is one worker that is recycled. `--runInBand` would
 // silently bring the leak back, and a second worker would run specs at the same time against one database.
 export const SECURITY_JEST_CONFIG = 'jest.config.cts'
@@ -108,9 +108,9 @@ export function jestInvocationProblems(command: string): string[] {
   }
   const problems: string[] = []
   for (const call of calls) {
-    if (/--run-?in-?band|\s-i(\s|$)/i.test(call)) {
+    if (/--run-?in-?band|--detectOpenHandles|\s-i(\s|$)/i.test(call)) {
       problems.push(
-        'tests/project.json: the shards of test-security must not run in band (the heap of a process only grows; see jestInvocationProblems)'
+        'tests/project.json: the shards of test-security must not run in band (`--runInBand`, `-i`, `--detectOpenHandles`: the heap of a process only grows; see jestInvocationProblems)'
       )
     }
     const workers = call.match(/--maxWorkers=\S+/g) ?? []

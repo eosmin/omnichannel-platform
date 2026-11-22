@@ -241,6 +241,11 @@ describe('jestInvocationProblems', () => {
         '\n'
       )
     ).toMatch(/in band/)
+    expect(
+      jestInvocationProblems(
+        projectCommand.replaceAll('--maxWorkers=1', '--maxWorkers=1 --detectOpenHandles')
+      ).join('\n')
+    ).toMatch(/in band/)
     const twice = jestInvocationProblems(projectCommand.replaceAll('--maxWorkers=1', ''))
     expect(new Set(twice).size).toBe(twice.length)
   })
