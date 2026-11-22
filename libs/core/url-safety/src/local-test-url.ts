@@ -4,6 +4,7 @@ import { errorCodeOf } from './pinned-errors'
 import {
   PinnedExchangeFailed,
   PinnedExchangeReasons,
+  assertAnswerReading,
   type PinnedExchangeOptions,
   type PinnedExchangeResult,
   pinnedHttpsExchange
@@ -62,6 +63,7 @@ export async function commandsExchange(
 
 function loopbackExchange(url: URL, options: PinnedExchangeOptions): Promise<PinnedExchangeResult> {
   if (!isLoopbackUrl(url.href)) throw new UnsafeUrlError('not on this machine')
+  assertAnswerReading(options)
   const host = url.hostname.replace(/^\[|\]$/g, '')
   const payload = Buffer.from(options.body, 'utf8')
   return new Promise<PinnedExchangeResult>((resolve, reject) => {

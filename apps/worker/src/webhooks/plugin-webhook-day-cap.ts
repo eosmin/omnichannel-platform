@@ -31,7 +31,8 @@ return 1
 export class PluginWebhookDayCap {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
-  // True when this delivery may start (it took one of the places of the last 24 hours, or already held one)
+  // True when this delivery may start (it took one of the places of the last 24 hours, or already held one). A cap above
+  // WebhookLimits.PLUGIN_DAY_CAP_CEILING is held at the ceiling: the manifest may ask for more, Redis does not keep it.
   async take(
     installationId: string,
     deliveryId: string,
@@ -44,7 +45,7 @@ export class PluginWebhookDayCap {
       CacheKeys.plugin.webhookDay(installationId),
       String(nowMs),
       String(WebhookLimits.PLUGIN_DAY_MS),
-      String(cap),
+      String(Math.min(cap, WebhookLimits.PLUGIN_DAY_CAP_CEILING)),
       deliveryId
     )
     if (reply !== 0 && reply !== 1)

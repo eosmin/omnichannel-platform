@@ -227,6 +227,27 @@ describe('pinnedHttpsExchange', () => {
     }
   })
 
+  describe('the ceiling of an answer that is read', () => {
+    it.each([[undefined], [0], [-1], [Number.NaN]])(
+      'refuses a ceiling of %s before anything is sent',
+      async ceiling => {
+        const fake = fakeRequest({ status: 200, chunks: ['x'] })
+
+        await expect(
+          pinnedHttpsExchange('https://hooks.example.com/in', {
+            body: '{}',
+            headers: {},
+            timeoutMs: 1000,
+            maxResponseBytes: ceiling as number,
+            resolve: resolvesTo('8.8.8.8'),
+            request: fake.request
+          })
+        ).rejects.toBeInstanceOf(TypeError)
+        expect(fake.calls).toHaveLength(0)
+      }
+    )
+  })
+
   describe('discardBody', () => {
     const discarding = (outcome: Outcome) => {
       const fake = fakeRequest(outcome)

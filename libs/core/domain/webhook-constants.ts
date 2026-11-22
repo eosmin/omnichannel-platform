@@ -29,7 +29,10 @@ export const WebhookLimits = {
   // The day a plugin's `maxWebhooksPerDay` is counted over: the last 24 hours, so there is no midnight at which a burst doubles
   PLUGIN_DAY_MS: 86_400_000,
   // What the log says of a delivery dropped because the cap of the day was reached
-  DAILY_CAP_REACHED_CODE: 'daily_cap_reached'
+  DAILY_CAP_REACHED_CODE: 'daily_cap_reached',
+  // What one installation may be allowed in a day whatever its manifest says: the places of the day are kept in Redis (one entry per
+  // delivery), so the ceiling bounds the memory a plugin can take there (about 10 MB at this number)
+  PLUGIN_DAY_CAP_CEILING: 100_000
 } as const
 
 // What the log of a delivery says when it failed: a code, never a sentence, because the settings page translates it. The code of
