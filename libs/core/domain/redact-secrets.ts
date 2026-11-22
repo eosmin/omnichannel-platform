@@ -1,5 +1,3 @@
-import { EventEmitter } from 'node:events'
-
 import {
   ERROR_FIELDS,
   LOGGABLE_NAMES_THAT_LOOK_SECRET,
@@ -94,7 +92,7 @@ function visit(value: unknown, depth: number, walk: Walk): unknown {
   if (value instanceof Date) return value
   if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return REDACTION_BINARY
   // Requests, sockets and streams of an HTTP client: huge, and the text of their headers is not a field
-  if (value instanceof EventEmitter) return REDACTION_HANDLE
+  if (isEventEmitter(value)) return REDACTION_HANDLE
   if (walk.path.has(value)) return REDACTION_CIRCULAR
   walk.nodes += 1
   if (depth >= REDACTION_MAX_DEPTH || walk.nodes > REDACTION_MAX_NODES) return REDACTION_TRUNCATED
@@ -114,12 +112,22 @@ function visit(value: unknown, depth: number, walk: Walk): unknown {
   }
 }
 
+// By shape and not by class: this file is also compiled for the browser, which has no node:events
+function isEventEmitter(value: object): boolean {
+  const candidate = value as { on?: unknown; emit?: unknown }
+  return typeof candidate.on === 'function' && typeof candidate.emit === 'function'
+}
+
 function entriesOf(value: object): [string, unknown][] {
   if (value instanceof Map) {
     return [...value].map(([key, item]) => [String(key), item as unknown])
   }
   // The headers of fetch keep their pairs out of reach of Object.entries
-  if (typeof Headers !== 'undefined' && value instanceof Headers) return [...value.entries()]
+  if (typeof Headers !== 'undefined' && value instanceof Headers) {
+    const pairs: [string, unknown][] = []
+    value.forEach((header, name) => pairs.push([name, header]))
+    return pairs
+  }
   const entries = Object.entries(value)
   if (value instanceof Error) {
     // message and stack are not enumerable; the rest (config, response, code, cause) is what carries secrets
