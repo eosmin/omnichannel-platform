@@ -89,6 +89,10 @@ export const OutboundLimits = {
   // worker that validates and stores it (a longer id the worker refused would mark failed a message the provider has sent)
   EXTERNAL_ID_MAX_LENGTH: 512,
   SEND_TIMEOUT_MS: 20_000,
+  // The list of templates of a connection that the composer and the link of a message template ask for: kept this long in
+  // one process (the check at send time is never cached), at most this many connections
+  TEMPLATE_LIST_CACHE_TTL_MS: 30_000,
+  TEMPLATE_LIST_CACHE_MAX_ENTRIES: 200,
   // A send that uploads its file (up to 100 MB) and then posts a message: the budget of the upload
   // (`MetaLimits.UPLOAD_TIMEOUT_MS`, 180 s), the post that follows it (the caption of Messenger and Instagram,
   // `MetaLimits.REQUEST_TIMEOUT_MS`, 15 s) and a margin. Shorter, a slow upload times out here while it goes on

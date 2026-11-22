@@ -20,4 +20,8 @@ export type { MembershipWhereInput } from '../generated/client/models/Membership
 export type { ExportWhereInput } from '../generated/client/models/Export'
 export type { StockCountWhereInput } from '../generated/client/models/StockCount'
 export type { StockTransferWhereInput } from '../generated/client/models/StockTransfer'
-export type { OrderUncheckedUpdateInput } from '../generated/client/models/Order'
+export type {
+  OrderOrderByWithRelationInput,
+  OrderUncheckedUpdateInput,
+  OrderWhereInput
+} from '../generated/client/models/Order'

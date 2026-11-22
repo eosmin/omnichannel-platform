@@ -583,6 +583,14 @@ export interface MemberJoinedPayload {
   invitedBy: string
 }
 
+// The directory of members, or what a role lets a member do, changed. Ids only: never the list or the
+// permissions, each session reads the directory again through the api with its own permissions.
+export interface TeamDirectoryChangedPayload {
+  storeId: string
+  membershipId: string | null
+  roleId: string | null
+}
+
 // Ids only: a listener that needs the row reads it by id
 export interface TagChangedPayload {
   storeId: string
@@ -615,6 +623,7 @@ export interface DomainEventPayloads {
   [Events.CONVERSATION_REOPENED]: ConversationReopenedPayload
   [Events.CONVERSATION_UNASSIGNED]: ConversationUnassignedPayload
   [Events.MEMBER_JOINED]: MemberJoinedPayload
+  [Events.TEAM_DIRECTORY_CHANGED]: TeamDirectoryChangedPayload
   [Events.CONVERSATION_READ]: ConversationReadPayload
   [Events.CONVERSATION_ATTENTION_CHANGED]: ConversationAttentionChangedPayload
   [Events.CONVERSATION_UNREAD]: ConversationReadPayload

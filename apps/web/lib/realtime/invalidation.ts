@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { QueryKeys } from '@platform/api-client'
 import { type RealtimeEvent, RealtimeEvents } from '@platform/core/realtime'
 
+import { TeamKeys } from '../settings/team-keys'
+
 // What a realtime event makes stale. The events carry ids only, never text (the server cuts it), so
 // the page reads the data again through the REST api.
 const Scopes = {
@@ -14,7 +16,9 @@ const Scopes = {
   PRESENCE: 'presence',
   NOTIFICATIONS: 'notifications',
   EXPORTS: 'exports',
-  MEDIA: 'media'
+  MEDIA: 'media',
+  // Who can be given a conversation: the directory of the inbox and the lists of Settings → Team
+  TEAM: 'team'
 } as const
 type Scope = (typeof Scopes)[keyof typeof Scopes]
 
@@ -65,7 +69,8 @@ const scopesByEvent: Readonly<Partial<Record<RealtimeEvent, readonly Scope[]>>> 
   [RealtimeEvents.ORDER_CREATED]: [Scopes.ORDERS, Scopes.CUSTOMERS, Scopes.THREAD],
   [RealtimeEvents.ORDER_UPDATED]: [Scopes.ORDERS, Scopes.CUSTOMERS, Scopes.THREAD],
   [RealtimeEvents.NOTIFICATION]: [Scopes.NOTIFICATIONS],
-  [RealtimeEvents.EXPORT_UPDATED]: [Scopes.EXPORTS]
+  [RealtimeEvents.EXPORT_UPDATED]: [Scopes.EXPORTS],
+  [RealtimeEvents.TEAM_DIRECTORY_CHANGED]: [Scopes.TEAM]
 }
 
 const conversationIdSchema = z.object({ conversationId: z.string().min(1) })
@@ -94,6 +99,8 @@ function keysForScope(scope: Scope, storeId: string, conversationId: string | nu
       return [QueryKeys.exports.all(storeId)]
     case Scopes.MEDIA:
       return [QueryKeys.media.all(storeId)]
+    case Scopes.TEAM:
+      return [QueryKeys.members.directory(storeId), TeamKeys.root(storeId)]
   }
 }
 
@@ -143,7 +150,10 @@ export function queryKeysAfterReconnect(storeId: string): QueryKey[] {
     QueryKeys.notifications.unread(storeId),
     QueryKeys.exports.all(storeId),
     // The picture that was waiting for its variants when the event was lost
-    QueryKeys.media.all(storeId)
+    QueryKeys.media.all(storeId),
+    // A change of the team lost with the socket: the inbox would keep offering who can no longer be assigned
+    QueryKeys.members.directory(storeId),
+    TeamKeys.root(storeId)
   ]
 }
 

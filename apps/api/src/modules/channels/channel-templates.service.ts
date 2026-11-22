@@ -78,6 +78,8 @@ type TemplateBody = Extract<CreateMessageBody, { type: MessageType.TEMPLATE }>
 // message that uses it is stored. The provider is asked here and never inside a transaction.
 @Injectable()
 export class ChannelTemplatesService {
+  private readonly listCache = new Map<string, { templates: TemplateView[]; expiresAt: number }>()
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly context: EventContext,
@@ -98,7 +100,7 @@ export class ChannelTemplatesService {
       })
     )
     if (row === null) throw resourceNotFound('channel connection')
-    return this.listOf(row)
+    return this.listOfCached(row, storeId)
   }
 
   // Whether a template that a message template of the store links to exists and is approved, asked of the live accounts the store
@@ -216,6 +218,41 @@ export class ChannelTemplatesService {
       )
     }
     return { content: fill(template.body, wanted.variables) }
+  }
+
+  // The list that the composer and the link of a message template read: kept a short while per connection, so a person
+  // who opens the picker again does not ask the provider every time. The check of a link (`checkLink`) never reads it: a
+  // template that was just approved must not be reported missing. Only a
+  // success is kept; a disconnected connection, a channel with no templates and a failure always ask again. What is
+  // checked when a message is sent (`renderIn`) never comes from here: a template the provider has just paused must stop
+  // a send at once.
+  private async listOfCached(
+    row: Parameters<ChannelContextFactory['contextFor']>[0],
+    storeId: string
+  ): Promise<TemplateView[]> {
+    const key = `${storeId}:${row.id}`
+    const now = Date.now()
+    const kept = this.listCache.get(key)
+    if (
+      kept !== undefined &&
+      kept.expiresAt > now &&
+      row.status !== String(ChannelConnectionStatus.DISCONNECTED)
+    ) {
+      return [...kept.templates]
+    }
+    const templates = await this.listOf(row)
+    this.listCache.delete(key)
+    // An empty list is asked again at once: a template just made and approved must show
+    if (templates.length === 0) return templates
+    if (this.listCache.size >= OutboundLimits.TEMPLATE_LIST_CACHE_MAX_ENTRIES) {
+      const oldest = this.listCache.keys().next()
+      if (oldest.done !== true) this.listCache.delete(oldest.value)
+    }
+    this.listCache.set(key, {
+      templates,
+      expiresAt: Date.now() + OutboundLimits.TEMPLATE_LIST_CACHE_TTL_MS
+    })
+    return [...templates]
   }
 
   private async listOf(

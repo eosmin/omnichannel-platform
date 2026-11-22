@@ -28,41 +28,57 @@ export const CustomerFigureOrderStatuses = [
   OrderStatus.DELIVERED
 ] as const
 
+// The money of a customer is never added across currencies: a store that changed its currency has orders in two, and
+// "$120 + €80" is no figure. Each currency has its own line; the count and the dates are over every counted order.
+export interface CustomerCurrencyFigures {
+  currency: string
+  orders: number
+  totalSpentCents: number
+  // Integer cents, rounded half up
+  averageOrderCents: number
+}
+
 export interface CustomerOrderFigures {
   orders: number
-  totalSpentCents: number
-  // Integer cents, rounded half up; null when the customer has no counted order
-  averageOrderCents: number | null
+  // One per currency the customer has counted orders in, sorted by the code of the currency; empty with no counted order
+  byCurrency: CustomerCurrencyFigures[]
   firstOrderAt: Date | null
   lastOrderAt: Date | null
 }
 
+// What the database sums for one currency of a customer
 export interface CustomerOrderAggregate {
+  currency: string
   orders: number
   totalSpentCents: number
   firstOrderAt: Date | null
   lastOrderAt: Date | null
 }
 
-// One place that turns the sums of the database into the figures that the profile and the CSV show, so
-// the two never disagree about what the average is.
+// One place that turns the sums of the database (one row per currency) into the figures that the profile and the CSV show,
+// so the two never disagree about what the average is.
 export function customerOrderFigures(
-  aggregate: CustomerOrderAggregate | undefined
+  aggregates: readonly CustomerOrderAggregate[] | undefined
 ): CustomerOrderFigures {
-  if (aggregate === undefined || aggregate.orders === 0) {
-    return {
-      orders: 0,
-      totalSpentCents: 0,
-      averageOrderCents: null,
-      firstOrderAt: null,
-      lastOrderAt: null
-    }
+  const counted = (aggregates ?? []).filter(aggregate => aggregate.orders > 0)
+  if (counted.length === 0) {
+    return { orders: 0, byCurrency: [], firstOrderAt: null, lastOrderAt: null }
   }
+  const moments = (pick: 'firstOrderAt' | 'lastOrderAt'): Date[] =>
+    counted.flatMap(aggregate => (aggregate[pick] === null ? [] : [aggregate[pick]]))
+  const first = moments('firstOrderAt').map(date => date.getTime())
+  const last = moments('lastOrderAt').map(date => date.getTime())
   return {
-    orders: aggregate.orders,
-    totalSpentCents: aggregate.totalSpentCents,
-    averageOrderCents: Math.round(aggregate.totalSpentCents / aggregate.orders),
-    firstOrderAt: aggregate.firstOrderAt,
-    lastOrderAt: aggregate.lastOrderAt
+    orders: counted.reduce((sum, aggregate) => sum + aggregate.orders, 0),
+    byCurrency: counted
+      .map(aggregate => ({
+        currency: aggregate.currency,
+        orders: aggregate.orders,
+        totalSpentCents: aggregate.totalSpentCents,
+        averageOrderCents: Math.round(aggregate.totalSpentCents / aggregate.orders)
+      }))
+      .sort((a, b) => (a.currency < b.currency ? -1 : a.currency > b.currency ? 1 : 0)),
+    firstOrderAt: first.length === 0 ? null : new Date(Math.min(...first)),
+    lastOrderAt: last.length === 0 ? null : new Date(Math.max(...last))
   }
 }

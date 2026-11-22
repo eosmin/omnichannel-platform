@@ -178,6 +178,9 @@ export const Events = {
   MEMBER_REMOVED: 'member.removed',
   MEMBER_ROLE_CHANGED: 'member.role_changed',
   ROLE_UPDATED: 'role.updated',
+  // Who can be given a conversation changed (a member joined, left, was suspended, came back or changed role, or a
+  // role changed its permissions): the inbox of every open session reads the directory again. Ids only.
+  TEAM_DIRECTORY_CHANGED: 'team.directory_changed',
 
   // Channels and plugins
   CHANNEL_CONNECTED: 'channel.connected',

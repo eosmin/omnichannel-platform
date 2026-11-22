@@ -1288,7 +1288,9 @@
         "sort": "Sort by",
         "sorts": {
           "newest": "Newest first",
-          "scheduled_delivery": "Scheduled delivery"
+          "scheduled_delivery": "Scheduled delivery",
+          "total_highest": "Highest total first",
+          "customer_name": "Customer name"
         },
         "created": "Made between",
         "createdFrom": "Made from",

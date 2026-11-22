@@ -185,7 +185,7 @@ export function requireAnyPermission(
     ErrorCodes.PERMISSION_DENIED,
     'the caller lacks the permission for this change',
     HttpStatusCodes.FORBIDDEN,
-    { permissions: needed }
+    { required: needed }
   )
 }
 

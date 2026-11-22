@@ -242,11 +242,20 @@ describe('Exports', () => {
     it('fills the order columns with the figures of the orders the store took on, in cents', async () => {
       const buyer = await createCustomer(owner, { storeId: ctx.storeA.id, name: 'Buyer Orders' })
       const idle = await createCustomer(owner, { storeId: ctx.storeA.id, name: 'Idle Orders' })
-      const make = (status: OrderStatus, totalCents: number, createdAt: string) =>
+      // A customer of a store that changed its currency: counted orders in two of them
+      const mixed = await createCustomer(owner, { storeId: ctx.storeA.id, name: 'Mixed Orders' })
+      const make = (
+        status: OrderStatus,
+        totalCents: number,
+        createdAt: string,
+        customerId = buyer.id,
+        currency = 'USD'
+      ) =>
         owner.order.create({
           data: {
             storeId: ctx.storeA.id,
-            customerId: buyer.id,
+            customerId,
+            currency,
             orderNumber: `${prefix}-${randomUUID().slice(0, 8)}`,
             status,
             subtotalCents: totalCents,
@@ -262,6 +271,9 @@ describe('Exports', () => {
       await make(OrderStatus.PENDING_CONFIRMATION, 7000, '2026-01-04T10:00:00.000Z')
       await make(OrderStatus.CANCELLED, 9000, '2026-01-05T10:00:00.000Z')
       await make(OrderStatus.RETURNED, 500, '2026-01-06T10:00:00.000Z')
+      await make(OrderStatus.CONFIRMED, 1000, '2026-02-01T10:00:00.000Z', mixed.id)
+      await make(OrderStatus.DELIVERED, 3000, '2026-02-03T10:00:00.000Z', mixed.id)
+      await make(OrderStatus.DELIVERED, 500, '2026-02-02T10:00:00.000Z', mixed.id, 'EUR')
       // Inside a job context the reads go through the client of its transaction: the spy is put on that one, in each context
       let groupByCalls = 0
       const realOpen = workerPrisma.tenantTransaction.bind(workerPrisma)
@@ -288,16 +300,26 @@ describe('Exports', () => {
       const file = await made(view.id)
 
       const orderCells = (id: string) =>
-        (file.split('\r\n').find(line => line.startsWith(id)) ?? '').split(',').slice(-5)
-      // orders, total_spent, average_order (1750.5 rounds to 1751), first_order_at, last_order_at
+        (file.split('\r\n').find(line => line.startsWith(id)) ?? '').split(',').slice(-6)
+      // orders, total_spent, average_order (1750.5 rounds to 1751), first_order_at, last_order_at, totals_by_currency
       expect(orderCells(buyer.id)).toEqual([
         '2',
         '3501',
         '1751',
         '2026-01-01T10:00:00.000Z',
-        '2026-01-03T10:00:00.000Z'
+        '2026-01-03T10:00:00.000Z',
+        'USD 3501'
       ])
-      expect(orderCells(idle.id)).toEqual(['0', '0', '', '', ''])
+      expect(orderCells(idle.id)).toEqual(['0', '0', '', '', '', ''])
+      // Two currencies: the plain columns stay empty (no sum across currencies), each currency apart, the dates over all
+      expect(orderCells(mixed.id)).toEqual([
+        '3',
+        '',
+        '',
+        '2026-02-01T10:00:00.000Z',
+        '2026-02-03T10:00:00.000Z',
+        'EUR 500 | USD 4000'
+      ])
       // One grouped read for the page, not one per customer
       expect(groupByCalls).toBe(1)
       opened.mockRestore()
