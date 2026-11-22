@@ -95,6 +95,7 @@ describe('Analytics reports and export', () => {
     const csv = new CsvExportWriter(storage)
     const { events, audit } = await workerServices(app, prisma)
     const subjectMissing = { inc: jest.fn() } as unknown as Counter<string>
+    const discardFailed = { inc: jest.fn() } as unknown as Counter<string>
     generator = new ExportGenerator(
       prisma,
       csv,
@@ -105,7 +106,8 @@ describe('Analytics reports and export', () => {
       events,
       logger,
       new JobContext(prisma),
-      subjectMissing
+      subjectMissing,
+      discardFailed
     )
     emails = emailsOf(app)
     runner = new ScheduledReportRunner(
