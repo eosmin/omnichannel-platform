@@ -9,7 +9,7 @@ import { AuditService } from '@platform/core/audit-module'
 import { ComplianceConfig } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
-import { MessageType } from '@platform/core/domain'
+import { AuthorType, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { MediaPurpose, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -444,6 +444,72 @@ describe('The data of an erased customer', () => {
     expect(await owner.media.count({ where: { id: t.file.mediaId } })).toBe(1)
   })
 
+  describe('with the time budget of the sweep', () => {
+    it('starts no batch once the budget is over, touches nothing, says it is unfinished and not failed, and a later run finishes it', async () => {
+      const t = await erasedWithThread()
+      const customerId = t.conversation.customerId
+
+      const stopped = await eraser.clear(ctx.storeA.id, customerId, Date.now() - 1)
+
+      expect(stopped).toMatchObject({ cleared: false, unfinished: true, skipped: false })
+      expect((await owner.message.findUniqueOrThrow({ where: { id: t.inbound.id } })).content).toBe(
+        SAID
+      )
+      expect(await owner.media.count({ where: { id: t.file.mediaId } })).toBe(1)
+      const marks = await owner.customer.findUniqueOrThrow({
+        where: { id: customerId },
+        select: { erasedDataPurgedAt: true, erasedDataAttemptedAt: true }
+      })
+      // Tried (so the sweep rotates to the others) and not marked as cleared
+      expect(marks.erasedDataAttemptedAt).not.toBeNull()
+      expect(marks.erasedDataPurgedAt).toBeNull()
+
+      const finished = await eraser.clear(ctx.storeA.id, customerId, Date.now() + 120_000)
+
+      expect(finished).toMatchObject({ cleared: true, unfinished: false })
+      expect((await owner.message.findUniqueOrThrow({ where: { id: t.inbound.id } })).content).toBe(
+        PLACEHOLDER
+      )
+    })
+
+    it('clears a thread of more than one batch in one run, which the cap of a job would not', async () => {
+      const t = await erasedWithThread()
+      const rows = Array.from({ length: 1200 }, () => ({
+        storeId: ctx.storeA.id,
+        conversationId: t.conversation.id,
+        type: MessageType.TEXT,
+        content: SAID,
+        authorType: AuthorType.CUSTOMER
+      }))
+      await owner.message.createMany({ data: rows })
+
+      const report = await eraser.clear(
+        ctx.storeA.id,
+        t.conversation.customerId,
+        Date.now() + 120_000
+      )
+
+      expect(report).toMatchObject({ cleared: true, unfinished: false })
+      expect(report.messages).toBeGreaterThanOrEqual(1200)
+      expect(
+        await owner.message.count({
+          where: { conversationId: t.conversation.id, content: SAID }
+        })
+      ).toBe(0)
+    })
+
+    it('does not reach the customers of the same store that are not erased, in any batch', async () => {
+      const t = await erasedWithThread()
+
+      await eraser.clear(ctx.storeA.id, t.conversation.customerId, Date.now() + 120_000)
+
+      expect(
+        (await owner.message.findUniqueOrThrow({ where: { id: t.bystanderMessage.id } })).content
+      ).toBe('a live customer')
+      expect(await owner.media.count({ where: { id: t.bystanderFile.mediaId } })).toBe(1)
+    })
+  })
+
   describe('the daily sweep', () => {
     it('finds an erased customer that was not cleared, and clears it', async () => {
       const startedAt = new Date()
@@ -478,6 +544,86 @@ describe('The data of an erased customer', () => {
       const customerId = t.conversation.customerId
       expect(customerId).toBeTruthy()
       expect(JSON.stringify(entry?.metadata)).not.toContain(customerId)
+    })
+
+    it('goes on with the other stores when one cannot be entered, says so in its entry, and fails the run at the end', async () => {
+      const startedAt = new Date()
+      const inA = await erasedWithThread(ctx.storeA.id)
+      const inB = await erasedWithThread(ctx.storeB.id)
+      const jobContext = new JobContext(worker)
+      const forStore = jobContext.forStore.bind(jobContext)
+      jest
+        .spyOn(jobContext, 'forStore')
+        .mockImplementation((storeId, work) =>
+          storeId === ctx.storeA.id
+            ? Promise.reject(new Error('the store cannot be entered'))
+            : forStore(storeId, work)
+        )
+      const sweep = new ErasedCustomerSweep(
+        worker,
+        jobContext,
+        new ErasedCustomerData(worker, jobContext, storage, app.get(AuditService), logger),
+        logger,
+        app.get(AuditService)
+      )
+
+      await expect(sweep.run()).rejects.toThrow('could not enter')
+
+      // The store that could be entered was swept; the one that could not is untouched and waits
+      expect(
+        (await owner.message.findUniqueOrThrow({ where: { id: inB.inbound.id } })).content
+      ).toBe(PLACEHOLDER)
+      expect(
+        (await owner.message.findUniqueOrThrow({ where: { id: inA.inbound.id } })).content
+      ).toBe(SAID)
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.ERASED_CUSTOMER_SWEEP_RUN,
+        timestamp: { gte: startedAt }
+      })
+      expect(
+        entries.some(entry =>
+          (entry.metadata as { failed?: string[] } | null)?.failed?.includes('stores')
+        )
+      ).toBe(true)
+      jest.restoreAllMocks()
+    })
+
+    it('starts no store and no customer after its time budget, and is no failure', async () => {
+      const t = await erasedWithThread()
+      const sweep = new ErasedCustomerSweep(
+        worker,
+        new JobContext(worker),
+        eraser,
+        logger,
+        app.get(AuditService)
+      )
+
+      const report = await sweep.run(Date.now() - 1)
+
+      expect(report).toMatchObject({ customers: 0, cleared: 0, failed: 0 })
+      expect((await owner.message.findUniqueOrThrow({ where: { id: t.inbound.id } })).content).toBe(
+        SAID
+      )
+    })
+
+    it('counts a customer that the time budget stopped as unfinished, never as failed', async () => {
+      const t = await erasedWithThread()
+      const stopped = {
+        clear: jest.fn(() => Promise.resolve({ cleared: false, skipped: false, unfinished: true }))
+      } as unknown as ErasedCustomerData
+      const sweep = new ErasedCustomerSweep(
+        worker,
+        new JobContext(worker),
+        stopped,
+        logger,
+        app.get(AuditService)
+      )
+
+      const report = await sweep.run(Date.now() + 120_000)
+
+      expect(t.conversation.customerId).toBeTruthy()
+      expect(report.unfinished).toBeGreaterThanOrEqual(1)
+      expect(report.failed).toBe(0)
     })
   })
 
