@@ -74,6 +74,18 @@ describe('the short cache of the template list of a connection', () => {
     expect(listTemplates).toHaveBeenCalledTimes(2)
   })
 
+  it('does not keep an empty list: the next ask goes to the provider again', async () => {
+    const { service, listTemplates } = build({
+      id: 'row-1',
+      status: ChannelConnectionStatus.ACTIVE
+    })
+    listTemplates.mockResolvedValueOnce([])
+
+    expect(await service.list(STORE, PLUGIN, 'row-1')).toEqual([])
+    expect(await service.list(STORE, PLUGIN, 'row-1')).toHaveLength(1)
+    expect(listTemplates).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps the lists of two connections apart', async () => {
     const one = build({ id: 'row-1', status: ChannelConnectionStatus.ACTIVE })
     await one.service.list(STORE, PLUGIN, 'row-1')

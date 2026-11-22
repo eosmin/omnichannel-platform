@@ -129,7 +129,7 @@ export class ChannelTemplatesService {
     if (rows.length === 0) return TemplateLinkVerdicts.UNKNOWN
     const answers = await Promise.all(
       rows.map(row =>
-        this.listOfCached(row, storeId).then(
+        this.listOf(row).then(
           list => list,
           () => null
         )
@@ -221,7 +221,8 @@ export class ChannelTemplatesService {
   }
 
   // The list that the composer and the link of a message template read: kept a short while per connection, so a person
-  // who opens the picker again, or a settings screen that checks many links, does not ask the provider every time. Only a
+  // who opens the picker again does not ask the provider every time. The check of a link (`checkLink`) never reads it: a
+  // template that was just approved must not be reported missing. Only a
   // success is kept; a disconnected connection, a channel with no templates and a failure always ask again. What is
   // checked when a message is sent (`renderIn`) never comes from here: a template the provider has just paused must stop
   // a send at once.
@@ -237,10 +238,12 @@ export class ChannelTemplatesService {
       kept.expiresAt > now &&
       row.status !== String(ChannelConnectionStatus.DISCONNECTED)
     ) {
-      return kept.templates
+      return [...kept.templates]
     }
     const templates = await this.listOf(row)
     this.listCache.delete(key)
+    // An empty list is asked again at once: a template just made and approved must show
+    if (templates.length === 0) return templates
     if (this.listCache.size >= OutboundLimits.TEMPLATE_LIST_CACHE_MAX_ENTRIES) {
       const oldest = this.listCache.keys().next()
       if (oldest.done !== true) this.listCache.delete(oldest.value)
@@ -249,7 +252,7 @@ export class ChannelTemplatesService {
       templates,
       expiresAt: Date.now() + OutboundLimits.TEMPLATE_LIST_CACHE_TTL_MS
     })
-    return templates
+    return [...templates]
   }
 
   private async listOf(

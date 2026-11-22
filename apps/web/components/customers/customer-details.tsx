@@ -165,7 +165,7 @@ function OrderFigures({ customerId }: { customerId: string }): ReactElement | nu
         <dt>{t('stats.totalSpent')}</dt>
         <dd className="text-right">
           {figures.byCurrency.length === 0
-            ? formatCents(format, 0)
+            ? t('stats.none')
             : figures.byCurrency.map(line => (
                 <div key={line.currency}>
                   {formatCents(format, line.totalSpentCents, line.currency)}
