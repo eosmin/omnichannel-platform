@@ -1,4 +1,5 @@
 import { AwayReply, type Weekday } from './settings-constants'
+import { weekScheduleSchema } from './week-schedule'
 
 export type WeekSchedule = Record<Weekday, readonly { from: string; to: string }[]>
 
@@ -40,6 +41,19 @@ export function isWithinSchedule(schedule: WeekSchedule, timezone: string, at: D
   if (day === undefined) throw new Error(`unknown weekday for ${timezone}: ${part('weekday')}`)
   const clock = `${part('hour')}:${part('minute')}`
   return schedule[day].some(range => range.from <= clock && clock < range.to)
+}
+
+// Whether the store is closed at a moment, by the hours stored for it (the row of its business hours). A store that set no hours, or
+// whose stored schedule cannot be read, is never closed: the widget does not say "away" and the quiet hours that follow the store
+// do not start. The one rule of the widget and of the notifications.
+export function isStoreClosed(
+  hours: { timezone: string; schedule: unknown } | null,
+  at: Date
+): boolean {
+  if (hours === null) return false
+  const schedule = weekScheduleSchema.safeParse(hours.schedule)
+  if (!schedule.success) return false
+  return !isWithinSchedule(schedule.data, hours.timezone, at)
 }
 
 // The last moment at or before `at` when the store was open, looking back to `notBefore` and no

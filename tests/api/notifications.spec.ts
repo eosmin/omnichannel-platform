@@ -19,6 +19,7 @@ import {
 import { JobNames, QueueNames } from '@platform/core/queues'
 import { RealtimeEvents } from '@platform/core/realtime'
 
+import { NotificationPreferencesService } from '../../apps/api/src/modules/notifications/notification-preferences.service'
 import { NotificationsService } from '../../apps/api/src/modules/notifications/notifications.service'
 import { RealtimeService } from '../../apps/api/src/modules/realtime/realtime.service'
 import { createTestApp } from '../helpers/app'
@@ -411,6 +412,95 @@ describe('Notifications', () => {
       expect(await owner.notification.count({ where: { userId: ctx.adminA.id } })).toBe(1)
     })
 
+    it('reads the preferences of a group once, and each person still gets what they chose', async () => {
+      const toStoreUser = jest
+        .spyOn(app.get(RealtimeService, { strict: false }), 'toStoreUser')
+        .mockImplementation(() => undefined)
+      const preferences = app.get(NotificationPreferencesService, { strict: false })
+      const resolve = jest.spyOn(preferences, 'resolve')
+      const settingsOf = jest.spyOn(preferences, 'settingsOf')
+      const quiet = jest.spyOn(preferences, 'isInQuietHours')
+      const type = NotificationTypes.CONVERSATION_ASSIGNED
+      // The admin switched in-app off, the agent follows the hours of a store that is closed all week, the viewer chose nothing
+      await owner.notificationPreference.create({
+        data: {
+          userId: ctx.adminA.id,
+          storeId: ctx.storeA.id,
+          type,
+          inApp: false,
+          push: false,
+          email: false,
+          sound: false
+        }
+      })
+      await owner.userNotificationSettings.create({
+        data: { userId: ctx.agentA.id, quietHoursEnabled: true, quietHoursFollowStore: true }
+      })
+      try {
+        await owner.businessHours.deleteMany({ where: { storeId: ctx.storeA.id } })
+        await owner.businessHours.create({
+          data: {
+            storeId: ctx.storeA.id,
+            timezone: 'UTC',
+            schedule: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] }
+          }
+        })
+
+        await service.sendToStore({
+          storeId: ctx.storeA.id,
+          type,
+          excludeUserIds: [],
+          requiredPermission: undefined
+        })
+
+        const live = (userId: string): { sound: boolean } | undefined =>
+          toStoreUser.mock.calls.find(call => call[1] === userId)?.[3] as
+            { sound: boolean } | undefined
+        expect(live(ctx.adminA.id)).toBeUndefined() // in-app off: no live event
+        expect(live(ctx.agentA.id)).toEqual(expect.objectContaining({ sound: false })) // closed store: quiet
+        expect(live(ctx.viewerA.id)).toEqual(expect.objectContaining({ sound: true })) // defaults
+        // Every member got the row, and no one was read alone
+        expect(
+          await owner.notification.count({
+            where: {
+              storeId: ctx.storeA.id,
+              type,
+              userId: { in: [ctx.adminA.id, ctx.agentA.id, ctx.viewerA.id] }
+            }
+          })
+        ).toBe(3)
+        expect(resolve).not.toHaveBeenCalled()
+        expect(settingsOf).not.toHaveBeenCalled()
+        expect(quiet).not.toHaveBeenCalled()
+      } finally {
+        await owner.businessHours.deleteMany({ where: { storeId: ctx.storeA.id } })
+      }
+    })
+
+    it('still notifies everyone, one by one, when the group read fails', async () => {
+      const toStoreUser = jest
+        .spyOn(app.get(RealtimeService, { strict: false }), 'toStoreUser')
+        .mockImplementation(() => undefined)
+      const preferences = app.get(NotificationPreferencesService, { strict: false })
+      jest.spyOn(preferences, 'loadRecipients').mockRejectedValueOnce(new Error('read failed'))
+      const resolve = jest.spyOn(preferences, 'resolve')
+      const type = NotificationTypes.CONVERSATION_ASSIGNED
+
+      await service.sendToStore({ storeId: ctx.storeA.id, type })
+
+      expect(
+        await owner.notification.count({
+          where: {
+            storeId: ctx.storeA.id,
+            type,
+            userId: { in: [ctx.adminA.id, ctx.agentA.id, ctx.viewerA.id] }
+          }
+        })
+      ).toBe(3)
+      expect(resolve).toHaveBeenCalledTimes(3)
+      expect(toStoreUser).toHaveBeenCalledTimes(3)
+    })
+
     it('follows the business hours of the store: quiet while it is closed, never without hours', async () => {
       const toStoreUser = jest
         .spyOn(app.get(RealtimeService, { strict: false }), 'toStoreUser')
@@ -731,6 +821,90 @@ describe('Notifications', () => {
         quietHoursEnd: 7,
         digestFrequency: DigestFrequency.HOURLY
       })
+    })
+
+    it('writes many types in one request: new rows are made, the ones that exist are changed in place, and nobody else is touched', async () => {
+      const typeNames = [
+        NotificationTypes.CONVERSATION_ASSIGNED,
+        NotificationTypes.EXPORT_READY,
+        NotificationTypes.CONVERSATION_MENTIONED
+      ]
+      const choose = (inApp: boolean, push: boolean) =>
+        typeNames.map(type => ({ type, inApp, push, email: false, sound: push }))
+      // Another person of the same store, who must keep what they chose
+      await owner.notificationPreference.create({
+        data: {
+          userId: ctx.agentA.id,
+          storeId: ctx.storeA.id,
+          type: NotificationTypes.EXPORT_READY,
+          inApp: false,
+          push: false,
+          email: true,
+          sound: false
+        }
+      })
+      // The same person in another store, who must keep what they chose there
+      await owner.notificationPreference.create({
+        data: {
+          userId: ctx.adminA.id,
+          storeId: ctx.storeB.id,
+          type: NotificationTypes.EXPORT_READY,
+          inApp: false,
+          push: false,
+          email: false,
+          sound: false
+        }
+      })
+      // One of the three exists already
+      await owner.notificationPreference.create({
+        data: {
+          userId: ctx.adminA.id,
+          storeId: ctx.storeA.id,
+          type: NotificationTypes.EXPORT_READY,
+          inApp: true,
+          push: true,
+          email: true,
+          sound: true
+        }
+      })
+      const before = await owner.notificationPreference.findFirstOrThrow({
+        where: {
+          userId: ctx.adminA.id,
+          storeId: ctx.storeA.id,
+          type: NotificationTypes.EXPORT_READY
+        },
+        select: { id: true }
+      })
+
+      const first = await asAdmin()
+        .put(ApiRoutes.notifications.preferences)
+        .send({ types: choose(false, false) })
+      const second = await asAdmin()
+        .put(ApiRoutes.notifications.preferences)
+        .send({ types: choose(true, false) })
+
+      expect(first.status).toBe(OK)
+      expect(second.status).toBe(OK)
+      const rows = await owner.notificationPreference.findMany({
+        where: { userId: ctx.adminA.id, storeId: ctx.storeA.id },
+        select: { id: true, type: true, inApp: true, push: true, email: true, sound: true }
+      })
+      expect(rows).toHaveLength(3)
+      expect(rows.every(row => row.inApp && !row.push && !row.email && !row.sound)).toBe(true)
+      // Changed in place: the row that was there is the same row
+      expect(rows.find(row => row.type === NotificationTypes.EXPORT_READY)?.id).toBe(before.id)
+      expect(
+        await owner.notificationPreference.findFirstOrThrow({
+          where: { userId: ctx.agentA.id, storeId: ctx.storeA.id },
+          select: { inApp: true, email: true }
+        })
+      ).toEqual({ inApp: false, email: true })
+      expect(
+        await owner.notificationPreference.findFirstOrThrow({
+          where: { userId: ctx.adminA.id, storeId: ctx.storeB.id },
+          select: { inApp: true, email: true }
+        })
+      ).toEqual({ inApp: false, email: false })
     })
 
     it('change per type for the store of the header and per user for the settings', async () => {

@@ -27,13 +27,17 @@ import { RealtimeEvents } from '@platform/core/realtime'
 import { encodeCursor } from '../customers/list-cursor'
 import { RealtimeService } from '../realtime/realtime.service'
 
-import { NotificationPreferencesService } from './notification-preferences.service'
+import {
+  NotificationPreferencesService,
+  type RecipientsContext
+} from './notification-preferences.service'
 import type { ListNotificationsQuery } from './notifications.schemas'
 import {
   NOTIFICATION_COLUMNS,
   notificationView,
   type NotificationView
 } from './notifications.views'
+import { isQuietAt } from './quiet-hours'
 
 export type NotificationParams = Record<string, string | number>
 
@@ -70,15 +74,25 @@ export class NotificationsService {
     private readonly queue: Queue<SendWebPushJob | QueueEmailDigestJob>
   ) {}
 
-  async send(input: SendNotification): Promise<void> {
+  // `loaded` is what a group of people needs, read once for the group (`sendToUsers`): with it this person costs no read of
+  // preferences, settings or hours. Without it, or for a person it does not hold, each is read here, as before
+  async send(input: SendNotification, group?: RecipientsContext): Promise<void> {
+    // A context read for another store or type does not serve this notification: it is ignored
+    const loaded =
+      group !== undefined && group.storeId === input.storeId && group.type === input.type
+        ? group
+        : undefined
     const defaults = NotificationDefaults[input.type]
-    const resolved = await this.preferences.resolve(input.userId, input.storeId, input.type)
+    const resolved =
+      loaded?.channels.get(input.userId) ??
+      (await this.preferences.resolve(input.userId, input.storeId, input.type))
     const prefs =
       input.inAppOnly === true ? { ...resolved, push: false, sound: false, email: false } : resolved
     // The email is wanted only if the type has it on and the person did not switch the digest off;
     // the settings are read only for a type that has it, so the rest pays nothing for them
+    const settings = loaded?.settings.get(input.userId)
     const frequency = prefs.email
-      ? (await this.preferences.settingsOf(input.userId)).digestFrequency
+      ? (settings ?? (await this.preferences.settingsOf(input.userId))).digestFrequency
       : DigestFrequency.OFF
     const emailWanted = frequency !== DigestFrequency.OFF
 
@@ -101,7 +115,7 @@ export class NotificationsService {
 
     // Quiet hours hold back sound and push. If they cannot be read (a timezone the runtime does not
     // know) both are sent: a missed alert is worse than an unwanted one
-    const quiet = prefs.push || prefs.sound ? await this.isQuiet(input) : false
+    const quiet = prefs.push || prefs.sound ? await this.isQuiet(input, loaded) : false
     const sound = prefs.sound && !quiet
 
     if (prefs.inApp) this.emitLive(input, row, defaults.severity, sound)
@@ -204,8 +218,12 @@ export class NotificationsService {
     })
   }
 
-  private async isQuiet(input: SendNotification): Promise<boolean> {
+  private async isQuiet(input: SendNotification, loaded?: RecipientsContext): Promise<boolean> {
     try {
+      const settings = loaded?.settings.get(input.userId)
+      if (loaded !== undefined && settings !== undefined) {
+        return isQuietAt(settings, loaded.hours, new Date())
+      }
       return await this.preferences.isInQuietHours(input.userId, input.storeId)
     } catch (error) {
       this.logger.warn(
@@ -242,8 +260,22 @@ export class NotificationsService {
     userIds: readonly string[],
     input: Omit<SendNotification, 'userId'>
   ): Promise<void> {
+    if (userIds.length === 0) return
+    // What the group needs is read once, not once for each person. If that read fails, each person reads their own, as one
+    // would alone: a failure of the group read costs speed and never a notification
+    const loaded = await this.preferences
+      .loadRecipients(userIds, input.storeId, input.type)
+      .catch((error: unknown) => {
+        this.logger.warn(
+          { storeId: input.storeId, err: String(error) },
+          'the preferences of the group could not be read together: read one by one'
+        )
+        return undefined
+      })
     // One failing recipient must not take the others with it
-    const results = await Promise.allSettled(userIds.map(userId => this.send({ ...input, userId })))
+    const results = await Promise.allSettled(
+      userIds.map(userId => this.send({ ...input, userId }, loaded))
+    )
     const failed = results.find(result => result.status === 'rejected')
     if (failed !== undefined) throw failed.reason
   }
