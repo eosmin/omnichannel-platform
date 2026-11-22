@@ -1122,6 +1122,43 @@ describe('The retention run of the worker', () => {
         expect(await owner.pluginInstallation.count({ where: { id: oldA } })).toBe(1)
       })
 
+      it('keeps what an installation that is installed again between the read and the write got: the state is in the WHERE of the statement', async () => {
+        const id = await installation(ctx.storeA.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: daysAgo(2, now)
+        })
+        const fresh = Buffer.from('new-secret-of-the-new-install')
+        let run: Promise<unknown> = Promise.resolve()
+        // The installation is installed again in a transaction that is still open when the cleanup runs: the cleanup reads the revoked row it
+        // sees, its UPDATE waits for the lock of that row, and when it gets it the row is no longer revoked, so it must not touch it
+        // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+        await owner.$transaction(
+          async tx => {
+            await tx.pluginInstallation.update({
+              where: { id },
+              data: {
+                status: PluginInstallationStatus.PENDING_SETUP,
+                revokedAt: null,
+                webhookEndpoint: 'https://new.example.invalid/hook',
+                webhookSecret: fresh,
+                commandSecret: fresh,
+                commandSecretPrevious: null
+              }
+            })
+            run = cleaner.run(now)
+            await new Promise(resolve => setTimeout(resolve, 2000))
+          },
+          { timeout: 30_000 }
+        )
+        await run
+
+        const row = await owner.pluginInstallation.findUniqueOrThrow({ where: { id } })
+        expect(row.status).toBe(PluginInstallationStatus.PENDING_SETUP)
+        expect(row.webhookEndpoint).toBe('https://new.example.invalid/hook')
+        expect(Buffer.from(row.webhookSecret ?? []).equals(fresh)).toBe(true)
+        expect(Buffer.from(row.commandSecret ?? []).equals(fresh)).toBe(true)
+      })
+
       it('does nothing the second time, and leaves the counts as the only trace in the entry of the run', async () => {
         const startedAt = new Date()
         const id = await installation(ctx.storeA.id, {
