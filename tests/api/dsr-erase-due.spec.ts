@@ -6,16 +6,24 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { ComplianceConfig, type DsrConfig, dsrEmailHash } from '@platform/core/compliance'
+import {
+  ComplianceConfig,
+  type DsrConfig,
+  dsrEmailHash,
+  dsrNoticeStatusOf
+} from '@platform/core/compliance'
 import { encrypt, parseEncryptionKey } from '@platform/core/crypto'
 import { CustomerErasureService, DsrOpenWorkService } from '@platform/core/customer-erasure'
 import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { DAY_MS, DsrStatus, DsrType } from '@platform/core/domain'
 import type { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 import { dsrResultMailJobId, type SendEmailJob } from '@platform/core/queues'
 
 import { DsrEraseDueSweeper } from '../../apps/worker/src/compliance/dsr-erase-due.sweeper'
+import { DsrNoticeLedger } from '../../apps/worker/src/compliance/dsr-notice-ledger.service'
+import { DsrNoticeSender } from '../../apps/worker/src/compliance/dsr-notice-sender.service'
 import { createCustomer, createOrder } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -45,6 +53,8 @@ describe('the sweep of the data erasures that are due', () => {
   let ctx: TestContext
   let sweeper: DsrEraseDueSweeper
   let erasure: CustomerErasureService
+  let ledger: DsrNoticeLedger
+  const published: { event: string; payload: unknown }[] = []
   const mails: Call[] = []
   const jobs: unknown[] = []
   let failMail = false
@@ -81,13 +91,35 @@ describe('the sweep of the data erasures that are due', () => {
       queueOf(jobs) as unknown as never,
       logger as unknown as PinoLogger
     )
+    const events = {
+      publish: (_tx: unknown, event: string, payload: unknown) => {
+        published.push({ event, payload })
+      }
+    } as unknown as DomainEvents
+    const jobContext = new JobContext(prisma)
+    ledger = new DsrNoticeLedger(
+      prisma,
+      jobContext,
+      audit as unknown as AuditService,
+      events,
+      logger as unknown as PinoLogger
+    )
+    const sender = new DsrNoticeSender(
+      prisma,
+      jobContext,
+      ledger,
+      mailQueue as unknown as Queue<SendEmailJob>,
+      CONFIG,
+      logger as unknown as PinoLogger
+    )
     sweeper = new DsrEraseDueSweeper(
       prisma,
-      new JobContext(prisma),
+      jobContext,
       audit as unknown as AuditService,
       erasure,
       new DsrOpenWorkService(),
-      mailQueue as unknown as Queue<SendEmailJob>,
+      sender,
+      events,
       CONFIG,
       logger as unknown as PinoLogger
     )
@@ -100,6 +132,7 @@ describe('the sweep of the data erasures that are due', () => {
   beforeEach(() => {
     mails.length = 0
     jobs.length = 0
+    published.length = 0
     failMail = false
     audit.log.mockClear()
     logger.error.mockClear()
@@ -232,12 +265,14 @@ describe('the sweep of the data erasures that are due', () => {
     const row = await rowOf(mine.id)
     expect(row).toMatchObject({
       status: DsrStatus.COMPLETED,
-      notifyToEncrypted: null,
       subjectEmailHash: null,
       erasureFailureCode: null,
       erasureAttempts: 1
     })
     expect(row.completedAt).not.toBeNull()
+    // The sealed address STAYS until the mail processor confirms the send: a mail that is queued is not a mail that was sent (H2b-2)
+    expect(row.notifyToEncrypted).not.toBeNull()
+    expect(row.noticeSentAt).toBeNull()
     expect(row.retainedRecordsSummary).toEqual({
       legalBasis: 'legal_obligation',
       orders: 1,
@@ -261,6 +296,9 @@ describe('the sweep of the data erasures that are due', () => {
       retainedOrders: 1
     })
     expect(toThem[0]?.options.jobId).toBe(dsrResultMailJobId(mine.id))
+    // The job carries the ids the processor needs to confirm it, and the address nowhere but `to`
+    expect(toThem[0]?.data.dsrNotice).toEqual({ requestId: mine.id, storeId: ctx.storeA.id })
+    expect(JSON.stringify({ ...toThem[0]?.data, to: null })).not.toContain('@example.com')
     // The mail names no customer, no store data and no request id: the address it goes to, the kind and one count
     expect(Object.keys(toThem[0]?.data.data ?? {}).sort()).toEqual([
       'outcome',
@@ -507,9 +545,10 @@ describe('the sweep of the data erasures that are due', () => {
 
     expect(second.notified).toBe(1)
     expect(second.completed).toBe(0)
-    expect((await rowOf(mine.id)).notifyToEncrypted).toBeNull()
+    // The address stays until the mail processor confirms the send (the notice is queued, not sent)
+    expect((await rowOf(mine.id)).notifyToEncrypted).not.toBeNull()
     expect(mails).toHaveLength(1)
-    // Nothing more the third night
+    // Nothing more the third night: the mail is on its way (the lease), so it is not queued again
     await sweeper.run()
     expect(mails).toHaveLength(1)
   })
@@ -628,8 +667,156 @@ describe('the sweep of the data erasures that are due', () => {
 
     const ended = await rowOf(mine.id)
     expect(ended.status).toBe(DsrStatus.COMPLETED)
+    // The person could not be told, and that is SAID: the address is gone, the notice is marked failed and the reviewers are told (H2b-2)
     expect(ended.notifyToEncrypted).toBeNull()
+    expect(ended.noticeFailedAt).not.toBeNull()
+    expect(dsrNoticeStatusOf(ended)).toBe('failed')
+    expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(1)
     // No mail to the address that asked (the sweep also takes what earlier cases left due)
     expect(mails.filter(mail => [mail.data.to].flat().includes(mine.email))).toHaveLength(0)
+  })
+
+  describe('the closing notice is confirmed by the mail processor, never assumed', () => {
+    it('keeps the sealed address until the notice is confirmed, then clears it', async () => {
+      const mine = await requestOfStoreA([addressOf('confirm')])
+      await sweeper.run()
+      expect((await rowOf(mine.id)).notifyToEncrypted).not.toBeNull()
+
+      await ledger.sent(ctx.storeA.id, mine.id)
+
+      const row = await rowOf(mine.id)
+      expect(row.notifyToEncrypted).toBeNull()
+      expect(row.noticeSentAt).not.toBeNull()
+      expect(dsrNoticeStatusOf(row)).toBe('sent')
+      // A confirmed notice is never queued again
+      mails.length = 0
+      await sweeper.run()
+      expect(mails.filter(mail => mail.options.jobId === dsrResultMailJobId(mine.id))).toHaveLength(
+        0
+      )
+    })
+
+    const backdateQueued = (id: string, hours: number) =>
+      owner.dataSubjectRequest.update({
+        where: { id },
+        data: { noticeQueuedAt: new Date(Date.now() - hours * HOUR_MS) }
+      })
+
+    it('counts every queueing, asks for the mail again after each failure, and gives the person up visibly after the last one', async () => {
+      const mine = await requestOfStoreA([addressOf('retry')])
+      await sweeper.run()
+      mails.length = 0
+
+      for (let night = 1; night < ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS; night += 1) {
+        // The first queueing counted one; the processor says the mail failed all its attempts
+        await ledger.failed(ctx.storeA.id, mine.id, 'mail_failed')
+        const waiting = await rowOf(mine.id)
+        expect(waiting.noticeAttempts).toBe(night)
+        expect(dsrNoticeStatusOf(waiting)).toBe('pending')
+        expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(0)
+        await sweeper.run()
+        expect(
+          mails.filter(mail => mail.options.jobId === dsrResultMailJobId(mine.id))
+        ).toHaveLength(night)
+      }
+
+      await ledger.failed(ctx.storeA.id, mine.id, 'mail_failed')
+      const row = await rowOf(mine.id)
+      expect(row.notifyToEncrypted).toBeNull()
+      expect(row.noticeAttempts).toBe(ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS)
+      expect(dsrNoticeStatusOf(row)).toBe('failed')
+      expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(1)
+      expect(
+        await owner.auditLog.count({
+          where: { action: AuditAction.DSR_NOTICE_FAILED, resourceId: mine.id }
+        })
+      ).toBe(1)
+      mails.length = 0
+      await sweeper.run()
+      expect(mails.filter(mail => mail.options.jobId === dsrResultMailJobId(mine.id))).toHaveLength(
+        0
+      )
+      expect(JSON.stringify(published)).not.toContain('@example.com')
+    })
+
+    it('gives up a notice whose job never reached the processor (nothing confirmed or failed it) after the tries and the stale hours, and says so once', async () => {
+      const mine = await requestOfStoreA([addressOf('lost')])
+      await sweeper.run()
+      // The job vanished each time (a stalled job, a payload the processor refused): the lease runs out and the sweep queues it again, counting
+      for (let night = 2; night <= ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS; night += 1) {
+        await backdateQueued(mine.id, 2)
+        await sweeper.run()
+        expect((await rowOf(mine.id)).noticeAttempts).toBe(night)
+      }
+      expect(dsrNoticeStatusOf(await rowOf(mine.id))).toBe('pending')
+
+      // Tries spent and a day without an answer: given up, with the event
+      await backdateQueued(mine.id, ComplianceConfig.DSR_NOTICE_STALE_HOURS + 1)
+      mails.length = 0
+      await sweeper.run()
+
+      const row = await rowOf(mine.id)
+      expect(dsrNoticeStatusOf(row)).toBe('failed')
+      expect(row.notifyToEncrypted).toBeNull()
+      expect(mails.filter(mail => mail.options.jobId === dsrResultMailJobId(mine.id))).toHaveLength(
+        0
+      )
+      expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(1)
+      await sweeper.run()
+      expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(1)
+    })
+
+    it('gives up the notice of a rejection (no address left) that was queued and never answered', async () => {
+      const mine = await requestOfStoreA([addressOf('rejected')])
+      await owner.dataSubjectRequest.update({
+        where: { id: mine.id },
+        data: {
+          status: DsrStatus.REJECTED,
+          notifyToEncrypted: null,
+          erasureDueAt: null,
+          completedAt: new Date(),
+          noticeAttempts: 1,
+          noticeQueuedAt: new Date(
+            Date.now() - (ComplianceConfig.DSR_NOTICE_STALE_HOURS + 1) * HOUR_MS
+          )
+        }
+      })
+      expect(dsrNoticeStatusOf(await rowOf(mine.id))).toBe('pending')
+
+      await sweeper.run()
+
+      expect(dsrNoticeStatusOf(await rowOf(mine.id))).toBe('failed')
+      expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(1)
+    })
+
+    it('queues a notice that a queue that was down left unsent, on the next night, once', async () => {
+      const mine = await requestOfStoreA([addressOf('down')])
+      failMail = true
+      await sweeper.run()
+      expect(await erasedCount(mine.customerIds)).toBe(1)
+      expect((await rowOf(mine.id)).notifyToEncrypted).not.toBeNull()
+
+      failMail = false
+      await sweeper.run()
+
+      expect(mails.filter(mail => mail.options.jobId === dsrResultMailJobId(mine.id))).toHaveLength(
+        1
+      )
+    })
+
+    it('does not mark a request twice, and a late failure after the confirmation changes nothing', async () => {
+      const mine = await requestOfStoreA([addressOf('late')])
+      await sweeper.run()
+      await ledger.sent(ctx.storeA.id, mine.id)
+
+      await ledger.failed(ctx.storeA.id, mine.id, 'mail_failed')
+
+      const row = await rowOf(mine.id)
+      expect(row.noticeFailedAt).toBeNull()
+      // Only the queueing was counted: a late failure changes nothing
+      expect(row.noticeAttempts).toBe(1)
+      expect(dsrNoticeStatusOf(row)).toBe('sent')
+      expect(published.filter(item => item.event === Events.DSR_NOTICE_FAILED)).toHaveLength(0)
+    })
   })
 })

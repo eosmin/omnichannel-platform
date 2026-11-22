@@ -61,6 +61,7 @@ export const sendEmailJobSchema = exactly<SendEmailJob>()(
       .refine(headers => Object.keys(headers).length <= EmailJobLimits.HEADERS_MAX)
       .optional(),
     tags: z.object({ storeId: z.uuid().optional(), template: emailTemplate }),
+    dsrNotice: z.object({ requestId: z.uuid(), storeId: z.uuid() }).optional(),
     correlationId: jobCorrelationIdSchema
   })
 )

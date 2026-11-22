@@ -225,6 +225,24 @@ describe('bridgedPayload', () => {
       oldestAgeDays: 12,
       totalOwedCents: 45_000
     },
+    [Events.DSR_DEADLINE_APPROACHING]: {
+      storeId: randomUUID(),
+      requestId: randomUUID(),
+      type: 'access',
+      daysLeft: 5
+    },
+    [Events.DSR_RETURNED_TO_REVIEW]: {
+      storeId: randomUUID(),
+      requestId: randomUUID(),
+      type: 'erasure',
+      reason: 'attempts_exhausted'
+    },
+    [Events.DSR_NOTICE_FAILED]: {
+      storeId: randomUUID(),
+      requestId: randomUUID(),
+      type: 'erasure',
+      reason: 'mail_failed'
+    },
     [Events.WEBHOOK_AUTO_DISABLED]: {
       storeId: randomUUID(),
       webhookId: randomUUID(),

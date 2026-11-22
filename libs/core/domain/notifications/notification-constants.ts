@@ -67,7 +67,9 @@ export const NotificationTypes = {
   MEDIA_INFECTED: 'media.infected',
   MEDIA_UNSCANNABLE: 'media.unscannable',
   DSR_DEADLINE_APPROACHING: 'dsr.deadline_approaching',
-  DSR_MANUAL_REVIEW: 'dsr.manual_review'
+  DSR_MANUAL_REVIEW: 'dsr.manual_review',
+  // The closing notice of a data request never reached the person (Step 7.2-H2b-2): someone must tell them another way
+  DSR_NOTICE_FAILED: 'dsr.notice_failed'
 } as const
 
 export type NotificationType = (typeof NotificationTypes)[keyof typeof NotificationTypes]
@@ -175,7 +177,8 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.MEDIA_INFECTED]: { severity: WARNING, channels: [IN_APP, PUSH] },
   [NotificationTypes.MEDIA_UNSCANNABLE]: { severity: WARNING, channels: [IN_APP] },
   [NotificationTypes.DSR_DEADLINE_APPROACHING]: { severity: WARNING, channels: [IN_APP, EMAIL] },
-  [NotificationTypes.DSR_MANUAL_REVIEW]: { severity: INFO, channels: [IN_APP, EMAIL] }
+  [NotificationTypes.DSR_MANUAL_REVIEW]: { severity: INFO, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.DSR_NOTICE_FAILED]: { severity: ERROR, channels: [IN_APP, EMAIL] }
 }
 
 // How the preferences page groups the matrix (TDD_06 §9). A type that is not in a group is not

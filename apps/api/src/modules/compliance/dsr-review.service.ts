@@ -13,25 +13,28 @@ import {
   type DsrOpenWork,
   DsrRejectionReasons,
   type DsrResultOutcome,
+  dsrNoticeJob,
+  DsrFailureCodes,
+  dsrNoticeStatusOf,
   DsrResultOutcomes,
   openDsrNotifyAddress,
   DsrResourceTypes,
-  dsrEmailHash,
   dsrExecutorAvailable,
-  hasOpenWork,
-  normalizeDsrEmail
+  hasOpenWork
 } from '@platform/core/compliance'
-import { DsrOpenWorkService } from '@platform/core/customer-erasure'
+import { checkDsrSubject, DsrOpenWorkService } from '@platform/core/customer-erasure'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { DAY_MS, DsrStatus, DsrType } from '@platform/core/domain'
+import { DAY_MS, type DsrRequestViewContract, DsrStatus, DsrType } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
+import { ExportContentTypes } from '@platform/core/exports'
 import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
-import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
+import { QueueNames, type SendEmailJob } from '@platform/core/queues'
+import { StorageService } from '@platform/core/storage-module'
 
 import { type Actor, auditActorOf } from '../tenancy'
 
@@ -46,25 +49,7 @@ const approvalsSchema = z.array(z.object({ userId: z.string(), at: z.iso.datetim
 
 // A request as the review queue shows it. No address (it is never stored in the clear), no name: the customers are named by id, and the
 // team reads them where it reads customers.
-export interface DsrRequestView {
-  id: string
-  type: string
-  status: string
-  requestedAt: string
-  deadlineAt: string
-  verifiedAt: string | null
-  reviewedAt: string | null
-  reviewedBy: string | null
-  requestedBy: string | null
-  erasureDueAt: string | null
-  // Why an approved erasure came back to review (a name or a reason, never a message); null when it did not
-  erasureFailureCode: string | null
-  completedAt: string | null
-  rejectionReason: string | null
-  subjectCustomerIds: string[]
-  approvals: { userId: string; at: string }[]
-  notes: string | null
-}
+export type DsrRequestView = DsrRequestViewContract
 export interface DsrRequestDetail extends DsrRequestView {
   // What an erasure would wait for, counted now. null for a kind that erases nothing and for a request that has ended
   openWork: DsrOpenWork | null
@@ -90,6 +75,13 @@ const SELECT = {
   erasureFailureCode: true,
   completedAt: true,
   rejectionReason: true,
+  noticeSentAt: true,
+  noticeFailedAt: true,
+  noticeQueuedAt: true,
+  resultKey: true,
+  resultExpiresAt: true,
+  exportFailureCode: true,
+  retainedRecordsSummary: true,
   subjectCustomerIds: true,
   subjectEmailHash: true,
   notifyToEncrypted: true,
@@ -104,6 +96,16 @@ function readRow(tx: PrismaTransaction, storeId: string, id: string) {
 }
 
 const iso = (date: Date | null): string | null => (date === null ? null : date.toISOString())
+
+const retainedSchema = z.object({
+  legalBasis: z.string(),
+  orders: z.number().int().nonnegative(),
+  conversations: z.number().int().nonnegative()
+})
+function retainedOf(value: unknown): z.infer<typeof retainedSchema> | null {
+  const parsed = retainedSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
 
 function approvalsOf(value: unknown): { userId: string; at: string }[] {
   const parsed = approvalsSchema.safeParse(value)
@@ -125,11 +127,21 @@ function viewOf(row: Row): DsrRequestView {
     erasureFailureCode: row.erasureFailureCode,
     completedAt: iso(row.completedAt),
     rejectionReason: row.rejectionReason,
+    noticeStatus: dsrNoticeStatusOf(row),
+    exportReady:
+      row.resultKey !== null && row.resultExpiresAt !== null && row.resultExpiresAt > new Date(),
+    exportExpiresAt: iso(row.resultExpiresAt),
+    exportFailureCode: row.exportFailureCode,
+    retainedRecordsSummary: retainedOf(row.retainedRecordsSummary),
     subjectCustomerIds: row.subjectCustomerIds,
     approvals: approvalsOf(row.approvals),
     notes: row.notes
   }
 }
+
+// The kinds a sweep of the worker carries out once approved (Step 7.2-H2b): an erasure after its grace period, an export at once
+const EXPORT_TYPES: readonly string[] = [DsrType.ACCESS, DsrType.PORTABILITY]
+const EXECUTABLE: readonly string[] = [DsrType.ERASURE, ...EXPORT_TYPES]
 
 const ENDED: readonly string[] = [DsrStatus.COMPLETED, DsrStatus.REJECTED, DsrStatus.CANCELLED]
 
@@ -156,6 +168,7 @@ export class DsrReviewService {
     @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig,
     @Inject(DSR_EXECUTOR_PROBE) private readonly executorAvailable: DsrExecutorProbe,
+    private readonly storage: StorageService,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(DsrReviewService.name)
@@ -213,8 +226,8 @@ export class DsrReviewService {
     const { view, counts } = await this.prisma.transaction(async tx => {
       const row = await this.lock(tx, storeId, id)
       if (row.status !== String(DsrStatus.MANUAL_REVIEW)) throw notReviewable(row.status)
-      // Nothing carries out an approved request yet (a sweep of H2b): approving one would promise what no one will do
-      if (row.type !== String(DsrType.ERASURE) || !this.executorAvailable()) {
+      // Only the kinds a sweep carries out can be approved: approving another would promise what no one will do
+      if (!EXECUTABLE.includes(row.type) || !this.executorAvailable()) {
         throw new PlatformException(
           ErrorCodes.DSR_EXECUTOR_UNAVAILABLE,
           'nothing carries out an approved data request yet',
@@ -235,8 +248,12 @@ export class DsrReviewService {
       }
 
       await this.checkSubject(tx, storeId, row)
-      const counts = await this.openWork.countOf(tx, storeId, row.subjectCustomerIds)
-      if (hasOpenWork(counts)) {
+      const isErasure = row.type === String(DsrType.ERASURE)
+      // Open work blocks an erasure (the records are kept by law); an export of what is held does not need the work to be over
+      const counts = isErasure
+        ? await this.openWork.countOf(tx, storeId, row.subjectCustomerIds)
+        : null
+      if (counts !== null && hasOpenWork(counts)) {
         throw new PlatformException(
           ErrorCodes.DSR_BLOCKED_BY_OPEN_WORK,
           'the customer has open work, so the data cannot be erased yet',
@@ -262,9 +279,13 @@ export class DsrReviewService {
                 erasureAttempts: 0,
                 erasureAttemptedAt: null,
                 erasureFailureCode: null,
-                erasureDueAt: new Date(
-                  now.getTime() + ComplianceConfig.ERASURE_GRACE_PERIOD_DAYS * DAY_MS
-                )
+                exportAttempts: 0,
+                exportAttemptedAt: null,
+                exportFailureCode: null,
+                // Only an erasure waits: it is cancelable during its grace period. An export is made by the next run of the sweep
+                erasureDueAt: isErasure
+                  ? new Date(now.getTime() + ComplianceConfig.ERASURE_GRACE_PERIOD_DAYS * DAY_MS)
+                  : null
               }
             : {})
         }
@@ -357,6 +378,54 @@ export class DsrReviewService {
     return view
   }
 
+  // A short signed link to the file of a finished access or portability request (bytes never go through the api). The request is looked for by
+  // the id AND the store of the guard: a request of another store, one that is not an export, one with no file left and one whose date passed
+  // are the same 404. Each link is audited with who asked for it.
+  async exportLink(
+    storeId: string,
+    id: string,
+    actor: Actor
+  ): Promise<{ url: string; filename: string; expiresInSeconds: number; fileExpiresAt: string }> {
+    const row = await this.prisma.transaction(tx =>
+      tx.dataSubjectRequest.findFirst({
+        where: {
+          id,
+          storeId,
+          type: { in: [...EXPORT_TYPES] },
+          status: DsrStatus.COMPLETED,
+          resultKey: { not: null },
+          resultExpiresAt: { gt: new Date() }
+        },
+        select: { resultKey: true, resultExpiresAt: true, type: true }
+      })
+    )
+    if (row?.resultKey == null || row.resultExpiresAt === null) {
+      throw resourceNotFound('data export')
+    }
+    const url = await this.storage.downloadUrl({
+      key: row.resultKey,
+      contentType: ExportContentTypes.ZIP,
+      filename: ComplianceConfig.DSR_EXPORT_FILENAME,
+      expiresInSeconds: ComplianceConfig.DSR_EXPORT_DOWNLOAD_URL_SECONDS
+    })
+    this.audit.log({
+      action: AuditAction.DSR_EXPORT_DOWNLOADED,
+      actor: auditActorOf(actor),
+      storeId,
+      resourceType: DsrResourceTypes.REQUEST,
+      resourceId: id,
+      metadata: { type: row.type },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return {
+      url,
+      filename: ComplianceConfig.DSR_EXPORT_FILENAME,
+      expiresInSeconds: ComplianceConfig.DSR_EXPORT_DOWNLOAD_URL_SECONDS,
+      fileExpiresAt: row.resultExpiresAt.toISOString()
+    }
+  }
+
   private logEnd(
     action: AuditActionType,
     storeId: string,
@@ -384,28 +453,18 @@ export class DsrReviewService {
   }
 
   // The customers the request names still are the people that asked: not erased, not merged away, and each still has the address that made
-  // the request (compared by its keyed hash). The rows are locked in id order, so a merge, an edit or an erasure of one of them waits.
+  // the request (compared by its keyed hash). The rows are locked in id order, so a merge, an edit or an erasure of one of them waits. The rule
+  // is the one the sweeps use (`checkDsrSubject`), with one difference that stays on purpose: a sweep counts an already erased customer as done
+  // (an erasure is resumable), an approval refuses it (there is nothing left to approve).
   private async checkSubject(tx: PrismaTransaction, storeId: string, row: Row): Promise<void> {
-    const ids = row.subjectCustomerIds
-    const customers = await tx.$queryRaw<
-      { id: string; email: string | null; erased_at: Date | null; merged_into_id: string | null }[]
-    >`
-      SELECT id, email, erased_at, merged_into_id FROM customers
-      WHERE store_id = ${storeId} AND id = ANY(${ids}::text[])
-      ORDER BY id FOR UPDATE`
-    const same =
-      ids.length > 0 &&
-      customers.length === ids.length &&
-      row.subjectEmailHash !== null &&
-      customers.every(
-        customer =>
-          customer.erased_at === null &&
-          customer.merged_into_id === null &&
-          customer.email !== null &&
-          dsrEmailHash(normalizeDsrEmail(customer.email), this.config.hashKey) ===
-            row.subjectEmailHash
-      )
-    if (!same) {
+    const check = await checkDsrSubject(
+      tx,
+      storeId,
+      row.subjectCustomerIds,
+      row.subjectEmailHash,
+      this.config.hashKey
+    )
+    if (!check.same || check.erased.length > 0) {
       throw new PlatformException(
         ErrorCodes.DSR_SUBJECT_CHANGED,
         'the customer of the data request changed',
@@ -423,9 +482,25 @@ export class DsrReviewService {
   ): Promise<void> {
     if (row.notifyToEncrypted === null) return
     const to = openDsrNotifyAddress(row.notifyToEncrypted, this.config.encryptionKeyHex)
-    // An address that does not open (a key that changed) cannot be mailed, and must not keep the request from being decided
+    // An address that does not open (a key that changed) cannot be mailed, and must not keep the request from being decided. It is marked, so the
+    // reviewer sees that the person was NOT told and reaches them another way (Step 7.2-H2b-2)
     if (to === null) {
       this.logger.error({ requestId: row.id }, 'the address of a data request could not be opened')
+      await tx.dataSubjectRequest.updateMany({
+        where: { id: row.id, storeId },
+        data: {
+          noticeFailedAt: new Date(),
+          noticeAttempts: ComplianceConfig.DSR_NOTICE_MAX_ATTEMPTS
+        }
+      })
+      this.audit.log({
+        action: AuditAction.DSR_NOTICE_FAILED,
+        actor: { system: true },
+        storeId,
+        resourceType: DsrResourceTypes.REQUEST,
+        resourceId: row.id,
+        metadata: { type: row.type, reason: DsrFailureCodes.ADDRESS_UNREADABLE }
+      })
       return
     }
     const store = await tx.store.findUnique({
@@ -434,20 +509,18 @@ export class DsrReviewService {
     })
     const locale: Locale =
       SUPPORTED_LOCALES.find(candidate => candidate === store?.defaultLocale) ?? DEFAULT_LOCALE
-    await this.emailQueue.add(
-      JobNames.SEND_EMAIL,
-      {
-        template: EmailTemplates.DSR_RESULT,
-        to,
-        locale,
-        data: { outcome, requestType: row.type },
-        tags: { template: EmailTemplates.DSR_RESULT }
-      },
-      // The job holds the address: gone as soon as it is sent, and an hour after a failure
-      {
-        removeOnComplete: true,
-        removeOnFail: { age: ComplianceConfig.DSR_INTAKE_JOB_TTL_MS / 1000 }
-      }
-    )
+    const job = dsrNoticeJob({
+      requestId: row.id,
+      storeId,
+      to,
+      locale,
+      outcome,
+      requestType: row.type
+    })
+    await this.emailQueue.add(job.name, job.data, job.opts)
+    await tx.dataSubjectRequest.updateMany({
+      where: { id: row.id, storeId },
+      data: { noticeQueuedAt: new Date(), noticeAttempts: { increment: 1 } }
+    })
   }
 }
