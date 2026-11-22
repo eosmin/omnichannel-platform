@@ -4,7 +4,8 @@ import type { JobContext, PrismaService } from '@platform/core/database'
 import {
   MembershipStatus,
   PLUGIN_ACTOR_PREFIX,
-  PluginInstallationStatus
+  PluginInstallationStatus,
+  PluginStatus
 } from '@platform/core/domain'
 import { ExportTypePermissions } from '@platform/core/exports'
 import { viewPermissionsOf } from '@platform/core/messaging'
@@ -16,7 +17,7 @@ const KNOWN_SCOPES: ReadonlySet<string> = new Set(Object.values(PluginScopes))
 const ACTIVE_INSTALLATION: string = PluginInstallationStatus.ACTIVE
 
 // The permissions the requester of an export holds at this moment, read when the file is about to be written, not when it was asked for.
-// null: they hold nothing any more (the membership was removed, suspended or revoked; the plugin is no longer installed or active).
+// null: they hold nothing any more (the membership was removed, suspended or revoked; the plugin is no longer installed, active or approved).
 // Always filtered by the store of the row, which the worker reads from the row, never from the filters.
 export async function currentPermissionsOfRequester(
   prisma: PrismaService,
@@ -30,7 +31,10 @@ export async function currentPermissionsOfRequester(
         where: {
           id: requestedBy.slice(PLUGIN_ACTOR_PREFIX.length),
           storeId,
-          status: ACTIVE_INSTALLATION
+          status: ACTIVE_INSTALLATION,
+          // A plugin the owner withdrew or suspended holds nothing, as at the api guard. Read through the context of the store: a plugin
+          // that policy hides from it (another organization's) answers no row, which is a refusal, never more access.
+          plugin: { status: PluginStatus.APPROVED }
         },
         select: { scopes: true }
       })
@@ -77,4 +81,15 @@ export function narrowedViewer<V extends { userId: string; held: readonly Permis
     userId: frozen.userId,
     held: viewPermissionsOf(frozen.held).filter(p => current.includes(p))
   }
+}
+
+// Whether a file already written may still turn ready: the requester must still hold the kind's permissions and every permission the
+// file was made with (the narrowed view of conversations and files). Fails closed: nothing held, or one permission less, is no.
+export function fileStillCovered(
+  type: string,
+  used: readonly Permission[],
+  current: readonly Permission[] | null
+): boolean {
+  if (current === null || !accessOfRequester(type, current).allowed) return false
+  return used.every(permission => current.includes(permission))
 }

@@ -13,6 +13,7 @@ export const StoreSettingsSections = {
   INBOX: 'inbox',
   SAFETY: 'safety',
   RETENTION: 'retention',
+  AUDIT_LOG: 'audit-log',
   WEBHOOKS: 'webhooks',
   API_KEYS: 'api-keys',
   INVENTORY: 'inventory',
