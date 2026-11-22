@@ -188,6 +188,12 @@ describe('the switch that lets a channel plugin answer on this machine (tests on
           maxResponseBytes: undefined as unknown as number
         })
       ).rejects.toBeInstanceOf(TypeError)
+      await expect(
+        commandsExchange(`http://127.0.0.1:${port}/big`, {
+          ...OPTIONS,
+          maxResponseBytes: Number.POSITIVE_INFINITY
+        })
+      ).rejects.toBeInstanceOf(TypeError)
     })
 
     it('resolves with an empty body, without reading the answer, when the caller discards it', async () => {

@@ -228,24 +228,46 @@ describe('pinnedHttpsExchange', () => {
   })
 
   describe('the ceiling of an answer that is read', () => {
-    it.each([[undefined], [0], [-1], [Number.NaN]])(
-      'refuses a ceiling of %s before anything is sent',
-      async ceiling => {
-        const fake = fakeRequest({ status: 200, chunks: ['x'] })
+    it.each([
+      [undefined],
+      [0],
+      [-1],
+      [Number.NaN],
+      [Number.POSITIVE_INFINITY],
+      ['100'],
+      [true],
+      [1.5]
+    ])('refuses a ceiling of %s before anything is sent', async ceiling => {
+      const fake = fakeRequest({ status: 200, chunks: ['x'] })
 
-        await expect(
-          pinnedHttpsExchange('https://hooks.example.com/in', {
-            body: '{}',
-            headers: {},
-            timeoutMs: 1000,
-            maxResponseBytes: ceiling as number,
-            resolve: resolvesTo('8.8.8.8'),
-            request: fake.request
-          })
-        ).rejects.toBeInstanceOf(TypeError)
-        expect(fake.calls).toHaveLength(0)
-      }
-    )
+      await expect(
+        pinnedHttpsExchange('https://hooks.example.com/in', {
+          body: '{}',
+          headers: {},
+          timeoutMs: 1000,
+          maxResponseBytes: ceiling as number,
+          resolve: resolvesTo('8.8.8.8'),
+          request: fake.request
+        })
+      ).rejects.toBeInstanceOf(TypeError)
+      expect(fake.calls).toHaveLength(0)
+    })
+
+    it('discards only for the value true: a truthy word is no decision to read nothing', async () => {
+      const fake = fakeRequest({ status: 200 })
+
+      await expect(
+        pinnedHttpsExchange('https://hooks.example.com/in', {
+          body: '{}',
+          headers: {},
+          timeoutMs: 1000,
+          discardBody: 'yes' as unknown as true,
+          resolve: resolvesTo('8.8.8.8'),
+          request: fake.request
+        })
+      ).rejects.toBeInstanceOf(TypeError)
+      expect(fake.calls).toHaveLength(0)
+    })
   })
 
   describe('discardBody', () => {

@@ -49,8 +49,11 @@ export type PinnedExchangeOptions = PinnedAnswerReading & {
 // The types demand a ceiling for an answer that is read, but a value that comes through a cast or from JS would read with no limit
 // (`size > undefined` is never true): refused at run time, before anything is sent
 export function assertAnswerReading(options: PinnedAnswerReading): void {
-  if (options.discardBody) return
-  if (!(options.maxResponseBytes > 0)) {
+  // Only the value `true` discards: anything else that is truthy is a mistake, not a decision
+  if ((options.discardBody as unknown) === true) return
+  // A whole number of bytes above zero: `Infinity`, a string, `true` or `NaN` would all read with no limit
+  const ceiling: unknown = options.maxResponseBytes
+  if (typeof ceiling !== 'number' || !Number.isSafeInteger(ceiling) || ceiling <= 0) {
     throw new TypeError('an exchange that reads the answer needs a ceiling of bytes above zero')
   }
 }
