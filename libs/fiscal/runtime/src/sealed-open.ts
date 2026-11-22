@@ -1,6 +1,7 @@
 import type { PinoLogger } from 'nestjs-pino'
 
 import { type CredentialCipher, failureOf } from '@platform/core/crypto'
+import type { SealedValueKind } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
 // The ids a log line names to find the row (never a value of it)
@@ -19,16 +20,20 @@ export function openSealed(
   cipher: CredentialCipher,
   logger: PinoLogger,
   sealed: Uint8Array,
-  what: string,
-  ref: SealedRef
+  what: SealedValueKind,
+  ref: SealedRef,
+  // A read that only lists (a page of documents) fails quietly: the paths that act on the value (submit, evidence, contingency) log it
+  quiet = false
 ): Record<string, unknown> {
   try {
     return cipher.open(sealed)
   } catch (error) {
-    logger.error(
-      { errorName: errorName(error), failure: failureOf(error), what, ...ref },
-      'a sealed fiscal value cannot be opened'
-    )
+    if (!quiet) {
+      logger.error(
+        { errorName: errorName(error), failure: failureOf(error), what, ...ref },
+        'a sealed fiscal value cannot be opened'
+      )
+    }
     throw error
   }
 }

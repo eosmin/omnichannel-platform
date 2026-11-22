@@ -1,3 +1,5 @@
+-- ORDER: roll the code back AFTER this script, or together with it. A row claimed with a token that is decided by the previous code would be
+-- refused by the guard of the migration; this script gives the guard its previous form first.
 -- Rolls back 20270127100000_fiscal_claim_owner_token: drops the owner token of the claim and gives the guard its previous form (the one of
 -- 20270119110000). Safe to run twice. A token that is live is lost: an attempt in flight then compares nothing, as before the migration.
 BEGIN;

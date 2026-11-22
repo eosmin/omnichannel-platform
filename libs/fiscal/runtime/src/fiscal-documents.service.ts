@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
@@ -33,7 +33,8 @@ import {
   type FiscalVoidKind,
   hasReceivedUnits,
   OrderReturnStatus,
-  OrderStatus
+  OrderStatus,
+  SealedValueKind
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -57,6 +58,7 @@ import type {
   VoidResult
 } from '@platform/fiscal/sdk'
 
+import { type ClaimToken, newClaimToken } from './claim-token'
 import { type FiscalContingencyRoute, FiscalContingencyService } from './fiscal-contingency.service'
 import { FiscalEvidenceService } from './fiscal-evidence.service'
 import type { FiscalActor } from './fiscal-issuer.service'
@@ -530,7 +532,9 @@ export class FiscalDocumentsService {
     if (row === null) return null
     try {
       return receiverOf(
-        openSealed(this.cipher, this.logger, row.dataEncrypted, 'customer-data', { customerId })
+        openSealed(this.cipher, this.logger, row.dataEncrypted, SealedValueKind.CUSTOMER_DATA, {
+          customerId
+        })
       )
     } catch {
       // `openSealed` logged the name of the error, the cause and the ids
@@ -900,7 +904,7 @@ export class FiscalDocumentsService {
     const credentials =
       issuer.credentialsEncrypted === null
         ? {}
-        : this.openCredentials(issuer.credentialsEncrypted, 'issuer-credentials', {
+        : this.openCredentials(issuer.credentialsEncrypted, SealedValueKind.ISSUER_CREDENTIALS, {
             organizationId
           })
     if (credentials === null) {
@@ -1084,7 +1088,7 @@ export class FiscalDocumentsService {
   // (the same code answers "duplicate" and the consultation follows).
   private async keepInContingency(
     organizationId: string,
-    doc: { id: string; claimToken: string },
+    doc: { id: string; claimToken: ClaimToken },
     provider: FiscalDocumentProvider,
     built: BuiltDocument,
     context: ProviderContext,
@@ -1156,7 +1160,7 @@ export class FiscalDocumentsService {
     organizationId: string,
     doc: {
       id: string
-      claimToken: string
+      claimToken: ClaimToken
       documentType: string
       builtPayloadEncrypted: Uint8Array | null
       attempts: number
@@ -1167,7 +1171,7 @@ export class FiscalDocumentsService {
   ): Promise<void> {
     let payload: Record<string, unknown> | null = null
     if (doc.builtPayloadEncrypted !== null)
-      payload = this.openCredentials(doc.builtPayloadEncrypted, 'built-payload', {
+      payload = this.openCredentials(doc.builtPayloadEncrypted, SealedValueKind.BUILT_PAYLOAD, {
         documentId: doc.id
       })
     if (payload === null) {
@@ -1195,7 +1199,7 @@ export class FiscalDocumentsService {
   // Returns whether the document was taken up again.
   private async openContingencyAndRetry(
     organizationId: string,
-    doc: { id: string; claimToken: string; attempts: number; contingencyId?: string | null },
+    doc: { id: string; claimToken: ClaimToken; attempts: number; contingencyId?: string | null },
     provider: FiscalDocumentProvider,
     context: ProviderContext
   ): Promise<boolean> {
@@ -1234,7 +1238,7 @@ export class FiscalDocumentsService {
   // answer does to the document
   private async deliver(
     organizationId: string,
-    doc: { id: string; claimToken: string; attempts: number; contingencyId?: string | null },
+    doc: { id: string; claimToken: ClaimToken; attempts: number; contingencyId?: string | null },
     provider: FiscalDocumentProvider,
     built: BuiltDocument,
     context: ProviderContext
@@ -1329,7 +1333,7 @@ export class FiscalDocumentsService {
   // attempt took it over and decided it): nothing is taken then, so a late attempt never spends a number.
   private async correlativeOf(
     organizationId: string,
-    doc: { id: string; kind: string; sequenceNumber: number; claimToken: string },
+    doc: { id: string; kind: string; sequenceNumber: number; claimToken: ClaimToken },
     provider: FiscalDocumentProvider,
     issuer: FiscalIssuerInput,
     receiver: FiscalReceiver
@@ -1469,7 +1473,7 @@ export class FiscalDocumentsService {
   private async requeueAndFail(
     organizationId: string,
     documentId: string,
-    claimToken: string,
+    claimToken: ClaimToken,
     message: string
   ): Promise<never> {
     await this.inUnit(organizationId, () =>
@@ -1579,7 +1583,7 @@ export class FiscalDocumentsService {
       }
       // The owner token is written by the same statement that moves the document, and only over the state this attempt read: a claim that
       // changed since is not taken twice. Every later write of this attempt compares the token.
-      const claimToken = randomUUID()
+      const claimToken = newClaimToken()
       const taken = await tx.fiscalDocument.updateMany({
         where: { id: doc.id, organizationId, status: doc.status, claimToken: doc.claimToken },
         data: {
@@ -1615,7 +1619,7 @@ export class FiscalDocumentsService {
   private async accept(
     documentId: string,
     organizationId: string,
-    claimToken: string,
+    claimToken: ClaimToken,
     built: BuiltDocument,
     result: {
       externalNumber: string
@@ -1704,7 +1708,7 @@ export class FiscalDocumentsService {
   private async reject(
     documentId: string,
     organizationId: string,
-    claimToken: string,
+    claimToken: ClaimToken,
     reason: string,
     options: {
       built?: BuiltDocument
@@ -2158,9 +2162,13 @@ export class FiscalDocumentsService {
         const credentials =
           issuer.credentialsEncrypted === null
             ? {}
-            : this.openCredentials(issuer.credentialsEncrypted, 'issuer-credentials', {
-                organizationId
-              })
+            : this.openCredentials(
+                issuer.credentialsEncrypted,
+                SealedValueKind.ISSUER_CREDENTIALS,
+                {
+                  organizationId
+                }
+              )
         if (credentials === null) {
           throw new PlatformException(
             ErrorCodes.FISCAL_ISSUER_INVALID,
@@ -2463,7 +2471,7 @@ export class FiscalDocumentsService {
     const payload =
       doc.builtPayloadEncrypted === null
         ? null
-        : this.openCredentials(doc.builtPayloadEncrypted, 'built-payload', {
+        : this.openCredentials(doc.builtPayloadEncrypted, SealedValueKind.BUILT_PAYLOAD, {
             documentId: doc.id
           })
     if (payload === null || payload['unreadable'] === true) return null
@@ -2918,14 +2926,27 @@ export class FiscalDocumentsService {
 
   // A row whose receiver cannot be opened reads as an empty receiver: one bad row never breaks the list, and the document that holds
   // it is refused for its missing data until a person writes the receiver again
-  private openReceiver(sealed: Uint8Array, documentId: string): FiscalReceiver {
-    return this.tryOpenReceiver(sealed, documentId) ?? receiverOf({})
+  private openReceiver(sealed: Uint8Array, documentId: string, quiet = false): FiscalReceiver {
+    return this.tryOpenReceiver(sealed, documentId, quiet) ?? receiverOf({})
   }
 
   // The receiver, or null when it cannot be opened (a rotated key, a damaged row)
-  private tryOpenReceiver(sealed: Uint8Array, documentId: string): FiscalReceiver | null {
+  private tryOpenReceiver(
+    sealed: Uint8Array,
+    documentId: string,
+    quiet = false
+  ): FiscalReceiver | null {
     try {
-      return receiverOf(openSealed(this.cipher, this.logger, sealed, 'receiver', { documentId }))
+      return receiverOf(
+        openSealed(
+          this.cipher,
+          this.logger,
+          sealed,
+          SealedValueKind.RECEIVER,
+          { documentId },
+          quiet
+        )
+      )
     } catch {
       return null
     }
@@ -2933,7 +2954,7 @@ export class FiscalDocumentsService {
 
   private openCredentials(
     sealed: Uint8Array,
-    what: string,
+    what: SealedValueKind,
     ref: SealedRef
   ): Record<string, unknown> | null {
     try {
@@ -3025,7 +3046,7 @@ export class FiscalDocumentsService {
     receiverEncrypted: Uint8Array
     replacedBy: { id: string }[]
   }): FiscalDocumentView {
-    const receiver = this.openReceiver(row.receiverEncrypted, row.id)
+    const receiver = this.openReceiver(row.receiverEncrypted, row.id, true)
     const kind = row.kind as FiscalDocumentKind
     const status = row.status as FiscalDocumentStatus
     const replacedByDocumentId = row.replacedBy[0]?.id ?? null

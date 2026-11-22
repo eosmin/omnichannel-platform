@@ -5,7 +5,7 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
-import { FiscalResourceTypes } from '@platform/core/domain'
+import { FiscalResourceTypes, SealedValueKind } from '@platform/core/domain'
 import {
   errorName,
   ErrorCodes,
@@ -235,7 +235,9 @@ export class FiscalCustomerDataService {
   // would read as "this customer has no tax id"
   private open(sealed: Uint8Array, ref: SealedRef): FiscalReceiver {
     try {
-      return receiverOf(openSealed(this.cipher, this.logger, sealed, 'customer-data', ref))
+      return receiverOf(
+        openSealed(this.cipher, this.logger, sealed, SealedValueKind.CUSTOMER_DATA, ref)
+      )
     } catch {
       throw new PlatformException(
         ErrorCodes.FISCAL_CUSTOMER_DATA_INVALID,

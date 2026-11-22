@@ -10,7 +10,8 @@ import {
   type FiscalIssueOn,
   FiscalLimits,
   FiscalResourceTypes,
-  FiscalSeriesScopeKeys
+  FiscalSeriesScopeKeys,
+  SealedValueKind
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import type { FiscalIssuerInput } from '@platform/fiscal/sdk'
@@ -153,7 +154,9 @@ export class FiscalIssuerService {
   ): Record<string, unknown> {
     if (sealed === null) return {}
     try {
-      return openSealed(this.cipher, this.logger, sealed, 'issuer-credentials', { organizationId })
+      return openSealed(this.cipher, this.logger, sealed, SealedValueKind.ISSUER_CREDENTIALS, {
+        organizationId
+      })
     } catch {
       throw new PlatformException(
         ErrorCodes.FISCAL_ISSUER_INVALID,

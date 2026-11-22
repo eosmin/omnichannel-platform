@@ -30,7 +30,8 @@ import {
   fiscalJobOptions,
   FiscalDocumentStatus,
   FiscalLimits,
-  FiscalResourceTypes
+  FiscalResourceTypes,
+  SealedValueKind
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -57,6 +58,7 @@ import type {
   StoredFiscalDocument
 } from '@platform/fiscal/sdk'
 
+import { type ClaimToken } from './claim-token'
 import type { FiscalActor } from './fiscal-issuer.service'
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
 import { cappedResponse, record, toJson } from './json'
@@ -521,7 +523,7 @@ export class FiscalContingencyService {
   async attach(
     organizationId: string,
     documentId: string,
-    claimToken: string,
+    claimToken: ClaimToken,
     contingencyId: string,
     built: BuiltDocument,
     providerData: Readonly<Record<string, unknown>> | undefined,
@@ -639,7 +641,7 @@ export class FiscalContingencyService {
           this.cipher,
           this.logger,
           issuer.credentialsEncrypted,
-          'issuer-credentials',
+          SealedValueKind.ISSUER_CREDENTIALS,
           {
             organizationId,
             contingencyId
@@ -679,11 +681,17 @@ export class FiscalContingencyService {
       }
       let payload: Record<string, unknown>
       try {
-        payload = openSealed(this.cipher, this.logger, doc.builtPayloadEncrypted, 'built-payload', {
-          organizationId,
-          contingencyId,
-          documentId: doc.id
-        })
+        payload = openSealed(
+          this.cipher,
+          this.logger,
+          doc.builtPayloadEncrypted,
+          SealedValueKind.BUILT_PAYLOAD,
+          {
+            organizationId,
+            contingencyId,
+            documentId: doc.id
+          }
+        )
       } catch {
         await this.markFailed(
           organizationId,
@@ -709,7 +717,7 @@ export class FiscalContingencyService {
           this.cipher,
           this.logger,
           row.responsibleEncrypted,
-          'responsible',
+          SealedValueKind.RESPONSIBLE,
           {
             organizationId,
             contingencyId

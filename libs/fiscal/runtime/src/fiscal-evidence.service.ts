@@ -18,7 +18,8 @@ import {
   FiscalEvidenceContentType,
   FiscalEvidenceKind,
   FiscalLimits,
-  MediaStatus
+  MediaStatus,
+  SealedValueKind
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
@@ -278,9 +279,15 @@ export class FiscalEvidenceService {
       if (doc.builtPayloadEncrypted === null) return null
       let payload: Record<string, unknown>
       try {
-        payload = openSealed(this.cipher, this.logger, doc.builtPayloadEncrypted, 'built-payload', {
-          documentId: doc.id
-        })
+        payload = openSealed(
+          this.cipher,
+          this.logger,
+          doc.builtPayloadEncrypted,
+          SealedValueKind.BUILT_PAYLOAD,
+          {
+            documentId: doc.id
+          }
+        )
       } catch {
         return null
       }
