@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 
+import { DsrOpenWorkService } from '@platform/core/customer-erasure'
 import { CompliancePlatformModule, QueuesPlatformModule } from '@platform/core/http'
 
 import { TenancyModule } from '../tenancy'
@@ -13,7 +14,6 @@ import {
 import { ConsentService } from './consent.service'
 import { CookieConsentService } from './cookie-consent.service'
 import { DsrIntakeService } from './dsr-intake.service'
-import { DsrOpenWorkService } from './dsr-open-work.service'
 import { DSR_EXECUTOR_PROBE, dsrExecutorProbe, DsrReviewService } from './dsr-review.service'
 import { DsrVerifyService } from './dsr-verify.service'
 

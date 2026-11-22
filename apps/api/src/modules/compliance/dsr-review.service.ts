@@ -21,6 +21,7 @@ import {
   hasOpenWork,
   normalizeDsrEmail
 } from '@platform/core/compliance'
+import { DsrOpenWorkService } from '@platform/core/customer-erasure'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { DAY_MS, DsrStatus, DsrType } from '@platform/core/domain'
 import {
@@ -35,7 +36,6 @@ import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platfo
 import { type Actor, auditActorOf } from '../tenancy'
 
 import type { DsrApproveBody, DsrDecisionBody, ListDsrQuery } from './compliance.schemas'
-import { DsrOpenWorkService } from './dsr-open-work.service'
 
 // Tells whether something carries out an approved request. A provider so that a spec can answer true before the sweep exists (H2b).
 export const DSR_EXECUTOR_PROBE = Symbol('DSR_EXECUTOR_PROBE')
