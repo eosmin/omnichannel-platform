@@ -33,6 +33,24 @@ redis.call('PEXPIRE', KEYS[1], ARGV[3])
 return 1
 `
 
+// Which set of places a hold lives in and how many it admits: the reads and the files being sent are capped apart
+interface PlaceSet {
+  key: (organizationId: string) => string
+  most: number
+}
+
+const READS: PlaceSet = {
+  key: CacheKeys.financeReports.readSlots,
+  most: FinanceReportLimits.MAX_CONCURRENT_READS_PER_ORGANIZATION
+}
+const STREAMS: PlaceSet = {
+  key: CacheKeys.financeReports.streamSlots,
+  most: FinanceReportLimits.MAX_CONCURRENT_STREAMS_PER_ORGANIZATION
+}
+
+// A file being sent: the pages and the way to give its place back when the transport ends before the generator does
+export type GateStream<T> = AsyncGenerator<T> & { dispose: () => Promise<void> }
+
 interface HeldPlace {
   organizationId: string
   token: string
@@ -64,11 +82,11 @@ export class FinanceReportGate {
     const open = this.held.getStore()
     if (open?.organizationId === organizationId) return work()
     const token = randomUUID()
-    const taken = await this.acquire(organizationId, token)
+    const taken = await this.acquire(READS, organizationId, token)
     try {
       return await this.held.run({ organizationId, token, taken }, work)
     } finally {
-      if (taken) await this.release(organizationId, token)
+      if (taken) await this.release(READS, organizationId, token)
     }
   }
 
@@ -78,8 +96,8 @@ export class FinanceReportGate {
     if (open?.organizationId === organizationId && open.taken) {
       // A place that expired meanwhile (a stalled process) is taken again, or the page is refused if the organization filled up: the cap is
       // never exceeded by a report that outlived its place
-      if (!(await this.renew(organizationId, open.token))) {
-        await this.acquire(organizationId, open.token)
+      if (!(await this.renew(READS, organizationId, open.token))) {
+        await this.acquire(READS, organizationId, open.token)
       }
     }
     return this.jobContext.inOrganization(organizationId, work, {
@@ -87,31 +105,82 @@ export class FinanceReportGate {
     })
   }
 
-  private async acquire(organizationId: string, token: string): Promise<boolean> {
+  // A file sent page by page (the CSV of the journal), kept inside a place of its own cap for as long as the stream lives. The place is
+  // taken HERE, before the headers go, so a full organization is refused with FINANCE_REPORT_BUSY (429) and not with a cut file. The
+  // returned stream renews the place at every page and gives it back in `finally`, which runs when the stream ends or fails. A client
+  // that drops does NOT stop an Express pipe, so whoever owns the response calls `dispose` when it closes. A stream nobody disposes
+  // holds the place until its expiry (READ_SLOT_TTL_MS), the same bound as a process that died. If a stalled client let the place expire, the next page
+  // takes one again or the stream fails (never a short file that looks whole)
+  async openStream<T>(
+    organizationId: string,
+    prepare: () => Promise<() => AsyncGenerator<T>>
+  ): Promise<GateStream<T>> {
+    const token = randomUUID()
+    const taken = await this.acquire(STREAMS, organizationId, token)
+    let released = false
+    const release = async (): Promise<void> => {
+      if (!taken || released) return
+      released = true
+      await this.release(STREAMS, organizationId, token)
+    }
+    let pages: () => AsyncGenerator<T>
+    try {
+      // What the request checks first (the count and its audit row) runs once the place is ours, so a refusal leaves no audit row and a
+      // check that fails gives the place back
+      pages = await prepare()
+    } catch (error) {
+      await release()
+      throw error
+    }
+    const renew = async (): Promise<void> => {
+      // A place the transport already gave back is never taken again: the page in hand is the last one of a file nobody reads
+      if (!taken || released) return
+      // `dispose` may have run while the renewal waited for Redis: look at `released` again before taking the place back
+      if (!(await this.renew(STREAMS, organizationId, token)) && !released) {
+        await this.acquire(STREAMS, organizationId, token)
+      }
+    }
+    const stream = (async function* () {
+      try {
+        for await (const page of pages()) {
+          await renew()
+          yield page
+        }
+      } finally {
+        await release()
+      }
+    })()
+    // `dispose` is for the transport: Express pipes the stream into the response and does not destroy the stream when the client goes
+    // away, and an async generator that was never started skips its `finally`, so the caller that owns the response gives the place back
+    // by hand when the response closes (idempotent with the `finally`)
+    return Object.assign(stream, { dispose: release })
+  }
+
+  private async acquire(set: PlaceSet, organizationId: string, token: string): Promise<boolean> {
     const now = Date.now()
     let granted: unknown
     try {
       granted = await this.redis.eval(
         ACQUIRE_SCRIPT,
         1,
-        CacheKeys.financeReports.readSlots(organizationId),
+        set.key(organizationId),
         token,
         now,
         now - FinanceReportLimits.READ_SLOT_TTL_MS,
-        FinanceReportLimits.MAX_CONCURRENT_READS_PER_ORGANIZATION,
+        set.most,
         FinanceReportLimits.READ_SLOT_TTL_MS
       )
     } catch (error) {
       this.logger.warn(
         { organizationId, errorName: error instanceof Error ? error.name : 'unknown' },
-        'the cap of finance report reads could not be checked; the report runs without it'
+        'a cap of the finance reports (reads or files) could not be checked; the report runs without it'
       )
       return false
     }
     if (Number(granted) !== 1) {
       throw new PlatformException(
         ErrorCodes.FINANCE_REPORT_BUSY,
-        'the organization is already reading as many finance reports as it may at once',
+        'the organization is already reading or sending as many finance reports as it may at once',
         HttpStatusCodes.TOO_MANY_REQUESTS,
         { retryAfterSeconds: FinanceReportLimits.READ_BUSY_RETRY_SECONDS }
       )
@@ -119,12 +188,12 @@ export class FinanceReportGate {
     return true
   }
 
-  private async renew(organizationId: string, token: string): Promise<boolean> {
+  private async renew(set: PlaceSet, organizationId: string, token: string): Promise<boolean> {
     try {
       const kept = await this.redis.eval(
         RENEW_SCRIPT,
         1,
-        CacheKeys.financeReports.readSlots(organizationId),
+        set.key(organizationId),
         token,
         Date.now(),
         FinanceReportLimits.READ_SLOT_TTL_MS
@@ -140,9 +209,9 @@ export class FinanceReportGate {
     }
   }
 
-  private async release(organizationId: string, token: string): Promise<void> {
+  private async release(set: PlaceSet, organizationId: string, token: string): Promise<void> {
     try {
-      await this.redis.zrem(CacheKeys.financeReports.readSlots(organizationId), token)
+      await this.redis.zrem(set.key(organizationId), token)
     } catch (error) {
       // The expiry drops it
       this.logger.warn(

@@ -620,6 +620,10 @@ export const FinanceReportLimits = {
   READ_SLOT_TTL_MS: 120_000,
   // Seconds the refusal tells the caller to wait before asking again
   READ_BUSY_RETRY_SECONDS: 5,
+  // Files of the journal one organization may be sending at once. A download is paced by the client, not by the database, so it has its
+  // own small cap apart from the reads: a place held for a whole download must not starve the reports (debt (a) of 7.3-D). The place is
+  // given back when the stream ends or is destroyed (the client dropped), and expires like a read if the process died
+  MAX_CONCURRENT_STREAMS_PER_ORGANIZATION: 2,
   // Lines a CSV of the journal or the ledger carries: a file that would be larger is refused with the range to narrow (EXPORT_TOO_LARGE),
   // never cut short, because a cut file looks like a whole one to an auditor
   MAX_CSV_ROWS: 200_000,

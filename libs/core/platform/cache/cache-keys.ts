@@ -42,7 +42,10 @@ export const CacheKeys = {
   // The places of the reports of Finance that one organization is reading right now (a sorted set of tokens scored by their last sign of life)
   financeReports: {
     readSlots: (organizationId: string) =>
-      `organization:${organizationId}:finance-reports:read-slots`
+      `organization:${organizationId}:finance-reports:read-slots`,
+    // The files of the journal being sent (a client-paced download has its own cap, apart from the reads)
+    streamSlots: (organizationId: string) =>
+      `organization:${organizationId}:finance-reports:stream-slots`
   },
 
   agent: {
