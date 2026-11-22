@@ -6,7 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import sharp from 'sharp'
 
 import { JobContext, PrismaService } from '@platform/core/database'
-import { isSanitizedDocumentType, sanitizeDocument } from '@platform/core/document-sanitizer'
+import { isSanitizedDocumentType } from '@platform/core/document-sanitizer'
 import { MediaStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -35,6 +35,7 @@ import {
 import { StorageService } from '@platform/core/storage-module'
 
 import { ClamavClient } from './clamav.client'
+import { DocumentCleaner } from './document-cleaner'
 import { findActivePdfNames } from './pdf-active-content'
 
 // Media.scanResult of a pending picture that was already cleaned of its metadata
@@ -57,7 +58,8 @@ export class MediaPipeline {
     private readonly events: DomainEvents,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ProcessImageJob>,
     private readonly logger: PinoLogger,
-    private readonly jobContext: JobContext
+    private readonly jobContext: JobContext,
+    private readonly documents: DocumentCleaner
   ) {
     this.logger.setContext(MediaPipeline.name)
   }
@@ -237,14 +239,13 @@ export class MediaPipeline {
       if (await this.isGone(media.id, scope)) return false
       throw new Error('the file to clean is not in the bucket')
     }
-    const cleaned = await sanitizeDocument(original, media.contentType)
+    const cleaned = await this.documents.clean(original, media.contentType)
     if (cleaned.kind === 'untouched' && cleaned.why !== 'already_clean') {
-      if (cleaned.why === 'not_cleanable') {
-        this.logger.warn(
-          { mediaId: media.id, storeId: media.storeId },
-          'a document could not be cleaned of its properties and was kept as it came'
-        )
-      }
+      // `not_cleanable`, or `timed_out` (the thread was killed at its deadline): either way the document stays as it came, with its ids in the log
+      this.logger.warn(
+        { mediaId: media.id, storeId: media.storeId, why: cleaned.why },
+        'a document could not be cleaned of its properties and was kept as it came'
+      )
       return true
     }
     // Written only now, with bytes that were made and read back; a failure of the bucket leaves the original and the queue retries. A

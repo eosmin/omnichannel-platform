@@ -245,6 +245,14 @@ export const DocumentSanitizing = {
   // The date the zip entries get, so that the cleaning does not write the day it ran into the file
   ZIP_ENTRY_YEAR: 1980,
   ZIP_LEVEL: 6,
+  // The document thread (Step 7.3): a document is parsed on a worker thread that is killed when it passes the deadline or the memory limit.
+  // The deadline is per document and counts from the start of the thread; a real document of 10 MB takes well under a second
+  THREAD_TIMEOUT_MS: 30_000,
+  THREAD_MAX_OLD_GENERATION_MB: 384,
+  THREAD_MAX_YOUNG_GENERATION_MB: 32,
+  THREAD_STACK_MB: 4,
+  // The file of the thread, next to `main.js` in the bundle of the worker (a second entry of its rspack configuration)
+  THREAD_ENTRY_FILE: 'document-thread.js',
   CORE_PROPERTIES_PATH: 'docProps/core.xml',
   // The end of the type of the relationship that names each part (the whole type is a URL of the Open Packaging Conventions)
   CORE_RELATIONSHIP_SUFFIX: '/core-properties',

@@ -5,7 +5,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import { PDFDocument, PDFName, PDFString } from 'pdf-lib'
 
 import type { JobContext, PrismaService } from '@platform/core/database'
-import { sanitizeDocument } from '@platform/core/document-sanitizer'
+import { sanitizeDocumentInline } from '@platform/core/document-sanitizer'
 import {
   DocumentSanitizing,
   ExistingDocumentSweep,
@@ -15,6 +15,7 @@ import {
 import type { StorageService } from '@platform/core/storage-module'
 
 import { ExistingDocumentSanitizer } from './existing-document-sanitizer.service'
+import { InlineDocumentCleaner } from './testing/inline-document-cleaner'
 
 const STORE = 'store-1'
 const AUTHOR = 'Jane Q. Author'
@@ -61,7 +62,7 @@ async function pdfWithMarkers(): Promise<Buffer> {
 
 // The output of the cleaner is its own fixed point: a PDF that a crash left cleaned in the bucket
 async function cleanPdf(): Promise<Buffer> {
-  const result = await sanitizeDocument(await pdfWithMarkers(), PDF)
+  const result = await sanitizeDocumentInline(await pdfWithMarkers(), PDF)
   if (result.kind !== 'sanitized') throw new Error('the fixture was not cleaned')
   return result.body
 }
@@ -179,7 +180,8 @@ describe('ExistingDocumentSanitizer', () => {
     prisma as unknown as PrismaService,
     { forStore: (_id: string, work: () => Promise<unknown>) => work() } as unknown as JobContext,
     storage as unknown as StorageService,
-    logger as unknown as PinoLogger
+    logger as unknown as PinoLogger,
+    new InlineDocumentCleaner()
   )
 
   function store(

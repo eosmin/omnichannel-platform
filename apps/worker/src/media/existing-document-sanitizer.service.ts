@@ -8,7 +8,7 @@ import {
   JobContextGoneError,
   PrismaService
 } from '@platform/core/database'
-import { isSanitizedDocumentType, sanitizeDocument } from '@platform/core/document-sanitizer'
+import { isSanitizedDocumentType } from '@platform/core/document-sanitizer'
 import { MediaStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import {
@@ -23,6 +23,8 @@ import {
 import { StorageService } from '@platform/core/storage-module'
 
 import { allStoreIds } from '../schedulers/store-sweep'
+
+import { DocumentCleaner } from './document-cleaner'
 
 // The documents that the cleaning of `Step 7.1-I` never saw: they were stored before it existed. Their purposes are the ones the scan
 // cleans for pictures; a financial or fiscal file is evidence that is kept as it came and is never taken (`isEvidenceMedia`, checked again
@@ -106,7 +108,8 @@ export class ExistingDocumentSanitizer {
     private readonly prisma: PrismaService,
     private readonly jobContext: JobContext,
     private readonly storage: StorageService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly documents: DocumentCleaner
   ) {
     this.logger.setContext(ExistingDocumentSanitizer.name)
   }
@@ -223,7 +226,7 @@ export class ExistingDocumentSanitizer {
       return this.mark(row.id, storeId, ExistingDocumentSweep.Outcomes.MISSING, attempt)
     }
     // An error of the machine propagates: it is a failure to try again, never a mark
-    const cleaned = await sanitizeDocument(original, row.contentType)
+    const cleaned = await this.documents.clean(original, row.contentType)
     if (cleaned.kind === 'untouched') {
       if (cleaned.why === ExistingDocumentSweep.Outcomes.ALREADY_CLEAN) {
         // A crash between the write and the mark, or a document that never carried anything: only the mark is written
