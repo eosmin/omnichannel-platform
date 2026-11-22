@@ -560,7 +560,7 @@ describe('The retention run of the worker', () => {
       async function orderDocumentMadeAt(
         storeId: string,
         madeAt: Date,
-        purpose = MediaPurpose.ORDER
+        purpose: string = MediaPurpose.ORDER
       ) {
         const order = await createOrder(owner, { storeId })
         await owner.order.update({ where: { id: order.id }, data: { createdAt: madeAt } })
