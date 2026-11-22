@@ -583,13 +583,45 @@ describe('forza carrier plugin', () => {
         'https://192.168.1.5',
         'https://169.254.169.254',
         'https://intranet',
-        'https://forza.internal'
+        'https://forza.internal',
+        // Other ways to write the same private address, and the IPv6 forms
+        'https://2130706433',
+        'https://0x7f.0.0.1',
+        'https://017700000001',
+        'https://127.1',
+        'https://0',
+        'https://[::1]',
+        'https://[::ffff:127.0.0.1]',
+        'https://[fc00::1]',
+        'https://[fe80::1]',
+        'https://224.0.0.1',
+        'https://255.255.255.255'
       ]) {
         await expect(
           forza.connect({ storeId: 's', credentials: { ...base, baseUrl } })
         ).rejects.toBeInstanceOf(CarrierRejectedError)
       }
       expect(calls).toHaveLength(0)
+    })
+
+    it('refuses at connect an address whose name leads inside (the fetch of the host refuses it), as a refusal and not as an outage', async () => {
+      const { plugin: forza } = plugin(() => {
+        throw new CarrierRejectedError('The address is not on the public internet')
+      })
+      await expect(
+        forza.connect({
+          storeId: 's',
+          credentials: {
+            codApp: FAKE_COD_APP,
+            secretKey: FAKE_SECRET,
+            idClient: 1,
+            country: 'GT',
+            baseUrl: BASE_URL,
+            codeOfReference: 1,
+            originHeaderCodeTownship: '0101'
+          }
+        })
+      ).rejects.toBeInstanceOf(CarrierRejectedError)
     })
 
     it('takes a throttle as unknown, not as a refusal, and a malformed-body 401 as a refusal', async () => {
@@ -723,7 +755,9 @@ describe('forza carrier plugin', () => {
 })
 
 describe('the fee settings of Forza', () => {
-  const { feeSettings } = createForzaCarrierPlugin()
+  const { feeSettings } = createForzaCarrierPlugin({
+    fetch: () => Promise.reject(new Error('no network'))
+  })
   it('takes a commission and prices its one service', () => {
     expect(feeSettings?.commission).toBe(true)
     expect(feeSettings?.rateServices.map(service => service.code)).toEqual(['home'])

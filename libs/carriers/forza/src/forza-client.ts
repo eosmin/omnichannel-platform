@@ -20,6 +20,12 @@ import { decodeForzaPayload, signForzaRequest } from './forza-signing'
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
+// A call that did not go out. The `fetch` of the host refuses an address that does not lead to the public internet with a
+// CarrierRejectedError, before any connection: that is a refusal of the connection data and not an outage (retrying would never help).
+function reachFailure(error: unknown, unreachable: string): Error {
+  return error instanceof CarrierRejectedError ? error : new CarrierUnavailableError(unreachable)
+}
+
 export interface ForzaAnswer {
   objectValue: unknown
   trackOrder: unknown
@@ -111,8 +117,8 @@ export async function callForza(
       redirect: 'error',
       signal: AbortSignal.timeout(ForzaLimits.REQUEST_TIMEOUT_MS)
     })
-  } catch {
-    throw new CarrierUnavailableError('Forza could not be reached')
+  } catch (error) {
+    throw reachFailure(error, 'Forza could not be reached')
   }
 
   const text = await readCapped(response, ForzaLimits.ANSWER_MAX_BYTES)
@@ -167,8 +173,8 @@ export async function downloadForzaPdf(
       redirect: 'error',
       signal: AbortSignal.timeout(ForzaLimits.REQUEST_TIMEOUT_MS)
     })
-  } catch {
-    throw new CarrierUnavailableError('The Forza label could not be downloaded')
+  } catch (error) {
+    throw reachFailure(error, 'The Forza label could not be downloaded')
   }
   if (!response.ok) throw new CarrierUnavailableError('The Forza label could not be downloaded')
   const bytes = await readCapped(response, ForzaLimits.LABEL_MAX_BYTES).catch(() => null)

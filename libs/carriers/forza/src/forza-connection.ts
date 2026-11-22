@@ -1,3 +1,5 @@
+import { isIP } from 'node:net'
+
 import { z } from 'zod'
 
 import type { CarrierContext } from '@platform/plugins/sdk'
@@ -9,16 +11,20 @@ import { ForzaCountries, ForzaLimits, ForzaVehicleTypes } from './forza-constant
 const blankAsUndefined = (value: unknown): unknown => (value === '' ? undefined : value)
 const positiveInt = z.coerce.number().int().positive()
 
-// A signed request goes to this address, so a host that names the machine's own network is refused: localhost, a name with
-// no dot (an internal one) and an IP literal in a private, loopback or link-local range. The name is not resolved here.
-const PRIVATE_IPV4 =
-  /^(0\.|10\.|127\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|192\.0\.0\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/
+// A signed request goes to this address, so a host that names the machine's own network is refused here, at the door of the form:
+// localhost, a name with no dot (an internal one) and any IP literal (a gateway is reached by its name, which its certificate
+// is for; the URL parser writes every spelling of a private address, decimal, octal, hex or short, as an IP literal). The name is
+// not resolved here: the `fetch` the host gives the plugin resolves it at each call, refuses a name that leads to a non-public
+// address and connects to the address it checked (`createPinnedFetch`), so a DNS that points inside is stopped when connecting.
 const INTERNAL_SUFFIX = /\.(local|internal|localhost|lan|home|corp)$/i
 export function isPublicHost(hostname: string): boolean {
-  // `localhost.` is the same host as `localhost`
-  const host = hostname.toLowerCase().replace(/\.+$/, '')
-  if (host === 'localhost' || host.startsWith('[') || INTERNAL_SUFFIX.test(host)) return false
-  if (PRIVATE_IPV4.test(host)) return false
+  // `localhost.` is the same host as `localhost`; `[::1]` keeps its brackets in `hostname`
+  const host = hostname
+    .toLowerCase()
+    .replace(/\.+$/, '')
+    .replace(/^\[|\]$/g, '')
+  if (isIP(host) !== 0) return false
+  if (host === 'localhost' || INTERNAL_SUFFIX.test(host)) return false
   return host.includes('.')
 }
 
