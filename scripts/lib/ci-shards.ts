@@ -108,7 +108,7 @@ export function jestInvocationProblems(command: string): string[] {
   }
   const problems: string[] = []
   for (const call of calls) {
-    if (call.includes('--runInBand') || /\s-i(\s|$)/.test(call)) {
+    if (/--run-?in-?band|\s-i(\s|$)/i.test(call)) {
       problems.push(
         'tests/project.json: the shards of test-security must not run in band (the heap of a process only grows; see jestInvocationProblems)'
       )

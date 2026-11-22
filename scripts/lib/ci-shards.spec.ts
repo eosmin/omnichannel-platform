@@ -236,6 +236,11 @@ describe('jestInvocationProblems', () => {
     expect(
       jestInvocationProblems(projectCommand.replaceAll('--maxWorkers=1', '-i')).join('\n')
     ).toMatch(/in band/)
+    expect(
+      jestInvocationProblems(projectCommand.replaceAll('--maxWorkers=1', '--run-in-band')).join(
+        '\n'
+      )
+    ).toMatch(/in band/)
     const twice = jestInvocationProblems(projectCommand.replaceAll('--maxWorkers=1', ''))
     expect(new Set(twice).size).toBe(twice.length)
   })
