@@ -186,6 +186,24 @@ describe('Orders list: keyset sorts by total and by customer', () => {
     }
   })
 
+  // The key of a customer cursor is text that reaches the database: a NUL (Postgres refuses it in text) or a lone surrogate
+  // (not valid UTF-8) must be a 400 from the schema and never a 500 from the query
+  it.each([
+    ['a NUL character', '\u0000'],
+    ['a lone surrogate', '\ud800'],
+    ['a NUL inside a name', 'an\u0000a']
+  ])('refuses a customer cursor whose key holds %s with a 400', async (_label, key) => {
+    const cursor = Buffer.from(
+      JSON.stringify([null, '2026-06-01T10:00:00.000Z', randomUUID(), key])
+    ).toString('base64url')
+
+    const response = await agent.get(
+      `${ApiRoutes.orders.list}?sort=${OrderSorts.CUSTOMER_NAME}&limit=2&cursor=${cursor}`
+    )
+
+    expect(response.status).toBe(BAD_REQUEST)
+  })
+
   it('keeps the text filter when a cursor is given (the cursor does not replace the filters)', async () => {
     const first = await agent.get(
       `${ApiRoutes.orders.list}?sort=${OrderSorts.TOTAL_HIGHEST}&q=ana&limit=1`

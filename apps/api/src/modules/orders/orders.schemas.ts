@@ -46,13 +46,26 @@ export function encodeOrderCursor(row: OrderCursor): string {
   ).toString('base64url')
 }
 
+// A high surrogate with no low one after it, or a low one with no high one before it (one character each: linear)
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+
 // The key is optional so a cursor issued before the sorts by total and by customer still reads
 const cursorParts = z.tuple([
   z.iso.date().nullable(),
   z.iso.datetime(),
   lowercasedUuidSchema,
   z
-    .union([z.int().min(0).max(ORDER_MAX_AMOUNT_CENTS), z.string().max(OrderCursorKeyMaxLength)])
+    .union([
+      z.int().min(0).max(ORDER_MAX_AMOUNT_CENTS),
+      // Text that reaches the database: Postgres refuses a NUL in `text` and a lone surrogate is not valid UTF-8, so both are a
+      // 400 here and not a 500 from the query
+      z
+        .string()
+        .max(OrderCursorKeyMaxLength)
+        .refine(key => !key.includes('\0') && !LONE_SURROGATE.test(key), {
+          message: 'not a valid key'
+        })
+    ])
     .nullable()
     .optional()
 ])

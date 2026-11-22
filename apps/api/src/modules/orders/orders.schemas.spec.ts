@@ -157,6 +157,26 @@ describe('the sorts of the orders list', () => {
     )
   })
 
+  it.each([
+    ['a NUL', '\u0000'],
+    ['a NUL in a name', 'an\u0000a'],
+    ['a lone surrogate', '\ud800']
+  ])('refuses a name key with %s', (_label, key) => {
+    expect(
+      listOrdersQuerySchema.safeParse({ sort: OrderSorts.CUSTOMER_NAME, cursor: cursorWith(key) })
+        .success
+    ).toBe(false)
+  })
+
+  it('accepts a name key with accents and emoji (a well formed text)', () => {
+    expect(
+      listOrdersQuerySchema.safeParse({
+        sort: OrderSorts.CUSTOMER_NAME,
+        cursor: cursorWith('ñandú 🐦')
+      }).success
+    ).toBe(true)
+  })
+
   it('refuses a key that is not a total in cents or a bounded name', () => {
     expect(
       listOrdersQuerySchema.safeParse({
