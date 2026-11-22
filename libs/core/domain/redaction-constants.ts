@@ -114,6 +114,7 @@ export const SECRET_NAME_FRAGMENTS: readonly string[] = [
   'encryptionkey',
   'sessionid',
   'bearer',
+  'sessionkey',
   'keyhash',
   // The sealed blobs of the database (credentialsEncrypted, dataEncrypted, ...): ciphertext is not for a log
   'encrypted',
@@ -178,23 +179,51 @@ export const SECRET_PAIR_PATTERNS: readonly RegExp[] = [
     String.raw`("[^"\\]{0,64}(?:${FRAGMENTS_IN_TEXT})[^"\\]{0,64}"\s*:\s*)"(?:[^"\\]|\\.)*"`,
     'gi'
   ),
-  new RegExp(String.raw`(\b[\w.-]{0,64}?(?:${FRAGMENTS_IN_TEXT})[\w.-]{0,64}=)[^&\s"']+`, 'gi')
+  new RegExp(
+    String.raw`((?<![\w.-])[\w.-]{0,64}?(?:${FRAGMENTS_IN_TEXT})[\w.-]{0,64}=)[^&\s"']{1,2048}`,
+    'gi'
+  )
 ]
 
 // Strings longer than this are scrubbed up to here and cut: the patterns above cost time in proportion to the text
 export const REDACTION_MAX_TEXT = 65536
+// ... and the text of all the strings of one log line together
+export const REDACTION_MAX_LINE_TEXT = 262144
 
 // A password in the address of a connection (redis://:pw@host, postgres://user:pw@host/db), which the errors of the
 // drivers carry in their message, and a JWT, which is a credential wherever it is written
-export const SECRET_URL_USERINFO = /(\b[a-z][a-z0-9+.-]*:\/\/[^/\s:@]{0,128}:)[^@\s/]{1,256}@/gi
-export const SECRET_JWT = /\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{4,}/g
+export const SECRET_URL_USERINFO =
+  /(\b[a-z][a-z0-9+.-]{0,31}:\/\/[^/\s:@]{0,128}:)[^@\s/]{1,256}@/gi
+export const SECRET_JWT = /\beyJ[\w-]{8,1024}\.[\w-]{8,1024}\.[\w-]{4,1024}/g
 
 // Own names a walk reads on an error and on the objects it skips
 export const ERROR_FIELDS: readonly string[] = ['name', 'message', 'stack', 'cause']
 export const SERIALIZED_LOG_KEYS: readonly string[] = ['req', 'res', 'err']
 export const REDACTION_HANDLE = '[handle]'
 
-export const SECRET_TEXT_PATTERNS: readonly RegExp[] = [
-  /\b(Bearer|Basic) [A-Za-z0-9._~+/=-]{16,}/g,
-  /^((?:proxy-)?authorization|cookie|set-cookie|x-api-key)\s*:[^\r\n]*/gim
+// Text patterns, run in this order. Header lines go by the same fragments as the field names (so `x-amz-security-token`,
+// `x-auth-token` and a provider's `x-foo-signature` are covered without a list), plus the names that carry no fragment.
+export const SECRET_LINE_HEADERS: readonly string[] = [
+  'authorization',
+  'proxy-authorization',
+  'x-api-key',
+  'cookie',
+  'set-cookie'
 ]
+export const SECRET_TEXT_PATTERNS: readonly RegExp[] = [
+  /\b(Bearer) [A-Za-z0-9._~+/=-]{8,512}/gi,
+  /\b(Basic) [A-Za-z0-9+/=]{16,512}/gi,
+  // a hyphen in the name is what tells a header (x-amz-security-token) from an error class (InvalidTokenError: ...)
+  new RegExp(
+    String.raw`^((?=\w{0,64}-)[\w-]{0,64}?(?:${FRAGMENTS_IN_TEXT})[\w-]{0,64}|${SECRET_LINE_HEADERS.join('|')})\s*:[^\r\n]*`,
+    'gim'
+  )
+]
+
+// The one-time and secret params of a redirect (`code`, `state`, `sig`, `key`): everyday words as the name of a
+// field, so they are not redacted by name, but they are in an address or a text
+export const SECRET_URL_PARAMS: readonly string[] = ['code', 'state', 'sig', 'key']
+export const SECRET_URL_PARAM_PATTERN = new RegExp(
+  String.raw`([?&](?:${SECRET_URL_PARAMS.join('|')})=)[^&\s#"']{1,2048}`,
+  'gi'
+)

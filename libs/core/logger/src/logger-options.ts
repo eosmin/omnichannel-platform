@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
-import { stdSerializers } from 'pino'
+import { type Logger, type LogFn, stdSerializers } from 'pino'
 import type { Options } from 'pino-http'
 
 import { API_PREFIX, InfraRoutes } from '@platform/core/api'
@@ -11,6 +11,7 @@ import {
   REDACTED,
   REDACTION_TRUNCATED,
   redactSecrets,
+  scrubSecretText,
   scrubQuery,
   scrubUrl,
   SERIALIZED_LOG_KEYS
@@ -182,6 +183,18 @@ export function redactedPathsFor(declared: readonly string[]): string[] {
   return [...REDACTED_PATHS, ...declaredRedactedKeys([...declared]).flatMap(atEveryDepth)]
 }
 
+// pino's logMethod hook: the arguments of a log call, with every string scrubbed (objects go through the formatter)
+export function scrubMessageArguments(
+  this: Logger<never, boolean>,
+  args: Parameters<LogFn>,
+  method: LogFn
+): void {
+  const scrubbed = args.map(argument =>
+    typeof argument === 'string' ? scrubSecretText(argument) : argument
+  ) as Parameters<LogFn>
+  method.apply(this, scrubbed)
+}
+
 // pino-http hands over an error it has already serialized; a bare pino hands over the Error itself
 function serializeError(error: unknown): unknown {
   return error instanceof Error ? stdSerializers.err(error) : error
@@ -192,16 +205,24 @@ function redactLogObject(
   object: Record<string, unknown>,
   declared: readonly string[]
 ): Record<string, unknown> {
-  const rest = Object.fromEntries(
-    Object.entries(object).filter(([name]) => !SERIALIZED_KEYS.has(name))
+  try {
+    const rest = Object.fromEntries(
+      Object.entries(object).filter(([name]) => !SERIALIZED_KEYS.has(name))
+    )
+    const walked = redactSecrets(rest, declared)
+    if (typeof walked === 'object' && walked !== null) {
+      return { ...object, ...(walked as Record<string, unknown>) }
+    }
+  } catch {
+    // Object.entries runs the getters of the object: one that throws lands here
+  }
+  // A walk that failed: the fields are not logged (Object.keys runs no getter), failing closed and never raising
+  return Object.fromEntries(
+    Object.keys(object).map(name => [
+      name,
+      SERIALIZED_KEYS.has(name) ? undefined : REDACTION_TRUNCATED
+    ])
   )
-  const walked = redactSecrets(rest, declared)
-  // A walk that failed leaves a marker, and the fields are not logged: failing closed, never raising
-  const redacted =
-    typeof walked === 'object' && walked !== null
-      ? (walked as Record<string, unknown>)
-      : Object.fromEntries(Object.keys(rest).map(name => [name, REDACTION_TRUNCATED]))
-  return { ...object, ...redacted }
 }
 
 export function buildPinoHttpOptions({
@@ -227,6 +248,9 @@ export function buildPinoHttpOptions({
     // depth), so a secret nobody listed fails closed: what is logged alone or in a context (`formatters.log`),
     // the request and response, and the error of an HTTP client with its `config.headers` (the serializers).
     redact: { paths: redactedPathsFor(redactedKeys), remove: true },
+    // The text of a message (`logger.error({ ... }, text)`, `logger.error(text)`) is not a field: the formatter never
+    // sees it, so every string argument goes through the text scrubber (a `${error.message}` that carries an address)
+    hooks: { logMethod: scrubMessageArguments },
     formatters: { log: (object: Record<string, unknown>) => redactLogObject(object, redactedKeys) },
     serializers: {
       req: (request: LoggedRequest) => redactSecrets(scrubRequest(request), redactedKeys),

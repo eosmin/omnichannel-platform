@@ -6,6 +6,7 @@ import {
   REDACTION_MAX_TEXT,
   REDACTION_CIRCULAR,
   REDACTION_MAX_DEPTH,
+  REDACTION_MAX_LINE_TEXT,
   REDACTION_MAX_NODES,
   REDACTION_TRUNCATED,
   SECRET_EXACT_NAMES,
@@ -14,6 +15,7 @@ import {
   SECRET_NAME_FRAGMENTS,
   SECRET_PAIR_PATTERNS,
   SECRET_TEXT_PATTERNS,
+  SECRET_URL_PARAM_PATTERN,
   SECRET_URL_USERINFO
 } from './redaction-constants'
 import { REDACTED } from './scrub-url'
@@ -34,32 +36,51 @@ export function isSecretName(name: string): boolean {
   )
 }
 
-// A credential that travels inside a text
+// Replaces `pattern` in `text` only when `needle` is in it: a cheap test that keeps a hostile string off the regexes
+function scrubWith(
+  text: string,
+  needle: string | readonly string[],
+  pattern: RegExp,
+  replacement: (...groups: string[]) => string
+): string {
+  const needles = typeof needle === 'string' ? [needle] : needle
+  if (!needles.some(item => text.includes(item))) return text
+  pattern.lastIndex = 0
+  return text.replace(pattern, (_match: string, ...groups: string[]) => replacement(...groups))
+}
+
+// A credential that travels inside a text. Every pattern is bounded (no scheme, name or run without a limit) and
+// the text itself is cut at REDACTION_MAX_TEXT, so the work is linear in the size of the text.
 export function scrubSecretText(text: string): string {
   let scrubbed = text.length > REDACTION_MAX_TEXT ? text.slice(0, REDACTION_MAX_TEXT) : text
   const cut = scrubbed.length < text.length
-  for (const pattern of SECRET_TEXT_PATTERNS) {
-    pattern.lastIndex = 0
-    scrubbed = scrubbed.replace(pattern, (match: string, label: string) =>
-      pattern.multiline ? `${label}: ${REDACTED}` : `${label} ${REDACTED}`
-    )
+  const [bearer, basic, headerLine] = SECRET_TEXT_PATTERNS
+  const lower = scrubbed.toLowerCase()
+  if (lower.includes('bearer ') && bearer) {
+    scrubbed = scrubWith(scrubbed, ' ', bearer, label => `${label} ${REDACTED}`)
   }
-  for (const pattern of SECRET_PAIR_PATTERNS) {
-    pattern.lastIndex = 0
-    scrubbed = scrubbed.replace(pattern, (_match: string, name: string) =>
-      name.endsWith('=') ? `${name}${REDACTED}` : `${name}"${REDACTED}"`
-    )
+  if (lower.includes('basic ') && basic) {
+    scrubbed = scrubWith(scrubbed, ' ', basic, label => `${label} ${REDACTED}`)
   }
-  SECRET_URL_USERINFO.lastIndex = 0
-  SECRET_JWT.lastIndex = 0
-  scrubbed = scrubbed
-    .replace(SECRET_URL_USERINFO, (_match: string, head: string) => `${head}${REDACTED}@`)
-    .replace(SECRET_JWT, REDACTED)
+  if (scrubbed.includes(':') && headerLine) {
+    scrubbed = scrubWith(scrubbed, ':', headerLine, label => `${label}: ${REDACTED}`)
+  }
+  const [jsonPair, textPair] = SECRET_PAIR_PATTERNS
+  if (jsonPair) scrubbed = scrubWith(scrubbed, '"', jsonPair, name => `${name}"${REDACTED}"`)
+  if (textPair) scrubbed = scrubWith(scrubbed, '=', textPair, name => `${name}${REDACTED}`)
+  scrubbed = scrubWith(scrubbed, ['?', '&'], SECRET_URL_PARAM_PATTERN, head => `${head}${REDACTED}`)
+  scrubbed = scrubWith(scrubbed, '://', SECRET_URL_USERINFO, head => `${head}${REDACTED}@`)
+  if (scrubbed.includes('eyJ')) {
+    SECRET_JWT.lastIndex = 0
+    scrubbed = scrubbed.replace(SECRET_JWT, REDACTED)
+  }
   return cut ? `${scrubbed}${REDACTION_TRUNCATED}` : scrubbed
 }
 
 interface Walk {
   nodes: number
+  // Characters of text still to be checked in this line
+  textLeft: number
   readonly path: WeakSet<object>
   // Names the plugins declared, in the normalized form: secret wherever they are
   readonly declared: ReadonlySet<string>
@@ -80,6 +101,7 @@ export function redactSecrets(value: unknown, declaredNames: readonly string[] =
 function redactWalk(value: unknown, declaredNames: readonly string[]): unknown {
   const walk: Walk = {
     nodes: 0,
+    textLeft: REDACTION_MAX_LINE_TEXT,
     path: new WeakSet<object>(),
     declared: new Set(declaredNames.map(normalize))
   }
@@ -87,7 +109,11 @@ function redactWalk(value: unknown, declaredNames: readonly string[]): unknown {
 }
 
 function visit(value: unknown, depth: number, walk: Walk): unknown {
-  if (typeof value === 'string') return scrubSecretText(value)
+  if (typeof value === 'string') {
+    // The text of the whole line is bounded: what is past the budget is cut, never logged unchecked
+    walk.textLeft -= Math.min(value.length, REDACTION_MAX_TEXT)
+    return walk.textLeft < 0 ? REDACTION_TRUNCATED : scrubSecretText(value)
+  }
   if (typeof value !== 'object' || value === null) return value
   if (value instanceof Date) return value
   if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return REDACTION_BINARY
@@ -107,6 +133,9 @@ function visit(value: unknown, depth: number, walk: Walk): unknown {
     if (Array.isArray(value)) return value.map(item => visit(item, depth + 1, walk))
     if (value instanceof Set) return [...value].map(item => visit(item, depth + 1, walk))
     return visitFields(entriesOf(value), depth, walk)
+  } catch {
+    // A getter or a toJSON that throws costs this value, not the rest of the line
+    return REDACTION_TRUNCATED
   } finally {
     walk.path.delete(value)
   }

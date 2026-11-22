@@ -84,6 +84,102 @@ describe('isSecretName', () => {
   })
 })
 
+// Every text pattern against strings of the maximum size built to make a backtracking regex work hard (9b, #891)
+describe('scrubSecretText, hostile strings', () => {
+  const HOSTILE: [string, string][] = [
+    ['dotted scheme', 'a.'.repeat(32768)],
+    ['hyphen scheme', 'a-'.repeat(32768)],
+    ['plus scheme', 'a+'.repeat(32768)],
+    ['long scheme', 'ab.'.repeat(21845)],
+    ['token name', 'token.'.repeat(10923)],
+    ['jwt starts', 'eyJ'.repeat(21845)],
+    ['jwt run', `eyJ${'a'.repeat(65000)}`],
+    ['bearer words', 'Bearer a '.repeat(7281)],
+    ['bearer run', `Bearer ${'a'.repeat(65000)}`],
+    ['basic run', `Basic ${'a'.repeat(65000)}`],
+    ['quotes', '"a'.repeat(32768)],
+    ['quoted names', '"token'.repeat(10923)],
+    ['equals', 'a='.repeat(32768)],
+    ['name equals', 'secret='.repeat(9362)],
+    ['url params', '?code='.repeat(10923)],
+    ['header lines', 'x-token:\n'.repeat(7281)],
+    ['blank lines', '\n'.repeat(65000)],
+    ['hyphen names', 'x-'.repeat(32768)]
+  ]
+
+  it.each(HOSTILE)('stays fast on %s', (_label, text) => {
+    const started = performance.now()
+    scrubSecretText(text)
+    expect(performance.now() - started).toBeLessThan(150)
+  })
+})
+
+describe('redactSecrets, the text of a line is bounded as a whole', () => {
+  it('replaces the strings past the budget of the line, and never logs them unchecked', () => {
+    const big = 'x'.repeat(60000)
+    const out = redactSecrets({ list: Array.from({ length: 12 }, () => big) }) as { list: string[] }
+    expect(out.list.at(-1)).toBe('[truncated]')
+    expect(out.list[0]).toBe(big)
+  })
+})
+
+describe('redactSecrets, the message of a log call and the lines it keeps', () => {
+  it('redacts a lower case bearer and its token in a header=value text', () => {
+    expect(scrubSecretText('authorization=bearer abcdefghijkl1234')).not.toContain('abcdefghijkl')
+    expect(scrubSecretText('authorization: bearer abcdefghijkl1234')).not.toContain('abcdefghijkl')
+  })
+
+  it.each([
+    'x-amz-security-token',
+    'X-Auth-Token',
+    'x-csrf-token',
+    'x-goog-signature',
+    'x-api-key',
+    'set-cookie',
+    'Cookie',
+    'proxy-authorization'
+  ])('redacts the line of the header %s', name => {
+    expect(scrubSecretText(`${name}: real-value\nhost: a`)).toBe(`${name}: ${REDACTED}\nhost: a`)
+  })
+
+  it('does not take an error class for a header', () => {
+    expect(scrubSecretText('InvalidTokenError: jwt expired')).toBe('InvalidTokenError: jwt expired')
+  })
+
+  it('redacts sessionKey as a field name', () => {
+    expect(JSON.stringify(redactSecrets({ sessionKey: 'real-1' }))).not.toContain('real-1')
+  })
+
+  it('redacts code, state, sig and key params in an address or a text, and keeps the others', () => {
+    const out = scrubSecretText(
+      'GET /cb?code=real-1&state=real-2&sig=real-3&x=1&key=real-4 and ?page=2'
+    )
+    for (let n = 1; n <= 4; n += 1) expect(out).not.toContain(`real-${n}`)
+    expect(out).toContain('x=1')
+    expect(out).toContain('page=2')
+  })
+
+  it('does not redact code and state as fields', () => {
+    expect(redactSecrets({ code: 'ECONNREFUSED', state: 'open' })).toEqual({
+      code: 'ECONNREFUSED',
+      state: 'open'
+    })
+  })
+
+  it('keeps the other fields when one value throws', () => {
+    const out = redactSecrets({
+      a: {
+        toJSON: () => {
+          throw new Error('x')
+        }
+      },
+      b: 'kept'
+    }) as Record<string, unknown>
+    expect(out['b']).toBe('kept')
+    expect(out['a']).toBe('[truncated]')
+  })
+})
+
 describe('redactSecrets, hostile input', () => {
   it('stays fast on a long string that is almost a pair, and cuts it', () => {
     const started = performance.now()

@@ -628,6 +628,46 @@ describe('redaction by the name of the field', () => {
     expect(line({ ctx: { acmeBadge: 'leak-1' } }, ['acmeBadge'])).not.toContain('leak-1')
   })
 
+  function lineOf(call: (logger: ReturnType<typeof pino>) => void): string {
+    let output = ''
+    const stream = new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        output += chunk.toString()
+        done()
+      }
+    })
+    const { redact, formatters, serializers, hooks } = buildPinoHttpOptions({ level: 'info' })
+    call(pino({ redact, formatters, serializers, hooks }, stream))
+    return output
+  }
+
+  it('scrubs the text of the message, with and without an object', () => {
+    const text =
+      'connect failed redis://:real-pw@cache:6379 token eyJhbGciOiJI.eyJzdWIiOiIx.abcd1234'
+    const withObject = lineOf(logger => logger.error({ storeId: 's1' }, text))
+    const alone = lineOf(logger => logger.error(text))
+    const interpolated = lineOf(logger => logger.error({ storeId: 's1' }, 'failed: %s', text))
+    for (const output of [withObject, alone, interpolated]) {
+      expect(output).not.toContain('real-pw')
+      expect(output).not.toContain('eyJhbGci')
+      expect(output).toContain('connect failed')
+    }
+  })
+
+  it('does not raise on a getter of the first level, and keeps the line', () => {
+    const hostile = {
+      storeId: 's1',
+      get boom(): string {
+        throw new Error('getter')
+      }
+    }
+    let output = ''
+    expect(() => {
+      output = lineOf(logger => logger.info(hostile, 'event'))
+    }).not.toThrow()
+    expect(output).toContain('event')
+  })
+
   it('redacts what it keeps of a large payload and cuts the rest', () => {
     const wide = Object.fromEntries(
       Array.from({ length: 20000 }, (_, index) => [`field${index}`, { token: `leak-${index}` }])
