@@ -1603,14 +1603,18 @@ model UserNotificationSettings {
 }
 
 model PushSubscription {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  userAgent String?  @map("user_agent")
-  createdAt DateTime @default(now()) @map("created_at")
-  lastUsed  DateTime @default(now()) @map("last_used")
+  id                    String   @id @default(uuid())
+  userId                String   @map("user_id")
+  endpoint              String   @unique
+  p256dh                String
+  auth                  String
+  userAgent             String?  @map("user_agent")
+  createdAt             DateTime @default(now()) @map("created_at")
+  lastUsed              DateTime @default(now()) @map("last_used")
+  // Pushes in a row that the push service refused for good; one delivered push resets it (PushLimits.MAX_REFUSALS)
+  refusedCount          Int      @default(0) @map("refused_count")
+  // The last notification that counted in it, so the retries of one job count once
+  refusedNotificationId String?  @map("refused_notification_id")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
