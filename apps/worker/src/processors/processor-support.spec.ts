@@ -5,6 +5,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import { JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
 import type { QueuesRegistry } from '@platform/core/queues-module'
 
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 interface Harness {
@@ -57,17 +58,61 @@ describe('ProcessorSupport', () => {
     it('copies the job to the dead-letter queue on its last attempt', async () => {
       const { support, deadLetterAdd } = build()
 
-      await support.failedAttempt(QueueNames.EMAIL, jobOf(3, 3), new Error('provider down'))
+      const job = { ...jobOf(3, 3), name: JobNames.TRIGGER_WEBHOOK } as unknown as Job
+
+      await support.failedAttempt(QueueNames.WEBHOOKS, job, new Error('provider down'))
 
       expect(deadLetterAdd).toHaveBeenCalledWith(
         JobNames.EXHAUSTED,
         expect.objectContaining({
-          originalQueue: QueueNames.EMAIL,
-          originalJobName: JobNames.SEND_EMAIL,
+          originalQueue: QueueNames.WEBHOOKS,
+          originalJobName: JobNames.TRIGGER_WEBHOOK,
           originalJobId: '7',
           originalData: { to: 'person@example.com' },
           error: 'provider down'
         })
+      )
+    })
+
+    it.each([
+      ['a payload past the limit of its queue', 'the job payload is larger than its queue allows'],
+      ['a payload that is not its job type', 'the webhook job does not fit its schema']
+    ])('copies %s to the dead-letter queue without its data', async (_name, message) => {
+      const { support, deadLetterAdd } = build()
+      const job = { ...jobOf(1, 3), data: { note: 'x'.repeat(1000), to: 'person@example.com' } }
+
+      await support.failedAttempt(
+        QueueNames.WEBHOOKS,
+        job as unknown as Job,
+        new JobRejectedError(message)
+      )
+
+      expect(deadLetterAdd).toHaveBeenCalledWith(
+        JobNames.EXHAUSTED,
+        expect.objectContaining({ originalData: null, error: message })
+      )
+    })
+
+    it('copies the email of any template without its data: its text and its links are in it', async () => {
+      const { support, deadLetterAdd } = build()
+      const job = {
+        ...jobOf(3, 3),
+        name: JobNames.SEND_EMAIL,
+        data: {
+          to: 'person@example.com',
+          data: { url: 'https://app.example.com/dsr#token=secret' }
+        }
+      }
+
+      await support.failedAttempt(
+        QueueNames.EMAIL,
+        job as unknown as Job,
+        new Error('provider down')
+      )
+
+      expect(deadLetterAdd).toHaveBeenCalledWith(
+        JobNames.EXHAUSTED,
+        expect.objectContaining({ originalJobName: JobNames.SEND_EMAIL, originalData: null })
       )
     })
 
