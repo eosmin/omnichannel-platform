@@ -274,6 +274,35 @@ describe('MediaPipeline', () => {
       expect(await storage.head(media.key)).toBeNull()
     }, 60_000)
 
+    it('cuts the comment out of a gif and keeps its frames', async () => {
+      const frames = Buffer.concat(
+        ['#f00', '#00f'].map(colour => Buffer.alloc(8 * 8 * 3, colour === '#f00' ? 0xf0 : 0x0f))
+      )
+      const gif = await sharp(frames, { raw: { width: 8, height: 16, channels: 3, pageHeight: 8 } })
+        .gif()
+        .toBuffer()
+      const flags = gif[10] ?? 0
+      const at = 13 + ((flags & 0x80) === 0 ? 0 : 3 * 2 ** ((flags & 0x07) + 1))
+      const secret = 'taken at 4.6,-74.0 by Jane'
+      const comment = Buffer.concat([
+        Buffer.from([0x21, 0xfe, secret.length]),
+        Buffer.from(secret),
+        Buffer.from([0])
+      ])
+      const dirty = Buffer.concat([gif.subarray(0, at), comment, gif.subarray(at)])
+      const media = await pendingMedia('moving.gif', 'image/gif', dirty)
+
+      await pipeline.scan(media.id, { storeId })
+
+      const body = await stored(media.key)
+      expect(body.includes(secret)).toBe(false)
+      expect((await sharp(body, { animated: true }).metadata()).pages).toBe(2)
+      const row = await readMedia(media.id)
+      expect(row.status).toBe('clean')
+      expect(row.fileSize).toBe(body.length)
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
+    })
+
     it('does not touch an animation', async () => {
       const frames = Buffer.concat(
         ['#f00', '#00f'].map(colour => Buffer.alloc(8 * 8 * 3, colour === '#f00' ? 0xf0 : 0x0f))
@@ -339,9 +368,15 @@ describe('MediaPipeline', () => {
   })
 
   it('leaves the image as it is when it cannot be decoded, and says it is settled', async () => {
-    // A gif is not re-encoded by the cleaning of metadata (that would flatten it), so a broken one gets
-    // to the variants; a broken jpeg, png or webp is refused earlier, at the scan
-    const media = await pendingMedia('broken.gif', 'image/gif', Buffer.from('GIF89a not an image'))
+    // A gif is not re-encoded by the cleaning of metadata (that would flatten it): its blocks are walked and copied. One whose
+    // blocks are in order but whose pixel data is garbage passes the cleaning and gets to the variants; one that cannot be
+    // walked is refused earlier, at the scan
+    const good = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#f00' } })
+      .gif()
+      .toBuffer()
+    const garbage = Buffer.from(good)
+    garbage.fill(0xff, garbage.length - 7, garbage.length - 3)
+    const media = await pendingMedia('broken.gif', 'image/gif', garbage)
     await pipeline.scan(media.id, { storeId })
     await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
 
@@ -444,7 +479,13 @@ describe('MediaPipeline', () => {
       .withMetadata({ orientation: 6 })
       .webp({ loop: 0 })
       .toBuffer()
-    const media = await processed('turned.webp', 'image/webp', rotated)
+    // The cleaning of the scan would cut that orientation (it is EXIF), so the bytes are put in the bucket after it: the case is a
+    // picture stored before the cleaning existed
+    const media = await pendingMedia('turned.webp', 'image/webp', await animation(6, 40, 'webp'))
+    await pipeline.scan(media.id, { storeId })
+    await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
+    await storage.put(media.key, rotated, 'image/webp')
+    await pipeline.processImage(media.id, { storeId })
 
     const row = await readMedia(media.id)
     expect(row.variants).not.toBeNull()

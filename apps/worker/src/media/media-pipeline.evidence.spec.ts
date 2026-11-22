@@ -38,6 +38,7 @@ describe('MediaPipeline and financial evidence', () => {
     const storage = {
       stream: jest.fn().mockResolvedValue('body'),
       read: jest.fn(),
+      put: jest.fn(),
       delete: jest.fn()
     }
     const logger = { setContext: jest.fn(), warn: jest.fn(), error: jest.fn() }
@@ -151,14 +152,16 @@ describe('MediaPipeline and financial evidence', () => {
       expect(updateMany.mock.calls[0]?.[0]).toMatchObject({ data: { status: 'clean' } })
     })
 
-    it('reads the bytes of a finance document only (a PDF of a conversation is not looked into)', async () => {
+    it('does not look into the active names of a PDF of a conversation (it is only cleaned of its properties)', async () => {
       const { pipeline, storage, updateMany } = build(
         MediaPurpose.MESSAGE,
         jest.fn().mockResolvedValue({ infected: false })
       )
       storage.read.mockResolvedValue(ACTIVE)
       await pipeline.scan('media-1', { storeId: 'store-1' })
-      expect(storage.read).not.toHaveBeenCalled()
+      // Read once, for the cleaning of its properties; the bytes cannot be rewritten (not a real PDF), so they are kept as they came
+      expect(storage.read).toHaveBeenCalledTimes(1)
+      expect(storage.put).not.toHaveBeenCalled()
       expect(updateMany.mock.calls[0]?.[0]).toMatchObject({ data: { status: 'clean' } })
     })
 

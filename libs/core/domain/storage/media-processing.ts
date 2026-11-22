@@ -111,9 +111,10 @@ export const ImageSanitizing = {
   // The pixels a picture may have to be cleaned. Under the 100 million of the variants: the picture is
   // decoded whole, unscanned, and the worker runs jobs side by side (50 million is a 48 MP camera)
   MAX_INPUT_PIXELS: 50_000_000,
-  // The types that are re-encoded. A gif or an animated webp or png is left as it came (see the plan,
-  // Step 7.1): the encoder would flatten it, and #181 keeps stickers moving.
-  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp'],
+  // The types the cleaner takes. A jpeg, a png or a webp that is a still picture is re-encoded; a gif and an animated webp or png are
+  // never re-encoded (the encoder would flatten them, and #181 keeps stickers moving): their metadata blocks are cut out of the
+  // container and every other byte stays (`animated-image-cleaner.ts`, Step 7.1)
+  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
   // The pictures one worker process decodes at the same time, whatever the concurrency of the queues that call the cleaner: a
   // picture of MAX_INPUT_PIXELS is about 200 MB of raster plus the encoder, so the peak of the cleaning is bounded by this number
   // and not by the sum of the queues (Step 7.1, "Memory of the picture cleaning")
@@ -180,4 +181,58 @@ export const PdfInspection = {
   HEX_ESCAPE_MARK: '#',
   HEX_ESCAPE_PATTERN: '#([0-9A-Fa-f]{2})',
   HEX_RADIX: 16
+} as const
+
+// What is cut out of a gif, an animated WebP and an animated PNG (`animated-image-cleaner.ts`). The frames, the delays and the loop are
+// never touched, only the blocks that can carry an author, a program, a comment or a place.
+export const AnimatedImageCleaning = {
+  // A gif extension that stays: the loop count of the animation and the colour profile (the others, XMP and the program that wrote it, go)
+  GIF_KEPT_APPLICATIONS: ['NETSCAPE2.0', 'ANIMEXTS1.0', 'ICCRGBG1012'],
+  GIF_APPLICATION_ID_BYTES: 11,
+  // The RIFF chunks of a WebP that hold metadata (the colour profile stays), and the flags of its extended header that announce them
+  WEBP_DROPPED_CHUNKS: ['EXIF', 'XMP '],
+  WEBP_FLAG_EXIF: 0x08,
+  WEBP_FLAG_XMP: 0x04,
+  // The PNG chunks that hold text, a program or a date: they are not needed to draw it
+  PNG_DROPPED_CHUNKS: ['eXIf', 'tEXt', 'zTXt', 'iTXt', 'tIME']
+} as const
+
+// What is cut out of a PDF, a docx and an xlsx on upload (`document-sanitizer.ts`, Step 7.1): the author, the program and the dates of the
+// document properties, and the thumbnail. The content, the styles and the comments stay. A document that is financial evidence is kept
+// as it came (`isEvidenceMedia`), and one that cannot be cleaned without risk is kept as it came and logged.
+export const DocumentSanitizing = {
+  PDF_CONTENT_TYPE: 'application/pdf',
+  // The key a digital signature of a PDF always has (the byte range it covers): a PDF with it is not rewritten
+  PDF_SIGNATURE_MARK: '/ByteRange',
+  DOCX_CONTENT_TYPE: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  XLSX_CONTENT_TYPE: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  // The sum of what a zip may inflate to: a bigger one is not opened (a zip bomb); the document stays as it came
+  MAX_UNCOMPRESSED_BYTES: 64 * 1024 * 1024,
+  MAX_ZIP_ENTRIES: 5000,
+  // The list of relationships of a package (a real one is under 10 KB); past this the document is kept as it came
+  MAX_RELATIONSHIPS_BYTES: 64 * 1024,
+  // The date the zip entries get, so that the cleaning does not write the day it ran into the file
+  ZIP_ENTRY_YEAR: 1980,
+  ZIP_LEVEL: 6,
+  CORE_PROPERTIES_PATH: 'docProps/core.xml',
+  // The end of the type of the relationship that names each part (the whole type is a URL of the Open Packaging Conventions)
+  CORE_RELATIONSHIP_SUFFIX: '/core-properties',
+  THUMBNAIL_RELATIONSHIP_SUFFIX: '/thumbnail',
+  APP_PROPERTIES_PATH: 'docProps/app.xml',
+  CUSTOM_PROPERTIES_PATH: 'docProps/custom.xml',
+  THUMBNAIL_PATH_PATTERN: '^docProps/thumbnail\\.[a-z]+$',
+  RELATIONSHIPS_PATH: '_rels/.rels',
+  CORE_PROPERTIES_XML:
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" ' +
+    'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" ' +
+    'xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"/>',
+  APP_PROPERTIES_XML:
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" ' +
+    'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"/>',
+  CUSTOM_PROPERTIES_XML:
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" ' +
+    'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"/>'
 } as const

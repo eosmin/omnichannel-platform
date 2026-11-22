@@ -1161,9 +1161,15 @@ a retry does not encode it twice. The log and the audit of this step carry ids, 
 bit for bit, is not kept (accepted). Both ways go through this one scan: the file an agent uploads and the
 file the inbound fetcher keeps. A picture that cannot be cleaned (corrupt, a bomb, bytes that are not its type)
 is never kept: the row ends `unscannable` with `scanResult.reason = 'image_not_sanitizable'`, the object is
-deleted, `media.unscannable` is announced. Limits: a gif, an animated WebP and an animated PNG are not
-re-encoded (the encoder would flatten them; stickers keep moving), so their metadata stays; the metadata of
-PDF and Office files is out of scope (plan, Step 7.1). The re-encoding is lossy for JPEG and WebP, and a
+deleted, `media.unscannable` is announced. A gif, an animated WebP and an animated PNG are not
+re-encoded (the encoder would flatten them; stickers keep moving): the blocks that carry metadata are cut
+out of the container (`animated-image-cleaner.ts`) and every other byte is copied, so frames, delays and the
+loop stay; the result is read back before it replaces the object. A PDF, a docx and an xlsx that is not
+financial evidence loses its properties in the same scan (`document-sanitizer.ts`): the information
+dictionary and XMP of a PDF, `docProps` and the thumbnail of an Office package. A document that cannot be
+cleaned without risk (encrypted or signed PDF, damaged file) is kept as it came and logged, never refused.
+What each keeps on purpose (comment and revision authors, embedded files) is listed in the plan, Step 7.1.
+Video and audio are not cleaned (plan, Step 7.1). The re-encoding is lossy for JPEG and WebP, and a
 retry of the scan encodes the clean file again.
 
 **Virus scanning (ClamAV), then image processing:**
