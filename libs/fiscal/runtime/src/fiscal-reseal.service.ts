@@ -8,6 +8,7 @@ import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher, DecryptionError, failureOf, SealedWith } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import {
+  FISCAL_RESEAL_MISMATCH,
   FISCAL_RESEAL_WRITE_FAILED,
   FiscalReseal,
   FiscalResealOutcome,
@@ -15,6 +16,14 @@ import {
   SealedValueKind
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
+
+// The value sealed again did not open to the same content (never carries the content)
+class ResealMismatchError extends Error {
+  constructor() {
+    super('the value sealed again does not open to the same content')
+    this.name = 'ResealMismatchError'
+  }
+}
 
 // What one run of one organization did, by the kind of value. Counts only: never a value, never a fragment of one.
 export interface FiscalResealReport {
@@ -119,7 +128,11 @@ export class FiscalResealService {
             // One value that cannot be handled must not stop the others: it is counted by the code of the failure and left as it was. A
             // cipher failure has its own code; anything else (a write the database refused) is `write_failed`, not a damaged row
             const code =
-              error instanceof DecryptionError ? failureOf(error) : FISCAL_RESEAL_WRITE_FAILED
+              error instanceof DecryptionError
+                ? failureOf(error)
+                : error instanceof ResealMismatchError
+                  ? FISCAL_RESEAL_MISMATCH
+                  : FISCAL_RESEAL_WRITE_FAILED
             report.failed[code] = (report.failed[code] ?? 0) + 1
             this.logger.error(
               {
@@ -225,14 +238,14 @@ export class FiscalResealService {
       second === null ? null : new Uint8Array(this.cipher.seal(second.credentials))
     // What was sealed again must open, with the current key alone, to the very same content (the same transaction, before the write)
     if (!isDeepStrictEqual(this.cipher.open(next), first.credentials)) {
-      throw new Error('the value sealed again does not open to the same content')
+      throw new ResealMismatchError()
     }
     if (
       second !== null &&
       nextPayload !== null &&
       !isDeepStrictEqual(this.cipher.open(nextPayload), second.credentials)
     ) {
-      throw new Error('the payload sealed again does not open to the same content')
+      throw new ResealMismatchError()
     }
     const swapped = await this.swap(kind, organizationId, row, next, nextPayload)
     return swapped ? FiscalResealOutcome.RESEALED : FiscalResealOutcome.CONFLICT

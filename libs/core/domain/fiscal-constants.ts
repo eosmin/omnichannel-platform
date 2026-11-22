@@ -376,3 +376,5 @@ export const FiscalResealOutcome = {
 } as const
 export type FiscalResealOutcome = (typeof FiscalResealOutcome)[keyof typeof FiscalResealOutcome]
 export const FISCAL_RESEAL_WRITE_FAILED = 'write_failed'
+// The value was sealed again but the new one did not open to the same content: nothing was written
+export const FISCAL_RESEAL_MISMATCH = 'reseal_mismatch'

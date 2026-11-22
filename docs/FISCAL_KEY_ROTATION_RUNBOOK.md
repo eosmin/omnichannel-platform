@@ -36,11 +36,18 @@ signing). The fiscal values can be rotated on their own only in an environment t
      Do not remove the previous key. Find the row by its id and restore it from the backup if it is damaged.
    - `row_damaged`: the bytes are not a sealed value. Same: left as it was.
    - `key_missing`: the key of the process is not 32 bytes.
+   - `reseal_mismatch`: the value opened but the one sealed again did not open to the same content; nothing was written. A defect of
+     the job, not of the data: do not retire the previous key, report it.
    - `write_failed`: the value opened but the database refused the write (the log has the error name): not a damaged row. Look at the
      database, not at the backup.
 5. **Check the end.** Two runs in a row (two nights) where every organization logs `resealed: 0`, `failed: {}` and `truncated: false`. `resealed: 0` means
    every value already opens with the new key. Also look at the audit trail: `fiscal.value_resealed` has one entry per value sealed again
    (kind and row id, never content).
+   **Condition, a risk of LOSING DATA:** every organization that holds fiscal rows must appear in the log of the run. An organization
+   with no books set up is not checked, and its fiscal data is NOT sealed again; retiring the previous key would make it unreadable. Count
+   the organizations with fiscal values (counts only, never values) and compare with the organizations in the log:
+   `SELECT count(DISTINCT organization_id) FROM fiscal_documents;` (and the same over `fiscal_issuers`, `fiscal_contingencies`, and
+   `customer_fiscal_data` joined to `stores`). Any organization missing from the log blocks step 6.
 6. **Retire the old key.** Remove `CREDENTIALS_ENCRYPTION_KEY_PREVIOUS` from the api and the worker and restart. Check: the fiscal screens
    still open a document, a receiver and the issuer's credentials. Only now destroy the old key. Keep the backup of step 1 until then.
 
@@ -51,6 +58,9 @@ sealed again open with the previous key, the rest with the current one). After s
 except the backup.
 
 ## Limits to know
+
+- The owner of the function `fiscal_reseal_document` (the role of the migrations) also passes the door if it sets the setting by hand: the
+  same level of power as being able to disable the trigger. The door is closed to `platform_app` and `platform_worker`.
 
 - An organization is checked only by the nightly run of the books: an organization with no books set up has no night. Its fiscal data is
   not reached until it has them (debt in the plan, Step 7.3-S11b).
