@@ -374,7 +374,9 @@ export const FiscalReseal = {
   // do not count, so the next run reaches the rest
   MAX_VALUES_PER_KIND: 5000,
   // The rows of one run whose failed mask is named in the log (the rest are only counted)
-  MAX_MASK_FAILURES_LOGGED: 20
+  MAX_MASK_FAILURES_LOGGED: 20,
+  // The most rows of one run that the step of the masks reads (the ones nobody opens are read again each night)
+  MAX_MASK_ROWS_READ: 50_000
 } as const
 
 // What the re-seal did with one value, and the failure code of an error that is not a cipher failure (a write the database refused)

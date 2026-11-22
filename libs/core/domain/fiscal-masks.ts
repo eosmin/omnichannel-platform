@@ -12,7 +12,7 @@ export const FiscalReceiverMask = {
 } as const
 
 // The first letter of the name (by code point: an accent or a character outside the basic plane is one) and the fill up to the fixed length;
-// null for a name with no letters
+// null for a name that is empty or only blank (a name of digits has its first digit, like any other)
 export function maskReceiverName(name: string | null | undefined): string | null {
   if (name === null || name === undefined) return null
   const first = Array.from(name.trim())[0]

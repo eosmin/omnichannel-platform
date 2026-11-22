@@ -177,7 +177,10 @@ export class FiscalResealService {
     unit: FiscalResealUnit,
     report: FiscalResealReport
   ): Promise<void> {
+    // The cap counts the masks written (or lost to a conflict); a row nobody opens only costs a read, so a thousand of them at the front never
+    // starve the healthy ones behind. The reads have their own, larger cap.
     let worked = 0
+    let read = 0
     let after: string | undefined
     for (;;) {
       const rows = await unit(() =>
@@ -193,11 +196,11 @@ export class FiscalResealService {
         })
       )
       for (const row of rows) {
-        if (worked >= FiscalReseal.MAX_VALUES_PER_KIND) {
+        if (worked >= FiscalReseal.MAX_VALUES_PER_KIND || read >= FiscalReseal.MAX_MASK_ROWS_READ) {
           report.truncated = true
           return
         }
-        worked += 1
+        read += 1
         try {
           const done = await unit(async () => {
             const columns = maskColumnsOf(receiverOf(this.cipher.open(row.receiverEncrypted)))
@@ -207,6 +210,7 @@ export class FiscalResealService {
               ) AS changed`
             return answer[0]?.changed === true
           })
+          worked += 1
           if (done) report.masked += 1
           else report.conflicts += 1
         } catch (error) {

@@ -1,5 +1,5 @@
--- Step 7.3-S11b-2: the receiver of a fiscal document as the lists show it. The name (first letter of each word) and the tax id (last
--- characters) are kept MASKED and in the clear beside the sealed receiver, so a page of documents opens no sealed value; the mask is the one
+-- Step 7.3-S11b-2: the receiver of a fiscal document as the lists show it. The name (its first letter and a fixed fill) and the tax id (fill and
+-- its last four digits, only when it has nine or more) are kept MASKED and in the clear beside the sealed receiver, so a page of documents opens no sealed value; the mask is the one
 -- the screens already show, never the value. receiver_masked_at is NULL until the mask is calculated: a row with no mask yet is opened as
 -- before, and the nightly job of the re-seal calculates the missing ones through the door of the guard (fiscal_mask_document, worker only).
 -- AlterTable

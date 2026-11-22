@@ -17,6 +17,11 @@ export interface SealedRef {
 // of insertion, so the first key is the oldest.
 const loggedAt = new Map<string, number>()
 
+// For the specs: forget what was logged
+export function resetSealedOpenLog(): void {
+  loggedAt.clear()
+}
+
 // True once per value, cause and window; false for a repeat inside it
 function firstInWindow(key: string, now: number): boolean {
   const last = loggedAt.get(key)

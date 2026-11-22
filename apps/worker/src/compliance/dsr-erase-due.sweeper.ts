@@ -375,7 +375,8 @@ export class DsrEraseDueSweeper {
         tx.conversation.count({ where: { storeId, customerId: { in: ids } } }),
         // The fiscal documents of those orders are kept whole, as the law asks (legal obligation), and with them the masked receiver they
         // keep in the clear (a letter and four digits at most: less than the sealed receiver, which is kept too). The erasure does not touch
-        // them and the summary says so, so the person is told what stays and why (Step 7.3-S11b-2)
+        // them and the summary says so (Step 7.3-S11b-2). Basis: the mask is part of the record of the fiscal document that the law obliges to keep, and
+        // is used for nothing but the lists of that document; the closing mail still names only the orders (plan, limit 7)
         tx.fiscalDocument.count({ where: { storeId, order: { customerId: { in: ids } } } })
       ])
       const retained = { orders, conversations, fiscalDocuments }

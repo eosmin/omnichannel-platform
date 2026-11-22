@@ -5,10 +5,11 @@ import type { PinoLogger } from 'nestjs-pino'
 import { CredentialCipher, DecryptionFailure } from '@platform/core/crypto'
 import { SealedOpenLog, SealedValueKind } from '@platform/core/domain'
 
-import { openSealed } from './sealed-open'
+import { openSealed, resetSealedOpenLog } from './sealed-open'
 
 // Step 7.3-S11a: what a sealed value that does not open writes in the log
 describe('openSealed', () => {
+  beforeEach(() => resetSealedOpenLog())
   const cipher = new CredentialCipher(randomBytes(32))
   const logger = () => {
     const error = jest.fn()

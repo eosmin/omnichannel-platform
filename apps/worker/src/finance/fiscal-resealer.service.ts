@@ -29,6 +29,12 @@ export class FiscalResealer {
     )
     const failed = Object.values(report.failed).reduce((sum, n) => sum + n, 0)
     const maskFailed = Object.values(report.maskFailed).reduce((sum, n) => sum + n, 0)
+    if (maskFailed > 0 || report.truncated) {
+      this.logger.warn(
+        { organizationId, maskFailed: report.maskFailed, truncated: report.truncated },
+        'some masked receivers were not calculated'
+      )
+    }
     if (report.enabled || report.masked > 0 || failed > 0 || maskFailed > 0) {
       this.logger.info(
         { organizationId, ...report },

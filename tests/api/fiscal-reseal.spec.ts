@@ -234,6 +234,8 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
 
   describe('the masked receiver of the documents', () => {
     it('calculates the masks of a live, an accepted and a voided document with the current key alone, changes nothing else, and a second run finds nothing', async () => {
+      // A receiver nobody opens, made here so the case stands alone
+      await makeDocument('accepted', stranger, { taxId: 'NOBODY-TAX' })
       const made = {
         live: await makeDocument('queued', newCipher, RECEIVER_FIXTURE),
         accepted: await makeDocument('accepted', newCipher, RECEIVER_FIXTURE),
@@ -248,7 +250,8 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
       expect(report.masked).toBe(3)
       // The receiver left unreadable by an earlier case is counted by its code, with no content
       expect(report.failed).toEqual({})
-      expect(report.maskFailed).toEqual({ key_mismatch: 1 })
+      expect(report.maskFailed.key_mismatch).toBeGreaterThanOrEqual(1)
+      expect(Object.keys(report.maskFailed)).toEqual(['key_mismatch'])
       expect(JSON.stringify(report)).not.toMatch(/Receptora|0614/)
       for (const row of before) {
         const after = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: row.id } })
@@ -580,22 +583,57 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
     })
 
     // The door is "the setting is on AND the statement runs as the owner of the re-seal function". The owner is the owner of every definer
-    // function, so the door admits whatever one of them writes. What keeps that safe is the closed list below: a new function of this owner
-    // that writes to these two tables is refused here until a person has read it.
-    it('has exactly three functions of the owner that write a fiscal document or contingency, and the worker cannot make another pass the door', async () => {
-      const writers = await raw.query<{ name: string }>(
-        `SELECT p.proname AS name
-           FROM pg_proc p
-           JOIN pg_namespace n ON n.oid = p.pronamespace
-          WHERE n.nspname = 'public' AND p.prokind = 'f' AND p.prorettype <> 'trigger'::regtype
-            AND p.prosrc ~* '(update|insert[[:space:]]+into|delete[[:space:]]+from)[[:space:]]+(public\\.)?fiscal_(documents|contingencies)([^a-z_]|$)'
-          ORDER BY p.proname`
-      )
-      expect(writers.rows.map(row => row.name)).toEqual([
-        'fiscal_mask_document',
-        'fiscal_reseal_contingency',
-        'fiscal_reseal_document'
-      ])
+    // function, so the door admits whatever one of them writes. What keeps that safe is the closed list below, and the criterion is the
+    // widest one: EVERY definer function (a trigger function too) whose text names either table in any form, with the quotes taken out.
+    // A new one fails the case until a person has read it and added it here.
+    const TOUCHES = /fiscal_(documents|contingencies)/i
+    const mentions = (source: string): boolean => TOUCHES.test(source.replaceAll('"', ''))
+    const MENTIONING = `SELECT p.proname AS name FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.prosecdef AND replace(p.prosrc, '"', '') ~* 'fiscal_(documents|contingencies)'
+       ORDER BY p.proname`
+    // The three that write, and none that only read exist today
+    const EXPECTED = ['fiscal_mask_document', 'fiscal_reseal_contingency', 'fiscal_reseal_document']
+
+    it.each([
+      ['UPDATE ONLY', 'UPDATE ONLY fiscal_documents SET total_cents = 1'],
+      ['a quoted name', 'UPDATE "fiscal_documents" SET total_cents = 1'],
+      ['a schema and a quoted name', 'UPDATE public."fiscal_documents" SET total_cents = 1'],
+      ['MERGE INTO', 'MERGE INTO fiscal_contingencies t USING x ON true WHEN MATCHED THEN DELETE'],
+      ['TRUNCATE', 'TRUNCATE fiscal_documents'],
+      ['dynamic SQL', "EXECUTE format('UPDATE %I SET total_cents = 1', 'fiscal_documents')"],
+      ['a mixed case name', 'delete from Fiscal_Contingencies'],
+      ['a plain INSERT', 'INSERT INTO fiscal_documents DEFAULT VALUES']
+    ])('the criterion of the closed list catches %s', (_form, source) => {
+      expect(mentions(source)).toBe(true)
+    })
+
+    it('has exactly the expected definer functions that name a fiscal document or contingency, a trigger function or any other form included', async () => {
+      const found = await raw.query<{ name: string }>(MENTIONING)
+      expect(found.rows.map(row => row.name)).toEqual(EXPECTED)
+      // The criterion sees what the old one could not: a definer function of the owner, trigger or not, that writes in a form no regex of
+      // INSERT/UPDATE/DELETE catches. Made and rolled back here.
+      await raw.query('BEGIN')
+      try {
+        await raw.query(
+          `CREATE FUNCTION public.zz_probe_only() RETURNS void LANGUAGE sql SECURITY DEFINER
+             SET search_path = pg_catalog, public, pg_temp
+             AS $f$ UPDATE ONLY "fiscal_documents" SET updated_at = now() WHERE false $f$`
+        )
+        await raw.query(
+          `CREATE FUNCTION public.zz_probe_trigger() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+             SET search_path = pg_catalog, public, pg_temp
+             AS $f$ BEGIN EXECUTE format('UPDATE %I SET updated_at = now()', 'fiscal_documents'); RETURN NEW; END $f$`
+        )
+        const probed = await raw.query<{ name: string }>(MENTIONING)
+        expect(probed.rows.map(row => row.name)).toEqual(
+          [...EXPECTED, 'zz_probe_only', 'zz_probe_trigger'].sort()
+        )
+      } finally {
+        await raw.query('ROLLBACK').catch(() => undefined)
+      }
+    })
+
+    it('does not let the worker make a function of the owner pass the door when it writes anything but the sealed and masked columns', async () => {
       // The attempt: the worker sets the setting by hand and calls ANOTHER definer function of the same owner that writes a decided
       // document. The statement runs as the owner, so the door is open; the guard then compares the whole row and refuses what is not a
       // sealed or masked column. (A function that writes only those columns would pass, which is why the list above is closed.)
