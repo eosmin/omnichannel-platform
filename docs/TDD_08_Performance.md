@@ -703,6 +703,7 @@ export class SearchService {
     const limit = Math.min(params.limit ?? SearchConfig.DEFAULT_LIMIT, SearchConfig.MAX_LIMIT)
     const headlineOptions = `StartSel=<mark>, StopSel=</mark>, MaxWords=${SearchConfig.SNIPPET_MAX_WORDS}, MinWords=5`
 
+    // NOTE (Step 7.3-S14): messages.search_vector no longer exists; the built search matches with idx_messages_search_unaccent (Step 5.1)
     // websearch_to_tsquery supports "quoted phrases", -exclusions and OR
     const rows = await this.prisma.client.$replica().$queryRaw<unknown[]>`
       SELECT
