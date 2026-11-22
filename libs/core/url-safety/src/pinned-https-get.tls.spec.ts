@@ -5,8 +5,8 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { HttpsRequester } from './pinned-https-exchange'
 import { PinnedFetchFailed, pinnedHttpsGet } from './pinned-https-get'
+import type { HttpsRequester } from './pinned-request'
 import { readLimited } from './read-limited'
 
 // The whole of node's http and tls stack against a real server on this machine. The server stands in

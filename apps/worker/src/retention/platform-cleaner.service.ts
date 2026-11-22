@@ -1,15 +1,16 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import {
+  COOKIE_CONSENT_RETENTION_ENABLED,
   DataRetentionPolicies,
   PlatformCleanup,
   RetentionResourceTypes
 } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
-import { DAY_MS, InvitationStatus } from '@platform/core/domain'
+import { DAY_MS, InvitationStatus, PluginInstallationStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
 import { inEachStoreStrict } from '../schedulers/store-sweep'
@@ -17,7 +18,7 @@ import { inEachStoreStrict } from '../schedulers/store-sweep'
 import { type BatchOutcome, categoryRunner, inBatches, PartialRunError } from './retention-batches'
 import { runAuditMetadata, runHasNews } from './run-audit'
 
-// rls-context: sessions, verification_tokens and invitations are global tables (invitations is skipped by the RLS migrations); every other table runs inside JobContext.forStore of its store
+// rls-context: sessions, verification_tokens, invitations and cookie_consents are global tables (invitations is skipped by the RLS migrations; cookie_consents has no store); every other table runs inside JobContext.forStore of its store
 
 export interface PlatformCleanupReport {
   sessions: number
@@ -26,6 +27,8 @@ export interface PlatformCleanupReport {
   metricsHourly: number
   mergedCustomers: number
   invitations: number
+  cookieConsents: number
+  revokedPluginSecrets: number
   pluginIdempotencyKeys: number
   // The categories that stopped on a full batch: tomorrow takes the rest
   more: string[]
@@ -38,15 +41,19 @@ type Category = Exclude<keyof PlatformCleanupReport, 'more'>
 // webhooks past thirty days, the hours of the hourly rollup past ninety days, the idempotency keys of the plugin API past their day, and the customers a merge
 // absorbed whose window to undo it (`unmergeUntil`) has passed, with their CustomerMerge row (the audit log keeps
 // `customer.merged`), and the invitations that nobody accepted and that expired more than
-// `PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS` ago. Platform-wide, in batches of PlatformCleanup.BATCH_SIZE; each row is deleted by its own id, so
-// no store is read as a whole. A category that fails does not stop the others.
+// `PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS` ago, and the sealed secrets and the endpoint that a plugin installation revoked more than
+// `PlatformCleanup.REVOKED_PLUGIN_SECRET_GRACE_DAYS` ago still holds (a revoked row without `revoked_at` counts from its `updated_at`). Platform-wide, in batches of PlatformCleanup.BATCH_SIZE; each row is deleted by its own id, so The answers to the cookie banner older than
+// no store is read as a whole. The answers to the cookie banner older than `PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS` go too, but only with
+// `COOKIE_CONSENT_RETENTION_ENABLED` on (off by default). A category that fails does not stop the others.
 @Injectable()
 export class PlatformCleaner {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jobContext: JobContext,
     private readonly logger: PinoLogger,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    // Off by default: the window is a proposal and the sweep destroys evidence of consent (the owner turns it on)
+    @Inject(COOKIE_CONSENT_RETENTION_ENABLED) private readonly cookieConsentRetention: boolean
   ) {
     this.logger.setContext(PlatformCleaner.name)
   }
@@ -60,6 +67,8 @@ export class PlatformCleaner {
       metricsHourly: 0,
       mergedCustomers: 0,
       invitations: 0,
+      cookieConsents: 0,
+      revokedPluginSecrets: 0,
       pluginIdempotencyKeys: 0,
       more: []
     }
@@ -82,6 +91,14 @@ export class PlatformCleaner {
 
     const invitationCutoff = new Date(
       now.getTime() - PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS * DAY_MS
+    ).toISOString()
+
+    const cookieConsentCutoff = new Date(
+      now.getTime() - PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS * DAY_MS
+    ).toISOString()
+
+    const revokedPluginCutoff = new Date(
+      now.getTime() - PlatformCleanup.REVOKED_PLUGIN_SECRET_GRACE_DAYS * DAY_MS
     ).toISOString()
 
     await run('sessions', () =>
@@ -155,6 +172,45 @@ export class PlatformCleaner {
             WHERE status IN (${InvitationStatus.PENDING}, ${InvitationStatus.EXPIRED})
               AND expires_at < (${invitationCutoff}::timestamptz AT TIME ZONE 'UTC')
             ORDER BY expires_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
+      )
+    )
+    // `cookie_consents` has no store (a visitor before login: it has no policy either), so it runs platform-wide like the sessions. Each row
+    // is deleted by its own id, oldest first, so a visitor's history is taken from its tail and the newest rows are the last to go
+    // Only when the owner has turned it on: with it off nothing is deleted and the category reports 0
+    if (this.cookieConsentRetention) {
+      await run('cookieConsents', () =>
+        this.batches(
+          () => this.prisma.client.$executeRaw`
+          DELETE FROM cookie_consents WHERE id IN (
+            SELECT id FROM cookie_consents
+            WHERE created_at < (${cookieConsentCutoff}::timestamptz AT TIME ZONE 'UTC')
+            ORDER BY created_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
+        )
+      )
+    }
+
+    // The secrets that a revoked installation still holds: the sealed secret and the endpoint of its webhooks and the sealed secrets of its commands.
+    // Only a row that is revoked, revoked longer ago than the grace and still holding one of them (so a batch that is done stops matching and the
+    // loop ends); the outer WHERE repeats the predicate, so an installation that was installed again between the select and the update (status and
+    // `revoked_at` change, new secrets) is never cleared by the batch that selected it. Nothing is read of the secrets, only set to NULL.
+    await run('revokedPluginSecrets', () =>
+      this.perStore(
+        storeId => this.prisma.client.$executeRaw`
+          UPDATE plugin_installations SET
+            webhook_endpoint = NULL, webhook_secret = NULL,
+            command_secret = NULL, command_secret_previous = NULL, command_secret_rotated_at = NULL,
+            updated_at = (${stamp}::timestamptz AT TIME ZONE 'UTC')
+          WHERE store_id = ${storeId}
+            AND status = ${PluginInstallationStatus.REVOKED}
+            AND COALESCE(revoked_at, updated_at) < (${revokedPluginCutoff}::timestamptz AT TIME ZONE 'UTC')
+            AND id IN (
+              SELECT id FROM plugin_installations
+              WHERE store_id = ${storeId}
+                AND status = ${PluginInstallationStatus.REVOKED}
+                AND COALESCE(revoked_at, updated_at) < (${revokedPluginCutoff}::timestamptz AT TIME ZONE 'UTC')
+                AND (webhook_endpoint IS NOT NULL OR webhook_secret IS NOT NULL
+                  OR command_secret IS NOT NULL OR command_secret_previous IS NOT NULL)
+              ORDER BY COALESCE(revoked_at, updated_at) LIMIT ${PlatformCleanup.BATCH_SIZE})`
       )
     )
 

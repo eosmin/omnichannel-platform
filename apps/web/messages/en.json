@@ -640,6 +640,10 @@
         "heading": "Your request expired",
         "body": "Your request for {type} was not confirmed in time, so it was closed. You can make a new one."
       },
+      "cancelled": {
+        "heading": "Your request was cancelled",
+        "body": "Your request for {type} was cancelled and nothing was erased. You can write to the store if you want to know why."
+      },
       "retained": "The store keeps {orders} orders and their invoices because the law requires it for tax purposes (legal obligation).",
       "footer": "This is an automatic message.",
       "types": {
@@ -1284,7 +1288,9 @@
         "sort": "Sort by",
         "sorts": {
           "newest": "Newest first",
-          "scheduled_delivery": "Scheduled delivery"
+          "scheduled_delivery": "Scheduled delivery",
+          "total_highest": "Highest total first",
+          "customer_name": "Customer name"
         },
         "created": "Made between",
         "createdFrom": "Made from",

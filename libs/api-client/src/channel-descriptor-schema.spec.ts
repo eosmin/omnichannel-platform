@@ -1,6 +1,6 @@
 import {
   channelDescriptorSchema,
-  channelDirectorySchema,
+  channelDirectoryPageSchema,
   channelOAuthDescriptorSchema
 } from './api-schemas'
 
@@ -48,10 +48,14 @@ describe('channelDescriptorSchema', () => {
       status: 'active',
       capabilities: []
     }
-    const list = channelDirectorySchema.parse([
-      { ...entry, descriptor: { ...valid, displayName: { es: '<x>', en: 'x' } } },
-      { ...entry, id: 'b', descriptor: valid }
-    ])
+    const list = channelDirectoryPageSchema.parse({
+      data: [
+        { ...entry, descriptor: { ...valid, displayName: { es: '<x>', en: 'x' } } },
+        { ...entry, id: 'b', descriptor: valid }
+      ],
+      nextCursor: null,
+      hasMore: false
+    }).data
     expect(list[0]?.descriptor).toBeNull()
     expect(list[1]?.descriptor?.displayName.es).toBe('Acme')
   })

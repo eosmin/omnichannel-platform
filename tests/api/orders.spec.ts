@@ -29,6 +29,7 @@ import {
   type OrdersKit
 } from '../helpers/orders'
 
+const ORDER_BURST_CEILING_MS = 20_000
 const OK = 200
 const CREATED = 201
 const BAD_REQUEST = 400
@@ -749,6 +750,40 @@ describe('Creating an order', () => {
         expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ reserved: 0 })
         expect(await kit.level(product.id, ctx.warehouseASecond.id)).toMatchObject({ reserved: 3 })
       })
+    })
+
+    // Step 7.3 (B9), debt of 4.3 PR B: the number of the order comes from the counter of store_settings and the stock from the
+    // allocation lock, both inside the one transaction of the write. Twelve orders made at the same moment for the same product
+    // all take the two, so the proof is that none repeats a number, none skips one, and none is refused or deadlocked.
+    it('numbers twelve orders made at the same time without a repeat or a gap and takes one unit for each', async () => {
+      const COUNT = 12
+      const product = await kit.stocked(COUNT)
+      const bodies = await Promise.all(
+        Array.from({ length: COUNT }, () =>
+          kit.orderBody({ items: [{ productId: product.id, quantity: 1 }] })
+        )
+      )
+
+      const started = Date.now()
+      const answers = await Promise.all(bodies.map(body => post(body)))
+      const elapsedMs = Date.now() - started
+
+      expect(answers.map(answer => answer.status)).toEqual(Array<number>(COUNT).fill(CREATED))
+      const numbers = answers.map(
+        answer => (answer.body as { order: { orderNumber: string } }).order.orderNumber
+      )
+      expect(new Set(numbers).size).toBe(COUNT)
+      const sequence = numbers
+        .map(number => Number(/(\d+)$/.exec(number)?.[1]))
+        .sort((a, b) => a - b)
+      expect((sequence.at(-1) ?? NaN) - (sequence[0] ?? NaN)).toBe(COUNT - 1)
+      expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({
+        onHand: COUNT,
+        reserved: COUNT
+      })
+      // Measured, not guessed: the whole batch is one short wait, nothing waits on a lock for long. A generous ceiling that a
+      // real stall (a lock held across the provider, a deadlock retry loop) would break
+      expect(elapsedMs).toBeLessThan(ORDER_BURST_CEILING_MS)
     })
 
     it('gives the last unit to exactly one of two orders made at the same time', async () => {

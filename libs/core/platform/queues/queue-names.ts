@@ -190,6 +190,10 @@ export const eraseCustomerDataJobId = (customerId: string): string =>
 export const eraseCustomerDataRecheckJobId = (customerId: string): string =>
   `${JobNames.ERASE_CUSTOMER_DATA}-recheck-${customerId}`
 
+// One closing mail per data request: a run that is repeated after a failed commit asks for the same job while it waits (dashes, no colon)
+export const dsrResultMailJobId = (requestId: string): string =>
+  `${JobNames.SEND_EMAIL}-dsr-result-${requestId}`
+
 // One cold export per month of the run: the monthly scheduler run twice is one job (dashes, no colon)
 export const exportAuditLogsJobId = (month: string): string =>
   `${JobNames.EXPORT_AUDIT_LOGS_TO_COLD_STORAGE}-${month}`

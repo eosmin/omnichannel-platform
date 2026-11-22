@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common'
 
+import { CompliancePlatformModule } from '@platform/core/http'
+
 import { AuditColdExporter } from './audit-cold-exporter.service'
 import { ErasedCustomerData } from './erased-customer-data.service'
 import { ErasedCustomerSweep } from './erased-customer-sweep.service'
@@ -10,6 +12,7 @@ import { StoreRetentionEnforcer } from './store-retention-enforcer.service'
 // module of the worker. The processors of the heavy and exports queues run the first and the last, the schedulers of
 // the worker module run the second and queue the others.
 @Module({
+  imports: [CompliancePlatformModule],
   providers: [
     StoreRetentionEnforcer,
     PlatformCleaner,

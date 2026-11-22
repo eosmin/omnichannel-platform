@@ -21,7 +21,9 @@ import {
   FinanceSourceType,
   FiscalDocumentStatus,
   InvitationStatus,
-  LegalBookKind
+  LegalBookKind,
+  PluginInstallationStatus,
+  PluginStatus
 } from '@platform/core/domain'
 import { ImageVariants, MediaPurpose, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -69,6 +71,8 @@ describe('The retention run of the worker', () => {
   let storage: StorageService
   let enforcer: StoreRetentionEnforcer
   let cleaner: PlatformCleaner
+  // The same cleaner with the sweep of the cookie banner turned on (off by default: the owner decides)
+  let cookieCleaner: PlatformCleaner
   let exporter: AuditColdExporter
   const keys: string[] = []
 
@@ -85,7 +89,20 @@ describe('The retention run of the worker', () => {
       new JobContext(worker),
       app.get(AuditService)
     )
-    cleaner = new PlatformCleaner(worker, new JobContext(worker), logger, app.get(AuditService))
+    cleaner = new PlatformCleaner(
+      worker,
+      new JobContext(worker),
+      logger,
+      app.get(AuditService),
+      false
+    )
+    cookieCleaner = new PlatformCleaner(
+      worker,
+      new JobContext(worker),
+      logger,
+      app.get(AuditService),
+      true
+    )
     exporter = new AuditColdExporter(worker, new WorkerLists(worker), storage, logger)
   })
   afterAll(async () => {
@@ -952,6 +969,68 @@ describe('The retention run of the worker', () => {
       )
     })
 
+    it('deletes no answer to the cookie banner while the sweep is off (the default), however old', async () => {
+      const old = await owner.cookieConsent.create({
+        data: {
+          visitorId: `${prefix}-off`,
+          categories: { functional: true, analytics: false, marketing: false },
+          policyVersion: 'test',
+          createdAt: daysAgo(PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS + 1, now)
+        },
+        select: { id: true }
+      })
+      try {
+        const report = await cleaner.run(now)
+        expect(report.cookieConsents).toBe(0)
+        expect(await owner.cookieConsent.count({ where: { id: old.id } })).toBe(1)
+        // The same row goes once the sweep is on, so the case above is the switch and not a row that was never old enough
+        await cookieCleaner.run(now)
+        expect(await owner.cookieConsent.count({ where: { id: old.id } })).toBe(0)
+      } finally {
+        await owner.cookieConsent.deleteMany({ where: { id: old.id } })
+      }
+    })
+
+    it('with the sweep turned on deletes the answers to the cookie banner past the retention, the newest of a visitor too, and keeps the rest', async () => {
+      const days = PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS
+      const answer = async (visitor: string, createdAt: Date): Promise<string> =>
+        (
+          await owner.cookieConsent.create({
+            data: {
+              visitorId: `${prefix}-${visitor}`,
+              categories: { functional: true, analytics: false, marketing: false },
+              policyVersion: 'test',
+              createdAt
+            },
+            select: { id: true }
+          })
+        ).id
+      // A visitor who changed their mind: the old answer is past the window and goes, the new one stays
+      const replaced = await answer('a', daysAgo(days + 30, now))
+      const replacement = await answer('a', daysAgo(10, now))
+      // A visitor who never came back: the only answer is past the window, so it goes too (the choice it proves expired long ago)
+      const abandoned = await answer('b', daysAgo(days + 1, now))
+      // Exactly at the window is not past it
+      const atTheEdge = await answer('c', daysAgo(days, now))
+      const recent = await answer('d', daysAgo(1, now))
+      const all = [replaced, replacement, abandoned, atTheEdge, recent]
+
+      const report = await cookieCleaner.run(now)
+
+      expect(report.cookieConsents).toBeGreaterThanOrEqual(2)
+      const left = await owner.cookieConsent.findMany({
+        where: { id: { in: all } },
+        select: { id: true }
+      })
+      expect(left.map(row => row.id).sort()).toEqual([replacement, atTheEdge, recent].sort())
+      // And it is idempotent: a second run finds nothing of these to take
+      await cookieCleaner.run(now)
+      expect(await owner.cookieConsent.count({ where: { id: { in: all } } })).toBe(3)
+      await owner.cookieConsent.deleteMany({
+        where: { id: { in: [replacement, atTheEdge, recent] } }
+      })
+    })
+
     it('deletes the deliveries of a webhook past thirty days and the hours of the rollup past ninety', async () => {
       const webhook = await createWebhook(owner, { storeId: ctx.storeA.id })
       const delivery = (createdAt: Date) =>
@@ -1008,6 +1087,176 @@ describe('The retention run of the worker', () => {
       })
       return { survivor, absorbed, row }
     }
+
+    describe('the secrets of a revoked plugin installation', () => {
+      const pluginIds: string[] = []
+      const SEALED = Buffer.from('sealed-secret-of-the-suite')
+      afterAll(async () => {
+        await owner.pluginInstallation.deleteMany({ where: { pluginId: { in: pluginIds } } })
+        await owner.plugin.deleteMany({ where: { id: { in: pluginIds } } })
+      })
+
+      async function installation(
+        storeId: string,
+        over: { status: string; revokedAt: Date | null }
+      ): Promise<string> {
+        const pluginId = `${prefix}-revoked-${pluginIds.length}`
+        pluginIds.push(pluginId)
+        await owner.plugin.create({
+          data: {
+            id: pluginId,
+            name: pluginId,
+            authorName: 'suite',
+            authorEmail: 'suite@example.invalid',
+            type: 'channel',
+            manifest: {},
+            pricingModel: 'free',
+            status: PluginStatus.APPROVED
+          }
+        })
+        const row = await owner.pluginInstallation.create({
+          data: {
+            storeId,
+            pluginId,
+            scopes: [],
+            status: over.status,
+            revokedAt: over.revokedAt,
+            webhookEndpoint: 'https://plugin.example.invalid/hook',
+            webhookSecret: SEALED,
+            commandSecret: SEALED,
+            commandSecretPrevious: SEALED,
+            commandSecretRotatedAt: now,
+            installedBy: 'suite'
+          }
+        })
+        return row.id
+      }
+      const held = async (id: string) => {
+        const row = await owner.pluginInstallation.findUniqueOrThrow({ where: { id } })
+        return [
+          row.webhookEndpoint,
+          row.webhookSecret,
+          row.commandSecret,
+          row.commandSecretPrevious
+        ]
+      }
+
+      it('clears the endpoint and the sealed secrets of what was revoked past the grace, in every store, and nothing else', async () => {
+        const oldA = await installation(ctx.storeA.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: daysAgo(2, now)
+        })
+        const oldB = await installation(ctx.storeB.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: daysAgo(2, now)
+        })
+        const young = await installation(ctx.storeA.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: new Date(now.getTime() - 60 * 60 * 1000)
+        })
+        const live = await installation(ctx.storeA.id, {
+          status: PluginInstallationStatus.ACTIVE,
+          revokedAt: null
+        })
+        // Installed again after a revocation: its `revoked_at` is old but it is not revoked, and what it holds is the new install's
+        const again = await installation(ctx.storeB.id, {
+          status: PluginInstallationStatus.PENDING_SETUP,
+          revokedAt: daysAgo(5, now)
+        })
+        // Each column alone is enough to be selected, and a row with nothing left is not counted
+        const onlyPrevious = await installation(ctx.storeA.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: daysAgo(2, now)
+        })
+        await owner.pluginInstallation.update({
+          where: { id: onlyPrevious },
+          data: { webhookEndpoint: null, webhookSecret: null, commandSecret: null }
+        })
+        const onlyEndpoint = await installation(ctx.storeB.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: daysAgo(2, now)
+        })
+        await owner.pluginInstallation.update({
+          where: { id: onlyEndpoint },
+          data: { webhookSecret: null, commandSecret: null, commandSecretPrevious: null }
+        })
+        // Revoked with no `revoked_at` (a write that did not record it): it counts from its last change, here set long ago
+        const undated = await installation(ctx.storeA.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: null
+        })
+        await owner.$executeRaw`UPDATE plugin_installations SET updated_at = ${daysAgo(9, now)} WHERE id = ${undated}`
+
+        const report = await cleaner.run(now)
+
+        expect(report.revokedPluginSecrets).toBeGreaterThanOrEqual(5)
+        for (const id of [oldA, oldB, onlyPrevious, onlyEndpoint, undated]) {
+          expect(await held(id)).toEqual([null, null, null, null])
+        }
+        for (const id of [young, live, again]) {
+          expect((await held(id)).every(value => value !== null)).toBe(true)
+        }
+        // The row itself stays: it is the history of the installation
+        expect(await owner.pluginInstallation.count({ where: { id: oldA } })).toBe(1)
+      })
+
+      it('keeps what an installation that is installed again between the read and the write got: the state is in the WHERE of the statement', async () => {
+        const id = await installation(ctx.storeA.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: daysAgo(2, now)
+        })
+        const fresh = Buffer.from('new-secret-of-the-new-install')
+        let run: Promise<unknown> = Promise.resolve()
+        // The installation is installed again in a transaction that is still open when the cleanup runs: the cleanup reads the revoked row it
+        // sees, its UPDATE waits for the lock of that row, and when it gets it the row is no longer revoked, so it must not touch it
+        // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+        await owner.$transaction(
+          async tx => {
+            await tx.pluginInstallation.update({
+              where: { id },
+              data: {
+                status: PluginInstallationStatus.PENDING_SETUP,
+                revokedAt: null,
+                webhookEndpoint: 'https://new.example.invalid/hook',
+                webhookSecret: fresh,
+                commandSecret: fresh,
+                commandSecretPrevious: null
+              }
+            })
+            run = cleaner.run(now)
+            await new Promise(resolve => setTimeout(resolve, 2000))
+          },
+          { timeout: 30_000 }
+        )
+        await run
+
+        const row = await owner.pluginInstallation.findUniqueOrThrow({ where: { id } })
+        expect(row.status).toBe(PluginInstallationStatus.PENDING_SETUP)
+        expect(row.webhookEndpoint).toBe('https://new.example.invalid/hook')
+        expect(Buffer.from(row.webhookSecret ?? []).equals(fresh)).toBe(true)
+        expect(Buffer.from(row.commandSecret ?? []).equals(fresh)).toBe(true)
+      })
+
+      it('does nothing the second time, and leaves the counts as the only trace in the entry of the run', async () => {
+        const startedAt = new Date()
+        const id = await installation(ctx.storeA.id, {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt: daysAgo(3, now)
+        })
+        const first = await cleaner.run(now)
+        const second = await cleaner.run(now)
+
+        expect(first.revokedPluginSecrets).toBeGreaterThanOrEqual(1)
+        expect(second.revokedPluginSecrets).toBe(0)
+        expect(await held(id)).toEqual([null, null, null, null])
+        const entries = await waitForAuditEntries(owner, {
+          action: AuditAction.PLATFORM_CLEANUP_RUN,
+          timestamp: { gte: startedAt }
+        })
+        expect(JSON.stringify(entries.map(entry => entry.metadata))).not.toContain('sealed')
+        expect(JSON.stringify(entries.map(entry => entry.metadata))).not.toContain('plugin.example')
+      })
+    })
 
     it('deletes the customer a merge absorbed once the window to undo it has passed, with the merge row', async () => {
       const past = await merge({ unmergeUntil: daysAgo(1, now) })

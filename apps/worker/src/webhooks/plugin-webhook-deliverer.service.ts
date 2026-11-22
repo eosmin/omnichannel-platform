@@ -11,7 +11,6 @@ import {
   WebhookHeaders,
   WebhookLimits
 } from '@platform/core/domain'
-import { PostgresSqlStates } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { MetricNames, WebhookMetricTarget } from '@platform/core/metrics'
@@ -20,11 +19,11 @@ import type { TriggerPluginWebhookJob } from '@platform/core/queues'
 import { manifestMaxWebhooksPerDay, manifestWebhookOf } from '@platform/plugins/runtime'
 import { PluginEventScopes } from '@platform/plugins/sdk'
 
-import { GoneVerdict, judgeGone } from './gone-verdict'
 import { pinnedHttpsPost } from './pinned-https-post'
+import { PluginWebhookDayCap } from './plugin-webhook-day-cap'
+import { type DeliveryBinding, WebhookDeliveryRecorder } from './webhook-delivery-recorder'
 import {
   type DeliveryDeps,
-  type Failure,
   failureOf,
   openSecret,
   sendSigned,
@@ -50,17 +49,27 @@ const APPROVED: string = PluginStatus.APPROVED
 // both are removed, so nothing of the subscription outlives the revocation.
 @Injectable()
 export class PluginWebhookDeliverer {
+  private readonly recorder: WebhookDeliveryRecorder
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cipher: CredentialCipher,
     private readonly events: DomainEvents,
-    @InjectMetric(MetricNames.WEBHOOK_DELIVERIES) private readonly deliveries: Counter<string>,
+    @InjectMetric(MetricNames.WEBHOOK_DELIVERIES) deliveries: Counter<string>,
     private readonly logger: PinoLogger,
     private readonly jobContext: JobContext,
     @InjectMetric(MetricNames.WEBHOOK_GONE_BEHIND_POLICY)
-    private readonly goneBehindPolicy: Counter<string>
+    goneBehindPolicy: Counter<string>,
+    private readonly dayCap: PluginWebhookDayCap
   ) {
     this.logger.setContext(PluginWebhookDeliverer.name)
+    this.recorder = new WebhookDeliveryRecorder(
+      prisma,
+      jobContext,
+      deliveries,
+      goneBehindPolicy,
+      logger
+    )
   }
 
   // Throws the failure that BullMQ should retry; returns for everything that is final
@@ -88,6 +97,7 @@ export class PluginWebhookDeliverer {
     if (installation === null) return WebhookOutcome.SKIPPED
     const { webhookEndpoint: endpoint, webhookSecret: sealed } = installation
     const manifest = manifestWebhookOf(installation.plugin.manifest)
+    const binding = this.bindingOf(storeId, installationId, installation.pluginId)
     if (final) {
       // Only the delivery that was queued by the revocation, and only while the installation is still revoked: one that was
       // installed again meanwhile has a new secret and a new endpoint, which this one was not made for
@@ -110,42 +120,36 @@ export class PluginWebhookDeliverer {
       return WebhookOutcome.SKIPPED
     }
     if (endpoint === null || sealed === null) return WebhookOutcome.SKIPPED
-    // The cap of the day the plugin declared (`limits.maxWebhooksPerDay`). Only the first try of a delivery is held to it: a
-    // delivery that began is finished, and the last one of a revocation always goes. What is over the cap is dropped, not failed:
-    // it is not the endpoint's fault, so it counts toward turning nothing off. The cap is on deliveries STARTED: a first try
-    // that fails is one of them (its retries are not). The count and the send are not one step, so deliveries at the same
-    // instant may pass the cap by the number that raced (plan: debt of the PR of PLG-256).
+    // The cap of the day the plugin declared (`limits.maxWebhooksPerDay`). The last delivery of a revocation always goes. What is
+    // over the cap is dropped, not failed: it is not the endpoint's fault, so it counts toward turning nothing off. The cap is on
+    // deliveries STARTED: a first try that fails is one of them. The place is taken in one atomic step (PluginWebhookDayCap) and is
+    // kept by the id of the delivery, so a retry of a delivery that began finds its place and goes, while a retry of one that never
+    // took a place (Redis failed on its first try) must take one now: no try passes the cap on the strength of its number. Deliveries
+    // at the same instant cannot pass the cap together.
     const cap = manifestMaxWebhooksPerDay(installation.plugin.manifest)
-    if (!final && attempt <= 1 && cap !== null) {
-      const today = await this.jobContext.forStore(storeId, () =>
-        this.prisma.client.webhookDelivery.count({
-          where: {
-            pluginInstallationId: installationId,
-            attempt: 1,
-            createdAt: { gte: new Date(now() - WebhookLimits.PLUGIN_DAY_MS) }
-          }
+    if (
+      !final &&
+      cap !== null &&
+      !(await this.dayCap.take(installationId, deliveryId, cap, now()))
+    ) {
+      // Said in the log the owner reads (`attempt: 0`, which is no delivery), so a capped event is told from one the endpoint did
+      // not get
+      await this.guarded(storeId, installationId, () =>
+        this.jobContext.forStore(storeId, async () => {
+          await this.prisma.client.webhookDelivery.create({
+            data: {
+              pluginInstallationId: installationId,
+              event,
+              statusCode: null,
+              durationMs: 0,
+              success: false,
+              error: WebhookLimits.DAILY_CAP_REACHED_CODE,
+              attempt: 0
+            }
+          })
         })
       )
-      if (today >= cap) {
-        // Said in the log the owner reads (`attempt: 0`, which the count above never takes for a delivery), so a capped event is
-        // told from one the endpoint did not get
-        await this.guarded(storeId, installationId, async () => {
-          await this.jobContext.forStore(storeId, () =>
-            this.prisma.client.webhookDelivery.create({
-              data: {
-                pluginInstallationId: installationId,
-                event,
-                statusCode: null,
-                durationMs: 0,
-                success: false,
-                error: WebhookLimits.DAILY_CAP_REACHED_CODE,
-                attempt: 0
-              }
-            })
-          )
-        })
-        return WebhookOutcome.SKIPPED
-      }
+      return WebhookOutcome.SKIPPED
     }
 
     const startedAt = now()
@@ -167,12 +171,14 @@ export class PluginWebhookDeliverer {
       const failure = failureOf(error)
       // A delivery is one failure of the installation when it is over: when no try is left, or when no try would help
       const over = !failure.retryable || attempt >= maxAttempts
-      const disabled = await this.recordFailure(job, installation.pluginId, {
+      // The last delivery of a revoked installation is logged and counts toward nothing: there is no webhook left to turn off
+      const disabled = await this.recorder.failure(binding, storeId, {
         failure,
+        event,
         durationMs: now() - startedAt,
         attempt,
         over,
-        final
+        countless: final
       })
       if (final && over) await this.closeSubscription(installationId, storeId)
       // Turned off: the rest of the retries of this delivery would go nowhere
@@ -182,14 +188,12 @@ export class PluginWebhookDeliverer {
     // Outside the try: the endpoint took the delivery, and a failure to write that down must not send it again nor count as one
     // that failed
     try {
-      await this.recordSuccess(
-        installationId,
-        storeId,
+      await this.recorder.success(binding, storeId, {
         event,
         statusCode,
-        now() - startedAt,
+        durationMs: now() - startedAt,
         attempt
-      )
+      })
     } catch (error) {
       this.logger.error(
         { installationId, err: String(error) },
@@ -219,120 +223,25 @@ export class PluginWebhookDeliverer {
     }
   }
 
-  private async recordSuccess(
-    installationId: string,
-    storeId: string,
-    event: string,
-    statusCode: number,
-    durationMs: number,
-    attempt: number
-  ): Promise<void> {
-    this.deliveries.inc({ target: WebhookMetricTarget.PLUGIN, success: 'true' })
-    await this.guarded(storeId, installationId, async () => {
-      await this.jobContext.forStore(storeId, () =>
-        this.prisma.client.webhookDelivery.create({
-          data: {
-            pluginInstallationId: installationId,
-            event,
-            statusCode,
-            durationMs,
-            success: true,
-            attempt
-          }
-        })
-      )
-      // The count is written only when there is something to clear: a healthy installation costs one insert
-      await this.jobContext.forStore(storeId, () =>
-        this.prisma.client.pluginInstallation.updateMany({
-          where: { id: installationId, storeId, webhookConsecutiveFailures: { gt: 0 } },
-          data: { webhookConsecutiveFailures: 0 }
-        })
-      )
-    })
-  }
-
-  // True when this failure was the one that turned the installation's webhooks off
-  private async recordFailure(
-    job: TriggerPluginWebhookJob,
-    pluginId: string,
-    result: { failure: Failure; durationMs: number; attempt: number; over: boolean; final: boolean }
-  ): Promise<boolean> {
-    const { pluginInstallationId: installationId, storeId, event } = job
-    const { failure, durationMs, attempt, over, final } = result
-    this.deliveries.inc({ target: WebhookMetricTarget.PLUGIN, success: 'false' })
-    let disabled = false
-    await this.guarded(storeId, installationId, async () => {
-      disabled = await this.jobContext.forStore(storeId, () =>
-        this.prisma.transaction(async tx => {
-          await tx.webhookDelivery.create({
-            data: {
-              pluginInstallationId: installationId,
-              event,
-              statusCode: failure.status,
-              durationMs,
-              success: false,
-              error: failure.code.slice(0, WebhookLimits.DELIVERY_ERROR_MAX_LENGTH),
-              attempt
-            }
-          })
-          // The last delivery of a revoked installation is logged and counts toward nothing: there is no webhook left to turn off
-          if (final) return false
-          // Every try is a row of the log; only the end of a delivery counts toward turning the webhooks off
-          const updated = await tx.pluginInstallation.update({
-            where: { id: installationId, storeId },
-            data: {
-              webhookLastFailureAt: new Date(),
-              ...(over ? { webhookConsecutiveFailures: { increment: 1 } } : {})
-            },
-            select: { webhookConsecutiveFailures: true }
-          })
-          if (!over) return false
-          if (updated.webhookConsecutiveFailures < WebhookLimits.MAX_CONSECUTIVE_FAILURES) {
-            return false
-          }
-          // Only the one that changes it from delivering tells anybody: two deliveries that fail together say it once
-          const turnedOff = await tx.pluginInstallation.updateMany({
-            where: {
-              id: installationId,
-              storeId,
-              status: PluginInstallationStatus.ACTIVE,
-              webhookDisabledAt: null
-            },
-            data: { webhookDisabledAt: new Date() }
-          })
-          if (turnedOff.count === 0) return false
-          this.events.publish(tx, Events.PLUGIN_ERROR, {
-            storeId,
-            installationId,
-            pluginId,
-            consecutiveFailures: updated.webhookConsecutiveFailures
-          })
-          return true
-        })
-      )
-    })
-    if (disabled) {
-      this.logger.warn(
-        { installationId, storeId },
-        'the webhooks of a plugin were turned off after repeated failures'
-      )
-    }
-    return disabled
-  }
-
-  // An installation deleted while its delivery ran has no log to write to: that is the end of it, not an error to retry. With the policy
-  // on, the insert is refused (42501) before the foreign key can fail, so the installation is looked up again in a new unit of work,
-  // outside the one that broke and in the store of the job, with no filter on its state (a revoked or disabled installation still
-  // exists): only its absence is a deletion, and a refusal with the installation still there is thrown as it came.
+  // An installation deleted while its delivery ran has no log to write to: the recorder says whether that is the end of it
   private async guarded(
     storeId: string,
     installationId: string,
     work: () => Promise<void>
   ): Promise<void> {
-    try {
-      await work()
-    } catch (error) {
-      const verdict = await judgeGone(error, async () => {
+    await this.recorder.guarded(this.bindingOf(storeId, installationId, ''), storeId, work)
+  }
+
+  // The installation, for the recorder: its log, its count of failures in a row and how its webhooks are turned off
+  private bindingOf(storeId: string, installationId: string, pluginId: string): DeliveryBinding {
+    return {
+      target: WebhookMetricTarget.PLUGIN,
+      noun: 'a plugin installation',
+      disabledMessage: 'the webhooks of a plugin were turned off after repeated failures',
+      logFields: { installationId },
+      // The installation is looked up with no filter on its state (a revoked or disabled one still exists): only its absence is a
+      // deletion
+      exists: async () => {
         const row = await this.jobContext.forStore(storeId, () =>
           this.prisma.client.pluginInstallation.findFirst({
             where: { id: installationId, storeId },
@@ -340,20 +249,50 @@ export class PluginWebhookDeliverer {
           })
         )
         return row !== null
-      })
-      if (verdict === GoneVerdict.NOT_GONE) throw error
-      if (verdict === GoneVerdict.DELETED_BEHIND_POLICY) {
-        this.goneBehindPolicy.inc({ target: WebhookMetricTarget.PLUGIN })
-        this.logger.warn(
-          { installationId, storeId, code: PostgresSqlStates.INSUFFICIENT_PRIVILEGE },
-          'a plugin installation was deleted while its delivery ran: the log row was refused by the policy'
-        )
-        return
+      },
+      writeSuccess: async row => {
+        await this.prisma.client.webhookDelivery.create({
+          data: { pluginInstallationId: installationId, ...row }
+        })
+        // The count is written only when there is something to clear: a healthy installation costs one insert
+        await this.prisma.client.pluginInstallation.updateMany({
+          where: { id: installationId, storeId, webhookConsecutiveFailures: { gt: 0 } },
+          data: { webhookConsecutiveFailures: 0 }
+        })
+      },
+      writeFailureRow: async (tx, row) => {
+        await tx.webhookDelivery.create({ data: { pluginInstallationId: installationId, ...row } })
+      },
+      markFailure: async (tx, counts) => {
+        const updated = await tx.pluginInstallation.update({
+          where: { id: installationId, storeId },
+          data: {
+            webhookLastFailureAt: new Date(),
+            ...(counts ? { webhookConsecutiveFailures: { increment: 1 } } : {})
+          },
+          select: { webhookConsecutiveFailures: true }
+        })
+        return updated.webhookConsecutiveFailures
+      },
+      turnOff: async (tx, consecutiveFailures) => {
+        const turnedOff = await tx.pluginInstallation.updateMany({
+          where: {
+            id: installationId,
+            storeId,
+            status: PluginInstallationStatus.ACTIVE,
+            webhookDisabledAt: null
+          },
+          data: { webhookDisabledAt: new Date() }
+        })
+        if (turnedOff.count === 0) return false
+        this.events.publish(tx, Events.PLUGIN_ERROR, {
+          storeId,
+          installationId,
+          pluginId,
+          consecutiveFailures
+        })
+        return true
       }
-      this.logger.info(
-        { installationId },
-        'a plugin installation was deleted while its delivery ran'
-      )
     }
   }
 }

@@ -5,9 +5,12 @@ import {
   createOrderSchema,
   lowercasedUuidSchema,
   OrderConfirmationChannel,
+  OrderCursorKeyMaxLength,
   OrderLimits,
+  OrderSorts,
   orderListFiltersAreConsistent,
   orderListFilterShape,
+  ORDER_MAX_AMOUNT_CENTS,
   orderSortShape,
   PaginationLimits,
   recordOrderPaymentSchema,
@@ -30,23 +33,53 @@ const freeText = (maxLength: number) =>
 export interface OrderCursor {
   // The scheduled day of the last row ('YYYY-MM-DD'), or null: part of the position only when the list is sorted by it
   day: string | null
+  // The key of the last row when the list is sorted by the total (cents) or the customer (the search form of the name,
+  // a customer without a name has the empty one): null for the other sorts
+  key: number | string | null
   createdAt: Date
   id: string
 }
 
 export function encodeOrderCursor(row: OrderCursor): string {
-  return Buffer.from(JSON.stringify([row.day, row.createdAt.toISOString(), row.id])).toString(
-    'base64url'
-  )
+  return Buffer.from(
+    JSON.stringify([row.day, row.createdAt.toISOString(), row.id, row.key])
+  ).toString('base64url')
 }
 
-const cursorParts = z.tuple([z.iso.date().nullable(), z.iso.datetime(), lowercasedUuidSchema])
+// A high surrogate with no low one after it, or a low one with no high one before it (one character each: linear)
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+
+// The key is optional so a cursor issued before the sorts by total and by customer still reads
+const cursorParts = z.tuple([
+  z.iso.date().nullable(),
+  z.iso.datetime(),
+  lowercasedUuidSchema,
+  z
+    .union([
+      z.int().min(0).max(ORDER_MAX_AMOUNT_CENTS),
+      // Text that reaches the database: Postgres refuses a NUL in `text` and a lone surrogate is not valid UTF-8, so both are a
+      // 400 here and not a 500 from the query
+      z
+        .string()
+        .max(OrderCursorKeyMaxLength)
+        .refine(key => !key.includes('\0') && !LONE_SURROGATE.test(key), {
+          message: 'not a valid key'
+        })
+    ])
+    .nullable()
+    .optional()
+])
 
 export const orderCursorSchema = z.string().transform((text, ctx): OrderCursor => {
   try {
     const parts = cursorParts.safeParse(JSON.parse(Buffer.from(text, 'base64url').toString('utf8')))
     if (parts.success) {
-      return { day: parts.data[0], createdAt: new Date(parts.data[1]), id: parts.data[2] }
+      return {
+        day: parts.data[0],
+        createdAt: new Date(parts.data[1]),
+        id: parts.data[2],
+        key: parts.data[3] ?? null
+      }
     }
   } catch {
     // Not JSON: the issue below says so
@@ -60,6 +93,16 @@ const orderPageShape = {
   limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 }
 
+// A cursor holds the key of the sort it was made with: a total for the sort by total, a name for the sort by customer and
+// none for the others. One made with another sort is refused (a 400), not read as a position that does not exist
+function cursorFitsSort(query: { cursor?: OrderCursor; sort?: string }): boolean {
+  if (query.cursor === undefined) return true
+  const { key } = query.cursor
+  if (query.sort === OrderSorts.TOTAL_HIGHEST) return typeof key === 'number'
+  if (query.sort === OrderSorts.CUSTOMER_NAME) return typeof key === 'string'
+  return key === null
+}
+
 export const listOrdersQuerySchema = z
   .strictObject({
     ...orderPageShape,
@@ -69,6 +112,7 @@ export const listOrdersQuerySchema = z
   .refine(orderListFiltersAreConsistent, {
     message: 'give days or a shortcut, never both, and the first day not after the last'
   })
+  .refine(cursorFitsSort, { message: 'the cursor was made with another sort', path: ['cursor'] })
 
 // What a plugin may filter by: not the text search (it matches the name, email and phone of the customer), not the customer, and not
 // the guide or the carrier (shipping data). The price approval status IS a filter: a plugin that holds `orders:approve-price` lists the
@@ -82,11 +126,16 @@ export const pluginListOrdersQuerySchema = z
       carrierConnectionId: true,
       guide: true
     }).shape,
-    ...orderSortShape
+    ...orderSortShape,
+    // Not by customer: the order of the names would tell a plugin that holds no customers:read how they compare
+    sort: z
+      .enum([OrderSorts.NEWEST, OrderSorts.SCHEDULED_DELIVERY, OrderSorts.TOTAL_HIGHEST])
+      .optional()
   })
   .refine(orderListFiltersAreConsistent, {
     message: 'give days or a shortcut, never both, and the first day not after the last'
   })
+  .refine(cursorFitsSort, { message: 'the cursor was made with another sort', path: ['cursor'] })
 export type PluginListOrdersQuery = z.output<typeof pluginListOrdersQuerySchema>
 
 // The export takes the filters of the list and no page and no sort: the file is the whole result

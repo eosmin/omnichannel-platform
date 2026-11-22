@@ -1,9 +1,17 @@
 import type { RetentionField } from '@platform/core/domain'
 
-// Whether the executor of approved erasures exists (the sweep of Step 7.2-H2b). A function, not a bare constant read in a condition: the
-// day it ships this returns true and nothing else changes
+// Whether the executor of approved erasures exists: the nightly sweep `dsr-erase-due` of Step 7.2-H2b-1. A function, not a bare constant read in
+// a condition. It lets an erasure be approved; it does NOT turn the public form on (that is `DSR_PUBLIC_INTAKE_ENABLED`, off by default and
+// the owner's decision)
 export const dsrExecutorAvailable = (): boolean => DSR_EXECUTOR_AVAILABLE
-const DSR_EXECUTOR_AVAILABLE = false
+const DSR_EXECUTOR_AVAILABLE = true
+
+// Whether the WHOLE public flow is ready to take requests from strangers: the sweep exists (H2b-1), but the alert of day 25, the notices of a
+// request given back and the executors of access and portability are H2b-2. The env schema refuses `DSR_PUBLIC_INTAKE_ENABLED=true` and the
+// intake stays closed until this is true: the one that flips it is the PR that finishes H2b (an owner decision, with the adviser's word on the
+// grace period)
+export const dsrPublicFlowReady = (): boolean => DSR_PUBLIC_FLOW_READY
+const DSR_PUBLIC_FLOW_READY = false
 
 export const ComplianceConfig = {
   DSR_RESPONSE_DEADLINE_DAYS: 30,
@@ -12,7 +20,8 @@ export const ComplianceConfig = {
   DSR_VERIFICATION_TOKEN_DAYS: 7,
   DSR_EXPORT_LINK_DAYS: 7,
   BREACH_NOTIFICATION_HOURS: 72,
-  ERASURE_GRACE_PERIOD_DAYS: 30,
+  // Owner, 2026-11-22 (option C): an approved erasure waits 7 days, cancelable, before the sweep carries it out. Always read this constant
+  ERASURE_GRACE_PERIOD_DAYS: 7,
   UNMERGE_WINDOW_DAYS: 30,
   ERASED_CONTENT_PLACEHOLDER: '[erased]', // Written into Message.content on erasure
   // The clearing of the data of an erased customer runs again shortly after the first time and, in the sweep, for this many days after it was
@@ -26,7 +35,20 @@ export const ComplianceConfig = {
   // The public intake (TDD_05 §10.2): what one address, one store and one body may cost, so the form cannot be used to mail a third party
   DSR_INTAKE_PER_EMAIL_PER_DAY: 3,
   DSR_INTAKE_PER_STORE_PER_DAY: 50,
-  DSR_INTAKE_JOB_TTL_MS: 60 * 60 * 1000
+  DSR_INTAKE_JOB_TTL_MS: 60 * 60 * 1000,
+  // The review queue (Step 7.2-H1b): the longest reason a reviewer writes, and the page of the list
+  DSR_REVIEW_REASON_MAX_LENGTH: 500,
+  DSR_REVIEW_PAGE_SIZE: 25,
+  DSR_REVIEW_MAX_PAGE_SIZE: 100,
+  // Requests the expiry sweep closes per store and per run; the next run takes the rest
+  DSR_EXPIRE_BATCH: 200,
+  // The sweep that carries out the approved erasures (Step 7.2-H2b-1): requests per store and per run, the tries before a request goes back to
+  // the review queue, and how long a try keeps the request for itself before another sweep may take it (a worker that died mid-try)
+  DSR_ERASE_BATCH: 20,
+  DSR_ERASE_MAX_ATTEMPTS: 3,
+  DSR_ERASE_LEASE_MS: 60 * 60 * 1000,
+  // The transaction of one request erases every customer it names (the default of a job transaction is 15 s)
+  DSR_ERASE_TRANSACTION_TIMEOUT_MS: 2 * 60 * 1000
 } as const
 
 // Platform-wide floors and ceilings. Tenant-configurable values live in RetentionSettings, and
@@ -99,7 +121,16 @@ export const PlatformCleanup = {
   // An invitation that nobody accepted stays in the list of the team as expired (it is how the person is
   // invited again); it is deleted this long after it expired (MVP_TRIM_CHECKLIST §10 item 21). An accepted or
   // revoked one is the history of who joined and is not touched here
-  EXPIRED_INVITATION_GRACE_DAYS: 30
+  EXPIRED_INVITATION_GRACE_DAYS: 30,
+  // The record of the cookie banner (`cookie_consents`, TDD_05 §10.5) is the proof of what a browser said, and the choice it proves lasts at
+  // most a year (`COOKIE_CONSENT_COOKIE_MAX_AGE_SECONDS`, then the banner asks again, which writes a new row): a row older than this is either
+  // replaced by a newer one or from a visitor who never came back, and the address hash and the browser it holds are no longer worth keeping.
+  // The newest row of a visitor goes with the rest once it is this old. PROPOSAL, NOT DECIDED: the sweep is OFF until the owner sets the window and turns on `COOKIE_CONSENT_RETENTION_ENABLED`;
+  // two years, a year of choice plus a year for a complaint about it
+  COOKIE_CONSENT_RETENTION_DAYS: 730,
+  // A revoked plugin installation closes its webhook subscription with its last delivery; the cleanup clears the sealed secrets and the endpoint of
+  // one that still holds them this long after it was revoked (the last delivery did not close it: a job lost, a write that failed)
+  REVOKED_PLUGIN_SECRET_GRACE_DAYS: 1
 } as const
 
 // The cold export of the audit log (TDD_05 §9.3): whole calendar months that are entirely past the hot window, the
@@ -118,6 +149,25 @@ export const AuditColdExport = {
   // the lock is let go; a process that dies lets it go at once, because the connection closes
   LOCK_TIMEOUT_MS: 2 * 60 * 60 * 1000,
   LOCK_MAX_WAIT_MS: 5_000
+} as const
+
+// What the viewer of the audit log may read of the cold parts (TDD_05 §9.3) in one request. The archive is read as a stream and
+// only the page being asked for is kept in memory; these are the ceilings of the time and the bytes a request may spend on it.
+// A request that reaches one is refused (never answered with a page that is short of entries it did not reach).
+export const AuditColdRead = {
+  // The prefix every object of the cold export lives under (`StorageKeys.auditArchive`)
+  PREFIX: 'audit/',
+  // Objects the listing of the prefix may return before the read gives up (pages of the bucket listing)
+  MAX_LIST_PAGES: 20,
+  // Parts (objects) one request may open
+  MAX_PARTS: 120,
+  // The bytes of the objects (gzipped) one request may read, and the bytes they may inflate to (a bomb guard)
+  MAX_COMPRESSED_BYTES: 512 * 1024 * 1024,
+  MAX_INFLATED_BYTES: 4 * 1024 * 1024 * 1024,
+  // A line longer than this is not an audit entry of ours: the read stops instead of buffering it
+  MAX_LINE_BYTES: 1024 * 1024,
+  // The time one request may spend reading the archive
+  MAX_READ_MS: 60_000
 } as const
 
 // The advisory lock of the cold export of one month: two runs of the same month (a job given again as stalled, two
@@ -175,9 +225,13 @@ export const CookieConsentLimits = {
   USER_AGENT_MAX_LENGTH: 512
 } as const
 
-// The key that hashes the address of a visitor in `CookieConsent.ipHash`. Derived from the signing secret with its own label by
-// `CompliancePlatformModule`; the token lives here so that what uses it imports no env.
+// The key that hashes the address of a visitor in `CookieConsent.ipHash` (a `ConsentHashKey`, see `consent-hash.ts`): `CONSENT_HASH_KEY`, or one
+// derived from the signing secret where none is set. Made by `CompliancePlatformModule`; the token lives here so that what uses it imports no env.
 export const COOKIE_CONSENT_HASH_KEY = Symbol('COOKIE_CONSENT_HASH_KEY')
+
+// Whether the daily cleanup deletes the old answers to the cookie banner (`COOKIE_CONSENT_RETENTION_ENABLED`, off by default): the sweep
+// destroys evidence of consent for good, so the owner decides the window and turns it on. Made by `CompliancePlatformModule`.
+export const COOKIE_CONSENT_RETENTION_ENABLED = Symbol('COOKIE_CONSENT_RETENTION_ENABLED')
 
 // What the public flow of data requests needs from the validated env, derived once (`CompliancePlatformModule`): whether it is on, the key
 // that hashes an address, and the key that seals the job of the intake
@@ -198,5 +252,29 @@ export const DSR_VERIFY_FRAGMENT_KEY = 'token'
 export const DsrResourceTypes = { REQUEST: 'data_subject_request' } as const
 export const DsrSubjectTypes = { CUSTOMER: 'customer' } as const
 export const DsrRejectionReasons = {
-  VERIFICATION_MAIL_NOT_QUEUED: 'verification_mail_not_queued'
+  VERIFICATION_MAIL_NOT_QUEUED: 'verification_mail_not_queued',
+  // The link of the mail was never used before it expired
+  VERIFICATION_EXPIRED: 'verification_expired',
+  // A reviewer decided it; what they wrote is in the notes of the request, never in the audit log
+  REVIEWER_DECISION: 'reviewer_decision'
 } as const
+
+// Why the sweep gave an approved erasure back to the review queue: nobody was erased by this move (the audit entry and the failure code carry it)
+export const DsrErasureReturnReasons = {
+  SUBJECT_CHANGED: 'subject_changed',
+  BLOCKED_BY_OPEN_WORK: 'blocked_by_open_work',
+  // A merge into one of the customers can still be undone: the erasure waits for the reviewer
+  UNDOABLE_MERGE: 'undoable_merge',
+  ATTEMPTS_EXHAUSTED: 'attempts_exhausted'
+} as const
+export type DsrErasureReturnReason =
+  (typeof DsrErasureReturnReasons)[keyof typeof DsrErasureReturnReasons]
+
+// What the closing notice of a data request says happened (the `outcome` of the `dsr-result` mail)
+export const DsrResultOutcomes = {
+  COMPLETED: 'completed',
+  REJECTED: 'rejected',
+  EXPIRED: 'expired',
+  CANCELLED: 'cancelled'
+} as const
+export type DsrResultOutcome = (typeof DsrResultOutcomes)[keyof typeof DsrResultOutcomes]

@@ -65,3 +65,11 @@ export const listConnectionsQuerySchema = z.strictObject({
   state: z.enum(ChannelConnectionListStates).optional()
 })
 export type ListConnectionsQuery = z.output<typeof listConnectionsQuerySchema>
+
+// One page of the directory of the store: the same position and size as the list above, without the state (the directory
+// is for who names a channel, and a disconnected one is told as such). The cursor is the (createdAt, id) of the last row.
+export const listDirectoryQuerySchema = z.strictObject({
+  cursor: cursorSchema.optional(),
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
+})
+export type ListDirectoryQuery = z.output<typeof listDirectoryQuerySchema>

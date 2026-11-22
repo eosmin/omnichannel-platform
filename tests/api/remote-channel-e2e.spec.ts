@@ -57,6 +57,7 @@ import {
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { allDirectoryRows } from '../helpers/directory'
 import { api } from '../helpers/http'
 import { CapturedQueue, queueOf } from '../helpers/queue'
 import { onWorkerDatabase } from '../helpers/worker-db'
@@ -227,12 +228,11 @@ describe('A remote channel plugin, from its registration to the status of a repl
       .send({ displayName: 'Reference line' })
       .expect(CREATED)
 
-    const directory = (await asAgent().get(ApiRoutes.channels.directory).expect(OK)).body as {
-      id: string
-      pluginId: string
-      displayName: string
-    }[]
-    const listed = directory.find(item => item.pluginId === pluginId)
+    const directory = await allDirectoryRows<{ id: string; pluginId: string; displayName: string }>(
+      query => asAgent().get(ApiRoutes.channels.directory).query(query)
+    )
+    expect(directory.status).toBe(OK)
+    const listed = directory.rows.find(item => item.pluginId === pluginId)
     expect(listed?.displayName).toBe('Reference line')
   })
 

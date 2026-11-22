@@ -30,7 +30,8 @@ import {
   fiscalJobOptions,
   FiscalDocumentStatus,
   FiscalLimits,
-  FiscalResourceTypes
+  FiscalResourceTypes,
+  SealedValueKind
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -57,9 +58,11 @@ import type {
   StoredFiscalDocument
 } from '@platform/fiscal/sdk'
 
+import { type ClaimToken } from './claim-token'
 import type { FiscalActor } from './fiscal-issuer.service'
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
 import { cappedResponse, record, toJson } from './json'
+import { openSealed } from './sealed-open'
 import { withTimeout } from './with-timeout'
 
 const HOUR_MS = 3_600_000
@@ -520,6 +523,7 @@ export class FiscalContingencyService {
   async attach(
     organizationId: string,
     documentId: string,
+    claimToken: ClaimToken,
     contingencyId: string,
     built: BuiltDocument,
     providerData: Readonly<Record<string, unknown>> | undefined,
@@ -544,9 +548,15 @@ export class FiscalContingencyService {
       if (held >= maxDocuments) return FiscalContingencyAttachResult.FULL
       // Only the attempt that holds the claim of the document keeps it
       const moved = await tx.fiscalDocument.updateMany({
-        where: { id: documentId, organizationId, status: FiscalDocumentStatus.SUBMITTED },
+        where: {
+          id: documentId,
+          organizationId,
+          status: FiscalDocumentStatus.SUBMITTED,
+          claimToken
+        },
         data: {
           status: FiscalDocumentStatus.QUEUED,
+          claimToken: null,
           contingencyId,
           documentType: built.documentType,
           builtPayloadEncrypted: sealed,
@@ -627,7 +637,16 @@ export class FiscalContingencyService {
     let credentials: Record<string, unknown> = {}
     if (issuer.credentialsEncrypted !== null) {
       try {
-        credentials = this.cipher.open(issuer.credentialsEncrypted)
+        credentials = openSealed(
+          this.cipher,
+          this.logger,
+          issuer.credentialsEncrypted,
+          SealedValueKind.ISSUER_CREDENTIALS,
+          {
+            organizationId,
+            contingencyId
+          }
+        )
       } catch {
         await this.markFailed(
           organizationId,
@@ -646,7 +665,7 @@ export class FiscalContingencyService {
           status: FiscalDocumentStatus.QUEUED
         },
         orderBy: { sequenceNumber: 'asc' },
-        select: { documentType: true, builtPayloadEncrypted: true, providerData: true }
+        select: { id: true, documentType: true, builtPayloadEncrypted: true, providerData: true }
       })
     )
     const documents: StoredFiscalDocument[] = []
@@ -662,7 +681,17 @@ export class FiscalContingencyService {
       }
       let payload: Record<string, unknown>
       try {
-        payload = this.cipher.open(doc.builtPayloadEncrypted)
+        payload = openSealed(
+          this.cipher,
+          this.logger,
+          doc.builtPayloadEncrypted,
+          SealedValueKind.BUILT_PAYLOAD,
+          {
+            organizationId,
+            contingencyId,
+            documentId: doc.id
+          }
+        )
       } catch {
         await this.markFailed(
           organizationId,
@@ -684,7 +713,16 @@ export class FiscalContingencyService {
     let responsible: FiscalVoidParty | null = null
     if (row.responsibleEncrypted !== null) {
       try {
-        const opened = this.cipher.open(row.responsibleEncrypted)
+        const opened = openSealed(
+          this.cipher,
+          this.logger,
+          row.responsibleEncrypted,
+          SealedValueKind.RESPONSIBLE,
+          {
+            organizationId,
+            contingencyId
+          }
+        )
         const text = (value: unknown): string => (typeof value === 'string' ? value : '')
         responsible = {
           name: text(opened['name']),

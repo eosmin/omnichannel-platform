@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { decrypt, encrypt } from './aes-gcm'
+import { DecryptionError, DecryptionFailure, decrypt, encrypt } from './aes-gcm'
 
 const credentialsSchema = z.record(z.string(), z.unknown())
 export type Credentials = z.output<typeof credentialsSchema>
@@ -17,6 +17,12 @@ export class CredentialCipher {
 
   // The database is a boundary like any other: what comes out is checked to be an object again
   open(sealed: Uint8Array, aad?: string): Credentials {
-    return credentialsSchema.parse(JSON.parse(decrypt(sealed, this.key, aad)))
+    const text = decrypt(sealed, this.key, aad)
+    // What opened but is not a set of credentials is a damaged row; the parser's own message is dropped (it may quote the value)
+    try {
+      return credentialsSchema.parse(JSON.parse(text))
+    } catch {
+      throw new DecryptionError('not a set of credentials', DecryptionFailure.ROW_DAMAGED)
+    }
   }
 }

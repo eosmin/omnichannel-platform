@@ -73,6 +73,31 @@ describe('the cookie of the choice', () => {
     )
   })
 
+  it('is not settled by a cookie that only starts like a choice (forged or cut), so the banner asks again', () => {
+    const prefix = `${COOKIE_POLICY_VERSION}.1.`
+    for (const value of [
+      prefix,
+      `${prefix}junk`,
+      `${prefix}101`,
+      `${prefix}10.${ID}`,
+      `${prefix}1011.${ID}`,
+      `${prefix}101.not-a-visitor-id`,
+      `${prefix}101.${ID}.extra`,
+      `${prefix}101.${ID.toUpperCase()}`
+    ]) {
+      expect(isSettled(header(value))).toBe(false)
+      // What the page draws and what a feature may do never disagree: a cookie that settles the page is one that parses whole
+      expect(currentChoice(header(value))).toBeNull()
+    }
+    expect(isSettled(header(encodeChoice(choice())))).toBe(true)
+  })
+
+  it('agrees with the parser: whatever settles the page is a current, synced choice', () => {
+    const settled = header(encodeChoice(choice()))
+    expect(isSettled(settled)).toBe(true)
+    expect(currentChoice(settled)?.synced).toBe(true)
+  })
+
   it('allows a category only when the person said yes: no answer is a no', () => {
     const cookies = header(encodeChoice(choice()))
     expect(isCategoryAllowed(cookies, 'functional')).toBe(true)

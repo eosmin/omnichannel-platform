@@ -12,8 +12,8 @@ import type { StockOfLine } from './stock-of-line'
 import { useLineStocks, useStockSwitches } from './use-create-order'
 
 // What each line of an order form knows of its stock: the warehouses of the store with what each holds of the item, and the
-// two switches that decide how a line may be served. Only a member with `inventory:view` and `settings:view` has them (the
-// switches live behind `settings:view`); the others get lines with no stock block and the server plans the warehouses.
+// two switches that decide how a line may be served. Only a member with `inventory:view` has them (the
+// switches are read with it too); the others get lines with no stock block and the server plans the warehouses.
 //
 // `enabled` false reads nothing (a form whose items are locked draws no stock). `released` holds, by line, the units an
 // existing order already reserves: an edit gives them back before it plans again, so they count as available here.
@@ -26,8 +26,8 @@ export function useStockOfLines(
 ): (line: DraftLine) => StockOfLine {
   const { enabled = true, released } = options
   const { storeId, can } = useStore()
-  const mayShowStock =
-    enabled && can(ClientPermissions.INVENTORY_VIEW) && can(ClientPermissions.SETTINGS_VIEW)
+  // The switches of the store are read with inventory:view, like the stock they decide about
+  const mayShowStock = enabled && can(ClientPermissions.INVENTORY_VIEW)
   const productIds = useMemo(() => [...new Set(lines.map(line => line.productId))], [lines])
   const warehouses = useWarehousesOfStore(storeId, mayShowStock)
   const switches = useStockSwitches(storeId, mayShowStock)
