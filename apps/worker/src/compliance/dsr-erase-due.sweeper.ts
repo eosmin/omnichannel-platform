@@ -627,7 +627,8 @@ export class DsrEraseDueSweeper {
       {
         jobId: dsrResultMailJobId(requestId),
         removeOnComplete: true,
-        // The job holds the address in the clear: it is dropped even when it fails, and the next night's `unsentNoticesOf` queues it again
+        // The job holds the address in the clear, so it is dropped when it fails too. The sealed address on the request is cleared in the same
+        // transaction that queues this job: a mail that fails ALL its attempts in the mail queue is not queued again (debt (o) of the plan)
         removeOnFail: true
       }
     )
