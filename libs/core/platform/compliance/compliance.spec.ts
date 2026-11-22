@@ -1,10 +1,22 @@
-import { AuditColdExport, ComplianceConfig, DataRetentionPolicies } from './compliance-constants'
+import {
+  AuditColdExport,
+  ComplianceConfig,
+  DataRetentionPolicies,
+  dsrExecutorAvailable
+} from './compliance-constants'
 
 describe('ComplianceConfig', () => {
   it('alerts before the response deadline', () => {
     expect(ComplianceConfig.DSR_DEADLINE_ALERT_DAY).toBeLessThan(
       ComplianceConfig.DSR_RESPONSE_DEADLINE_DAYS
     )
+  })
+})
+
+describe('dsrExecutorAvailable', () => {
+  // The sweep `dsr-erase-due` exists (Step 7.2-H2b-1): an erasure can be approved. The public form stays off until the owner turns the flag on
+  it('is true now that the sweep that carries out an approved erasure ships', () => {
+    expect(dsrExecutorAvailable()).toBe(true)
   })
 })
 

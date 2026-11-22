@@ -1,9 +1,10 @@
 import type { RetentionField } from '@platform/core/domain'
 
-// Whether the executor of approved erasures exists (the sweep of Step 7.2-H2b). A function, not a bare constant read in a condition: the
-// day it ships this returns true and nothing else changes
+// Whether the executor of approved erasures exists: the nightly sweep `dsr-erase-due` of Step 7.2-H2b-1. A function, not a bare constant read in
+// a condition. It lets an erasure be approved; it does NOT turn the public form on (that is `DSR_PUBLIC_INTAKE_ENABLED`, off by default and
+// the owner's decision)
 export const dsrExecutorAvailable = (): boolean => DSR_EXECUTOR_AVAILABLE
-const DSR_EXECUTOR_AVAILABLE = false
+const DSR_EXECUTOR_AVAILABLE = true
 
 export const ComplianceConfig = {
   DSR_RESPONSE_DEADLINE_DAYS: 30,
