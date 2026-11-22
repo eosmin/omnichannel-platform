@@ -151,9 +151,20 @@ describe('ExistingDocumentSanitizer', () => {
           )
         }),
         updateMany: jest.fn(
-          (args: { where: { id: string }; data: { fileSize?: number; scanResult: object } }) => {
+          (args: {
+            where: { id: string; scanResult?: { path?: string[]; equals?: unknown } }
+            data: { fileSize?: number; scanResult: object }
+          }) => {
             const row = rows.find(candidate => candidate.id === args.where.id)
-            if (row === undefined || !notFinished(row)) return Promise.resolve({ count: 0 })
+            if (row === undefined) return Promise.resolve({ count: 0 })
+            const guard = args.where.scanResult
+            const allowed =
+              guard?.path !== undefined
+                ? row.scanResult?.[guard.path[0] as string] === guard.equals
+                : guard?.equals !== undefined
+                  ? row.scanResult === null
+                  : notFinished(row)
+            if (!allowed) return Promise.resolve({ count: 0 })
             row.scanResult = args.data.scanResult as Record<string, unknown>
             if (args.data.fileSize !== undefined) row.fileSize = args.data.fileSize
             return Promise.resolve({ count: 1 })
@@ -174,9 +185,14 @@ describe('ExistingDocumentSanitizer', () => {
   function store(
     id: string,
     body: Buffer,
-    options: { contentType?: string; purpose?: string; scanResult?: Row['scanResult'] } = {}
+    options: {
+      contentType?: string
+      purpose?: string
+      scanResult?: Row['scanResult']
+      key?: string
+    } = {}
   ): Row {
-    const key = `stores/${STORE}/${id}`
+    const key = options.key ?? `stores/${STORE}/${id}`
     bucket.set(key, body)
     const row: Row = {
       id,
@@ -330,6 +346,45 @@ describe('ExistingDocumentSanitizer', () => {
     expect(row.fileSize).toBe(clean.length)
   })
 
+  it('counts the attempt before it opens the file: a document that hangs or kills the process is given up after the last attempt and never opened again', async () => {
+    const dirty = await pdfWithMarkers()
+    const row = store('d1', dirty)
+    // The parse never answers: the process is as good as dead, no handler will run
+    for (let attempt = 1; attempt <= ExistingDocumentSweep.MAX_ATTEMPTS; attempt += 1) {
+      storage.read.mockImplementationOnce(() => new Promise<never>(() => undefined))
+      void sanitizer.runScoped([STORE])
+      await new Promise(resolve => setImmediate(resolve))
+      await new Promise(resolve => setImmediate(resolve))
+      expect(row.scanResult).toEqual({ [ExistingPictureSweep.ATTEMPTS_KEY]: attempt })
+    }
+    const readsBefore = storage.read.mock.calls.length
+
+    const report = await sanitizer.runScoped([STORE])
+
+    expect(report).toEqual({ cleaned: 0, alreadyClean: 0, skipped: 0, failed: 0 })
+    expect(storage.read.mock.calls.length).toBe(readsBefore) // it was not opened a fourth time
+    expect(bucket.get(row.key)).toBe(dirty)
+  })
+
+  it('never reads, writes or deletes a key outside the folder of its store, and marks the row', async () => {
+    const outside = store('d1', await pdfWithMarkers(), { key: 'stores/other-store/d1' })
+    const walking = store('d2', await pdfWithMarkers(), { key: `stores/${STORE}/../other/d2` })
+    const before = [bucket.get(outside.key), bucket.get(walking.key)]
+
+    const report = await sanitizer.runScoped([STORE])
+
+    expect(report.skipped).toBe(2)
+    expect(storage.read).not.toHaveBeenCalled()
+    expect(puts).toEqual([])
+    expect(storage.delete).not.toHaveBeenCalled()
+    expect([bucket.get(outside.key), bucket.get(walking.key)]).toEqual(before)
+    for (const row of [outside, walking]) {
+      expect(row.scanResult).toEqual({
+        [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.FOREIGN_KEY
+      })
+    }
+  })
+
   it('leaves as it is, and marks, a document that cannot be cleaned without risk', async () => {
     const damaged = Buffer.from('%PDF-1.7 this is not a pdf')
     const row = store('d1', damaged)
@@ -365,7 +420,8 @@ describe('ExistingDocumentSanitizer', () => {
     expect(report).toMatchObject({ skipped: 1, cleaned: 0 })
     expect(puts).toEqual([])
     expect(bucket.get(row.key)).toBe(dirty)
-    expect(row.scanResult).toBeNull()
+    // Not finished: it only holds the attempt that was counted before the file was opened
+    expect(row.scanResult).toEqual({ [ExistingPictureSweep.ATTEMPTS_KEY]: 1 })
   })
 
   it('never reads or rewrites evidence, even if a row of evidence reaches the batch', async () => {

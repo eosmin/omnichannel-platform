@@ -17,6 +17,7 @@ import {
   ExistingPictureSweep,
   isEvidenceMedia,
   MediaPurpose,
+  objectKeysOf,
   UploadLimits
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -80,6 +81,12 @@ const attemptsOf = (scanResult: unknown): number => {
       : undefined
   return typeof value === 'number' ? value : 0
 }
+
+// The row as this run left it when it began to work on the document: its attempt number is on the row before the file is opened, and every
+// write that closes the work (the mark, the new size, the failure) is made only while the row still holds that number
+const inProgress = (attempt: number) => ({
+  scanResult: { path: [ExistingPictureSweep.ATTEMPTS_KEY], equals: attempt }
+})
 
 // Runs the cleaning of properties (`sanitizeDocument`) over the PDF, docx and xlsx stored before it existed, a bounded batch of each store per
 // run, one document at a time (the cleaner parses it whole inside the decode slot of the process). The progress is the row, as for pictures:
@@ -168,23 +175,42 @@ export class ExistingDocumentSanitizer {
     )
     for (const row of rows) {
       if (Date.now() >= deadline) return
+      const attempt = attemptsOf(row.scanResult) + 1
       try {
-        const left = await this.sweepOne(row, storeId)
+        const left = await this.sweepOne(row, storeId, attempt)
         if (left === undefined) report.cleaned += 1
         else if (left === ExistingDocumentSweep.Outcomes.ALREADY_CLEAN) report.alreadyClean += 1
         else report.skipped += 1
       } catch (error) {
         report.failed += 1
-        await this.recordFailure(row, storeId, error)
+        await this.recordFailure(row, storeId, attempt, error)
       }
     }
   }
 
   // Undefined when the document was rewritten and marked; otherwise what was left (the outcome marked, or `changed`: left unmarked)
-  private async sweepOne(row: Candidate, storeId: string): Promise<Left | undefined> {
+  private async sweepOne(
+    row: Candidate,
+    storeId: string,
+    attempt: number
+  ): Promise<Left | undefined> {
     // Evidence and any type the cleaner does not take are never read: the query does not select them, and this is the second lock on the door
     if (isEvidenceMedia(row.purpose) || !isSanitizedDocumentType(row.contentType)) {
       return ExistingDocumentSweep.CHANGED
+    }
+    // The attempt is counted before the file is opened: a document that hangs or brings the process down never reaches a handler, and
+    // without this it would be taken again every ten minutes for ever. After MAX_ATTEMPTS it is not taken again (see the plan)
+    if (!(await this.begin(row.id, storeId, attempt, row.scanResult))) {
+      return ExistingDocumentSweep.CHANGED
+    }
+    // Only a file under the folder of its own store is read, written or deleted (as `objectKeysOf` does for the deletions): a key that is
+    // not, whatever wrote it, is left alone and marked
+    if (!objectKeysOf(storeId, { key: row.key, variants: null }).keys.includes(row.key)) {
+      this.logger.error(
+        { mediaId: row.id, storeId },
+        'a stored document names a file outside the folder of its store and was left as it is'
+      )
+      return this.mark(row.id, storeId, ExistingDocumentSweep.Outcomes.FOREIGN_KEY, attempt)
     }
     const seen = await this.storage.head(row.key)
     const original =
@@ -194,7 +220,7 @@ export class ExistingDocumentSanitizer {
         { mediaId: row.id, storeId },
         'a stored document has no file in the bucket and was left as it is'
       )
-      return this.mark(row.id, storeId, ExistingDocumentSweep.Outcomes.MISSING)
+      return this.mark(row.id, storeId, ExistingDocumentSweep.Outcomes.MISSING, attempt)
     }
     // An error of the machine propagates: it is a failure to try again, never a mark
     const cleaned = await sanitizeDocument(original, row.contentType)
@@ -205,6 +231,7 @@ export class ExistingDocumentSanitizer {
           row.id,
           storeId,
           ExistingDocumentSweep.Outcomes.ALREADY_CLEAN,
+          attempt,
           original.length
         )
       }
@@ -212,7 +239,7 @@ export class ExistingDocumentSanitizer {
         { mediaId: row.id, storeId, why: cleaned.why },
         'a stored document could not be cleaned of its properties and was left as it is'
       )
-      return this.mark(row.id, storeId, ExistingDocumentSweep.Outcomes.NOT_CLEANABLE)
+      return this.mark(row.id, storeId, ExistingDocumentSweep.Outcomes.NOT_CLEANABLE, attempt)
     }
 
     // Only the object that was read is replaced: a change in between leaves it, and the row, as they are
@@ -228,7 +255,7 @@ export class ExistingDocumentSanitizer {
     await this.storage.put(row.key, cleaned.body, row.contentType)
     const moved = await this.jobContext.forStore(storeId, () =>
       this.prisma.client.media.updateMany({
-        where: { id: row.id, storeId, status: MediaStatus.CLEAN, ...NOT_FINISHED },
+        where: { id: row.id, storeId, status: MediaStatus.CLEAN, ...inProgress(attempt) },
         data: {
           fileSize: cleaned.body.length,
           scanResult: { [ExistingPictureSweep.CLEANED_KEY]: true }
@@ -247,6 +274,29 @@ export class ExistingDocumentSanitizer {
     return undefined
   }
 
+  // Writes the attempt number on the row, only while the row is as the batch read it (not finished): false when another writer moved it on. The
+  // number stays on the row until the work ends (the mark, the new size or the failure replace it), so a process that dies in between has
+  // used one of its MAX_ATTEMPTS, and a row at MAX_ATTEMPTS is not taken by the query again.
+  private async begin(
+    mediaId: string,
+    storeId: string,
+    attempt: number,
+    seen: unknown
+  ): Promise<boolean> {
+    const began = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.media.updateMany({
+        where: {
+          id: mediaId,
+          storeId,
+          status: MediaStatus.CLEAN,
+          ...(seen === null ? { scanResult: { equals: DatabaseNull } } : inProgress(attempt - 1))
+        },
+        data: { scanResult: { [ExistingPictureSweep.ATTEMPTS_KEY]: attempt } }
+      })
+    )
+    return began.count > 0
+  }
+
   // The write is not atomic with the check of the ETag (Step 7.3): if the row was deleted (a conversation or a customer erased) while the file
   // was written, the write brought back a file that should be gone, so it is removed. A row that still exists is left with its file.
   private async takeBackIfRowGone(mediaId: string, key: string, storeId: string): Promise<void> {
@@ -257,8 +307,12 @@ export class ExistingDocumentSanitizer {
   }
 
   // Counts a failure on the row; at MAX_ATTEMPTS it ends as `failed` (logged at error level) and the sweep stops taking it
-  private async recordFailure(row: Candidate, storeId: string, error: unknown): Promise<void> {
-    const attempts = attemptsOf(row.scanResult) + 1
+  private async recordFailure(
+    row: Candidate,
+    storeId: string,
+    attempts: number,
+    error: unknown
+  ): Promise<void> {
     const last = attempts >= ExistingDocumentSweep.MAX_ATTEMPTS
     this.logger.error(
       { mediaId: row.id, storeId, attempts, last, errorName: errorName(error) },
@@ -269,7 +323,7 @@ export class ExistingDocumentSanitizer {
     try {
       await this.jobContext.forStore(storeId, () =>
         this.prisma.client.media.updateMany({
-          where: { id: row.id, storeId, status: MediaStatus.CLEAN, ...NOT_FINISHED },
+          where: { id: row.id, storeId, status: MediaStatus.CLEAN, ...inProgress(attempts) },
           data: {
             scanResult: {
               [ExistingPictureSweep.ATTEMPTS_KEY]: attempts,
@@ -296,11 +350,12 @@ export class ExistingDocumentSanitizer {
     mediaId: string,
     storeId: string,
     outcome: Left,
+    attempt: number,
     fileSize?: number
   ): Promise<Left> {
     await this.jobContext.forStore(storeId, () =>
       this.prisma.client.media.updateMany({
-        where: { id: mediaId, storeId, status: MediaStatus.CLEAN, ...NOT_FINISHED },
+        where: { id: mediaId, storeId, status: MediaStatus.CLEAN, ...inProgress(attempt) },
         data: {
           // A file that a crash left cleaned: the row learns its true size, as the scan does on its retry
           ...(fileSize === undefined ? {} : { fileSize }),

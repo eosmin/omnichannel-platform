@@ -169,7 +169,9 @@ export const ExistingDocumentSweep = {
     // Kept as it came: encrypted, signed, damaged or too big once opened (the reason is in the log of `sanitizeDocument`)
     NOT_CLEANABLE: ExistingPictureSweep.Outcomes.NOT_CLEANABLE,
     FAILED: ExistingPictureSweep.Outcomes.FAILED,
-    MISSING: ExistingPictureSweep.Outcomes.MISSING
+    MISSING: ExistingPictureSweep.Outcomes.MISSING,
+    // The row names a file outside the folder of its store: never read, written or deleted by the sweep, left as it is and logged
+    FOREIGN_KEY: 'foreign_key'
   }
 } as const
 
