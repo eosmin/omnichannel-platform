@@ -17,6 +17,7 @@ import {
   PLUGIN_REVOKE_CONFIRMATION,
   PluginCatalogTypes,
   PluginInstallationStatus,
+  PluginManifestLimits,
   PluginPricingModels,
   PluginStatus,
   WebhookHeaders,
@@ -580,15 +581,70 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       expect(post).toHaveBeenCalledTimes(1)
     })
 
-    it('has no cap when the manifest names none', async () => {
+    it('has no cap of its own when the manifest names none, and the ceiling of the platform holds all the same', async () => {
       const { setup } = await setUp()
       const post = answers(200)
-      for (let i = 0; i < 3; i += 1) {
-        expect(
-          await deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, { post })
-        ).toBe(WebhookOutcome.DELIVERED)
+      const taking = jest.spyOn(dayCap, 'take')
+      try {
+        for (let i = 0; i < 3; i += 1) {
+          expect(
+            await deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, { post })
+          ).toBe(WebhookOutcome.DELIVERED)
+        }
+        // Omitting the limit is not the way past the bound that protects Redis
+        expect(taking.mock.calls.map(call => call[2])).toEqual(
+          Array.from({ length: 3 }, () => WebhookLimits.PLUGIN_DAY_CAP_CEILING)
+        )
+      } finally {
+        taking.mockRestore()
       }
     })
+
+    // A row stored by an older parser is data: a cap it holds that today's parser would refuse is held to the range, never read as
+    // "no cap" (Step 7.3-B5b, #33)
+    it.each([
+      ['zero', 0, PluginManifestLimits.MIN_WEBHOOKS_PER_DAY],
+      ['a string', '5', PluginManifestLimits.MAX_WEBHOOKS_PER_DAY],
+      [
+        'more than the range',
+        PluginManifestLimits.MAX_WEBHOOKS_PER_DAY + 1,
+        PluginManifestLimits.MAX_WEBHOOKS_PER_DAY
+      ]
+    ])(
+      'holds a stored manifest whose cap is %s to the edge of the range',
+      async (_name, stored, held) => {
+        const { id, setup } = await setUp({ limits: { maxWebhooksPerDay: 10 } })
+        const row = await owner.plugin.findUniqueOrThrow({
+          where: { id },
+          select: { manifest: true }
+        })
+        const manifest = row.manifest as { limits: Record<string, unknown> }
+        await owner.plugin.update({
+          where: { id },
+          data: {
+            manifest: { ...manifest, limits: { ...manifest.limits, maxWebhooksPerDay: stored } }
+          }
+        })
+        const post = answers(200)
+        const taking = jest.spyOn(dayCap, 'take')
+        try {
+          const now = Date.now()
+          const deliver = () =>
+            deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, {
+              post,
+              now: () => now
+            })
+          expect(await deliver()).toBe(WebhookOutcome.DELIVERED)
+          expect(taking.mock.calls.map(call => call[2])).toEqual([held])
+          // A cap of one holds the second delivery of the day: a zero was not read as "no cap"
+          if (held === PluginManifestLimits.MIN_WEBHOOKS_PER_DAY) {
+            expect(await deliver()).toBe(WebhookOutcome.SKIPPED)
+          }
+        } finally {
+          taking.mockRestore()
+        }
+      }
+    )
 
     it('sends nothing for an event whose scope the installation no longer holds', async () => {
       const { setup } = await setUp()

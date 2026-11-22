@@ -791,7 +791,8 @@ export class ConversationsService {
         storeId,
         conversationId,
         userId: viewer.userId,
-        visibility: { hidden: isHiddenStatus(current.status), assignedTo: current.assignedTo }
+        visibility: { hidden: isHiddenStatus(current.status), assignedTo: current.assignedTo },
+        ...(viewer.pluginId === undefined ? {} : { byPlugin: true as const })
       })
       return this.detail(tx, storeId, conversationId, viewer, true)
     })
@@ -827,7 +828,8 @@ export class ConversationsService {
         storeId,
         conversationId,
         userId: viewer.userId,
-        visibility: { hidden: isHiddenStatus(current.status), assignedTo: current.assignedTo }
+        visibility: { hidden: isHiddenStatus(current.status), assignedTo: current.assignedTo },
+        ...(viewer.pluginId === undefined ? {} : { byPlugin: true as const })
       })
       return this.detail(tx, storeId, conversationId, viewer, true)
     })

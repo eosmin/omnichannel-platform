@@ -585,6 +585,56 @@ describe('The realtime gateway', () => {
       expect(admin.of(RealtimeEvents.CONVERSATION_READ)).toEqual([])
     })
 
+    // What a plugin read is the team's (Step 7.3-B5b, debt (d) of E1): the count it changed is the conversation's, so every screen that
+    // may see the conversation hears it, and no one learns which plugin it was
+    it.each([
+      ['read', Events.CONVERSATION_READ, RealtimeEvents.CONVERSATION_READ],
+      ['unread', Events.CONVERSATION_UNREAD, RealtimeEvents.CONVERSATION_UNREAD]
+    ] as const)(
+      'tells what a plugin marked as %s to every socket that may see the conversation, with no author, and to no other store',
+      async (_name, domainEvent, realtimeEvent) => {
+        const agent = await asA(ctx.agentA)
+        const admin = await asA(ctx.adminA)
+        const other = await connect(ctx.adminB.token, ctx.storeB.id)
+        const { id } = await mk()
+
+        app.get(EventEmitter2).emit(domainEvent, {
+          storeId: ctx.storeA.id,
+          conversationId: id,
+          userId: `plugin:${randomUUID()}`,
+          visibility: { hidden: false, assignedTo: null },
+          byPlugin: true
+        })
+        await until(
+          () => agent.of(realtimeEvent).length === 1 && admin.of(realtimeEvent).length === 1
+        )
+        await sleep(SETTLE_MS)
+
+        expect(agent.of(realtimeEvent)[0]?.payload).toEqual({ conversationId: id, userId: null })
+        expect(admin.of(realtimeEvent)[0]?.payload).toEqual({ conversationId: id, userId: null })
+        expect(other.of(realtimeEvent)).toEqual([])
+      }
+    )
+
+    it('keeps what a plugin marked out of the sockets that may not see the conversation', async () => {
+      const agent = await asA(ctx.agentA)
+      const admin = await asA(ctx.adminA)
+      const { id } = await mk()
+
+      // Assigned to someone else and hidden from who sees only their own: the agent has no right to it
+      app.get(EventEmitter2).emit(Events.CONVERSATION_READ, {
+        storeId: ctx.storeA.id,
+        conversationId: id,
+        userId: `plugin:${randomUUID()}`,
+        visibility: { hidden: false, assignedTo: ctx.adminA.id },
+        byPlugin: true
+      })
+      await until(() => admin.of(RealtimeEvents.CONVERSATION_READ).length === 1)
+      await sleep(SETTLE_MS)
+
+      expect(agent.of(RealtimeEvents.CONVERSATION_READ)).toEqual([])
+    })
+
     it('tells a change of the team to every socket of the store, with ids only, and to no other store', async () => {
       const agent = await asA(ctx.agentA)
       const withoutTeam = await actorWithPermissions(owner, app, {

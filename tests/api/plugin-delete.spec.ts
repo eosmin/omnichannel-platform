@@ -539,4 +539,32 @@ describe('Deleting a plugin of the organization', () => {
     expect(await exists(id)).toBe(false)
     expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(0)
   })
+
+  // The install takes the row of the plugin FOR SHARE and the deletion takes it FOR UPDATE (Step 7.3-B5b, #30): whichever gets the row
+  // first wins and the other is told why, whatever the order the requests arrive in
+  it('answers one of two clear outcomes, never a 500, when an install and the deletion of the same plugin arrive together', async () => {
+    for (let round = 0; round < 8; round += 1) {
+      const id = await register()
+      const [installed, deleted] = await Promise.all([
+        asAdmin()
+          .post(ApiRoutes.plugins.install)
+          .send({ pluginId: id, scopes: [PluginScopes.ORDERS_READ] }),
+        remove(id)
+      ])
+
+      const outcome = `${installed.status}/${deleted.status}`
+      // The install got the row first: the plugin stays, with its pending installation, and the deletion says it is in use. Or the
+      // deletion did: the plugin and the installation are gone and the install says it does not exist.
+      expect([`${CREATED}/${CONFLICT}`, `${NOT_FOUND}/${NO_CONTENT}`]).toContain(outcome)
+      if (installed.status === CREATED) {
+        expect(codeOf(deleted.body)).toBe(ErrorCodes.PLUGIN_IN_USE)
+        expect(await exists(id)).toBe(true)
+        expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(1)
+      } else {
+        expect(codeOf(installed.body)).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
+        expect(await exists(id)).toBe(false)
+        expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(0)
+      }
+    }
+  })
 })

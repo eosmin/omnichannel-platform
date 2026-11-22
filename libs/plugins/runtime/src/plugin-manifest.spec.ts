@@ -280,18 +280,38 @@ describe('pluginManifestSchema', () => {
   })
 
   describe('the daily cap of webhooks of a stored manifest', () => {
+    const { MAX_WEBHOOKS_PER_DAY: MAX, MIN_WEBHOOKS_PER_DAY: MIN } = PluginManifestLimits
+
+    // What the manifest declares and the parser of today accepts is read as it is
     it.each([
       [{ limits: { maxWebhooksPerDay: 10 } }, 10],
-      [{ limits: { maxWebhooksPerDay: 1 } }, 1],
-      [{ limits: { maxWebhooksPerDay: 0 } }, null],
-      [{ limits: { maxWebhooksPerDay: 1.5 } }, null],
-      [{ limits: { maxWebhooksPerDay: '5' } }, null],
-      [{ limits: { maxWebhooksPerDay: PluginManifestLimits.MAX_WEBHOOKS_PER_DAY + 1 } }, null],
-      [{ limits: {} }, null],
-      [{}, null],
-      [null, null],
-      ['x', null]
+      [{ limits: { maxWebhooksPerDay: MIN } }, MIN],
+      [{ limits: { maxWebhooksPerDay: MAX } }, MAX]
     ])('reads %j as %j', (manifest, expected) => {
+      expect(manifestMaxWebhooksPerDay(manifest)).toBe(expected)
+    })
+
+    // A manifest that says nothing has no cap of its own
+    it.each([[{ limits: {} }], [{ limits: 'x' }], [{}], [null], ['x']])(
+      'reads %j as no cap of its own',
+      manifest => {
+        expect(manifestMaxWebhooksPerDay(manifest)).toBeNull()
+      }
+    )
+
+    // What an older parser let in is held to the edge of the range, never to "no cap" (the limit is not escaped by being malformed)
+    it.each([
+      [{ limits: { maxWebhooksPerDay: 0 } }, MIN],
+      [{ limits: { maxWebhooksPerDay: -5 } }, MIN],
+      [{ limits: { maxWebhooksPerDay: 1.5 } }, 1],
+      [{ limits: { maxWebhooksPerDay: 10.9 } }, 10],
+      [{ limits: { maxWebhooksPerDay: MAX + 1 } }, MAX],
+      [{ limits: { maxWebhooksPerDay: Number.POSITIVE_INFINITY } }, MAX],
+      [{ limits: { maxWebhooksPerDay: Number.NaN } }, MAX],
+      [{ limits: { maxWebhooksPerDay: '5' } }, MAX],
+      [{ limits: { maxWebhooksPerDay: null } }, MAX],
+      [{ limits: { maxWebhooksPerDay: { n: 5 } } }, MAX]
+    ])('holds %j to %j', (manifest, expected) => {
       expect(manifestMaxWebhooksPerDay(manifest)).toBe(expected)
     })
   })
