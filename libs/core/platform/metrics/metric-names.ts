@@ -84,6 +84,9 @@ export const MetricNames = {
   WEBHOOK_GONE_BEHIND_POLICY: 'platform_webhook_gone_behind_policy_total',
   EMAILS_SENT: 'platform_emails_sent_total',
 
+  // Events a channel plugin read from a request that were left out before the queue (see InboundEventDropReason)
+  INBOUND_EVENTS_DROPPED: 'platform_inbound_events_dropped_total',
+
   // Realtime
   WEBSOCKET_CONNECTIONS: 'platform_websocket_connections',
   WEBSOCKET_EVENTS_EMITTED: 'platform_websocket_events_emitted_total',
@@ -97,6 +100,13 @@ export const MetricNames = {
 } as const
 
 export type MetricName = (typeof MetricNames)[keyof typeof MetricNames]
+
+// The `reason` label of MetricNames.INBOUND_EVENTS_DROPPED: a text over the limit is told apart from any other event that does not fit,
+// because only a forged signed body can reach it and a rise of it is worth a look
+export const InboundEventDropReason = {
+  CONTENT_TOO_LONG: 'content_too_long',
+  SCHEMA: 'schema'
+} as const
 
 // The `status` label of MetricNames.EMAILS_SENT: what happened to an email, from the worker that
 // sent it and from the Resend webhook that reports on it afterwards.

@@ -254,6 +254,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'Emails sent',
     labels: ['template', 'status']
   },
+  [MetricNames.INBOUND_EVENTS_DROPPED]: {
+    kind: 'counter',
+    help: 'Events of a channel plugin left out before the queue because they do not fit the event schema',
+    labels: ['reason']
+  },
 
   [MetricNames.WEBSOCKET_CONNECTIONS]: {
     kind: 'gauge',
