@@ -9,10 +9,13 @@ import {
   JobNames,
   QueueNames,
   type RequestMagicLinkJob,
-  type SendEmailJob
+  requestMagicLinkJobSchema,
+  type SendEmailJob,
+  sendEmailJobSchema
 } from '@platform/core/queues'
 
 import { BaseProcessor } from './base.processor'
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 // The worker half of the magic link, on a queue of its own (Step 7.3-S9): the lookup of the address and the email that follows. It shares
@@ -33,21 +36,27 @@ export class AuthEmailProcessor extends BaseProcessor<RequestMagicLinkJob | Send
   protected async handle(job: Job<RequestMagicLinkJob | SendEmailJob>): Promise<void> {
     switch (job.name) {
       case JobNames.REQUEST_MAGIC_LINK: {
-        const { email, correlationId } = job.data as RequestMagicLinkJob
-        await this.magicLinks.issue(email, correlationId)
+        const parsed = requestMagicLinkJobSchema.safeParse(job.data)
+        if (!parsed.success)
+          throw new JobRejectedError('the magic link job does not fit its schema')
+        await this.magicLinks.issue(parsed.data.email, parsed.data.correlationId)
         return
       }
-      case JobNames.SEND_EMAIL:
+      case JobNames.SEND_EMAIL: {
+        const parsed = sendEmailJobSchema.safeParse(job.data)
+        if (!parsed.success) throw new JobRejectedError('the email job does not fit its schema')
         try {
-          await this.email.send(job.data as SendEmailJob)
+          await this.email.send(parsed.data)
         } catch (error) {
           // A payload the template rejects will be rejected again: retrying it only delays the dead letter
-          if (error instanceof ZodError) throw new UnrecoverableError(error.message)
+          if (error instanceof ZodError)
+            throw new JobRejectedError('the email data does not fit its template')
           throw error
         }
         return
+      }
       default:
-        throw new UnrecoverableError(`the auth email queue has no job named ${job.name}`)
+        throw new UnrecoverableError('the auth email queue does not know this job')
     }
   }
 }
