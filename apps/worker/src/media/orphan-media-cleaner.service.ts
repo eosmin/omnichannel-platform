@@ -126,7 +126,7 @@ export class OrphanMediaCleaner {
     report.rowsDropped +=
       (await this.pass('unattached avatars', () => this.dropUnattachedAvatars(now, scope))) ?? 0
     report.refusedFilesDeleted =
-      (await this.pass('refused files', () => this.deleteInfectedFiles(scope))) ?? 0
+      (await this.pass('refused files', () => this.deleteRefusedFiles(scope))) ?? 0
     report.unsentFilesDropped =
       (await this.pass('unsent message files', () => this.dropUnsentMessageFiles(now, scope))) ?? 0
     const stuck = await this.pass('stuck scans', () => this.settleStuckScans(now, scope))
@@ -461,7 +461,7 @@ export class OrphanMediaCleaner {
 
   // The scan marks the row first and deletes the file second: a failure in between leaves the file of
   // an infected or unscannable row. It is never served; here it goes.
-  private async deleteInfectedFiles(scope?: CleanupScope): Promise<number> {
+  private async deleteRefusedFiles(scope?: CleanupScope): Promise<number> {
     // Only the verdicts of the last days: nothing marks a row as cleaned, and a failure of the delete
     // shows up within the retries of the scan, not weeks later
     const since = new Date(Date.now() - UploadLimits.INFECTED_CLEANUP_WINDOW_HOURS * HOUR_MS)

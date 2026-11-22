@@ -61,7 +61,7 @@ describe('OrphanMediaCleaner', () => {
     | 'deleteStrayObjects'
     | 'deleteStrayAvatarUploads'
     | 'dropUnattachedAvatars'
-    | 'deleteInfectedFiles'
+    | 'deleteRefusedFiles'
     | 'settleStuckScans'
     | 'dropUnsentMessageFiles'
   const quiet = (...passes: Pass[]) =>
@@ -294,7 +294,7 @@ describe('OrphanMediaCleaner', () => {
     const quieted = quiet(
       'deleteStrayObjects',
       'dropUnattachedAvatars',
-      'deleteInfectedFiles',
+      'deleteRefusedFiles',
       'dropUnsentMessageFiles',
       'settleStuckScans'
     )
@@ -532,7 +532,7 @@ describe('OrphanMediaCleaner', () => {
         'deleteStrayObjects',
         'deleteStrayAvatarUploads',
         'dropUnattachedAvatars',
-        'deleteInfectedFiles',
+        'deleteRefusedFiles',
         'settleStuckScans'
       )
       const jobContext = moduleRef.get(JobContext, { strict: false })
@@ -750,7 +750,7 @@ describe('OrphanMediaCleaner', () => {
       // does not look at the rows of the suites beside this one
       const quieted = quiet(
         'dropUnattachedAvatars',
-        'deleteInfectedFiles',
+        'deleteRefusedFiles',
         'dropUnsentMessageFiles',
         'settleStuckScans'
       )
@@ -822,7 +822,7 @@ describe('OrphanMediaCleaner', () => {
       const quieted = quiet(
         'deleteStrayObjects',
         'deleteStrayAvatarUploads',
-        'deleteInfectedFiles',
+        'deleteRefusedFiles',
         'dropUnsentMessageFiles',
         'settleStuckScans'
       )
