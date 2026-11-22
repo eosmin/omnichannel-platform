@@ -3,7 +3,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import { PDFDocument } from 'pdf-lib'
 
 import type { PrismaService } from '@platform/core/database'
-import { sanitizeDocument } from '@platform/core/document-sanitizer'
+import { sanitizeDocumentInline } from '@platform/core/document-sanitizer'
 import type { DomainEvents } from '@platform/core/event-bus'
 import type { ProcessImageJob } from '@platform/core/queues'
 import { MediaPurpose } from '@platform/core/storage'
@@ -11,6 +11,7 @@ import type { StorageService } from '@platform/core/storage-module'
 
 import type { ClamavClient } from './clamav.client'
 import { MediaPipeline } from './media-pipeline.service'
+import { InlineDocumentCleaner } from './testing/inline-document-cleaner'
 
 const AUTHOR = 'Jane Q. Author'
 
@@ -61,7 +62,8 @@ describe('MediaPipeline and the properties of a document', () => {
       { publish: jest.fn() } as unknown as DomainEvents,
       { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
       logger as unknown as PinoLogger,
-      { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
+      { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never,
+      new InlineDocumentCleaner()
     )
     return { pipeline, storage, updateMany, logger }
   }
@@ -105,7 +107,7 @@ describe('MediaPipeline and the properties of a document', () => {
 
   it('makes the row true when a retry finds the object already cleaned (the update failed after the write)', async () => {
     const { pipeline, storage, updateMany } = build(MediaPurpose.MESSAGE)
-    const first = await sanitizeDocument(await pdf(), 'application/pdf')
+    const first = await sanitizeDocumentInline(await pdf(), 'application/pdf')
     if (first.kind !== 'sanitized') throw new Error('expected a cleaned pdf')
     storage.read.mockResolvedValue(first.body)
 
@@ -147,7 +149,7 @@ describe('MediaPipeline and the properties of a document', () => {
 
     expect(storage.put).not.toHaveBeenCalled()
     expect(logger.warn).toHaveBeenCalledWith(
-      { mediaId: 'media-1', storeId: null },
+      { mediaId: 'media-1', storeId: null, why: 'not_cleanable' },
       expect.stringContaining('kept as it came')
     )
     expect(updateMany.mock.calls.at(-1)?.[0]).toMatchObject({ data: { status: 'clean' } })

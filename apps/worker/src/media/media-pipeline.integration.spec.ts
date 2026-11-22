@@ -16,7 +16,9 @@ import { dropJob } from '../testing/drop-job'
 import { WorkerModule } from '../worker.module'
 
 import { ClamavClient } from './clamav.client'
+import { DocumentCleaner } from './document-cleaner'
 import { MediaPipeline } from './media-pipeline.service'
+import { InlineDocumentCleaner } from './testing/inline-document-cleaner'
 
 // The standard antivirus test string: every scanner flags it, and it is harmless
 const EICAR = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'
@@ -63,6 +65,10 @@ describe('MediaPipeline', () => {
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({ imports: [WorkerModule] })
       // The role of the worker, at the address of the run: the env file holds the one of a laptop
+      // The thread is a file of the bundle (`document-thread.js`), which a run under ts-jest does not have: it is checked on the built bundle
+      // by `scripts/smoke-document-thread.ts` (CI), and its behavior by `thread-document-cleaner.spec.ts`
+      .overrideProvider(DocumentCleaner)
+      .useValue(new InlineDocumentCleaner())
       .overrideProvider(PrismaService)
       .useValue(new PrismaService({ databaseUrl: connectionUrls().worker }))
       .compile()

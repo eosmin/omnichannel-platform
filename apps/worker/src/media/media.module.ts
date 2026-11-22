@@ -20,12 +20,14 @@ import { RetentionWorkerModule } from '../retention/retention.module'
 import { ShippingWorkerModule } from '../shipping/shipping.module'
 
 import { ClamavClient } from './clamav.client'
+import { DocumentCleaner } from './document-cleaner'
 import { ExistingDocumentSanitizer } from './existing-document-sanitizer.service'
 import { ExistingPictureSanitizer } from './existing-picture-sanitizer.service'
 import { InboundMediaFetcher } from './inbound-media-fetcher.service'
 import { MediaPipeline } from './media-pipeline.service'
 import { OriginMediaFetcher } from './origin-media-fetcher.service'
 import { OrphanMediaCleaner } from './orphan-media-cleaner.service'
+import { defaultThreadOptions, ThreadDocumentCleaner } from './thread-document-cleaner'
 import { UnavailableFileMarker } from './unavailable-file-marker.service'
 import { VersionedBucketGuard } from './versioned-bucket.guard'
 
@@ -58,6 +60,11 @@ import { VersionedBucketGuard } from './versioned-bucket.guard'
       provide: ClamavClient,
       inject: [CLAMAV_ADDRESS],
       useFactory: (address: ClamavAddress) => new ClamavClient(address)
+    },
+    // The parse of a PDF, a docx or an xlsx runs on a thread with a deadline and a memory limit, never on the event loop of the worker (Step 7.3)
+    {
+      provide: DocumentCleaner,
+      useFactory: () => new ThreadDocumentCleaner(defaultThreadOptions())
     },
     MediaPipeline,
     UnavailableFileMarker,

@@ -15,6 +15,7 @@ import {
   cleanWebp,
   pngChunkTypes
 } from './animated-image-cleaner'
+import { isEnvironmentError } from './environment-error'
 
 // The picture cannot be decoded, is not what it says it is, has too many pixels, does not fit the file
 // limit once cleaned, or came out of the encoder with metadata still in it. It is refused: the
@@ -100,12 +101,7 @@ function isAnimatedPng(input: Buffer): boolean {
   return false
 }
 
-// Errors of the machine, not of the picture: a retry may well work, so they must not end in a refusal
-const ENVIRONMENT_ERROR = /memory|ENOMEM|resource|thread|too many open|EMFILE|cannot allocate/i
-
-// Whether an error is of the machine and not of the picture (see ENVIRONMENT_ERROR): a retry may work, so it must never end as a refusal
-export const isEnvironmentError = (error: unknown): boolean =>
-  error instanceof Error && ENVIRONMENT_ERROR.test(error.message)
+export { isEnvironmentError }
 
 function encode(input: Buffer, format: 'jpeg' | 'png' | 'webp', quality: number): Promise<Buffer> {
   // A photo with a small flaw in its tail is still a photo; only a file that cannot be decoded fails.
