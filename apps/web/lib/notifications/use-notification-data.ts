@@ -27,6 +27,8 @@ import type { NotificationFilter } from '@platform/core/notifications'
 
 import { apiClient } from '../api'
 
+import { applyRead, filterOfListKey, hasEmptyPageWithMore } from './mark-read-cache'
+
 export function useNotificationList(
   storeId: string,
   filter: NotificationFilter,
@@ -50,11 +52,33 @@ export function useUnreadCount(storeId: string): UseQueryResult<number> {
   })
 }
 
-// Marking changes the list (the dot, the "Unread" tab) and the count: `list` is the prefix of both
-function useRefreshAfter(storeId: string): () => void {
+// Marking changes the lines already loaded (the dot, the "Unread" tab) and the count. The loaded
+// lines are patched in place (`applyRead`): refetching `list` would read every page of every tab the
+// person opened again. Only the count is read again, because the api knows how many are left.
+// `ids` null is "mark all". A read that started before the mark is cancelled first, or its older
+// answer would land on top of the patch and bring the lines back as unread.
+function useRefreshAfter(storeId: string): (ids: readonly string[] | null) => Promise<void> {
   const queryClient = useQueryClient()
-  return () => {
-    void queryClient.invalidateQueries({ queryKey: QueryKeys.notifications.list(storeId) })
+  return async ids => {
+    const lists = { queryKey: QueryKeys.notifications.list(storeId) }
+    await queryClient.cancelQueries({
+      ...lists,
+      predicate: query => filterOfListKey(storeId, query.queryKey) !== null
+    })
+    const readAt = new Date().toISOString()
+    const named = ids === null ? null : new Set(ids)
+    for (const [key, data] of queryClient.getQueriesData<
+      InfiniteData<NotificationPageView, string | null>
+    >(lists)) {
+      const filter = filterOfListKey(storeId, key)
+      if (data === undefined || filter === null) continue
+      const patched = applyRead(data, filter, named, readAt)
+      queryClient.setQueryData(key, patched)
+      if (hasEmptyPageWithMore(patched)) {
+        void queryClient.invalidateQueries({ queryKey: key, exact: true })
+      }
+    }
+    await queryClient.invalidateQueries({ queryKey: QueryKeys.notifications.unread(storeId) })
   }
 }
 
@@ -67,7 +91,7 @@ export function useMarkRead(
   const refresh = useRefreshAfter(storeId)
   return useMutation({
     mutationFn: (id: string) => markNotificationsRead(apiClient, storeId, [id]),
-    onSuccess: refresh,
+    onSuccess: (_updated, id) => refresh([id]),
     onError
   })
 }
@@ -76,7 +100,7 @@ export function useMarkAllRead(storeId: string): UseMutationResult<number, Error
   const refresh = useRefreshAfter(storeId)
   return useMutation({
     mutationFn: () => markAllNotificationsRead(apiClient, storeId),
-    onSuccess: refresh
+    onSuccess: () => refresh(null)
   })
 }
 
