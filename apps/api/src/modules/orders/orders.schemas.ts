@@ -34,7 +34,7 @@ export interface OrderCursor {
   // The scheduled day of the last row ('YYYY-MM-DD'), or null: part of the position only when the list is sorted by it
   day: string | null
   // The key of the last row when the list is sorted by the total (cents) or the customer (the search form of the name,
-  // null for a customer without a name): null for the other sorts
+  // a customer without a name has the empty one): null for the other sorts
   key: number | string | null
   createdAt: Date
   id: string
@@ -86,7 +86,7 @@ function cursorFitsSort(query: { cursor?: OrderCursor; sort?: string }): boolean
   if (query.cursor === undefined) return true
   const { key } = query.cursor
   if (query.sort === OrderSorts.TOTAL_HIGHEST) return typeof key === 'number'
-  if (query.sort === OrderSorts.CUSTOMER_NAME) return key === null || typeof key === 'string'
+  if (query.sort === OrderSorts.CUSTOMER_NAME) return typeof key === 'string'
   return key === null
 }
 

@@ -230,7 +230,7 @@ export const OrderGuideFilters = {
 export type OrderGuideFilter = (typeof OrderGuideFilters)[keyof typeof OrderGuideFilters]
 
 // The orders of GET /orders come newest first unless the caller asks for another order: the days of delivery (soonest
-// first), the biggest total first, or the name of the customer (A to Z, an order whose customer has no name last).
+// first), the biggest total first, or the name of the customer (A to Z; a customer with no name counts as an empty name and comes first).
 // Every sort breaks its ties by the newest and then the id, so a keyset page never repeats nor skips a row.
 export const OrderSorts = {
   NEWEST: 'newest',

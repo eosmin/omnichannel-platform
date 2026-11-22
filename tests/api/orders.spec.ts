@@ -769,7 +769,9 @@ describe('Creating an order', () => {
       const elapsedMs = Date.now() - started
 
       expect(answers.map(answer => answer.status)).toEqual(Array<number>(COUNT).fill(CREATED))
-      const numbers = answers.map(answer => (answer.body as OrderBody).orderNumber)
+      const numbers = answers.map(
+        answer => (answer.body as { order: { orderNumber: string } }).order.orderNumber
+      )
       expect(new Set(numbers).size).toBe(COUNT)
       const sequence = numbers
         .map(number => Number(/(\d+)$/.exec(number)?.[1]))

@@ -17,7 +17,7 @@ export function orderListOrderBy(sort: OrderSort): OrderOrderByWithRelationInput
     case OrderSorts.TOTAL_HIGHEST:
       return [{ totalCents: 'desc' }, ...tail]
     case OrderSorts.CUSTOMER_NAME:
-      return [{ customer: { nameSearch: { sort: 'asc', nulls: 'last' } } }, ...tail]
+      return [{ customer: { nameSearch: 'asc' } }, ...tail]
     default:
       return tail
   }
@@ -52,16 +52,14 @@ export function orderCursorWhere(
       }
     }
     case OrderSorts.CUSTOMER_NAME:
-      // A cursor with no key is the one of a customer without a name (the nulls come last)
-      return typeof cursor.key === 'string'
-        ? {
-            OR: [
-              { customer: { nameSearch: { gt: cursor.key } } },
-              { customer: { nameSearch: cursor.key }, OR: after(cursor) },
-              { customer: { nameSearch: null } }
-            ]
-          }
-        : { customer: { nameSearch: null }, OR: after(cursor) }
+      // The schema refuses a cursor whose key is not a name, so the key is a string here. `name_search` is never null (the
+      // database writes '' for a customer without a name), so those customers come first and the position stays total
+      return {
+        OR: [
+          { customer: { nameSearch: { gt: cursor.key as string } } },
+          { customer: { nameSearch: cursor.key as string }, OR: after(cursor) }
+        ]
+      }
     default:
       return { OR: after(cursor) }
   }
@@ -73,6 +71,6 @@ export function orderCursorKey(
   last: { totalCents: number; customer: { nameSearch: string | null } }
 ): number | string | null {
   if (sort === OrderSorts.TOTAL_HIGHEST) return last.totalCents
-  if (sort === OrderSorts.CUSTOMER_NAME) return last.customer.nameSearch
+  if (sort === OrderSorts.CUSTOMER_NAME) return last.customer.nameSearch ?? ''
   return null
 }

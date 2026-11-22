@@ -15,7 +15,9 @@ import { api } from '../helpers/http'
 
 const OK = 200
 const BAD_REQUEST = 400
-const PAGE = 3
+// Sizes that put the end of a page at every kind of boundary: inside a tie, between two keys, and (7) right between the
+// named customer and the ones with no name (they are the first, as the empty name)
+const PAGE_SIZES = [2, 3, 7]
 
 interface Seeded {
   id: string
@@ -104,20 +106,18 @@ describe('Orders list: keyset sorts by total and by customer', () => {
   const expected: Record<string, (a: Seeded, b: Seeded) => number> = {
     [OrderSorts.TOTAL_HIGHEST]: (a, b) => b.totalCents - a.totalCents || byNewestThenId(a, b),
     [OrderSorts.CUSTOMER_NAME]: (a, b) => {
-      if (a.nameSearch !== b.nameSearch) {
-        if (a.nameSearch === null) return 1
-        if (b.nameSearch === null) return -1
-        return a.nameSearch < b.nameSearch ? -1 : 1
-      }
+      // A customer without a name has the empty search name: first
+      const [nameA, nameB] = [a.nameSearch ?? '', b.nameSearch ?? '']
+      if (nameA !== nameB) return nameA < nameB ? -1 : 1
       return byNewestThenId(a, b)
     }
   }
 
-  async function everyPage(sort: string): Promise<string[]> {
+  async function everyPage(sort: string, size: number): Promise<string[]> {
     const ids: string[] = []
     let cursor: string | null = null
     for (let pages = 0; pages < seeded.length; pages += 1) {
-      const query = `sort=${sort}&limit=${PAGE}${cursor === null ? '' : `&cursor=${cursor}`}`
+      const query = `sort=${sort}&limit=${size}${cursor === null ? '' : `&cursor=${cursor}`}`
       const response = await agent.get(`${ApiRoutes.orders.list}?${query}`)
       expect(response.status).toBe(OK)
       const body = response.body as PageBody
@@ -128,10 +128,13 @@ describe('Orders list: keyset sorts by total and by customer', () => {
     throw new Error('the pages did not end')
   }
 
-  it.each([OrderSorts.TOTAL_HIGHEST, OrderSorts.CUSTOMER_NAME])(
-    'pages the sort %s without repeating nor skipping a row, in the order of its keys and ties',
-    async sort => {
-      const ids = await everyPage(sort)
+  const cases = [OrderSorts.TOTAL_HIGHEST, OrderSorts.CUSTOMER_NAME].flatMap(sort =>
+    PAGE_SIZES.map(size => [sort, size] as const)
+  )
+  it.each(cases)(
+    'pages the sort %s by %i without repeating nor skipping a row, in the order of its keys and ties',
+    async (sort, size) => {
+      const ids = await everyPage(sort, size)
       const wanted = seeded
         .slice()
         .sort(expected[sort] as (a: Seeded, b: Seeded) => number)
