@@ -6,6 +6,7 @@ import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { PLUGIN_REVOKE_CONFIRMATION } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
+import { exchangePluginSetupCode, statusOfPluginKey } from '../support/api'
 import { addOwnerOfNewStore, removeWidgetPlugin } from '../support/database'
 import { expectDialogHoldsItsContent } from '../support/dialog-fit'
 import { signIn } from '../support/login'
@@ -37,6 +38,7 @@ test.describe('Settings → Plugins', () => {
   let context: BrowserContext
   let page: Page
   let storeId = ''
+  let setupCode = ''
 
   test.beforeAll(async ({ browser }) => {
     storeId = await addOwnerOfNewStore(ownerEmail, `E2E Plugins ${run}`)
@@ -100,6 +102,7 @@ test.describe('Settings → Plugins', () => {
     const code = page.getByTestId('plugin-setup-code')
     await expect(code).toBeVisible()
     await expect(code).toHaveText(/^[A-Za-z0-9_-]{43}$/)
+    setupCode = (await code.textContent()) ?? ''
     await expectDialogHoldsItsContent(page, page.getByRole('dialog'))
     await page
       .getByRole('dialog')
@@ -129,6 +132,59 @@ test.describe('Settings → Plugins', () => {
     await expectDialogHoldsItsContent(page, detail)
     await page.keyboard.press('Escape')
     await expect(detail).toBeHidden()
+  })
+
+  test('makes a new access key only after the confirmation, shows it once and kills the old one', async () => {
+    // The plugin trades its code for its key: the installation is up
+    const oldKey = await exchangePluginSetupCode(setupCode)
+    expect(await statusOfPluginKey(oldKey)).toBe(200)
+    await page.reload()
+    await row()
+      .getByRole('button', { name: new RegExp(`^${SCREEN.detail.action}`) })
+      .click()
+    const detail = page.getByRole('dialog', { name: pluginName, exact: true })
+    await expect(detail.getByTestId('plugin-status')).toHaveText(SCREEN.detail.status.active)
+    await detail.getByRole('button', { name: SCREEN.detail.rotateKey, exact: true }).click()
+
+    // Asked first, and cancelling changes nothing
+    const confirm = page.getByRole('alertdialog')
+    await expect(confirm).toContainText(
+      SCREEN.detail.rotateKeyConfirm.title.replace('{name}', pluginName)
+    )
+    await expectDialogHoldsItsContent(page, confirm)
+    await confirm
+      .getByRole('button', { name: SCREEN.detail.rotateKeyConfirm.cancel, exact: true })
+      .click()
+    await expect(confirm).toBeHidden()
+    expect(await statusOfPluginKey(oldKey)).toBe(200)
+
+    await detail.getByRole('button', { name: SCREEN.detail.rotateKey, exact: true }).click()
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: SCREEN.detail.rotateKeyConfirm.confirm, exact: true })
+      .click()
+
+    // Shown once, and the old key is dead from that moment
+    const shown = page.getByTestId('plugin-api-key')
+    await expect(shown).toBeVisible()
+    const newKey = (await shown.textContent()) ?? ''
+    expect(newKey).toMatch(/^plg_live_[A-Za-z0-9_-]+$/)
+    expect(newKey).not.toBe(oldKey)
+    expect(await statusOfPluginKey(oldKey)).toBe(401)
+    expect(await statusOfPluginKey(newKey)).toBe(200)
+    await expectDialogHoldsItsContent(page, page.getByRole('dialog'))
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: en.common.close, exact: true })
+      .click()
+    await expect(shown).toBeHidden()
+
+    // The key is not on the detail again: only its prefix
+    const again = page.getByRole('dialog', { name: pluginName, exact: true })
+    await expect(again.getByText(newKey, { exact: false })).toHaveCount(0)
+    await expect(again.getByText('plg_live_', { exact: false })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(again).toBeHidden()
   })
 
   test('revokes only with the word typed, and the plugin can be installed again', async () => {

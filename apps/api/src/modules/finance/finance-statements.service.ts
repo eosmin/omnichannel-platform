@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { JobContext, PrismaService } from '@platform/core/database'
+import { PrismaService } from '@platform/core/database'
 import {
   AccountType,
   AgingBucketDays,
@@ -38,6 +38,7 @@ import {
 
 import type { Actor } from '../tenancy'
 
+import { FinanceReportGate } from './finance-report-gate.service'
 import type { AgingQuery, BalanceSheetQuery, FlowQuery } from './finance-reports.schemas'
 import type { AgingCsvRow, StatementCsvRow } from './finance-statements.csv'
 import { centsAsNumber } from './finance.support'
@@ -135,6 +136,8 @@ interface AgingLineRow {
   party_type: string | null
   party_id: string | null
   entry_date: Date
+  entry_number: bigint
+  line_no: number
   entry_id: string
   reverses_entry_id: string | null
   debit_cents: number
@@ -162,7 +165,7 @@ export class FinanceStatementsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly jobContext: JobContext
+    private readonly gate: FinanceReportGate
   ) {}
 
   async incomeStatement(organizationId: string, query: FlowQuery): Promise<IncomeStatementView> {
@@ -218,63 +221,102 @@ export class FinanceStatementsService {
   }
 
   // Names the carrier connections of every store of the organization: the route is @NoTenantTransaction and the read opens the context of the
-  // organization (a request holds the store of the header alone with RLS on, and the party would lose its name with the other header)
+  // organization (a request holds the store of the header alone with RLS on, and the party would lose its name with the other header). It
+  // holds one place of the cap of reads of the organization and reads the lines in pages, one unit each, ageing a party as soon as its
+  // lines end (debt (c) of F6-3): no unit holds the whole list and the memory holds one party's lines, never every party's.
   async aging(organizationId: string, query: AgingQuery): Promise<AgingView> {
-    return this.jobContext.inOrganization(
-      organizationId,
-      () => this.readAging(organizationId, query),
-      {
-        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
-      }
-    )
+    return this.gate.read(organizationId, () => this.readAging(organizationId, query))
   }
 
   private async readAging(organizationId: string, query: AgingQuery): Promise<AgingView> {
-    await this.requireStore(organizationId, query.storeId)
     const storeId = query.storeId ?? null
     const roles = AgingRoles[query.kind]
-    const mapped = await this.prisma.client.accountRoleMapping.findMany({
-      where: { organizationId, role: { in: [...roles] } },
-      select: { role: true, accountId: true }
+    const mapped = await this.gate.unit(organizationId, async () => {
+      await this.requireStore(organizationId, query.storeId)
+      return this.prisma.client.accountRoleMapping.findMany({
+        where: { organizationId, role: { in: [...roles] } },
+        select: { role: true, accountId: true }
+      })
     })
     const missingRoles = roles.filter(role => !mapped.some(row => row.role === String(role)))
     const warnings: StatementWarning[] = []
     if (missingRoles.length > 0) warnings.push(StatementWarning.ROLE_NOT_MAPPED)
     const accountIds = [...new Set(mapped.map(row => row.accountId))]
-    const lines =
-      accountIds.length === 0
-        ? []
-        : await this.agingLines(organizationId, accountIds, query.asOf, storeId)
-    // Lines come ordered by party: one pass cuts them into parties and ages each
+    // Lines come ordered by party: a party is aged as soon as its lines end, so only the party being read is held
     const growsOnCredit = query.kind === AgingKind.PAYABLES
-    const groups = new Map<
-      string,
-      { type: string | null; id: string | null; lines: AgingLineRow[] }
-    >()
-    for (const line of lines) {
-      const key = `${line.party_type ?? ''}:${line.party_id ?? ''}`
-      const group = groups.get(key) ?? { type: line.party_type, id: line.party_id, lines: [] }
-      group.lines.push(line)
-      groups.set(key, group)
+    const parties: { type: string | null; id: string | null; aging: Aging }[] = []
+    const state: {
+      current: {
+        key: string
+        type: string | null
+        id: string | null
+        lines: AgingLineRow[]
+      } | null
+    } = { current: null }
+    const finish = (): void => {
+      const current = state.current
+      if (current === null) return
+      parties.push({
+        type: current.type,
+        id: current.id,
+        aging: agingOf(
+          current.lines.map(line => ({
+            entryDate: isoDay(line.entry_date),
+            debitCents: BigInt(line.debit_cents),
+            creditCents: BigInt(line.credit_cents),
+            entryId: line.entry_id,
+            reversesEntryId: line.reverses_entry_id
+          })),
+          query.asOf,
+          growsOnCredit,
+          AgingBucketDays
+        )
+      })
+      state.current = null
     }
-    const names = await this.partyNames(organizationId, [...groups.values()])
+    if (accountIds.length > 0) {
+      let after: AgingLineRow | null = null
+      let seen = 0
+      for (;;) {
+        const cursor: AgingLineRow | null = after
+        const page: AgingLineRow[] = await this.gate.unit(organizationId, () =>
+          this.agingLines(organizationId, accountIds, query.asOf, storeId, cursor)
+        )
+        seen += page.length
+        // A list longer than a file is refused, as before: the range to narrow is the store
+        if (seen > FinanceReportLimits.MAX_CSV_ROWS) {
+          throw new PlatformException(
+            ErrorCodes.EXPORT_TOO_LARGE,
+            'the list would read more lines than one report: narrow it to a store',
+            HttpStatusCodes.BAD_REQUEST
+          )
+        }
+        for (const line of page) {
+          const key = `${line.party_type ?? ''}:${line.party_id ?? ''}`
+          if (state.current?.key !== key) {
+            finish()
+            state.current = { key, type: line.party_type, id: line.party_id, lines: [] }
+          }
+          state.current.lines.push(line)
+        }
+        const last = page.at(-1)
+        if (page.length < FinanceReportLimits.CSV_PAGE_SIZE || last === undefined) break
+        after = last
+      }
+      finish()
+    }
+    const names = await this.gate.unit(organizationId, () =>
+      this.partyNames(
+        organizationId,
+        parties.map(party => ({ type: party.type, id: party.id }))
+      )
+    )
     const rows: (AgingRowView & { aging: Aging })[] = []
     const totals = Array.from({ length: AgingBucketDays.length + 1 }, () => 0n)
     let unapplied = 0n
     let total = 0n
-    for (const group of groups.values()) {
-      const aging = agingOf(
-        group.lines.map(line => ({
-          entryDate: isoDay(line.entry_date),
-          debitCents: BigInt(line.debit_cents),
-          creditCents: BigInt(line.credit_cents),
-          entryId: line.entry_id,
-          reversesEntryId: line.reverses_entry_id
-        })),
-        query.asOf,
-        growsOnCredit,
-        AgingBucketDays
-      )
+    for (const group of parties) {
+      const aging = group.aging
       aging.bucketsCents.forEach((cents, index) => {
         totals[index] = (totals[index] ?? 0n) + cents
       })
@@ -388,20 +430,13 @@ export class FinanceStatementsService {
     return rows
   }
 
-  // Names the carrier connections of every store of the organization: the route is @NoTenantTransaction and the read opens the context of the
-  // organization (a request holds the store of the header alone with RLS on, and the party would lose its name with the other header)
+  // The same read as the aging view, as the rows of a file: the same place of the cap (the view joins it) and the same short units
   async agingCsvRows(
     organizationId: string,
     query: AgingQuery,
     actor: Actor
   ): Promise<AgingCsvRow[]> {
-    return this.jobContext.inOrganization(
-      organizationId,
-      () => this.readAgingCsvRows(organizationId, query, actor),
-      {
-        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
-      }
-    )
+    return this.gate.read(organizationId, () => this.readAgingCsvRows(organizationId, query, actor))
   }
 
   private async readAgingCsvRows(
@@ -470,32 +505,35 @@ export class FinanceStatementsService {
     }))
   }
 
-  // The lines of the accounts of one list, in the order of the ledger inside each party. A list longer than a file is refused: it is read
-  // into memory to be aged, and the range to narrow here is the store.
+  // One page of the lines of the accounts of one list, in the order of the ledger inside each party, after the line the last page ended
+  // with. The order is by party (none first), then by day, entry number and line: the same on every page, so no line is read twice or lost.
   private async agingLines(
     organizationId: string,
     accountIds: string[],
     asOf: string,
-    storeId: string | null
+    storeId: string | null,
+    after: AgingLineRow | null
   ): Promise<AgingLineRow[]> {
-    const rows = await this.prisma.client.$queryRaw<AgingLineRow[]>`
-      SELECT l.party_type, l.party_id, e.entry_date, e.id AS entry_id, e.reverses_entry_id, l.debit_cents, l.credit_cents
+    const hasAfter = after !== null
+    const afterType = after?.party_type ?? ''
+    const afterParty = after?.party_id ?? ''
+    const afterDate = after === null ? null : isoDay(after.entry_date)
+    const afterNumber = after?.entry_number ?? null
+    const afterLine = after?.line_no ?? null
+    return this.prisma.client.$queryRaw<AgingLineRow[]>`
+      SELECT l.party_type, l.party_id, e.entry_date, e.number AS entry_number, l.line_no, e.id AS entry_id, e.reverses_entry_id,
+             l.debit_cents, l.credit_cents
       FROM journal_lines l
       JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
       WHERE l.organization_id = ${organizationId}
         AND l.account_id = ANY(${accountIds}::text[])
         AND e.entry_date <= ${asOf}::date
         AND (${storeId}::text IS NULL OR l.store_id = ${storeId})
-      ORDER BY l.party_type NULLS FIRST, l.party_id NULLS FIRST, e.entry_date, e.number, l.line_no
-      LIMIT ${FinanceReportLimits.MAX_CSV_ROWS + 1}`
-    if (rows.length > FinanceReportLimits.MAX_CSV_ROWS) {
-      throw new PlatformException(
-        ErrorCodes.EXPORT_TOO_LARGE,
-        'the list would read more lines than one report: narrow it to a store',
-        HttpStatusCodes.BAD_REQUEST
-      )
-    }
-    return rows
+        AND (NOT ${hasAfter}::boolean OR (
+          COALESCE(l.party_type, ''), COALESCE(l.party_id, ''), e.entry_date, e.number, l.line_no
+        ) > (${afterType}::text, ${afterParty}::text, ${afterDate}::date, ${afterNumber}::bigint, ${afterLine}::int))
+      ORDER BY COALESCE(l.party_type, ''), COALESCE(l.party_id, ''), e.entry_date, e.number, l.line_no
+      LIMIT ${FinanceReportLimits.CSV_PAGE_SIZE}`
   }
 
   // The names of the parties of a list, read only for the organization of the request: a supplier of the organization, a carrier

@@ -62,12 +62,23 @@ describe('the reports of the books that read the orders of the organization', ()
     expect(decoratorsOf(file, handler)).not.toContain(MARK)
   })
 
-  it.each(services)('%s runs %s inside the unit of the organization', (file, inner) => {
-    const text = readFileSync(join(__dirname, file), 'utf8')
-    expect(text).toMatch(
-      new RegExp(
-        `jobContext\\.inOrganization\\(\\s*organizationId,\\s*\\(\\)\\s*=>\\s*this\\.${inner}\\(`
+  it.each(services)(
+    '%s runs %s inside a place of the cap of reads of the organization',
+    (file, inner) => {
+      const text = readFileSync(join(__dirname, file), 'utf8')
+      expect(text).toMatch(
+        new RegExp(`gate\\.read\\(\\s*organizationId,\\s*\\(\\)\\s*=>\\s*this\\.${inner}\\(`)
       )
-    )
-  })
+    }
+  )
+
+  // No report holds the whole read in one transaction again: it opens its units through the gate (one per page), never the context itself
+  it.each([...new Set(services.map(([file]) => file))])(
+    '%s opens no unit of the organization of its own',
+    file => {
+      const text = readFileSync(join(__dirname, file), 'utf8')
+      expect(text).not.toContain('inOrganization(')
+      expect(text).toContain('gate.unit(')
+    }
+  )
 })

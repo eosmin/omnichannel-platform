@@ -3,7 +3,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { inSavepoint, isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
+import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   FinanceAutoMemo,
   FinancePostingKey,
@@ -47,6 +47,7 @@ import type { Actor } from '../tenancy'
 import { bookCsv, bookSha256 } from './finance-books.csv'
 import type { BookLayoutBody, BookQuery, FrozenBooksQuery } from './finance-books.schemas'
 import { reportUnknownZones, splitStoreZones, type StoreZoneRow } from './finance-books.zones'
+import { FinanceReportGate } from './finance-report-gate.service'
 import { lockScope } from './finance.support'
 import { isoDay } from './finance.views'
 
@@ -230,7 +231,7 @@ export class FinanceBooksService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly providers: FiscalProviderRegistry,
-    private readonly jobContext: JobContext,
+    private readonly gate: FinanceReportGate,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(FinanceBooksService.name)
@@ -333,13 +334,7 @@ export class FinanceBooksService {
     query: BookQuery,
     actor: Actor
   ): Promise<BookView> {
-    return this.jobContext.inOrganization(
-      organizationId,
-      () => this.readBook(organizationId, kind, query, actor),
-      {
-        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
-      }
-    )
+    return this.gate.read(organizationId, () => this.readBook(organizationId, kind, query, actor))
   }
 
   private async readBook(
@@ -363,13 +358,7 @@ export class FinanceBooksService {
     query: BookQuery,
     actor: Actor
   ): Promise<{ book: BookView; csv: string; fileName: string }> {
-    return this.jobContext.inOrganization(
-      organizationId,
-      () => this.readCsv(organizationId, kind, query, actor),
-      {
-        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
-      }
-    )
+    return this.gate.read(organizationId, () => this.readCsv(organizationId, kind, query, actor))
   }
 
   private async readCsv(
@@ -423,31 +412,41 @@ export class FinanceBooksService {
     query: BookQuery,
     actor: Actor
   ): Promise<{ book: BookView; csv: string }> {
-    const period = await this.periodOf(organizationId, query.periodId)
-    const closed =
-      (period.status as PeriodStatus) === PeriodStatus.CLOSED && period.closedAt !== null
-    let version = query.layoutVersion
-    if (version === undefined && period.closedAt !== null && closed) {
-      // The default book of a closed month is the one that was frozen first: a layout written since does not change it
-      const first = await this.prisma.client.financeBookSnapshot.findFirst({
-        where: { organizationId, periodId: period.id, bookKind: kind, closedAt: period.closedAt },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-        select: { layoutVersion: true }
-      })
-      if (first !== null) version = first.layoutVersion
-    }
-    const resolved = await this.resolveLayout(organizationId, kind, version)
-    if (closed) {
-      const frozen = await this.frozenOf(organizationId, kind, period, resolved.view.version)
-      if (frozen !== null) return { book: { ...frozen.book, frozen: true }, csv: frozen.csv }
-    }
+    // The period, the layout and the frozen copy: one short unit
+    const prepared = await this.gate.unit(organizationId, async () => {
+      const period = await this.periodOf(organizationId, query.periodId)
+      const closed =
+        (period.status as PeriodStatus) === PeriodStatus.CLOSED && period.closedAt !== null
+      let version = query.layoutVersion
+      if (version === undefined && period.closedAt !== null && closed) {
+        // The default book of a closed month is the one that was frozen first: a layout written since does not change it
+        const first = await this.prisma.client.financeBookSnapshot.findFirst({
+          where: { organizationId, periodId: period.id, bookKind: kind, closedAt: period.closedAt },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: { layoutVersion: true }
+        })
+        if (first !== null) version = first.layoutVersion
+      }
+      const resolved = await this.resolveLayout(organizationId, kind, version)
+      const frozen = closed
+        ? await this.frozenOf(organizationId, kind, period, resolved.view.version)
+        : null
+      return { period, closed, resolved, frozen }
+    })
+    const { period, closed, resolved, frozen } = prepared
+    if (frozen !== null) return { book: { ...frozen.book, frozen: true }, csv: frozen.csv }
+    // The build reads in pages, one unit each (debt (c) of F6-3); the freeze is a write and is its own unit (debt (d)): a timeout of the
+    // write no longer rolls back the reads of the build, and the freeze does not hold the unit of a page. A failed freeze still fails the
+    // request (nothing is kept, the next request builds and freezes again), as it did before
     const built = await this.build(organizationId, kind, period, resolved)
     // Only the default book of a closed month is frozen by a request: an explicit version with no snapshot is built and not kept, so asking
     // for an old version or the proposal can never decide what the month's book is
     // An unvalidated proposal is a draft, not evidence: it is never frozen, so the first layout the accountant writes can be
     if (!closed || query.layoutVersion !== undefined || resolved.view.source === PROPOSAL)
       return built
-    return this.freeze(organizationId, kind, period, resolved.view.version, built, actor)
+    return this.gate.unit(organizationId, () =>
+      this.freeze(organizationId, kind, period, resolved.view.version, built, actor)
+    )
   }
 
   // The books frozen for the organization, newest first (the evidence of what was handed over for each closed month)
@@ -686,11 +685,15 @@ export class FinanceBooksService {
       throw tooLarge()
     }
     if (kind !== LegalBookKind.PURCHASES) {
-      const [{ returns }] = await this.prisma.client.$queryRaw<[{ returns: bigint }]>`
+      const [{ returns }] = await this.gate.unit(
+        organizationId,
+        () =>
+          this.prisma.client.$queryRaw<[{ returns: bigint }]>`
         SELECT COUNT(*)::bigint AS returns FROM journal_entries
         WHERE organization_id = ${organizationId} AND type = ${JournalEntryType.SALE_RETURN}
           AND memo IS DISTINCT FROM ${FinanceAutoMemo.RETURN_REFUND}
           AND entry_date BETWEEN ${from}::date AND ${to}::date`
+      )
       warnings.returnsNotListed = Number(returns)
     }
     const book = buildLegalBook(kind, resolved.layout, sources, { from, to })
@@ -734,15 +737,20 @@ export class FinanceBooksService {
   ): Promise<BookSourceRow[]> {
     // The zones of the stores of the organization, read once (the view of zones is slow to scan, so never per row), with whether the
     // database knows each one
-    const zones = await this.prisma.client.$queryRaw<StoreZoneRow[]>`
+    const zones = await this.gate.unit(
+      organizationId,
+      () =>
+        this.prisma.client.$queryRaw<StoreZoneRow[]>`
       SELECT s.timezone AS name, (z.name IS NOT NULL) AS known
       FROM (SELECT DISTINCT timezone FROM stores WHERE organization_id = ${organizationId}) s
       LEFT JOIN pg_timezone_names z ON lower(z.name) = lower(s.timezone)`
+    )
     const { known: knownZones, unknown: unknownZones } = splitStoreZones(zones)
     // Read as UTC, as the entries of that store are, but not in silence: the zone is validated when a store is saved, so this is data
     // written by hand (HC-106)
     reportUnknownZones(this.logger, organizationId, unknownZones)
-    const entries = await this.prisma.client.$queryRaw<SaleEntryRow[]>`
+    const entriesAfter = (after: bigint): Promise<SaleEntryRow[]> =>
+      this.prisma.client.$queryRaw<SaleEntryRow[]>`
       SELECT e.number, e.entry_date, e.idempotency_key, o.id AS order_id, o.order_number,
              d.provider_id, d.document_type, d.external_number, d.sequence_number,
              (d.voided_at IS NOT NULL AND d.voided_at < m.month_end_utc) AS voided
@@ -782,36 +790,42 @@ export class FinanceBooksService {
             AND rv.entry_date < m.next_month
         )
         AND e.entry_date BETWEEN ${from}::date AND ${to}::date
-      ORDER BY e.number`
-    const sales = entries.filter(
-      entry => entry.idempotency_key === FinancePostingKey.ORDER_SALE(entry.order_id)
-    )
+        AND e.number > ${after}::bigint
+      ORDER BY e.number
+      LIMIT ${FinanceReportLimits.BOOK_PAGE_SIZE}`
     const rows: BookSourceRow[] = []
-    const page = 500
-    for (let start = 0; start < sales.length; start += page) {
-      const slice = sales.slice(start, start + page)
-      const orders = await this.prisma.client.order.findMany({
-        where: { id: { in: slice.map(entry => entry.order_id) }, store: { organizationId } },
-        select: {
-          id: true,
-          discountCents: true,
-          shippingCents: true,
-          taxCents: true,
-          pricesIncludeTax: true,
-          shippingTaxRateBps: true,
-          items: {
-            select: {
-              unitPriceCents: true,
-              quantity: true,
-              taxTreatment: true,
-              taxRateBps: true,
-              taxCents: true
+    let after = 0n
+    for (;;) {
+      // One page of entries and the orders of its sales: one unit
+      const { entries, orders } = await this.gate.unit(organizationId, async () => {
+        const found = await entriesAfter(after)
+        const slice = found.filter(
+          entry => entry.idempotency_key === FinancePostingKey.ORDER_SALE(entry.order_id)
+        )
+        const read = await this.prisma.client.order.findMany({
+          where: { id: { in: slice.map(entry => entry.order_id) }, store: { organizationId } },
+          select: {
+            id: true,
+            discountCents: true,
+            shippingCents: true,
+            taxCents: true,
+            pricesIncludeTax: true,
+            shippingTaxRateBps: true,
+            items: {
+              select: {
+                unitPriceCents: true,
+                quantity: true,
+                taxTreatment: true,
+                taxRateBps: true,
+                taxCents: true
+              }
             }
           }
-        }
+        })
+        return { entries: { found, slice }, orders: read }
       })
       const byId = new Map(orders.map(order => [order.id, order]))
-      for (const entry of slice) {
+      for (const entry of entries.slice) {
         const order = byId.get(entry.order_id)
         if (order === undefined) continue
         // The rows before the period are read to number the correlative; what could not be listed of them is not this period's
@@ -878,6 +892,9 @@ export class FinanceBooksService {
           }
         })
       }
+      const last = entries.found.at(-1)
+      if (entries.found.length < FinanceReportLimits.BOOK_PAGE_SIZE || last === undefined) break
+      after = last.number
     }
     return rows
   }
@@ -900,7 +917,8 @@ export class FinanceBooksService {
     from: string,
     to: string
   ): Promise<BookSourceRow[]> {
-    const receipts = await this.prisma.client.$queryRaw<PurchaseRow[]>`
+    const receiptsAfter = (after: bigint): Promise<PurchaseRow[]> =>
+      this.prisma.client.$queryRaw<PurchaseRow[]>`
       SELECT e.number, e.entry_date, r.supplier_document_number AS document_number, s.name AS supplier_name,
              s.tax_id AS supplier_tax_id, r.subtotal_cents, r.tax_cents, r.total_cents, r.tax_creditable, r.due_on
       FROM purchase_receipts r
@@ -915,7 +933,19 @@ export class FinanceBooksService {
             AND rv.entry_date < (date_trunc('month', e.entry_date::timestamp) + interval '1 month')
         )
         AND e.entry_date BETWEEN ${from}::date AND ${to}::date
-      ORDER BY e.number`
+        AND e.number > ${after}::bigint
+      ORDER BY e.number
+      LIMIT ${FinanceReportLimits.BOOK_PAGE_SIZE}`
+    // One unit for each page of receipts
+    const receipts: PurchaseRow[] = []
+    for (;;) {
+      const page = await this.gate.unit(organizationId, () =>
+        receiptsAfter(receipts.at(-1)?.number ?? 0n)
+      )
+      receipts.push(...page)
+      if (page.length < FinanceReportLimits.BOOK_PAGE_SIZE) break
+    }
+
     return receipts.map(receipt => ({
       entryNumber: Number(receipt.number),
       entryDate: isoDay(receipt.entry_date),
