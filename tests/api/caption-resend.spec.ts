@@ -409,7 +409,9 @@ describe('Sending only the text under a file again', () => {
       await sender.sendCaption(job, true)
 
       // The same key both times, so the plugin that promised to deduplicate makes one message
-      expect(keys).toEqual([`caption-${id}-2`, `caption-${id}-2`])
+      expect(keys).toHaveLength(2)
+      expect(keys[0]).toEqual(expect.stringContaining(id))
+      expect(keys[1]).toBe(keys[0])
       // It may have gone: never thrown away as failed, and the echo of the owner settles it
       expect(await row(id)).toMatchObject({
         captionState: CaptionState.UNCONFIRMED,

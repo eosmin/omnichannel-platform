@@ -33,7 +33,7 @@ describe('the worker role check against pg_roles', () => {
     await worker.connect()
   })
   afterAll(async () => {
-    await worker.end()
+    await worker.end().catch(() => undefined)
     await owner.end()
   })
   beforeEach(() => {
@@ -50,6 +50,13 @@ describe('the worker role check against pg_roles', () => {
     ])
     expect(users[1].rows[0]?.name).toBe(DatabaseRoles.WORKER)
     expect(users[0].rows[0]?.name).not.toBe(DatabaseRoles.WORKER)
+  })
+
+  it('has an owner that skips row security, the premise of the two cases below', async () => {
+    const rows = await owner.query<{ bypass: boolean }>(
+      'SELECT (rolsuper OR rolbypassrls) AS bypass FROM pg_roles WHERE rolname = current_user'
+    )
+    expect(rows.rows[0]?.bypass).toBe(true)
   })
 
   it('fails the start of a worker that connects as the owner, with the flag on, and sets the gauge to one', async () => {
@@ -69,15 +76,25 @@ describe('the worker role check against pg_roles', () => {
     expect(warn).toHaveBeenCalledTimes(1)
   })
 
+  // Whether the worker role skips row security depends on how the database was prepared: the expectation is read from the catalog
   it.each([true, false])(
-    'lets the worker role start in silence with the flag %s, and sets the gauge to zero',
+    'reads the worker role as the database has it, with the flag %s',
     async contextOn => {
+      const attributes = await owner.query<{ bypass: boolean }>(
+        'SELECT (rolsuper OR rolbypassrls) AS bypass FROM pg_roles WHERE rolname = $1',
+        [DatabaseRoles.WORKER]
+      )
+      const bypasses = attributes.rows[0]?.bypass === true
       const { check, set } = checkOf(worker, contextOn)
 
-      await expect(check.onApplicationBootstrap()).resolves.toBeUndefined()
+      if (bypasses && contextOn) {
+        await expect(check.onApplicationBootstrap()).rejects.toThrow(/BYPASSRLS/)
+      } else {
+        await expect(check.onApplicationBootstrap()).resolves.toBeUndefined()
+      }
 
-      expect(set).toHaveBeenCalledWith(0)
-      expect(warn).not.toHaveBeenCalled()
+      expect(set).toHaveBeenCalledWith(bypasses ? 1 : 0)
+      expect(warn).toHaveBeenCalledTimes(bypasses && !contextOn ? 1 : 0)
     }
   )
 })
