@@ -10,7 +10,7 @@ import { parseEncryptionKey } from '@platform/core/crypto'
 import { WebhookSources } from '@platform/core/domain'
 
 import { PrismaClient } from '../generated/client/client'
-import { connectionUrls, replicaConnectionUrl } from '../testing/connection-urls'
+import { connectionUrls, DatabaseRoles, replicaConnectionUrl } from '../testing/connection-urls'
 import { workerRoleBoundInSuites } from '../testing/rls-enforcement'
 
 import { bootstrapOwner, ensureSystemRoles } from './bootstrap-owner'
@@ -74,10 +74,10 @@ describe('database roles', () => {
         // The grants the app role holds, read as the owner: it reads and appends (the read is filtered by the policy), and
         // changes nothing
         const grants = await owner.query<Record<string, boolean>>(
-          `SELECT has_table_privilege('platform_app', 'audit_logs', 'SELECT') AS "select",
-                  has_table_privilege('platform_app', 'audit_logs', 'INSERT') AS "insert",
-                  has_table_privilege('platform_app', 'audit_logs', 'UPDATE') AS "update",
-                  has_table_privilege('platform_app', 'audit_logs', 'DELETE') AS "delete"`
+          `SELECT has_table_privilege('${DatabaseRoles.APP}', 'audit_logs', 'SELECT') AS "select",
+                  has_table_privilege('${DatabaseRoles.APP}', 'audit_logs', 'INSERT') AS "insert",
+                  has_table_privilege('${DatabaseRoles.APP}', 'audit_logs', 'UPDATE') AS "update",
+                  has_table_privilege('${DatabaseRoles.APP}', 'audit_logs', 'DELETE') AS "delete"`
         )
         expect(grants.rows[0]).toEqual({ select: true, insert: true, update: false, delete: false })
       })
@@ -95,8 +95,8 @@ describe('database roles', () => {
   // read as the owner (nothing destructive runs as an application role, so a privilege that comes back cannot empty the table), and
   // one UPDATE is tried on a row of the test, which is removed at the end whatever happens.
   it.each([
-    ['platform_app', () => urls.app],
-    ['platform_worker', () => urls.worker]
+    [DatabaseRoles.APP, () => urls.app],
+    [DatabaseRoles.WORKER, () => urls.worker]
   ])('lets %s neither change nor empty audit_logs', async (role, url) => {
     const id = `${AUDIT_ID}-frozen-${role}`
     try {
@@ -367,13 +367,13 @@ describe('database roles', () => {
       )
       // The read only role of the replica logs in only where DB_REPLICA_PASSWORD is set: its login is not what this case is about
       const seen = rows.map((row: { rolname: string; rolcanlogin: boolean }) =>
-        row.rolname === 'platform_replica_ro' ? { ...row, rolcanlogin: true } : row
+        row.rolname === DatabaseRoles.REPLICA ? { ...row, rolcanlogin: true } : row
       )
       expect(seen).toEqual([
-        { rolname: 'platform_app', rolsuper: false, rolbypassrls: false, rolcanlogin: true },
-        { rolname: 'platform_replica_ro', rolsuper: false, rolbypassrls: false, rolcanlogin: true },
+        { rolname: DatabaseRoles.APP, rolsuper: false, rolbypassrls: false, rolcanlogin: true },
+        { rolname: DatabaseRoles.REPLICA, rolsuper: false, rolbypassrls: false, rolcanlogin: true },
         {
-          rolname: 'platform_worker',
+          rolname: DatabaseRoles.WORKER,
           rolsuper: false,
           rolbypassrls: !workerRoleBoundInSuites(),
           rolcanlogin: true
@@ -425,7 +425,7 @@ describe('PrismaService', () => {
 
   it('queries as platform_app through the driver adapter', async () => {
     const rows = await service.client.$queryRaw<{ current_user: string }[]>`SELECT current_user`
-    expect(rows[0]?.current_user).toBe('platform_app')
+    expect(rows[0]?.current_user).toBe(DatabaseRoles.APP)
   })
 
   it('answers replicaTenantRead() from the primary when there is no replica, with the context set', async () => {
@@ -454,7 +454,7 @@ describe('PrismaService', () => {
         db => db.$queryRaw<{ who: string; stores: string }[]>`
           SELECT current_user AS who, current_setting('app.store_ids') AS stores`
       )
-      expect(read[0]).toEqual({ who: 'platform_replica_ro', stores: 's-1' })
+      expect(read[0]).toEqual({ who: DatabaseRoles.REPLICA, stores: 's-1' })
       // A read of a table the replica readers use (the rollups of the analytics) is allowed ...
       await expect(
         withReplica.replicaTenantRead(

@@ -5,6 +5,7 @@ import {
   connectionUrls,
   createAppClient,
   createOwnerClient,
+  DatabaseRoles,
   ensureStore,
   type OwnerClient
 } from '@platform/core/database-testing'
@@ -649,7 +650,7 @@ describe('The tables of the ledger', () => {
           SELECT has_table_privilege(${role}, ${table}, ${privilege}) AS allowed`
         return rows[0]?.allowed === true
       }
-      for (const role of ['platform_app', 'platform_worker']) {
+      for (const role of [DatabaseRoles.APP, DatabaseRoles.WORKER]) {
         for (const table of ['journal_entries', 'journal_lines']) {
           for (const privilege of ['UPDATE', 'DELETE', 'TRUNCATE']) {
             expect({ role, table, privilege, allowed: await has(role, table, privilege) }).toEqual({
