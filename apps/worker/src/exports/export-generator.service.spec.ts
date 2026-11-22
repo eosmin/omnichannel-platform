@@ -2,6 +2,7 @@ import { UnrecoverableError } from 'bullmq'
 
 import { Permissions } from '@platform/core/auth'
 import { ErrorCodes } from '@platform/core/errors'
+import { ExportDiscardStages } from '@platform/core/exports'
 import { ExportStatus, ExportTypes } from '@platform/core/queues'
 
 import { ExportGenerator } from './export-generator.service'
@@ -62,6 +63,7 @@ function build(
       export: { findFirst: jest.fn().mockResolvedValue(exportRow), updateMany },
       membership,
       message: { count: jest.fn().mockResolvedValue(0) },
+      media: { count: jest.fn().mockResolvedValue(0) },
       pluginInstallation: { findFirst: jest.fn() }
     },
     transaction: jest.fn((work: (tx: unknown) => unknown) => Promise.resolve(work({})))
@@ -72,19 +74,21 @@ function build(
   const logger = { setContext: jest.fn(), error: jest.fn(), warn: jest.fn() }
   const jobContext = { forStore: jest.fn((_id: string, work: () => unknown) => work()) }
   const subjectMissing = { inc: jest.fn() }
+  const discardFailed = { inc: jest.fn() }
   const generator = new ExportGenerator(
     prisma as never,
     { write: jest.fn(write) } as never,
-    {} as never,
+    { write: jest.fn(write) } as never,
     {} as never,
     storage as never,
     audit as never,
     events as never,
     logger as never,
     jobContext as never,
-    subjectMissing as never
+    subjectMissing as never,
+    discardFailed as never
   )
-  return { generator, updateMany, storage, audit, events, membership, logger }
+  return { generator, updateMany, storage, audit, events, membership, logger, discardFailed }
 }
 
 describe('the permissions of the requester when the file of an export is finished', () => {
@@ -182,5 +186,98 @@ describe('the permissions of the requester when the file of an export is finishe
     const t = build([both, both], () => Promise.resolve({ rowCount: 1 }), conversationsRow)
     await t.generator.generate(STORE, EXPORT, false)
     expect(t.updateMany).toHaveBeenCalledWith(IS_READY)
+  })
+
+  describe('a file that the bucket refuses to delete', () => {
+    // The update that leaves the key of the lost file on a row that is not ready
+    const KEEPS_KEY = (key: unknown): unknown =>
+      like({ where: like({ status: like({ not: ExportStatus.READY }) }), data: { key } })
+
+    it('counts the failure, logs no person, and leaves the key on the row so the sweep deletes the file', async () => {
+      const t = build([membershipOf(Permissions.CUSTOMERS_EXPORT), null], () =>
+        Promise.resolve({ rowCount: 1 })
+      )
+      t.storage.delete.mockRejectedValue(new Error('bucket refused'))
+      await expect(t.generator.generate(STORE, EXPORT, false)).rejects.toBeInstanceOf(
+        UnrecoverableError
+      )
+      expect(t.discardFailed.inc).toHaveBeenCalledWith({ stage: ExportDiscardStages.WORKER })
+      expect(t.updateMany).toHaveBeenCalledWith(KEEPS_KEY(expect.stringContaining(EXPORT)))
+      expect(JSON.stringify(t.logger.error.mock.calls)).not.toContain(USER)
+      // The row is still failed for the permission
+      expect(t.updateMany).toHaveBeenCalledWith(IS_DENIED)
+    })
+
+    it('does not touch the row, nor count, when the file is deleted', async () => {
+      const t = build([membershipOf(Permissions.CUSTOMERS_EXPORT), null], () =>
+        Promise.resolve({ rowCount: 1 })
+      )
+      await t.generator.generate(STORE, EXPORT, false).catch(() => undefined)
+      expect(t.discardFailed.inc).not.toHaveBeenCalled()
+      expect(t.updateMany).not.toHaveBeenCalledWith(KEEPS_KEY(expect.anything()))
+    })
+
+    it('still settles the export when the key cannot be left on the row either', async () => {
+      const t = build([membershipOf(Permissions.CUSTOMERS_EXPORT), null], () =>
+        Promise.resolve({ rowCount: 1 })
+      )
+      t.storage.delete.mockRejectedValue(new Error('bucket refused'))
+      t.updateMany.mockImplementation((args: { data: { key?: string } }) =>
+        args.data.key === undefined
+          ? Promise.resolve({ count: 1 })
+          : Promise.reject(new Error('database down'))
+      )
+      await expect(t.generator.generate(STORE, EXPORT, false)).rejects.toBeInstanceOf(
+        UnrecoverableError
+      )
+      expect(t.updateMany).toHaveBeenCalledWith(IS_DENIED)
+    })
+  })
+
+  describe('the file of a gallery', () => {
+    const mediaRow = {
+      ...row,
+      type: ExportTypes.MEDIA_ZIP,
+      format: 'zip',
+      filters: {
+        customerId: '1f0c2b7e-3c1a-4d57-9a38-0d5f7a6b1c22',
+        viewer: {
+          userId: USER,
+          held: [Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_VIEW_ALL]
+        }
+      }
+    }
+    const kind = [
+      Permissions.CUSTOMERS_VIEW,
+      Permissions.MEDIA_VIEW,
+      Permissions.MEDIA_DOWNLOAD_ALL
+    ]
+
+    it('does not turn ready when the requester lost the view of every conversation that the file was made with', async () => {
+      const both = membershipOf(
+        ...kind,
+        Permissions.CONVERSATIONS_VIEW,
+        Permissions.CONVERSATIONS_VIEW_ALL
+      )
+      const less = membershipOf(...kind, Permissions.CONVERSATIONS_VIEW)
+      const t = build([both, less], () => Promise.resolve({ rowCount: 1 }), mediaRow)
+      await expect(t.generator.generate(STORE, EXPORT, false)).rejects.toBeInstanceOf(
+        UnrecoverableError
+      )
+      expect(t.updateMany).not.toHaveBeenCalledWith(IS_READY)
+      expect(t.updateMany).toHaveBeenCalledWith(IS_DENIED)
+      expect(t.storage.delete).toHaveBeenCalledTimes(1)
+    })
+
+    it('turns ready while the views it was made with are still held', async () => {
+      const both = membershipOf(
+        ...kind,
+        Permissions.CONVERSATIONS_VIEW,
+        Permissions.CONVERSATIONS_VIEW_ALL
+      )
+      const t = build([both, both], () => Promise.resolve({ rowCount: 1 }), mediaRow)
+      await t.generator.generate(STORE, EXPORT, false)
+      expect(t.updateMany).toHaveBeenCalledWith(IS_READY)
+    })
   })
 })

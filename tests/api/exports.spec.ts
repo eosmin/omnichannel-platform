@@ -24,7 +24,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { Events } from '@platform/core/events'
-import { ExportLimits } from '@platform/core/exports'
+import { ExportDiscardStages, ExportLimits } from '@platform/core/exports'
 import {
   ExportFormats,
   ExportStatus,
@@ -107,6 +107,7 @@ describe('Exports', () => {
   let cleaner: ExpiredExportsCleaner
   const keys: string[] = []
   const subjectMissingInc = jest.fn()
+  const discardFailedInc = jest.fn()
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -122,6 +123,7 @@ describe('Exports', () => {
       warn: jest.fn()
     } as unknown as PinoLogger
     const subjectMissing = { inc: subjectMissingInc } as unknown as Counter<string>
+    const discardFailed = { inc: discardFailedInc } as unknown as Counter<string>
     generator = new ExportGenerator(
       prisma,
       new CsvExportWriter(storage),
@@ -137,9 +139,17 @@ describe('Exports', () => {
       events,
       logger,
       new JobContext(prisma),
-      subjectMissing
+      subjectMissing,
+      discardFailed
     )
-    cleaner = new ExpiredExportsCleaner(prisma, new JobContext(prisma), storage, events, logger)
+    cleaner = new ExpiredExportsCleaner(
+      prisma,
+      new JobContext(prisma),
+      storage,
+      events,
+      logger,
+      discardFailed
+    )
   })
   afterAll(async () => {
     for (const key of keys) await storage.delete(key)
@@ -1534,6 +1544,106 @@ describe('Exports', () => {
     expect((await owner.export.findUniqueOrThrow({ where: { id: stuck.id } })).status).toBe(
       ExportStatus.READY
     )
+  })
+
+  describe('the files of an export that did not become ready', () => {
+    const HOUR = 3_600_000
+    const DAY = 24 * HOUR
+
+    // A settled export and a file under its prefix, as the worker leaves them when the bucket refuses to delete
+    async function leftBehind(
+      status: string,
+      settledAgoMs: number,
+      withKey: boolean,
+      storeId: string = ctx.storeA.id
+    ): Promise<{ id: string; key: string }> {
+      const row = await owner.export.create({
+        data: {
+          storeId,
+          requestedBy: ctx.adminA.id,
+          type: ExportTypes.CUSTOMERS,
+          format: ExportFormats.CSV,
+          status,
+          error: ErrorCodes.EXPORT_FAILED,
+          completedAt: new Date(Date.now() - settledAgoMs),
+          expiresAt: new Date(Date.now() + DAY)
+        }
+      })
+      const key = StorageKeys.export(storeId, row.id, 'customers-2026-11-01.csv')
+      await storage.put(key, Buffer.from('personal data'), 'text/csv')
+      keys.push(key)
+      if (withKey) await owner.export.update({ where: { id: row.id }, data: { key } })
+      return { id: row.id, key }
+    }
+
+    it('deletes the file of a failed export that no row names, and does it again for an expired one', async () => {
+      const failed = await leftBehind(ExportStatus.FAILED, 2 * HOUR, false)
+      const expired = await leftBehind(ExportStatus.EXPIRED, 3 * HOUR, false)
+      const report = await cleaner.run()
+      expect(report.swept).toBeGreaterThanOrEqual(2)
+      expect(await storage.head(failed.key)).toBeNull()
+      expect(await storage.head(expired.key)).toBeNull()
+    })
+
+    it('deletes the file a row still names, whatever its age, and clears the key', async () => {
+      const old = await leftBehind(ExportStatus.FAILED, 90 * DAY, true)
+      await cleaner.run()
+      expect(await storage.head(old.key)).toBeNull()
+      expect((await owner.export.findUniqueOrThrow({ where: { id: old.id } })).key).toBeNull()
+    })
+
+    it('leaves alone an export that settled a moment ago, and one with no key that settled long ago', async () => {
+      const fresh = await leftBehind(ExportStatus.FAILED, 60_000, false)
+      const stale = await leftBehind(ExportStatus.FAILED, 30 * DAY, false)
+      await cleaner.run()
+      expect(await storage.head(fresh.key)).not.toBeNull()
+      expect(await storage.head(stale.key)).not.toBeNull()
+    })
+
+    it('leaves the file of a ready export alone', async () => {
+      const view = await request(ApiRoutes.customers.export)
+      await made(view.id)
+      const row = await owner.export.findUniqueOrThrow({ where: { id: view.id } })
+      await cleaner.run()
+      expect(await storage.head(row.key ?? '')).not.toBeNull()
+    })
+
+    it('tries again on the next run when the bucket refuses, counts it, and keeps the key of the row', async () => {
+      const stuck = await leftBehind(ExportStatus.FAILED, 2 * HOUR, false)
+      discardFailedInc.mockClear()
+      const realDelete = storage.delete.bind(storage)
+      const spy = jest.spyOn(storage, 'delete').mockImplementation(async key => {
+        if (key === stuck.key) throw new Error('bucket refused')
+        await realDelete(key)
+      })
+      await cleaner.run()
+      spy.mockRestore()
+
+      expect(await storage.head(stuck.key)).not.toBeNull()
+      expect(discardFailedInc).toHaveBeenCalledWith({ stage: ExportDiscardStages.SWEEP })
+      // The row now says the file is there, so it is found however old it gets
+      expect((await owner.export.findUniqueOrThrow({ where: { id: stuck.id } })).key).toBe(
+        stuck.key
+      )
+
+      await cleaner.run()
+      expect(await storage.head(stuck.key)).toBeNull()
+      expect((await owner.export.findUniqueOrThrow({ where: { id: stuck.id } })).key).toBeNull()
+    })
+
+    it('sweeps the rows of every store, each with its own files', async () => {
+      const a = await leftBehind(ExportStatus.FAILED, 2 * HOUR, false, ctx.storeA.id)
+      const b = await leftBehind(ExportStatus.FAILED, 2 * HOUR, false, ctx.storeB.id)
+      await cleaner.run()
+      expect(await storage.head(a.key)).toBeNull()
+      expect(await storage.head(b.key)).toBeNull()
+    })
+
+    it('never shows the key of a failed export in its view', async () => {
+      const failed = await leftBehind(ExportStatus.FAILED, 2 * HOUR, true)
+      const response = await asAdmin().get(ApiRoutes.exports.byId(failed.id))
+      expect((response.body as ExportBody).filename).toBeNull()
+    })
   })
 
   it('does not show a conversations export to who lost the permission to see conversations', async () => {
