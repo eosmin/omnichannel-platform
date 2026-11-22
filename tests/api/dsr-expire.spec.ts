@@ -9,6 +9,7 @@ import { type DsrConfig, dsrEmailHash } from '@platform/core/compliance'
 import { encrypt, hashToken, parseEncryptionKey } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { connectionUrls } from '@platform/core/database-testing'
+import type { DomainEvents } from '@platform/core/event-bus'
 import { type SendEmailJob } from '@platform/core/queues'
 
 import { DsrExpireSweeper } from '../../apps/worker/src/compliance/dsr-expire.sweeper'
@@ -113,6 +114,7 @@ describe('the sweep of data requests whose verification expired', () => {
       workerDb,
       new JobContext(workerDb),
       audit as unknown as AuditService,
+      { publish: jest.fn() } as unknown as DomainEvents,
       mailQueue as unknown as Queue<SendEmailJob>,
       CONFIG,
       { setContext: jest.fn(), error: jest.fn() } as unknown as PinoLogger

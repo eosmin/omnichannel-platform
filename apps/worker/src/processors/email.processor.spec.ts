@@ -1,4 +1,5 @@
 import { type Job, UnrecoverableError } from 'bullmq'
+import type { PinoLogger } from 'nestjs-pino'
 import { ZodError } from 'zod'
 
 import type { EmailService } from '@platform/core/email'
@@ -6,6 +7,7 @@ import { Locales } from '@platform/core/i18n'
 import type { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import { EmailTemplates, JobNames, type RequestMagicLinkJob } from '@platform/core/queues'
 
+import type { DsrNoticeLedger } from '../compliance/dsr-notice-ledger.service'
 import type { InvitationEmailDelivery } from '../invitations/invitation-email-delivery.service'
 
 import { EmailProcessor } from './email.processor'
@@ -24,15 +26,22 @@ function build() {
   const email = { send: jest.fn((_data: unknown) => Promise.resolve()) }
   const magicLinks = { issue: jest.fn(() => Promise.resolve()) }
   const invitations = { deliver: jest.fn(() => Promise.resolve('sent')) }
+  const notices = {
+    sent: jest.fn((_store: string, _request: string) => Promise.resolve()),
+    failed: jest.fn((_store: string, _request: string, _code: string) => Promise.resolve())
+  }
+  const logger = { setContext: jest.fn(), error: jest.fn() }
   const processor = new EmailProcessor(
     {} as ProcessorSupport,
     email as unknown as EmailService,
     magicLinks as unknown as MagicLinkIssuer,
-    invitations as unknown as InvitationEmailDelivery
+    invitations as unknown as InvitationEmailDelivery,
+    notices as unknown as DsrNoticeLedger,
+    logger as unknown as PinoLogger
   )
   const handle = (job: unknown) =>
     (processor as unknown as { handle(job: unknown): Promise<void> }).handle(job)
-  return { email, magicLinks, invitations, handle }
+  return { email, magicLinks, invitations, notices, logger, handle }
 }
 
 describe('EmailProcessor', () => {
@@ -108,5 +117,75 @@ describe('EmailProcessor, a payload that does not fit', () => {
     )
 
     expect(error).toBeInstanceOf(UnrecoverableError)
+  })
+})
+
+describe('EmailProcessor, the closing notice of a data request', () => {
+  const dsrJob = (attemptsMade: number, attempts = 3) =>
+    ({
+      name: JobNames.SEND_EMAIL,
+      attemptsMade,
+      opts: { attempts },
+      data: { ...emailJob, dsrNotice: { requestId: ID, storeId: ID } }
+    }) as unknown as Job
+
+  it('confirms the notice on the request once the mail left', async () => {
+    const { notices, handle } = build()
+
+    await handle(dsrJob(0))
+
+    expect(notices.sent).toHaveBeenCalledWith(ID, ID)
+    expect(notices.failed).not.toHaveBeenCalled()
+  })
+
+  it('does not touch a request for an ordinary email', async () => {
+    const { notices, handle } = build()
+
+    await handle({ name: JobNames.SEND_EMAIL, data: emailJob })
+
+    expect(notices.sent).not.toHaveBeenCalled()
+    expect(notices.failed).not.toHaveBeenCalled()
+  })
+
+  it('says nothing while the mail still has attempts left, and marks the request on the last one', async () => {
+    const { email, notices, handle } = build()
+    email.send.mockRejectedValue(new Error('provider down'))
+
+    await expect(handle(dsrJob(0))).rejects.toThrow('provider down')
+    await expect(handle(dsrJob(1))).rejects.toThrow('provider down')
+    expect(notices.failed).not.toHaveBeenCalled()
+
+    await expect(handle(dsrJob(2))).rejects.toThrow('provider down')
+    expect(notices.failed).toHaveBeenCalledTimes(1)
+    expect(notices.failed).toHaveBeenCalledWith(ID, ID, 'mail_failed')
+    expect(notices.sent).not.toHaveBeenCalled()
+  })
+
+  it('marks the request at once for a mail that will never fit its template', async () => {
+    const { email, notices, handle } = build()
+    email.send.mockRejectedValueOnce(new ZodError([]))
+
+    await expect(handle(dsrJob(0))).rejects.toBeInstanceOf(UnrecoverableError)
+
+    expect(notices.failed).toHaveBeenCalledWith(ID, ID, 'mail_failed')
+  })
+
+  it('keeps the failure of the mail when the request cannot be marked, and does not log the address', async () => {
+    const { email, notices, logger, handle } = build()
+    email.send.mockRejectedValue(new Error('provider down'))
+    notices.failed.mockRejectedValue(new Error('db down for a@example.com'))
+
+    await expect(handle(dsrJob(2))).rejects.toThrow('provider down')
+
+    expect(JSON.stringify(logger.error.mock.calls)).not.toMatch(/a@example/)
+  })
+
+  it('does not send the mail again when the request cannot be told that it left', async () => {
+    const { email, notices, handle } = build()
+    notices.sent.mockRejectedValue(new Error('db down'))
+
+    await expect(handle(dsrJob(0))).resolves.toBeUndefined()
+
+    expect(email.send).toHaveBeenCalledTimes(1)
   })
 })

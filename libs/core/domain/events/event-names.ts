@@ -219,7 +219,12 @@ export const Events = {
   EXPORT_READY: 'export.ready',
   EXPORT_FAILED: 'export.failed',
   DSR_CREATED: 'dsr.created',
-  DSR_COMPLETED: 'dsr.completed'
+  DSR_COMPLETED: 'dsr.completed',
+  // The worker watches the data requests (Step 7.2-H2b-2): a request near its legal deadline, one given back to the review queue, and
+  // one whose closing notice never reached the person. The api tells the reviewers
+  DSR_DEADLINE_APPROACHING: 'dsr.deadline_approaching',
+  DSR_RETURNED_TO_REVIEW: 'dsr.returned_to_review',
+  DSR_NOTICE_FAILED: 'dsr.notice_failed'
 } as const
 
 // How long the first api instance to take an event of the bridge holds it
@@ -298,7 +303,11 @@ export const BridgedEvents = [
   // The worker says it when the daily check finds a document that disagrees with its entry; the api tells whoever can act on it
   Events.FISCAL_ENTRY_MISMATCH,
   // The worker says it when a contingency needs a person; the api tells whoever can act on it
-  Events.FISCAL_CONTINGENCY_ALERT
+  Events.FISCAL_CONTINGENCY_ALERT,
+  // The worker watches the data requests: the api tells whoever reviews them (ids and a reason code, never a person)
+  Events.DSR_DEADLINE_APPROACHING,
+  Events.DSR_RETURNED_TO_REVIEW,
+  Events.DSR_NOTICE_FAILED
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]

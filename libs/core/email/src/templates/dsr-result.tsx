@@ -30,6 +30,9 @@ export function DsrResult({
   t
 }: DsrResultProps & { locale: Locale; t: Translator }): React.JSX.Element {
   const kept = outcome === 'completed' && requestType === 'erasure' && (retainedOrders ?? 0) > 0
+  // The file of an export never travels in the mail: the store hands it over by a way it chooses (Step 7.2-H2b-2)
+  const delivered =
+    outcome === 'completed' && (requestType === 'access' || requestType === 'portability')
   return (
     <Html lang={locale}>
       <Head />
@@ -37,6 +40,7 @@ export function DsrResult({
         <Container style={container}>
           <Text style={heading}>{t(`${outcome}.heading`)}</Text>
           <Text style={paragraph}>{t(`${outcome}.body`, { type: t(`types.${requestType}`) })}</Text>
+          {delivered ? <Text style={paragraph}>{t('exportDelivery')}</Text> : null}
           {kept ? (
             <Text style={paragraph}>{t('retained', { orders: retainedOrders ?? 0 })}</Text>
           ) : null}

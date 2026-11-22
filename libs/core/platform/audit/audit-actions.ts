@@ -298,6 +298,11 @@ export const AuditAction = {
   DSR_EXPIRED: 'dsr.expired',
   // An approved erasure the sweep did not carry out and gave back to the review queue (reason in the metadata)
   DSR_ERASURE_RETURNED: 'dsr.erasure_returned',
+  DSR_NOTICE_FAILED: 'dsr.notice_failed',
+  DSR_EXPORT_FAILED: 'dsr.export_failed',
+  DSR_EXPORT_DOWNLOADED: 'dsr.export_downloaded',
+  DSR_EXPORT_PURGED: 'dsr.export_purged',
+  DSR_DEADLINE_ALERTED: 'dsr.deadline_alerted',
   CONSENT_RECORDED: 'consent.recorded'
 } as const
 
