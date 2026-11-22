@@ -9,7 +9,7 @@ import { EmailTemplates, type SendEmailJob } from '@platform/core/queues'
 // the invitation; a job of the worker opens it, sends it and clears it. Nothing here logs, and what is sealed is never put in a job or a log.
 export const InvitationOutbox = {
   // A delivery that fails this many times is given up (the outbox is cleared and the invitee needs a resend), so a dead provider
-  // does not keep a token sealed for ever. With the backoff below the twelve attempts span about eight hours
+  // does not keep a token sealed for ever. With the backoff below the twelve attempts span about six hours
   MAX_ATTEMPTS: 12,
   // After a failed attempt the next one waits RETRY_BASE_MS doubled for each attempt already made, up to RETRY_MAX_MS
   RETRY_BASE_MS: 60_000,
