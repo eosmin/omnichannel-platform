@@ -658,6 +658,42 @@ describe('The retention run of the worker', () => {
         expect(await storage.head(document.key)).not.toBeNull()
       })
 
+      it('cannot meet a file of an order that is the evidence of a fiscal document: the database refuses that row, and the sweep names the owner columns as a second guard', async () => {
+        const evidence = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const other = await orderDocumentMadeAt(ctx.storeA.id, sixYearsElevenMonths)
+        const document = await owner.fiscalDocument.create({
+          data: {
+            organizationId: ctx.orgA.id,
+            storeId: ctx.storeA.id,
+            orderId: other.orderId,
+            receiverEncrypted: Buffer.from('x'),
+            providerId: 'test-provider',
+            environment: 'sandbox',
+            issuerSnapshot: {},
+            linesSnapshot: [],
+            sequenceNumber: 800_000 + (await owner.fiscalDocument.count()),
+            documentType: 'pending',
+            status: FiscalDocumentStatus.VOIDED,
+            voidReason: 'test',
+            voidedAt: new Date(),
+            totalCents: 100,
+            taxCents: 0
+          },
+          select: { id: true }
+        })
+
+        // chk_media_fiscal_evidence: a fiscal document owns only a file whose purpose is its evidence
+        await expect(
+          owner.media.update({
+            where: { id: evidence.mediaId },
+            data: { fiscalDocumentId: document.id }
+          })
+        ).rejects.toThrow(/chk_media_fiscal_evidence/)
+        // The file stays what it was: an order document of an old order, and the sweep takes it
+        await enforcer.enforce(ctx.storeA.id, now)
+        expect(await rowExists(evidence.mediaId)).toBe(false)
+      })
+
       it('never deletes the document of an order whose sale is in a period with a legal book taken, and takes the one of a period with none', async () => {
         const sealed = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
         const open = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
