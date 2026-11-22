@@ -4,6 +4,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import type { AuditService } from '@platform/core/audit-module'
 import { type DsrConfig, sealDsrIntake } from '@platform/core/compliance'
 import type { JobContext, PrismaService } from '@platform/core/database'
+import { DsrType } from '@platform/core/domain'
 import type { DigestLinks } from '@platform/core/notifications'
 import type { SendEmailJob } from '@platform/core/queues'
 
@@ -22,7 +23,7 @@ const LINKS: DigestLinks = { frontendUrl: 'https://app.example.com' }
 const STORE = { id: 's', store_id: 'store-1', organization_id: 'org-1' }
 const intake = {
   storeKey: 'k'.repeat(24),
-  type: 'access' as const,
+  type: DsrType.ACCESS,
   email: ' Ana@Example.com ',
   locale: 'es' as const
 }
