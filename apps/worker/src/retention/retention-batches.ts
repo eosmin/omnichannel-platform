@@ -17,15 +17,18 @@ export interface BatchOutcome {
 
 // Runs `step` (one batch: it returns how many rows it took and how many it removed) until a batch comes back short,
 // or `maxBatches` batches were taken. A category never holds the run for more than that: what is left waits for the
-// next night, and `more` says so.
+// next night, and `more` says so. `shouldStop` is asked before each batch: a run with its own time budget ends there, between two
+// batches, and says `more` (it cannot know that nothing is left), so a long category never outlasts the lock of its run.
 export async function inBatches(
   batchSize: number,
   maxBatches: number,
-  step: () => Promise<{ taken: number; deleted: number }>
+  step: () => Promise<{ taken: number; deleted: number }>,
+  shouldStop: () => boolean = () => false
 ): Promise<BatchOutcome> {
   let deleted = 0
   let more = false
   for (let batch = 0; batch < maxBatches; batch += 1) {
+    if (shouldStop()) return { deleted, more: true }
     let result: { taken: number; deleted: number }
     try {
       result = await step()
