@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import dynamic from 'next/dynamic'
 import { headers } from 'next/headers'
 import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getTranslations } from 'next-intl/server'
@@ -6,7 +7,6 @@ import type { ReactNode } from 'react'
 
 import { PluginWidgetFrames } from '@platform/core/domain'
 
-import { CookieConsentGate } from '../components/cookie-consent/cookie-consent-gate'
 import { AppProviders } from '../components/providers/app-providers'
 import { DestructiveActionProvider } from '../components/shared/destructive-action'
 import { BusyAnnouncer } from '../components/shell/busy-announcer'
@@ -15,6 +15,14 @@ import { isSettled } from '../lib/cookie-consent/cookie-settled'
 import { parseFrameOrigins } from '../lib/plugin-frames'
 
 import './globals.css'
+
+// Not a static import: a client component imported by the layout travels in the script of every page, rendered or not, and a visitor
+// who already answered (the server draws the gate only for who has something to answer) must not pay for it
+const CookieConsentGate = dynamic(() =>
+  import('../components/cookie-consent/cookie-consent-gate').then(
+    module => module.CookieConsentGate
+  )
+)
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('app')
