@@ -10,7 +10,7 @@ describe('the providers of the root layout', () => {
     '%s does not import the hooks of the inbox or the store context',
     file => {
       const source = read(file)
-      expect(source).not.toMatch(/from '[^']*lib\/inbox\//)
+      expect(source).not.toMatch(/from '[^']*lib\/inbox(\/[^']*)?'/)
       expect(source).not.toMatch(/from '\.\/store-context'/)
     }
   )
