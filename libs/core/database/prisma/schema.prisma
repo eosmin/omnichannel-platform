@@ -1771,6 +1771,9 @@ model DataSubjectRequest {
   notifyToEncrypted      Bytes?    @map("notify_to_encrypted") // Where the closing mail goes (AES-GCM); NULL once the request ends
   approvals              Json      @default("[]") // Who approved and when (ids only)
   erasureDueAt           DateTime? @map("erasure_due_at") // End of the grace period of an approved erasure
+  erasureAttempts        Int       @default(0) @map("erasure_attempts") // Tries of the sweep that carries the erasure out; written before each try
+  erasureAttemptedAt     DateTime? @map("erasure_attempted_at") // The last try: the lease a second sweep respects
+  erasureFailureCode     String?   @map("erasure_failure_code") // Name of the error of the last failed try, never its message
   requestedBy            String?   @map("requested_by")
   requestedAt            DateTime  @default(now()) @map("requested_at")
   deadlineAt             DateTime  @map("deadline_at")

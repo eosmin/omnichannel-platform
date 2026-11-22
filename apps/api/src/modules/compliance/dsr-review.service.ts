@@ -57,6 +57,8 @@ export interface DsrRequestView {
   reviewedBy: string | null
   requestedBy: string | null
   erasureDueAt: string | null
+  // Why an approved erasure came back to review (a name or a reason, never a message); null when it did not
+  erasureFailureCode: string | null
   completedAt: string | null
   rejectionReason: string | null
   subjectCustomerIds: string[]
@@ -85,6 +87,7 @@ const SELECT = {
   reviewedBy: true,
   requestedBy: true,
   erasureDueAt: true,
+  erasureFailureCode: true,
   completedAt: true,
   rejectionReason: true,
   subjectCustomerIds: true,
@@ -119,6 +122,7 @@ function viewOf(row: Row): DsrRequestView {
     reviewedBy: row.reviewedBy,
     requestedBy: row.requestedBy,
     erasureDueAt: iso(row.erasureDueAt),
+    erasureFailureCode: row.erasureFailureCode,
     completedAt: iso(row.completedAt),
     rejectionReason: row.rejectionReason,
     subjectCustomerIds: row.subjectCustomerIds,
@@ -254,6 +258,10 @@ export class DsrReviewService {
           ...(complete
             ? {
                 status: DsrStatus.IN_PROGRESS,
+                // A request the sweep gave back and a reviewer approves again starts its tries from zero
+                erasureAttempts: 0,
+                erasureAttemptedAt: null,
+                erasureFailureCode: null,
                 erasureDueAt: new Date(
                   now.getTime() + ComplianceConfig.ERASURE_GRACE_PERIOD_DAYS * DAY_MS
                 )

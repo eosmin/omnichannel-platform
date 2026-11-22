@@ -32,7 +32,14 @@ export const ComplianceConfig = {
   DSR_REVIEW_PAGE_SIZE: 25,
   DSR_REVIEW_MAX_PAGE_SIZE: 100,
   // Requests the expiry sweep closes per store and per run; the next run takes the rest
-  DSR_EXPIRE_BATCH: 200
+  DSR_EXPIRE_BATCH: 200,
+  // The sweep that carries out the approved erasures (Step 7.2-H2b-1): requests per store and per run, the tries before a request goes back to
+  // the review queue, and how long a try keeps the request for itself before another sweep may take it (a worker that died mid-try)
+  DSR_ERASE_BATCH: 20,
+  DSR_ERASE_MAX_ATTEMPTS: 3,
+  DSR_ERASE_LEASE_MS: 60 * 60 * 1000,
+  // The transaction of one request erases every customer it names (the default of a job transaction is 15 s)
+  DSR_ERASE_TRANSACTION_TIMEOUT_MS: 2 * 60 * 1000
 } as const
 
 // Platform-wide floors and ceilings. Tenant-configurable values live in RetentionSettings, and
@@ -232,6 +239,15 @@ export const DsrRejectionReasons = {
   // A reviewer decided it; what they wrote is in the notes of the request, never in the audit log
   REVIEWER_DECISION: 'reviewer_decision'
 } as const
+
+// Why the sweep gave an approved erasure back to the review queue: nobody was erased by this move (the audit entry and the failure code carry it)
+export const DsrErasureReturnReasons = {
+  SUBJECT_CHANGED: 'subject_changed',
+  BLOCKED_BY_OPEN_WORK: 'blocked_by_open_work',
+  ATTEMPTS_EXHAUSTED: 'attempts_exhausted'
+} as const
+export type DsrErasureReturnReason =
+  (typeof DsrErasureReturnReasons)[keyof typeof DsrErasureReturnReasons]
 
 // What the closing notice of a data request says happened (the `outcome` of the `dsr-result` mail)
 export const DsrResultOutcomes = {
