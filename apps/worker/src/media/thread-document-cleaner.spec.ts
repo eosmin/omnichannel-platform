@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import { Worker } from 'node:worker_threads'
 
 import { type DocumentThreadOptions, ThreadDocumentCleaner } from './thread-document-cleaner'
 
@@ -125,5 +126,42 @@ describe('ThreadDocumentCleaner', () => {
     await Promise.all([cleaner.clean(bytes, PDF), cleaner.clean(bytes, PDF)])
     // Two deadlines one after the other, not together
     expect(Date.now() - started).toBeGreaterThanOrEqual(750)
+  })
+
+  it('stops the thread on every way out: an answer, a deadline, the memory limit, a crash, an exit and a bad answer', async () => {
+    const terminate = jest.spyOn(Worker.prototype, 'terminate')
+    try {
+      const ways: [string, Partial<DocumentThreadOptions>][] = [
+        ['answer.cjs', {}],
+        ['hang.cjs', { timeoutMs: 200 }],
+        ['eats-memory.cjs', { timeoutMs: 20_000 }],
+        ['crashes.cjs', {}],
+        ['exits.cjs', {}],
+        ['garbage.cjs', {}]
+      ]
+      for (const [file, over] of ways) {
+        const before = terminate.mock.calls.length
+        await cleanerOf(file, over)
+          .clean(bytes, PDF)
+          .catch(() => undefined)
+        // One thread was started and it was stopped, whatever happened to it
+        expect(terminate.mock.calls.length - before).toBe(1)
+      }
+    } finally {
+      terminate.mockRestore()
+    }
+  })
+
+  it('survives a document that eats memory: the limit stops the thread, the process of the worker keeps its own heap and keeps working', async () => {
+    const heapBefore = process.memoryUsage().heapUsed
+    const result = await cleanerOf('eats-memory.cjs', { timeoutMs: 20_000 }).clean(bytes, PDF)
+    expect(result).toEqual({ kind: 'untouched', why: 'not_cleanable' })
+    // The 64 MB limit of the thread is not the heap of this process: it did not grow by anything near it
+    expect(process.memoryUsage().heapUsed - heapBefore).toBeLessThan(48 * 1024 * 1024)
+    // and the next document is cleaned as if nothing had happened
+    await expect(cleanerOf('answer.cjs').clean(bytes, PDF)).resolves.toEqual({
+      kind: 'sanitized',
+      body: bytes
+    })
   })
 })
