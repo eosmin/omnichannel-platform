@@ -17,6 +17,8 @@ import {
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
+import { maskColumnsOf, receiverOf } from './fiscal-rules'
+
 // The value sealed again did not open to the same content (never carries the content)
 class ResealMismatchError extends Error {
   constructor() {
@@ -33,6 +35,8 @@ export interface FiscalResealReport {
   scanned: number
   current: number
   resealed: number
+  // Documents whose masked receiver was calculated by this run (Step 7.3-S11b-2)
+  masked: number
   conflicts: number
   // Values that opened with neither key (or could not be sealed again): left exactly as they were, by the code of the failure
   failed: Record<string, number>
@@ -55,6 +59,7 @@ const emptyReport = (enabled: boolean): FiscalResealReport => ({
   scanned: 0,
   current: 0,
   resealed: 0,
+  masked: 0,
   conflicts: 0,
   failed: {},
   truncated: false
@@ -81,8 +86,12 @@ export class FiscalResealService {
   }
 
   async run(organizationId: string, unit: FiscalResealUnit): Promise<FiscalResealReport> {
-    if (!this.cipher.hasPreviousKey) return emptyReport(false)
-    const report = emptyReport(true)
+    // Without a previous key there is nothing to seal again; the masks of the receivers are still calculated
+    const report = emptyReport(this.cipher.hasPreviousKey)
+    if (!this.cipher.hasPreviousKey) {
+      await this.maskMissing(organizationId, unit, report)
+      return report
+    }
     const kinds = [
       SealedValueKind.ISSUER_CREDENTIALS,
       SealedValueKind.CUSTOMER_DATA,
@@ -151,7 +160,71 @@ export class FiscalResealService {
         after = last.id
       }
     }
+    await this.maskMissing(organizationId, unit, report)
     return report
+  }
+
+  // The masked receiver of the documents that have none yet (Step 7.3-S11b-2). It runs AFTER the re-seal, opens with the CURRENT key alone (what
+  // the previous key opens was just sealed again; a value no key opens is left with no mask and counted by its code, never guessed), and
+  // writes through the function of the migration (the door of the guard) by compare-and-swap. The filter on the missing mask is the cursor:
+  // a run that stopped goes on from where it was, and a second run finds nothing.
+  private async maskMissing(
+    organizationId: string,
+    unit: FiscalResealUnit,
+    report: FiscalResealReport
+  ): Promise<void> {
+    let worked = 0
+    let after: string | undefined
+    for (;;) {
+      const rows = await unit(() =>
+        this.prisma.client.fiscalDocument.findMany({
+          where: {
+            organizationId,
+            receiverMaskedAt: null,
+            ...(after === undefined ? {} : { id: { gt: after } })
+          },
+          select: { id: true, receiverEncrypted: true },
+          orderBy: { id: 'asc' },
+          take: FiscalReseal.PAGE_SIZE
+        })
+      )
+      for (const row of rows) {
+        if (worked >= FiscalReseal.MAX_VALUES_PER_KIND) {
+          report.truncated = true
+          return
+        }
+        worked += 1
+        try {
+          const done = await unit(async () => {
+            const columns = maskColumnsOf(receiverOf(this.cipher.open(row.receiverEncrypted)))
+            const answer = await this.prisma.client.$queryRaw<{ changed: boolean }[]>`
+              SELECT fiscal_mask_document(
+                ${organizationId}, ${row.id}, ${row.receiverEncrypted}::bytea, ${columns.receiverNameMasked}, ${columns.receiverTaxIdMasked}
+              ) AS changed`
+            return answer[0]?.changed === true
+          })
+          if (done) report.masked += 1
+          else report.conflicts += 1
+        } catch (error) {
+          const code =
+            error instanceof DecryptionError ? failureOf(error) : FISCAL_RESEAL_WRITE_FAILED
+          report.failed[code] = (report.failed[code] ?? 0) + 1
+          this.logger.error(
+            {
+              errorName: errorName(error),
+              failure: code,
+              what: SealedValueKind.RECEIVER,
+              organizationId,
+              rowId: row.id
+            },
+            'the masked receiver of a document was not calculated'
+          )
+        }
+      }
+      const last = rows.at(-1)
+      if (rows.length < FiscalReseal.PAGE_SIZE || last === undefined) return
+      after = last.id
+    }
   }
 
   // One page of one kind of value of the organization, by id

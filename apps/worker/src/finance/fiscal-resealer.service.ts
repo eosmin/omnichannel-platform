@@ -27,14 +27,17 @@ export class FiscalResealer {
         timeout: FiscalLimits.CONTEXT_TIMEOUT_MS
       })
     )
-    if (!report.enabled) return
-    this.logger.info(
-      { organizationId, ...report },
-      'the fiscal values were checked for the previous key'
-    )
     const failed = Object.values(report.failed).reduce((sum, n) => sum + n, 0)
+    if (report.enabled || report.masked > 0 || failed > 0) {
+      this.logger.info(
+        { organizationId, ...report },
+        'the fiscal values were checked for the previous key and the masks'
+      )
+    }
     if (failed > 0) {
-      throw new Error(`${failed} sealed fiscal values were not sealed again (see the log by code)`)
+      throw new Error(
+        `${failed} fiscal values were not sealed again or masked (see the log by code)`
+      )
     }
   }
 }

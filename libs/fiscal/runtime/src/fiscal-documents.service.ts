@@ -76,8 +76,8 @@ import {
   fiscalSequenceKey,
   isImmutable,
   isStuck,
-  maskPersonName,
-  maskTaxId,
+  maskColumnsOf,
+  maskedReceiverView,
   originalStateOf,
   paymentOfSnapshot,
   receiverEditable,
@@ -207,6 +207,9 @@ const SELECT = {
   issuedAt: true,
   createdAt: true,
   receiverEncrypted: true,
+  receiverNameMasked: true,
+  receiverTaxIdMasked: true,
+  receiverMaskedAt: true,
   // The newest document that replaces it: the view names it, and says whether a voided document can still be replaced
   replacedBy: { select: { id: true }, orderBy: { sequenceNumber: 'desc' }, take: 1 }
 } as const
@@ -406,6 +409,7 @@ export class FiscalDocumentsService {
           issuerSnapshot: toJson(this.issuerInput(issuer)),
           linesSnapshot: sale.linesSnapshot,
           receiverEncrypted: new Uint8Array(this.cipher.seal(receiverRecord(sale.receiver))),
+          ...maskColumnsOf(sale.receiver),
           currency: sale.currency,
           totalCents: sale.totalCents,
           taxCents: sale.taxCents
@@ -1590,7 +1594,15 @@ export class FiscalDocumentsService {
           status: FiscalDocumentStatus.SUBMITTED,
           attempts: { increment: 1 },
           claimToken,
-          ...(receiverEncrypted === undefined ? {} : { receiverEncrypted })
+          // The receiver of the note changes to the parent's: the masks of the old one are no longer true, and are calculated again
+          ...(receiverEncrypted === undefined
+            ? {}
+            : {
+                receiverEncrypted,
+                receiverNameMasked: null,
+                receiverTaxIdMasked: null,
+                receiverMaskedAt: null
+              })
         }
       })
       if (taken.count !== 1) return 'busy' as const
@@ -1854,7 +1866,10 @@ export class FiscalDocumentsService {
       }
       await tx.fiscalDocument.update({
         where: { id },
-        data: { receiverEncrypted: new Uint8Array(this.cipher.seal(receiverRecord(next))) }
+        data: {
+          receiverEncrypted: new Uint8Array(this.cipher.seal(receiverRecord(next))),
+          ...maskColumnsOf(next)
+        }
       })
     })
     this.audit.log({
@@ -3044,9 +3059,20 @@ export class FiscalDocumentsService {
     issuedAt: Date | null
     createdAt: Date
     receiverEncrypted: Uint8Array
+    receiverNameMasked: string | null
+    receiverTaxIdMasked: string | null
+    receiverMaskedAt: Date | null
     replacedBy: { id: string }[]
   }): FiscalDocumentView {
-    const receiver = this.openReceiver(row.receiverEncrypted, row.id, true)
+    // A row with its masks calculated opens no sealed value (a page of documents opens none); a row without them is opened as before
+    const receiverView =
+      row.receiverMaskedAt === null
+        ? maskedReceiverView(this.openReceiver(row.receiverEncrypted, row.id, true))
+        : {
+            name: row.receiverNameMasked,
+            taxIdMasked: row.receiverTaxIdMasked,
+            complete: row.receiverNameMasked !== null
+          }
     const kind = row.kind as FiscalDocumentKind
     const status = row.status as FiscalDocumentStatus
     const replacedByDocumentId = row.replacedBy[0]?.id ?? null
@@ -3083,11 +3109,7 @@ export class FiscalDocumentsService {
       voidedAt: row.voidedAt?.toISOString() ?? null,
       issuedAt: row.issuedAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
-      receiver: {
-        name: maskPersonName(receiver.name),
-        taxIdMasked: maskTaxId(receiver.taxId),
-        complete: receiver.name !== null
-      }
+      receiver: receiverView
     }
   }
 }

@@ -87,7 +87,7 @@ describe('FiscalResealService (what the database run cannot show)', () => {
     expect(where.store).toEqual({ organizationId: 'org-1' })
   })
 
-  it('reads nothing at all without a previous key', async () => {
+  it('reads no sealed value to seal again without a previous key (only the masks are looked for)', async () => {
     const prisma = prismaWith(new Uint8Array(), 1)
     const service = new FiscalResealService(
       prisma as never,

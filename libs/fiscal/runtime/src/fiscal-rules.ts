@@ -9,6 +9,8 @@ import {
   FiscalOperationCondition,
   FiscalRejectionReasons,
   type FiscalEnvironment,
+  maskReceiverName,
+  maskReceiverTaxId,
   PaymentMethod,
   PaymentStatus,
   TaxTreatment
@@ -674,5 +676,32 @@ export function documentDetailOf(
       establishmentCode: textOrNull(issuer['establishmentCode']),
       environment: textOf(issuer['environment'])
     }
+  }
+}
+
+// The masks of a receiver as a document keeps them in the clear beside its sealed receiver (Step 7.3-S11b-2): a row with these three columns
+// set is listed without opening anything. The time says "calculated", so a receiver with no name or tax id is not calculated again.
+export function maskColumnsOf(receiver: { name?: string | null; taxId?: string | null }): {
+  receiverNameMasked: string | null
+  receiverTaxIdMasked: string | null
+  receiverMaskedAt: Date
+} {
+  return {
+    receiverNameMasked: maskReceiverName(receiver.name),
+    receiverTaxIdMasked: maskReceiverTaxId(receiver.taxId),
+    receiverMaskedAt: new Date()
+  }
+}
+
+// What the list and the detail of a document show of its receiver, from the opened receiver (the row with no masks yet)
+export function maskedReceiverView(receiver: FiscalReceiver): {
+  name: string | null
+  taxIdMasked: string | null
+  complete: boolean
+} {
+  return {
+    name: maskReceiverName(receiver.name),
+    taxIdMasked: maskReceiverTaxId(receiver.taxId),
+    complete: receiver.name !== null
   }
 }
