@@ -7,6 +7,24 @@ import type { PluginRegistry } from '@platform/plugins/runtime'
 
 import { ChannelTemplatesService } from './channel-templates.service'
 
+// A unit spec reads no environment (CI has no DATABASE_URL): the modules that load it are replaced by what the service uses
+jest.mock('@platform/channels/connections', () => ({
+  CONNECTION_ROW_SELECT: {},
+  ChannelContextFactory: class {},
+  CredentialsUnreadableError: class extends Error {},
+  errorName: (error: unknown) => (error instanceof Error ? error.name : 'Error'),
+  providerText: (text: string) => text,
+  withTimeout: (work: Promise<unknown>) => work
+}))
+jest.mock('@platform/core/database', () => ({ EventContext: class {}, PrismaService: class {} }))
+jest.mock('@platform/core/messaging', () => ({
+  canSee: jest.fn(),
+  invalidInput: jest.fn(),
+  requireAnyPermission: jest.fn()
+}))
+jest.mock('@platform/plugins/runtime', () => ({ PluginRegistry: class {} }))
+jest.mock('@platform/plugins/sdk', () => ({ ChannelCapability: { TEMPLATES: 'templates' } }))
+
 const STORE = 'store-1'
 const PLUGIN = 'plugin-1'
 
