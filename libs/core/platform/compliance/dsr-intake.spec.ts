@@ -31,8 +31,18 @@ describe('normalizeDsrEmail and dsrEmailHash', () => {
 })
 
 describe('sealDsrIntake and openDsrIntake', () => {
-  it('opens what it sealed', () => {
-    expect(openDsrIntake(sealDsrIntake(intake, KEY), KEY)).toEqual(intake)
+  it('opens what it sealed, with the address in the form the customers are compared in (trimmed, lower case)', () => {
+    // The envelope is never shown: the search of the customers and the hash of the duplicate check read this form, and the address that
+    // a reviewer sees is the one of the customer row
+    expect(openDsrIntake(sealDsrIntake(intake, KEY), KEY)).toEqual({
+      ...intake,
+      email: 'ana.perez@example.com'
+    })
+  })
+
+  it('opens the same identity whatever the case or the spaces the person typed', () => {
+    const typed = (email: string) => openDsrIntake(sealDsrIntake({ ...intake, email }, KEY), KEY)
+    expect(typed(' ANA.PEREZ@EXAMPLE.COM ')).toEqual(typed('ana.perez@example.com'))
   })
 
   it('never holds the address, the key of the store or the kind of request in the clear', () => {
