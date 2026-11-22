@@ -1303,7 +1303,10 @@ export class NotificationsEventsListener {
       const own = await this.prisma.client.media.count({
         where: { storeId, messageId, status: MediaStatus.UNSCANNABLE }
       })
-      if (own === 0) return
+      if (own === 0) {
+        this.logger.debug({ messageId }, 'an unscannable file of an ad origin was not notified')
+        return
+      }
       await this.notifications.sendToUsersOnce(
         readers.map(reader => reader.userId),
         {

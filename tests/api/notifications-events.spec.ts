@@ -483,6 +483,26 @@ describe('Notifications raised by events', () => {
       expect(await rowsOf(NotificationTypes.MEDIA_INFECTED)).toHaveLength(once)
     })
 
+    it('does not tell again a person who already read it', async () => {
+      const conversation = await mk()
+      const message = await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id
+      })
+      const events = app.get(EventEmitter2)
+
+      await events.emitAsync(Events.MEDIA_INFECTED, infected(conversation.id, message.id))
+      const first = (await rowsOf(NotificationTypes.MEDIA_INFECTED)).length
+      await owner.notification.updateMany({
+        where: { storeId: ctx.storeA.id, resourceId: message.id },
+        data: { readAt: new Date() }
+      })
+      await events.emitAsync(Events.MEDIA_INFECTED, infected(conversation.id, message.id))
+
+      expect(first).toBeGreaterThan(0)
+      expect(await rowsOf(NotificationTypes.MEDIA_INFECTED)).toHaveLength(first)
+    })
+
     it('leaves out who cannot open a conversation assigned to someone else', async () => {
       const conversation = await mk({ assignedTo: ctx.adminA.id })
       const message = await createMessage(owner, {
@@ -597,7 +617,7 @@ describe('Notifications raised by events', () => {
       ])
 
       const told = (await rowsOf(NotificationTypes.MEDIA_UNSCANNABLE)).map(row => row.userId)
-      expect(told.length).toBeGreaterThan(0)
+      expect(told).toEqual(expect.arrayContaining([ctx.adminA.id, ctx.agentA.id]))
       expect(new Set(told).size).toBe(told.length)
     })
 
