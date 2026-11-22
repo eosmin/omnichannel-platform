@@ -16,10 +16,8 @@ import {
 } from '@platform/core/analytics'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { Permissions } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
-import { MembershipStatus } from '@platform/core/domain'
 import { ErrorCodes, errorName } from '@platform/core/errors'
 import { ExportContentTypes } from '@platform/core/exports'
 import { MetricNames } from '@platform/core/metrics'
@@ -35,6 +33,7 @@ import {
 import { StorageService } from '@platform/core/storage-module'
 
 import { ExportGenerator } from '../export-generator.service'
+import { accessOfRequester, currentPermissionsOfRequester } from '../export-requester-access'
 
 import { formatCell } from './pdf-writer'
 import { readReportTable } from './report-table'
@@ -230,20 +229,11 @@ export class ScheduledReportRunner {
     return ReportRunOutcomes.SENT
   }
 
+  // The same reading of the permissions as the file of an export: an ACTIVE membership that is not revoked, with every permission of
+  // the kind. A read that fails is not a yes (the error goes up and the run is tried again).
   private async stillAllowed(storeId: string, userId: string): Promise<boolean> {
-    const count = await this.jobContext.forStore(storeId, () =>
-      this.prisma.client.membership.count({
-        where: {
-          storeId,
-          userId,
-          status: MembershipStatus.ACTIVE,
-          AND: [Permissions.ANALYTICS_VIEW, Permissions.ANALYTICS_EXPORT].map(name => ({
-            role: { permissions: { some: { name } } }
-          }))
-        }
-      })
-    )
-    return count > 0
+    const held = await currentPermissionsOfRequester(this.prisma, this.jobContext, storeId, userId)
+    return accessOfRequester(ExportTypes.ANALYTICS, held).allowed
   }
 
   private async attachment(
