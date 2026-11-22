@@ -13,7 +13,7 @@ import { ThrottlerStorageService } from '@nestjs/throttler'
 import type { Request } from 'express'
 
 import { API_PREFIX } from '@platform/core/api'
-import { AuthenticatedUserRateLimit } from '@platform/core/auth'
+import { AUTHENTICATED_USER_RATE_LIMIT, authenticatedUserRateLimitOf } from '@platform/core/auth'
 import { LoggerModule } from '@platform/core/logger'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { MetricsModule } from '@platform/core/metrics-module'
@@ -21,6 +21,11 @@ import { MetricsModule } from '@platform/core/metrics-module'
 import { configureHttpApp } from './configure-http-app'
 import { HttpErrorsModule } from './http-errors.module'
 import { AuthenticatedUserRateLimitGuard, USER_RATE_LIMIT_STORAGE } from './throttler'
+
+// The budget this spec spends: the same provider the app uses for tests (`authenticatedUserRateLimitOf`), with a small limit so the
+// real guard, the real storage and the real 429 are exercised in a few calls instead of 600 inside the 5 s of a loaded runner. The
+// real limit of production (600 a minute) is still spent through the whole app by tests/api/authenticated-user-rate-limit.spec.ts.
+const TEST_BUDGET = authenticatedUserRateLimitOf(20)
 
 // Stands for the AuthGuard: the person is whoever the header says
 @Injectable()
@@ -55,6 +60,7 @@ describe('the general per-user budget, wired as a global guard after the authent
       controllers: [RoutesController],
       providers: [
         { provide: USER_RATE_LIMIT_STORAGE, useValue: new ThrottlerStorageService() },
+        { provide: AUTHENTICATED_USER_RATE_LIMIT, useValue: TEST_BUDGET },
         AuthenticatedUserRateLimitGuard,
         { provide: APP_GUARD, useClass: FakeAuthGuard },
         { provide: APP_GUARD, useExisting: AuthenticatedUserRateLimitGuard }
@@ -77,7 +83,7 @@ describe('the general per-user budget, wired as a global guard after the authent
     })
 
   it('refuses a person past the budget whatever address the calls come from, and leaves the others alone', async () => {
-    for (let i = 0; i < AuthenticatedUserRateLimit.limit; i += 1) {
+    for (let i = 0; i < TEST_BUDGET.limit; i += 1) {
       expect((await call('u1', `203.0.113.${(i % 250) + 1}`)).status).toBe(200)
     }
 
@@ -91,7 +97,7 @@ describe('the general per-user budget, wired as a global guard after the authent
   })
 
   it('does not count a request with no authenticated person', async () => {
-    for (let i = 0; i < AuthenticatedUserRateLimit.limit + 5; i += 1) {
+    for (let i = 0; i < TEST_BUDGET.limit + 5; i += 1) {
       expect((await call(undefined, '203.0.113.7')).status).toBe(200)
     }
   })
