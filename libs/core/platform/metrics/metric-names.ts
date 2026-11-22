@@ -74,6 +74,10 @@ export const MetricNames = {
   // hides it from its own store hid it (RLS phase 5). By `job`
   WORKER_JOB_SUBJECT_MISSING: 'worker_job_subject_missing_total',
 
+  // A file of an export (personal data) that the bucket refused to delete, by `stage` (ExportDiscardStages). The row keeps the key
+  // until a sweep deletes it
+  EXPORT_FILE_DISCARD_FAILED: 'platform_export_file_discard_failed_total',
+
   // Outbound webhooks and email
   WEBHOOK_DELIVERIES: 'platform_webhook_deliveries_total',
   // A delivery whose log row the policy refused because its webhook (or plugin installation) was deleted meanwhile. By `target`

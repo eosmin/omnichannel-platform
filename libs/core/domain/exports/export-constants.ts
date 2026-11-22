@@ -15,8 +15,16 @@ export const ExportLimits = {
   // because a cut file looks like a whole one to an auditor. The count is taken when the file is asked for
   AUDIT_LOG_MAX_ROWS: 200_000,
   // Rows the cleanup of expired files handles per run
-  CLEANUP_BATCH: 100
+  CLEANUP_BATCH: 100,
+  // A `failed` or `expired` export is swept for files that no row names for this many days after it settled: a file that could not be
+  // deleted when the export failed (the bucket was down) is looked for again, and after this it is left to the lifecycle of the bucket
+  FILE_SWEEP_DAYS: 7,
+  // A row that settled less than this ago is not swept: the worker that settled it may still be deleting its file
+  FILE_SWEEP_GRACE_MINUTES: 60
 } as const
+
+// Where a file of an export failed to be deleted, the fixed label of the metric
+export const ExportDiscardStages = { WORKER: 'worker', SWEEP: 'sweep' } as const
 
 // The scope of the exclusive lock that makes the requests of one store take turns, so the ceilings above are checked one at a time
 export const ExportLockScopes = { REQUEST: 'exports:request' } as const
