@@ -37,7 +37,9 @@ const invitationSchema = z.object({
   invitedBy: z.string(),
   expiresAt: z.string(),
   createdAt: z.string(),
-  expired: z.boolean()
+  expired: z.boolean(),
+  // Where the email of the invitation stands; never the link
+  emailStatus: z.enum(['pending', 'sent', 'failed'])
 })
 export type InvitationView = z.output<typeof invitationSchema>
 

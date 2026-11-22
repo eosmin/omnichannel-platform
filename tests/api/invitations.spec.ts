@@ -12,7 +12,7 @@ import {
 } from '@platform/core/auth'
 import { hashToken } from '@platform/core/crypto'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { MembershipStatus } from '@platform/core/domain'
+import { InvitationEmailStatus, MembershipStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { EmailTemplates } from '@platform/core/queues'
 
@@ -30,6 +30,7 @@ interface InvitationBody {
   invitedBy: string
   expiresAt: string
   expired: boolean
+  emailStatus: InvitationEmailStatus
 }
 interface ErrorBody {
   error: { code: string }
@@ -371,6 +372,31 @@ describe('Inviting to a store', () => {
       expect(rows.find(row => row.id === stale.id)?.expired).toBe(true)
     })
 
+    it('say where the email stands, from the outbox, and never carry the link or the sealed email', async () => {
+      const waiting = (await invite(newEmail())).body as InvitationBody
+      const sent = (await invite(newEmail())).body as InvitationBody
+      const failed = (await invite(newEmail())).body as InvitationBody
+      expect(waiting.emailStatus).toBe(InvitationEmailStatus.PENDING)
+      await owner.invitation.update({
+        where: { id: sent.id },
+        data: { emailOutbox: null, emailSentAt: new Date() }
+      })
+      // What the worker leaves after MAX_ATTEMPTS failures: the outbox cleared, no sent time
+      await owner.invitation.update({
+        where: { id: failed.id },
+        data: { emailOutbox: null, emailAttempts: 12 }
+      })
+
+      const response = await asAdmin().get(ApiRoutes.settings.invitations)
+
+      const rows = response.body as InvitationBody[]
+      expect(rows.find(row => row.id === waiting.id)?.emailStatus).toBe('pending')
+      expect(rows.find(row => row.id === sent.id)?.emailStatus).toBe('sent')
+      expect(rows.find(row => row.id === failed.id)?.emailStatus).toBe('failed')
+      const text = JSON.stringify(response.body)
+      expect(text).not.toMatch(/emailOutbox|email_outbox|\/invitations\/[A-Za-z0-9_-]{20,}/)
+    })
+
     it('leave the list once revoked, and the other stores’ are not in it', async () => {
       const mine = (await invite(newEmail())).body as InvitationBody
       const elsewhere = (
@@ -424,6 +450,26 @@ describe('Inviting to a store', () => {
         tokenHash: hashToken(newToken)
       })
       expect(JSON.stringify(response.body)).not.toContain(newToken)
+    })
+
+    it('is the way out of an email that was given up: a new invitation, pending again, under the same cooldown', async () => {
+      const email = newEmail()
+      const first = (await invite(email)).body as InvitationBody
+      await owner.invitation.update({
+        where: { id: first.id },
+        data: { emailOutbox: null, emailAttempts: 12 }
+      })
+
+      // The cooldown is not skipped because the email failed
+      const tooSoon = await resend(first.id)
+      expect(tooSoon.status).toBe(429)
+
+      await ageInvitation(first.id)
+      const response = await resend(first.id)
+
+      expect(response.status).toBe(200)
+      expect((response.body as InvitationBody).emailStatus).toBe('pending')
+      expect(await outboxEmailTo(app, owner, email)).toBeDefined()
     })
 
     it('brings back an invitation whose link expired, with a full lifetime', async () => {

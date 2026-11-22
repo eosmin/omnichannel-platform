@@ -101,11 +101,13 @@ describe('InvitationEmailDelivery', () => {
       attempts?: number
       claimedAt?: Date | null
       store?: string
+      // 'bound' (default) is what the api writes; 'legacy' is a row sealed before the seal was bound (format 1); 'other' is bound to another row
+      seal?: 'bound' | 'legacy' | 'other'
     } = {}
   ): Promise<{ id: string; email: string }> {
     const id = randomUUID()
     const email = `${id.slice(0, 8)}@example.com`
-    const sealed = sealInvitationEmail(cipher, {
+    const content = {
       template: EmailTemplates.INVITATION,
       to: email,
       locale: 'en',
@@ -117,7 +119,15 @@ describe('InvitationEmailDelivery', () => {
         expiresInDays: 7
       },
       tags: { storeId, template: EmailTemplates.INVITATION }
-    })
+    } satisfies InvitationEmail
+    const seal = overrides.seal ?? 'bound'
+    const sealed =
+      seal === 'legacy'
+        ? cipher.seal({ ...content })
+        : sealInvitationEmail(cipher, content, {
+            storeId: overrides.store ?? storeId,
+            invitationId: seal === 'other' ? randomUUID() : id
+          })
     await owner.query(
       `INSERT INTO invitations (id, organization_id, store_id, email, role_id, token_hash, status, invited_by_id, expires_at, created_at,
          email_outbox, email_attempts, email_claimed_at)
@@ -171,6 +181,22 @@ describe('InvitationEmailDelivery', () => {
     expect(row.email_outbox).toBeNull()
     expect(row.email_sent_at).not.toBeNull()
     expect(row.email_claimed_at).toBeNull()
+  })
+
+  it('still sends an email sealed before the seal was bound to its row (format 1)', async () => {
+    const { id } = await pending({ seal: 'legacy' })
+
+    expect(await delivery.deliver(storeId, id)).toBe('sent')
+    expect((await state(id)).email_outbox).toBeNull()
+  })
+
+  it('does not send an email sealed for another invitation: it counts as a failed attempt and keeps the outbox', async () => {
+    const { id } = await pending({ seal: 'other' })
+
+    expect(await delivery.deliver(storeId, id)).toBe('failed')
+    const row = await state(id)
+    expect(row.email_sent_at).toBeNull()
+    expect(row.email_attempts).toBe(1)
   })
 
   it('sends nothing the second time (a duplicate job, then the sweep)', async () => {

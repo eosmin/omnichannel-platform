@@ -21,10 +21,13 @@ export async function outboxEmailTo(
       ...(storeId ? { storeId } : {})
     },
     orderBy: { createdAt: 'desc' },
-    select: { emailOutbox: true }
+    select: { emailOutbox: true, id: true, storeId: true }
   })
   if (row?.emailOutbox == null) return undefined
-  return openInvitationEmail(app.get(CredentialCipher, { strict: false }), row.emailOutbox)
+  return openInvitationEmail(app.get(CredentialCipher, { strict: false }), row.emailOutbox, {
+    storeId: row.storeId,
+    invitationId: row.id
+  })
 }
 
 // How many deliveries the api asked the queue for, for the invitations of one address

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { InjectQueue } from '@nestjs/bullmq'
 import { Inject, Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
@@ -15,8 +17,17 @@ import {
 import { AUTH_SETTINGS, type AuthSettings } from '@platform/core/auth-module'
 import { CredentialCipher, generateToken, hashToken } from '@platform/core/crypto'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
-import { InvitationStatus, isSuspended, MembershipStatus } from '@platform/core/domain'
-import { type InvitationEmail, sealInvitationEmail } from '@platform/core/email'
+import {
+  type InvitationEmailStatus,
+  InvitationStatus,
+  isSuspended,
+  MembershipStatus
+} from '@platform/core/domain'
+import {
+  type InvitationEmail,
+  invitationEmailStatusOf,
+  sealInvitationEmail
+} from '@platform/core/email'
 import {
   resourceConflict,
   ErrorCodes,
@@ -48,6 +59,8 @@ export interface InvitationView {
   expiresAt: Date
   createdAt: Date
   expired: boolean
+  // Derived from the outbox, never the link or the sealed email
+  emailStatus: InvitationEmailStatus
 }
 
 const INVITATION_SELECT = {
@@ -55,6 +68,9 @@ const INVITATION_SELECT = {
   email: true,
   expiresAt: true,
   createdAt: true,
+  emailSentAt: true,
+  // Read only to know whether the email still waits: view() turns it into a flag and drops the bytes
+  emailOutbox: true,
   role: { select: { id: true, name: true } },
   invitedBy: { select: { name: true } }
 } as const
@@ -64,6 +80,8 @@ function view(row: {
   email: string
   expiresAt: Date
   createdAt: Date
+  emailSentAt: Date | null
+  emailOutbox: Uint8Array | null
   role: { id: string; name: string }
   invitedBy: { name: string }
 }): InvitationView {
@@ -74,7 +92,11 @@ function view(row: {
     invitedBy: row.invitedBy.name,
     expiresAt: row.expiresAt,
     createdAt: row.createdAt,
-    expired: row.expiresAt.getTime() <= Date.now()
+    expired: row.expiresAt.getTime() <= Date.now(),
+    emailStatus: invitationEmailStatusOf({
+      waiting: row.emailOutbox !== null,
+      emailSentAt: row.emailSentAt
+    })
   }
 }
 
@@ -192,28 +214,28 @@ export class InvitationsService {
     ])
     // The email is sealed and written WITH the invitation (outbox): the row that revokes the old link and the row that holds the new
     // email are one transaction, so a queue that is down can never leave the invitee with no live link and no email on its way
-    const outbox = sealInvitationEmail(this.cipher, {
-      template: EmailTemplates.INVITATION,
-      to: email,
-      locale: destination,
-      data: {
-        url: this.linkFor(token),
-        inviterName: inviter.name,
-        storeName: store.name,
-        roleName: roleLabelOf(destination, role.name),
-        expiresInDays: INVITATION_TTL_DAYS
-      },
-      tags: { storeId: store.id, template: EmailTemplates.INVITATION }
-    } satisfies InvitationEmail)
-    const invitation = await this.replacePending(
-      store,
-      email,
-      role.id,
-      token,
-      actor,
-      replacing,
-      outbox
+    const invitationId = randomUUID()
+    const outbox = sealInvitationEmail(
+      this.cipher,
+      {
+        template: EmailTemplates.INVITATION,
+        to: email,
+        locale: destination,
+        data: {
+          url: this.linkFor(token),
+          inviterName: inviter.name,
+          storeName: store.name,
+          roleName: roleLabelOf(destination, role.name),
+          expiresInDays: INVITATION_TTL_DAYS
+        },
+        tags: { storeId: store.id, template: EmailTemplates.INVITATION }
+      } satisfies InvitationEmail,
+      { storeId: store.id, invitationId }
     )
+    const invitation = await this.replacePending(store, email, role.id, token, actor, replacing, {
+      id: invitationId,
+      sealed: outbox
+    })
     // After the REAL commit (under RLS_CONTEXT the request is one transaction): ask the worker to deliver now. The job holds ids only
     // (never the token). If the queue is down nothing is lost: the sweep of the worker delivers what waits in the outbox.
     await this.prisma.afterCommitStep(this.prisma.client, async () => {
@@ -293,7 +315,7 @@ export class InvitationsService {
     token: string,
     actor: Actor,
     replacing: string | null,
-    outbox: Uint8Array<ArrayBuffer>
+    outbox: { id: string; sealed: Uint8Array<ArrayBuffer> }
   ) {
     try {
       return await this.prisma.transaction(async tx => {
@@ -311,13 +333,15 @@ export class InvitationsService {
         })
         return tx.invitation.create({
           data: {
+            // The id is chosen before the insert: the seal of the outbox is bound to it
+            id: outbox.id,
             organizationId: store.organizationId,
             storeId: store.id,
             email,
             roleId,
             tokenHash: hashToken(token),
             invitedById: actor.userId,
-            emailOutbox: outbox,
+            emailOutbox: outbox.sealed,
             expiresAt: new Date(Date.now() + INVITATION_TTL_DAYS * MS_PER_DAY)
           },
           select: INVITATION_SELECT

@@ -71,6 +71,12 @@ test.describe('Settings → Team', () => {
       .getByRole('listitem')
       .filter({ has: page.getByRole('heading', { name: email }) })
     await expect(row).toBeVisible()
+    // The inviter sees where the email stands (on its way, or already sent), not a failure
+    await expect(
+      row.getByText(
+        new RegExp(`${invitations.emailStatus.pending}|${invitations.emailStatus.sent}`)
+      )
+    ).toBeVisible()
 
     // A resend right after inviting is held by the cooldown, and says how long to wait
     await row.getByRole('button', { name: invitations.resend.action, exact: false }).click()
