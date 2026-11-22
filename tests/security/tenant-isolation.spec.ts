@@ -5371,6 +5371,73 @@ describe('Tenant isolation', () => {
       }
     })
 
+    it('is not returned and does not make wait the same key of another plugin in the same store, or of another store, while the first call runs', async () => {
+      const key = `isolation-${randomUUID()}`
+      const otherPlugin = `${pluginId}-two`
+      await owner.plugin.create({
+        data: {
+          id: otherPlugin,
+          name: 'Second idempotent plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.CHANNEL,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: null
+        }
+      })
+      const secondKey = `${PLUGIN_API_KEY_TOKEN_PREFIX}${prefix}idemtwo${'w'.repeat(40)}`
+      await owner.pluginInstallation.create({
+        data: {
+          storeId: ctx.storeA.id,
+          pluginId: otherPlugin,
+          scopes: [PluginScopes.TAGS_READ, PluginScopes.TAGS_WRITE],
+          status: 'active',
+          apiKeyPrefix: secondKey.slice(0, 12),
+          apiKeyHash: createHash('sha256').update(secondKey).digest('hex'),
+          installedBy: 'suite'
+        }
+      })
+      try {
+        // The call of installation `a` is still running: its claim is there and not closed
+        await owner.pluginIdempotencyKey.create({
+          data: {
+            storeId: ctx.storeA.id,
+            installationId: installationOf.a,
+            key,
+            requestHash: 'running',
+            state: 'in_progress',
+            expiresAt: new Date(Date.now() + 3_600_000)
+          }
+        })
+
+        const sameStoreOtherPlugin = await supertest(
+          app.getHttpServer() as Parameters<typeof supertest>[0]
+        )
+          .post(`${API_PREFIX}${PluginApiRoutes.settings.tags}`)
+          .set('authorization', `Bearer ${secondKey}`)
+          .set('idempotency-key', key)
+          .set('x-forwarded-for', `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`)
+          .send({ name: `${prefix}-idem-other-plugin` })
+        const otherStore = await create('b', `${prefix}-idem-other-store`, key)
+
+        expect(sameStoreOtherPlugin.status).toBe(201)
+        expect(sameStoreOtherPlugin.header['idempotent-replayed']).toBeUndefined()
+        expect(otherStore.status).toBe(201)
+        expect(otherStore.header['idempotent-replayed']).toBeUndefined()
+        // And the claim that was running is still the one of `a`, untouched
+        expect(
+          await owner.pluginIdempotencyKey.count({
+            where: { key, installationId: installationOf.a, state: 'in_progress' }
+          })
+        ).toBe(1)
+      } finally {
+        await owner.pluginInstallation.deleteMany({ where: { pluginId: otherPlugin } })
+        await owner.plugin.deleteMany({ where: { id: otherPlugin } })
+      }
+    })
+
     it('refuses the key of the installation for another request instead of answering with the first', async () => {
       const key = `isolation-${randomUUID()}`
       expect((await create('a', `${prefix}-idem-one`, key)).status).toBe(201)

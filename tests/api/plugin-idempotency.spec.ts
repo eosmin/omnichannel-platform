@@ -23,8 +23,9 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 
 // The idempotency key of the writes of the plugin API (Step 7.3, S4) through the real api, with the transaction of the request OPEN
-// (RLS_CONTEXT on, a client that refuses a query with no context): the claim and its removal are units of their own, the answer is
-// written in the transaction of the write.
+// (RLS_CONTEXT on, a client that refuses a query with no context): the claim, the write and the answer are ONE transaction (a
+// failed call rolls its claim back; a concurrent call with the key waits on the unique index). The mode with the switch OFF has no spec
+// against a real database yet (plan, Step 7.3-S4 (j)).
 describe('the idempotency key of the plugin API', () => {
   const prefix = newRunPrefix()
   const pluginId = `${prefix}-idem-api`

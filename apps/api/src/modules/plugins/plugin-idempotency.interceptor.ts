@@ -83,6 +83,19 @@ export class PluginIdempotencyInterceptor implements NestInterceptor {
         HttpStatusCodes.BAD_REQUEST
       )
     }
+    // The fingerprint reads the parsed body: a file or other raw body would leave only the method and the address in it, and a key reused
+    // with another file would get the first answer. A key is for a JSON body (or none).
+    const contentType = request.headers['content-type']
+    if (
+      typeof contentType === 'string' &&
+      !/^application\/(?:[\w.+-]+\+)?json\b/i.test(contentType)
+    ) {
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_INVALID_INPUT,
+        `${PluginIdempotency.HEADER} is only for a JSON body`,
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
     const subject: Subject = {
       tenant: { storeIds: [store.id], organizationIds: [store.organizationId] },
       storeId: store.id,

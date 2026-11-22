@@ -123,6 +123,7 @@ function call(
     installation?: unknown
     handler?: () => unknown
     status?: number
+    contentType?: string
   } = {}
 ) {
   const headers: Record<string, string> = {}
@@ -141,7 +142,10 @@ function call(
     method: options.method ?? 'POST',
     originalUrl: options.url ?? '/api/v1/plugin-api/orders',
     body: options.body ?? { a: 1 },
-    headers: options.header === undefined ? {} : { [PluginIdempotency.HEADER]: options.header },
+    headers: {
+      ...(options.header === undefined ? {} : { [PluginIdempotency.HEADER]: options.header }),
+      ...(options.contentType === undefined ? {} : { 'content-type': options.contentType })
+    },
     pluginInstallation: 'installation' in options ? options.installation : INSTALLATION,
     store: STORE
   }
@@ -224,6 +228,30 @@ describe('PluginIdempotencyInterceptor', () => {
     await call(interceptor, { header: 'k2', status: 200 }).outcome
 
     expect(table.rows[0]?.responseStatus).toBe(200)
+  })
+
+  it('takes a JSON body, or none, and refuses a key on a file or another raw body', async () => {
+    const { interceptor, table } = build()
+
+    for (const type of [
+      'application/json',
+      'application/json; charset=utf-8',
+      'application/vnd.api+json'
+    ]) {
+      await expect(
+        call(interceptor, { header: `ok-${type.length}`, contentType: type }).outcome
+      ).resolves.toEqual({ id: 'order-1' })
+    }
+    for (const type of [
+      'multipart/form-data; boundary=x',
+      'application/octet-stream',
+      'text/plain'
+    ]) {
+      const refused = call(interceptor, { header: 'k16', contentType: type })
+      await expect(refused.outcome).rejects.toMatchObject({ statusCode: 400 })
+      expect(refused.run).not.toHaveBeenCalled()
+    }
+    expect(table.rows.map(row => row.key)).not.toContain('k16')
   })
 
   it('treats a body that differs only in the order of its keys as the same request', async () => {
