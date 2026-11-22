@@ -1,4 +1,4 @@
-import { filesOfConversationsWhere } from './conversation-files'
+import { FILE_WITHOUT_OWNER, filesOfConversationsWhere } from './conversation-files'
 
 describe('filesOfConversationsWhere', () => {
   it('names the files of the messages and of the ads of the conversations, in one store', () => {
@@ -28,5 +28,15 @@ describe('filesOfConversationsWhere', () => {
     const where = filesOfConversationsWhere('s', ids)
     ids.push('c2')
     expect(where.OR[0]?.message.conversationId.in).toEqual(['c1'])
+  })
+})
+
+describe('FILE_WITHOUT_OWNER', () => {
+  it('names the three owners a file may have besides a message, each of which must be empty', () => {
+    expect(FILE_WITHOUT_OWNER).toEqual({
+      orderId: null,
+      financeTransactionId: null,
+      fiscalDocumentId: null
+    })
   })
 })

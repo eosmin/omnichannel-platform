@@ -924,7 +924,8 @@ work is spread across the day instead of colliding with backups (`TDD_03` §7.2)
 Per store, `JobNames.ENFORCE_RETENTION` (`HEAVY_PROCESSING` queue):
 - Deletes resolved/archived conversations (and their messages) past
   `min(RetentionSettings.conversationDays, plan.historyRetentionDays)`, in batches of 500
-- Deletes expired media from both S3 and the database
+- Deletes expired media from both S3 and the database (message files only: a file that belongs to an order, to a transaction of the books or to a fiscal document is never reached by this category)
+- Deletes the documents of orders (summary, label) once both they and their order are older than the legal period of the books (proposal: 7 years, `OrderDocumentRetention.LEGAL_YEARS`), the bucket before the row, unless the order has a fiscal document or its sale is in a period with a legal book taken: those are kept
 - Deletes analytics events past the window
 - Deletes read notifications past the window
 - Logs counts per category
