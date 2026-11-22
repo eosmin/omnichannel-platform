@@ -366,6 +366,28 @@ describe('ExistingDocumentSanitizer', () => {
     expect(bucket.get(row.key)).toBe(dirty)
   })
 
+  it('does not cut a slow document at the budget of the run: it finishes clean with no attempt left on the row, and the next one is not opened', async () => {
+    const dirty = await pdfWithMarkers()
+    const slow = store('d1', dirty)
+    const next = store('d2', dirty)
+    let now = 1_000_000
+    const clock = jest.spyOn(Date, 'now').mockImplementation(() => now)
+    // The write of the first document ends after the budget of the run: a slow document, not a dead one
+    storage.put.mockImplementationOnce((key: string, body: Buffer) => {
+      bucket.set(key, body)
+      now += ExistingDocumentSweep.MAX_RUN_MS + 1
+      return Promise.resolve()
+    })
+
+    const report = await sanitizer.runScoped([STORE])
+    clock.mockRestore()
+
+    expect(report).toEqual({ cleaned: 1, alreadyClean: 0, skipped: 0, failed: 0 })
+    expect(slow.scanResult).toEqual({ [ExistingPictureSweep.CLEANED_KEY]: true }) // the attempt was replaced by the mark
+    expect(next.scanResult).toBeNull() // never begun, so no attempt was counted against it
+    expect(bucket.get(next.key)).toBe(dirty)
+  })
+
   it('never reads, writes or deletes a key outside the folder of its store, and marks the row', async () => {
     const outside = store('d1', await pdfWithMarkers(), { key: 'stores/other-store/d1' })
     const walking = store('d2', await pdfWithMarkers(), { key: `stores/${STORE}/../other/d2` })
