@@ -3,12 +3,13 @@ import { randomBytes } from 'node:crypto'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher, DecryptionFailure } from '@platform/core/crypto'
-import { SealedValueKind } from '@platform/core/domain'
+import { SealedOpenLog, SealedValueKind } from '@platform/core/domain'
 
-import { openSealed } from './sealed-open'
+import { openSealed, resetSealedOpenLog } from './sealed-open'
 
 // Step 7.3-S11a: what a sealed value that does not open writes in the log
 describe('openSealed', () => {
+  beforeEach(() => resetSealedOpenLog())
   const cipher = new CredentialCipher(randomBytes(32))
   const logger = () => {
     const error = jest.fn()
@@ -84,5 +85,30 @@ describe('openSealed', () => {
       openSealed(cipher, log, Buffer.from([1, 2]), SealedValueKind.RECEIVER, {}, true)
     ).toThrow()
     expect(error).not.toHaveBeenCalled()
+  })
+  it('logs the same value that does not open once per window, and again after it, and a value of another row at once', () => {
+    const { error, logger: log } = logger()
+    const other = new CredentialCipher(randomBytes(32))
+    const sealed = other.seal({ a: 'b' })
+    const now = jest.spyOn(Date, 'now')
+    try {
+      now.mockReturnValue(1_000_000)
+      const open = (documentId: string) => () =>
+        openSealed(cipher, log, sealed, SealedValueKind.RECEIVER, { documentId })
+      // Every try still throws; only the line is limited
+      expect(open('window-1')).toThrow()
+      expect(open('window-1')).toThrow()
+      expect(error).toHaveBeenCalledTimes(1)
+      expect(open('window-2')).toThrow()
+      expect(error).toHaveBeenCalledTimes(2)
+      now.mockReturnValue(1_000_000 + SealedOpenLog.WINDOW_MS - 1)
+      expect(open('window-1')).toThrow()
+      expect(error).toHaveBeenCalledTimes(2)
+      now.mockReturnValue(1_000_000 + SealedOpenLog.WINDOW_MS)
+      expect(open('window-1')).toThrow()
+      expect(error).toHaveBeenCalledTimes(3)
+    } finally {
+      now.mockRestore()
+    }
   })
 })
