@@ -4,7 +4,7 @@ import { WebPushError } from 'web-push'
 
 import { JobContextGoneError, type JobContext, type PrismaService } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
-import { NotificationTypes, notificationMessageKey } from '@platform/core/notifications'
+import { NotificationTypes, notificationMessageKey, PushLimits } from '@platform/core/notifications'
 
 import { WebPushSender } from './web-push-sender.service'
 import type { WebPushGateway } from './web-push.gateway'
@@ -81,6 +81,7 @@ describe('WebPushSender', () => {
     countMembers.mockResolvedValue(1)
     send.mockResolvedValue(undefined)
     updateSubscription.mockResolvedValue({ count: 1 })
+    deleteSubscriptions.mockResolvedValue({ count: 0 })
   })
 
   describe('says why nothing was pushed', () => {
@@ -221,7 +222,50 @@ describe('WebPushSender', () => {
   it.each([400, 401, 403, 413])('does not retry what the push service answers %i', async status => {
     send.mockRejectedValue(pushError(status))
     await expect(sender().send(USER, NOTIFICATION)).resolves.toBeUndefined()
+    // The refusal is counted; the browser is dropped only once the count reaches the limit, never on the first refusal
+    expect(updateSubscription).toHaveBeenCalledWith({
+      where: { id: 's1', userId: USER },
+      data: { refusedCount: { increment: 1 } }
+    })
+    expect(deleteSubscriptions).toHaveBeenCalledWith({
+      where: { id: 's1', userId: USER, refusedCount: { gte: PushLimits.MAX_REFUSALS } }
+    })
+    expect(logger.warn).not.toHaveBeenCalled()
+  })
+
+  it('says why a browser was dropped when its refusals reach the limit', async () => {
+    send.mockRejectedValue(pushError(401))
+    deleteSubscriptions.mockResolvedValue({ count: 1 })
+    await sender().send(USER, NOTIFICATION)
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'refused_too_often', subscriptionId: 's1' }),
+      expect.any(String)
+    )
+  })
+
+  it('does not retry the job when a refusal could not be counted', async () => {
+    send.mockRejectedValue(pushError(400))
+    updateSubscription.mockRejectedValue(new Error('db down'))
+    await expect(sender().send(USER, NOTIFICATION)).resolves.toBeUndefined()
     expect(deleteSubscriptions).not.toHaveBeenCalled()
+  })
+
+  it('does not count a browser that is gone (it is dropped at once) or a network failure (it is retried)', async () => {
+    send.mockRejectedValueOnce(pushError(410))
+    await sender().send(USER, NOTIFICATION)
+    send.mockRejectedValueOnce(pushError(503))
+    await expect(sender().send(USER, NOTIFICATION)).rejects.toThrow('could not be reached')
+    expect(updateSubscription).not.toHaveBeenCalled()
+  })
+
+  it('starts the count again when a push is delivered', async () => {
+    await sender().send(USER, NOTIFICATION)
+    const call = updateSubscription.mock.calls[0] as [
+      { where: unknown; data: { lastUsed: unknown; refusedCount: number } }
+    ]
+    expect(call[0].where).toEqual({ id: 's1', userId: USER })
+    expect(call[0].data.lastUsed).toBeInstanceOf(Date)
+    expect(call[0].data.refusedCount).toBe(0)
   })
 
   it('still reaches the other browsers when one fails', async () => {

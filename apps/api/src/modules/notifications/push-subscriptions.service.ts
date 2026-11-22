@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common'
 
-import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
+import {
+  inSavepoint,
+  isUniqueViolation,
+  PrismaService,
+  type PrismaTransaction
+} from '@platform/core/database'
 import { PushLimits } from '@platform/core/notifications'
 
 import type { PushSubscriptionBody } from './notifications.schemas'
@@ -16,18 +21,26 @@ export class PushSubscriptionsService {
   // shared computer, another account) the subscription moves to them: the pushes of the first one
   // must stop arriving there.
   async register(userId: string, body: PushSubscriptionBody): Promise<void> {
-    try {
-      await inSavepoint(() => this.save(userId, body))
-    } catch (error) {
-      // Two requests for a new endpoint at once: the second finds the row the first made
-      if (!isUniqueViolation(error)) throw error
-      await this.save(userId, body)
-    }
-    await this.dropOldest(userId)
+    // One transaction: a failure of the trim must not leave the new browser saved with the old ones kept, and two
+    // registrations that run together each see the rows of the other when they trim
+    await this.prisma.transaction(async tx => {
+      try {
+        await inSavepoint(() => this.save(tx, userId, body), tx)
+      } catch (error) {
+        // Two requests for a new endpoint at once: the second finds the row the first made
+        if (!isUniqueViolation(error)) throw error
+        await this.save(tx, userId, body)
+      }
+      await this.dropOldest(tx, userId)
+    })
   }
 
-  private async save(userId: string, body: PushSubscriptionBody): Promise<void> {
-    await this.prisma.client.pushSubscription.upsert({
+  private async save(
+    db: PrismaTransaction,
+    userId: string,
+    body: PushSubscriptionBody
+  ): Promise<void> {
+    await db.pushSubscription.upsert({
       where: { endpoint: body.endpoint },
       create: {
         userId,
@@ -41,7 +54,9 @@ export class PushSubscriptionsService {
         p256dh: body.p256dh,
         auth: body.auth,
         userAgent: body.userAgent ?? null,
-        lastUsed: new Date()
+        lastUsed: new Date(),
+        // A browser that registers again starts clean
+        refusedCount: 0
       }
     })
   }
@@ -52,8 +67,8 @@ export class PushSubscriptionsService {
     await this.prisma.client.pushSubscription.deleteMany({ where: { userId, endpoint } })
   }
 
-  private async dropOldest(userId: string): Promise<void> {
-    const excess = await this.prisma.client.pushSubscription.findMany({
+  private async dropOldest(db: PrismaTransaction, userId: string): Promise<void> {
+    const excess = await db.pushSubscription.findMany({
       where: { userId },
       // By last use: a browser that registers again is the newest, whatever its first date
       orderBy: [{ lastUsed: 'desc' }, { id: 'desc' }],
@@ -61,7 +76,7 @@ export class PushSubscriptionsService {
       select: { id: true }
     })
     if (excess.length === 0) return
-    await this.prisma.client.pushSubscription.deleteMany({
+    await db.pushSubscription.deleteMany({
       where: { id: { in: excess.map(row => row.id) } }
     })
   }

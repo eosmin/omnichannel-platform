@@ -10,6 +10,7 @@ import { HttpStatusCodes } from '@platform/core/errors'
 import {
   NotificationSeverity,
   NotificationTypes,
+  PushLimits,
   type PushPayload
 } from '@platform/core/notifications'
 
@@ -111,7 +112,7 @@ export class WebPushSender {
           .forUser(userId, () =>
             this.prisma.client.pushSubscription.updateMany({
               where: { id: sub.id, userId },
-              data: { lastUsed: new Date() }
+              data: { lastUsed: new Date(), refusedCount: 0 }
             })
           )
           .catch((error: unknown) =>
@@ -210,6 +211,33 @@ export class WebPushSender {
     }
     // The push service refused it for good (the VAPID keys, a payload): worth an alert, not a retry
     this.logger.error({ userId, statusCode, subscriptionId }, 'a web push was refused')
+    await this.countRefusal(subscriptionId, userId)
     return 'failed'
+  }
+
+  // A browser that is refused for good again and again (keys of an older server, a subscription the service will not take) would
+  // stay in the list for ever: it is counted, and dropped at the limit. The count and the drop are two statements, and the drop
+  // reads the count in its own filter, so two pushes at once cannot drop a browser early. Bookkeeping: its failure changes nothing.
+  private async countRefusal(subscriptionId: string, userId: string): Promise<void> {
+    try {
+      await this.jobContext.forUser(userId, async () => {
+        await this.prisma.client.pushSubscription.updateMany({
+          where: { id: subscriptionId, userId },
+          data: { refusedCount: { increment: 1 } }
+        })
+        const dropped = await this.prisma.client.pushSubscription.deleteMany({
+          where: { id: subscriptionId, userId, refusedCount: { gte: PushLimits.MAX_REFUSALS } }
+        })
+        if (dropped.count > 0) {
+          this.logger.warn(
+            { userId, subscriptionId, reason: 'refused_too_often' },
+            'a web push subscription was dropped: its push service refused it for good again and again'
+          )
+        }
+      })
+    } catch (error) {
+      if (error instanceof JobContextGoneError) return
+      this.logger.warn({ userId, err: String(error) }, 'a refusal of a push was not counted')
+    }
   }
 }
