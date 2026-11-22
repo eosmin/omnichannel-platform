@@ -514,6 +514,28 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       expect(log.filter(entry => entry.attempt === 0)).toHaveLength(7)
     })
 
+    it('lets exactly one of two deliveries at the same instant through when one place is left, on the real Redis', async () => {
+      const { setup } = await setUp({ limits: { maxWebhooksPerDay: 1 } })
+      const post = answers(200)
+      const now = Date.now()
+
+      const [first, second] = await Promise.all([
+        deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, { post, now: () => now }),
+        deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, { post, now: () => now })
+      ])
+
+      expect([first, second].sort()).toEqual(
+        [WebhookOutcome.DELIVERED, WebhookOutcome.SKIPPED].sort()
+      )
+      expect(post).toHaveBeenCalledTimes(1)
+      // The place and the life of the key were given by the same script: the key always has an end
+      const redis = app.get<Redis>(REDIS_CLIENT)
+      const ttl = await redis.pttl(CacheKeys.plugin.webhookDay(setup.installationId))
+      expect(ttl).toBeGreaterThan(0)
+      expect(ttl).toBeLessThanOrEqual(WebhookLimits.PLUGIN_DAY_MS)
+      expect(await redis.zcard(CacheKeys.plugin.webhookDay(setup.installationId))).toBe(1)
+    })
+
     it('counts a delivery once when the same job runs again, and keeps the cap of each installation apart', async () => {
       const { setup } = await setUp({ limits: { maxWebhooksPerDay: 1 } })
       const post = answers(200)
