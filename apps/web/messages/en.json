@@ -1002,8 +1002,8 @@
         "body": "A data subject request needs a person to review it."
       },
       "notice_failed": {
-        "title": "A person was not told the outcome of their data request",
-        "body": "The closing notice of a data request could not be delivered. Tell the person another way."
+        "title": "The closing notice of a data request could not be confirmed",
+        "body": "The sending of the closing notice of a data request could not be confirmed. Check with the person another way."
       }
     },
     "export": {

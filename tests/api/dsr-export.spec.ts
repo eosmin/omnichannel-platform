@@ -630,10 +630,19 @@ describe('the export of the data requests of access and portability', () => {
       authorType: AuthorType.SYSTEM,
       type: MessageType.SYSTEM
     })
+    await createMessage(owner, {
+      storeId: ctx.storeA.id,
+      conversationId: conversation.id,
+      content: 'ORDER_SUMMARY naming Agent Jones',
+      authorType: AuthorType.SYSTEM,
+      type: MessageType.ORDER_SUMMARY
+    })
     const id = await approvedExport({ customerIds: [mine.customerId], email: mine.email })
 
     await runner.run()
 
-    expect(JSON.stringify(filesOf(id))).not.toContain('Agent Smith')
+    const text = JSON.stringify(filesOf(id))
+    expect(text).not.toContain('Agent Smith')
+    expect(text).not.toContain('Agent Jones')
   })
 })
