@@ -5296,6 +5296,184 @@ describe('Tenant isolation', () => {
     })
   })
 
+  // The idempotency key of a write of a plugin (Step 7.3, S4) belongs to ONE installation: the same key of the installation of another
+  // store, of this organization or of another, is a different key, and what a call answered is never replayed to them. The plugin is
+  // official (no organization; the catalog only allows that for a channel) so that its installations can sit in stores of two
+  // organizations, as in the block of the channel routes.
+  // `pluginIdempotencyKey` is the resource.
+  describe('the idempotency keys of the plugin API', () => {
+    const pluginId = `${prefix}-idem`
+    const keyOf: Record<'a' | 'a2' | 'b', string> = { a: '', a2: '', b: '' }
+    const installationOf: Record<'a' | 'a2' | 'b', string> = { a: '', a2: '', b: '' }
+    const storeIdOf = (name: 'a' | 'a2' | 'b') =>
+      ({ a: ctx.storeA, a2: ctx.storeA2, b: ctx.storeB })[name].id
+    const sharedKey = `isolation-${randomUUID()}`
+    const create = (name: 'a' | 'a2' | 'b', tag: string, key: string = sharedKey) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        .post(`${API_PREFIX}${PluginApiRoutes.settings.tags}`)
+        .set('authorization', `Bearer ${keyOf[name]}`)
+        .set('idempotency-key', key)
+        .set('x-forwarded-for', `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`)
+        .send({ name: tag })
+
+    beforeAll(async () => {
+      await owner.plugin.create({
+        data: {
+          id: pluginId,
+          name: 'Idempotent plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.CHANNEL,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: null
+        }
+      })
+      for (const name of ['a', 'a2', 'b'] as const) {
+        const key = `${PLUGIN_API_KEY_TOKEN_PREFIX}${prefix}idem${name}${'y'.repeat(40)}`
+        keyOf[name] = key
+        const installation = await owner.pluginInstallation.create({
+          data: {
+            storeId: storeIdOf(name),
+            pluginId,
+            scopes: [PluginScopes.TAGS_READ, PluginScopes.TAGS_WRITE],
+            status: 'active',
+            apiKeyPrefix: key.slice(0, 12),
+            apiKeyHash: createHash('sha256').update(key).digest('hex'),
+            installedBy: 'suite'
+          }
+        })
+        installationOf[name] = installation.id
+      }
+    })
+    afterAll(async () => {
+      await owner.tag.deleteMany({ where: { name: { startsWith: `${prefix}-idem-` } } })
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    it('answers the same key of one installation with the first answer and makes the write once', async () => {
+      const name = `${prefix}-idem-once`
+      const first = await create('a', name)
+      const again = await create('a', name)
+
+      expect(first.status).toBe(201)
+      expect(again.status).toBe(201)
+      expect(again.header['idempotent-replayed']).toBe('true')
+      expect(again.body).toEqual(first.body)
+      expect(await owner.tag.count({ where: { storeId: ctx.storeA.id, name } })).toBe(1)
+    })
+
+    it('does not replay the answer of one installation to the same key of a sibling store or of a foreign one', async () => {
+      const key = `isolation-${randomUUID()}`
+      const mine = await create('a', `${prefix}-idem-own`, key)
+      expect(mine.status).toBe(201)
+      for (const other of ['a2', 'b'] as const) {
+        const theirs = await create(other, `${prefix}-idem-${other}`, key)
+        expect(theirs.status).toBe(201)
+        expect(theirs.header['idempotent-replayed']).toBeUndefined()
+        expect((theirs.body as { id: string }).id).not.toBe((mine.body as { id: string }).id)
+        expect(
+          await owner.tag.count({
+            where: { storeId: storeIdOf(other), name: `${prefix}-idem-${other}` }
+          })
+        ).toBe(1)
+      }
+      const rows = await owner.pluginIdempotencyKey.findMany({
+        where: { key },
+        select: { storeId: true, installationId: true, state: true }
+      })
+      expect(rows).toHaveLength(3)
+      for (const name of ['a', 'a2', 'b'] as const) {
+        expect(rows).toContainEqual({
+          storeId: storeIdOf(name),
+          installationId: installationOf[name],
+          state: 'completed'
+        })
+      }
+    })
+
+    it('is not returned and does not make wait the same key of another plugin in the same store, or of another store, while the first call runs', async () => {
+      const key = `isolation-${randomUUID()}`
+      const otherPlugin = `${pluginId}-two`
+      await owner.plugin.create({
+        data: {
+          id: otherPlugin,
+          name: 'Second idempotent plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.CHANNEL,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: null
+        }
+      })
+      const secondKey = `${PLUGIN_API_KEY_TOKEN_PREFIX}${prefix}idemtwo${'w'.repeat(40)}`
+      await owner.pluginInstallation.create({
+        data: {
+          storeId: ctx.storeA.id,
+          pluginId: otherPlugin,
+          scopes: [PluginScopes.TAGS_READ, PluginScopes.TAGS_WRITE],
+          status: 'active',
+          apiKeyPrefix: secondKey.slice(0, 12),
+          apiKeyHash: createHash('sha256').update(secondKey).digest('hex'),
+          installedBy: 'suite'
+        }
+      })
+      try {
+        // The call of installation `a` is still running: its claim is there and not closed
+        await owner.pluginIdempotencyKey.create({
+          data: {
+            storeId: ctx.storeA.id,
+            installationId: installationOf.a,
+            key,
+            requestHash: 'running',
+            state: 'in_progress',
+            expiresAt: new Date(Date.now() + 3_600_000)
+          }
+        })
+
+        const sameStoreOtherPlugin = await supertest(
+          app.getHttpServer() as Parameters<typeof supertest>[0]
+        )
+          .post(`${API_PREFIX}${PluginApiRoutes.settings.tags}`)
+          .set('authorization', `Bearer ${secondKey}`)
+          .set('idempotency-key', key)
+          .set('x-forwarded-for', `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`)
+          .send({ name: `${prefix}-idem-other-plugin` })
+        const otherStore = await create('b', `${prefix}-idem-other-store`, key)
+
+        expect(sameStoreOtherPlugin.status).toBe(201)
+        expect(sameStoreOtherPlugin.header['idempotent-replayed']).toBeUndefined()
+        expect(otherStore.status).toBe(201)
+        expect(otherStore.header['idempotent-replayed']).toBeUndefined()
+        // And the claim that was running is still the one of `a`, untouched
+        expect(
+          await owner.pluginIdempotencyKey.count({
+            where: { key, installationId: installationOf.a, state: 'in_progress' }
+          })
+        ).toBe(1)
+      } finally {
+        await owner.pluginInstallation.deleteMany({ where: { pluginId: otherPlugin } })
+        await owner.plugin.deleteMany({ where: { id: otherPlugin } })
+      }
+    })
+
+    it('refuses the key of the installation for another request instead of answering with the first', async () => {
+      const key = `isolation-${randomUUID()}`
+      expect((await create('a', `${prefix}-idem-one`, key)).status).toBe(201)
+      const other = await create('a', `${prefix}-idem-two`, key)
+
+      expect(other.status).toBe(409)
+      expect(
+        (other.body as { error: { metadata?: { reason?: string } } }).error.metadata?.reason
+      ).toBe('idempotency_key_reused')
+      expect(await owner.tag.count({ where: { name: `${prefix}-idem-two` } })).toBe(0)
+    })
+  })
+
   // The connections and events of a remote channel plugin (Step 5.6, C3): the key of one installation reaches the connections of that
   // installation and of no other, in its own store or in another. `channelConnection` and `pluginInstallation` are the resources.
   // The plugin of this block is OFFICIAL (no organization): one plugin installed in stores of two organizations is the state that proves the

@@ -44,7 +44,7 @@ FROM native-${APP} AS native
 
 # The bundle holds every dependency, so the image needs no node_modules: only Node and the files
 FROM ${RUNTIME_IMAGE} AS runtime
-ENV NODE_ENV=production
+ENV NODE_ENV=production TZ=UTC
 # Operating system fixes published after the base image was built
 RUN apk upgrade --no-cache
 # The service only runs node: the package managers that ship with the base image (npm, npx,
