@@ -572,24 +572,9 @@ describe('DSR_PUBLIC_INTAKE_ENABLED, the public intake of data subject requests'
     expect(parseEnv(validEnv).DSR_PUBLIC_INTAKE_ENABLED).toBe(false)
   })
 
-  it('can be turned on now that the sweep that carries out an approved erasure exists (Step 7.2-H2b-1)', () => {
-    expect(
-      parseEnv({ ...validEnv, DSR_PUBLIC_INTAKE_ENABLED: 'true' }).DSR_PUBLIC_INTAKE_ENABLED
-    ).toBe(true)
-  })
-
-  it('still refuses to start when it is on and nothing carries out an approved erasure', () => {
-    jest.isolateModules(() => {
-      jest.doMock('../compliance/compliance-constants', () => ({
-        ...jest.requireActual<object>('../compliance/compliance-constants'),
-        dsrExecutorAvailable: () => false
-      }))
-      const { parseEnv: parseWithoutExecutor } = jest.requireActual<{
-        parseEnv: typeof parseEnv
-      }>('./env-schema')
-      expect(() =>
-        parseWithoutExecutor({ ...validEnv, DSR_PUBLIC_INTAKE_ENABLED: 'true' })
-      ).toThrow(/DSR_PUBLIC_INTAKE_ENABLED/)
-    })
+  it('refuses to start when it is on before the whole flow of Step 7.2-H2b is ready (the sweep alone is not enough)', () => {
+    expect(() => parseEnv({ ...validEnv, DSR_PUBLIC_INTAKE_ENABLED: 'true' })).toThrow(
+      /DSR_PUBLIC_INTAKE_ENABLED/
+    )
   })
 })

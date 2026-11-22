@@ -425,26 +425,120 @@ describe('the sweep of the data erasures that are due', () => {
     expect(returned?.metadata?.openWork?.orders).toBe(1)
   })
 
-  it('does not end the request when the closing mail cannot be queued: nothing is erased, the address is kept, the next night finishes', async () => {
+  it('ends the erasure even when the closing mail cannot be queued, keeps the address, and sends the mail the next night', async () => {
     const mine = await requestOfStoreA([addressOf('mail')])
     failMail = true
 
     const first = await sweeper.run()
 
+    // The erasure is committed (the mail is only queued after it, so it never announces what rolled back)
+    expect(first.completed).toBe(1)
     expect(first.failed).toBe(1)
-    expect(await erasedCount(mine.customerIds)).toBe(0)
+    expect(await erasedCount(mine.customerIds)).toBe(1)
     const waiting = await rowOf(mine.id)
-    expect(waiting.status).toBe(DsrStatus.IN_PROGRESS)
+    expect(waiting.status).toBe(DsrStatus.COMPLETED)
     expect(waiting.notifyToEncrypted).not.toBeNull()
+    expect(waiting.subjectEmailHash).toBeNull()
+    expect(mails).toHaveLength(0)
 
     failMail = false
-    await releaseLease(mine.id)
     const second = await sweeper.run()
 
-    expect(second.completed).toBe(1)
-    expect(await erasedCount(mine.customerIds)).toBe(1)
-    expect((await rowOf(mine.id)).status).toBe(DsrStatus.COMPLETED)
+    expect(second.notified).toBe(1)
+    expect(second.completed).toBe(0)
+    expect((await rowOf(mine.id)).notifyToEncrypted).toBeNull()
     expect(mails).toHaveLength(1)
+    // Nothing more the third night
+    await sweeper.run()
+    expect(mails).toHaveLength(1)
+  })
+
+  it('erases no one when the erasure of a later customer fails: the first one is rolled back with the rest', async () => {
+    const mine = await requestOfStoreA([addressOf('half'), addressOf('half')])
+    // The sweep erases them in id order: the one that fails is the last, so the first was erased for real before the failure
+    const [, late] = [...mine.customerIds].sort() as [string, string]
+    const real = erasure.erase.bind(erasure)
+    jest.spyOn(erasure, 'erase').mockImplementation(async (storeId, customerId, actor) => {
+      const view = await real(storeId, customerId, actor)
+      if (customerId === late) throw new TypeError('the last one failed')
+      return view
+    })
+
+    const report = await sweeper.run()
+
+    expect(report.failed).toBe(1)
+    expect(await erasedCount(mine.customerIds)).toBe(0)
+    expect(await rowOf(mine.id)).toMatchObject({
+      status: DsrStatus.IN_PROGRESS,
+      erasureFailureCode: 'TypeError'
+    })
+  })
+
+  it('gives the request back without spending its tries when a merge into a customer can still be undone', async () => {
+    const mine = await requestOfStoreA([addressOf('merged')])
+    const absorbed = await customerWith(ctx.storeA.id, null)
+    await owner.customerMerge.create({
+      data: {
+        storeId: ctx.storeA.id,
+        survivorId: mine.customerIds[0] ?? '',
+        absorbedId: absorbed,
+        snapshot: {},
+        mergedById: ctx.adminA.id,
+        unmergeUntil: new Date(Date.now() + 3 * DAY_MS)
+      }
+    })
+    const erase = jest.spyOn(erasure, 'erase')
+
+    await sweeper.run()
+
+    expect(erase).not.toHaveBeenCalled()
+    expect(await erasedCount(mine.customerIds)).toBe(0)
+    expect(await rowOf(mine.id)).toMatchObject({
+      status: DsrStatus.MANUAL_REVIEW,
+      erasureDueAt: null,
+      erasureFailureCode: 'undoable_merge'
+    })
+  })
+
+  it('gives back the try of a request it could not take because a reviewer took its row after the claim', async () => {
+    const mine = await requestOfStoreA([addressOf('locked')])
+    type Claim = (storeId: string, requestId: string, now: Date) => Promise<boolean>
+    const internals = sweeper as unknown as { claim: Claim }
+    const realClaim = internals.claim.bind(sweeper)
+    let release: () => void = () => undefined
+    const held = new Promise<void>(resolve => {
+      release = resolve
+    })
+    let holder: Promise<unknown> = Promise.resolve()
+    jest.spyOn(internals, 'claim').mockImplementation(async (storeId, requestId, now) => {
+      const claimed = await realClaim(storeId, requestId, now)
+      if (requestId === mine.id) {
+        // A reviewer opens a decision on the row between the claim and the work
+        // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+        holder = owner.$transaction(
+          async tx => {
+            await tx.$queryRaw`SELECT id FROM data_subject_requests WHERE id = ${mine.id} FOR UPDATE`
+            await held
+          },
+          { timeout: 120_000 }
+        )
+        await new Promise(resolve => setTimeout(resolve, 500))
+        // The reviewer finishes a little later: giving the try back waits for the row, like any other write
+        setTimeout(release, 2000)
+      }
+      return claimed
+    })
+
+    const report = await sweeper.run()
+    await holder
+
+    expect(report.skipped).toBeGreaterThanOrEqual(1)
+    expect(await erasedCount(mine.customerIds)).toBe(0)
+    expect(await rowOf(mine.id)).toMatchObject({
+      status: DsrStatus.IN_PROGRESS,
+      erasureAttempts: 0,
+      erasureAttemptedAt: null
+    })
   })
 
   it('erases without a mail when the sealed address cannot be opened, and still ends the request', async () => {
@@ -456,7 +550,10 @@ describe('the sweep of the data erasures that are due', () => {
 
     await sweeper.run()
 
-    expect((await rowOf(mine.id)).status).toBe(DsrStatus.COMPLETED)
-    expect(mails).toHaveLength(0)
+    const ended = await rowOf(mine.id)
+    expect(ended.status).toBe(DsrStatus.COMPLETED)
+    expect(ended.notifyToEncrypted).toBeNull()
+    // No mail to the address that asked (the sweep also takes what earlier cases left due)
+    expect(mails.filter(mail => [mail.data.to].flat().includes(mine.email))).toHaveLength(0)
   })
 })

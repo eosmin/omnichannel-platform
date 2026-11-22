@@ -11,7 +11,7 @@ import {
 } from '@platform/core/env-rules'
 import { isBase64UrlOfBytes, PushLimits } from '@platform/core/notifications'
 
-import { dsrExecutorAvailable } from '../compliance/compliance-constants'
+import { dsrPublicFlowReady } from '../compliance/compliance-constants'
 
 import { DURATION_PATTERN, durationToSeconds } from './duration'
 
@@ -315,13 +315,13 @@ export const envSchema = z
         input: env.RESEND_API_KEY
       })
     }
-    // The public intake of data requests promises an erasure that only the executor of Step 7.2-H2b carries out: turning it on without
-    // one would take requests nobody can finish (api and worker refuse to start)
-    if (env.DSR_PUBLIC_INTAKE_ENABLED && !dsrExecutorAvailable()) {
+    // The public intake of data requests promises what only the finished flow of Step 7.2-H2b delivers (the sweep exists since H2b-1; the alert
+    // of day 25 and the rest do not): turning it on before takes requests nobody can finish (api and worker refuse to start)
+    if (env.DSR_PUBLIC_INTAKE_ENABLED && !dsrPublicFlowReady()) {
       ctx.issues.push({
         code: 'custom',
         message:
-          'DSR_PUBLIC_INTAKE_ENABLED needs the executor of erasures (Step 7.2-H2b); keep it false until then',
+          'DSR_PUBLIC_INTAKE_ENABLED needs the whole data request flow (Step 7.2-H2b); keep it false until then',
         path: ['DSR_PUBLIC_INTAKE_ENABLED'],
         input: env.DSR_PUBLIC_INTAKE_ENABLED
       })

@@ -2,6 +2,7 @@ import { InjectQueue } from '@nestjs/bullmq'
 import { Inject, Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
+import { z } from 'zod'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -51,6 +52,8 @@ export interface DsrEraseReport {
   // Erasures finished, given back to the review queue, and tries that failed (the request waits for the next night)
   completed: number
   returned: number
+  // Closing mails queued for requests that ended (this night's and any whose queue was down before)
+  notified: number
   failed: number
   // A request the sweep did not take: it ended, was cancelled, or another run holds it
   skipped: number
@@ -99,7 +102,7 @@ export class DsrEraseDueSweeper {
     until: number = Number.POSITIVE_INFINITY,
     now: Date = new Date()
   ): Promise<DsrEraseReport> {
-    const report: DsrEraseReport = { completed: 0, returned: 0, failed: 0, skipped: 0 }
+    const report: DsrEraseReport = { completed: 0, returned: 0, notified: 0, failed: 0, skipped: 0 }
     // A store that cannot be entered deletes nothing and waits for tomorrow: this sweep acts only on requests that are due, it never decides by
     // what it does not find
     for (const storeId of await allStoreIds(this.prisma)) {
@@ -137,6 +140,9 @@ export class DsrEraseDueSweeper {
         DsrErasureReturnReasons.ATTEMPTS_EXHAUSTED
       )
     }
+    // The closing notices that a queue that was down left unsent: the erasure is committed, the person still has to be told
+    const unsent = await this.jobContext.forStore(storeId, () => this.unsentNoticesOf(storeId))
+    for (const requestId of unsent) await this.notify(storeId, requestId, report)
     const candidates = await this.jobContext.forStore(storeId, () =>
       this.candidatesOf(storeId, now)
     )
@@ -167,7 +173,9 @@ export class DsrEraseDueSweeper {
         { timeout: ComplianceConfig.DSR_ERASE_TRANSACTION_TIMEOUT_MS }
       )
       if (attempt.kind === 'skipped') {
+        // Nothing was tried (a lock held by a reviewer, a state that moved): the try the claim counted is given back
         report.skipped += 1
+        await this.jobContext.forStore(storeId, () => this.releaseClaim(storeId, requestId))
       } else if (attempt.kind === 'completed') {
         report.completed += 1
         this.audit.log({
@@ -185,6 +193,8 @@ export class DsrEraseDueSweeper {
             legalBasis: LegalBases.LEGAL_OBLIGATION
           }
         })
+        // After the commit: the person is told only of an erasure that happened
+        await this.notify(storeId, requestId, report)
       } else {
         report.returned += 1
         this.logReturned(
@@ -221,7 +231,7 @@ export class DsrEraseDueSweeper {
           status: DsrStatus.IN_PROGRESS,
           erasureDueAt: { lte: now },
           erasureAttempts: { gte: ComplianceConfig.DSR_ERASE_MAX_ATTEMPTS },
-          OR: [{ erasureAttemptedAt: null }, { erasureAttemptedAt: { lt: this.leaseEnd(now) } }]
+          OR: [{ erasureAttemptedAt: null }, { erasureAttemptedAt: { lt: this.leaseEnd() } }]
         },
         orderBy: { erasureDueAt: 'asc' },
         take: ComplianceConfig.DSR_ERASE_BATCH,
@@ -249,7 +259,7 @@ export class DsrEraseDueSweeper {
             status: DsrStatus.IN_PROGRESS,
             erasureDueAt: { lte: now },
             erasureAttempts: { lt: ComplianceConfig.DSR_ERASE_MAX_ATTEMPTS },
-            OR: [{ erasureAttemptedAt: null }, { erasureAttemptedAt: { lt: this.leaseEnd(now) } }]
+            OR: [{ erasureAttemptedAt: null }, { erasureAttemptedAt: { lt: this.leaseEnd() } }]
           },
           orderBy: [{ erasureDueAt: 'asc' }, { id: 'asc' }],
           take: ComplianceConfig.DSR_ERASE_BATCH,
@@ -271,9 +281,9 @@ export class DsrEraseDueSweeper {
           status: DsrStatus.IN_PROGRESS,
           erasureDueAt: { lte: now },
           erasureAttempts: { lt: ComplianceConfig.DSR_ERASE_MAX_ATTEMPTS },
-          OR: [{ erasureAttemptedAt: null }, { erasureAttemptedAt: { lt: this.leaseEnd(now) } }]
+          OR: [{ erasureAttemptedAt: null }, { erasureAttemptedAt: { lt: this.leaseEnd() } }]
         },
-        data: { erasureAttempts: { increment: 1 }, erasureAttemptedAt: now }
+        data: { erasureAttempts: { increment: 1 }, erasureAttemptedAt: new Date() }
       })
       return done.count === 1
     })
@@ -294,8 +304,7 @@ export class DsrEraseDueSweeper {
         select: {
           organizationId: true,
           subjectCustomerIds: true,
-          subjectEmailHash: true,
-          notifyToEncrypted: true
+          subjectEmailHash: true
         }
       })
 
@@ -313,6 +322,27 @@ export class DsrEraseDueSweeper {
           organizationId: row.organizationId,
           reason: DsrErasureReturnReasons.SUBJECT_CHANGED,
           openWork: null
+        }
+      }
+      // A merge into one of them that can still be undone brings the absorbed customer back whole: `erase` refuses, and trying would only spend
+      // the tries of the request. The reviewer decides (wait for the window, or undo the merge)
+      if (subject.pending.length > 0) {
+        const undoable = await tx.customerMerge.count({
+          where: {
+            storeId,
+            survivorId: { in: subject.pending },
+            unmergedAt: null,
+            unmergeUntil: { gt: new Date() }
+          }
+        })
+        if (undoable > 0) {
+          await this.giveBack(tx, storeId, requestId, DsrErasureReturnReasons.UNDOABLE_MERGE)
+          return {
+            kind: 'returned',
+            organizationId: row.organizationId,
+            reason: DsrErasureReturnReasons.UNDOABLE_MERGE,
+            openWork: null
+          }
         }
       }
       // Work that opened after the approval (an order, a guide, a return) stops the erasure of the ones still to erase, before anything is touched
@@ -345,9 +375,9 @@ export class DsrEraseDueSweeper {
         tx.conversation.count({ where: { storeId, customerId: { in: ids } } })
       ])
       const retained = { orders, conversations }
-      // The closing mail is queued BEFORE the sealed address is cleared and inside the transaction: a queue that is down rolls everything back
-      // (the erasures are idempotent, the next night finishes) instead of ending a request whose person was never told
-      await this.mailCompleted(tx, storeId, requestId, row.notifyToEncrypted, orders)
+      // The sealed address STAYS until the closing mail is queued (`notify`, after this commit): a queue that is down leaves the request ended
+      // with its address, and the next night sends the mail. The mail is never queued before the erasure is committed, so it cannot announce
+      // an erasure that rolled back.
       const done = await tx.dataSubjectRequest.updateMany({
         where: { id: requestId, storeId, status: DsrStatus.IN_PROGRESS },
         data: {
@@ -355,7 +385,6 @@ export class DsrEraseDueSweeper {
           completedAt: new Date(),
           retainedRecordsSummary: { legalBasis: LegalBases.LEGAL_OBLIGATION, ...retained },
           erasureFailureCode: null,
-          notifyToEncrypted: null,
           subjectEmailHash: null
         }
       })
@@ -437,8 +466,9 @@ export class DsrEraseDueSweeper {
     }
   }
 
-  private leaseEnd(now: Date): Date {
-    return new Date(now.getTime() - ComplianceConfig.DSR_ERASE_LEASE_MS)
+  // The lease runs from the clock of the moment it is read, not from the start of the run (a run lasts up to half an hour)
+  private leaseEnd(): Date {
+    return new Date(Date.now() - ComplianceConfig.DSR_ERASE_LEASE_MS)
   }
 
   private logReturned(
@@ -460,20 +490,95 @@ export class DsrEraseDueSweeper {
     })
   }
 
-  private async mailCompleted(
+  // Ended erasures that still hold their sealed address: the mail was not queued yet
+  private unsentNoticesOf(storeId: string): Promise<string[]> {
+    return this.prisma
+      .transaction(tx =>
+        tx.dataSubjectRequest.findMany({
+          where: {
+            storeId,
+            type: DsrType.ERASURE,
+            status: DsrStatus.COMPLETED,
+            notifyToEncrypted: { not: null }
+          },
+          orderBy: [{ completedAt: 'asc' }, { id: 'asc' }],
+          take: ComplianceConfig.DSR_ERASE_BATCH,
+          select: { id: true }
+        })
+      )
+      .then(rows => rows.map(row => row.id))
+  }
+
+  // The try a claim counted, given back when nothing was tried
+  private releaseClaim(storeId: string, requestId: string): Promise<unknown> {
+    return this.prisma.transaction(tx =>
+      tx.dataSubjectRequest.updateMany({
+        where: {
+          id: requestId,
+          storeId,
+          status: DsrStatus.IN_PROGRESS,
+          erasureAttempts: { gt: 0 }
+        },
+        data: { erasureAttempts: { decrement: 1 }, erasureAttemptedAt: null }
+      })
+    )
+  }
+
+  // One closing mail, in its own transaction, after the erasure committed: the address is opened, the mail queued and the address cleared, in
+  // that order, so a queue that is down changes nothing and the next night tries again. A failure here never undoes an erasure.
+  private async notify(storeId: string, requestId: string, report: DsrEraseReport): Promise<void> {
+    try {
+      const sent = await this.jobContext.forStore(storeId, () =>
+        this.prisma.transaction(async tx => {
+          const locked = await tx.$queryRaw<{ id: string }[]>`
+            SELECT id FROM data_subject_requests
+            WHERE id = ${requestId} AND store_id = ${storeId} AND type = ${DsrType.ERASURE}
+              AND status = ${DsrStatus.COMPLETED} AND notify_to_encrypted IS NOT NULL
+            FOR UPDATE SKIP LOCKED`
+          if (locked.length === 0) return false
+          const row = await tx.dataSubjectRequest.findFirstOrThrow({
+            where: { id: requestId, storeId },
+            select: { notifyToEncrypted: true, retainedRecordsSummary: true }
+          })
+          const sealed = row.notifyToEncrypted
+          const to =
+            sealed === null ? null : openDsrNotifyAddress(sealed, this.config.encryptionKeyHex)
+          // An address that does not open (a key that changed) cannot be mailed, and must not stay for ever
+          if (to === null) {
+            this.logger.error({ requestId }, 'the address of a data request could not be opened')
+          } else {
+            await this.queueMail(
+              tx,
+              storeId,
+              requestId,
+              to,
+              retainedOrdersOf(row.retainedRecordsSummary)
+            )
+          }
+          await tx.dataSubjectRequest.updateMany({
+            where: { id: requestId, storeId, status: DsrStatus.COMPLETED },
+            data: { notifyToEncrypted: null }
+          })
+          return to !== null
+        })
+      )
+      if (sent) report.notified += 1
+    } catch (error) {
+      report.failed += 1
+      this.logger.error(
+        { storeId, requestId, errorName: errorName(error) },
+        'the closing mail of an erased data request could not be queued; the next run tries again'
+      )
+    }
+  }
+
+  private async queueMail(
     tx: PrismaTransaction,
     storeId: string,
     requestId: string,
-    sealed: Uint8Array | null,
+    to: string,
     retainedOrders: number
   ): Promise<void> {
-    if (sealed === null) return
-    const to = openDsrNotifyAddress(sealed, this.config.encryptionKeyHex)
-    // An address that does not open (a key that changed) cannot be mailed, and must not keep the erasure from ending
-    if (to === null) {
-      this.logger.error({ requestId }, 'the address of a data request could not be opened')
-      return
-    }
     const store = await tx.store.findUnique({
       where: { id: storeId },
       select: { defaultLocale: true }
@@ -501,4 +606,10 @@ export class DsrEraseDueSweeper {
       }
     )
   }
+}
+
+// What the summary of a finished request says it kept (the number the closing mail states)
+function retainedOrdersOf(summary: unknown): number {
+  const parsed = z.object({ orders: z.number().int().nonnegative() }).safeParse(summary)
+  return parsed.success ? parsed.data.orders : 0
 }

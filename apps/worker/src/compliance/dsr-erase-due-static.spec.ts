@@ -32,7 +32,7 @@ describe('who may erase a customer in the worker', () => {
 
   it('lets only the sweep call the erasure service', () => {
     const callers = sourcesOf(WORKER_SRC).filter(file =>
-      /\.erase\(\s*storeId/.test(readFileSync(file, 'utf8'))
+      /\.erase\(/.test(readFileSync(file, 'utf8'))
     )
 
     expect(relativeTo(WORKER_SRC, callers)).toEqual(['compliance/dsr-erase-due.sweeper.ts'])

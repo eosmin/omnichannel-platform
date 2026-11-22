@@ -2,7 +2,8 @@ import {
   AuditColdExport,
   ComplianceConfig,
   DataRetentionPolicies,
-  dsrExecutorAvailable
+  dsrExecutorAvailable,
+  dsrPublicFlowReady
 } from './compliance-constants'
 
 describe('ComplianceConfig', () => {
@@ -17,6 +18,12 @@ describe('dsrExecutorAvailable', () => {
   // The sweep `dsr-erase-due` exists (Step 7.2-H2b-1): an erasure can be approved. The public form stays off until the owner turns the flag on
   it('is true now that the sweep that carries out an approved erasure ships', () => {
     expect(dsrExecutorAvailable()).toBe(true)
+  })
+
+  // The public form needs more than the sweep (the alert of day 25, the notices of a request given back, access and portability): its own
+  // switch stays false until H2b-2 ships, and the env schema refuses the flag while it is
+  it('does not open the public flow: that is the switch of the PR that finishes H2b', () => {
+    expect(dsrPublicFlowReady()).toBe(false)
   })
 })
 

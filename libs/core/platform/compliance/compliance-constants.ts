@@ -6,6 +6,13 @@ import type { RetentionField } from '@platform/core/domain'
 export const dsrExecutorAvailable = (): boolean => DSR_EXECUTOR_AVAILABLE
 const DSR_EXECUTOR_AVAILABLE = true
 
+// Whether the WHOLE public flow is ready to take requests from strangers: the sweep exists (H2b-1), but the alert of day 25, the notices of a
+// request given back and the executors of access and portability are H2b-2. The env schema refuses `DSR_PUBLIC_INTAKE_ENABLED=true` and the
+// intake stays closed until this is true: the one that flips it is the PR that finishes H2b (an owner decision, with the adviser's word on the
+// grace period)
+export const dsrPublicFlowReady = (): boolean => DSR_PUBLIC_FLOW_READY
+const DSR_PUBLIC_FLOW_READY = false
+
 export const ComplianceConfig = {
   DSR_RESPONSE_DEADLINE_DAYS: 30,
   DSR_DEADLINE_ALERT_DAY: 25,
@@ -246,6 +253,8 @@ export const DsrRejectionReasons = {
 export const DsrErasureReturnReasons = {
   SUBJECT_CHANGED: 'subject_changed',
   BLOCKED_BY_OPEN_WORK: 'blocked_by_open_work',
+  // A merge into one of the customers can still be undone: the erasure waits for the reviewer
+  UNDOABLE_MERGE: 'undoable_merge',
   ATTEMPTS_EXHAUSTED: 'attempts_exhausted'
 } as const
 export type DsrErasureReturnReason =

@@ -6,7 +6,7 @@ import {
   COOKIE_CONSENT_HASH_KEY,
   DSR_CONFIG,
   type DsrConfig,
-  dsrExecutorAvailable,
+  dsrPublicFlowReady,
   dsrHashKeyOf
 } from '@platform/core/compliance'
 import { env } from '@platform/core/config/env'
@@ -21,9 +21,9 @@ import { env } from '@platform/core/config/env'
     },
     {
       provide: DSR_CONFIG,
-      // On only with the executor of erasures in place (the env schema refuses to start otherwise; this is the second lock)
+      // On only when the whole flow is ready (the env schema refuses to start otherwise; this is the second lock)
       useFactory: (): DsrConfig => ({
-        enabled: env.DSR_PUBLIC_INTAKE_ENABLED && dsrExecutorAvailable(),
+        enabled: env.DSR_PUBLIC_INTAKE_ENABLED && dsrPublicFlowReady(),
         hashKey: dsrHashKeyOf(env.JWT_SECRET),
         encryptionKeyHex: env.CREDENTIALS_ENCRYPTION_KEY
       })
