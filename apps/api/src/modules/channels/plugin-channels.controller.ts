@@ -3,13 +3,14 @@ import { z } from 'zod'
 
 import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
-import { uuidSchema } from '@platform/core/domain'
+import { type CursorPage, uuidSchema } from '@platform/core/domain'
 import { MULTI_FILE_SEND_ENABLED, NoStore, ZodValidationPipe } from '@platform/core/http'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { PluginApi } from '../plugins/plugin-api.decorators'
 import { CurrentStore, NoTenantTransaction, RequirePermissions } from '../tenancy'
 
+import { type ListDirectoryQuery, listDirectoryQuerySchema } from './channel-connections.schemas'
 import {
   ChannelConnectionsService,
   type ChannelDirectoryEntry
@@ -32,8 +33,11 @@ export class PluginChannelsController {
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @NoStore()
   @Get(PluginApiRoutes.channels.directory)
-  directory(@CurrentStore() store: { id: string }): Promise<ChannelDirectoryEntry[]> {
-    return this.connections.directory(store.id, this.multiFileEnabled)
+  directory(
+    @CurrentStore() store: { id: string },
+    @Query(new ZodValidationPipe(listDirectoryQuerySchema)) query: ListDirectoryQuery
+  ): Promise<CursorPage<ChannelDirectoryEntry>> {
+    return this.connections.directory(store.id, this.multiFileEnabled, query)
   }
 
   // As for a person, the templates are for who may send them: `channels:read` stands for MESSAGES_SEND_TEMPLATE (to list them only)

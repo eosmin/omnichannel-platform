@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
-import type { BulkActions, ConversationStatus } from '@platform/core/domain'
+import { type BulkActions, type ConversationStatus, PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 import {
@@ -10,7 +10,7 @@ import {
   type BulkResultView,
   bulkResultSchema,
   type ChannelDirectoryEntryView,
-  channelDirectorySchema,
+  channelDirectoryPageSchema,
   type ChannelTemplateView,
   channelTemplateListSchema,
   type ConversationCountsView,
@@ -96,16 +96,29 @@ export function fetchMemberDirectory(
   })
 }
 
-export function fetchChannelDirectory(
+// Every page of the directory, joined: the inbox and the routing editor need all the accounts of the store, and the
+// server answers them by pages. The bound stops a server that never says "no more" (10 pages of the largest size).
+const DIRECTORY_MAX_PAGES = 10
+
+export async function fetchChannelDirectory(
   client: ApiClient,
   storeId: string,
   signal?: AbortSignal
 ): Promise<ChannelDirectoryEntryView[]> {
-  return client.request(ApiRoutes.channels.directory, {
-    schema: channelDirectorySchema,
-    storeId,
-    signal
-  })
+  const found: ChannelDirectoryEntryView[] = []
+  let cursor: string | null = null
+  for (let pages = 0; pages < DIRECTORY_MAX_PAGES; pages += 1) {
+    const params = new URLSearchParams({ limit: String(PaginationLimits.MAX) })
+    if (cursor !== null) params.set('cursor', cursor)
+    const page: z.output<typeof channelDirectoryPageSchema> = await client.request(
+      `${ApiRoutes.channels.directory}?${params.toString()}`,
+      { schema: channelDirectoryPageSchema, storeId, signal }
+    )
+    found.push(...page.data)
+    if (!page.hasMore || page.nextCursor === null) break
+    cursor = page.nextCursor
+  }
+  return found
 }
 
 // Where the conversation came from, newest first (the card on top of the thread)

@@ -264,7 +264,7 @@ describe('Conversations, search and channels through the plugin API', () => {
 
       const a = await asA('get', PluginApiRoutes.channels.directory).expect(OK)
 
-      const ids = (a.body as { id: string }[]).map(entry => entry.id)
+      const ids = (a.body as { data: { id: string }[] }).data.map(entry => entry.id)
       expect(ids).toContain(mine.channelConnectionId)
       expect(ids).not.toContain(theirs.channelConnectionId)
     })

@@ -1100,8 +1100,9 @@ describe('The channel connections of a store', () => {
       expect((one.body as Named).displayName).toBe('Instagram principal')
       const directory = await asAgent().get(ApiRoutes.channels.directory)
       expect(
-        (directory.body as { id: string; displayName: string }[]).find(item => item.id === first.id)
-          ?.displayName
+        (directory.body as { data: { id: string; displayName: string }[] }).data.find(
+          item => item.id === first.id
+        )?.displayName
       ).toBe('Instagram principal')
     })
 
@@ -1423,6 +1424,77 @@ describe('The channel connections of a store', () => {
       expect(stolen.data.length).toBeGreaterThan(0)
       for (const row of stolen.data) expect(own).toContain(row.id)
     })
+
+    const directoryPage = (query: Record<string, string | number>, agent = asAgent) =>
+      agent().get(ApiRoutes.channels.directory).query(query)
+
+    it('pages the directory by the same position, with no row twice and none lost', async () => {
+      const ids = await seedMany(ctx.storeA.id, 5)
+      const seen: string[] = []
+      let cursor: string | null = null
+      do {
+        const response: { status: number; body: ConnectionPageBody } = await directoryPage({
+          limit: 2,
+          ...(cursor === null ? {} : { cursor })
+        })
+        expect(response.status).toBe(OK)
+        expect(response.body.hasMore).toBe(response.body.nextCursor !== null)
+        // The date of a row only places the next page: the entry does not carry it
+        for (const entry of response.body.data) expect(entry).not.toHaveProperty('createdAt')
+        seen.push(...response.body.data.map(row => row.id))
+        cursor = response.body.nextCursor
+      } while (cursor !== null)
+      expect(new Set(seen).size).toBe(seen.length)
+      expect(seen.filter(id => ids.includes(id))).toEqual(ids)
+      expect(seen).toEqual((await allConnections()).map(row => row.id))
+    })
+
+    it('breaks a tie of dates by the id, so a page boundary inside the tie loses nothing', async () => {
+      const at = new Date(Date.UTC(2000, 0, 1))
+      const tied: string[] = []
+      for (let index = 0; index < 4; index += 1) {
+        const row = await createChannelConnection(owner, {
+          storeId: ctx.storeA.id,
+          channelType: 'test_channel',
+          status: ChannelConnectionStatus.ACTIVE,
+          createdAt: at
+        })
+        tied.push(row.id)
+      }
+      const seen: string[] = []
+      let cursor: string | null = null
+      do {
+        const response: { body: ConnectionPageBody } = await directoryPage({
+          limit: 1,
+          ...(cursor === null ? {} : { cursor })
+        })
+        seen.push(...response.body.data.map(row => row.id))
+        cursor = response.body.nextCursor
+      } while (cursor !== null)
+      expect(seen.filter(id => tied.includes(id))).toEqual([...tied].sort())
+    })
+
+    it('refuses what the list refuses, and a state the directory does not take', async () => {
+      for (const limit of [0, PaginationLimits.MAX + 1, -1, 'x']) {
+        expect((await directoryPage({ limit })).status).toBe(BAD_REQUEST)
+      }
+      expect((await directoryPage({ cursor: 'not-a-cursor' })).status).toBe(BAD_REQUEST)
+      expect((await directoryPage({ state: ChannelConnectionListStates.LIVE })).status).toBe(
+        BAD_REQUEST
+      )
+    })
+
+    it('answers a page of the default size and never another store through its cursor', async () => {
+      await seedMany(ctx.storeA.id, PaginationLimits.DEFAULT + 1)
+      const byDefault = (await directoryPage({})).body as ConnectionPageBody
+      expect(byDefault.data).toHaveLength(PaginationLimits.DEFAULT)
+      expect(byDefault.hasMore).toBe(true)
+      const mineB = await seedMany(ctx.storeB.id, 2)
+      const first = (await directoryPage({ limit: 1 }, asAdminB)).body as ConnectionPageBody
+      const stolen = (await directoryPage({ cursor: first.nextCursor ?? '', limit: 100 }))
+        .body as ConnectionPageBody
+      for (const row of stolen.data) expect(mineB).not.toContain(row.id)
+    })
   })
 
   describe('the directory for an agent', () => {
@@ -1435,7 +1507,7 @@ describe('The channel connections of a store', () => {
 
       expect(settings.status).toBe(FORBIDDEN)
       expect(list.status).toBe(OK)
-      const item = (list.body as ConnectionBody[]).find(each => each.pluginId === id)
+      const item = (list.body as { data: ConnectionBody[] }).data.find(each => each.pluginId === id)
       expect(Object.keys(item ?? {}).sort()).toEqual([
         'capabilities',
         'descriptor',
@@ -1477,7 +1549,7 @@ describe('The channel connections of a store', () => {
       const list = await asAgent().get(ApiRoutes.channels.directory)
 
       const mediaOf = (pluginId: string) =>
-        (list.body as { pluginId: string; media: unknown[] }[]).find(
+        (list.body as { data: { pluginId: string; media: unknown[] }[] }).data.find(
           item => item.pluginId === pluginId
         )?.media
       // The switch for several files is off in the suite: the channel's five become one, as the route says
@@ -1502,7 +1574,7 @@ describe('The channel connections of a store', () => {
 
       const list = await asAgent().get(ApiRoutes.channels.directory)
 
-      const ids = (list.body as ConnectionBody[]).map(item => item.pluginId)
+      const ids = (list.body as { data: ConnectionBody[] }).data.map(item => item.pluginId)
       expect(ids).toContain(mine.id)
       expect(ids).not.toContain(theirs.id)
     })
@@ -1522,7 +1594,8 @@ describe('The channel connections of a store', () => {
       const list = await asAgent().get(ApiRoutes.channels.directory)
 
       const nameOf = (pluginId: string) =>
-        (list.body as ConnectionBody[]).find(item => item.pluginId === pluginId)?.pluginName
+        (list.body as { data: ConnectionBody[] }).data.find(item => item.pluginId === pluginId)
+          ?.pluginName
       expect(list.status).toBe(OK)
       expect(Array.from(nameOf(long.id) ?? '')).toHaveLength(60)
       expect(nameOf(long.id)).toMatch(/^Whatsx+$/)
@@ -1549,7 +1622,7 @@ describe('The channel connections of a store', () => {
       const list = await asAgent().get(ApiRoutes.channels.directory)
 
       const statusOf = (connection: { body: unknown }) =>
-        (list.body as ConnectionBody[]).find(
+        (list.body as { data: ConnectionBody[] }).data.find(
           item => item.id === (connection.body as ConnectionBody).id
         )?.status
       expect(statusOf(brokenConnection)).toBe(ChannelConnectionStatus.ERROR)
@@ -2134,7 +2207,8 @@ describe('The channel connections of a store', () => {
       const response = await asAgent().get(ApiRoutes.channels.directory)
 
       expect(response.status).toBe(OK)
-      for (const entry of response.body as object[]) expect(entry).not.toHaveProperty('profile')
+      for (const entry of (response.body as { data: object[] }).data)
+        expect(entry).not.toHaveProperty('profile')
       expect(JSON.stringify(response.body)).not.toContain(SETUP_KEY)
     })
   })

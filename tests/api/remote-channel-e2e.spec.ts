@@ -227,11 +227,11 @@ describe('A remote channel plugin, from its registration to the status of a repl
       .send({ displayName: 'Reference line' })
       .expect(CREATED)
 
-    const directory = (await asAgent().get(ApiRoutes.channels.directory).expect(OK)).body as {
-      id: string
-      pluginId: string
-      displayName: string
-    }[]
+    const directory = (
+      (await asAgent().get(ApiRoutes.channels.directory).expect(OK)).body as {
+        data: { id: string; pluginId: string; displayName: string }[]
+      }
+    ).data
     const listed = directory.find(item => item.pluginId === pluginId)
     expect(listed?.displayName).toBe('Reference line')
   })

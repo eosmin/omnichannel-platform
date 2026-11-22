@@ -98,7 +98,9 @@ describe('a channel plugin the platform has never heard of', () => {
     expect(JSON.stringify(connected.body)).not.toContain('acme-key-1')
 
     const directory = await asAdmin().get(ApiRoutes.channels.directory)
-    const entry = (directory.body as DirectoryEntry[]).find(item => item.pluginId === TOY_ID)
+    const entry = (directory.body as { data: DirectoryEntry[] }).data.find(
+      item => item.pluginId === TOY_ID
+    )
     expect(entry?.limits).toEqual({ textMaxLength: 500, caption: null })
     expect(entry?.descriptor?.displayName.en).toBe('Acme Chat')
   })

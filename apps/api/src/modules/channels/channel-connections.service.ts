@@ -72,7 +72,8 @@ import {
   type ConnectChannelBody,
   type ConnectResult,
   connectResultSchema,
-  type ListConnectionsQuery
+  type ListConnectionsQuery,
+  type ListDirectoryQuery
 } from './channel-connections.schemas'
 import { type DirectoryMediaLimits, directoryMedia } from './directory-media'
 import { type PublicChannelDescriptor, publicDescriptorOf } from './public-descriptor'
@@ -357,33 +358,58 @@ export class ChannelConnectionsService {
   // may read (the error text, the dates) never leaves the database for this route. A connection whose
   // installation is gone or whose plugin was suspended is inert (D19): it is told as `error`, because
   // a reply cannot go out through it, whatever its own row says.
-  async directory(storeId: string, multiFileEnabled: boolean): Promise<ChannelDirectoryEntry[]> {
+  async directory(
+    storeId: string,
+    multiFileEnabled: boolean,
+    query: ListDirectoryQuery
+  ): Promise<CursorPage<ChannelDirectoryEntry>> {
+    const { cursor, limit } = query
     const limitsOf = channelFileLimits(this.registry, multiFileEnabled)
     const rows = await this.prisma.client.channelConnection.findMany({
-      where: { storeId },
+      where: {
+        storeId,
+        ...(cursor === undefined
+          ? {}
+          : {
+              OR: [
+                { createdAt: { gt: cursor.createdAt } },
+                { createdAt: cursor.createdAt, id: { gt: cursor.id } }
+              ]
+            })
+      },
       select: {
         id: true,
+        // Only to place the next page: it is not part of the entry
+        createdAt: true,
         pluginId: true,
         displayName: true,
         label: true,
         status: true,
         installation: { select: { status: true, plugin: { select: { status: true } } } }
       },
-      orderBy: CONNECTION_ORDER
+      orderBy: CONNECTION_ORDER,
+      take: limit + 1
     })
-    return rows.map(row => ({
-      id: row.id,
-      pluginId: row.pluginId,
-      pluginName: this.pluginNameOf(row.pluginId),
-      displayName: row.label ?? row.displayName,
-      status: isInstallationActive(row.installation)
-        ? enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status')
-        : ChannelConnectionStatus.ERROR,
-      capabilities: this.registry.capabilitiesOf(row.pluginId),
-      media: directoryMedia(row.pluginId, limitsOf),
-      limits: this.registry.limitsOf(row.pluginId),
-      descriptor: publicDescriptorOf(this.registry.descriptorOf(row.pluginId))
-    }))
+    const hasMore = rows.length > limit
+    const page = hasMore ? rows.slice(0, limit) : rows
+    const last = page.at(-1)
+    return {
+      data: page.map(row => ({
+        id: row.id,
+        pluginId: row.pluginId,
+        pluginName: this.pluginNameOf(row.pluginId),
+        displayName: row.label ?? row.displayName,
+        status: isInstallationActive(row.installation)
+          ? enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status')
+          : ChannelConnectionStatus.ERROR,
+        capabilities: this.registry.capabilitiesOf(row.pluginId),
+        media: directoryMedia(row.pluginId, limitsOf),
+        limits: this.registry.limitsOf(row.pluginId),
+        descriptor: publicDescriptorOf(this.registry.descriptorOf(row.pluginId))
+      })),
+      nextCursor: hasMore && last !== undefined ? encodeCursor(last) : null,
+      hasMore
+    }
   }
 
   // Nothing checks the name of a plugin when it registers, so it is not trusted to be a string. It goes

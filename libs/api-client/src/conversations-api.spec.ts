@@ -148,24 +148,49 @@ describe('fetchTags', () => {
 })
 
 describe('fetchChannelDirectory', () => {
-  it('reads the channels of the store', async () => {
-    const { client, fetchImpl } = setup(
-      json(200, [
-        {
-          id: 'k1',
-          pluginId: 'whatsapp',
-          pluginName: 'WhatsApp',
-          displayName: 'Shop',
-          status: 'active',
-          capabilities: ['TEXT']
-        }
-      ])
-    )
+  const entry = (id: string, displayName: string) => ({
+    id,
+    pluginId: 'acme',
+    pluginName: 'Acme',
+    displayName,
+    status: 'active',
+    capabilities: ['TEXT']
+  })
+
+  it('reads the channels of the store, page after page', async () => {
+    const pages = [
+      json(200, { data: [entry('k1', 'Shop')], nextCursor: 'n1', hasMore: true }),
+      json(200, { data: [entry('k2', 'Care')], nextCursor: null, hasMore: false })
+    ]
+    const fetchImpl = jest
+      .fn<Promise<Response>, [string, RequestInit]>()
+      .mockImplementation(() => Promise.resolve((pages.shift() as Response).clone()))
+    const client = createApiClient({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'token',
+      refreshAccessToken: () => Promise.resolve('token'),
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    })
 
     const channels = await fetchChannelDirectory(client, 's1')
 
-    expect(channels[0]?.displayName).toBe('Shop')
-    expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://api.example.com/api/v1/channels/directory')
+    expect(channels.map(item => item.displayName)).toEqual(['Shop', 'Care'])
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+      'https://api.example.com/api/v1/channels/directory?limit=100'
+    )
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe(
+      'https://api.example.com/api/v1/channels/directory?limit=100&cursor=n1'
+    )
+  })
+
+  it('stops following a cursor that never ends', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, { data: [entry('k1', 'Shop')], nextCursor: 'again', hasMore: true })
+    )
+
+    await fetchChannelDirectory(client, 's1')
+
+    expect(fetchImpl.mock.calls.length).toBe(10)
   })
 })
 
