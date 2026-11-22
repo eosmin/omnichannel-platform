@@ -2,7 +2,7 @@
 
 import { type ComponentType, type ReactElement, useEffect, useState } from 'react'
 
-import { COOKIE_PREFERENCES_OPEN_EVENT } from '@platform/core/domain'
+import { COOKIE_PREFERENCES_OPEN_EVENT } from '@platform/core/cookie-consent'
 
 import type { CookieConsentUiProps } from './cookie-consent-ui'
 

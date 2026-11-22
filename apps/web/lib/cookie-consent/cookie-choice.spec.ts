@@ -1,4 +1,4 @@
-import { COOKIE_CONSENT_COOKIE_NAME, COOKIE_POLICY_VERSION } from '@platform/core/domain'
+import { COOKIE_CONSENT_COOKIE_NAME, COOKIE_POLICY_VERSION } from '@platform/core/cookie-consent'
 
 import {
   ALL_ALLOWED,

@@ -2,7 +2,7 @@ import type { BrowserContext, Page } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
-import { COOKIE_CONSENT_COOKIE_NAME, COOKIE_POLICY_VERSION } from '@platform/core/domain'
+import { COOKIE_CONSENT_COOKIE_NAME, COOKIE_POLICY_VERSION } from '@platform/core/cookie-consent'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { ANSWERED_VISITOR_ID } from '../support/cookie-consent'

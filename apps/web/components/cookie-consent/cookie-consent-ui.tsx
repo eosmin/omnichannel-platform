@@ -9,7 +9,7 @@ import {
   type ChoosableCookieCategory,
   COOKIE_PREFERENCES_OPEN_EVENT,
   CookieCategories
-} from '@platform/core/domain'
+} from '@platform/core/cookie-consent'
 
 import { apiClient } from '../../lib/api'
 import {

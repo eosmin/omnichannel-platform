@@ -1,5 +1,5 @@
 import { TenantHeaders } from '@platform/core/auth'
-import { COOKIE_POLICY_VERSION } from '@platform/core/domain'
+import { COOKIE_POLICY_VERSION } from '@platform/core/cookie-consent'
 
 import { createApiClient } from './api-client'
 import { recordCookieConsent } from './compliance-api'

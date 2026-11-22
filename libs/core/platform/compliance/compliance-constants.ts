@@ -146,7 +146,8 @@ export const ConsentSources = {
 // the newest rows, not the whole table.
 export const ConsentListLimits = { MAX_ROWS: 100 } as const
 
-// The categories, the policy version and the cookie of the choice live in the domain, where the web reads them too (the banner)
+// The categories, the policy version and the cookie of the choice live in the domain, in a file of their own (`@platform/core/cookie-consent`) and
+// not in its barrel: the web reads them, and a barrel travels whole in the script of every page
 export {
   ChoosableCookieCategories,
   type ChoosableCookieCategory,
@@ -154,7 +155,7 @@ export {
   COOKIE_CONSENT_COOKIE_NAME,
   COOKIE_POLICY_VERSION,
   CookieCategories
-} from '@platform/core/domain'
+} from '@platform/core/cookie-consent'
 
 export const CookieConsentLimits = {
   // The id the browser makes for itself (a random UUID): the length of one, with room for the dashes

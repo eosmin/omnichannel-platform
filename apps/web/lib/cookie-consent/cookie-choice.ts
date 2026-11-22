@@ -4,7 +4,7 @@ import {
   COOKIE_CONSENT_COOKIE_MAX_AGE_SECONDS,
   COOKIE_CONSENT_COOKIE_NAME,
   COOKIE_POLICY_VERSION
-} from '@platform/core/domain'
+} from '@platform/core/cookie-consent'
 
 // What the browser remembers about the cookie banner, in the one cookie `platform_cc` (it is the record that the person
 // answered, so it is the only thing written before an answer exists: nothing is written until the person chooses).

@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import { type ComponentType, type ReactElement, useState } from 'react'
 
-import { COOKIE_PREFERENCES_OPEN_EVENT } from '@platform/core/domain'
+import { COOKIE_PREFERENCES_OPEN_EVENT } from '@platform/core/cookie-consent'
 
 import { toast } from '../../lib/toast'
 import { Button } from '../ui/button'

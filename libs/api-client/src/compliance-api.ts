@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
-import { COOKIE_POLICY_VERSION, type ChoosableCookieCategory } from '@platform/core/domain'
+import { COOKIE_POLICY_VERSION, type ChoosableCookieCategory } from '@platform/core/cookie-consent'
 
 import type { ApiClient } from './api-client'
 
