@@ -7,7 +7,13 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { AppPaths, ConversationStatus, MembershipStatus, MessageType } from '@platform/core/domain'
+import {
+  AppPaths,
+  ConversationStatus,
+  MediaStatus,
+  MembershipStatus,
+  MessageType
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
   type ConversationAssignedPayload,
@@ -477,6 +483,26 @@ describe('Notifications raised by events', () => {
       expect(await rowsOf(NotificationTypes.MEDIA_INFECTED)).toHaveLength(once)
     })
 
+    it('does not tell again a person who already read it', async () => {
+      const conversation = await mk()
+      const message = await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id
+      })
+      const events = app.get(EventEmitter2)
+
+      await events.emitAsync(Events.MEDIA_INFECTED, infected(conversation.id, message.id))
+      const first = (await rowsOf(NotificationTypes.MEDIA_INFECTED)).length
+      await owner.notification.updateMany({
+        where: { storeId: ctx.storeA.id, resourceId: message.id },
+        data: { readAt: new Date() }
+      })
+      await events.emitAsync(Events.MEDIA_INFECTED, infected(conversation.id, message.id))
+
+      expect(first).toBeGreaterThan(0)
+      expect(await rowsOf(NotificationTypes.MEDIA_INFECTED)).toHaveLength(first)
+    })
+
     it('leaves out who cannot open a conversation assigned to someone else', async () => {
       const conversation = await mk({ assignedTo: ctx.adminA.id })
       const message = await createMessage(owner, {
@@ -523,13 +549,12 @@ describe('Notifications raised by events', () => {
   })
 
   describe('an unscannable file', () => {
-    it('tells who may read the conversation, audits it, and tells each person once', async () => {
+    const unscannableOf = async () => {
       const conversation = await mk()
       const message = await createMessage(owner, {
         storeId: ctx.storeA.id,
         conversationId: conversation.id
       })
-      const events = app.get(EventEmitter2)
       const payload: MessageChangedPayload = {
         storeId: ctx.storeA.id,
         conversationId: conversation.id,
@@ -537,6 +562,26 @@ describe('Notifications raised by events', () => {
         internal: false,
         visibility: { hidden: false, assignedTo: null }
       }
+      return { message, payload }
+    }
+    const fileOf = (messageId: string) =>
+      owner.media.create({
+        data: {
+          storeId: ctx.storeA.id,
+          purpose: 'message',
+          messageId,
+          key: `${prefix}-unscannable-${randomUUID()}`,
+          filename: 'file.pdf',
+          contentType: 'application/pdf',
+          fileSize: 10,
+          status: MediaStatus.UNSCANNABLE
+        }
+      })
+
+    it('tells who may read the conversation, audits it, and tells each person once', async () => {
+      const { message, payload } = await unscannableOf()
+      await fileOf(message.id)
+      const events = app.get(EventEmitter2)
 
       await events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
       await events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
@@ -558,6 +603,129 @@ describe('Notifications raised by events', () => {
           2
         )
       ).toHaveLength(2)
+    })
+
+    it('tells each person once even when two deliveries run at the same time', async () => {
+      const { message, payload } = await unscannableOf()
+      await fileOf(message.id)
+      const events = app.get(EventEmitter2)
+
+      await Promise.all([
+        events.emitAsync(Events.MEDIA_UNSCANNABLE, payload),
+        events.emitAsync(Events.MEDIA_UNSCANNABLE, payload),
+        events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+      ])
+
+      const told = (await rowsOf(NotificationTypes.MEDIA_UNSCANNABLE)).map(row => row.userId)
+      expect(told).toEqual(expect.arrayContaining([ctx.adminA.id, ctx.agentA.id]))
+      expect(new Set(told).size).toBe(told.length)
+    })
+
+    it('does not tell again a person who already read it', async () => {
+      const { message, payload } = await unscannableOf()
+      await fileOf(message.id)
+      const events = app.get(EventEmitter2)
+
+      await events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+      const first = (await rowsOf(NotificationTypes.MEDIA_UNSCANNABLE)).length
+      await owner.notification.updateMany({
+        where: { storeId: ctx.storeA.id, resourceId: message.id },
+        data: { readAt: new Date() }
+      })
+      await events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+
+      expect(await rowsOf(NotificationTypes.MEDIA_UNSCANNABLE)).toHaveLength(first)
+    })
+
+    it('does not count a file of another store: it must not turn the ad picture of this one into a notice', async () => {
+      const { message, payload } = await unscannableOf()
+      // A row of store B that points at the message of store A (the owner client ignores tenancy): only the filter by store keeps it out
+      await owner.media.create({
+        data: {
+          storeId: ctx.storeB.id,
+          purpose: 'message',
+          messageId: message.id,
+          key: `${prefix}-foreign-${randomUUID()}`,
+          filename: 'foreign.pdf',
+          contentType: 'application/pdf',
+          fileSize: 10,
+          status: MediaStatus.UNSCANNABLE
+        }
+      })
+
+      await app.get(EventEmitter2).emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+
+      expect(await rowsOf(NotificationTypes.MEDIA_UNSCANNABLE)).toHaveLength(0)
+    })
+
+    it('does not notify for a message whose only refused file is an infected one', async () => {
+      const { message, payload } = await unscannableOf()
+      await owner.media.create({
+        data: {
+          storeId: ctx.storeA.id,
+          purpose: 'message',
+          messageId: message.id,
+          key: `${prefix}-infected-${randomUUID()}`,
+          filename: 'virus.pdf',
+          contentType: 'application/pdf',
+          fileSize: 10,
+          status: MediaStatus.INFECTED
+        }
+      })
+
+      await app.get(EventEmitter2).emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+
+      expect(await rowsOf(NotificationTypes.MEDIA_UNSCANNABLE)).toHaveLength(0)
+    })
+
+    it('tells both notices, once each, for a message with an infected and an unscannable file', async () => {
+      const { message, payload } = await unscannableOf()
+      await fileOf(message.id)
+      await owner.media.create({
+        data: {
+          storeId: ctx.storeA.id,
+          purpose: 'message',
+          messageId: message.id,
+          key: `${prefix}-both-${randomUUID()}`,
+          filename: 'virus.pdf',
+          contentType: 'application/pdf',
+          fileSize: 10,
+          status: MediaStatus.INFECTED
+        }
+      })
+      const events = app.get(EventEmitter2)
+
+      await events.emitAsync(Events.MEDIA_INFECTED, payload)
+      await events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+      await events.emitAsync(Events.MEDIA_INFECTED, payload)
+      await events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+
+      for (const type of [NotificationTypes.MEDIA_INFECTED, NotificationTypes.MEDIA_UNSCANNABLE]) {
+        const told = (await rowsOf(type)).map(row => row.userId)
+        expect(told).toEqual(expect.arrayContaining([ctx.adminA.id, ctx.agentA.id]))
+        expect(new Set(told).size).toBe(told.length)
+      }
+    })
+
+    it('audits but does not notify when the file is the picture of an ad, which nobody can send again', async () => {
+      const { message, payload } = await unscannableOf()
+      // No file of the message has this verdict: the ad hangs from its origin, which is announced as the message
+      const events = app.get(EventEmitter2)
+
+      await events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+
+      expect(await rowsOf(NotificationTypes.MEDIA_UNSCANNABLE)).toHaveLength(0)
+      expect(
+        await waitForAuditEntries(
+          owner,
+          {
+            storeId: ctx.storeA.id,
+            action: AuditAction.MEDIA_UNSCANNABLE,
+            resourceId: message.id
+          },
+          1
+        )
+      ).toHaveLength(1)
     })
   })
 

@@ -16,7 +16,9 @@ import { StorageService } from '@platform/core/storage-module'
 
 import { WorkerModule } from '../worker.module'
 
+import { DocumentCleaner } from './document-cleaner'
 import { ExistingDocumentSanitizer } from './existing-document-sanitizer.service'
+import { InlineDocumentCleaner } from './testing/inline-document-cleaner'
 
 const AUTHOR = 'Jane Q. Author'
 
@@ -56,6 +58,10 @@ describe('ExistingDocumentSanitizer', () => {
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({ imports: [WorkerModule] })
+      // The thread is a file of the bundle (`document-thread.js`), which a run under ts-jest does not have: it is checked on the built bundle
+      // by `scripts/smoke-document-thread.ts` (CI), and its behavior by `thread-document-cleaner.spec.ts`
+      .overrideProvider(DocumentCleaner)
+      .useValue(new InlineDocumentCleaner())
       .overrideProvider(PrismaService)
       .useValue(new PrismaService({ databaseUrl: connectionUrls().worker }))
       .compile()

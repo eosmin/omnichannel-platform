@@ -35,11 +35,37 @@ function withAutomaticJsxRuntime(loader) {
 // next to main.js, which the Dockerfile fills for the apps that ask for them (`nativePackages`).
 //
 // Rspack configuration of an app built with `nest build`: pass the name of the app (dist/apps/<name>)
-// and, for an app that needs one, the packages it loads from node_modules.
+// and, for an app that needs one, the packages it loads from node_modules and the files it starts by
+// themselves (a worker thread needs a file of its own: { 'document-thread': 'apps/worker/src/...ts' }
+// is written as dist/apps/<name>/document-thread.js, next to main.js, with its own copy of what it imports).
 module.exports =
-  (appName, nativePackages = []) =>
+  (appName, nativePackages = [], extraEntries = {}) =>
   (defaults, rspack) => ({
-    output: { ...defaults.output, path: path.join(WORKSPACE_ROOT, 'dist', 'apps', appName) },
+    ...(Object.keys(extraEntries).length === 0
+      ? {}
+      : {
+          entry: {
+            main: defaults.entry,
+            ...Object.fromEntries(
+              Object.entries(extraEntries).map(([name, file]) => [
+                name,
+                path.join(WORKSPACE_ROOT, file)
+              ])
+            )
+          }
+        }),
+    output: {
+      ...defaults.output,
+      path: path.join(WORKSPACE_ROOT, 'dist', 'apps', appName),
+      ...(Object.keys(extraEntries).length === 0
+        ? {}
+        : {
+            filename: pathData =>
+              pathData.chunk !== undefined && pathData.chunk.name in extraEntries
+                ? '[name].js'
+                : defaults.output.filename
+          })
+    },
     // The Nest CLI's SWC loader compiles JSX with the classic runtime (React.createElement) and ignores
     // "jsx": "react-jsx" of the tsconfig, so the email templates (.tsx) die with "React is not defined"
     // in the bundle while passing under ts-jest. Use the automatic runtime, as the tsconfig says.

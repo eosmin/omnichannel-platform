@@ -8,6 +8,7 @@ import type { StorageService } from '@platform/core/storage-module'
 
 import type { ClamavClient } from './clamav.client'
 import { MediaPipeline } from './media-pipeline.service'
+import { InlineDocumentCleaner } from './testing/inline-document-cleaner'
 
 // A job whose row is not visible to the worker (dropped meanwhile, or the worker reads another
 // database) must leave a trace: it ends without a verdict and nothing else tells why.
@@ -23,7 +24,8 @@ describe('MediaPipeline with no row for the job', () => {
     {} as unknown as DomainEvents,
     { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
     { setContext: jest.fn(), warn } as unknown as PinoLogger,
-    { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
+    { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never,
+    new InlineDocumentCleaner()
   )
 
   beforeEach(() => {

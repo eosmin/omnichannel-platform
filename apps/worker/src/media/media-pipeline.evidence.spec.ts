@@ -9,6 +9,7 @@ import type { StorageService } from '@platform/core/storage-module'
 
 import type { ClamavClient } from './clamav.client'
 import { MediaPipeline } from './media-pipeline.service'
+import { InlineDocumentCleaner } from './testing/inline-document-cleaner'
 
 // HC-122: the scan never deletes the file of a financial document (a receipt, a bank statement)
 describe('MediaPipeline and financial evidence', () => {
@@ -49,7 +50,8 @@ describe('MediaPipeline and financial evidence', () => {
       { publish: jest.fn() } as unknown as DomainEvents,
       { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
       logger as unknown as PinoLogger,
-      { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
+      { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never,
+      new InlineDocumentCleaner()
     )
     return { pipeline, storage, updateMany, logger }
   }

@@ -13,6 +13,7 @@ function build() {
   const committed: { userId: string }[] = []
   let holder: Promise<void> | undefined
   let lockCalls = 0
+  const wheres: Record<string, unknown>[] = []
 
   const transaction = async <T>(work: (client: unknown) => Promise<T>): Promise<T> => {
     const pendingRows: { userId: string }[] = []
@@ -29,7 +30,10 @@ function build() {
         return [{ locked: 1 }]
       },
       notification: {
-        findMany: () => Promise.resolve(committed.map(row => ({ userId: row.userId }))),
+        findMany: (args: { where: Record<string, unknown> }) => {
+          wheres.push(args.where)
+          return Promise.resolve(committed.map(row => ({ userId: row.userId })))
+        },
         create: (args: { data: { userId: string } }) => {
           pendingRows.push({ userId: args.data.userId })
           return Promise.resolve({
@@ -70,7 +74,7 @@ function build() {
     )
   }
 
-  const burst = async (size: number) =>
+  const burst = async (size: number, ever = false) =>
     Promise.all(
       Array.from({ length: size }, () =>
         transaction(async client =>
@@ -78,13 +82,14 @@ function build() {
             storeId: STORE,
             type: NotificationTypes.MESSAGE_RECEIVED,
             resourceType: 'conversation',
-            resourceId: RESOURCE
+            resourceId: RESOURCE,
+            ...(ever ? { ever } : {})
           })
         )
       )
     )
 
-  return { committed, burst, lockCalls: () => lockCalls }
+  return { committed, burst, wheres, lockCalls: () => lockCalls }
 }
 
 describe('NotificationsService.sendToUsersOnce under a transaction per event', () => {
@@ -102,5 +107,31 @@ describe('NotificationsService.sendToUsersOnce under a transaction per event', (
     await burst(3)
 
     expect(lockCalls()).toBe(3)
+  })
+
+  it('looks only at unread lines of the window for a burst', async () => {
+    const { burst, wheres } = build()
+
+    await burst(1)
+
+    expect(wheres[0]).toHaveProperty('readAt', null)
+    expect(wheres[0]).toHaveProperty('createdAt')
+  })
+
+  it('looks at every line, read or old, when the notice is told once for good', async () => {
+    const { burst, wheres } = build()
+
+    await burst(1, true)
+
+    expect(wheres[0]).not.toHaveProperty('readAt')
+    expect(wheres[0]).not.toHaveProperty('createdAt')
+  })
+
+  it('writes one line for a burst of a notice told once for good', async () => {
+    const { committed, burst } = build()
+
+    await burst(10, true)
+
+    expect(committed).toHaveLength(1)
   })
 })
