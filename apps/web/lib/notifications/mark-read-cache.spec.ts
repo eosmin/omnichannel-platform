@@ -1,9 +1,10 @@
 import type { InfiniteData } from '@tanstack/react-query'
 
 import type { NotificationPageView, NotificationView } from '@platform/api-client'
+import { QueryKeys } from '@platform/api-client'
 import { NotificationFilters } from '@platform/core/notifications'
 
-import { applyRead } from './mark-read-cache'
+import { applyRead, filterOfListKey, hasEmptyPageWithMore } from './mark-read-cache'
 
 const AT = '2026-11-23T10:00:00.000Z'
 const item = (id: string, readAt: string | null): NotificationView => ({
@@ -55,5 +56,32 @@ describe('applyRead', () => {
     const before = pages()
     applyRead(before, NotificationFilters.ALL, null, AT)
     expect(before.pages[0]?.data[0]?.readAt).toBeNull()
+  })
+})
+
+describe('filterOfListKey', () => {
+  it('reads the filter back from a key made by the key factory', () => {
+    const key = QueryKeys.notifications.filtered('s1', NotificationFilters.UNREAD)
+    expect(filterOfListKey('s1', key)).toBe(NotificationFilters.UNREAD)
+  })
+
+  it('ignores the count, the preferences and the keys of another store', () => {
+    expect(filterOfListKey('s1', QueryKeys.notifications.unread('s1'))).toBeNull()
+    expect(filterOfListKey('s1', QueryKeys.notifications.preferences('s1'))).toBeNull()
+    expect(filterOfListKey('s1', QueryKeys.notifications.filtered('s2', 'all'))).toBeNull()
+  })
+})
+
+describe('hasEmptyPageWithMore', () => {
+  it('is true when the Unread tab emptied a page that has more behind it', () => {
+    const result = applyRead(pages(), NotificationFilters.UNREAD, new Set(['a', 'b', 'c']), AT)
+    expect(hasEmptyPageWithMore(result)).toBe(true)
+  })
+
+  it('is false when the page still has lines or nothing is behind it', () => {
+    expect(hasEmptyPageWithMore(pages())).toBe(false)
+    expect(hasEmptyPageWithMore(applyRead(pages(), NotificationFilters.UNREAD, null, AT))).toBe(
+      false
+    )
   })
 })

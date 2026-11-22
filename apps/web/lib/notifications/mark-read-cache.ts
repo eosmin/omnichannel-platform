@@ -1,6 +1,6 @@
 import type { InfiniteData } from '@tanstack/react-query'
 
-import type { NotificationPageView } from '@platform/api-client'
+import { type NotificationPageView, QueryKeys } from '@platform/api-client'
 import { NotificationFilters } from '@platform/core/notifications'
 
 type Pages = InfiniteData<NotificationPageView, string | null>
@@ -35,4 +35,20 @@ export function applyRead(
       )
     }))
   }
+}
+
+// The filter a list query was made for, read from its key; null for a key that is not one of the
+// tabs. `filtered()` builds the key, so the spec builds one with it and reads it back here.
+export function filterOfListKey(storeId: string, key: readonly unknown[]): string | null {
+  const probe = QueryKeys.notifications.filtered(storeId, '')
+  const head = probe.slice(0, -1)
+  const matches = key.length === probe.length && head.every((part, i) => key[i] === part)
+  const filter = key[probe.length - 1]
+  return matches && typeof filter === 'string' ? filter : null
+}
+
+// A tab whose loaded page ran out of lines while the api still has more behind it would show an
+// empty state (or never ask for the next page): it has to be read again from the start.
+export function hasEmptyPageWithMore(data: Pages): boolean {
+  return data.pages.some(page => page.data.length === 0 && page.hasMore)
 }
