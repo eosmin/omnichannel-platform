@@ -616,6 +616,11 @@ describe('The realtime gateway', () => {
         membershipId,
         roleId: null
       })
+      // The socket that may not read the team hears the same two ids and nothing more
+      expect(bare.of(RealtimeEvents.TEAM_DIRECTORY_CHANGED)[0]?.payload).toEqual({
+        membershipId,
+        roleId: null
+      })
       expect(other.of(RealtimeEvents.TEAM_DIRECTORY_CHANGED)).toEqual([])
     })
 
