@@ -710,7 +710,7 @@ describe('The review queue of the data requests', () => {
         resourceId: id
       })
       const detail = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.compliance.dsrById(id))
-      expect(detail.body).toMatchObject({ exportReady: true })
+      expect(detail.body).toMatchObject({ exportReady: true, retainedRecordsSummary: null })
     })
 
     it.each([

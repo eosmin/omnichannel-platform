@@ -72,6 +72,8 @@ export interface DsrRequestView {
   exportReady: boolean
   exportExpiresAt: string | null
   exportFailureCode: string | null
+  // What the store kept and under which legal basis, with the counts of what was exported or kept; null when it does not fit
+  retainedRecordsSummary: { legalBasis: string; orders: number; conversations: number } | null
   subjectCustomerIds: string[]
   approvals: { userId: string; at: string }[]
   notes: string | null
@@ -107,6 +109,7 @@ const SELECT = {
   resultKey: true,
   resultExpiresAt: true,
   exportFailureCode: true,
+  retainedRecordsSummary: true,
   subjectCustomerIds: true,
   subjectEmailHash: true,
   notifyToEncrypted: true,
@@ -121,6 +124,16 @@ function readRow(tx: PrismaTransaction, storeId: string, id: string) {
 }
 
 const iso = (date: Date | null): string | null => (date === null ? null : date.toISOString())
+
+const retainedSchema = z.object({
+  legalBasis: z.string(),
+  orders: z.number().int().nonnegative(),
+  conversations: z.number().int().nonnegative()
+})
+function retainedOf(value: unknown): z.infer<typeof retainedSchema> | null {
+  const parsed = retainedSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
 
 function approvalsOf(value: unknown): { userId: string; at: string }[] {
   const parsed = approvalsSchema.safeParse(value)
@@ -147,6 +160,7 @@ function viewOf(row: Row): DsrRequestView {
       row.resultKey !== null && row.resultExpiresAt !== null && row.resultExpiresAt > new Date(),
     exportExpiresAt: iso(row.resultExpiresAt),
     exportFailureCode: row.exportFailureCode,
+    retainedRecordsSummary: retainedOf(row.retainedRecordsSummary),
     subjectCustomerIds: row.subjectCustomerIds,
     approvals: approvalsOf(row.approvals),
     notes: row.notes
