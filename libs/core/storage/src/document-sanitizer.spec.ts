@@ -113,6 +113,47 @@ describe('sanitizeDocument: a PDF', () => {
     expect((await PDFDocument.load(result.body)).getPageCount()).toBe(1)
   })
 
+  it('keeps the bookmarks and the comments of a PDF: an outline item and a text annotation look like an information dictionary but are not one', async () => {
+    const doc = await PDFDocument.create()
+    const page = doc.addPage([100, 100])
+    doc.setAuthor(AUTHOR)
+    const { context } = doc
+    // An annotation with a Subject and a Contents, and an outline whose only item has a Title: no /Type, like an information dictionary
+    const annotation = context.register(
+      context.obj({
+        Subtype: 'Text',
+        Rect: [10, 10, 30, 30],
+        Subject: PDFString.of('customer note subject'),
+        Contents: PDFString.of('customer note body')
+      })
+    )
+    page.node.set(PDFName.of('Annots'), context.obj([annotation]))
+    const outlines = context.nextRef()
+    const item = context.nextRef()
+    context.assign(outlines, context.obj({ Type: 'Outlines', First: item, Last: item, Count: 1 }))
+    context.assign(
+      item,
+      context.obj({
+        Title: PDFString.of('Chapter one'),
+        Parent: outlines,
+        Dest: [page.ref, 'Fit']
+      })
+    )
+    doc.catalog.set(PDFName.of('Outlines'), outlines)
+    const dirty = Buffer.from(await doc.save({ useObjectStreams: false }))
+
+    const result = await sanitizeDocument(dirty, 'application/pdf')
+
+    expect(result.kind).toBe('sanitized')
+    if (result.kind !== 'sanitized') return
+    expect(leaks(result.body, AUTHOR)).toBe(false)
+    const again = await PDFDocument.load(result.body)
+    expect(again.catalog.get(PDFName.of('Outlines'))).toBeDefined()
+    expect(result.body.includes('customer note body')).toBe(true)
+    expect(result.body.includes('Chapter one')).toBe(true)
+    expect(again.getPage(0).node.Annots()?.size()).toBe(1)
+  })
+
   it('leaves a signed PDF as it came: rewriting it would break the signature', async () => {
     const doc = await PDFDocument.create()
     doc.addPage([100, 100])
@@ -202,6 +243,47 @@ describe.each([
     ).toBe(false)
     expect(parts['docProps/thumb.png']).toBeUndefined()
     expect(strFromU8(parts['_rels/.rels'] as Uint8Array)).not.toContain('thumbnail')
+  })
+
+  it('keeps a package whose relationships are hostile, and does it fast: a list of elements that never close', async () => {
+    const hostile = (copies: number): Buffer =>
+      Buffer.from(
+        zipSync({
+          '[Content_Types].xml': strToU8('<Types/>'),
+          '_rels/.rels': strToU8('<Relationship '.repeat(copies)),
+          'docProps/core.xml': strToU8(`<cp:coreProperties>${AUTHOR}</cp:coreProperties>`)
+        })
+      )
+    // Past the cap of the list, and under it (the walk itself must not grow with the square of the size)
+    for (const copies of [40_000, 4_000]) {
+      const started = Date.now()
+      const result = await sanitizeDocument(hostile(copies), contentType)
+      expect(result).toEqual({ kind: 'untouched', why: 'not_cleanable' })
+      expect(Date.now() - started).toBeLessThan(1000)
+    }
+  })
+
+  it('reads a relationship written with a closing tag and one of the container, and keeps the others', async () => {
+    const rels =
+      '<Relationships xmlns="x"><Relationship Id="a" Type="http://x/metadata/thumbnail" Target="docProps/t.png"></Relationship>' +
+      '<Relationship Id="b" Type="http://x/officeDocument" Target="word/document.xml"/></Relationships>'
+    const dirty = Buffer.from(
+      zipSync({
+        '[Content_Types].xml': strToU8('<Types/>'),
+        '_rels/.rels': strToU8(rels),
+        'docProps/t.png': new Uint8Array([1]),
+        'word/document.xml': strToU8('<w:document/>')
+      })
+    )
+
+    const result = await sanitizeDocument(dirty, contentType)
+
+    expect(result.kind).toBe('sanitized')
+    if (result.kind !== 'sanitized') return
+    const kept = strFromU8(unzipSync(new Uint8Array(result.body))['_rels/.rels'] as Uint8Array)
+    expect(kept).toBe(
+      '<Relationships xmlns="x"><Relationship Id="b" Type="http://x/officeDocument" Target="word/document.xml"/></Relationships>'
+    )
   })
 
   it('keeps a package whose part is longer than the size its zip declares: it would be written cut short', async () => {

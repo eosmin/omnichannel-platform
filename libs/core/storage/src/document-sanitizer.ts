@@ -1,7 +1,15 @@
 import { crc32 } from 'node:zlib'
 
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate'
-import { PDFDict, PDFDocument, PDFName, PDFStream } from 'pdf-lib'
+import {
+  PDFArray,
+  type PDFContext,
+  PDFDict,
+  PDFDocument,
+  PDFName,
+  PDFRef,
+  PDFStream
+} from 'pdf-lib'
 
 import { DocumentSanitizing, UploadLimits } from '@platform/core/storage'
 
@@ -19,44 +27,81 @@ export const isSanitizedDocumentType = (contentType: string): boolean =>
   contentType === DocumentSanitizing.XLSX_CONTENT_TYPE
 
 // ---- PDF -------------------------------------------------------------------------------------------------------------------------
-// The document information (author, program, title, dates) and every XMP stream (the catalog's, a page's, an image's) are removed, and the
-// objects are deleted too: pdf-lib keeps every object of the file, also the ones an incremental update left behind that nothing points to,
-// so the objects that look like an information dictionary or like XMP are dropped wherever they are. Nothing else is touched.
-const INFO_KEYS = [
-  'Author',
-  'Creator',
-  'Producer',
-  'CreationDate',
-  'ModDate',
-  'Title',
-  'Subject',
-  'Keywords'
-]
+// What is removed: the document information (the object the trailer names as `Info`), every `/Metadata` (XMP) and `/PieceInfo` entry of every
+// object, and the objects that nothing is reachable from the catalog to (pdf-lib keeps every object of the file, so the information
+// dictionary and the XMP of an earlier revision of an incrementally saved file would otherwise stay as objects nothing points to). Nothing is
+// decided by what an object looks like: an outline item has a `/Title` and an annotation a `/Subject`, and both are the customer's content.
 const METADATA_KEY = PDFName.of('Metadata')
 const PIECE_INFO_KEY = PDFName.of('PieceInfo')
+const ANNOTATIONS_KEY = PDFName.of('Annots')
 
 const dictOf = (object: unknown): PDFDict | undefined =>
   object instanceof PDFDict ? object : object instanceof PDFStream ? object.dict : undefined
 
-// An information dictionary has none of the keys of a page, a font or an image: no `Type`, and one of the keys of the information
+// The tags ("5 0 R") of the objects that can be reached from the catalog by following references
+function reachableFromCatalog(context: PDFContext): Set<string> {
+  const seen = new Set<string>()
+  const pending: unknown[] = [context.trailerInfo.Root]
+  while (pending.length > 0) {
+    const node = pending.pop()
+    if (node instanceof PDFRef) {
+      if (seen.has(node.tag)) continue
+      seen.add(node.tag)
+      pending.push(context.lookup(node))
+    } else if (node instanceof PDFDict) {
+      for (const [, value] of node.entries()) pending.push(value)
+    } else if (node instanceof PDFStream) {
+      pending.push(node.dict)
+    } else if (node instanceof PDFArray) {
+      for (let at = 0; at < node.size(); at += 1) pending.push(node.get(at))
+    }
+  }
+  return seen
+}
+
+// An information dictionary: no `/Type`, and the keys that only the information has (the title and the subject are not enough: a bookmark
+// and a comment have them)
 const looksLikeInfo = (dict: PDFDict): boolean =>
-  !dict.has(PDFName.of('Type')) && INFO_KEYS.some(key => dict.has(PDFName.of(key)))
+  !dict.has(PDFName.of('Type')) &&
+  !dict.has(PDFName.of('Subtype')) &&
+  !dict.has(PDFName.of('Dest')) &&
+  !dict.has(PDFName.of('Parent')) &&
+  !dict.has(PDFName.of('A')) &&
+  !dict.has(PDFName.of('Rect')) &&
+  ['Producer', 'Creator', 'CreationDate', 'ModDate', 'Author'].some(key =>
+    dict.has(PDFName.of(key))
+  )
 
 const isXmp = (dict: PDFDict): boolean =>
   dict.get(PDFName.of('Type')) === PDFName.of('Metadata') &&
   dict.get(PDFName.of('Subtype')) === PDFName.of('XML')
 
-// How many blocks of properties a document holds (the count is the check of the cleaning: zero once it is cleaned)
+// How many blocks of properties a document holds (the check of the cleaning: zero once it is cleaned)
 function propertyBlocks(doc: PDFDocument): number {
-  let found = doc.context.trailerInfo.Info === undefined ? 0 : 1
-  for (const [, object] of doc.context.enumerateIndirectObjects()) {
+  const { context } = doc
+  let found = context.trailerInfo.Info === undefined ? 0 : 1
+  const reachable = reachableFromCatalog(context)
+  for (const [ref, object] of context.enumerateIndirectObjects()) {
     const dict = dictOf(object)
     if (dict === undefined) continue
-    if (looksLikeInfo(dict) || isXmp(dict) || dict.has(METADATA_KEY) || dict.has(PIECE_INFO_KEY)) {
-      found += 1
-    }
+    if (dict.has(METADATA_KEY) || dict.has(PIECE_INFO_KEY)) found += 1
+    else if (!reachable.has(ref.tag) && (looksLikeInfo(dict) || isXmp(dict))) found += 1
   }
   return found
+}
+
+// What the customer sees and can click on, to be the same before and after: the objects that make the document, the pages, the comments
+// of each page and whether it has bookmarks
+function shape(doc: PDFDocument): string {
+  const comments = doc
+    .getPages()
+    .map(page => page.node.lookupMaybe(ANNOTATIONS_KEY, PDFArray)?.size() ?? 0)
+  return JSON.stringify([
+    reachableFromCatalog(doc.context).size,
+    doc.getPageCount(),
+    comments,
+    doc.catalog.has(PDFName.of('Outlines'))
+  ])
 }
 
 async function cleanPdf(input: Buffer): Promise<Buffer | 'already_clean'> {
@@ -70,22 +115,24 @@ async function cleanPdf(input: Buffer): Promise<Buffer | 'already_clean'> {
   // pdf-lib reads a file that is not a PDF as an empty document; a document with no page is not one it can vouch for
   if (doc.getPageCount() === 0) throw new Error('the pdf has no page')
   if (propertyBlocks(doc) === 0) return 'already_clean'
+  const info = context.trailerInfo.Info
+  if (info instanceof PDFRef) context.delete(info)
   delete context.trailerInfo.Info
-  for (const [ref, object] of context.enumerateIndirectObjects()) {
+  for (const [, object] of context.enumerateIndirectObjects()) {
     const dict = dictOf(object)
-    if (dict === undefined) continue
-    if (looksLikeInfo(dict) || isXmp(dict)) {
-      context.delete(ref)
-      continue
-    }
-    dict.delete(METADATA_KEY)
-    dict.delete(PIECE_INFO_KEY)
+    dict?.delete(METADATA_KEY)
+    dict?.delete(PIECE_INFO_KEY)
   }
-  doc.catalog.delete(METADATA_KEY)
+  // The XMP streams and the old information are now objects that nothing points to: they go, with any other object of an earlier revision
+  const reachable = reachableFromCatalog(context)
+  for (const [ref] of context.enumerateIndirectObjects()) {
+    if (!reachable.has(ref.tag)) context.delete(ref)
+  }
+  const expected = shape(doc)
   const saved = await doc.save({ useObjectStreams: false })
-  // Read back: it must load again with the same pages and carry no block of properties
+  // Read back: it must load again, look the same (pages, comments, bookmarks, objects) and carry no block of properties
   const again = await PDFDocument.load(saved, { updateMetadata: false, throwOnInvalidObject: true })
-  if (propertyBlocks(again) !== 0 || again.getPageCount() !== doc.getPageCount()) {
+  if (propertyBlocks(again) !== 0 || shape(again) !== expected) {
     throw new Error('the cleaned pdf is not what it should be')
   }
   return Buffer.from(saved)
@@ -96,7 +143,45 @@ async function cleanPdf(input: Buffer): Promise<Buffer | 'already_clean'> {
 // thumbnail is removed with the relationship that points to it, and the zip is written again with a fixed entry date. The core properties
 // are the part that the package relationships name (Word and Excel use `docProps/core.xml`, other writers use another path). The text, the
 // styles, the sheets and the comments are the same bytes.
-const RELATIONSHIP = /<Relationship\b[^>]*?(?:\/>|>\s*<\/Relationship\s*>)/g
+// The relationships of a package, one element at a time and without a regular expression that backtracks: the file is the customer's, and
+// a regex with a lazy `[^>]*?` over a file of `<Relationship ` with no `>` costs time that grows with the square of its size. Each step
+// here moves forward to a `>` it finds once, and a file with an element that never closes is refused.
+function mapRelationships(text: string, onTag: (tag: string) => string): string {
+  const START = '<Relationship'
+  const CLOSING = '</Relationship'
+  let out = ''
+  let at = 0
+  for (;;) {
+    const start = text.indexOf(START, at)
+    if (start < 0) break
+    const next = text.charAt(start + START.length)
+    // `<Relationships ...>` (the container) is not a relationship
+    if (
+      next !== ' ' &&
+      next !== '/' &&
+      next !== '>' &&
+      next !== '\t' &&
+      next !== '\n' &&
+      next !== '\r'
+    ) {
+      out += text.slice(at, start + START.length)
+      at = start + START.length
+      continue
+    }
+    const open = text.indexOf('>', start)
+    if (open < 0) throw new Error('a relationship never closes')
+    let end = open + 1
+    if (text.charAt(open - 1) !== '/') {
+      const closing = text.indexOf(CLOSING, end)
+      const closed = closing < 0 ? -1 : text.indexOf('>', closing)
+      if (closed < 0) throw new Error('a relationship never closes')
+      end = closed + 1
+    }
+    out += text.slice(at, start) + onTag(text.slice(start, end))
+    at = end
+  }
+  return out + text.slice(at)
+}
 
 function attribute(tag: string, name: string): string | undefined {
   const match = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(tag)
@@ -171,10 +256,14 @@ function cleanOoxml(input: Buffer): Buffer | 'already_clean' {
   if (files['[Content_Types].xml'] === undefined) throw new Error('not an office package')
 
   const rels = files[DocumentSanitizing.RELATIONSHIPS_PATH]
+  // A real list of relationships is a few KB; a file past the cap is not worth the time of the worker, and the document is kept as it came
+  if ((rels?.length ?? 0) > DocumentSanitizing.MAX_RELATIONSHIPS_BYTES) {
+    throw new Error('the relationships are too big')
+  }
   const relsText = rels === undefined ? '' : strFromU8(rels)
   const thumbnails = new Set<string>()
   const properties = new Set<string>([DocumentSanitizing.CORE_PROPERTIES_PATH])
-  const keptRels = relsText.replace(RELATIONSHIP, tag => {
+  const keptRels = mapRelationships(relsText, tag => {
     const type = attribute(tag, 'Type') ?? ''
     const target = packagePath(attribute(tag, 'Target') ?? '')
     if (type.endsWith(DocumentSanitizing.THUMBNAIL_RELATIONSHIP_SUFFIX)) {
@@ -213,7 +302,7 @@ function cleanOoxml(input: Buffer): Buffer | 'already_clean' {
   }
   if (!changed) return 'already_clean'
   const zipped = Buffer.from(zipSync(out))
-  // Read back: it opens again and has every part but the thumbnail, each with the size it had
+  // Read back: it opens again and has every part but the thumbnail
   const again = unzipSync(new Uint8Array(zipped))
   for (const path of Object.keys(out)) {
     if (again[path] === undefined) throw new Error('the cleaned package lost a part')

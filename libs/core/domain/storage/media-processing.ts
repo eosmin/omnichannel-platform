@@ -209,6 +209,8 @@ export const DocumentSanitizing = {
   // The sum of what a zip may inflate to: a bigger one is not opened (a zip bomb); the document stays as it came
   MAX_UNCOMPRESSED_BYTES: 64 * 1024 * 1024,
   MAX_ZIP_ENTRIES: 5000,
+  // The list of relationships of a package (a real one is under 10 KB); past this the document is kept as it came
+  MAX_RELATIONSHIPS_BYTES: 64 * 1024,
   // The date the zip entries get, so that the cleaning does not write the day it ran into the file
   ZIP_ENTRY_YEAR: 1980,
   ZIP_LEVEL: 6,
