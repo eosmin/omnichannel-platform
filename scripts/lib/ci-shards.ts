@@ -76,8 +76,17 @@ function legsProblem(label: string, legs: string[] | null): string | null {
 
 function needsOf(workflow: string, job: string): string[] {
   const block = jobBlock(workflow, job)
-  const match = block === null ? null : /^\s+needs:\s*(.+)$/m.exec(block)
-  return match === null ? [] : splitList((match[1] ?? '').replace(/^\[|\]$/g, ''))
+  if (block === null) return []
+  const inline = /^\s+needs:[ \t]*(\S.*)$/m.exec(block)
+  if (inline !== null) return splitList((inline[1] ?? '').replace(/^\[|\]$/g, ''))
+  // The block form: `needs:` and then `- job` lines
+  const listed = /^\s+needs:\s*\n((?:\s+-\s*\S+\n?)+)/m.exec(block)
+  return listed === null
+    ? []
+    : (listed[1] ?? '')
+        .split('\n')
+        .map(line => line.replace(/^\s*-\s*/, '').trim())
+        .filter(item => item !== '')
 }
 
 export function findShardProblems(sources: ShardSources): string[] {
@@ -114,6 +123,19 @@ export function findShardProblems(sources: ShardSources): string[] {
       problems.push(
         `ci.yml ${SECURITY_AGGREGATOR}: must wait for ${job} (needs: ${waited.join(', ') || 'nothing'})`
       )
+    }
+  }
+
+  const aggregator = jobBlock(sources.workflow, SECURITY_AGGREGATOR) ?? ''
+  for (const job of SECURITY_COMPANION_JOBS) {
+    if (!aggregator.includes(`needs.${job}.result`)) {
+      problems.push(
+        `ci.yml ${SECURITY_AGGREGATOR}: must read needs.${job}.result, or a red job reads green`
+      )
+    }
+    const block = jobBlock(sources.workflow, job) ?? ''
+    for (const command of ['pnpm test:latency', 'pnpm test:rls-plan']) {
+      if (!block.includes(command)) problems.push(`ci.yml ${job}: must run \`${command}\``)
     }
   }
 

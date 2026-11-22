@@ -23,9 +23,15 @@ jobs:
     runs-on: ubuntu-latest
   security-isolated-specs:
     runs-on: ubuntu-latest
+    steps:
+      - run: pnpm test:latency
+      - run: pnpm test:rls-plan
   security-tests:
     needs: ${overrides.needs ?? '[security-shards, security-isolated-specs]'}
     if: always()
+    steps:
+      - env:
+          ISOLATED: \${{ needs.security-isolated-specs.result }}
   rls-enforced-security:
     strategy:
       matrix:
@@ -145,6 +151,28 @@ describe('findShardProblems', () => {
       sources({ workflow: workflow({ needs: '[security-shards]' }) })
     )
     expect(problems.join('\n')).toMatch(/security-tests.*security-isolated-specs/)
+  })
+
+  it('reads the block form of needs', () => {
+    expect(
+      findShardProblems(
+        sources({
+          workflow: workflow({
+            needs: '\n      - security-shards\n      - security-isolated-specs'
+          })
+        })
+      )
+    ).toEqual([])
+  })
+
+  it('fails when the aggregator does not read the result of the isolated specs', () => {
+    const w = workflow().replace('needs.security-isolated-specs.result', 'x')
+    expect(findShardProblems(sources({ workflow: w })).join('\n')).toMatch(/must read needs/)
+  })
+
+  it('fails when the isolated job lost a command', () => {
+    const w = workflow().replace('pnpm test:latency', 'true')
+    expect(findShardProblems(sources({ workflow: w })).join('\n')).toMatch(/must run/)
   })
 
   it('fails when the e2e slices and total disagree', () => {

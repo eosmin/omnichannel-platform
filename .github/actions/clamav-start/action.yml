@@ -26,7 +26,8 @@ runs:
               echo started > "$status"
               exit 0
             fi
-            sleep $((attempt * 10))
+            # No pause after the last try: the outcome is written at once
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 10)); fi
           done
           echo failed > "$status"
         ) > "$log" 2>&1 &
