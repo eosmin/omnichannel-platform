@@ -1,15 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { DatabaseRoles } from '@platform/core/database-testing'
-
 import { queuePrefixFor } from './queue-prefix'
 
 describe('queuePrefixFor', () => {
-  const app = `postgresql://${DatabaseRoles.APP}:secret@localhost:6432/platform_dev`
+  const app = 'postgresql://platform_app:secret@localhost:6432/platform_dev'
 
   it('is the same for the api and the worker, which differ by role, host and port', () => {
-    const worker = `postgresql://${DatabaseRoles.WORKER}:other@db.internal:5432/platform_dev`
+    const worker = 'postgresql://platform_worker:other@db.internal:5432/platform_dev'
     expect(queuePrefixFor(app)).toBe(queuePrefixFor(worker))
   })
 
@@ -18,13 +16,13 @@ describe('queuePrefixFor', () => {
     const url = /^DATABASE_URL=(.+)$/m.exec(example)?.[1]
     expect(url).toBeDefined()
     // The worker overrides the role of the api's URL (see .env.example), never the database
-    const worker = (url ?? '').replace(DatabaseRoles.APP, DatabaseRoles.WORKER)
+    const worker = (url ?? '').replace('platform_app', 'platform_worker')
     expect(queuePrefixFor(worker)).toBe(queuePrefixFor(url ?? ''))
   })
 
   it('differs for another database', () => {
     expect(queuePrefixFor(app)).not.toBe(
-      queuePrefixFor(`postgresql://${DatabaseRoles.APP}:secret@localhost:6432/platform_qa`)
+      queuePrefixFor('postgresql://platform_app:secret@localhost:6432/platform_qa')
     )
   })
 

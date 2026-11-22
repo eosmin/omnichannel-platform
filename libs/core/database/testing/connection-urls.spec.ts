@@ -1,3 +1,6 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import {
   connectionUrls,
   DatabaseRoles,
@@ -54,14 +57,27 @@ describe('connectionUrls', () => {
   })
 
   // The suites of security name the roles through this constant: if a value drifted, they would all keep agreeing with
-  // each other and stop proving anything about the real roles. The names are the ones the SQL migrations create.
-  it('names the roles exactly as the migrations create them', () => {
+  // each other and stop proving anything about the real roles. So the names are pinned, and the three roles the SQL
+  // migrations create are looked up in them. READONLY is not created by any migration (a monitoring role of a deployment).
+  it('names the roles exactly as the suites expect', () => {
     expect(DatabaseRoles).toEqual({
       APP: 'platform_app',
       WORKER: 'platform_worker',
       REPLICA: 'platform_replica_ro',
       READONLY: 'platform_readonly'
     })
+  })
+
+  it('names the roles that the SQL migrations create', () => {
+    const root = join(__dirname, '../prisma/migrations')
+    const sql = readdirSync(root)
+      .map(dir => join(root, dir, 'migration.sql'))
+      .filter(file => existsSync(file))
+      .map(file => readFileSync(file, 'utf8'))
+      .join('\n')
+    for (const role of [DatabaseRoles.APP, DatabaseRoles.WORKER, DatabaseRoles.REPLICA]) {
+      expect(sql).toContain(`CREATE ROLE ${role}`)
+    }
   })
 
   it('connects each service with its own role', () => {
