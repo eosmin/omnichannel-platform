@@ -356,6 +356,13 @@ export const SealedValueKind = {
 } as const
 export type SealedValueKind = (typeof SealedValueKind)[keyof typeof SealedValueKind]
 
+// How often the same sealed value that does not open is logged (Step 7.3-S11b-2): a document that cannot be opened is tried again by every
+// retry of the submit, and a line per try would bury the rest. One line per value, cause and window; the map that remembers them is bounded.
+export const SealedOpenLog = {
+  WINDOW_MS: 15 * 60 * 1000,
+  MAX_REMEMBERED: 1000
+} as const
+
 // The re-seal of the fiscal values after a rotation of CREDENTIALS_ENCRYPTION_KEY (Step 7.3-S11b). The names are the database's: the
 // function that swaps the sealed columns of a decided document and the transaction-local setting that only that function turns on
 export const FiscalReseal = {
@@ -365,7 +372,11 @@ export const FiscalReseal = {
   PAGE_SIZE: 100,
   // The most values of one kind that one run of one organization seals again (or fails on): the rows already current are only skipped and
   // do not count, so the next run reaches the rest
-  MAX_VALUES_PER_KIND: 5000
+  MAX_VALUES_PER_KIND: 5000,
+  // The rows of one run whose failed mask is named in the log (the rest are only counted)
+  MAX_MASK_FAILURES_LOGGED: 20,
+  // The most rows of one run that the step of the masks reads (the ones nobody opens are read again each night)
+  MAX_MASK_ROWS_READ: 50_000
 } as const
 
 // What the re-seal did with one value, and the failure code of an error that is not a cipher failure (a write the database refused)

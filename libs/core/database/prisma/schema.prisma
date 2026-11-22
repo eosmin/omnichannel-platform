@@ -1603,14 +1603,18 @@ model UserNotificationSettings {
 }
 
 model PushSubscription {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  userAgent String?  @map("user_agent")
-  createdAt DateTime @default(now()) @map("created_at")
-  lastUsed  DateTime @default(now()) @map("last_used")
+  id                    String   @id @default(uuid())
+  userId                String   @map("user_id")
+  endpoint              String   @unique
+  p256dh                String
+  auth                  String
+  userAgent             String?  @map("user_agent")
+  createdAt             DateTime @default(now()) @map("created_at")
+  lastUsed              DateTime @default(now()) @map("last_used")
+  // Pushes in a row that the push service refused for good; one delivered push resets it (PushLimits.MAX_REFUSALS)
+  refusedCount          Int      @default(0) @map("refused_count")
+  // The last notification that counted in it, so the retries of one job count once
+  refusedNotificationId String?  @map("refused_notification_id")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -3275,6 +3279,9 @@ model FiscalDocument {
   issuerSnapshot        Json      @map("issuer_snapshot") // the issuer at issue time, without credentials
   linesSnapshot         Json      @map("lines_snapshot") // the lines with the tax snapshot of the order (Step 4B.3b)
   receiverEncrypted     Bytes     @map("receiver_encrypted") // name, tax id and address of the customer: customer data, encrypted at rest
+  receiverNameMasked    String?   @map("receiver_name_masked") // the name as the lists show it (first letter of each word), in the clear by design; null = not calculated or no name
+  receiverTaxIdMasked   String?   @map("receiver_tax_id_masked") // the tax id as the lists show it (last characters only)
+  receiverMaskedAt      DateTime? @map("receiver_masked_at") // when the two masks were calculated; null = not yet (a row with no mask is opened as before)
   builtPayloadEncrypted Bytes?    @map("built_payload_encrypted") // what the provider built: the legal evidence, fixed once accepted; it holds the receiver's data, so it is sealed like the receiver
   response              Json? // what the authority answered
   currency              String    @default("USD")

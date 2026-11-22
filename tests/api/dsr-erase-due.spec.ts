@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 import type { Queue } from 'bullmq'
@@ -196,6 +196,28 @@ describe('the sweep of the data erasures that are due', () => {
       where: { id: bystanderOrder.id },
       data: { customerId: mine.customerIds[0] ?? '' }
     })
+    // A fiscal document of that order, with its masked receiver: the erasure keeps it whole and the summary counts it
+    const document = await owner.fiscalDocument.create({
+      data: {
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        orderId: bystanderOrder.id,
+        sequenceNumber: 1_000_000 + Math.floor(Math.random() * 1_000_000_000),
+        documentType: 'pending',
+        status: 'accepted',
+        providerId: 'simulator',
+        environment: 'sandbox',
+        issuerSnapshot: {},
+        linesSnapshot: { lines: [] },
+        receiverEncrypted: new Uint8Array(Buffer.concat([Buffer.from([1]), randomBytes(40)])),
+        receiverNameMasked: 'A***********',
+        receiverTaxIdMasked: '********1011',
+        receiverMaskedAt: new Date(),
+        totalCents: 1000,
+        taxCents: 0
+      },
+      select: { id: true }
+    })
 
     const report = await sweeper.run()
 
@@ -219,7 +241,16 @@ describe('the sweep of the data erasures that are due', () => {
     expect(row.retainedRecordsSummary).toEqual({
       legalBasis: 'legal_obligation',
       orders: 1,
-      conversations: 0
+      conversations: 0,
+      fiscalDocuments: 1
+    })
+    // The decided document is kept as it was, masks included: the legal obligation, written in the summary
+    expect(
+      await owner.fiscalDocument.findUniqueOrThrow({ where: { id: document.id } })
+    ).toMatchObject({
+      receiverNameMasked: 'A***********',
+      receiverTaxIdMasked: '********1011',
+      status: 'accepted'
     })
     // One mail, to the address that asked, once, for the retained order
     const toThem = mails.filter(mail => [mail.data.to].flat().includes(email))

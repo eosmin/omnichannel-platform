@@ -225,9 +225,9 @@ describe('The fiscal data of a customer (Step 4B.7b-3)', () => {
       expect(view.status).toBe(OK)
       const receiver = (view.body as { data: { receiver: Record<string, unknown> } }).data.receiver
       // The fiscal name wins over the customer's contact name; the name and the tax id travel masked
-      expect(receiver['name']).toBe('Z* F***** N***')
-      expect(String(receiver['taxIdMasked'])).toContain(TAX_ID.slice(-4))
-      expect(String(receiver['taxIdMasked'])).not.toContain(TAX_ID)
+      expect(receiver['name']).toBe('Z***********')
+      // This tax id has seven digits: the mask shows nothing of an id with fewer than nine (Step 7.3-S11b-2)
+      expect(receiver['taxIdMasked']).toBeNull()
 
       const before = Buffer.from(document.receiverEncrypted)
       await put(customerId, { name: 'Another Name', taxId: 'ZQ-OTHER-0000' })

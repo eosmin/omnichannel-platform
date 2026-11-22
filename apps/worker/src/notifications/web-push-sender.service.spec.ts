@@ -4,7 +4,7 @@ import { WebPushError } from 'web-push'
 
 import { JobContextGoneError, type JobContext, type PrismaService } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
-import { NotificationTypes, notificationMessageKey } from '@platform/core/notifications'
+import { NotificationTypes, notificationMessageKey, PushLimits } from '@platform/core/notifications'
 
 import { WebPushSender } from './web-push-sender.service'
 import type { WebPushGateway } from './web-push.gateway'
@@ -81,6 +81,7 @@ describe('WebPushSender', () => {
     countMembers.mockResolvedValue(1)
     send.mockResolvedValue(undefined)
     updateSubscription.mockResolvedValue({ count: 1 })
+    deleteSubscriptions.mockResolvedValue({ count: 0 })
   })
 
   describe('says why nothing was pushed', () => {
@@ -221,7 +222,96 @@ describe('WebPushSender', () => {
   it.each([400, 401, 403, 413])('does not retry what the push service answers %i', async status => {
     send.mockRejectedValue(pushError(status))
     await expect(sender().send(USER, NOTIFICATION)).resolves.toBeUndefined()
+  })
+
+  it('counts a 400, which names the subscription itself, and drops it only at the limit', async () => {
+    send.mockRejectedValue(pushError(400))
+    await sender().send(USER, NOTIFICATION)
+    expect(updateSubscription).toHaveBeenCalledWith({
+      where: {
+        id: 's1',
+        userId: USER,
+        OR: [{ refusedNotificationId: null }, { refusedNotificationId: { not: NOTIFICATION } }]
+      },
+      data: { refusedCount: { increment: 1 }, refusedNotificationId: NOTIFICATION }
+    })
+    expect(deleteSubscriptions).toHaveBeenCalledWith({
+      where: { id: 's1', userId: USER, refusedCount: { gte: PushLimits.MAX_REFUSALS } }
+    })
+    expect(logger.warn).not.toHaveBeenCalled()
+  })
+
+  // A rotated or wrong VAPID key, a payload that is too big, a library or certificate error: the fault is the server's, and counting it
+  // would empty every list of browsers after five pushes
+  it.each([401, 403, 413])('does not count a %i against the browser', async status => {
+    send.mockRejectedValue(pushError(status))
+    await sender().send(USER, NOTIFICATION)
+    expect(updateSubscription).not.toHaveBeenCalled()
     expect(deleteSubscriptions).not.toHaveBeenCalled()
+  })
+
+  it('does not count an error of the library against the browser', async () => {
+    send.mockRejectedValue(new Error('The subscription p256dh is not a valid key'))
+    await sender().send(USER, NOTIFICATION)
+    expect(updateSubscription).not.toHaveBeenCalled()
+  })
+
+  it('counts a notification once for a browser even when the job is retried for another one', async () => {
+    findSubscriptions.mockResolvedValue([subscription('s1'), subscription('s2')])
+    send.mockImplementation(({ endpoint }) =>
+      Promise.reject(endpoint.endsWith('/s1') ? pushError(400) : pushError(503))
+    )
+    await expect(sender().send(USER, NOTIFICATION)).rejects.toThrow('could not be reached')
+    const counting = updateSubscription.mock.calls as [
+      { where: { id: string; OR: unknown[] }; data: { refusedNotificationId: string } }
+    ][]
+    // The filter is what makes the second attempt a no-op: it only matches a row that this notification has not counted yet
+    expect(counting).toHaveLength(1)
+    expect(counting[0]?.[0].where.id).toBe('s1')
+    expect(counting[0]?.[0].where.OR).toEqual([
+      { refusedNotificationId: null },
+      { refusedNotificationId: { not: NOTIFICATION } }
+    ])
+    expect(counting[0]?.[0].data.refusedNotificationId).toBe(NOTIFICATION)
+  })
+
+  it('says why a browser was dropped when its refusals reach the limit', async () => {
+    send.mockRejectedValue(pushError(400))
+    deleteSubscriptions.mockResolvedValue({ count: 1 })
+    await sender().send(USER, NOTIFICATION)
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'refused_too_often', subscriptionId: 's1' }),
+      expect.any(String)
+    )
+  })
+
+  it('does not retry the job when a refusal could not be counted', async () => {
+    send.mockRejectedValue(pushError(400))
+    updateSubscription.mockRejectedValue(new Error('db down'))
+    await expect(sender().send(USER, NOTIFICATION)).resolves.toBeUndefined()
+    expect(deleteSubscriptions).not.toHaveBeenCalled()
+  })
+
+  it('does not count a browser that is gone (it is dropped at once) or a network failure (it is retried)', async () => {
+    send.mockRejectedValueOnce(pushError(410))
+    await sender().send(USER, NOTIFICATION)
+    send.mockRejectedValueOnce(pushError(503))
+    await expect(sender().send(USER, NOTIFICATION)).rejects.toThrow('could not be reached')
+    expect(updateSubscription).not.toHaveBeenCalled()
+  })
+
+  it('starts the count again when a push is delivered', async () => {
+    await sender().send(USER, NOTIFICATION)
+    const call = updateSubscription.mock.calls[0] as [
+      {
+        where: unknown
+        data: { lastUsed: unknown; refusedCount: number; refusedNotificationId: null }
+      }
+    ]
+    expect(call[0].where).toEqual({ id: 's1', userId: USER })
+    expect(call[0].data.lastUsed).toBeInstanceOf(Date)
+    expect(call[0].data.refusedCount).toBe(0)
+    expect(call[0].data.refusedNotificationId).toBeNull()
   })
 
   it('still reaches the other browsers when one fails', async () => {

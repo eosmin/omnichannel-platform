@@ -25,7 +25,6 @@ import {
   paymentOfSnapshot,
   paymentsOf,
   maskedCustomerFiscalData,
-  maskPersonName,
   maskTaxId,
   originalStateOf,
   receiverEditable,
@@ -225,18 +224,6 @@ describe('the receiver', () => {
     expect(maskTaxId('123')).toBe('**3')
     expect(maskTaxId('12')).toBe('**')
     expect(maskTaxId(null)).toBeNull()
-  })
-
-  it('masks a person name: the first letter of each word only, so two receivers can still be told apart', () => {
-    expect(maskPersonName('Maria Receptora Completa')).toBe('M**** R******** C*******')
-    expect(maskPersonName('  Ana   Paz ')).toBe('A** P**')
-    expect(maskPersonName('X')).toBe('X')
-    expect(maskPersonName('')).toBeNull()
-    expect(maskPersonName(' \t\n ')).toBeNull()
-    expect(maskPersonName('Ana\tPaz\nRuiz')).toBe('A** P** R***')
-    // An accent and a character of another plane are one character each
-    expect(maskPersonName('Ñandú 𠮷野')).toBe('Ñ**** 𠮷*')
-    expect(maskPersonName(null)).toBeNull()
   })
 })
 

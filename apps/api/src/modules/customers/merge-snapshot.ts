@@ -38,6 +38,9 @@ export const mergeSnapshotSchema = z.object({
   // Consent history is proof about the person: it follows them, so the cleanup that deletes the
   // absorbed row cannot take it along (ConsentRecord goes with its customer)
   consentIds: idList.default([]),
+  // The sealed fiscal data of the absorbed customer, when it moved to a survivor that had none (one row per customer: when both had one, the
+  // survivor's stays and the absorbed one stays with the absorbed, so nothing is in this list and the absorbed one goes with the absorbed customer when the cleanup deletes it)
+  fiscalDataIds: idList.default([]),
   fieldChoices: z.record(z.string(), z.string())
 })
 
