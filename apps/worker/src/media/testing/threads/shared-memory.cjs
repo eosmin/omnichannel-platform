@@ -1,4 +1,5 @@
 const { parentPort } = require('node:worker_threads')
+const { Buffer } = require('node:buffer')
 // A well-formed answer over memory the thread keeps: it could change the bytes after they were checked
 const memory = new SharedArrayBuffer(64)
 const body = new Uint8Array(memory)
