@@ -11,7 +11,7 @@
 
 ### 1.1 Queue design
 
-Nine queues, separated by priority and failure characteristics. The ninth, `customer-profiles`
+Ten queues, separated by priority and failure characteristics. The tenth, `auth-email` (Step 7.3-S9), carries the magic link (its lookup job and the email it sends) with 10 at a time and 3 attempts, so a burst of digests or invitations never delays a login. The ninth, `customer-profiles`
 (Step 2.8, PR 1c-2), reads the name and photo of a customer from the channel with 5 at a time,
 3 attempts and exp 60s: a provider that answers slowly fills it and delays no message.
 A slow analytics job must never delay a password reset email, and an autonomous chatbot

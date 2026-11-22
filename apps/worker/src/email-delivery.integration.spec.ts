@@ -33,6 +33,15 @@ describe('SEND_EMAIL', () => {
     jest.restoreAllMocks()
   })
 
+  it('delivers the email of a magic link from the queue of its own', async () => {
+    await test.queue(QueueNames.AUTH_EMAIL).add(JobNames.SEND_EMAIL, magicLinkJob(to))
+
+    const [message] = await waitForMessages(to)
+
+    expect(message?.Subject).toBe('Your sign-in link')
+    expect(message?.HTML).toContain('https://app.example.com/auth/magic?token=abc123')
+  })
+
   it('delivers a job enqueued from outside the worker to Mailpit', async () => {
     await test.queue(QueueNames.EMAIL).add(JobNames.SEND_EMAIL, magicLinkJob(to))
 

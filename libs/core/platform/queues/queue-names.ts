@@ -1,6 +1,8 @@
-// Nine queues plus the dead-letter queue.
+// Ten queues plus the dead-letter queue.
 export const QueueNames = {
   EMAIL: 'email',
+  // The magic link: its lookup job and the email it sends. Own queue so that a burst of digests or invitations never delays a login
+  AUTH_EMAIL: 'auth-email',
   WEBHOOKS: 'webhooks',
   NOTIFICATIONS: 'notifications',
   ANALYTICS: 'analytics',
@@ -11,6 +13,13 @@ export const QueueNames = {
   // The name and photo of customers, read from the channel: a slow provider must not delay messages
   CUSTOMER_PROFILES: 'customer-profiles',
   DEAD_LETTER: 'dead-letter'
+} as const
+
+// How the worker reads the auth-email queue (kept apart from the general email queue, which keeps its own 10 at a time and 100 a second)
+export const AuthEmailQueue = {
+  CONCURRENCY: 10,
+  LIMIT_MAX: 100,
+  LIMIT_DURATION_MS: 1000
 } as const
 
 export type QueueName = (typeof QueueNames)[keyof typeof QueueNames]

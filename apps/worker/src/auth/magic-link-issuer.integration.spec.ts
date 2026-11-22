@@ -49,7 +49,7 @@ describe('MagicLinkIssuer as the worker role', () => {
           useValue: new PrismaService({ databaseUrl: connectionUrls().worker })
         },
         {
-          provide: getQueueToken(QueueNames.EMAIL),
+          provide: getQueueToken(QueueNames.AUTH_EMAIL),
           useValue: {
             add: (name: string, data: Record<string, unknown>, options: unknown) => {
               added.push({ name, data, options })

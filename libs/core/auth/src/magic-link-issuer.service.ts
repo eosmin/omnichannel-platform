@@ -36,7 +36,7 @@ export class MagicLinkIssuer {
     // Typed by what is used, with the class as the token: a class type in a constructor makes
     // TypeScript emit a guard for the decorator metadata that no test can take both ways
     @Inject(PrismaService) private readonly prisma: IssuerDatabase,
-    @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
+    @InjectQueue(QueueNames.AUTH_EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
     @Inject(DIGEST_LINKS) private readonly links: DigestLinks,
     @Inject(PinoLogger) private readonly logger: IssuerLogger
   ) {

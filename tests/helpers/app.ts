@@ -27,13 +27,17 @@ export async function createTestApp(
   // For the suite that needs a provider of its own, like a shorter interval
   override: (builder: TestingModuleBuilder) => TestingModuleBuilder = builder => builder
 ): Promise<INestApplication> {
+  const capturedEmails = new CapturedEmails()
   const builder = Test.createTestingModule({
     imports: [AppModule],
     controllers: [TenantProbeController, ...extraControllers]
   })
     // The emails of a suite are read, not sent: see CapturedEmails
     .overrideProvider(getQueueToken(QueueNames.EMAIL))
-    .useValue(new CapturedEmails())
+    .useValue(capturedEmails)
+    // The magic link has its own queue; the suites read both through the same capture
+    .overrideProvider(getQueueToken(QueueNames.AUTH_EMAIL))
+    .useValue(capturedEmails)
     // A reply is queued for the worker, and no suite wants one that would send it
     .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
     .useValue(new CapturedQueue())

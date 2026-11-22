@@ -28,6 +28,7 @@ export const QueueJobOptions: Record<QueueName, DefaultJobOptions> = {
     attempts: CustomerProfileFetch.ATTEMPTS,
     backoff: { type: 'exponential', delay: CustomerProfileFetch.BACKOFF_MS }
   },
+  [QueueNames.AUTH_EMAIL]: { ...base, attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
   [QueueNames.EMAIL]: { ...base, attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
   [QueueNames.WEBHOOKS]: { ...base, attempts: 5, backoff: { type: 'exponential', delay: 1000 } },
   [QueueNames.NOTIFICATIONS]: { ...base, attempts: 5, backoff: { type: 'fixed', delay: 5000 } },

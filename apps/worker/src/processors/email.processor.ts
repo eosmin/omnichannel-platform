@@ -37,6 +37,8 @@ export class EmailProcessor extends BaseProcessor<
     job: Job<SendEmailJob | RequestMagicLinkJob | DeliverInvitationEmailJob>
   ): Promise<void> {
     switch (job.name) {
+      // Rollout only (Step 7.3-S9): the magic link has its own queue now, but a job that an api of the previous release queued here is still
+      // served. Remove this case one release after the worker and the api run the new code (plan, Step 7.3-S9 note)
       case JobNames.REQUEST_MAGIC_LINK: {
         const { email, correlationId } = job.data as RequestMagicLinkJob
         await this.magicLinks.issue(email, correlationId)
