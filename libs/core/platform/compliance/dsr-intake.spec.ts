@@ -37,14 +37,15 @@ describe('sealDsrIntake and openDsrIntake', () => {
   it('opens what it sealed, with the address in the form the customers are compared in (trimmed, lower case)', () => {
     // The envelope is never shown: the search of the customers and the hash of the duplicate check read this form, and the address that
     // a reviewer sees is the one of the customer row
-    expect(openDsrIntake(sealDsrIntake(intake, KEY), KEY)).toEqual({
+    expect(openDsrIntake(sealDsrIntake(intake, KEY), KEY, undefined)).toEqual({
       ...intake,
       email: 'ana.perez@example.com'
     })
   })
 
   it('opens the same identity whatever the case or the spaces the person typed', () => {
-    const typed = (email: string) => openDsrIntake(sealDsrIntake({ ...intake, email }, KEY), KEY)
+    const typed = (email: string) =>
+      openDsrIntake(sealDsrIntake({ ...intake, email }, KEY), KEY, undefined)
     expect(typed(' ANA.PEREZ@EXAMPLE.COM ')).toEqual(typed('ana.perez@example.com'))
   })
 
@@ -59,16 +60,16 @@ describe('sealDsrIntake and openDsrIntake', () => {
 
   it('refuses a payload sealed with another key, a tampered one and a malformed one', () => {
     const sealed = sealDsrIntake(intake, KEY)
-    expect(openDsrIntake(sealed, 'b'.repeat(64))).toBeNull()
+    expect(openDsrIntake(sealed, 'b'.repeat(64), undefined)).toBeNull()
     const bytes = Buffer.from(sealed, 'base64')
     bytes[bytes.length - 20] = (bytes[bytes.length - 20] ?? 0) ^ 1
-    expect(openDsrIntake(bytes.toString('base64'), KEY)).toBeNull()
-    expect(openDsrIntake('not a payload', KEY)).toBeNull()
+    expect(openDsrIntake(bytes.toString('base64'), KEY, undefined)).toBeNull()
+    expect(openDsrIntake('not a payload', KEY, undefined)).toBeNull()
   })
 
   it('refuses a payload that opens but does not fit (a language the store does not speak)', () => {
     const odd = sealDsrIntake({ ...intake, locale: 'xx' as DsrIntake['locale'] }, KEY)
-    expect(openDsrIntake(odd, KEY)).toBeNull()
+    expect(openDsrIntake(odd, KEY, undefined)).toBeNull()
   })
 })
 
@@ -93,10 +94,10 @@ describe('the intake and the notify address with a previous key', () => {
   it('opens a job and an address sealed with the previous key, and only while it is held', () => {
     const job = sealDsrIntake(intake, OLD)
     expect(openDsrIntake(job, NEW, OLD)).toMatchObject({ type: 'erasure' })
-    expect(openDsrIntake(job, NEW)).toBeNull()
+    expect(openDsrIntake(job, NEW, undefined)).toBeNull()
     const column = encrypt('ana@example.com', parseEncryptionKey(OLD))
     expect(openDsrNotifyAddress(column, NEW, OLD)).toBe('ana@example.com')
-    expect(openDsrNotifyAddress(column, NEW)).toBeNull()
+    expect(openDsrNotifyAddress(column, NEW, undefined)).toBeNull()
   })
 
   it('opens what the current key sealed without trying the previous one, and a third key opens nothing', () => {

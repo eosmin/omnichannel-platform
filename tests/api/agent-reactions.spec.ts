@@ -5,7 +5,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelContextFactory } from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
-import type { CredentialCipher } from '@platform/core/crypto'
+import { type CredentialCipher, SealedWith } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
@@ -83,7 +83,7 @@ describe('An agent reacting to a message', () => {
     const events = app.get(DomainEvents, { strict: false })
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
     const cipher = {
-      openRotating: () => ({ credentials: {}, sealedWith: 'current' })
+      openRotating: () => ({ credentials: {}, sealedWith: SealedWith.CURRENT })
     } as unknown as CredentialCipher // test double of the cipher
     const reactions = new ReactionSender(
       prisma,

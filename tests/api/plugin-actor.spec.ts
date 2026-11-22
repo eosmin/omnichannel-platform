@@ -7,7 +7,7 @@ import supertest from 'supertest'
 import { ChannelContextFactory } from '@platform/channels/connections'
 import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import type { CredentialCipher } from '@platform/core/crypto'
+import { type CredentialCipher, SealedWith } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
@@ -153,7 +153,7 @@ describe('A plugin as the actor of a change of a message', () => {
     const events = app.get(DomainEvents, { strict: false })
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
     const cipher = {
-      openRotating: () => ({ credentials: {}, sealedWith: 'current' })
+      openRotating: () => ({ credentials: {}, sealedWith: SealedWith.CURRENT })
     } as unknown as CredentialCipher // test double of the cipher
     const status = new MessageChangeStatusWriter(prisma, events, new JobContext(prisma))
     sender = new MessageChangeSender(

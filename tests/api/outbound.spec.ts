@@ -9,7 +9,7 @@ import { MetaGraphClient } from '@platform/channels/meta'
 import { WhatsAppLimits } from '@platform/channels/whatsapp'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
-import type { CredentialCipher } from '@platform/core/crypto'
+import { type CredentialCipher, SealedWith } from '@platform/core/crypto'
 import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
@@ -219,7 +219,7 @@ describe('Replies on their way to a channel', () => {
     writer = new MessageStatusWriter(prisma, events, new JobContext(prisma))
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
     const cipher = {
-      openRotating: () => ({ credentials: {}, sealedWith: 'current' })
+      openRotating: () => ({ credentials: {}, sealedWith: SealedWith.CURRENT })
     } as unknown as CredentialCipher // test double of the cipher
     const contexts = new ChannelContextFactory(cipher)
     sender = new OutboundSender(
@@ -2046,7 +2046,10 @@ describe('Replies on their way to a channel', () => {
           prisma,
           app.get(PluginRegistry, { strict: false }),
           new ChannelContextFactory({
-            open: () => ({ accessToken: 'EAAB-test-token' })
+            openRotating: () => ({
+              credentials: { accessToken: 'EAAB-test-token' },
+              sealedWith: SealedWith.CURRENT
+            })
           } as unknown as CredentialCipher),
           writer,
           new ConversationsService(prisma, events, new JobContext(prisma)),

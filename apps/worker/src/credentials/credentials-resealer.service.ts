@@ -9,8 +9,9 @@ import { CredentialsResealService } from './credentials-reseal.service'
 
 // The nightly step of a rotation of CREDENTIALS_ENCRYPTION_KEY for the sealed values outside the fiscal area (Step 7.3-S11c): while the
 // deployment holds a previous key, what opens only with it is sealed again with the current one. Without a previous key it does nothing and
-// reads nothing. A value that cannot be handled is counted and logged by its failure code; the job fails when any was, so the queue (and the
-// alarm of a failed job) tells the operator that the previous key cannot be retired yet.
+// reads nothing. A value that cannot be handled is counted and logged by its failure code (the first lines of a run, then a count); the job
+// fails when any was, so the retry is visible in the log. The scheduler does not keep failed jobs (removeOnFail), so the operator learns of it
+// from the log, which the runbook asks to keep until the old key is retired, not from a failed-jobs alarm.
 @Injectable()
 export class CredentialsResealer {
   constructor(

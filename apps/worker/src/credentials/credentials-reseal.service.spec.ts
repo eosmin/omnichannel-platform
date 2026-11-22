@@ -2,8 +2,12 @@ import { randomBytes } from 'node:crypto'
 
 import type { PinoLogger } from 'nestjs-pino'
 
-import { CredentialCipher } from '@platform/core/crypto'
-import { CredentialsReseal, SealedTargetIds } from '@platform/core/domain'
+import { CredentialCipher, DecryptionFailure, SealedWith } from '@platform/core/crypto'
+import {
+  CREDENTIALS_RESEAL_MISMATCH,
+  CredentialsReseal,
+  SealedTargetIds
+} from '@platform/core/domain'
 
 import { CredentialsResealService, type CredentialsResealUnit } from './credentials-reseal.service'
 
@@ -64,7 +68,7 @@ describe('CredentialsResealService (what the database run cannot show)', () => {
 
     expect(prisma.updateMany).not.toHaveBeenCalled()
     expect(report.resealed).toBe(0)
-    expect(report.failed).toEqual({ reseal_mismatch: 1 })
+    expect(report.failed).toEqual({ [CREDENTIALS_RESEAL_MISMATCH]: 1 })
     expect(audit.log).not.toHaveBeenCalled()
   })
 
@@ -183,7 +187,48 @@ describe('CredentialsResealService (what the database run cannot show)', () => {
 
     expect(report.truncated).toBe(true)
     // The installations (after the capped webhooks) were sealed again in full, past their first page
-    expect(installs.every(r => cipher.openRotating(r.secret).sealedWith === 'current')).toBe(true)
+    expect(
+      installs.every(r => cipher.openRotating(r.secret).sealedWith === SealedWith.CURRENT)
+    ).toBe(true)
     expect(report.resealed).toBe(CredentialsReseal.MAX_VALUES_PER_TARGET + installs.length)
+  })
+
+  it('values that never open do not starve the good rows behind them, and the log names only the first failures', async () => {
+    const old = new CredentialCipher(oldKey)
+    const cipher = new CredentialCipher(newKey, oldKey)
+    const stranger = new CredentialCipher(randomBytes(32))
+    // More rows that never open than the cap of writes, all BEFORE the good ones in id order
+    const bad = Array.from({ length: CredentialsReseal.MAX_VALUES_PER_TARGET + 20 }, (_, i) => ({
+      id: `a-${String(i).padStart(6, '0')}`,
+      secret: new Uint8Array(stranger.seal({ secret: 'x' }))
+    }))
+    const good = Array.from({ length: 3 }, (_, i) => ({
+      id: `b-${i}`,
+      secret: new Uint8Array(old.seal({ secret: `g-${i}` }))
+    }))
+    const rows = [...bad, ...good]
+    const prisma = prismaWith(rows, 1)
+    prisma.updateMany.mockImplementation(
+      (args: { where: { id: string }; data: { secret: Uint8Array<ArrayBuffer> } }) => {
+        const row = rows.find(r => r.id === args.where.id)
+        if (row !== undefined) row.secret = args.data.secret
+        return Promise.resolve({ count: 1 })
+      }
+    )
+    const errors = jest.fn()
+    const noisy = { setContext: () => undefined, error: errors } as unknown as PinoLogger
+
+    const report = await new CredentialsResealService(
+      prisma as never,
+      cipher,
+      audit as never,
+      noisy
+    ).run('org-1', unit)
+
+    expect(report.resealed).toBe(3)
+    expect(report.failed).toEqual({ [DecryptionFailure.KEY_MISMATCH]: bad.length })
+    expect(report.truncated).toBe(false)
+    // The first lines name the rows; one more says how many were left out
+    expect(errors).toHaveBeenCalledTimes(CredentialsReseal.MAX_LOGGED_FAILURES + 1)
   })
 })

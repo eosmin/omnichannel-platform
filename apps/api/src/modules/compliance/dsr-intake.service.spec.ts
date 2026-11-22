@@ -56,7 +56,7 @@ describe('DsrIntakeService', () => {
       expect(part).not.toContain(body.storeKey)
     }
     expect(options).not.toHaveProperty('jobId')
-    expect(openDsrIntake(data.sealed, CONFIG.encryptionKeyHex)).toEqual(body)
+    expect(openDsrIntake(data.sealed, CONFIG.encryptionKeyHex, undefined)).toEqual(body)
   })
 
   it('counts every request, so the limit answers the same for an address with or without a customer', async () => {

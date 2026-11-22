@@ -39,10 +39,12 @@ function bytesColumns(): string[] {
     if (open !== null) model = open[1] ?? null
     else if (line.startsWith('}')) model = null
     else if (model !== null) {
-      const field = /^\s+(\w+)\s+Bytes\??(\s|$)/.exec(line)
+      const field = /^\s+(\w+)\s+Bytes(\?|\[\])?(\s|$)/.exec(line)
       if (field !== null) found.push(`${model}.${field[1]}`)
     }
   }
+  // A scanner that found no model at all would pass on any schema
+  if (!schema.includes('model ChannelConnection {')) throw new Error('the schema was not read')
   return found.sort()
 }
 

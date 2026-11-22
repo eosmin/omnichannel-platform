@@ -36,6 +36,11 @@ export const CredentialsReseal = {
   // The most values of one target that one run of one organization seals again (or fails on): the rows already current are only skipped and
   // do not count, so the next night reaches the rest
   MAX_VALUES_PER_TARGET: 5000,
+  // The most values of one target that one run READS (already current, failed or sealed again): a column full of values that never open does
+  // not hold the run on the same first rows, because only the ones sealed again (or lost to a conflict) count against the cap above
+  MAX_SCANNED_PER_TARGET: 50_000,
+  // The most failures one run of one organization writes to the log (the report counts all of them, by code)
+  MAX_LOGGED_FAILURES: 20,
   // The limits of the context of the organization of ONE unit of work (a page, a value)
   CONTEXT_MAX_WAIT_MS: 10_000,
   CONTEXT_TIMEOUT_MS: 30_000,

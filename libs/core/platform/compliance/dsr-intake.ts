@@ -69,7 +69,8 @@ function decryptRotating(
 export function openDsrIntake(
   sealed: string,
   encryptionKeyHex: string,
-  previousEncryptionKeyHex?: string
+  // Required (it may be undefined): a caller that forgets it would fail only during a rotation
+  previousEncryptionKeyHex: string | undefined
 ): DsrIntake | null {
   try {
     const text = decryptRotating(
@@ -89,7 +90,8 @@ export function openDsrIntake(
 export function openDsrNotifyAddress(
   sealed: Uint8Array,
   encryptionKeyHex: string,
-  previousEncryptionKeyHex?: string
+  // Required (it may be undefined): a caller that forgets it would fail only during a rotation
+  previousEncryptionKeyHex: string | undefined
 ): string | null {
   try {
     return decryptRotating(Buffer.from(sealed), encryptionKeyHex, previousEncryptionKeyHex)

@@ -63,7 +63,9 @@ kept in the environment.
    `CREDENTIALS_ENCRYPTION_KEY_PREVIOUS` = the old key. Restart both. Check: the processes start (they refuse to start when the previous key
    equals the current one, is the placeholder, or is not 64 hex characters). While both are set, the fiscal values open with either key and
    everything that is written is sealed with the new one.
-3. **Wait for the nightly runs:** the fiscal one (04:30 UTC, `RECONCILE_FINANCE`, organizations with books) and the credentials one (04:45 UTC,
+3. **Keep the logs.** Keep the worker logs (level info) of both jobs, by organization, until step 6 is done: they are the evidence of the
+   comparison of ids in step 5. Do not let them rotate away before that.
+3b. **Wait for the nightly runs:** the fiscal one (04:30 UTC, `RECONCILE_FINANCE`, organizations with books) and the credentials one (04:45 UTC,
    `RESEAL_CREDENTIALS`, every organization). Check in the worker log, per organization, with `resealed`, `failed` and `truncated`:
    `the fiscal values were checked for the previous key` and `the sealed credentials were checked for the previous key`.
 4. **Read the failures.** A job that fails with `sealed fiscal values were not sealed again` or `sealed values were not sealed again` names its cause by code in the log
@@ -77,7 +79,8 @@ kept in the environment.
      the job, not of the data: do not retire the previous key, report it.
    - `write_failed`: the value opened but the database refused the write (the log has the error name): not a damaged row. Look at the
      database, not at the backup.
-5. **Check the end.** Two runs in a row (two nights) of EACH job where every organization logs `resealed: 0`, `failed: {}` and `truncated: false`.
+5. **Check the end.** Two runs in a row (two nights) of EACH job where every organization logs `resealed: 0`, `conflicts: 0`, `failed: {}` and `truncated: false`.
+   A `conflict` means a person changed the row while the job ran: the row was left alone and is picked up the next night, so keep waiting.
    `resealed: 0` means every value already opens with the new key. Also look at the audit trail: `fiscal.value_resealed` and
    `credentials.value_resealed` have one entry per value sealed again (kind or column, and row id, never content).
    **Condition, a risk of LOSING DATA:** every organization that holds a sealed value must appear in the log of the last run of the job that
@@ -105,6 +108,10 @@ kept in the environment.
    plugin command still work. Only now destroy the old key. Keep the backup of step 1 until then.
 
 ## Way back
+
+**Read this before swapping:** once the old key is current and the new one is previous, both jobs are enabled again and, the next night, seal
+every value back with the old key. Decide the way back, then remove `CREDENTIALS_ENCRYPTION_KEY_PREVIOUS` (or wait for the jobs to finish) and
+restart step 5 from the beginning with whichever key you keep.
 
 Before step 6: put the old key back as `CREDENTIALS_ENCRYPTION_KEY` and the new one as `CREDENTIALS_ENCRYPTION_KEY_PREVIOUS` (the values
 sealed again open with the previous key, the rest with the current one). After step 6 with the old key destroyed there is no way back

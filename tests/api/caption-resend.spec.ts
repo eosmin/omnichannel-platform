@@ -5,7 +5,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelContextFactory } from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
-import type { CredentialCipher } from '@platform/core/crypto'
+import { type CredentialCipher, SealedWith } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
@@ -72,7 +72,7 @@ describe('Sending only the text under a file again', () => {
     registry.register(buildChannelPlugin({ sendMessage: (c, p) => sendMessage(c, p) }))
     const events = app.get(DomainEvents, { strict: false })
     const cipher = {
-      openRotating: () => ({ credentials: {}, sealedWith: 'current' })
+      openRotating: () => ({ credentials: {}, sealedWith: SealedWith.CURRENT })
     } as unknown as CredentialCipher // test double of the cipher
     const status = new MessageChangeStatusWriter(prisma, events, new JobContext(prisma))
     sender = new MessageChangeSender(

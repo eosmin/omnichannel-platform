@@ -114,10 +114,15 @@ export class CredentialsResealService {
   async run(organizationId: string, unit: CredentialsResealUnit): Promise<CredentialsResealReport> {
     if (!this.cipher.hasPreviousKey) return emptyReport(false)
     const report = emptyReport(true)
+    // Failures written to the log in this run, all targets: the rest are only counted
+    let logged = 0
     for (const target of this.targets) {
       let cursor: string | undefined
-      // Values of this target sealed again or failed in this run (the ones already current are skipped and do not count against the cap)
+      // Values of this target sealed again, or lost to a conflict, in this run: the only ones that count against the cap of writes (the ones
+      // already current and the ones that never open are skipped, so they cannot starve the rows behind them)
       let worked = 0
+      // Values of this target read in this run, whatever happened to them: the cap of reads
+      let read = 0
       // The cap of THIS target: a target that hit it does not stop the ones after it
       let capped = false
       for (;;) {
@@ -125,12 +130,16 @@ export class CredentialsResealService {
           target.read(organizationId, cursor, CredentialsReseal.PAGE_SIZE)
         )
         for (const row of rows) {
-          if (worked >= CredentialsReseal.MAX_VALUES_PER_TARGET) {
+          if (
+            worked >= CredentialsReseal.MAX_VALUES_PER_TARGET ||
+            read >= CredentialsReseal.MAX_SCANNED_PER_TARGET
+          ) {
             report.truncated = true
             capped = true
             break
           }
           report.scanned += 1
+          read += 1
           try {
             const outcome = await unit(() => this.reseal(target, organizationId, row))
             if (outcome === CredentialsResealOutcome.CURRENT) {
@@ -153,7 +162,6 @@ export class CredentialsResealService {
               metadata: { target: target.id }
             })
           } catch (error) {
-            worked += 1
             // One value that cannot be handled must not stop the others: it is counted by the code of the failure and left as it was
             const code =
               error instanceof DecryptionError
@@ -162,16 +170,19 @@ export class CredentialsResealService {
                   ? CREDENTIALS_RESEAL_MISMATCH
                   : CREDENTIALS_RESEAL_WRITE_FAILED
             report.failed[code] = (report.failed[code] ?? 0) + 1
-            this.logger.error(
-              {
-                errorName: errorName(error),
-                failure: code,
-                what: target.id,
-                organizationId,
-                rowId: row.id
-              },
-              'a sealed value was not sealed again'
-            )
+            logged += 1
+            if (logged <= CredentialsReseal.MAX_LOGGED_FAILURES) {
+              this.logger.error(
+                {
+                  errorName: errorName(error),
+                  failure: code,
+                  what: target.id,
+                  organizationId,
+                  rowId: row.id
+                },
+                'a sealed value was not sealed again'
+              )
+            }
           }
         }
         const last = rows.at(-1)
@@ -180,6 +191,12 @@ export class CredentialsResealService {
         }
         cursor = last.id
       }
+    }
+    if (logged > CredentialsReseal.MAX_LOGGED_FAILURES) {
+      this.logger.error(
+        { organizationId, notLogged: logged - CredentialsReseal.MAX_LOGGED_FAILURES },
+        'more sealed values were not sealed again than the log names (the report counts them by code)'
+      )
     }
     return report
   }
@@ -324,7 +341,8 @@ export class CredentialsResealService {
                   {
                     id: r.id,
                     sealed: r.emailOutbox,
-                    // The outbox is bound to its invitation and its store (a value that predates the binding has none and opens without)
+                    // The outbox is bound to its invitation and its store. A value sealed before the binding (format 1) has no data to check and
+                    // opens even when the data is given (tests/api/credentials-reseal.spec.ts measures it); it is sealed again bound
                     aad: invitationOutboxAad(r.storeId, r.id)
                   }
                 ]

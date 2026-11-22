@@ -232,6 +232,12 @@ describe('HeavyProcessingProcessor', () => {
       expect(resealCredentials).toHaveBeenCalledWith(ORG_ID)
     })
 
+    it('lets the failure of the re-seal reach the queue, so that it is tried again', async () => {
+      resealCredentials.mockRejectedValueOnce(new Error('2 sealed values were not sealed again'))
+      await expect(reseal({ organizationId: ORG_ID })).rejects.toThrow('not sealed again')
+      expect(resealCredentials).toHaveBeenLastCalledWith(ORG_ID)
+    })
+
     it('rejects, without a retry, a job that is not an organization id', async () => {
       resealCredentials.mockClear()
       await expect(reseal({ organizationId: 'not-an-id' })).rejects.toBeInstanceOf(

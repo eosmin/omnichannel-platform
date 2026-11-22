@@ -7,7 +7,7 @@ import supertest from 'supertest'
 
 import { ChannelContextFactory, ChannelHealthService } from '@platform/channels/connections'
 import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
-import type { CredentialCipher } from '@platform/core/crypto'
+import { type CredentialCipher, SealedWith } from '@platform/core/crypto'
 import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
@@ -174,7 +174,7 @@ describe('A remote channel plugin, from its registration to the status of a repl
     const connections = new ChannelConnectionResolver(prisma)
     const writer = new MessageStatusWriter(prisma, events, new JobContext(prisma))
     const cipher = {
-      openRotating: () => ({ credentials: {}, sealedWith: 'current' })
+      openRotating: () => ({ credentials: {}, sealedWith: SealedWith.CURRENT })
     } as unknown as CredentialCipher // test double of the cipher: the plugin holds the credentials
     const contexts = new ChannelContextFactory(cipher)
     sender = new OutboundSender(
