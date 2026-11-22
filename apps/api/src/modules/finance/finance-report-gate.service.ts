@@ -48,6 +48,9 @@ const STREAMS: PlaceSet = {
   most: FinanceReportLimits.MAX_CONCURRENT_STREAMS_PER_ORGANIZATION
 }
 
+// A file being sent: the pages and the way to give its place back when the transport ends before the generator does
+export type GateStream<T> = AsyncGenerator<T> & { dispose: () => Promise<void> }
+
 interface HeldPlace {
   organizationId: string
   token: string
@@ -104,18 +107,22 @@ export class FinanceReportGate {
 
   // A file sent page by page (the CSV of the journal), kept inside a place of its own cap for as long as the stream lives. The place is
   // taken HERE, before the headers go, so a full organization is refused with FINANCE_REPORT_BUSY (429) and not with a cut file. The
-  // returned stream renews the place at every page and gives it back in `finally`, which runs when the stream ends, fails or is
-  // destroyed (a client that drops destroys the response and with it the generator). A stream that is never started holds the place
-  // until its expiry (READ_SLOT_TTL_MS), the same bound as a process that died. If a stalled client let the place expire, the next page
+  // returned stream renews the place at every page and gives it back in `finally`, which runs when the stream ends or fails. A client
+  // that drops does NOT stop an Express pipe, so whoever owns the response calls `dispose` when it closes. A stream nobody disposes
+  // holds the place until its expiry (READ_SLOT_TTL_MS), the same bound as a process that died. If a stalled client let the place expire, the next page
   // takes one again or the stream fails (never a short file that looks whole)
   async openStream<T>(
     organizationId: string,
     prepare: () => Promise<() => AsyncGenerator<T>>
-  ): Promise<AsyncGenerator<T>> {
+  ): Promise<GateStream<T>> {
     const token = randomUUID()
     const taken = await this.acquire(STREAMS, organizationId, token)
-    const release = (): Promise<void> =>
-      taken ? this.release(STREAMS, organizationId, token) : Promise.resolve()
+    let released = false
+    const release = async (): Promise<void> => {
+      if (!taken || released) return
+      released = true
+      await this.release(STREAMS, organizationId, token)
+    }
     let pages: () => AsyncGenerator<T>
     try {
       // What the request checks first (the count and its audit row) runs once the place is ours, so a refusal leaves no audit row and a
@@ -131,7 +138,7 @@ export class FinanceReportGate {
         await this.acquire(STREAMS, organizationId, token)
       }
     }
-    return (async function* () {
+    const stream = (async function* () {
       try {
         for await (const page of pages()) {
           await renew()
@@ -141,6 +148,10 @@ export class FinanceReportGate {
         await release()
       }
     })()
+    // `dispose` is for the transport: Express pipes the stream into the response and does not destroy the stream when the client goes
+    // away, and an async generator that was never started skips its `finally`, so the caller that owns the response gives the place back
+    // by hand when the response closes (idempotent with the `finally`)
+    return Object.assign(stream, { dispose: release })
   }
 
   private async acquire(set: PlaceSet, organizationId: string, token: string): Promise<boolean> {
@@ -160,14 +171,14 @@ export class FinanceReportGate {
     } catch (error) {
       this.logger.warn(
         { organizationId, errorName: error instanceof Error ? error.name : 'unknown' },
-        'the cap of finance report reads could not be checked; the report runs without it'
+        'a cap of the finance reports (reads or files) could not be checked; the report runs without it'
       )
       return false
     }
     if (Number(granted) !== 1) {
       throw new PlatformException(
         ErrorCodes.FINANCE_REPORT_BUSY,
-        'the organization is already reading as many finance reports as it may at once',
+        'the organization is already reading or sending as many finance reports as it may at once',
         HttpStatusCodes.TOO_MANY_REQUESTS,
         { retryAfterSeconds: FinanceReportLimits.READ_BUSY_RETRY_SECONDS }
       )

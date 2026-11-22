@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type { INestApplication } from '@nestjs/common'
 import type { Redis } from 'ioredis'
 
@@ -192,6 +194,17 @@ describe('The cap of finance report reads per organization', () => {
     expect(await slots(ctx.orgA.id)).toBe(MOST)
 
     expect((await asA().get(ApiRoutes.finance.reports.margin).query(RANGE)).status).toBe(OK)
+    expect(await slots(ctx.orgA.id)).toBe(0)
+  })
+
+  it('takes a place of the reads for the CSV of a ledger too: a full organization is refused before the account is looked up', async () => {
+    const held = await holdAll(ctx.orgA.id, MOST)
+    const refused = await asA()
+      .get(ApiRoutes.finance.reports.ledgerCsv)
+      .query({ ...RANGE, accountId: randomUUID() })
+    await leave(held)
+
+    expect(refused.status).toBe(TOO_MANY_REQUESTS)
     expect(await slots(ctx.orgA.id)).toBe(0)
   })
 

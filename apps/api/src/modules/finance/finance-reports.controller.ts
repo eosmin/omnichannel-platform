@@ -232,7 +232,14 @@ export class FinanceReportsController {
     }
     // A page that fails after the headers went must not end the body as if it were whole: the connection is destroyed, so the client sees
     // an aborted download and never a short file with a clean end
-    return new StreamableFile(Readable.from(chunks())).setErrorHandler((error, response) => {
+    const stream = Readable.from(chunks())
+    // A client that goes away leaves the pipe paused with the generator suspended: close the stream and give the place of the file back
+    // (the generator may never have started, and then its `finally` never runs)
+    res.once('close', () => {
+      if (!res.writableFinished) stream.destroy()
+      void pages.dispose()
+    })
+    return new StreamableFile(stream).setErrorHandler((error, response) => {
       // On Express the handler response is the ServerResponse: its connection is dropped, with no terminating chunk
       ;(response as unknown as Response).destroy(error)
     })

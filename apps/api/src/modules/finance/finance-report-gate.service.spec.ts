@@ -227,6 +227,23 @@ describe('FinanceReportGate', () => {
       expect(redis.held()).toBe(0)
     })
 
+    it('gives the place back by hand with `dispose` when the stream was never started, once however many times it is asked', async () => {
+      const redis = new FakeRedis()
+      const gate = gateOf(redis)
+      const stream = await gate.openStream('org-1', prepared(3))
+      // A generator that never started skips its `finally`: only the transport can give the place back
+      await stream.return(undefined)
+      expect(redis.held()).toBe(1)
+      await stream.dispose()
+      await stream.dispose()
+      expect(redis.held()).toBe(0)
+      // The place of another file is not freed by the second call
+      const next = await gate.openStream('org-1', prepared(1))
+      await stream.dispose()
+      expect(redis.held()).toBe(1)
+      await next.dispose()
+    })
+
     it('gives the place back when a page fails, and when the check of the request fails', async () => {
       const redis = new FakeRedis()
       const gate = gateOf(redis)

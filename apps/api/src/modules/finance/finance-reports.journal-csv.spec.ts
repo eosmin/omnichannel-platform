@@ -45,7 +45,6 @@ function line(number: bigint, lineNo: number) {
   }
 }
 
-// What the service asks the database, told apart by its text; `inUnit` says whether a unit of the organization was open at the time
 // The cap of the files is proved in finance-report-gate.service.spec.ts and finance-report-cap.spec.ts; here the gate only lets the file through
 const passGate = {
   openStream: async (
@@ -54,6 +53,7 @@ const passGate = {
   ) => (await prepare())()
 } as unknown as FinanceReportGate
 
+// What the service asks the database, told apart by its text; `inUnit` says whether a unit of the organization was open at the time
 function build(pages: ReturnType<typeof line>[][]) {
   let inUnit = false
   const asked: { text: string; values: unknown[]; inUnit: boolean }[] = []

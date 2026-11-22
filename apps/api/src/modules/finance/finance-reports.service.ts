@@ -16,7 +16,7 @@ import { normalBalance, trialBalanceTotals, withRunningBalance } from '@platform
 
 import type { Actor } from '../tenancy'
 
-import { FinanceReportGate } from './finance-report-gate.service'
+import { type GateStream, FinanceReportGate } from './finance-report-gate.service'
 import {
   type JournalCsvRow,
   type LedgerCsvRow,
@@ -405,7 +405,7 @@ export class FinanceReportsService {
     organizationId: string,
     query: JournalCsvQuery,
     actor: Actor
-  ): Promise<AsyncGenerator<JournalCsvRow[]>> {
+  ): Promise<GateStream<JournalCsvRow[]>> {
     // The file takes one of the few places an organization has for files being sent (debt (a) of 7.3-D): the place is held for the whole
     // download and given back when the stream ends or the client drops
     return this.gate.openStream(organizationId, async () => {
@@ -509,6 +509,15 @@ export class FinanceReportsService {
 
   // The CSV of the ledger of one account for a range: its lines with the running balance, from the balance the account held the day before
   async ledgerCsv(
+    organizationId: string,
+    query: LedgerCsvQuery,
+    actor: Actor
+  ): Promise<{ account: LedgerView['account']; rows: LedgerCsvRow[] }> {
+    // It reads up to a whole file in the request: one of the places of the reads of the organization, like the other exports
+    return this.gate.read(organizationId, () => this.readLedgerCsv(organizationId, query, actor))
+  }
+
+  private async readLedgerCsv(
     organizationId: string,
     query: LedgerCsvQuery,
     actor: Actor
