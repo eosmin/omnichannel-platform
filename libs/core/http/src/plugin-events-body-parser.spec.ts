@@ -5,6 +5,7 @@ import { Test } from '@nestjs/testing'
 import type { RequestHandler } from 'express'
 
 import { API_PREFIX, PluginApiRoutes } from '@platform/core/api'
+import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { PLUGIN_API_KEY_TOKEN_PREFIX, RemoteChannelApiLimits } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { LoggerModule } from '@platform/core/logger'
@@ -327,11 +328,22 @@ describe('the large reads of one address in flight', () => {
 
   it('gives the place back when the limit makes the address wait', async () => {
     const handler = pluginEventsBodyParser({ retryAfter: () => Promise.resolve(20) })
-    const waiting = Array.from({ length: cap + 2 }, () => call(handler, '203.0.113.7'))
-    await tick()
+    // One after another, each after the limiter has answered the one before: a place that was not given back would be taken for
+    // good, and the calls past the cap would be refused by the cap
+    const waiting: Array<ReturnType<typeof call>> = []
+    for (let i = 0; i < cap + 2; i += 1) {
+      waiting.push(call(handler, '203.0.113.7'))
+      await tick()
+    }
 
-    // Every one was answered 429 by the wait (none by the cap, which would have been 1 second): the places came back
-    expect(waiting.every(({ next }) => next.mock.calls.length === 1)).toBe(true)
+    // Every one was answered 429 with the wait of the limiter, 20 seconds (the cap would have said 1): had a refused call kept
+    // its place, the ones past the cap would have been refused by the cap and not by the wait
+    const waits = waiting.map(({ next }) => {
+      const calls = next.mock.calls as unknown[][]
+      const answer = calls[0]?.[0] as { statusCode?: number; metadata?: Record<string, unknown> }
+      return [calls.length, answer.statusCode, answer.metadata?.[RETRY_AFTER_METADATA_KEY]]
+    })
+    expect(waits).toEqual(waiting.map(() => [1, HttpStatusCodes.TOO_MANY_REQUESTS, 20]))
   })
 
   it('counts each address on its own, and none for a call with no address', () => {
