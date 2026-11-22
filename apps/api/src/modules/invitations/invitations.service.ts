@@ -90,7 +90,7 @@ export class InvitationAcceptService {
           status: InvitationStatus.PENDING,
           expiresAt: { gt: new Date() }
         },
-        data: { status: InvitationStatus.ACCEPTED, acceptedAt: new Date() }
+        data: { status: InvitationStatus.ACCEPTED, acceptedAt: new Date(), emailOutbox: null }
       })
       if (claim.count === 0) throw invalid()
 

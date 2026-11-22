@@ -7,6 +7,7 @@ export const Schedules = {
   CLEANUP_PLATFORM_DATA: '0 1 * * *', // 01:00 UTC: sessions, tokens, deliveries, exports, merges
   EXPORT_AUDIT_LOGS: '0 2 1 * *', // 02:00 UTC on the 1st: cold export + purge (TDD_05 §9.3)
   WAKE_SNOOZED: '* * * * *', // Every minute
+  DELIVER_INVITATION_EMAILS: '* * * * *', // Every minute: the emails of invitations that wait in their outbox (Step 7.1-H)
   AUTO_ARCHIVE_RESOLVED: '30 * * * *', // Hourly
   DISPATCH_REPORTS: '0 * * * *', // Hourly, checks per-store send hour
   SEND_EMAIL_DIGEST_HOURLY: '10 * * * *',

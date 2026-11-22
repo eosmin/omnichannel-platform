@@ -1,0 +1,47 @@
+import { z } from 'zod'
+
+import type { CredentialCipher } from '@platform/core/crypto'
+import { SUPPORTED_LOCALES } from '@platform/core/i18n'
+import { EmailTemplates, type SendEmailJob } from '@platform/core/queues'
+
+// The outbox of the email of an invitation (Step 7.1-H). The row of the invitation keeps the email still to send, sealed with the key of the
+// credentials: it carries the link, which holds the only copy of the token, and the address. The api writes it in the transaction that writes
+// the invitation; a job of the worker opens it, sends it and clears it. Nothing here logs, and what is sealed is never put in a job or a log.
+export const InvitationOutbox = {
+  // A delivery that fails this many times is given up (the outbox is cleared and the invitee needs a resend), so a dead provider
+  // does not keep a token sealed for ever
+  MAX_ATTEMPTS: 8,
+  // A claim older than this is a worker that died after sending or before releasing: the email is delivered again (at least once)
+  CLAIM_TTL_MS: 300_000,
+  // The sweep leaves a fresh row to the job the api queued after the commit; only a row older than this is taken by the sweep
+  SWEEP_GRACE_MS: 30_000,
+  // Deliveries per store and per run of the sweep
+  BATCH: 50
+} as const
+
+const sealedEmailSchema = z.object({
+  template: z.literal(EmailTemplates.INVITATION),
+  to: z.string().min(1),
+  locale: z.enum(SUPPORTED_LOCALES),
+  data: z.record(z.string(), z.unknown()),
+  tags: z.object({ storeId: z.string().optional(), template: z.literal(EmailTemplates.INVITATION) })
+})
+
+export type InvitationEmail = Omit<SendEmailJob, 'to' | 'template' | 'tags'> & {
+  template: typeof EmailTemplates.INVITATION
+  to: string
+  tags: { storeId?: string; template: typeof EmailTemplates.INVITATION }
+}
+
+export function sealInvitationEmail(
+  cipher: CredentialCipher,
+  email: InvitationEmail
+): Uint8Array<ArrayBuffer> {
+  return cipher.seal({ ...email })
+}
+
+// The database is a boundary: what comes out is checked again. A row that no longer parses (a key that changed, a template that was
+// renamed) throws, and the delivery counts it as a failed attempt.
+export function openInvitationEmail(cipher: CredentialCipher, sealed: Uint8Array): InvitationEmail {
+  return sealedEmailSchema.parse(cipher.open(sealed))
+}

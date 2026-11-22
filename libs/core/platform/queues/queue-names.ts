@@ -20,6 +20,8 @@ export const JobNames = {
   SEND_EMAIL: 'send-email',
   // A login link was asked for: the worker looks the address up, so the request never does
   REQUEST_MAGIC_LINK: 'request-magic-link',
+  // The email of an invitation waits in the outbox of the invitation: this job asks the worker to deliver it now (the sweep does it if it is lost)
+  DELIVER_INVITATION_EMAIL: 'deliver-invitation-email',
 
   // webhooks
   TRIGGER_WEBHOOK: 'trigger-webhook',

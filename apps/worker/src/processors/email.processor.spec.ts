@@ -4,20 +4,24 @@ import type { EmailService } from '@platform/core/email'
 import type { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import { JobNames, type RequestMagicLinkJob } from '@platform/core/queues'
 
+import type { InvitationEmailDelivery } from '../invitations/invitation-email-delivery.service'
+
 import { EmailProcessor } from './email.processor'
 import type { ProcessorSupport } from './processor-support'
 
 function build() {
   const email = { send: jest.fn(() => Promise.resolve()) }
   const magicLinks = { issue: jest.fn(() => Promise.resolve()) }
+  const invitations = { deliver: jest.fn(() => Promise.resolve('sent')) }
   const processor = new EmailProcessor(
     {} as ProcessorSupport,
     email as unknown as EmailService,
-    magicLinks as unknown as MagicLinkIssuer
+    magicLinks as unknown as MagicLinkIssuer,
+    invitations as unknown as InvitationEmailDelivery
   )
   const handle = (job: unknown) =>
     (processor as unknown as { handle(job: unknown): Promise<void> }).handle(job)
-  return { email, magicLinks, handle }
+  return { email, magicLinks, invitations, handle }
 }
 
 describe('EmailProcessor', () => {
@@ -51,5 +55,20 @@ describe('EmailProcessor', () => {
 
     expect(email.send).not.toHaveBeenCalled()
     expect(magicLinks.issue).not.toHaveBeenCalled()
+  })
+})
+
+describe('EmailProcessor, invitation emails', () => {
+  it('hands a request to deliver an invitation email to the delivery with its ids, and sends nothing itself', async () => {
+    const { email, invitations, handle } = build()
+    const job = {
+      name: JobNames.DELIVER_INVITATION_EMAIL,
+      data: { storeId: 's1', invitationId: 'i1' }
+    } as unknown as Job
+
+    await handle(job)
+
+    expect(invitations.deliver).toHaveBeenCalledWith('s1', 'i1')
+    expect(email.send).not.toHaveBeenCalled()
   })
 })
