@@ -54,7 +54,10 @@ import {
 } from './forza-mapping'
 
 export interface ForzaPluginOptions {
-  fetch?: FetchLike
+  // How every call goes out. The endpoint is typed by the owner, so the host gives a `fetch` that resolves the name, refuses a
+  // non-public address (with a CarrierRejectedError), connects to the address it checked and follows no redirect: the plugin
+  // never reaches the network by itself (`ForzaEndpointPolicy` says what it needs of it)
+  fetch: FetchLike
   now?: () => Date
 }
 
@@ -115,8 +118,8 @@ const includes = (name: string, search: string | undefined): boolean =>
 // of cash on delivery, cancelling a guide that is still "Solicitado", tracking, the geography catalog and the
 // pickup request. The webhook, the change or cancel of a pickup, the return guide and an idempotent create are not
 // confirmed by the documentation, so the manual path covers them (TDD_17 §14).
-export function createForzaCarrierPlugin(options: ForzaPluginOptions = {}): CarrierPlugin {
-  const doFetch: FetchLike = options.fetch ?? ((url, init) => fetch(url, init))
+export function createForzaCarrierPlugin(options: ForzaPluginOptions): CarrierPlugin {
+  const doFetch = options.fetch
   const now = options.now ?? ((): Date => new Date())
 
   const probe = async (config: ForzaConfig): Promise<void> => {
@@ -291,5 +294,3 @@ export function createForzaCarrierPlugin(options: ForzaPluginOptions = {}): Carr
     }
   }
 }
-
-export const forzaCarrierPlugin: CarrierPlugin = createForzaCarrierPlugin()

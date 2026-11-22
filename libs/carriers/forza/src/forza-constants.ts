@@ -172,3 +172,11 @@ export const FORZA_STATUS_CATALOG: readonly CarrierStatusDescriptor[] = [
     defaultStatus: ShipmentStatus.FAILED_ATTEMPT
   }
 ]
+
+// What the plugin needs of the `fetch` the host gives it: the whole call within the request timeout, an answer as large as a
+// label, and a port of the gateway's own (it does not listen on 443)
+export const ForzaEndpointPolicy = {
+  timeoutMs: ForzaLimits.REQUEST_TIMEOUT_MS,
+  maxResponseBytes: Math.max(ForzaLimits.ANSWER_MAX_BYTES, ForzaLimits.LABEL_MAX_BYTES),
+  allowCustomPort: true
+} as const

@@ -1,7 +1,7 @@
 import type { Type } from '@nestjs/common'
 
 import { C807Plugin } from '@platform/carriers/c807'
-import { forzaCarrierPlugin } from '@platform/carriers/forza'
+import { createForzaCarrierPlugin, ForzaEndpointPolicy } from '@platform/carriers/forza'
 import { localCarrierPlugin } from '@platform/carriers/local'
 import { InstagramPlugin } from '@platform/channels/instagram'
 import { MessengerPlugin } from '@platform/channels/messenger'
@@ -14,6 +14,8 @@ import {
   declaredRedactedKeys
 } from '@platform/core/domain'
 import type { CarrierPlugin, ChannelPlugin } from '@platform/plugins/sdk'
+
+import { carrierEndpointFetch } from './carrier-endpoint-fetch'
 
 // The plugins that ship with the platform. Each channel or carrier library adds its class here
 // when it is built (Steps 2.7, 2.8, 4.8 and 4.15).
@@ -31,7 +33,7 @@ export const OFFICIAL_PLUGIN_IMPORTS: readonly Type<unknown>[] = [
 ]
 // A carrier plugin is a class the container builds (it injects what it needs), an object that has no dependencies, such as
 // the `local` courier, which is a plain constant (TDD_17 §4.2), or a factory for a plugin that needs something from the
-// container but keeps its library free of decorators (C807: the cache its token is shared through). Forza is a plain constant: it signs each call and keeps nothing.
+// container but keeps its library free of decorators (C807: the cache its token is shared through). Forza is a plain constant: it signs each call and keeps nothing; the host gives it the `fetch` that checks the address of its endpoint.
 export interface CarrierPluginFactory {
   // What the factory takes, as a Nest provider does; `optional` lets the process go on without it
   readonly inject: readonly { token: symbol; optional: boolean }[]
@@ -40,7 +42,7 @@ export interface CarrierPluginFactory {
 export type CarrierPluginSource = Type<CarrierPlugin> | CarrierPlugin | CarrierPluginFactory
 export const OFFICIAL_CARRIER_PLUGINS: readonly CarrierPluginSource[] = [
   localCarrierPlugin,
-  forzaCarrierPlugin,
+  createForzaCarrierPlugin({ fetch: carrierEndpointFetch(ForzaEndpointPolicy) }),
   {
     inject: [{ token: CARRIER_TOKEN_CACHE, optional: true }],
     useFactory: (cache?: CarrierTokenCache) => new C807Plugin(cache)
