@@ -106,7 +106,9 @@ export const WRITING_FUNCTION_NAMES: readonly string[] = [
   'purge_audit_logs',
   // the re-seal of a rotation of the credentials key (Step 7.3-S11b): the swap of the sealed columns of a fiscal document or contingency
   'fiscal_reseal_document',
-  'fiscal_reseal_contingency'
+  'fiscal_reseal_contingency',
+  // the masked receiver of a fiscal document (Step 7.3-S11b-2), through the same door of the guard
+  'fiscal_mask_document'
 ]
 const WRITING_FUNCTIONS = new RegExp(`\\b(${WRITING_FUNCTION_NAMES.join('|')})\\s*\\(`, 'i')
 const writesSql = (text: string): boolean => WRITING_SQL.test(text) || WRITING_FUNCTIONS.test(text)

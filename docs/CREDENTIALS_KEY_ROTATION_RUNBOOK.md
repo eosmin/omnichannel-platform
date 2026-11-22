@@ -137,3 +137,8 @@ except the backup.
   during the run is a `conflict` (counted, left alone, picked up the next night). It does bump `updated_at` of the row it seals again.
 - A value that was never sealed with the platform key (a test row, a value written by hand) is `row_damaged` or `key_mismatch`: it is left as
   it is and blocks step 6 until somebody decides about it.
+- The same nightly run also calculates the masked receiver of the documents that have none yet (`masked` in the report) with the CURRENT
+  key alone, never the previous one, and through the function `fiscal_mask_document` (the third function the guard admits, worker only).
+  A document whose receiver opens with neither key keeps no mask and is counted in `failed`; it is not an extra step of the rotation, and
+  the screens open that row as before. The three columns it writes are in the clear by design: a letter and fill for the name, fill and
+  four digits for the tax id (and only when it has nine or more digits).
