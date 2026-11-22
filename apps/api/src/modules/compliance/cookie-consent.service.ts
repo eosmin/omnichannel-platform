@@ -1,11 +1,11 @@
-import { createHmac } from 'node:crypto'
-
 import { Inject, Injectable } from '@nestjs/common'
 
 import {
+  type ConsentHashKey,
   COOKIE_CONSENT_HASH_KEY,
   ChoosableCookieCategories,
-  CookieConsentLimits
+  CookieConsentLimits,
+  hashClientAddress
 } from '@platform/core/compliance'
 import { PrismaService } from '@platform/core/database'
 
@@ -30,11 +30,6 @@ function sameChoice(stored: unknown, chosen: Record<string, boolean>): boolean {
   return ChoosableCookieCategories.every(category => row[category] === chosen[category])
 }
 
-// A keyed hash of the address: the proof that a choice came from somewhere, without keeping the address (TDD_05 §10.5)
-export function hashClientAddress(address: string, key: string): string {
-  return createHmac('sha256', key).update(address).digest('hex')
-}
-
 // The record of the cookie banner (TDD_05 §10.5), for people who are not customers: platform users and anonymous visitors. It is
 // not tenant data (no store): the visitor id is a random id the browser made, and the table keeps the history of the choice, so a
 // change is a new row and the newest one rules. Answering the same thing again writes nothing.
@@ -42,7 +37,7 @@ export function hashClientAddress(address: string, key: string): string {
 export class CookieConsentService {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(COOKIE_CONSENT_HASH_KEY) private readonly hashKey: string
+    @Inject(COOKIE_CONSENT_HASH_KEY) private readonly hashKey: ConsentHashKey
   ) {}
 
   async record(body: CookieConsentBody, context: CookieConsentContext): Promise<CookieConsentView> {

@@ -5,6 +5,8 @@ const validEnv: Record<string, string> = {
   DATABASE_URL: 'postgresql://platform:pw@localhost:6432/platform_dev',
   REDIS_URL: 'redis://localhost:6379',
   JWT_SECRET: 'x'.repeat(32),
+  // A deployed environment needs its own (the cases below take it away); the others do not
+  CONSENT_HASH_KEY: 'h'.repeat(40),
   CREDENTIALS_ENCRYPTION_KEY: 'a'.repeat(64),
   AWS_ACCESS_KEY_ID: 'key',
   AWS_SECRET_ACCESS_KEY: 'secret',
@@ -576,5 +578,58 @@ describe('DSR_PUBLIC_INTAKE_ENABLED, the public intake of data subject requests'
     expect(() => parseEnv({ ...validEnv, DSR_PUBLIC_INTAKE_ENABLED: 'true' })).toThrow(
       /DSR_PUBLIC_INTAKE_ENABLED/
     )
+  })
+})
+
+describe('CONSENT_HASH_KEY, the key of the cookie banner hashes (Step 7.2-K2)', () => {
+  const withoutKey: Record<string, string> = Object.fromEntries(
+    Object.entries(validEnv).filter(([name]) => name !== 'CONSENT_HASH_KEY')
+  )
+  const OWN_KEY = 'h'.repeat(40)
+  const deployedWithoutKey: Record<string, string> = {
+    ...withoutKey,
+    RESEND_API_KEY: 're_key',
+    FRONTEND_URL: 'https://app.example.com',
+    WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
+    TRUST_PROXY_HOPS: '1'
+  }
+  const deployed: Record<string, string> = { ...deployedWithoutKey, CONSENT_HASH_KEY: OWN_KEY }
+
+  it('may be left out outside a deployed environment, and has an id', () => {
+    const env = parseEnv(withoutKey)
+    expect(env.CONSENT_HASH_KEY).toBeUndefined()
+    expect(env.CONSENT_HASH_KEY_ID).toBe('c1')
+  })
+
+  it.each(['staging', 'production'])('is required in %s', nodeEnv => {
+    expect(() => parseEnv({ ...deployedWithoutKey, NODE_ENV: nodeEnv })).toThrow(/CONSENT_HASH_KEY/)
+    expect(() => parseEnv({ ...deployed, NODE_ENV: nodeEnv })).not.toThrow()
+  })
+
+  it('is refused in a deployed environment when it is the signing secret or the placeholder', () => {
+    expect(() =>
+      parseEnv({
+        ...deployed,
+        NODE_ENV: 'production',
+        CONSENT_HASH_KEY: withoutKey['JWT_SECRET'] ?? ''
+      })
+    ).toThrow(/CONSENT_HASH_KEY/)
+    expect(() =>
+      parseEnv({
+        ...deployed,
+        NODE_ENV: 'production',
+        CONSENT_HASH_KEY: 'change-me-to-at-least-32-characters-long-value'
+      })
+    ).toThrow(/CONSENT_HASH_KEY/)
+  })
+
+  it('takes at least 32 characters and an id of lower-case letters and digits', () => {
+    expect(() => parseEnv({ ...validEnv, CONSENT_HASH_KEY: 'short' })).toThrow(/CONSENT_HASH_KEY/)
+    expect(parseEnv({ ...validEnv, CONSENT_HASH_KEY_ID: 'c2' }).CONSENT_HASH_KEY_ID).toBe('c2')
+    for (const id of ['', 'C2', 'c 2', 'c:2', 'x'.repeat(17)]) {
+      expect(() => parseEnv({ ...validEnv, CONSENT_HASH_KEY_ID: id })).toThrow(
+        /CONSENT_HASH_KEY_ID/
+      )
+    }
   })
 })

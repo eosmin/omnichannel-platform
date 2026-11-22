@@ -1,9 +1,9 @@
-import { createHmac } from 'node:crypto'
-
 import { Module } from '@nestjs/common'
 
 import {
   COOKIE_CONSENT_HASH_KEY,
+  type ConsentHashKey,
+  consentHashKeyOf,
   DSR_CONFIG,
   type DsrConfig,
   dsrExecutorAvailable,
@@ -11,13 +11,18 @@ import {
 } from '@platform/core/compliance'
 import { env } from '@platform/core/config/env'
 
-// Keys the hash of the address of a visitor who answers the cookie banner with the secret of the validated env
+// Keys the hash of the address of a visitor who answers the cookie banner: its own key (`CONSENT_HASH_KEY`), or, where the env sets none
+// (a laptop, a test run: a deployed environment is refused without it), one derived from the signing secret
 @Module({
   providers: [
     {
-      provide: COOKIE_CONSENT_HASH_KEY, // Derived, with its own label: the signing secret itself is never the key of anything else
-      useFactory: (): string =>
-        createHmac('sha256', env.JWT_SECRET).update('cookie-consent-ip-hash-key:v1').digest('hex')
+      provide: COOKIE_CONSENT_HASH_KEY,
+      useFactory: (): ConsentHashKey =>
+        consentHashKeyOf({
+          jwtSecret: env.JWT_SECRET,
+          consentHashKey: env.CONSENT_HASH_KEY,
+          consentHashKeyId: env.CONSENT_HASH_KEY_ID
+        })
     },
     {
       provide: DSR_CONFIG,

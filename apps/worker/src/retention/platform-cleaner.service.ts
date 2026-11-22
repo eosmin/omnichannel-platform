@@ -17,7 +17,7 @@ import { inEachStoreStrict } from '../schedulers/store-sweep'
 import { type BatchOutcome, categoryRunner, inBatches, PartialRunError } from './retention-batches'
 import { runAuditMetadata, runHasNews } from './run-audit'
 
-// rls-context: sessions, verification_tokens and invitations are global tables (invitations is skipped by the RLS migrations); every other table runs inside JobContext.forStore of its store
+// rls-context: sessions, verification_tokens, invitations and cookie_consents are global tables (invitations is skipped by the RLS migrations; cookie_consents has no store); every other table runs inside JobContext.forStore of its store
 
 export interface PlatformCleanupReport {
   sessions: number
@@ -26,6 +26,7 @@ export interface PlatformCleanupReport {
   metricsHourly: number
   mergedCustomers: number
   invitations: number
+  cookieConsents: number
   // The categories that stopped on a full batch: tomorrow takes the rest
   more: string[]
 }
@@ -37,7 +38,8 @@ type Category = Exclude<keyof PlatformCleanupReport, 'more'>
 // webhooks past thirty days, the hours of the hourly rollup past ninety days, and the customers a merge
 // absorbed whose window to undo it (`unmergeUntil`) has passed, with their CustomerMerge row (the audit log keeps
 // `customer.merged`), and the invitations that nobody accepted and that expired more than
-// `PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS` ago. Platform-wide, in batches of PlatformCleanup.BATCH_SIZE; each row is deleted by its own id, so
+// `PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS` ago, and the answers to the cookie banner older than
+// `PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS`. Platform-wide, in batches of PlatformCleanup.BATCH_SIZE; each row is deleted by its own id, so
 // no store is read as a whole. A category that fails does not stop the others.
 @Injectable()
 export class PlatformCleaner {
@@ -59,6 +61,7 @@ export class PlatformCleaner {
       metricsHourly: 0,
       mergedCustomers: 0,
       invitations: 0,
+      cookieConsents: 0,
       more: []
     }
     const failed: Category[] = []
@@ -80,6 +83,10 @@ export class PlatformCleaner {
 
     const invitationCutoff = new Date(
       now.getTime() - PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS * DAY_MS
+    ).toISOString()
+
+    const cookieConsentCutoff = new Date(
+      now.getTime() - PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS * DAY_MS
     ).toISOString()
 
     await run('sessions', () =>
@@ -142,6 +149,17 @@ export class PlatformCleaner {
             WHERE status IN (${InvitationStatus.PENDING}, ${InvitationStatus.EXPIRED})
               AND expires_at < (${invitationCutoff}::timestamptz AT TIME ZONE 'UTC')
             ORDER BY expires_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
+      )
+    )
+    // `cookie_consents` has no store (a visitor before login: it has no policy either), so it runs platform-wide like the sessions. Each row
+    // is deleted by its own id, oldest first, so a visitor's history is taken from its tail and the newest rows are the last to go
+    await run('cookieConsents', () =>
+      this.batches(
+        () => this.prisma.client.$executeRaw`
+          DELETE FROM cookie_consents WHERE id IN (
+            SELECT id FROM cookie_consents
+            WHERE created_at < (${cookieConsentCutoff}::timestamptz AT TIME ZONE 'UTC')
+            ORDER BY created_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
       )
     )
 

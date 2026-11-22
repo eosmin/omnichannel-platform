@@ -99,7 +99,13 @@ export const PlatformCleanup = {
   // An invitation that nobody accepted stays in the list of the team as expired (it is how the person is
   // invited again); it is deleted this long after it expired (MVP_TRIM_CHECKLIST §10 item 21). An accepted or
   // revoked one is the history of who joined and is not touched here
-  EXPIRED_INVITATION_GRACE_DAYS: 30
+  EXPIRED_INVITATION_GRACE_DAYS: 30,
+  // The record of the cookie banner (`cookie_consents`, TDD_05 §10.5) is the proof of what a browser said, and the choice it proves lasts at
+  // most a year (`COOKIE_CONSENT_COOKIE_MAX_AGE_SECONDS`, then the banner asks again, which writes a new row): a row older than this is either
+  // replaced by a newer one or from a visitor who never came back, and the address hash and the browser it holds are no longer worth keeping.
+  // The newest row of a visitor goes with the rest once it is this old. PROPOSAL, for the owner and whoever answers for the policy to confirm:
+  // two years, a year of choice plus a year for a complaint about it
+  COOKIE_CONSENT_RETENTION_DAYS: 730
 } as const
 
 // The cold export of the audit log (TDD_05 §9.3): whole calendar months that are entirely past the hot window, the
@@ -175,8 +181,8 @@ export const CookieConsentLimits = {
   USER_AGENT_MAX_LENGTH: 512
 } as const
 
-// The key that hashes the address of a visitor in `CookieConsent.ipHash`. Derived from the signing secret with its own label by
-// `CompliancePlatformModule`; the token lives here so that what uses it imports no env.
+// The key that hashes the address of a visitor in `CookieConsent.ipHash` (a `ConsentHashKey`, see `consent-hash.ts`): `CONSENT_HASH_KEY`, or one
+// derived from the signing secret where none is set. Made by `CompliancePlatformModule`; the token lives here so that what uses it imports no env.
 export const COOKIE_CONSENT_HASH_KEY = Symbol('COOKIE_CONSENT_HASH_KEY')
 
 // What the public flow of data requests needs from the validated env, derived once (`CompliancePlatformModule`): whether it is on, the key
