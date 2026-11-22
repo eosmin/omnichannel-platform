@@ -3,7 +3,11 @@ import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 
 import { assertSeesEveryRow, JobContextError, PrismaService } from '@platform/core/database'
-import { connectionUrls, workerRoleBoundInSuites } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  workerRoleBoundInSuites,
+  DatabaseRoles
+} from '@platform/core/database-testing'
 
 // The worker with row security ON (RLS phase 0b). A sweep that decides by what it does not find must refuse to run when row security
 // hides rows from it: "no row" would then mean "a row I may not see", and the sweep would delete what it should keep. The probe table
@@ -21,7 +25,7 @@ describe('the worker fails closed when row security hides rows', () => {
     await owner.connect()
     await owner.query(`CREATE TABLE ${table} (id text PRIMARY KEY, store_id text NOT NULL)`)
     await owner.query(
-      `GRANT SELECT, INSERT, UPDATE, DELETE ON ${table} TO platform_app, platform_worker`
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON ${table} TO ${DatabaseRoles.APP}, ${DatabaseRoles.WORKER}`
     )
     await owner.query('SELECT rls_apply_policy($1::regclass, $2)', [table, 'store'])
     await owner.query(`INSERT INTO ${table} (id, store_id) VALUES ('a', 's1'), ('b', 's2')`)

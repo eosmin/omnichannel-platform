@@ -35,7 +35,12 @@ import { ANY_PERMISSION_KEY, missingPermissions, PERMISSIONS_KEY } from '../tena
 
 import { PLUGIN_SCOPES_KEY } from './plugin-api.keys'
 import { auditPluginDenial } from './plugin-denial-audit'
-import { bearerTokenOf, knownScopes, permissionsOfScopes } from './plugin-install-rules'
+import {
+  bearerTokenOf,
+  heldRateLimit,
+  knownScopes,
+  permissionsOfScopes
+} from './plugin-install-rules'
 
 function invalidKey(): PlatformException {
   // One answer for a key that is missing, malformed, unknown, revoked, disabled, of a suspended plugin or not set up yet: the
@@ -145,7 +150,7 @@ export class PluginApiKeyGuard implements CanActivate {
       )
     }
 
-    await this.limit(installation.id, installation.rateLimitPerMinute)
+    await this.limit(installation.id, heldRateLimit(installation.rateLimitPerMinute))
 
     // Only scopes the platform declares count: a row written some other way cannot give a plugin more
     const granted = knownScopes(installation.scopes)

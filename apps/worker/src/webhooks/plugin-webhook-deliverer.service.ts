@@ -126,12 +126,12 @@ export class PluginWebhookDeliverer {
     // kept by the id of the delivery, so a retry of a delivery that began finds its place and goes, while a retry of one that never
     // took a place (Redis failed on its first try) must take one now: no try passes the cap on the strength of its number. Deliveries
     // at the same instant cannot pass the cap together.
-    const cap = manifestMaxWebhooksPerDay(installation.plugin.manifest)
-    if (
-      !final &&
-      cap !== null &&
-      !(await this.dayCap.take(installationId, deliveryId, cap, now()))
-    ) {
+    // A manifest that names no cap is held to the ceiling of the platform all the same (the places live in Redis, one per delivery:
+    // omitting the limit must not be the way past the bound that protects it)
+    const cap =
+      manifestMaxWebhooksPerDay(installation.plugin.manifest) ??
+      WebhookLimits.PLUGIN_DAY_CAP_CEILING
+    if (!final && !(await this.dayCap.take(installationId, deliveryId, cap, now()))) {
       // Said in the log the owner reads (`attempt: 0`, which is no delivery), so a capped event is told from one the endpoint did
       // not get
       await this.guarded(storeId, installationId, () =>

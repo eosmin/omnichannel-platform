@@ -6,7 +6,11 @@ import {
   replicaRoleProblem,
   type ReplicaRoleFacts
 } from '@platform/core/database'
-import { connectionUrls, replicaConnectionUrl } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  replicaConnectionUrl,
+  DatabaseRoles
+} from '@platform/core/database-testing'
 
 // The check of the start of the api (libs/core/database/src/replica-role.ts), run against a real database: the unit spec reads
 // the decision with invented facts, this one proves that the SQL that reads the facts is valid and answers what the roles of
@@ -29,7 +33,7 @@ describe('the start check of the replica role', () => {
   it('reads the read only role as a role that cannot write and does not skip row security', async () => {
     const facts = await factsOf(replicaConnectionUrl())
     expect(facts).toEqual({
-      roleName: 'platform_replica_ro',
+      roleName: DatabaseRoles.REPLICA,
       isSuperuser: false,
       bypassesRls: false,
       canWrite: false,
@@ -41,13 +45,13 @@ describe('the start check of the replica role', () => {
   it('reads the role of the api as one that can write, on a server that is not a standby', async () => {
     const facts = await factsOf(connectionUrls().app)
     expect(facts).toMatchObject({
-      roleName: 'platform_app',
+      roleName: DatabaseRoles.APP,
       isSuperuser: false,
       bypassesRls: false,
       canWrite: true,
       inRecovery: false
     })
-    expect(replicaRoleProblem(facts)).toContain('platform_app')
+    expect(replicaRoleProblem(facts)).toContain(DatabaseRoles.APP)
   })
 
   it('refuses to start with the role of the api as the replica, and starts with the read only role', async () => {
@@ -56,7 +60,9 @@ describe('the start check of the replica role', () => {
       replicaUrl: connectionUrls().app,
       verifyReplicaRole: true
     })
-    await expect(refused.onModuleInit()).rejects.toThrow(/platform_app.*platform_replica_ro/)
+    await expect(refused.onModuleInit()).rejects.toThrow(
+      new RegExp(`${DatabaseRoles.APP}.*${DatabaseRoles.REPLICA}`)
+    )
 
     const accepted = new PrismaService({
       databaseUrl: connectionUrls().app,

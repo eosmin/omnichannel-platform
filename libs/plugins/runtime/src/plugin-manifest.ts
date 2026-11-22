@@ -11,6 +11,7 @@ import {
   PluginCatalogTypes,
   PluginManifestLimits,
   PluginWidgetLimits,
+  WebhookLimits,
   pluginWidgetManifestSchema,
   PluginPricingModels,
   readLocalizedText,
@@ -364,18 +365,24 @@ export interface ManifestWebhook {
 }
 
 // The cap of deliveries a day that the manifest declares (`limits.maxWebhooksPerDay`), read from a stored manifest the way
-// `manifestWebhookOf` reads the block of webhooks: anything that is not a whole number in the accepted range is no cap
+// `manifestWebhookOf` reads the block of webhooks. A manifest that says nothing has no cap of its own (null: the platform ceiling
+// still holds, see the deliverer). One that says something the parser of today would refuse (a number out of range or with
+// decimals) is held to the nearest edge of the accepted range, and one that is no finite number at all (a string, a null, NaN,
+// infinity) to the ceiling of the platform: never read as "no cap", so a row stored by an older parser cannot slip out of the limit
+// by being malformed (Step 7.3-B5b, #33).
 export function manifestMaxWebhooksPerDay(manifest: unknown): number | null {
   if (typeof manifest !== 'object' || manifest === null) return null
   const limits = (manifest as { limits?: unknown }).limits
   if (typeof limits !== 'object' || limits === null) return null
   const cap = (limits as { maxWebhooksPerDay?: unknown }).maxWebhooksPerDay
-  return typeof cap === 'number' &&
-    Number.isInteger(cap) &&
-    cap >= PluginManifestLimits.MIN_WEBHOOKS_PER_DAY &&
-    cap <= PluginManifestLimits.MAX_WEBHOOKS_PER_DAY
-    ? cap
-    : null
+  if (cap === undefined) return null
+  if (typeof cap !== 'number' || !Number.isFinite(cap)) {
+    return WebhookLimits.PLUGIN_DAY_CAP_CEILING
+  }
+  return Math.min(
+    PluginManifestLimits.MAX_WEBHOOKS_PER_DAY,
+    Math.max(PluginManifestLimits.MIN_WEBHOOKS_PER_DAY, Math.floor(cap))
+  )
 }
 
 export function manifestWebhookOf(manifest: unknown): ManifestWebhook | null {

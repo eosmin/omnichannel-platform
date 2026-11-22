@@ -1,6 +1,11 @@
 import pg from 'pg'
 
-import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  ensureStore,
+  type OwnerClient,
+  DatabaseRoles
+} from '@platform/core/database-testing'
 import { SearchDatabaseErrors } from '@platform/core/domain'
 
 import { createCustomer } from '../builders'
@@ -159,12 +164,12 @@ describe('the customers function of the orders search under row-level security',
     const { rows } = await appDb.query<{ role: string; allowed: boolean }>(
       `SELECT r AS role, has_function_privilege(r,
          'public.rls_search_order_customers(text, text, text, integer)', 'EXECUTE') AS allowed
-       FROM unnest(ARRAY['platform_app', 'platform_worker', 'platform_replica_ro', 'public']) AS r`
+       FROM unnest(ARRAY['${DatabaseRoles.APP}', '${DatabaseRoles.WORKER}', '${DatabaseRoles.REPLICA}', 'public']) AS r`
     )
     expect(Object.fromEntries(rows.map(row => [row.role, row.allowed]))).toEqual({
-      platform_app: true,
-      platform_worker: true,
-      platform_replica_ro: false,
+      [DatabaseRoles.APP]: true,
+      [DatabaseRoles.WORKER]: true,
+      [DatabaseRoles.REPLICA]: false,
       public: false
     })
   })

@@ -6,7 +6,8 @@ import {
   connectionUrls,
   createAppClient,
   ensureStore,
-  type OwnerClient
+  type OwnerClient,
+  DatabaseRoles
 } from '@platform/core/database-testing'
 
 import {
@@ -207,7 +208,7 @@ describe('row-level security, the books of an organization (phase 4)', () => {
         ])
       }
       await db.query(
-        `GRANT SELECT, INSERT, UPDATE, DELETE ON ${copy} TO platform_app, platform_worker`
+        `GRANT SELECT, INSERT, UPDATE, DELETE ON ${copy} TO ${DatabaseRoles.APP}, ${DatabaseRoles.WORKER}`
       )
       await db.query('SELECT rls_apply_policy($1::regclass, $2)', [copy, 'organization'])
     }
@@ -217,7 +218,7 @@ describe('row-level security, the books of an organization (phase 4)', () => {
       copies.set(`upsert:${table}`, copy)
       await db.query(`CREATE TABLE ${copy} (LIKE ${table} INCLUDING ALL)`)
       await db.query(
-        `GRANT SELECT, INSERT, UPDATE, DELETE ON ${copy} TO platform_app, platform_worker`
+        `GRANT SELECT, INSERT, UPDATE, DELETE ON ${copy} TO ${DatabaseRoles.APP}, ${DatabaseRoles.WORKER}`
       )
       await db.query('SELECT rls_apply_policy($1::regclass, $2)', [copy, 'organization'])
     }
@@ -252,9 +253,9 @@ describe('row-level security, the books of an organization (phase 4)', () => {
         expect({ table, found: tenant !== undefined }).toEqual({ table, found: true })
         expect(tenant?.cmd).toBe('ALL')
         expect([...(tenant?.roles ?? [])].sort()).toEqual([
-          'platform_app',
-          'platform_replica_ro',
-          'platform_worker'
+          DatabaseRoles.APP,
+          DatabaseRoles.REPLICA,
+          DatabaseRoles.WORKER
         ])
         for (const predicate of [tenant?.qual, tenant?.with_check]) {
           expect(predicate).toContain('organization_id = ANY')
@@ -281,7 +282,7 @@ describe('row-level security, the books of an organization (phase 4)', () => {
     })
 
     it('keeps the privileges that the policy must never reopen: the balances are written by the trigger alone', async () => {
-      for (const role of ['platform_app', 'platform_worker']) {
+      for (const role of [DatabaseRoles.APP, DatabaseRoles.WORKER]) {
         const write = await db.query<{ ok: boolean }>(
           `SELECT has_table_privilege($1, 'account_period_balances', 'INSERT')
              OR has_table_privilege($1, 'account_period_balances', 'UPDATE')

@@ -688,7 +688,7 @@ describe('The tables of the ledger', () => {
           await owner.$queryRaw<{ allowed: boolean }[]>`
             SELECT has_column_privilege(${role}, 'finance_transactions', ${name}, 'UPDATE') AS allowed`
         )[0]?.allowed === true
-      for (const role of ['platform_app', 'platform_worker']) {
+      for (const role of [DatabaseRoles.APP, DatabaseRoles.WORKER]) {
         expect(await allowed(role, 'SELECT')).toBe(true)
         expect(await allowed(role, 'INSERT')).toBe(true)
         for (const privilege of ['UPDATE', 'DELETE', 'TRUNCATE']) {
@@ -791,7 +791,7 @@ describe('The tables of the ledger', () => {
           SELECT has_column_privilege(${role}, 'finance_settings', ${column}, 'UPDATE') AS allowed`
         return rows[0]?.allowed === true
       }
-      for (const role of ['platform_app', 'platform_worker']) {
+      for (const role of [DatabaseRoles.APP, DatabaseRoles.WORKER]) {
         expect(await can(role, 'next_entry_number')).toBe(false)
         expect(await can(role, 'last_entry_hash')).toBe(false)
         // The row of the settings is never deleted: a new one would start the counter and the lock again
@@ -1265,7 +1265,7 @@ describe('The tables of the ledger', () => {
           SELECT has_table_privilege(${role}, 'account_period_balances', ${privilege}) AS allowed`
         return rows[0]?.allowed === true
       }
-      for (const role of ['platform_app', 'platform_worker']) {
+      for (const role of [DatabaseRoles.APP, DatabaseRoles.WORKER]) {
         for (const privilege of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
           expect({ role, privilege, allowed: await has(role, privilege) }).toEqual({
             role,

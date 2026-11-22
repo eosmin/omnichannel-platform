@@ -1,6 +1,11 @@
 import pg from 'pg'
 
-import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  ensureStore,
+  type OwnerClient,
+  DatabaseRoles
+} from '@platform/core/database-testing'
 import { ProductMatchKinds } from '@platform/core/domain'
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -87,7 +92,7 @@ describe('the plan of the product searches with row-level security on', () => {
           await raw.query(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`)
         }
       }
-      await raw.query('SET LOCAL ROLE platform_app')
+      await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
       await raw.query("SELECT set_config('app.store_ids', $1, true)", [stores[0]])
       const { rows } = await raw.query<{ 'QUERY PLAN': unknown }>(
         `EXPLAIN (FORMAT JSON) ${statement}`,
