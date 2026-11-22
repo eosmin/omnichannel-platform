@@ -286,6 +286,71 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
       }
     )
 
+    it.each([
+      [
+        'fiscal_documents',
+        'accepted',
+        ['receiver_encrypted', 'built_payload_encrypted', 'updated_at']
+      ],
+      ['fiscal_contingencies', 'reported', ['responsible_encrypted', 'updated_at']]
+    ] as const)(
+      'with the door OPEN, %s still refuses a change to every column that is not sealed (%s)',
+      async (table, _status, sealed) => {
+        const id =
+          table === 'fiscal_documents'
+            ? documentId
+            : (
+                await owner.fiscalContingency.findFirstOrThrow({
+                  where: { organizationId: ctx.orgA.id }
+                })
+              ).id
+        const columns = await raw.query<{ column_name: string; data_type: string }>(
+          'SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2',
+          ['public', table]
+        )
+        // A different value for every type the two tables hold, so each column is changed on its own
+        const changed = (name: string, type: string): string | null => {
+          if (type === 'text' || type === 'character varying')
+            return `'x' || coalesce("${name}", '')`
+          if (type === 'integer' || type === 'bigint') return `coalesce("${name}", 0) + 1`
+          if (type.startsWith('timestamp')) return `coalesce("${name}", now()) + interval '1 day'`
+          if (type === 'jsonb' || type === 'json') return `'{"mutated": true}'::jsonb`
+          if (type === 'boolean') return `NOT coalesce("${name}", false)`
+          if (type === 'bytea') return `'\\x0102'::bytea`
+          return null
+        }
+        const tried: string[] = []
+        for (const { column_name: name, data_type: type } of columns.rows) {
+          if ((sealed as readonly string[]).includes(name)) continue
+          const value = changed(name, type)
+          expect({ name, type, known: value !== null }).toEqual({ name, type, known: true })
+          await raw.query('BEGIN')
+          try {
+            await raw.query(`SELECT set_config('${FiscalReseal.SETTING}', 'on', true)`)
+            await expect(
+              raw.query(`UPDATE ${table} SET "${name}" = ${value ?? 'NULL'} WHERE id = $1`, [id])
+            ).rejects.toMatchObject({
+              // The guard's own refusal; a decided row that is given a claim token is refused by the rule of S11a before it
+              message: expect.stringMatching(/only the sealed|holds no claim token/) as string
+            })
+            tried.push(name)
+          } finally {
+            await raw.query('ROLLBACK').catch(() => undefined)
+          }
+        }
+        // Every column but the sealed ones was tried (a column added later is tried too)
+        expect(tried.length).toBe(columns.rows.length - sealed.length)
+      }
+    )
+
+    it('without the setting, the worker and the application roles cannot change a sealed column of a decided document at all', async () => {
+      for (const role of ['platform_app', 'platform_worker']) {
+        await expect(
+          asRole(role, () => raw.query(swapSql, [documentId, shaped()]))
+        ).rejects.toMatchObject({ message: expect.stringContaining('immutable') as string })
+      }
+    })
+
     it('is not reached by the application role through the function: only the worker may call it', async () => {
       await expect(
         asRole('platform_app', () =>
