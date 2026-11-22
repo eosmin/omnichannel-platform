@@ -153,6 +153,9 @@ export const CacheKeys = {
     setupCodeOf: (installationId: string) => `plugin:setup-of:${installationId}`,
     // Events a remote channel plugin reported in the current minute (TDD_10 §6.7.5, the ceiling of 3000 a minute), by installation
     channelEventsWindow: (installationId: string) => `plugin:channel-events:${installationId}`,
+    // The deliveries a plugin installation started in the last 24 hours (`limits.maxWebhooksPerDay`): a sorted set of delivery ids
+    // scored by the instant they started
+    webhookDay: (installationId: string) => `plugin:webhook-day:${installationId}`,
     // A `customer_typing` of a remote channel is passed on at most once per conversation every 2 seconds
     channelTyping: (conversationId: string) => `plugin:channel-typing:${conversationId}`
   },

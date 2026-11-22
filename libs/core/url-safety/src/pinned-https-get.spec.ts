@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 
-import type { HttpsRequester } from './pinned-https-exchange'
 import { PinnedFetchFailed, pinnedHttpsGet } from './pinned-https-get'
+import type { HttpsRequester } from './pinned-request'
 import { UnsafeUrlError } from './public-url'
 
 const resolvesTo =

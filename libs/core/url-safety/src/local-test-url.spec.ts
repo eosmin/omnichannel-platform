@@ -180,6 +180,34 @@ describe('the switch that lets a channel plugin answer on this machine (tests on
       )
     })
 
+    it('refuses an answer to be read with no ceiling, before anything is sent', async () => {
+      configure(ON)
+      await expect(
+        commandsExchange(`http://127.0.0.1:${port}/big`, {
+          ...OPTIONS,
+          maxResponseBytes: undefined as unknown as number
+        })
+      ).rejects.toBeInstanceOf(TypeError)
+      await expect(
+        commandsExchange(`http://127.0.0.1:${port}/big`, {
+          ...OPTIONS,
+          maxResponseBytes: Number.POSITIVE_INFINITY
+        })
+      ).rejects.toBeInstanceOf(TypeError)
+    })
+
+    it('resolves with an empty body, without reading the answer, when the caller discards it', async () => {
+      configure(ON)
+      await expect(
+        commandsExchange(`http://127.0.0.1:${port}/big`, {
+          body: OPTIONS.body,
+          headers: OPTIONS.headers,
+          timeoutMs: OPTIONS.timeoutMs,
+          discardBody: true
+        })
+      ).resolves.toEqual({ status: 200, body: '' })
+    })
+
     it('fails as a plugin that does not answer when nothing listens', async () => {
       configure(ON)
       await expect(commandsExchange('http://127.0.0.1:1/commands', OPTIONS)).rejects.toBeInstanceOf(

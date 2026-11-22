@@ -52,7 +52,7 @@ interface Call {
   body: string
   headers: Readonly<Record<string, string>>
   timeoutMs: number
-  maxResponseBytes: number
+  maxResponseBytes: number | undefined
   anyStatus: boolean | undefined
 }
 

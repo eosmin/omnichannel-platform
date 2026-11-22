@@ -4,6 +4,7 @@ import { errorCodeOf } from './pinned-errors'
 import {
   PinnedExchangeFailed,
   PinnedExchangeReasons,
+  assertAnswerReading,
   type PinnedExchangeOptions,
   type PinnedExchangeResult,
   pinnedHttpsExchange
@@ -62,6 +63,7 @@ export async function commandsExchange(
 
 function loopbackExchange(url: URL, options: PinnedExchangeOptions): Promise<PinnedExchangeResult> {
   if (!isLoopbackUrl(url.href)) throw new UnsafeUrlError('not on this machine')
+  assertAnswerReading(options)
   const host = url.hostname.replace(/^\[|\]$/g, '')
   const payload = Buffer.from(options.body, 'utf8')
   return new Promise<PinnedExchangeResult>((resolve, reject) => {
@@ -114,11 +116,20 @@ function loopbackExchange(url: URL, options: PinnedExchangeOptions): Promise<Pin
         req.destroy()
         return
       }
+      if (options.discardBody) {
+        response.resume()
+        finish(() => {
+          resolve({ status, body: '' })
+        })
+        req.destroy()
+        return
+      }
+      const maxBytes = options.maxResponseBytes
       const chunks: Buffer[] = []
       let size = 0
       response.on('data', (chunk: Buffer) => {
         size += chunk.length
-        if (size > options.maxResponseBytes) {
+        if (size > maxBytes) {
           finish(() => {
             reject(new PinnedExchangeFailed(PinnedExchangeReasons.TOO_LARGE, status))
           })

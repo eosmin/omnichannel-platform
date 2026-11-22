@@ -1,7 +1,8 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 
-import { UnsafeUrlError } from '@platform/core/url-safety'
+import { WebhookDeliveryErrors } from '@platform/core/domain'
+import { PinnedExchangeReasons, UnsafeUrlError } from '@platform/core/url-safety'
 
 import { type HttpsRequester, pinnedHttpsPost, WebhookPostFailed } from './pinned-https-post'
 
@@ -258,5 +259,22 @@ describe('pinnedHttpsPost', () => {
     }).catch((error: unknown) => error)
 
     expect(failure).toMatchObject({ retryable: false })
+  })
+})
+
+// The reasons of the exchange are written to the log as the codes of WebhookDeliveryErrors: the words must stay the same
+describe('the reasons of the shared exchange', () => {
+  it.each([
+    ['NOT_RESOLVED', PinnedExchangeReasons.NOT_RESOLVED, WebhookDeliveryErrors.NOT_RESOLVED],
+    ['NO_ANSWER', PinnedExchangeReasons.NO_ANSWER, WebhookDeliveryErrors.NO_ANSWER],
+    ['TOO_SLOW', PinnedExchangeReasons.TOO_SLOW, WebhookDeliveryErrors.TOO_SLOW],
+    ['BAD_STATUS', PinnedExchangeReasons.BAD_STATUS, WebhookDeliveryErrors.BAD_STATUS],
+    [
+      'REQUEST_REFUSED',
+      PinnedExchangeReasons.REQUEST_REFUSED,
+      WebhookDeliveryErrors.REQUEST_REFUSED
+    ]
+  ])('%s is the same code in the log', (_name, reason, code) => {
+    expect(reason).toBe(code)
   })
 })
