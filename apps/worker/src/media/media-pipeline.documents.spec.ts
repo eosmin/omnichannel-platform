@@ -149,7 +149,7 @@ describe('MediaPipeline and the properties of a document', () => {
 
     expect(storage.put).not.toHaveBeenCalled()
     expect(logger.warn).toHaveBeenCalledWith(
-      { mediaId: 'media-1', storeId: null },
+      { mediaId: 'media-1', storeId: null, why: 'not_cleanable' },
       expect.stringContaining('kept as it came')
     )
     expect(updateMany.mock.calls.at(-1)?.[0]).toMatchObject({ data: { status: 'clean' } })

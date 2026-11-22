@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { DocumentSanitizing } from '@platform/core/storage'
 
 const SRC = join(__dirname, '..')
+// A call or an import of the cleaner of the calling thread (a mention in a comment is not a use)
+const USES_INLINE = /\bsanitizeDocumentInline\s*\(|import\s[^;]*\bsanitizeDocumentInline\b/
 
 function sourcesOf(dir: string): string[] {
   return readdirSync(dir).flatMap(name => {
@@ -18,7 +20,7 @@ function sourcesOf(dir: string): string[] {
 describe('the cleaning of documents never runs on the main thread of the worker', () => {
   it('only the entry of the document thread uses the cleaner of the calling thread', () => {
     const users = sourcesOf(SRC)
-      .filter(file => readFileSync(file, 'utf8').includes('sanitizeDocumentInline'))
+      .filter(file => USES_INLINE.test(readFileSync(file, 'utf8')))
       .map(file => file.slice(SRC.length + 1))
     expect(users.sort()).toEqual(['media/document-thread.reply.ts'])
   })
