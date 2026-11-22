@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import {
+  COOKIE_CONSENT_RETENTION_ENABLED,
   DataRetentionPolicies,
   PlatformCleanup,
   RetentionResourceTypes
@@ -47,7 +48,9 @@ export class PlatformCleaner {
     private readonly prisma: PrismaService,
     private readonly jobContext: JobContext,
     private readonly logger: PinoLogger,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    // Off by default: the window is a proposal and the sweep destroys evidence of consent (the owner turns it on)
+    @Inject(COOKIE_CONSENT_RETENTION_ENABLED) private readonly cookieConsentRetention: boolean
   ) {
     this.logger.setContext(PlatformCleaner.name)
   }
@@ -153,15 +156,18 @@ export class PlatformCleaner {
     )
     // `cookie_consents` has no store (a visitor before login: it has no policy either), so it runs platform-wide like the sessions. Each row
     // is deleted by its own id, oldest first, so a visitor's history is taken from its tail and the newest rows are the last to go
-    await run('cookieConsents', () =>
-      this.batches(
-        () => this.prisma.client.$executeRaw`
+    // Only when the owner has turned it on: with it off nothing is deleted and the category reports 0
+    if (this.cookieConsentRetention) {
+      await run('cookieConsents', () =>
+        this.batches(
+          () => this.prisma.client.$executeRaw`
           DELETE FROM cookie_consents WHERE id IN (
             SELECT id FROM cookie_consents
             WHERE created_at < (${cookieConsentCutoff}::timestamptz AT TIME ZONE 'UTC')
             ORDER BY created_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
+        )
       )
-    )
+    }
 
     this.logger.info(report, 'the platform cleanup finished')
     // One entry for the run. It runs over every store, so it has no store (and no organization): the viewer of one store never reads

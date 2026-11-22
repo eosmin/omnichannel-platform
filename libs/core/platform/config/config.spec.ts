@@ -633,3 +633,17 @@ describe('CONSENT_HASH_KEY, the key of the cookie banner hashes (Step 7.2-K2)', 
     expect(() => parseEnv({ ...validEnv, CONSENT_HASH_KEY: 'short' })).toThrow(/CONSENT_HASH_KEY/)
   })
 })
+
+describe('COOKIE_CONSENT_RETENTION_ENABLED, the sweep of the cookie banner records (Step 7.2-K2)', () => {
+  it('is off unless it is turned on, because the sweep deletes evidence of consent for good', () => {
+    expect(parseEnv(validEnv).COOKIE_CONSENT_RETENTION_ENABLED).toBe(false)
+    expect(
+      parseEnv({ ...validEnv, COOKIE_CONSENT_RETENTION_ENABLED: 'false' })
+        .COOKIE_CONSENT_RETENTION_ENABLED
+    ).toBe(false)
+    expect(
+      parseEnv({ ...validEnv, COOKIE_CONSENT_RETENTION_ENABLED: 'true' })
+        .COOKIE_CONSENT_RETENTION_ENABLED
+    ).toBe(true)
+  })
+})

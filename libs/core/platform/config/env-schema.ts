@@ -224,6 +224,9 @@ export const envSchema = z
     // The public intake of data subject requests (POST /compliance/dsr and /verify) is off until the deadline alert of Step 7.2-H2
     // exists: a request that expires unnoticed is a legal risk (owner decision of the coordinator)
     DSR_PUBLIC_INTAKE_ENABLED: z.stringbool().default(false),
+    // The daily cleanup deletes the answers to the cookie banner older than `PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS` only with this on.
+    // It is off until the owner decides the window: the sweep destroys evidence of consent for good (Step 7.2-K2)
+    COOKIE_CONSENT_RETENTION_ENABLED: z.stringbool().default(false),
     BULL_BOARD_ADMIN_EMAILS: z
       .string()
       .default('')

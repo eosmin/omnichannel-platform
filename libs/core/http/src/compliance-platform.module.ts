@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 
 import {
   COOKIE_CONSENT_HASH_KEY,
+  COOKIE_CONSENT_RETENTION_ENABLED,
   type ConsentHashKey,
   consentHashKeyOf,
   DSR_CONFIG,
@@ -24,6 +25,11 @@ import { env } from '@platform/core/config/env'
         })
     },
     {
+      // Off by default: the sweep of the old answers to the banner destroys evidence of consent, and the owner turns it on
+      provide: COOKIE_CONSENT_RETENTION_ENABLED,
+      useFactory: (): boolean => env.COOKIE_CONSENT_RETENTION_ENABLED
+    },
+    {
       provide: DSR_CONFIG,
       // On only with the executor of erasures in place (the env schema refuses to start otherwise; this is the second lock)
       useFactory: (): DsrConfig => ({
@@ -33,6 +39,6 @@ import { env } from '@platform/core/config/env'
       })
     }
   ],
-  exports: [COOKIE_CONSENT_HASH_KEY, DSR_CONFIG]
+  exports: [COOKIE_CONSENT_HASH_KEY, COOKIE_CONSENT_RETENTION_ENABLED, DSR_CONFIG]
 })
 export class CompliancePlatformModule {}
