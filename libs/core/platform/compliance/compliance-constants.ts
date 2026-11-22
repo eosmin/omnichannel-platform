@@ -24,7 +24,6 @@ export const ComplianceConfig = {
   // MVP, the audit keeps each approver so a store can ask for two
   DSR_ERASURE_APPROVALS_REQUIRED: 1,
   // The public intake (TDD_05 §10.2): what one address, one store and one body may cost, so the form cannot be used to mail a third party
-  DSR_INTAKE_MAX_BODY_BYTES: 2048,
   DSR_INTAKE_PER_EMAIL_PER_DAY: 3,
   DSR_INTAKE_PER_STORE_PER_DAY: 50,
   DSR_INTAKE_JOB_TTL_MS: 60 * 60 * 1000

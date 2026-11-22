@@ -11,6 +11,7 @@ import {
   DSR_VERIFY_FRAGMENT_KEY,
   DSR_VERIFY_WEB_PATH,
   type DsrConfig,
+  type DsrIntake,
   dsrEmailHash,
   normalizeDsrEmail,
   openDsrIntake
@@ -63,7 +64,8 @@ export class DsrIntakeWorker {
         // An exact comparison of the trimmed, lower-cased addresses (never ILIKE: "%" and "_" would be wildcards), customers not erased
         const customers = await tx.$queryRaw<{ id: string }[]>`
           SELECT id FROM customers
-          WHERE store_id = ${store.storeId} AND erased_at IS NULL AND lower(btrim(email)) = ${email}
+          WHERE store_id = ${store.storeId} AND erased_at IS NULL
+            AND lower(regexp_replace(email, '^\\s+|\\s+$', '', 'g')) = ${email}
           ORDER BY id`
         if (customers.length === 0) return { kind: 'no_customer' as const }
         const open = await tx.dataSubjectRequest.count({
@@ -116,6 +118,36 @@ export class DsrIntakeWorker {
       resourceId: outcome.requestId,
       metadata: { type: intake.type }
     })
+    try {
+      await this.queueMail(email, token, intake)
+    } catch (error) {
+      // The request is saved but its link was never queued: a retry of this job would find it open and call it a duplicate, and the person
+      // could never ask again. It is closed (and the address and its hash cleared) and the failure goes up, so the retry makes a new one.
+      await this.abandon(store.storeId, outcome.requestId)
+      throw error
+    }
+    this.logger.info(
+      { requestId: outcome.requestId },
+      'data request created, verification mail queued'
+    )
+    return 'created'
+  }
+
+  private async abandon(storeId: string, requestId: string): Promise<void> {
+    await this.jobContext.forStore(storeId, async () => {
+      await this.prisma.client.dataSubjectRequest.updateMany({
+        where: { id: requestId, storeId, status: DsrStatus.PENDING_VERIFICATION },
+        data: {
+          status: DsrStatus.REJECTED,
+          rejectionReason: 'verification_mail_not_queued',
+          notifyToEncrypted: null,
+          subjectEmailHash: null
+        }
+      })
+    })
+  }
+
+  private async queueMail(email: string, token: string, intake: DsrIntake): Promise<void> {
     await this.emailQueue.add(
       JobNames.SEND_EMAIL,
       {
@@ -129,14 +161,12 @@ export class DsrIntakeWorker {
         },
         tags: { template: EmailTemplates.DSR_VERIFICATION }
       },
-      // The job holds the raw token: gone as soon as it is sent
-      { removeOnComplete: true }
+      // The job holds the raw token and the address: gone as soon as it is sent, and an hour after a failure
+      {
+        removeOnComplete: true,
+        removeOnFail: { age: ComplianceConfig.DSR_INTAKE_JOB_TTL_MS / 1000 }
+      }
     )
-    this.logger.info(
-      { requestId: outcome.requestId },
-      'data request created, verification mail queued'
-    )
-    return 'created'
   }
 
   // The token goes in the fragment, which the browser never sends to a server

@@ -32,7 +32,9 @@ function build(options: {
   store?: unknown[]
   customers?: unknown[]
   open?: number
+  mailFails?: boolean
 }) {
+  const updateMany = jest.fn().mockResolvedValue({ count: 1 })
   const create = jest.fn().mockResolvedValue({ id: 'req-1' })
   const createToken = jest.fn().mockResolvedValue({})
   const tx = {
@@ -42,14 +44,20 @@ function build(options: {
     verificationToken: { create: createToken }
   }
   const prisma = {
-    client: { $queryRaw: jest.fn().mockResolvedValue(options.store ?? [STORE]) },
+    client: {
+      $queryRaw: jest.fn().mockResolvedValue(options.store ?? [STORE]),
+      dataSubjectRequest: { updateMany }
+    },
     transaction: jest.fn((work: (t: typeof tx) => Promise<unknown>) => work(tx))
   } as unknown as PrismaService
   const jobContext = {
     forStore: jest.fn((_id: string, work: () => Promise<unknown>) => work())
   } as unknown as JobContext
   const log = jest.fn()
-  const add = jest.fn().mockResolvedValue(undefined)
+  const add =
+    options.mailFails === true
+      ? jest.fn().mockRejectedValue(new Error('redis down'))
+      : jest.fn().mockResolvedValue(undefined)
   const worker = new DsrIntakeWorker(
     prisma,
     jobContext,
@@ -59,7 +67,7 @@ function build(options: {
     { ...CONFIG, enabled: options.enabled ?? true },
     { setContext: jest.fn(), info: jest.fn() } as unknown as PinoLogger
   )
-  return { worker, tx, create, createToken, log, add }
+  return { worker, tx, create, createToken, log, add, updateMany }
 }
 
 const sealed = (): string => sealDsrIntake(intake, CONFIG.encryptionKeyHex)
@@ -107,5 +115,27 @@ describe('DsrIntakeWorker', () => {
     const { worker, create } = build({})
     await expect(worker.handle('garbage')).resolves.toBe('dropped')
     expect(create).not.toHaveBeenCalled()
+  })
+
+  it('closes a request whose mail could not be queued, clears the address and its hash, and fails so the job is retried', async () => {
+    const { worker, updateMany } = build({ mailFails: true })
+    await expect(worker.handle(sealed())).rejects.toThrow('redis down')
+    expect(argOf<unknown>(updateMany, 0, 0)).toMatchObject({
+      where: { id: 'req-1', storeId: 'store-1', status: 'pending_verification' },
+      data: {
+        status: 'rejected',
+        notifyToEncrypted: null,
+        subjectEmailHash: null
+      }
+    })
+  })
+
+  it('keeps a failed mail job (it holds the link and the address) for an hour and no longer', async () => {
+    const { worker, add } = build({})
+    await worker.handle(sealed())
+    expect(argOf<Record<string, unknown>>(add, 0, 2)).toEqual({
+      removeOnComplete: true,
+      removeOnFail: { age: 3600 }
+    })
   })
 })
