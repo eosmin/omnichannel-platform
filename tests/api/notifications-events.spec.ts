@@ -637,6 +637,76 @@ describe('Notifications raised by events', () => {
       expect(await rowsOf(NotificationTypes.MEDIA_UNSCANNABLE)).toHaveLength(first)
     })
 
+    it('does not count a file of another store: it must not turn the ad picture of this one into a notice', async () => {
+      const { message, payload } = await unscannableOf()
+      // A row of store B that points at the message of store A (the owner client ignores tenancy): only the filter by store keeps it out
+      await owner.media.create({
+        data: {
+          storeId: ctx.storeB.id,
+          purpose: 'message',
+          messageId: message.id,
+          key: `${prefix}-foreign-${randomUUID()}`,
+          filename: 'foreign.pdf',
+          contentType: 'application/pdf',
+          fileSize: 10,
+          status: MediaStatus.UNSCANNABLE
+        }
+      })
+
+      await app.get(EventEmitter2).emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+
+      expect(await rowsOf(NotificationTypes.MEDIA_UNSCANNABLE)).toHaveLength(0)
+    })
+
+    it('does not notify for a message whose only refused file is an infected one', async () => {
+      const { message, payload } = await unscannableOf()
+      await owner.media.create({
+        data: {
+          storeId: ctx.storeA.id,
+          purpose: 'message',
+          messageId: message.id,
+          key: `${prefix}-infected-${randomUUID()}`,
+          filename: 'virus.pdf',
+          contentType: 'application/pdf',
+          fileSize: 10,
+          status: MediaStatus.INFECTED
+        }
+      })
+
+      await app.get(EventEmitter2).emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+
+      expect(await rowsOf(NotificationTypes.MEDIA_UNSCANNABLE)).toHaveLength(0)
+    })
+
+    it('tells both notices, once each, for a message with an infected and an unscannable file', async () => {
+      const { message, payload } = await unscannableOf()
+      await fileOf(message.id)
+      await owner.media.create({
+        data: {
+          storeId: ctx.storeA.id,
+          purpose: 'message',
+          messageId: message.id,
+          key: `${prefix}-both-${randomUUID()}`,
+          filename: 'virus.pdf',
+          contentType: 'application/pdf',
+          fileSize: 10,
+          status: MediaStatus.INFECTED
+        }
+      })
+      const events = app.get(EventEmitter2)
+
+      await events.emitAsync(Events.MEDIA_INFECTED, payload)
+      await events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+      await events.emitAsync(Events.MEDIA_INFECTED, payload)
+      await events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+
+      for (const type of [NotificationTypes.MEDIA_INFECTED, NotificationTypes.MEDIA_UNSCANNABLE]) {
+        const told = (await rowsOf(type)).map(row => row.userId)
+        expect(told).toEqual(expect.arrayContaining([ctx.adminA.id, ctx.agentA.id]))
+        expect(new Set(told).size).toBe(told.length)
+      }
+    })
+
     it('audits but does not notify when the file is the picture of an ad, which nobody can send again', async () => {
       const { message, payload } = await unscannableOf()
       // No file of the message has this verdict: the ad hangs from its origin, which is announced as the message
