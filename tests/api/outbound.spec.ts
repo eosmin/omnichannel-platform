@@ -781,6 +781,38 @@ describe('Replies on their way to a channel', () => {
       })
     })
 
+    it('tries a remote-style doubt again with the same key, and leaves the message failed with no definitive mark after the last attempt (N-39-06)', async () => {
+      const reply = await queuedReply()
+      // What RemoteChannelPlugin throws on a 5xx or a timeout of a send that carried an Idempotency-Key: the plugin deduplicates it
+      sendMessage = () => {
+        sent.push({} as SendMessageParams)
+        return Promise.reject(
+          new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+            retryable: true,
+            outcomeUnknown: true,
+            idempotent: true
+          })
+        )
+      }
+
+      await expect(sender.send(job(reply), false)).rejects.toThrow('sending a reply failed')
+      // The doubt is repeated: the message waits for its next attempt as queued, with no mark yet
+      expect(await stored(reply.id)).toMatchObject({ deliveryStatus: DeliveryStatus.QUEUED })
+
+      await sender.send(job(reply), true)
+
+      expect(sent).toHaveLength(2)
+      const failed = await owner.message.findUniqueOrThrow({
+        where: { id: reply.id },
+        select: { deliveryStatus: true, failureDefinitive: true }
+      })
+      // The agent decides: it may have gone, so it is never thrown away
+      expect(failed).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        failureDefinitive: false
+      })
+    })
+
     describe('a doubt is never sent again behind the customer (the provider has no key to stop it)', () => {
       const doubts: [string, Error][] = [
         ['a timeout of the worker', new Error('the call to the provider timed out')],

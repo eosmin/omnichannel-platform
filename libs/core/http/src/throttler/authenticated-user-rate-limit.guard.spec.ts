@@ -106,3 +106,16 @@ describe('AuthenticatedUserRateLimitGuard', () => {
     await expect(guard.canActivate(contextOf({ user: { id: 'u1' } }))).resolves.toBe(true)
   })
 })
+
+// The production budget is fixed here, so that a spec that lowers it for its own app (the provider is only given by a test module,
+// and E2E_USER_RATE_LIMIT is refused outside NODE_ENV=test and under the real limit, see config.spec.ts) cannot move it unseen
+describe('the budget in force of a person', () => {
+  it('is 600 a minute unless the test environment raised it', () => {
+    expect(AuthenticatedUserRateLimit).toEqual({ name: 'authenticated', limit: 600, ttlMs: 60_000 })
+    expect(authenticatedUserRateLimitOf(undefined)).toBe(AuthenticatedUserRateLimit)
+    expect(authenticatedUserRateLimitOf(5000)).toEqual({
+      ...AuthenticatedUserRateLimit,
+      limit: 5000
+    })
+  })
+})
