@@ -7,6 +7,10 @@ const validWebEnv = {
   NEXT_PUBLIC_WIDGET_SCRIPT_URL: 'http://localhost:4200/v1/widget.js'
 }
 
+// A public key of the shape `pnpm vapid:generate` prints (the one the CI builds the web image with is no secret): 65 bytes, 87 characters
+const vapidPublicKey =
+  'BPJNI2b9XNUaMZdiMw-lw1t8o9c5IKKEydv4knzKkzklkUoVSQUsoRa2VLL7zfUv1NFEL891XQZ1zv8YSckI_k8'
+
 describe('parseWebEnv', () => {
   it('accepts the public variables and leaves the optional ones undefined', () => {
     const env = parseWebEnv(validWebEnv)
@@ -19,9 +23,24 @@ describe('parseWebEnv', () => {
       parseWebEnv({ ...validWebEnv, NEXT_PUBLIC_VAPID_PUBLIC_KEY: '' }).NEXT_PUBLIC_VAPID_PUBLIC_KEY
     ).toBeUndefined()
     expect(
-      parseWebEnv({ ...validWebEnv, NEXT_PUBLIC_VAPID_PUBLIC_KEY: 'abc' })
+      parseWebEnv({ ...validWebEnv, NEXT_PUBLIC_VAPID_PUBLIC_KEY: vapidPublicKey })
         .NEXT_PUBLIC_VAPID_PUBLIC_KEY
-    ).toBe('abc')
+    ).toBe(vapidPublicKey)
+  })
+
+  it('refuses a VAPID key that is not the public half of a pair, at build and not in the browser', () => {
+    for (const key of [
+      'abc',
+      vapidPublicKey.slice(1),
+      `${vapidPublicKey}A`,
+      `A${vapidPublicKey.slice(1)}`,
+      `${vapidPublicKey.slice(0, 40)}+${vapidPublicKey.slice(41)}`,
+      ` ${vapidPublicKey}`
+    ]) {
+      expect(() => parseWebEnv({ ...validWebEnv, NEXT_PUBLIC_VAPID_PUBLIC_KEY: key })).toThrow(
+        /NEXT_PUBLIC_VAPID_PUBLIC_KEY/
+      )
+    }
   })
 
   it('fails naming the missing variable', () => {

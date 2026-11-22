@@ -26,8 +26,16 @@ export interface ErasedDataReport {
   filesLeft: number
   // True when every category was done and the customer was marked as cleared
   cleared: boolean
+  // True when a category stopped with rows left and nothing failed: the batch cap of a run, or the time budget of the sweep. The next run
+  // takes the rest, which is no failure
+  unfinished: boolean
   // True when there was nothing to do and nothing was touched: the customer is gone or was not erased (a job for it has no reason to retry)
   skipped: boolean
+}
+
+// The batches a run may take for each category: the cap of a job, or no cap when the run has a time budget (the time is the cap)
+function batchCap(until: number): number {
+  return Number.isFinite(until) ? Number.POSITIVE_INFINITY : RetentionRun.MAX_BATCHES
 }
 
 // What hangs from an erased customer (TDD_05 §10.3, Step 7.2-C), cleared in the context of its store: the text of its messages (the
@@ -48,7 +56,14 @@ export class ErasedCustomerData {
     this.logger.setContext(ErasedCustomerData.name)
   }
 
-  async clear(storeId: string, customerId: string): Promise<ErasedDataReport> {
+  // `until`: the moment (epoch ms) after which no other batch starts (the time budget of the daily sweep). With it a customer is not cut at the
+  // batch cap of a job (a thread of more than 20 000 messages is finished in one night, as far as the time allows) and a very large thread
+  // never outlasts the lock of the run: what is left is found by the next one. Without it (the job of the erasure) the cap holds and the queue retries
+  async clear(
+    storeId: string,
+    customerId: string,
+    until: number = Number.POSITIVE_INFINITY
+  ): Promise<ErasedDataReport> {
     const report: ErasedDataReport = {
       messages: 0,
       revisions: 0,
@@ -57,6 +72,7 @@ export class ErasedCustomerData {
       files: 0,
       filesLeft: 0,
       cleared: false,
+      unfinished: false,
       skipped: false
     }
     const customer = await this.jobContext.forStore(storeId, () =>
@@ -101,20 +117,20 @@ export class ErasedCustomerData {
       }
     }
     report.messages = await attempt(() =>
-      this.inStore(storeId, limit => this.messages(storeId, customerId, limit))
+      this.inStore(storeId, until, limit => this.messages(storeId, customerId, limit))
     )
     report.revisions = await attempt(() =>
-      this.inStore(storeId, limit => this.revisions(storeId, customerId, limit))
+      this.inStore(storeId, until, limit => this.revisions(storeId, customerId, limit))
     )
     report.csatComments = await attempt(() =>
-      this.inStore(storeId, limit => this.conversationNotes(storeId, customerId, limit))
+      this.inStore(storeId, until, limit => this.conversationNotes(storeId, customerId, limit))
     )
     report.notifications = await attempt(() =>
-      this.inStore(storeId, limit => this.notifications(storeId, customerId, limit))
+      this.inStore(storeId, until, limit => this.notifications(storeId, customerId, limit))
     )
     let filesLeft = 0
     await attempt(async () => {
-      const outcome = await this.files(storeId, customerId)
+      const outcome = await this.files(storeId, customerId, until)
       report.files = outcome.deleted
       filesLeft = outcome.left
       return { deleted: outcome.deleted, more: outcome.more }
@@ -129,6 +145,8 @@ export class ErasedCustomerData {
     }
 
     // Marked only when nothing waits: the sweep takes the customers that are not
+    // Rows are left, and no bucket failed: the cap or the time budget stopped the run, which is not a failure
+    report.unfinished = more && report.filesLeft === 0
     if (!more && report.filesLeft === 0) {
       report.cleared = true
       if (firstTime) {
@@ -164,11 +182,16 @@ export class ErasedCustomerData {
   }
 
   // One category in batches. `step` clears one batch and says how many it took; a batch that comes back short ends the category
-  private inStore(storeId: string, step: (limit: number) => Promise<number>) {
-    return inBatches(RetentionRun.BATCH_SIZE, RetentionRun.MAX_BATCHES, async () => {
-      const taken = await this.jobContext.forStore(storeId, () => step(RetentionRun.BATCH_SIZE))
-      return { taken, deleted: taken }
-    })
+  private inStore(storeId: string, until: number, step: (limit: number) => Promise<number>) {
+    return inBatches(
+      RetentionRun.BATCH_SIZE,
+      batchCap(until),
+      async () => {
+        const taken = await this.jobContext.forStore(storeId, () => step(RetentionRun.BATCH_SIZE))
+        return { taken, deleted: taken }
+      },
+      () => Date.now() > until
+    )
   }
 
   // The text of the messages of the conversations of the customer: free text, the text waiting for an edit and the metadata (a template keeps
@@ -244,12 +267,15 @@ export class ErasedCustomerData {
   // id, so a row that stays does not hide the ones after it.
   private async files(
     storeId: string,
-    customerId: string
+    customerId: string,
+    until: number
   ): Promise<{ deleted: number; left: number; more: boolean }> {
     let after = ''
     let deleted = 0
     let left = 0
-    for (let batch = 0; batch < RetentionRun.MAX_BATCHES; batch += 1) {
+    for (let batch = 0; batch < batchCap(until); batch += 1) {
+      // The time budget of the sweep ends the walk between two batches: the next run starts again at the first row that is left
+      if (Date.now() > until) return { deleted, left, more: true }
       const rows = await this.jobContext.forStore(storeId, () =>
         this.prisma.client.media.findMany({
           where: {
@@ -265,7 +291,15 @@ export class ErasedCustomerData {
         })
       )
       const removable: string[] = []
+      const handled: typeof rows = []
+      let stopped = false
       for (const file of rows) {
+        // A batch of files is many calls to the bucket: the budget is asked between files too, so one batch never outlasts the lock
+        if (Date.now() > until) {
+          stopped = true
+          break
+        }
+        handled.push(file)
         const { keys, foreign } = objectKeysOf(storeId, file)
         // A key outside the prefix of the store is not ours to delete: it stays in the bucket and said in the log
         if (foreign.length > 0) {
@@ -291,7 +325,7 @@ export class ErasedCustomerData {
         else left += 1
       }
       // A row that stays (a key that is not ours, a bucket that failed) is the trace of an object, not a place to keep the text of the person
-      const kept = rows.filter(file => !removable.includes(file.id)).map(file => file.id)
+      const kept = handled.filter(file => !removable.includes(file.id)).map(file => file.id)
       if (kept.length > 0) {
         await this.jobContext.forStore(storeId, () =>
           this.prisma.client.media.updateMany({
@@ -306,6 +340,7 @@ export class ErasedCustomerData {
         )
         deleted += removed.count
       }
+      if (stopped) return { deleted, left, more: true }
       after = rows.at(-1)?.id ?? after
       if (rows.length < RetentionRun.BATCH_SIZE) return { deleted, left, more: false }
     }

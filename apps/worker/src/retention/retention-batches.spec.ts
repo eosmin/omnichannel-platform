@@ -28,6 +28,31 @@ describe('inBatches', () => {
     expect(outcome).toEqual({ deleted: 7, more: false })
   })
 
+  it('stops between batches when its time budget is over, and says that more waits', async () => {
+    let calls = 0
+    const outcome = await inBatches(
+      500,
+      Number.POSITIVE_INFINITY,
+      () => {
+        calls += 1
+        return Promise.resolve({ taken: 500, deleted: 500 })
+      },
+      () => calls >= 4
+    )
+
+    expect(calls).toBe(4)
+    expect(outcome).toEqual({ deleted: 2000, more: true })
+  })
+
+  it('does not start a batch when the budget is over before the first one', async () => {
+    const step = jest.fn(() => Promise.resolve({ taken: 1, deleted: 1 }))
+
+    const outcome = await inBatches(500, 5, step, () => true)
+
+    expect(step).not.toHaveBeenCalled()
+    expect(outcome).toEqual({ deleted: 0, more: true })
+  })
+
   it('does not hide a failure: the batch that throws throws out of the run', async () => {
     await expect(inBatches(500, 5, () => Promise.reject(new Error('down')))).rejects.toThrow('down')
   })
