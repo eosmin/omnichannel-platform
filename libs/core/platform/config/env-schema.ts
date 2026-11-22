@@ -11,6 +11,8 @@ import {
 } from '@platform/core/env-rules'
 import { isBase64UrlOfBytes, PushLimits } from '@platform/core/notifications'
 
+import { dsrExecutorAvailable } from '../compliance/compliance-constants'
+
 import { DURATION_PATTERN, durationToSeconds } from './duration'
 
 // Whether a host is on a private network: parsed, never matched by prefix ("10.example.com" and "127.0.0.1.nip.io" are public names). An IPv4
@@ -210,6 +212,9 @@ export const envSchema = z
 
     // Bull Board and the dead-letter tooling: a JWT plus this allowlist (empty = nobody)
     BULL_BOARD_ENABLED: z.stringbool().default(false),
+    // The public intake of data subject requests (POST /compliance/dsr and /verify) is off until the deadline alert of Step 7.2-H2
+    // exists: a request that expires unnoticed is a legal risk (owner decision of the coordinator)
+    DSR_PUBLIC_INTAKE_ENABLED: z.stringbool().default(false),
     BULL_BOARD_ADMIN_EMAILS: z
       .string()
       .default('')
@@ -308,6 +313,17 @@ export const envSchema = z
           : 'set RESEND_API_KEY, or SMTP_URL to send through Mailpit',
         path: ['RESEND_API_KEY'],
         input: env.RESEND_API_KEY
+      })
+    }
+    // The public intake of data requests promises an erasure that only the executor of Step 7.2-H2b carries out: turning it on without
+    // one would take requests nobody can finish (api and worker refuse to start)
+    if (env.DSR_PUBLIC_INTAKE_ENABLED && !dsrExecutorAvailable()) {
+      ctx.issues.push({
+        code: 'custom',
+        message:
+          'DSR_PUBLIC_INTAKE_ENABLED needs the executor of erasures (Step 7.2-H2b); keep it false until then',
+        path: ['DSR_PUBLIC_INTAKE_ENABLED'],
+        input: env.DSR_PUBLIC_INTAKE_ENABLED
       })
     }
     // One key without the other: the push would be off with nothing saying why

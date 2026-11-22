@@ -289,6 +289,9 @@ export const AuditAction = {
   DSR_ERASURE_COMPLETED: 'dsr.erasure_completed',
   DSR_EXPORT_COMPLETED: 'dsr.export_completed',
   DSR_REJECTED: 'dsr.rejected',
+  DSR_APPROVED: 'dsr.approved',
+  DSR_CANCELLED: 'dsr.cancelled',
+  DSR_EXPIRED: 'dsr.expired',
   CONSENT_RECORDED: 'consent.recorded'
 } as const
 

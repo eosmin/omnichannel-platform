@@ -55,6 +55,7 @@ export const QUEUE_ADD_ALLOWED: Readonly<Record<string, number>> = {
   // A public route (no transaction of the request: `tenantContextOf` is undefined) and a job that carries what it needs in its payload
   'apps/api/src/modules/auth/magic-link.service.ts': 1,
   'apps/api/src/modules/carriers/carrier-webhook.service.ts': 1,
+  'apps/api/src/modules/compliance/dsr-intake.service.ts': 1, // The public data request form: the route holds no transaction and the sealed payload is the whole job
   'apps/api/src/modules/channels/inbound-event-queue.service.ts': 1,
   'apps/api/src/modules/webhooks/resend-webhook.controller.ts': 1,
   // Payload only (the event of an analytics row is the whole job; nothing it reads was written by the request)

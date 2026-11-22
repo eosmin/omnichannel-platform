@@ -136,6 +136,13 @@ export const CacheKeys = {
     oauthSession: (sessionDigest: string) => `oauth:channel:session:${sessionDigest}`
   },
 
+  // The counts of the public form of data requests (Step 7.2-H1), per UTC day: one by the keyed hash of the address, one by the hash of the
+  // public key of the store. Never the address or the key themselves
+  dsr: {
+    intakeEmailDay: (emailHash: string, day: string) => `dsr:intake:email:${emailHash}:${day}`,
+    intakeStoreDay: (storeKeyHash: string, day: string) => `dsr:intake:store:${storeKeyHash}:${day}`
+  },
+
   plugin: {
     manifest: (pluginId: string) => `plugin:${pluginId}:manifest`,
     installation: (storeId: string, pluginId: string) => `store:${storeId}:plugin:${pluginId}`,

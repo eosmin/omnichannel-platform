@@ -22,6 +22,7 @@ describe('HeavyProcessingProcessor', () => {
   const evaluatePickups = jest.fn().mockResolvedValue(null)
   const enforceRetention = jest.fn().mockResolvedValue(undefined)
   const clearErased = jest.fn().mockResolvedValue({ cleared: true })
+  const handleDsrIntake = jest.fn().mockResolvedValue('created')
   const postFinance = jest.fn().mockResolvedValue({ outcome: 'posted' })
   const reconcileFinance = jest.fn().mockResolvedValue(undefined)
   const reconcileFiscal = jest.fn().mockResolvedValue(undefined)
@@ -47,6 +48,7 @@ describe('HeavyProcessingProcessor', () => {
     { run: evaluatePickups } as never, // the pickup evaluation: what it is handed is what is tested
     { enforce: enforceRetention } as never, // the nightly retention of a store: what it is handed is what is tested
     { clear: clearErased } as never, // the clearing of the data of an erased customer: what it is handed is what is tested
+    { handle: handleDsrIntake } as never, // the intake of a public data request: what it is handed is what is tested
     { post: postFinance } as never, // the automatic entries of the books: what it is handed is what is tested
     { reconcile: reconcileFinance } as never, // the daily check of the books: what it is handed is what is tested
     { check: checkChain } as never, // the weekly check of the chain: what it is handed is what is tested
@@ -85,6 +87,7 @@ describe('HeavyProcessingProcessor', () => {
     evaluatePickups.mockClear()
     enforceRetention.mockClear()
     clearErased.mockClear()
+    handleDsrIntake.mockClear()
   })
 
   it('hands the inbound media job to the fetcher with the id the widget chose for the file', async () => {
@@ -457,6 +460,42 @@ describe('HeavyProcessingProcessor', () => {
       await expect(clear({ storeId: STORE_ID, customerId: CUSTOMER_ID })).rejects.toThrow(
         'not all cleared'
       )
+    })
+  })
+  describe('the intake of a public data request (Step 7.2-H1a)', () => {
+    const intake = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.DSR_INTAKE,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 3 }
+      } as unknown as ProcessorJob)
+
+    it('hands the sealed payload to the intake and nothing else', async () => {
+      await intake({ sealed: 'c2VhbGVk' })
+
+      expect(handleDsrIntake).toHaveBeenCalledWith('c2VhbGVk')
+      expect(clearErased).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['no payload', {}],
+      ['an empty payload', { sealed: '' }]
+    ])('refuses for good a job with %s', async (_name, data) => {
+      await expect(intake(data)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(handleDsrIntake).not.toHaveBeenCalled()
+    })
+
+    it('hands on only the payload: whatever else the job carries is never read', async () => {
+      await intake({ sealed: 'c2VhbGVk', email: 'ana@example.com' })
+
+      expect(handleDsrIntake).toHaveBeenCalledWith('c2VhbGVk')
+    })
+
+    it('fails the job when the intake fails, so the queue asks again', async () => {
+      handleDsrIntake.mockRejectedValueOnce(new Error('redis down'))
+
+      await expect(intake({ sealed: 'c2VhbGVk' })).rejects.toThrow('redis down')
     })
   })
   describe('the poll of a carrier (TDD_17 §4.9)', () => {

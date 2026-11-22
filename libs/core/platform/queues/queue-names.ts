@@ -57,6 +57,8 @@ export const JobNames = {
   ENFORCE_RETENTION: 'enforce-retention',
   // Clears what hangs from an erased customer: the text of its messages, its files, the names in its notifications (Step 7.2-C)
   ERASE_CUSTOMER_DATA: 'erase-customer-data',
+  // The intake of a public data subject request (Step 7.2-H1a); the sweeps of the flow add their names with their steps (H1b, H2b)
+  DSR_INTAKE: 'dsr-intake',
   RECONCILE_INVENTORY: 'reconcile-inventory',
   // The automatic entry of one event of one source (TDD_18 §6.1): the worker loads the current rows and posts it under its key
   POST_FINANCE_EVENT: 'post-finance-event',

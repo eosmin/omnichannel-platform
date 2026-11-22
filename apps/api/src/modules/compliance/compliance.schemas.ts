@@ -3,7 +3,8 @@ import { z } from 'zod'
 import {
   ChoosableCookieCategories,
   ConsentPurposes,
-  COOKIE_POLICY_VERSION
+  COOKIE_POLICY_VERSION,
+  dsrIntakeSchema
 } from '@platform/core/compliance'
 import { lowercasedUuidSchema } from '@platform/core/domain'
 
@@ -39,3 +40,14 @@ export const cookieConsentSchema = z
   })
   .strict()
 export type CookieConsentBody = z.infer<typeof cookieConsentSchema>
+
+// The public form of data requests (Step 7.2-H1): the key of the store the form belongs to, what is asked, where the link goes and in
+// which language. Nothing else is read from the body.
+export const dsrIntakeBodySchema = dsrIntakeSchema.strict()
+export type DsrIntakeBody = z.infer<typeof dsrIntakeBodySchema>
+
+// The token of the mail: 256 bits in base64url (43 characters)
+export const dsrVerifyBodySchema = z
+  .object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) })
+  .strict()
+export type DsrVerifyBody = z.infer<typeof dsrVerifyBodySchema>

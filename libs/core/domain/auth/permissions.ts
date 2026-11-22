@@ -30,6 +30,8 @@ export const Permissions = {
   CUSTOMERS_FLAG_CAUTION: 'customers:flag_caution',
   // Erase the personal data of a customer (Step 7.2): irreversible, so it is not part of `customers:delete`
   CUSTOMERS_ERASE: 'customers:erase',
+  // Review and decide the data subject requests of the store (Step 7.2-H, TDD_05 §10.2): approving an erasure request erases
+  CUSTOMERS_DSR_REVIEW: 'customers:dsr_review',
 
   // Orders
   ORDERS_VIEW: 'orders:view',
@@ -173,7 +175,11 @@ export const AssigneePermissions: readonly Permission[] = [
 // test `permission-usage.spec.ts` refuses a permission of a built resource that is neither read nor
 // listed. The resources of the Commerce, Analytics and Organization milestones are not built yet and
 // are covered by `PermissionsOfUnbuiltAreas`.
-export const ReservedPermissions: Readonly<Record<string, string>> = {}
+export const ReservedPermissions: Readonly<Record<string, string>> = {
+  // The queue of the data subject requests that the public form fills (Step 7.2-H1a made the permission, the migration gives it to the Admin roles)
+  [Permissions.CUSTOMERS_DSR_REVIEW]:
+    'Step 7.2: the review queue of the data requests (PR 7.2-H1b) reads it on its routes'
+}
 
 // The prefixes of the resources whose milestone is not built (Milestones 4 and 5): their permissions
 // have no reader until that step, and each step lists its own in the plan

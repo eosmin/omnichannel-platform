@@ -77,3 +77,18 @@ export async function resolveCarrierConnection(
     await db.$queryRaw<ResolvedRecord[]>`SELECT * FROM resolve_carrier_connection(${connectionId})`
   )
 }
+
+// The store that gave this public key to its data request form (null: none, so the form takes nothing for it). `id` is the store.
+export async function resolveDsrStore(db: Reader, publicKey: string): Promise<ResolvedRow | null> {
+  return first(await db.$queryRaw<ResolvedRecord[]>`SELECT * FROM resolve_dsr_store(${publicKey})`)
+}
+
+// The request that waits for this verification token (null: unknown, used, expired, or the request is no longer waiting). `id` is the request.
+export async function resolveDsrVerification(
+  db: Reader,
+  tokenHash: string
+): Promise<ResolvedRow | null> {
+  return first(
+    await db.$queryRaw<ResolvedRecord[]>`SELECT * FROM resolve_dsr_verification(${tokenHash})`
+  )
+}

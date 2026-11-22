@@ -118,7 +118,11 @@ export const SECRET_NAME_FRAGMENTS: readonly string[] = [
   'keyhash',
   // The sealed blobs of the database (credentialsEncrypted, dataEncrypted, ...): ciphertext is not for a log
   'encrypted',
-  'ciphertext'
+  'ciphertext',
+  // The public key of the data request form of a store: whoever reads it can use up the caps of the public intake (Step 7.2-H1a)
+  'dsrpublickey',
+  // The keyed hash of the address of a person who asked for their data: a pseudonym of a personal datum, not for a log
+  'emailhash'
 ]
 
 // Names too short to be a fragment (`sig` would hit `design`), matched whole. The names of the sensitive query
