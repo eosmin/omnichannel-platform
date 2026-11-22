@@ -11,7 +11,7 @@ const BODY = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', p256dh: 'p',
 function build(trimFails = false) {
   const through: string[] = []
   const table = (name: string) => ({
-    upsert: jest.fn((_args: { update: { refusedCount: number } }) => {
+    upsert: jest.fn((_args: { update: { refusedCount: number; refusedNotificationId: null } }) => {
       through.push(`${name}:save`)
       return Promise.resolve({})
     }),
@@ -25,7 +25,14 @@ function build(trimFails = false) {
       return Promise.resolve({ count: 2 })
     })
   })
-  const tx = { pushSubscription: table('tx'), $executeRaw: jest.fn(() => Promise.resolve(0)) }
+  const tx = {
+    pushSubscription: table('tx'),
+    $executeRaw: jest.fn(() => Promise.resolve(0)),
+    $queryRaw: jest.fn(() => {
+      through.push('tx:lock')
+      return Promise.resolve([{ locked: 1 }])
+    })
+  }
   const outside = { pushSubscription: table('outside') }
   let committed = false
   const prisma = {
@@ -49,7 +56,8 @@ describe('PushSubscriptionsService.register', () => {
 
     await service.register(USER, BODY)
 
-    expect(through).toEqual(['tx:save', 'tx:list', 'tx:trim'])
+    // The lock of the person comes first: a second registration at once waits for the commit of this one and trims with its row in view
+    expect(through).toEqual(['tx:lock', 'tx:save', 'tx:list', 'tx:trim'])
     expect(committed()).toBe(true)
   })
 
@@ -67,6 +75,7 @@ describe('PushSubscriptionsService.register', () => {
     await service.register(USER, BODY)
 
     expect(tx.pushSubscription.upsert.mock.calls[0]?.[0].update.refusedCount).toBe(0)
+    expect(tx.pushSubscription.upsert.mock.calls[0]?.[0].update.refusedNotificationId).toBeNull()
   })
 
   it('keeps only the newest browsers of the person', async () => {

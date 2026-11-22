@@ -1005,6 +1005,21 @@ describe('Notifications', () => {
       expect(rows[0]).toMatchObject({ userId: ctx.adminA.id, p256dh: P256DH_NEW, auth: AUTH_NEW })
     })
 
+    it('starts the refusal count of a browser again when it registers again', async () => {
+      const url = endpoint()
+      await register(url)
+      await owner.pushSubscription.updateMany({
+        where: { endpoint: url },
+        data: { refusedCount: 4, refusedNotificationId: randomUUID() }
+      })
+
+      await register(url)
+
+      const row = await owner.pushSubscription.findFirstOrThrow({ where: { endpoint: url } })
+      expect(row.refusedCount).toBe(0)
+      expect(row.refusedNotificationId).toBeNull()
+    })
+
     it('moves the browser to the next person who signs in on it', async () => {
       const url = endpoint()
       await register(url)

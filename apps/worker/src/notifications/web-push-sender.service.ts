@@ -112,7 +112,7 @@ export class WebPushSender {
           .forUser(userId, () =>
             this.prisma.client.pushSubscription.updateMany({
               where: { id: sub.id, userId },
-              data: { lastUsed: new Date(), refusedCount: 0 }
+              data: { lastUsed: new Date(), refusedCount: 0, refusedNotificationId: null }
             })
           )
           .catch((error: unknown) =>
@@ -211,19 +211,36 @@ export class WebPushSender {
     }
     // The push service refused it for good (the VAPID keys, a payload): worth an alert, not a retry
     this.logger.error({ userId, statusCode, subscriptionId }, 'a web push was refused')
-    await this.countRefusal(subscriptionId, userId)
+    // Only a 400 names this browser's own subscription (a keys or endpoint the service will not take). A 401, 403 or 413, an error
+    // of the library or of the certificate says the server is misconfigured (a rotated or wrong VAPID key, no CA bundle, a payload
+    // too big): counting those would empty every list of browsers after five pushes. Those stay an alert (Step 7.3).
+    if (error instanceof WebPushError && error.statusCode === HttpStatusCodes.BAD_REQUEST) {
+      await this.countRefusal(subscriptionId, userId, notificationId)
+    }
     return 'failed'
   }
 
-  // A browser that is refused for good again and again (keys of an older server, a subscription the service will not take) would
-  // stay in the list for ever: it is counted, and dropped at the limit. The count and the drop are two statements, and the drop
-  // reads the count in its own filter, so two pushes at once cannot drop a browser early. Bookkeeping: its failure changes nothing.
-  private async countRefusal(subscriptionId: string, userId: string): Promise<void> {
+  // A browser that is refused for good again and again would stay in the list for ever: it is counted, once for each notification (a
+  // retry of the job sends it again and must not count again), and dropped at the limit. The drop reads the count in its own
+  // filter, so it never removes a browser that is under the limit; a refusal counted late only delays the drop by one push.
+  // Bookkeeping: its failure changes nothing.
+  private async countRefusal(
+    subscriptionId: string,
+    userId: string,
+    notificationId: string
+  ): Promise<void> {
     try {
       await this.jobContext.forUser(userId, async () => {
         await this.prisma.client.pushSubscription.updateMany({
-          where: { id: subscriptionId, userId },
-          data: { refusedCount: { increment: 1 } }
+          where: {
+            id: subscriptionId,
+            userId,
+            OR: [
+              { refusedNotificationId: null },
+              { refusedNotificationId: { not: notificationId } }
+            ]
+          },
+          data: { refusedCount: { increment: 1 }, refusedNotificationId: notificationId }
         })
         const dropped = await this.prisma.client.pushSubscription.deleteMany({
           where: { id: subscriptionId, userId, refusedCount: { gte: PushLimits.MAX_REFUSALS } }

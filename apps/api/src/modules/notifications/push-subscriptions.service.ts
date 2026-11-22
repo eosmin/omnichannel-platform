@@ -21,9 +21,12 @@ export class PushSubscriptionsService {
   // shared computer, another account) the subscription moves to them: the pushes of the first one
   // must stop arriving there.
   async register(userId: string, body: PushSubscriptionBody): Promise<void> {
-    // One transaction: a failure of the trim must not leave the new browser saved with the old ones kept, and two
-    // registrations that run together each see the rows of the other when they trim
+    // One transaction: a failure of the trim must not leave the new browser saved with the old ones kept. The lock of the person
+    // (released at the commit, never held by the session: PgBouncer) makes two registrations at once take turns, so the second trims
+    // with the row of the first in view and the person never ends above the limit
     await this.prisma.transaction(async tx => {
+      await tx.$queryRaw`
+        SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`push-register:${userId}`}, 0))) AS lock`
       try {
         await inSavepoint(() => this.save(tx, userId, body), tx)
       } catch (error) {
@@ -56,7 +59,8 @@ export class PushSubscriptionsService {
         userAgent: body.userAgent ?? null,
         lastUsed: new Date(),
         // A browser that registers again starts clean
-        refusedCount: 0
+        refusedCount: 0,
+        refusedNotificationId: null
       }
     })
   }
