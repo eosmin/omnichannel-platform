@@ -26,6 +26,7 @@ describe('HeavyProcessingProcessor', () => {
   const postFinance = jest.fn().mockResolvedValue({ outcome: 'posted' })
   const reconcileFinance = jest.fn().mockResolvedValue(undefined)
   const reconcileFiscal = jest.fn().mockResolvedValue(undefined)
+  const resealFiscal = jest.fn().mockResolvedValue(undefined)
   const checkChain = jest.fn().mockResolvedValue(undefined)
   const submitFiscal = jest.fn().mockResolvedValue(undefined)
   const reportContingency = jest.fn().mockResolvedValue('reported')
@@ -53,6 +54,7 @@ describe('HeavyProcessingProcessor', () => {
     { reconcile: reconcileFinance } as never, // the daily check of the books: what it is handed is what is tested
     { check: checkChain } as never, // the weekly check of the chain: what it is handed is what is tested
     { reconcile: reconcileFiscal } as never, // the daily check of the fiscal documents: what it is handed is what is tested
+    { reconcile: resealFiscal } as never, // the re-seal of a rotation of the key: what it is handed is what is tested
     { submit: submitFiscal } as never, // the fiscal documents: what it is handed is what is tested
     { report: reportContingency, reportExhausted: reportContingencyExhausted } as never // the contingency of the issuer: what it is handed is what is tested
   )
@@ -241,6 +243,30 @@ describe('HeavyProcessingProcessor', () => {
       await reconcile({ organizationId: ORG_ID })
       expect(order).toEqual(['books', 'fiscal'])
       expect(reconcileFiscal).toHaveBeenLastCalledWith(ORG_ID)
+    })
+
+    it('re-seals the fiscal values of the organization last, and even when the other checks failed', async () => {
+      const order: string[] = []
+      reconcileFiscal.mockImplementationOnce(() => {
+        order.push('fiscal')
+        return Promise.resolve(undefined)
+      })
+      resealFiscal.mockImplementationOnce(() => {
+        order.push('reseal')
+        return Promise.resolve(undefined)
+      })
+      await reconcile({ organizationId: ORG_ID })
+      expect(order).toEqual(['fiscal', 'reseal'])
+      expect(resealFiscal).toHaveBeenLastCalledWith(ORG_ID)
+      resealFiscal.mockClear()
+      reconcileFiscal.mockRejectedValueOnce(new Error('the queue blinked'))
+      await expect(reconcile({ organizationId: ORG_ID })).rejects.toThrow('the queue blinked')
+      expect(resealFiscal).toHaveBeenCalledWith(ORG_ID)
+      // A value that was not sealed again rejects the job: the previous key cannot be retired yet
+      resealFiscal.mockRejectedValueOnce(new Error('values were not sealed again'))
+      await expect(reconcile({ organizationId: ORG_ID })).rejects.toThrow(
+        'values were not sealed again'
+      )
     })
 
     it('checks the fiscal documents even when the books failed, and rejects the job so the queue asks again', async () => {

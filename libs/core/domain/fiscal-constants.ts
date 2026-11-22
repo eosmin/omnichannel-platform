@@ -355,3 +355,26 @@ export const SealedValueKind = {
   RESPONSIBLE: 'responsible'
 } as const
 export type SealedValueKind = (typeof SealedValueKind)[keyof typeof SealedValueKind]
+
+// The re-seal of the fiscal values after a rotation of CREDENTIALS_ENCRYPTION_KEY (Step 7.3-S11b). The names are the database's: the
+// function that swaps the sealed columns of a decided document and the transaction-local setting that only that function turns on
+export const FiscalReseal = {
+  FUNCTION: 'fiscal_reseal_document',
+  SETTING: 'app.fiscal_reseal',
+  // Rows read and swapped per page of one organization, and the most one run of one organization touches (the next run goes on)
+  PAGE_SIZE: 100,
+  // The most values of one kind that one run of one organization seals again (or fails on): the rows already current are only skipped and
+  // do not count, so the next run reaches the rest
+  MAX_VALUES_PER_KIND: 5000
+} as const
+
+// What the re-seal did with one value, and the failure code of an error that is not a cipher failure (a write the database refused)
+export const FiscalResealOutcome = {
+  CURRENT: 'current',
+  RESEALED: 'resealed',
+  CONFLICT: 'conflict'
+} as const
+export type FiscalResealOutcome = (typeof FiscalResealOutcome)[keyof typeof FiscalResealOutcome]
+export const FISCAL_RESEAL_WRITE_FAILED = 'write_failed'
+// The value was sealed again but the new one did not open to the same content: nothing was written
+export const FISCAL_RESEAL_MISMATCH = 'reseal_mismatch'

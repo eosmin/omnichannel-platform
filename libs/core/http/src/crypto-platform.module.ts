@@ -8,7 +8,13 @@ import { CredentialCipher, parseEncryptionKey } from '@platform/core/crypto'
   providers: [
     {
       provide: CredentialCipher,
-      useFactory: () => new CredentialCipher(parseEncryptionKey(env.CREDENTIALS_ENCRYPTION_KEY))
+      useFactory: () =>
+        new CredentialCipher(
+          parseEncryptionKey(env.CREDENTIALS_ENCRYPTION_KEY),
+          env.CREDENTIALS_ENCRYPTION_KEY_PREVIOUS === undefined
+            ? undefined
+            : parseEncryptionKey(env.CREDENTIALS_ENCRYPTION_KEY_PREVIOUS)
+        )
     }
   ],
   exports: [CredentialCipher]

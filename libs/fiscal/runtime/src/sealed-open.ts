@@ -26,7 +26,8 @@ export function openSealed(
   quiet = false
 ): Record<string, unknown> {
   try {
-    return cipher.open(sealed)
+    // The rotation window: a value not sealed again yet still opens (with the previous key, when the deployment holds one)
+    return cipher.openRotating(sealed).credentials
   } catch (error) {
     if (!quiet) {
       logger.error(

@@ -150,6 +150,12 @@ export const envSchema = z
 
     // Encryption at rest for ChannelConnection.credentials and ApiKey secrets (AES-256-GCM)
     CREDENTIALS_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/), // 32 bytes, hex
+    // The key that sealed the fiscal values before a rotation (Step 7.3-S11b): held only until the re-seal has run and been checked (the
+    // runbook of the rotation), then removed. It opens, it never seals. Absent in normal operation.
+    CREDENTIALS_ENCRYPTION_KEY_PREVIOUS: z
+      .string()
+      .regex(/^[0-9a-fA-F]{64}$/)
+      .optional(),
 
     // Storage (S3-compatible; SeaweedFS locally)
     AWS_REGION: z.string().default('us-east-1'),
@@ -297,6 +303,22 @@ export const envSchema = z
         path: ['E2E_MAGIC_LINK_LIMIT'],
         input: env.E2E_MAGIC_LINK_LIMIT
       })
+    }
+    const previous = env.CREDENTIALS_ENCRYPTION_KEY_PREVIOUS
+    if (previous !== undefined) {
+      // A previous key equal to the current one, or the placeholder, is a mistake of the rotation: refuse to start (the value is not echoed)
+      if (
+        previous.toLowerCase() === env.CREDENTIALS_ENCRYPTION_KEY.toLowerCase() ||
+        PLACEHOLDER_ENCRYPTION_KEY.test(previous)
+      ) {
+        ctx.issues.push({
+          code: 'custom',
+          message:
+            'CREDENTIALS_ENCRYPTION_KEY_PREVIOUS must be the key before the rotation: not the current key and not the placeholder',
+          path: ['CREDENTIALS_ENCRYPTION_KEY_PREVIOUS'],
+          input: '[redacted]'
+        })
+      }
     }
     if (env.SESSION_MAX_AGE > MAX_SESSION_MAX_AGE_SECONDS) {
       // Far enough to be no cap at all, and past a point where Date overflows into an invalid date,

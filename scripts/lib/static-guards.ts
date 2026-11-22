@@ -103,7 +103,10 @@ const WRITING_SQL = /\b(insert|update|delete|merge|truncate|copy)\b/i
 export const WRITING_FUNCTION_NAMES: readonly string[] = [
   'rls_clear_orphan_avatar',
   'rls_take_disconnected_connection',
-  'purge_audit_logs'
+  'purge_audit_logs',
+  // the re-seal of a rotation of the credentials key (Step 7.3-S11b): the swap of the sealed columns of a fiscal document or contingency
+  'fiscal_reseal_document',
+  'fiscal_reseal_contingency'
 ]
 const WRITING_FUNCTIONS = new RegExp(`\\b(${WRITING_FUNCTION_NAMES.join('|')})\\s*\\(`, 'i')
 const writesSql = (text: string): boolean => WRITING_SQL.test(text) || WRITING_FUNCTIONS.test(text)

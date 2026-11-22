@@ -51,6 +51,7 @@ import { DsrIntakeWorker } from '../compliance/dsr-intake.worker'
 import { FinanceChainChecker } from '../finance/finance-chain-checker.service'
 import { FinanceReconciler } from '../finance/finance-reconciler.service'
 import { FiscalReconciler } from '../finance/fiscal-reconciler.service'
+import { FiscalResealer } from '../finance/fiscal-resealer.service'
 import { InventoryReconciler } from '../inventory/inventory-reconciler.service'
 import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
@@ -241,6 +242,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly financeReconciler: FinanceReconciler,
     private readonly financeChain: FinanceChainChecker,
     private readonly fiscalReconciler: FiscalReconciler,
+    private readonly fiscalResealer: FiscalResealer,
     private readonly fiscalDocuments: FiscalDocumentsService,
     private readonly fiscalContingencies: FiscalContingencyService
   ) {
@@ -276,7 +278,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       // The two checks do not hide each other: each runs whatever the other did, and the first failure rejects the job so the queue asks
       // again (both are idempotent)
       const failures: Error[] = []
-      for (const check of [this.financeReconciler, this.fiscalReconciler]) {
+      for (const check of [this.financeReconciler, this.fiscalReconciler, this.fiscalResealer]) {
         try {
           // An organization deleted after the job was queued has nothing left to check: the job is done, not retried
           await this.skipIfGone(job, () => check.reconcile(reconcile.data.organizationId))
@@ -290,7 +292,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (failures.length > 1) {
         throw new AggregateError(
           failures,
-          'the checks of the books and of the fiscal documents failed'
+          'the checks of the books, of the fiscal documents and of the key failed'
         )
       }
       return

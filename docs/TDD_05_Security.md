@@ -45,8 +45,9 @@ gcloud run services update api-service --region=us-central1   # Picks up :latest
 Rotate quarterly, and immediately after any suspected exposure. `JWT_SECRET` rotation
 invalidates every access token (15-minute TTL) — refresh tokens keep working because they
 are opaque values, not JWTs. `CREDENTIALS_ENCRYPTION_KEY` rotation requires the
-`scripts/rotate-credentials-key.ts` re-encryption job (reads with the old key, writes with
-the new one, both keys present during the run).
+re-seal job (reads with the previous key, `CREDENTIALS_ENCRYPTION_KEY_PREVIOUS`, writes with
+the current one, both keys present during the run): the fiscal values are covered since
+Step 7.3-S11b-1, and the procedure is `docs/FISCAL_KEY_ROTATION_RUNBOOK.md`.
 
 ### 1.2 Phase 2 — HashiCorp Vault
 
