@@ -1,13 +1,14 @@
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 
-import pg from 'pg'
+import pg, { type ClientBase } from 'pg'
 
 import { connectionUrls } from '@platform/core/database-testing'
 
 import {
   NOT_VALID_CONSTRAINTS,
   revertToNotValid,
+  safeError,
   statusOf,
   validateConstraint,
   type ConstraintRef
@@ -133,6 +134,54 @@ describe('Validating the constraints added NOT VALID', () => {
     ).rejects.toMatchObject({ code: '23514' })
     expect(await revertToNotValid(owner, constraint)).toBe('already-not-valid')
     expect(await revertToNotValid(owner, checkOf('nothing_here'))).toBe('missing')
+  })
+
+  // A client that lets everything through except the statements that match
+  const failing = (client: pg.Client, matches: RegExp, detail: string): ClientBase =>
+    new Proxy(client, {
+      get(target, property) {
+        if (property !== 'query') return Reflect.get(target, property) as unknown
+        return (sql: unknown, ...rest: unknown[]) => {
+          if (typeof sql === 'string' && matches.test(sql)) {
+            return Promise.reject(
+              Object.assign(new Error(`failed. DETAIL: ${detail}`), { code: '23505', detail })
+            )
+          }
+          return (target.query as (...args: unknown[]) => Promise<unknown>)(sql, ...rest)
+        }
+      }
+    })
+
+  it('never repeats the DETAIL of a database error that it cannot explain', async () => {
+    const constraint = await table('secret', `('u1', NULL)`)
+    const secret = 'Key (email)=(someone@example.com) is secret'
+    await expect(
+      validateConstraint(failing(owner, /VALIDATE CONSTRAINT/, secret), constraint)
+    ).rejects.toThrow(/SQLSTATE 23505/)
+    await validateConstraint(failing(owner, /VALIDATE CONSTRAINT/, secret), constraint).catch(
+      (error: Error) => {
+        expect(error.message).not.toContain('someone@example.com')
+        expect(String(error.stack)).not.toContain('someone@example.com')
+      }
+    )
+    expect(safeError(constraint, { code: '23505', detail: secret }).message).not.toContain(
+      'someone@example.com'
+    )
+    expect(JSON.stringify(await statusOf(owner, constraint))).toContain('not-valid')
+  })
+
+  it('keeps the check in place when the ADD of a revert fails (the drop is rolled back)', async () => {
+    const constraint = await table('keeps', `('u1', NULL)`)
+    await validateConstraint(owner, constraint)
+    await expect(
+      revertToNotValid(failing(owner, /ADD CONSTRAINT/, 'x'), constraint)
+    ).rejects.toThrow(/SQLSTATE/)
+    expect((await statusOf(owner, constraint)).state).toBe('valid')
+    await expect(
+      owner.query(
+        `INSERT INTO ${SCHEMA}.keeps (created_by, created_by_plugin_id) VALUES ('u', 'p')`
+      )
+    ).rejects.toMatchObject({ code: '23514' })
   })
 
   it('knows every constraint of the list in the migrated database', async () => {

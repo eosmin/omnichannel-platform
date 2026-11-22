@@ -107,6 +107,14 @@ async function countViolations(client: ClientBase, constraint: ConstraintRef): P
   return Number(counted.rows[0]?.violating ?? 0)
 }
 
+// An error of the database may carry a DETAIL with the values of a row ("Failing row contains (...)", "Key (...)=(...)"), and the
+// message of a thrown error goes to the terminal and to logs: what leaves this module names the constraint and the SQLSTATE only
+export function safeError(constraint: ConstraintRef, error: unknown): Error {
+  return new Error(
+    `${label(constraint)}: the database refused with SQLSTATE ${codeOf(error) ?? 'unknown'}`
+  )
+}
+
 function codeOf(error: unknown): string | undefined {
   return typeof error === 'object' && error !== null && 'code' in error
     ? String(error.code)
@@ -134,13 +142,17 @@ export async function validateConstraint(
     const code = codeOf(error)
     if (code === LOCK_NOT_AVAILABLE) return { ref: constraint, result: 'lock-timeout' }
     if (code === CHECK_VIOLATION) {
-      return {
-        ref: constraint,
-        result: 'violated',
-        violatingRows: await countViolations(client, constraint)
+      try {
+        return {
+          ref: constraint,
+          result: 'violated',
+          violatingRows: await countViolations(client, constraint)
+        }
+      } catch (countError) {
+        throw safeError(constraint, countError)
       }
     }
-    throw error
+    throw safeError(constraint, error)
   } finally {
     await client.query('RESET lock_timeout')
     await client.query('RESET statement_timeout')
@@ -189,7 +201,7 @@ export async function revertToNotValid(
   } catch (error) {
     await client.query('ROLLBACK')
     if (codeOf(error) === LOCK_NOT_AVAILABLE) return 'lock-timeout'
-    throw error
+    throw safeError(constraint, error)
   }
 }
 

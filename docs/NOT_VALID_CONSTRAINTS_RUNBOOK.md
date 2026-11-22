@@ -88,7 +88,7 @@ pnpm db:constraints:validate revert --confirm=<database>
 ```
 
 Drops each validated constraint and adds it again, with the same definition, `NOT VALID`, in one transaction per constraint (the
-`ACCESS EXCLUSIVE` lock lasts for the two statements and there is no scan, so it is fast). Writes are checked before, during and after.
+`ACCESS EXCLUSIVE` lock lasts for the two statements and there is no scan, so it is fast). Writes are checked before, during and after: the ACCESS EXCLUSIVE lock keeps every writer out between the two statements, and a failed ADD rolls the DROP back (a spec forces the failure and checks the constraint is still there). An error of the database that the tool cannot explain is shown as the constraint and the SQLSTATE only, never the DETAIL (it can hold the values of a row).
 Safe to run twice (`already-not-valid`). A validated constraint cannot be marked not valid in place; this is the only way. Nothing else
 depends on the validated flag, so the way back is only ever needed if a validated constraint is to be changed.
 
