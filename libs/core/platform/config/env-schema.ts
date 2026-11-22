@@ -432,7 +432,8 @@ export const envSchema = z
         message:
           'a deployed environment needs its own CONSENT_HASH_KEY (at least 32 characters, not JWT_SECRET or CREDENTIALS_ENCRYPTION_KEY, not the placeholder)',
         path: ['CONSENT_HASH_KEY'],
-        input: env.CONSENT_HASH_KEY
+        // Never the value: it is a secret, and an issue travels in error objects and ends in logs
+        input: undefined
       })
     }
     if (env.JWT_SECRET.startsWith(PLACEHOLDER_JWT_SECRET_PREFIX)) {

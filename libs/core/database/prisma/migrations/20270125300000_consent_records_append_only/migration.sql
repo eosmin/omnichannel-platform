@@ -1,7 +1,7 @@
 -- What a person said about their data is a record of fact, and it is append-only (TDD_05 §10, Step 7.2-K2, debt (e) of Step 7.2-D): a
 -- change of mind is a NEW row and the newest row of a purpose rules, so no statement of the application, of a plugin or of anyone else
--- may rewrite what was said or when. Until now only the code kept that promise. The database now refuses, to every role (the owner of the
--- table too):
+-- may rewrite what was said or when. Until now only the code kept that promise. The database now refuses, to every role of the application
+-- and to the owner of the table (not to a superuser, nor to the owner who disables the trigger: see the limit below):
 --   * TRUNCATE of consent_records;
 --   * DELETE of a row, unless it is the cascade of a foreign key (pg_trigger_depth() > 1) AND the customer it belongs to, or its store,
 --     is gone. That is the only way a row leaves: a customer with no conversations or orders is deleted by its owner
@@ -13,10 +13,13 @@
 --         cleared, never more than a minute before the grant (two replicas whose clocks differ must not fail an erasure) and never more than an hour ahead of the database clock;
 --       - ip_address and user_agent: only cleared to NULL (the erasure takes the address and the browser of the person out of the row).
 --     Not allowed, whatever the role: purpose, legal_basis, granted, granted_at, source, store_id, id and created_at.
+-- Limit, accepted: whoever OWNS the table (the credential of migrations) or a superuser can still DISABLE the trigger or set
+-- session_replication_role = replica. The roles of the application own nothing, so the code cannot.
 -- The policy of the table (rls_apply_policy('consent_records', 'store'), migration 20270121110000) and the grants are not touched.
 -- Deploy: nothing in the application writes a row the trigger refuses (checked by tests/security/consent-records-append-only.spec.ts and
 -- by the customer erasure and merge suites), so it can be applied before or after the release.
 -- The retention of the record of the cookie banner (PlatformCleaner) reads the oldest rows first: it needs this index to find them
+-- Not CONCURRENTLY: Prisma runs the migration in a transaction (CONCURRENTLY cannot), and the table is small when this runs
 CREATE INDEX IF NOT EXISTS "cookie_consents_created_at_idx" ON "cookie_consents"("created_at");
 
 CREATE FUNCTION forbid_consent_record_change() RETURNS trigger

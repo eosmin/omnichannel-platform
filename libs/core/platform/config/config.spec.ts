@@ -629,6 +629,26 @@ describe('CONSENT_HASH_KEY, the key of the cookie banner hashes (Step 7.2-K2)', 
     ).toThrow(/CONSENT_HASH_KEY/)
   })
 
+  it('never puts the value of a refused key in the error, message or issues', () => {
+    // The two values that are refused because they are another secret: the very case in which the value is worth hiding
+    for (const value of [
+      withoutKey['JWT_SECRET'] ?? '',
+      withoutKey['CREDENTIALS_ENCRYPTION_KEY'] ?? ''
+    ]) {
+      let thrown: unknown
+      try {
+        parseEnv({ ...deployed, NODE_ENV: 'production', CONSENT_HASH_KEY: value })
+      } catch (error) {
+        thrown = error
+      }
+      expect(thrown).toBeDefined()
+      expect(JSON.stringify(thrown, Object.getOwnPropertyNames(thrown as object))).not.toContain(
+        value
+      )
+      expect(String(thrown)).toMatch(/CONSENT_HASH_KEY/)
+    }
+  })
+
   it('takes at least 32 characters', () => {
     expect(() => parseEnv({ ...validEnv, CONSENT_HASH_KEY: 'short' })).toThrow(/CONSENT_HASH_KEY/)
   })
