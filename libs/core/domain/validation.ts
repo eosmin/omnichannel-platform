@@ -130,6 +130,28 @@ export function singleLineText(
     )
 }
 
+// Text a person writes about someone, over several lines (a reason, a note): line breaks stay, in NFC and with \r\n read as \n. Every other
+// control character (NUL, tab, escape), line or paragraph separator, invisible or direction-changing character and pile of combining marks
+// is a 400: Postgres text cannot hold a NUL, and the rest would be drawn to whoever reads it.
+export function multiLineText(
+  maxLength: number,
+  minLength = 0
+): z.ZodPipe<z.ZodPipe<z.ZodString, z.ZodTransform<string, string>>, z.ZodString> {
+  return z
+    .string()
+    .max(maxLength * 2)
+    .transform(value => value.normalize('NFC').replaceAll('\r\n', '\n').trim())
+    .pipe(
+      z
+        .string()
+        .min(minLength)
+        .max(maxLength)
+        .refine(value => !hasMisleadingCharacters(value.replaceAll('\n', ' ')), {
+          message: 'contains a control or invisible character'
+        })
+    )
+}
+
 // A zone of the IANA database, stored in its canonical spelling
 export const timezoneSchema = z
   .string()

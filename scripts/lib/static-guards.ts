@@ -56,6 +56,9 @@ export const QUEUE_ADD_ALLOWED: Readonly<Record<string, number>> = {
   'apps/api/src/modules/auth/magic-link.service.ts': 1,
   'apps/api/src/modules/carriers/carrier-webhook.service.ts': 1,
   'apps/api/src/modules/compliance/dsr-intake.service.ts': 1, // The public data request form: the route holds no transaction and the sealed payload is the whole job
+  // Inside the transaction on purpose, as the LAST step of it: the answer to the person is queued before the sealed address is cleared, so a queue
+  // that is down rolls the decision back; a commit that fails after it re-sends the same notice at worst (Step 7.2-H1b)
+  'apps/api/src/modules/compliance/dsr-review.service.ts': 1,
   'apps/api/src/modules/channels/inbound-event-queue.service.ts': 1,
   'apps/api/src/modules/webhooks/resend-webhook.controller.ts': 1,
   // Payload only (the event of an analytics row is the whole job; nothing it reads was written by the request)
