@@ -3,9 +3,10 @@ import { createHmac, randomUUID } from 'node:crypto'
 import { getQueueToken } from '@nestjs/bullmq'
 import type { INestApplication } from '@nestjs/common'
 
+import { AnalyticsEventNames } from '@platform/core/analytics'
 import { ApiRoutes } from '@platform/core/api'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { WebhookSources } from '@platform/core/domain'
+import { ResendEventTypes, WebhookSources } from '@platform/core/domain'
 import { ResendWebhookVerifier } from '@platform/core/email'
 import { JobNames, QueueNames } from '@platform/core/queues'
 
@@ -66,7 +67,7 @@ describe('the signed webhook of Resend', () => {
     const id = `msg_it_${randomUUID()}`
     runEvents.push(id)
     const body = JSON.stringify({
-      type: 'email.opened',
+      type: ResendEventTypes.EMAIL_OPENED,
       created_at: new Date().toISOString(),
       data: { email_id: 'email_1', tags: { storeId: STORE_ID, template: 'order-confirmation' } }
     })
@@ -94,7 +95,7 @@ describe('the signed webhook of Resend', () => {
     expect(queue.jobs).toHaveLength(1)
     expect(queue.jobs[0]).toMatchObject({
       name: JobNames.TRACK_EVENT,
-      data: { event: 'email.engagement', storeId: STORE_ID, eventKey: id },
+      data: { event: AnalyticsEventNames.EMAIL_ENGAGEMENT, storeId: STORE_ID, eventKey: id },
       opts: { jobId: id }
     })
   })

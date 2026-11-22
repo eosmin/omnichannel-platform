@@ -95,5 +95,6 @@ describe('the general rate limit budget of an authenticated person', () => {
       1
     )
     expect(exposition).not.toContain(ctx.adminA.id)
+    expect(exposition).not.toContain(ctx.adminB.id)
   }, 120_000)
 })

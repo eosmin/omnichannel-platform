@@ -1,3 +1,4 @@
+import { TokenExpiryLimits } from '@platform/core/domain'
 import { LockNames } from '@platform/core/queues'
 
 import { TokenExpiryScheduler } from './token-expiry.scheduler'
@@ -44,7 +45,7 @@ describe('TokenExpiryScheduler', () => {
     const { scheduler, withLock } = build()
     await scheduler.run()
     const seconds = withLock.mock.calls[0]?.[1] as number
-    expect(seconds).toBeGreaterThan(60)
+    expect(seconds).toBeGreaterThan(TokenExpiryLimits.ROUND_BUDGET_MS / 1000)
   })
 
   it('asks nothing when another replica holds the lock', async () => {
