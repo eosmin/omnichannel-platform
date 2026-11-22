@@ -10,6 +10,7 @@ import type { StorageService } from '@platform/core/storage-module'
 
 import type { ClamavClient } from './clamav.client'
 import { MediaPipeline } from './media-pipeline.service'
+import { InlineDocumentCleaner } from './testing/inline-document-cleaner'
 
 const STORE = '11111111-1111-4111-8111-111111111111'
 const MESSAGE = '22222222-2222-4222-8222-222222222222'
@@ -63,7 +64,8 @@ describe('MediaPipeline announcements', () => {
       { publish } as unknown as DomainEvents,
       { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
       logger as unknown as PinoLogger,
-      { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
+      { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never,
+      new InlineDocumentCleaner()
     )
   }
 
@@ -129,7 +131,8 @@ describe('MediaPipeline announcements', () => {
         { publish } as unknown as DomainEvents,
         { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
         logger as unknown as PinoLogger,
-        { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
+        { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never,
+        new InlineDocumentCleaner()
       )
       return { pipeline, update }
     }
@@ -198,7 +201,8 @@ describe('MediaPipeline announcements', () => {
         { publish } as unknown as DomainEvents,
         { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
         logger as unknown as PinoLogger,
-        { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never
+        { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never,
+        new InlineDocumentCleaner()
       )
       return { pipeline, update, put, remove }
     }

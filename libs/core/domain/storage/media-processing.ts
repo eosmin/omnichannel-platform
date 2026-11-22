@@ -235,6 +235,14 @@ export const DocumentSanitizing = {
   PDF_CONTENT_TYPE: 'application/pdf',
   // The key a digital signature of a PDF always has (the byte range it covers): a PDF with it is not rewritten
   PDF_SIGNATURE_MARK: '/ByteRange',
+  // How a document the cleaner wrote begins: a PDF, and the zip of a docx or an xlsx (the parent checks what comes back from the thread)
+  PDF_MAGIC: '%PDF-',
+  ZIP_MAGIC: [0x50, 0x4b, 0x03, 0x04],
+  // ... and how it ends: the PDF trailer mark in the last KiB, the end-of-central-directory record of the zip in the last 64 KiB + 22 bytes
+  PDF_END_MARK: '%%EOF',
+  PDF_END_WINDOW_BYTES: 1024,
+  ZIP_END_MAGIC: [0x50, 0x4b, 0x05, 0x06],
+  ZIP_END_WINDOW_BYTES: 65_557,
   DOCX_CONTENT_TYPE: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   XLSX_CONTENT_TYPE: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   // The sum of what a zip may inflate to: a bigger one is not opened (a zip bomb); the document stays as it came
@@ -245,6 +253,31 @@ export const DocumentSanitizing = {
   // The date the zip entries get, so that the cleaning does not write the day it ran into the file
   ZIP_ENTRY_YEAR: 1980,
   ZIP_LEVEL: 6,
+  // The document thread (Step 7.3): a document is parsed on a worker thread that is killed when it passes the deadline or the memory limit.
+  // The deadline is per document and counts from the start of the thread; a real document of 10 MB takes well under a second
+  THREAD_TIMEOUT_MS: 30_000,
+  THREAD_MAX_OLD_GENERATION_MB: 384,
+  THREAD_MAX_YOUNG_GENERATION_MB: 32,
+  THREAD_STACK_MB: 4,
+  // How long the stop of a thread is waited for (a thread inside a synchronous native call cannot be interrupted until it returns)
+  THREAD_STOP_TIMEOUT_MS: 5000,
+  // The file of the thread, next to `main.js` in the bundle of the worker (a second entry of its rspack configuration)
+  THREAD_ENTRY_FILE: 'document-thread.js',
+  // The error code Node gives a thread that passed its memory limit
+  THREAD_OUT_OF_MEMORY_CODE: 'ERR_WORKER_OUT_OF_MEMORY',
+  // What the thread answers (`document-cleaner.ts`): the bytes it made, why it left the document, or an error of the machine
+  ThreadReplies: {
+    SANITIZED: 'sanitized',
+    UNTOUCHED: 'untouched',
+    ENVIRONMENT: 'environment'
+  },
+  // Why a document was left as it came
+  Untouched: {
+    TYPE: 'type',
+    ALREADY_CLEAN: 'already_clean',
+    NOT_CLEANABLE: 'not_cleanable',
+    TIMED_OUT: 'timed_out'
+  },
   CORE_PROPERTIES_PATH: 'docProps/core.xml',
   // The end of the type of the relationship that names each part (the whole type is a URL of the Open Packaging Conventions)
   CORE_RELATIONSHIP_SUFFIX: '/core-properties',

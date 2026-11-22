@@ -13,13 +13,15 @@ import {
 
 import { DocumentSanitizing, UploadLimits } from '@platform/core/storage'
 
-import { isEnvironmentError, withDecodeSlot } from './image-sanitizer'
+import { isEnvironmentError } from './environment-error'
+
+export { isEnvironmentError }
 
 // What came of cleaning a document. A document is never refused for failing to clean: it is kept as it came, with its reason, so that the
 // caller can log it (the document is the customer's own, and refusing it would lose a real file for a property block).
 export type SanitizedDocument =
   | { kind: 'sanitized'; body: Buffer }
-  | { kind: 'untouched'; why: 'type' | 'already_clean' | 'not_cleanable' }
+  | { kind: 'untouched'; why: 'type' | 'already_clean' | 'not_cleanable' | 'timed_out' }
 
 export const isSanitizedDocumentType = (contentType: string): boolean =>
   contentType === DocumentSanitizing.PDF_CONTENT_TYPE ||
@@ -310,31 +312,31 @@ function cleanOoxml(input: Buffer): Buffer | 'already_clean' {
   return zipped
 }
 
-// The one place where a PDF, a docx or an xlsx that is not financial evidence is cleaned of its properties, inside the decode slot of the
-// cleaner (one at a time per process, the document is read whole). It never refuses: a document that cannot be cleaned without risk
-// (encrypted, damaged, too big once opened) is `not_cleanable` and the caller keeps it as it came. An error of the machine propagates.
-export function sanitizeDocument(
+// Cleans a PDF, a docx or an xlsx that is not financial evidence of its properties, ON THE THREAD THAT CALLS IT. The parse is synchronous and
+// the file is the customer's, so a hostile or huge one holds that thread: nothing in the worker calls this on its main thread. The only
+// caller is the entry of the document thread (`apps/worker/src/media/document-thread.entry.ts`), which the worker starts with a deadline and
+// a memory limit (`DocumentCleaner`, `ThreadDocumentCleaner`); the specs of the cleaner call it too. It never refuses: a document that cannot be
+// cleaned without risk (encrypted, damaged, too big once opened) is `not_cleanable` and the caller keeps it as it came. An error of the
+// machine propagates.
+export async function sanitizeDocumentInline(
   input: Buffer,
   contentType: string,
   maxBytes: number = UploadLimits.MAX_FILE_SIZE_BYTES
 ): Promise<SanitizedDocument> {
-  if (!isSanitizedDocumentType(contentType))
-    return Promise.resolve({ kind: 'untouched', why: 'type' })
-  return withDecodeSlot(async (): Promise<SanitizedDocument> => {
-    let cleaned: Buffer | 'already_clean'
-    try {
-      cleaned =
-        contentType === DocumentSanitizing.PDF_CONTENT_TYPE
-          ? await cleanPdf(input)
-          : cleanOoxml(input)
-    } catch (error) {
-      // An error of the machine is not the document's: the queue retries
-      if (isEnvironmentError(error)) throw error
-      return { kind: 'untouched', why: 'not_cleanable' }
-    }
-    if (cleaned === 'already_clean') return { kind: 'untouched', why: 'already_clean' }
-    // A rewrite that came out bigger than the limit is not worth it
-    if (cleaned.length > maxBytes) return { kind: 'untouched', why: 'not_cleanable' }
-    return { kind: 'sanitized', body: cleaned }
-  })
+  if (!isSanitizedDocumentType(contentType)) return { kind: 'untouched', why: 'type' }
+  let cleaned: Buffer | 'already_clean'
+  try {
+    cleaned =
+      contentType === DocumentSanitizing.PDF_CONTENT_TYPE
+        ? await cleanPdf(input)
+        : cleanOoxml(input)
+  } catch (error) {
+    // An error of the machine is not the document's: the queue retries
+    if (isEnvironmentError(error)) throw error
+    return { kind: 'untouched', why: 'not_cleanable' }
+  }
+  if (cleaned === 'already_clean') return { kind: 'untouched', why: 'already_clean' }
+  // A rewrite that came out bigger than the limit is not worth it
+  if (cleaned.length > maxBytes) return { kind: 'untouched', why: 'not_cleanable' }
+  return { kind: 'sanitized', body: cleaned }
 }

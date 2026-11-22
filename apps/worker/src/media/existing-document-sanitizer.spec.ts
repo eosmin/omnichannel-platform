@@ -5,7 +5,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import { PDFDocument, PDFName, PDFString } from 'pdf-lib'
 
 import type { JobContext, PrismaService } from '@platform/core/database'
-import { sanitizeDocument } from '@platform/core/document-sanitizer'
+import { sanitizeDocumentInline } from '@platform/core/document-sanitizer'
 import {
   DocumentSanitizing,
   ExistingDocumentSweep,
@@ -15,6 +15,7 @@ import {
 import type { StorageService } from '@platform/core/storage-module'
 
 import { ExistingDocumentSanitizer } from './existing-document-sanitizer.service'
+import { InlineDocumentCleaner } from './testing/inline-document-cleaner'
 
 const STORE = 'store-1'
 const AUTHOR = 'Jane Q. Author'
@@ -61,7 +62,7 @@ async function pdfWithMarkers(): Promise<Buffer> {
 
 // The output of the cleaner is its own fixed point: a PDF that a crash left cleaned in the bucket
 async function cleanPdf(): Promise<Buffer> {
-  const result = await sanitizeDocument(await pdfWithMarkers(), PDF)
+  const result = await sanitizeDocumentInline(await pdfWithMarkers(), PDF)
   if (result.kind !== 'sanitized') throw new Error('the fixture was not cleaned')
   return result.body
 }
@@ -175,11 +176,13 @@ describe('ExistingDocumentSanitizer', () => {
     }
   }
   const logger = { setContext: jest.fn(), warn: jest.fn(), error: jest.fn(), info: jest.fn() }
+  const cleaner = new InlineDocumentCleaner()
   const sanitizer = new ExistingDocumentSanitizer(
     prisma as unknown as PrismaService,
     { forStore: (_id: string, work: () => Promise<unknown>) => work() } as unknown as JobContext,
     storage as unknown as StorageService,
-    logger as unknown as PinoLogger
+    logger as unknown as PinoLogger,
+    cleaner
   )
 
   function store(
@@ -364,6 +367,53 @@ describe('ExistingDocumentSanitizer', () => {
     expect(report).toEqual({ cleaned: 0, alreadyClean: 0, skipped: 0, failed: 0 })
     expect(storage.read.mock.calls.length).toBe(readsBefore) // it was not opened a fourth time
     expect(bucket.get(row.key)).toBe(dirty)
+  })
+
+  it('does not mark a document whose thread passed its deadline: it is tried again, and given up after the last attempt', async () => {
+    const dirty = await pdfWithMarkers()
+    const row = store('d1', dirty)
+    const timedOut = jest
+      .spyOn(cleaner, 'clean')
+      .mockResolvedValue({ kind: 'untouched', why: 'timed_out' })
+    try {
+      for (let attempt = 1; attempt <= ExistingDocumentSweep.MAX_ATTEMPTS; attempt += 1) {
+        const report = await sanitizer.runScoped([STORE])
+        expect(report).toEqual({ cleaned: 0, alreadyClean: 0, skipped: 1, failed: 0 })
+        // Not `not_cleanable`: a slow worker can cut a good file; only the attempt is written
+        expect(row.scanResult).toEqual({ [ExistingPictureSweep.ATTEMPTS_KEY]: attempt })
+      }
+      const calls = timedOut.mock.calls.length
+      await sanitizer.runScoped([STORE])
+      expect(timedOut.mock.calls.length).toBe(calls) // a file that always hangs is not parsed a fourth time
+    } finally {
+      timedOut.mockRestore()
+    }
+    expect(bucket.get(row.key)).toBe(dirty)
+    expect(storage.put).not.toHaveBeenCalled()
+  })
+
+  it('uses no attempt while a thread that could not be stopped is alive: the documents wait for the next run', async () => {
+    const rowsOf = [
+      store('d1', await pdfWithMarkers()),
+      store('d2', await pdfWithMarkers()),
+      store('d3', await pdfWithMarkers())
+    ]
+    const busy = jest.spyOn(cleaner, 'isBusy').mockReturnValue(true)
+    const clean = jest.spyOn(cleaner, 'clean')
+    try {
+      const report = await sanitizer.runScoped([STORE])
+      expect(report).toEqual({ cleaned: 0, alreadyClean: 0, skipped: 0, failed: 0 })
+      // None was opened and none was counted: their rows are as they were
+      expect(clean).not.toHaveBeenCalled()
+      for (const row of rowsOf) expect(row.scanResult).toBeNull()
+      expect(storage.read).not.toHaveBeenCalled()
+    } finally {
+      busy.mockRestore()
+      clean.mockRestore()
+    }
+    // Once the thread is gone the same documents are cleaned
+    const again = await sanitizer.runScoped([STORE])
+    expect(again.cleaned).toBe(3)
   })
 
   it('does not cut a slow document at the budget of the run: it finishes clean with no attempt left on the row, and the next one is not opened', async () => {
