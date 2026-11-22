@@ -63,7 +63,7 @@ export class AuditLogService {
     })
     // The months older than the hot window live in the bucket once the nightly export has moved them. They are read only when
     // the database cannot fill the page with entries newer than every archived one: a page of recent entries never lists the bucket
-    const rows = this.mayHoldArchived(hot, limit, filters)
+    const rows = (await this.mayHoldArchived(storeId, hot, limit, filters))
       ? mergeNewest(
           hot,
           await this.archive.readPage(
@@ -124,17 +124,26 @@ export class AuditLogService {
   }
 
   // The archive holds only whole months that ended before the start of the month the hot window ends in (`AuditColdExport`)
-  private mayHoldArchived(
+  private async mayHoldArchived(
+    storeId: string,
     hot: AuditLogRow[],
     limit: number,
     filters: { from?: string | undefined }
-  ): boolean {
+  ): Promise<boolean> {
     const bound = archiveBound(new Date())
     if (filters.from !== undefined && new Date(filters.from).getTime() >= bound.getTime()) {
       return false
     }
     const last = hot.at(-1)
-    return hot.length <= limit || (last !== undefined && last.timestamp.getTime() < bound.getTime())
+    if (hot.length > limit && (last === undefined || last.timestamp.getTime() >= bound.getTime())) {
+      return false
+    }
+    // A store that was created after the archive's bound has no entry that old: it never reads the archive
+    const store = await this.prisma.client.store.findFirst({
+      where: { id: storeId },
+      select: { createdAt: true }
+    })
+    return store !== null && store.createdAt.getTime() < bound.getTime()
   }
 
   // How many entries of the store the filters find: what a file of them would carry

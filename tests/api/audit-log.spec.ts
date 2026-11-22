@@ -443,6 +443,12 @@ describe('Audit log viewer', () => {
 
     beforeAll(async () => {
       storage = app.get(StorageService)
+      // The archive is read only for a store that is older than its months (a store has no entry from before it existed)
+      const old = new Date(`${year - 1}-01-01T00:00:00.000Z`)
+      await owner.store.updateMany({
+        where: { id: { in: [ctx.storeA.id, ctx.storeB.id] } },
+        data: { createdAt: old }
+      })
       const put = (key: string, lines: string[]) =>
         storage.put(key, gzipSync(`${lines.join('\n')}\n`), 'application/gzip')
       await put(keys[0] ?? '', [

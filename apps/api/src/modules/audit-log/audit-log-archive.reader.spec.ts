@@ -180,8 +180,14 @@ describe('AuditLogArchiveReader', () => {
     expect(streamed).not.toContain(APRIL)
   })
 
+  it('does not read a line of another store, even a corrupt one', async () => {
+    const { reader } = bucket({ [MARCH]: gzipSync(`{"id":"x","storeId":"${OTHER}"\n`) })
+
+    expect(await reader.readPage(STORE, {}, undefined, 10)).toEqual([])
+  })
+
   it('refuses a corrupt line instead of answering a page that is short of entries', async () => {
-    const { reader } = bucket({ [MARCH]: gzipSync('{"id":"x"}\n') })
+    const { reader } = bucket({ [MARCH]: gzipSync(`{"id":"x","storeId":"${STORE}"}\n`) })
 
     await expect(reader.readPage(STORE, {}, undefined, 10)).rejects.toMatchObject({
       code: ErrorCodes.EXTERNAL_SERVICE_ERROR
@@ -198,7 +204,7 @@ describe('AuditLogArchiveReader', () => {
   })
 
   it('refuses a line longer than the ceiling without holding it', async () => {
-    const huge = gzipSync(`${'x'.repeat(AuditColdRead.MAX_LINE_BYTES + 10)}\n`)
+    const huge = gzipSync(`"${STORE}"${'x'.repeat(AuditColdRead.MAX_LINE_BYTES + 10)}\n`)
     const { reader } = bucket({ [MARCH]: huge })
 
     await expect(reader.readPage(STORE, {}, undefined, 10)).rejects.toBeInstanceOf(

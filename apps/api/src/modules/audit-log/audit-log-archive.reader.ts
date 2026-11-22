@@ -82,14 +82,14 @@ export class AuditLogArchiveReader {
   ): Promise<ArchiveLine[]> {
     return this.guarded(async budget => {
       const top: ArchiveLine[] = []
-      for (const month of await this.months()) {
+      for (const month of await this.months(budget)) {
         if (month.start.getTime() >= (filters.before?.getTime() ?? Infinity)) continue
         if (after !== undefined && month.start.getTime() > after.timestamp.getTime()) continue
         // The months go from the newest: once the page is full, every older month holds only older entries
         if (top.length >= size) break
         if (filters.from !== undefined && month.end.getTime() <= filters.from.getTime()) break
         for (const key of month.keys) {
-          await this.readPart(key, budget, line => {
+          await this.readPart(key, budget, storeId, line => {
             if (!auditLogMatches(storeId, filters, line)) return
             if (after !== undefined && !isBefore(line, after)) return
             keepNewest(top, line, size)
@@ -103,13 +103,13 @@ export class AuditLogArchiveReader {
   // One entry of the store whose instant is `at`: only the month of that instant is read
   async findById(storeId: string, id: string, at: Date): Promise<ArchiveLine | null> {
     return this.guarded(async budget => {
-      const month = (await this.months()).find(
+      const month = (await this.months(budget)).find(
         item => item.start.getTime() <= at.getTime() && at.getTime() < item.end.getTime()
       )
       if (month === undefined) return null
       const found: { row: ArchiveLine | null } = { row: null }
       for (const key of month.keys) {
-        await this.readPart(key, budget, line => {
+        await this.readPart(key, budget, storeId, line => {
           if (line.id === id && line.storeId === storeId) found.row = line
         })
         if (found.row !== null) break
@@ -141,10 +141,11 @@ export class AuditLogArchiveReader {
   }
 
   // The months of the archive that the bucket holds, newest first, each with its parts in order
-  private async months(): Promise<ArchiveMonth[]> {
+  private async months(budget: ReadBudget): Promise<ArchiveMonth[]> {
     const byMonth = new Map<string, { start: Date; parts: { part: number; key: string }[] }>()
     let token: string | undefined
     for (let page = 0; ; page += 1) {
+      budget.signal.throwIfAborted()
       if (page >= AuditColdRead.MAX_LIST_PAGES) throw new ArchiveLimitError('too many objects')
       const listed = await this.storage.list(AuditColdRead.PREFIX, token)
       for (const object of listed.objects) {
@@ -176,14 +177,17 @@ export class AuditLogArchiveReader {
   private async readPart(
     key: string,
     budget: ReadBudget,
+    storeId: string,
     take: (line: ArchiveLine) => void
   ): Promise<void> {
     const body = await this.storage.stream(key)
     // A part that listed and is gone is a month that is being replaced: the read is not complete, so it is not answered
     if (body === null) throw new Error('a part of the archive is not in the bucket')
     let tail = Buffer.alloc(0)
+    // A line that does not carry the id of the store is not read at all: it is another tenant's, and it is not parsed
+    const needle = Buffer.from(JSON.stringify(storeId))
     const line = (bytes: Buffer): void => {
-      if (bytes.length === 0) return
+      if (bytes.length === 0 || bytes.indexOf(needle) === -1) return
       const parsed: unknown = JSON.parse(bytes.toString('utf8'))
       const result = lineSchema.safeParse(parsed)
       if (!result.success) throw new Error('a line of the archive is not an audit entry')
