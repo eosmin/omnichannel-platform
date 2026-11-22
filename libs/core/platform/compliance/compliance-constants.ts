@@ -1,9 +1,17 @@
 import type { RetentionField } from '@platform/core/domain'
 
-// Whether the executor of approved erasures exists (the sweep of Step 7.2-H2b). A function, not a bare constant read in a condition: the
-// day it ships this returns true and nothing else changes
+// Whether the executor of approved erasures exists: the nightly sweep `dsr-erase-due` of Step 7.2-H2b-1. A function, not a bare constant read in
+// a condition. It lets an erasure be approved; it does NOT turn the public form on (that is `DSR_PUBLIC_INTAKE_ENABLED`, off by default and
+// the owner's decision)
 export const dsrExecutorAvailable = (): boolean => DSR_EXECUTOR_AVAILABLE
-const DSR_EXECUTOR_AVAILABLE = false
+const DSR_EXECUTOR_AVAILABLE = true
+
+// Whether the WHOLE public flow is ready to take requests from strangers: the sweep exists (H2b-1), but the alert of day 25, the notices of a
+// request given back and the executors of access and portability are H2b-2. The env schema refuses `DSR_PUBLIC_INTAKE_ENABLED=true` and the
+// intake stays closed until this is true: the one that flips it is the PR that finishes H2b (an owner decision, with the adviser's word on the
+// grace period)
+export const dsrPublicFlowReady = (): boolean => DSR_PUBLIC_FLOW_READY
+const DSR_PUBLIC_FLOW_READY = false
 
 export const ComplianceConfig = {
   DSR_RESPONSE_DEADLINE_DAYS: 30,
@@ -12,7 +20,8 @@ export const ComplianceConfig = {
   DSR_VERIFICATION_TOKEN_DAYS: 7,
   DSR_EXPORT_LINK_DAYS: 7,
   BREACH_NOTIFICATION_HOURS: 72,
-  ERASURE_GRACE_PERIOD_DAYS: 30,
+  // Owner, 2026-11-22 (option C): an approved erasure waits 7 days, cancelable, before the sweep carries it out. Always read this constant
+  ERASURE_GRACE_PERIOD_DAYS: 7,
   UNMERGE_WINDOW_DAYS: 30,
   ERASED_CONTENT_PLACEHOLDER: '[erased]', // Written into Message.content on erasure
   // The clearing of the data of an erased customer runs again shortly after the first time and, in the sweep, for this many days after it was
@@ -32,7 +41,14 @@ export const ComplianceConfig = {
   DSR_REVIEW_PAGE_SIZE: 25,
   DSR_REVIEW_MAX_PAGE_SIZE: 100,
   // Requests the expiry sweep closes per store and per run; the next run takes the rest
-  DSR_EXPIRE_BATCH: 200
+  DSR_EXPIRE_BATCH: 200,
+  // The sweep that carries out the approved erasures (Step 7.2-H2b-1): requests per store and per run, the tries before a request goes back to
+  // the review queue, and how long a try keeps the request for itself before another sweep may take it (a worker that died mid-try)
+  DSR_ERASE_BATCH: 20,
+  DSR_ERASE_MAX_ATTEMPTS: 3,
+  DSR_ERASE_LEASE_MS: 60 * 60 * 1000,
+  // The transaction of one request erases every customer it names (the default of a job transaction is 15 s)
+  DSR_ERASE_TRANSACTION_TIMEOUT_MS: 2 * 60 * 1000
 } as const
 
 // Platform-wide floors and ceilings. Tenant-configurable values live in RetentionSettings, and
@@ -242,6 +258,17 @@ export const DsrRejectionReasons = {
   // A reviewer decided it; what they wrote is in the notes of the request, never in the audit log
   REVIEWER_DECISION: 'reviewer_decision'
 } as const
+
+// Why the sweep gave an approved erasure back to the review queue: nobody was erased by this move (the audit entry and the failure code carry it)
+export const DsrErasureReturnReasons = {
+  SUBJECT_CHANGED: 'subject_changed',
+  BLOCKED_BY_OPEN_WORK: 'blocked_by_open_work',
+  // A merge into one of the customers can still be undone: the erasure waits for the reviewer
+  UNDOABLE_MERGE: 'undoable_merge',
+  ATTEMPTS_EXHAUSTED: 'attempts_exhausted'
+} as const
+export type DsrErasureReturnReason =
+  (typeof DsrErasureReturnReasons)[keyof typeof DsrErasureReturnReasons]
 
 // What the closing notice of a data request says happened (the `outcome` of the `dsr-result` mail)
 export const DsrResultOutcomes = {

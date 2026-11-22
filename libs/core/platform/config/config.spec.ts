@@ -574,7 +574,7 @@ describe('DSR_PUBLIC_INTAKE_ENABLED, the public intake of data subject requests'
     expect(parseEnv(validEnv).DSR_PUBLIC_INTAKE_ENABLED).toBe(false)
   })
 
-  it('refuses to start when it is on and nothing carries out an approved erasure (Step 7.2-H2b ships the executor)', () => {
+  it('refuses to start when it is on before the whole flow of Step 7.2-H2b is ready (the sweep alone is not enough)', () => {
     expect(() => parseEnv({ ...validEnv, DSR_PUBLIC_INTAKE_ENABLED: 'true' })).toThrow(
       /DSR_PUBLIC_INTAKE_ENABLED/
     )
