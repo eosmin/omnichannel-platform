@@ -66,9 +66,14 @@ describe('Validating the constraints added NOT VALID', () => {
   })
 
   it('refuses a constraint that a row breaks, counts the rows and leaves it NOT VALID', async () => {
-    const constraint = await table('broken', `('u1', 'p1'), ('u2', 'p2'), ('u3', NULL)`)
+    // The value of a violating row is a person's: it is in the DETAIL of the error of the database, and nowhere in the outcome
+    const constraint = await table(
+      'broken',
+      `('someone@example.com', 'p1'), ('u2', 'p2'), ('u3', NULL)`
+    )
     const outcome = await validateConstraint(owner, constraint)
     expect(outcome).toEqual({ ref: constraint, result: 'violated', violatingRows: 2 })
+    expect(JSON.stringify(outcome)).not.toContain('someone@example.com')
     expect((await statusOf(owner, constraint)).state).toBe('not-valid')
   })
 
