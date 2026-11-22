@@ -13,5 +13,10 @@ import type { IsolationExemption } from './lib/isolation'
 // stores, even of the same organization). The plan lists which PR removes which line (Step 4.8, "Left by PR B1").
 
 export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> = {
-  DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' }
+  DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
+  PluginIdempotencyKey: {
+    step: '7.3',
+    reason:
+      'No route of a person reads or changes it (the plugin API reaches it only with the key of its own installation), so the checks of the table, which go through such a route, cannot run. Its isolation is the block "the idempotency keys of the plugin API" of tests/security/tenant-isolation.spec.ts, the policy of the table (tests/security/rls-*.spec.ts) and the unique key per installation'
+  }
 }

@@ -7,7 +7,7 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { ComplianceConfig } from '@platform/core/compliance'
 import { DatabaseNull, PrismaService } from '@platform/core/database'
-import { erasedHandleOf } from '@platform/core/domain'
+import { type Actor, auditActorOf, auditViaOf, erasedHandleOf } from '@platform/core/domain'
 import { errorName, resourceConflict } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -19,8 +19,6 @@ import {
   JobNames,
   QueueNames
 } from '@platform/core/queues'
-
-import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 // What the erasure answers and the audit entry records: counts, never a value (the answer reaches whoever holds
 // `customers:erase`, who may not read customers, and the audit log outlives the store's retention windows)
