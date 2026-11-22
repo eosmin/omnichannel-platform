@@ -81,6 +81,8 @@ kept in the environment.
      database, not at the backup.
 5. **Check the end.** Two runs in a row (two nights) of EACH job where every organization logs `resealed: 0`, `conflicts: 0`, `failed: {}` and `truncated: false`.
    A `conflict` means a person changed the row while the job ran: the row was left alone and is picked up the next night, so keep waiting.
+   **`truncated: true` means the run stopped at a cap with rows left: the previous key is NOT retired** (it is only in the info log, the job does not
+   fail for it).
    `resealed: 0` means every value already opens with the new key. Also look at the audit trail: `fiscal.value_resealed` and
    `credentials.value_resealed` have one entry per value sealed again (kind or column, and row id, never content).
    **Condition, a risk of LOSING DATA:** every organization that holds a sealed value must appear in the log of the last run of the job that
