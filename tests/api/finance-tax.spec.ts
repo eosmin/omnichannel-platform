@@ -5,7 +5,7 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
-import type { OwnerClient } from '@platform/core/database-testing'
+import { DatabaseRoles, type OwnerClient } from '@platform/core/database-testing'
 import {
   FinanceConflicts,
   FinanceCountryCodes,
@@ -789,7 +789,7 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
             SELECT has_table_privilege(${role}, 'tax_rates', ${privilege}) AS allowed`
         )[0]?.allowed === true
 
-      for (const role of ['platform_app', 'platform_worker']) {
+      for (const role of [DatabaseRoles.APP, DatabaseRoles.WORKER]) {
         expect(await has(role, 'DELETE')).toBe(false)
         expect(await has(role, 'TRUNCATE')).toBe(false)
         expect(await has(role, 'SELECT')).toBe(true)
