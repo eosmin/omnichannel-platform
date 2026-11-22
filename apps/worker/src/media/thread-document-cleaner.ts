@@ -19,6 +19,8 @@ export interface DocumentThreadOptions {
   maxOldGenerationMb: number
   maxYoungGenerationMb: number
   stackMb: number
+  // How long `terminate()` is waited for before the thread is given up as stuck (see `live`)
+  stopTimeoutMs: number
 }
 
 // The file of the thread is next to the bundle that is running (`node main.js`, so `process.argv[1]`)
@@ -30,10 +32,16 @@ export const defaultThreadOptions = (): DocumentThreadOptions => ({
   timeoutMs: DocumentSanitizing.THREAD_TIMEOUT_MS,
   maxOldGenerationMb: DocumentSanitizing.THREAD_MAX_OLD_GENERATION_MB,
   maxYoungGenerationMb: DocumentSanitizing.THREAD_MAX_YOUNG_GENERATION_MB,
-  stackMb: DocumentSanitizing.THREAD_STACK_MB
+  stackMb: DocumentSanitizing.THREAD_STACK_MB,
+  stopTimeoutMs: DocumentSanitizing.THREAD_STOP_TIMEOUT_MS
 })
 
 const { ThreadReplies, Untouched } = DocumentSanitizing
+
+// The threads of this process that have not exited yet. `terminate()` cannot interrupt a thread inside a synchronous native call (inflate) until
+// it returns, so a thread can outlive its document: the cleaner then waits for it only up to `stopTimeoutMs` and, while it is alive, takes no
+// new document (it throws, the caller retries): two threads of memory are never alive together
+let live = 0
 
 // Cleans a document on a thread that exists for that one document (`DocumentCleaner`). The parse is synchronous, so a hostile or huge file would
 // hold the event loop of the worker for as long as it runs: here it holds a thread that is killed at the deadline (`terminate`, which stops
@@ -68,6 +76,9 @@ export class ThreadDocumentCleaner extends DocumentCleaner {
     maxBytes: number
   ): Promise<SanitizedDocument> {
     const options = this.options
+    if (live > 0) {
+      return Promise.reject(new Error('a document thread is still running'))
+    }
     if (!existsSync(options.entryFile)) {
       // A bundle without its thread file is a broken deploy: the document is not to blame and must not be marked
       return Promise.reject(new Error('the file of the document thread is missing'))
@@ -96,14 +107,37 @@ export class ThreadDocumentCleaner extends DocumentCleaner {
         return
       }
 
+      live += 1
+      worker.on('exit', () => {
+        live -= 1
+      })
+
       let settled = false
       const finish = (settle: () => void): void => {
         if (settled) return
         settled = true
         clearTimeout(timer)
-        // Always: a finished thread is a no-op, a live one (a late answer, a timeout) is stopped. No thread outlives its document
-        void worker.terminate()
-        settle()
+        // Always: a finished thread is a no-op, a live one (a late answer, a timeout) is stopped, and the slot is not released until it
+        // is, or until `stopTimeoutMs` says it is stuck (then this fails and `live` keeps the next document out until it exits)
+        let stopTimer: NodeJS.Timeout | undefined
+        const stopped = new Promise<boolean>(done => {
+          stopTimer = setTimeout(() => {
+            done(false)
+          }, options.stopTimeoutMs)
+          worker.terminate().then(
+            () => {
+              done(true)
+            },
+            () => {
+              done(true)
+            }
+          )
+        })
+        void stopped.then(ok => {
+          clearTimeout(stopTimer)
+          if (ok) settle()
+          else reject(new Error('the document thread did not stop'))
+        })
       }
       const timer = setTimeout(() => {
         finish(() => resolve({ kind: ThreadReplies.UNTOUCHED, why: Untouched.TIMED_OUT }))

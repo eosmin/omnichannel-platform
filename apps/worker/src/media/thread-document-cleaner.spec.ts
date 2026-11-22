@@ -16,6 +16,7 @@ const cleanerOf = (
     maxOldGenerationMb: 64,
     maxYoungGenerationMb: 8,
     stackMb: 4,
+    stopTimeoutMs: 2000,
     ...over
   })
 
@@ -163,5 +164,28 @@ describe('ThreadDocumentCleaner', () => {
       kind: 'sanitized',
       body: bytes
     })
+  })
+
+  it('does not start another thread while one that could not be stopped is alive, and fails instead of waiting for it for ever', async () => {
+    // A thread that does not answer to terminate() in time (inside a native call): the call never settles
+    const refuse = jest
+      .spyOn(Worker.prototype, 'terminate')
+      .mockImplementationOnce(() => new Promise<number>(() => undefined))
+    try {
+      const cleaner = cleanerOf('spins-then-ends.cjs', { timeoutMs: 200, stopTimeoutMs: 300 })
+      await expect(cleaner.clean(bytes, PDF)).rejects.toThrow('the document thread did not stop')
+      // It is still running: no second thread of memory beside it
+      await expect(cleanerOf('answer.cjs').clean(bytes, PDF)).rejects.toThrow(
+        'a document thread is still running'
+      )
+      // Once it is gone the cleaner takes documents again
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      await expect(cleanerOf('answer.cjs').clean(bytes, PDF)).resolves.toEqual({
+        kind: 'sanitized',
+        body: bytes
+      })
+    } finally {
+      refuse.mockRestore()
+    }
   })
 })

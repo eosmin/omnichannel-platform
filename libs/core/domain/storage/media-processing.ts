@@ -251,6 +251,8 @@ export const DocumentSanitizing = {
   THREAD_MAX_OLD_GENERATION_MB: 384,
   THREAD_MAX_YOUNG_GENERATION_MB: 32,
   THREAD_STACK_MB: 4,
+  // How long the stop of a thread is waited for (a thread inside a synchronous native call cannot be interrupted until it returns)
+  THREAD_STOP_TIMEOUT_MS: 5000,
   // The file of the thread, next to `main.js` in the bundle of the worker (a second entry of its rspack configuration)
   THREAD_ENTRY_FILE: 'document-thread.js',
   // The error code Node gives a thread that passed its memory limit
