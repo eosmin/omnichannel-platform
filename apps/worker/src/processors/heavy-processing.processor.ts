@@ -26,6 +26,7 @@ import {
   type MediaScope,
   type PostFinanceEventJob,
   exactly,
+  jobCorrelationIdSchema,
   JobNames,
   QueueNames,
   type PollShipmentStatusJob,
@@ -63,6 +64,7 @@ import { ShipmentCanceller } from '../shipping/shipment-canceller.service'
 import { ShipmentPoller } from '../shipping/shipment-poller.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 type HeavyJob =
@@ -94,7 +96,7 @@ const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
     locationsByConnection: bulkLocationsByConnectionSchema.optional(),
     pickup: shipmentPickupSchema.optional(),
     canOverridePrice: z.boolean(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const cancelShipmentJobSchema = exactly<CancelShipmentJob>()(
@@ -102,7 +104,7 @@ const cancelShipmentJobSchema = exactly<CancelShipmentJob>()(
     storeId: z.uuid(),
     shipmentId: z.uuid(),
     requestedBy: z.uuid().nullable(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const syncPickupJobSchema = exactly<SyncPickupJob>()(
@@ -110,31 +112,31 @@ const syncPickupJobSchema = exactly<SyncPickupJob>()(
     storeId: z.uuid(),
     pickupId: z.uuid(),
     requestedBy: z.uuid().nullable(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const evaluatePickupsJobSchema = exactly<EvaluatePickupsJob>()(
-  z.object({ minute: z.number().int().positive(), correlationId: z.string().optional() })
+  z.object({ minute: z.number().int().positive(), correlationId: jobCorrelationIdSchema })
 )
 const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
   z.object({
     storeId: z.uuid(),
     originId: z.uuid(),
     slot: z.enum(Object.values(OriginMediaSlots) as [OriginMediaSlot, ...OriginMediaSlot[]]),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const reconcileJobSchema = exactly<ReconcileInventoryJob>()(
-  z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
+  z.object({ storeId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 const reconcileFinanceJobSchema = exactly<ReconcileFinanceJob>()(
-  z.object({ organizationId: z.uuid(), correlationId: z.string().optional() })
+  z.object({ organizationId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 export const verifyLedgerChainJobSchema = exactly<VerifyLedgerChainJob>()(
   z.object({
     organizationId: z.uuid(),
     requestedBy: z.uuid().optional(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const postFinanceJobSchema = exactly<PostFinanceEventJob>()(
@@ -144,38 +146,38 @@ const postFinanceJobSchema = exactly<PostFinanceEventJob>()(
     sourceId: z.uuid(),
     kind: z.enum(FinanceEventKind),
     occurredAt: z.iso.datetime().optional(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const submitFiscalJobSchema = exactly<SubmitFiscalDocumentJob>()(
   z.object({
     organizationId: z.uuid(),
     documentId: z.uuid(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const reportFiscalContingencyJobSchema = exactly<ReportFiscalContingencyJob>()(
   z.object({
     organizationId: z.uuid(),
     contingencyId: z.uuid(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const retentionJobSchema = exactly<EnforceRetentionJob>()(
-  z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
+  z.object({ storeId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 const dsrIntakeJobSchema = exactly<DsrIntakeJob>()(
-  z.object({ sealed: z.string().min(1).max(4096), correlationId: z.string().optional() })
+  z.object({ sealed: z.string().min(1).max(4096), correlationId: jobCorrelationIdSchema })
 )
 const eraseCustomerDataJobSchema = exactly<EraseCustomerDataJob>()(
-  z.object({ storeId: z.uuid(), customerId: z.uuid(), correlationId: z.string().optional() })
+  z.object({ storeId: z.uuid(), customerId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 const pollJobSchema = exactly<PollShipmentStatusJob>()(
   z.object({
     storeId: z.uuid(),
     connectionId: z.uuid(),
     includeOld: z.boolean(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 const reprocessJobSchema = exactly<ReprocessCarrierEventsJob>()(
@@ -184,7 +186,7 @@ const reprocessJobSchema = exactly<ReprocessCarrierEventsJob>()(
     connectionId: z.uuid(),
     providerCode: z.string().min(1).max(CarrierStatusLimits.PROVIDER_CODE_MAX_LENGTH),
     requestedBy: z.uuid().optional(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 // A scan and the variants of an image take the same job. Its database work is the context of a store, or of the person for an avatar
@@ -194,7 +196,7 @@ const mediaJobSchema = z
     mediaId: z.uuid(),
     storeId: z.uuid().optional(),
     userId: z.uuid().optional(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
   .refine(job => (job.storeId === undefined) !== (job.userId === undefined), {
     message: 'a media job names a store or a person, and only one'
@@ -212,7 +214,7 @@ const fetchJobSchema = exactly<FetchInboundMediaJob>()(
     mediaId: z.string().optional(),
     contentType: z.string(),
     filename: z.string().nullable(),
-    correlationId: z.string().optional()
+    correlationId: jobCorrelationIdSchema
   })
 )
 
@@ -249,19 +251,19 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     if (job.name === JobNames.FETCH_INBOUND_MEDIA) {
       const fetch = fetchJobSchema.safeParse(job.data)
       // The job crossed Redis: what does not fit now will not fit when it is tried again
-      if (!fetch.success) throw new UnrecoverableError('the fetch job does not fit its schema')
+      if (!fetch.success) throw new JobRejectedError('the fetch job does not fit its schema')
       // A store deleted after the job was queued is a file with nothing left to do
       return this.skipIfGone(job, () => this.fetcher.fetch(fetch.data, isLastAttempt(job)))
     }
     if (job.name === JobNames.FETCH_ORIGIN_MEDIA) {
       const fetch = originFetchJobSchema.safeParse(job.data)
-      if (!fetch.success) throw new UnrecoverableError('the fetch job does not fit its schema')
+      if (!fetch.success) throw new JobRejectedError('the fetch job does not fit its schema')
       return this.skipIfGone(job, () => this.originFetcher.fetch(fetch.data))
     }
     if (job.name === JobNames.RECONCILE_INVENTORY) {
       const reconcile = reconcileJobSchema.safeParse(job.data)
       if (!reconcile.success)
-        throw new UnrecoverableError('the reconcile job does not fit its schema')
+        throw new JobRejectedError('the reconcile job does not fit its schema')
       // The reconciler opens a context of the store for each read and each item (a failed item is caught and must not abort the rest)
       await this.reconciler.reconcileStore(reconcile.data.storeId)
       return
@@ -269,7 +271,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     if (job.name === JobNames.RECONCILE_FINANCE) {
       const reconcile = reconcileFinanceJobSchema.safeParse(job.data)
       if (!reconcile.success) {
-        throw new UnrecoverableError('the finance reconcile job does not fit its schema')
+        throw new JobRejectedError('the finance reconcile job does not fit its schema')
       }
       // The two checks do not hide each other: each runs whatever the other did, and the first failure rejects the job so the queue asks
       // again (both are idempotent)
@@ -296,7 +298,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     if (job.name === JobNames.VERIFY_LEDGER_CHAIN) {
       const verify = verifyLedgerChainJobSchema.safeParse(job.data)
       if (!verify.success) {
-        throw new UnrecoverableError('the chain check job does not fit its schema')
+        throw new JobRejectedError('the chain check job does not fit its schema')
       }
       // A break is an incident the check records and returns; only an error of the infrastructure rejects, and the queue asks again
       await this.financeChain.check(verify.data.organizationId, new Date(), verify.data.requestedBy)
@@ -304,7 +306,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     }
     if (job.name === JobNames.SUBMIT_FISCAL_DOCUMENT) {
       const submit = submitFiscalJobSchema.safeParse(job.data)
-      if (!submit.success) throw new UnrecoverableError('the fiscal job does not fit its schema')
+      if (!submit.success) throw new JobRejectedError('the fiscal job does not fit its schema')
       // Throws when the provider did not answer, so the queue tries again with its backoff; a decision (accepted, rejected) returns
       try {
         await this.skipIfGone(job, () =>
@@ -327,7 +329,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     if (job.name === JobNames.REPORT_FISCAL_CONTINGENCY) {
       const report = reportFiscalContingencyJobSchema.safeParse(job.data)
       if (!report.success) {
-        throw new UnrecoverableError('the contingency job does not fit its schema')
+        throw new JobRejectedError('the contingency job does not fit its schema')
       }
       // Throws when the authority did not answer, so the queue tries again with its backoff; a decision (taken, refused) returns
       try {
@@ -348,7 +350,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     }
     if (job.name === JobNames.POST_FINANCE_EVENT) {
       const post = postFinanceJobSchema.safeParse(job.data)
-      if (!post.success) throw new UnrecoverableError('the posting job does not fit its schema')
+      if (!post.success) throw new JobRejectedError('the posting job does not fit its schema')
       // A failure of the books is recorded for a person and returns; only an error of the infrastructure rejects, and the queue asks again
       try {
         await this.financePosting.post(post.data)
@@ -364,8 +366,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     }
     if (job.name === JobNames.ENFORCE_RETENTION) {
       const enforce = retentionJobSchema.safeParse(job.data)
-      if (!enforce.success)
-        throw new UnrecoverableError('the retention job does not fit its schema')
+      if (!enforce.success) throw new JobRejectedError('the retention job does not fit its schema')
       // Rejects when a category failed (after the others ran): the queue asks again and finds what is left
       await this.skipIfGone(job, () => this.retention.enforce(enforce.data.storeId))
       return
@@ -373,13 +374,13 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     if (job.name === JobNames.DSR_INTAKE) {
       const intake = dsrIntakeJobSchema.safeParse(job.data)
       if (!intake.success)
-        throw new UnrecoverableError('the data request job does not fit its schema')
+        throw new JobRejectedError('the data request job does not fit its schema')
       await this.dsrIntake.handle(intake.data.sealed)
       return
     }
     if (job.name === JobNames.ERASE_CUSTOMER_DATA) {
       const erase = eraseCustomerDataJobSchema.safeParse(job.data)
-      if (!erase.success) throw new UnrecoverableError('the erasure job does not fit its schema')
+      if (!erase.success) throw new JobRejectedError('the erasure job does not fit its schema')
       await this.skipIfGone(job, async () => {
         const report = await this.erasedData.clear(erase.data.storeId, erase.data.customerId)
         // Something is left (a bucket that failed, a run that hit its cap): the queue asks again, and the daily sweep after it
@@ -390,7 +391,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     }
     if (job.name === JobNames.POLL_SHIPMENT_STATUS) {
       const poll = pollJobSchema.safeParse(job.data)
-      if (!poll.success) throw new UnrecoverableError('the poll job does not fit its schema')
+      if (!poll.success) throw new JobRejectedError('the poll job does not fit its schema')
       await this.skipIfGone(job, () =>
         this.poller.poll(poll.data.storeId, poll.data.connectionId, {
           includeOld: poll.data.includeOld
@@ -400,14 +401,14 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     }
     if (job.name === JobNames.BULK_LABELS_MERGE) {
       const bulk = bulkLabelsJobSchema.safeParse(job.data)
-      if (!bulk.success) throw new UnrecoverableError('the bulk labels job does not fit its schema')
+      if (!bulk.success) throw new JobRejectedError('the bulk labels job does not fit its schema')
       // The last attempt that ends on a fault closes the run as failed; an earlier one is repeated and finds what it made
       await this.skipIfGone(job, () => this.bulkLabels.run(bulk.data, isLastAttempt(job)))
       return
     }
     if (job.name === JobNames.CANCEL_SHIPMENT) {
       const cancel = cancelShipmentJobSchema.safeParse(job.data)
-      if (!cancel.success) throw new UnrecoverableError('the void job does not fit its schema')
+      if (!cancel.success) throw new JobRejectedError('the void job does not fit its schema')
       // Rejects while the carrier does not answer (the queue asks again); the last attempt closes the void as failed
       await this.skipIfGone(job, () => this.canceller.run(cancel.data, isLastAttempt(job)))
       return
@@ -415,14 +416,14 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     if (job.name === JobNames.EVALUATE_PICKUPS) {
       const evaluate = evaluatePickupsJobSchema.safeParse(job.data)
       if (!evaluate.success) {
-        throw new UnrecoverableError('the pickup evaluation job does not fit its schema')
+        throw new JobRejectedError('the pickup evaluation job does not fit its schema')
       }
       await this.pickupEvaluator.run(evaluate.data)
       return
     }
     if (job.name === JobNames.SYNC_PICKUP) {
       const sync = syncPickupJobSchema.safeParse(job.data)
-      if (!sync.success) throw new UnrecoverableError('the pickup job does not fit its schema')
+      if (!sync.success) throw new JobRejectedError('the pickup job does not fit its schema')
       // Rejects while the carrier does not answer (the queue asks again); the last attempt ends the pickup as failed
       await this.skipIfGone(job, () => this.pickupSyncer.run(sync.data, isLastAttempt(job)))
       return
@@ -430,7 +431,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     if (job.name === JobNames.REPROCESS_CARRIER_EVENTS) {
       const reprocess = reprocessJobSchema.safeParse(job.data)
       if (!reprocess.success) {
-        throw new UnrecoverableError('the carrier replay job does not fit its schema')
+        throw new JobRejectedError('the carrier replay job does not fit its schema')
       }
       const replayed: { report?: ReplayReport } = {}
       await this.skipIfGone(job, async () => {
@@ -447,7 +448,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       return
     }
     const parsed = mediaJobSchema.safeParse(job.data)
-    if (!parsed.success) throw new UnrecoverableError('the media job does not fit its schema')
+    if (!parsed.success) throw new JobRejectedError('the media job does not fit its schema')
 
     const { mediaId } = parsed.data
     const { storeId, userId } = parsed.data

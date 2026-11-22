@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { exactly } from './exact-schema'
+import { jobCorrelationIdSchema } from './job-schemas'
 import type {
   SendOutboundCaptionJob,
   SendOutboundDeleteJob,
@@ -11,7 +12,7 @@ import type {
   SendOutboundTypingJob
 } from './job-types'
 
-const correlationId = z.string().optional()
+const correlationId = jobCorrelationIdSchema
 
 export const outboundMessageJobSchema = exactly<SendOutboundMessageJob>()(
   z.object({ storeId: z.uuid(), messageId: z.uuid(), correlationId })
