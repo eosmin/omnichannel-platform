@@ -234,6 +234,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'Jobs whose subject row was not found for the store of the job',
     labels: ['job']
   },
+  [MetricNames.EXPORT_FILE_DISCARD_FAILED]: {
+    kind: 'counter',
+    help: 'Files of an export that the bucket refused to delete; the row keeps the key until a sweep deletes the file',
+    labels: ['stage']
+  },
   [MetricNames.WEBHOOK_DELIVERIES]: {
     kind: 'counter',
     help: 'Outbound webhook deliveries, of a store or of a plugin',

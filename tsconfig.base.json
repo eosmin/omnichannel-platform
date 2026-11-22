@@ -42,6 +42,7 @@
       "@platform/core/config": ["libs/core/platform/config/index.ts"],
       "@platform/core/config/env": ["libs/core/platform/config/env.ts"],
       "@platform/core/store-preferences": ["libs/core/domain/store-preferences.ts"],
+      "@platform/core/cookie-consent": ["libs/core/domain/cookie-consent-constants.ts"],
       "@platform/plugins/sdk": ["libs/plugins/sdk/src/index.ts"],
       "@platform/plugins/runtime": ["libs/plugins/runtime/src/index.ts"],
       "@platform/api-client": ["libs/api-client/src/index.ts"],

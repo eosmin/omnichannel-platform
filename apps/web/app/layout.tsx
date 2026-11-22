@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import dynamic from 'next/dynamic'
 import { headers } from 'next/headers'
 import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getTranslations } from 'next-intl/server'
@@ -10,9 +11,18 @@ import { AppProviders } from '../components/providers/app-providers'
 import { DestructiveActionProvider } from '../components/shared/destructive-action'
 import { BusyAnnouncer } from '../components/shell/busy-announcer'
 import { ToasterHost } from '../components/ui/toaster-host'
+import { isSettled } from '../lib/cookie-consent/cookie-settled'
 import { parseFrameOrigins } from '../lib/plugin-frames'
 
 import './globals.css'
+
+// Not a static import: a client component imported by the layout travels in the script of every page, rendered or not, and a visitor
+// who already answered (the server draws the gate only for who has something to answer) must not pay for it
+const CookieConsentGate = dynamic(() =>
+  import('../components/cookie-consent/cookie-consent-gate').then(
+    module => module.CookieConsentGate
+  )
+)
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('app')
@@ -27,8 +37,9 @@ export default async function RootLayout({
 }): Promise<ReactNode> {
   const locale = await getLocale()
   // What the proxy let the policy frame for this store: the page reads it to know whether a widget can load here
+  const requestHeaders = await headers()
   const frameOrigins = parseFrameOrigins(
-    (await headers()).get(PluginWidgetFrames.ORIGINS_HEADER) ?? undefined,
+    requestHeaders.get(PluginWidgetFrames.ORIGINS_HEADER) ?? undefined,
     []
   ).join(PluginWidgetFrames.COOKIE_SEPARATOR)
   return (
@@ -41,6 +52,7 @@ export default async function RootLayout({
           <AppProviders>
             <DestructiveActionProvider>{children}</DestructiveActionProvider>
           </AppProviders>
+          {isSettled(requestHeaders.get('cookie') ?? '') ? null : <CookieConsentGate />}
           <ToasterHost />
           <BusyAnnouncer />
         </NextIntlClientProvider>

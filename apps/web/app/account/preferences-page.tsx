@@ -12,6 +12,7 @@ import {
 import { UiDensity } from '@platform/core/domain'
 import { LocaleLabels, SUPPORTED_LOCALES } from '@platform/core/i18n'
 
+import { CookiePreferencesButton } from '../../components/cookie-consent/cookie-preferences-button'
 import { MutationError } from '../../components/customers/mutation-error'
 import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
@@ -188,6 +189,9 @@ function PreferencesForm({ saved }: { saved: AccountPreferences }): ReactElement
           </Button>
         </div>
       </form>
+      <div>
+        <CookiePreferencesButton />
+      </div>
     </section>
   )
 }

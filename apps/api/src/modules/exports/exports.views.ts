@@ -77,7 +77,11 @@ export function exportView(row: ExportRow, now: Date = new Date()): ExportView {
     type: row.type as ExportType,
     format: row.format,
     status: expired ? ExportStatus.EXPIRED : (row.status as ExportStatusType),
-    filename: row.key === null ? null : (row.key.split('/').at(-1) ?? null),
+    // Only a ready row names a file: a failed one may keep its key only so that a sweep deletes the file
+    filename:
+      row.status !== ExportStatus.READY || row.key === null
+        ? null
+        : (row.key.split('/').at(-1) ?? null),
     rowCount: row.rowCount,
     progress: row.status === ExportStatus.PENDING ? row.progress : null,
     error: row.error,

@@ -15,7 +15,11 @@ import { JobContext, PrismaService } from '@platform/core/database'
 import { ErrorCodes, errorName, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { ExportFileExtensions, ExportTypePermissions } from '@platform/core/exports'
+import {
+  ExportDiscardStages,
+  ExportFileExtensions,
+  ExportTypePermissions
+} from '@platform/core/exports'
 import {
   auditLogExportFiltersSchema,
   conversationsExportFiltersSchema,
@@ -87,7 +91,9 @@ export class ExportGenerator {
     private readonly logger: PinoLogger,
     private readonly jobContext: JobContext,
     @InjectMetric(MetricNames.WORKER_JOB_SUBJECT_MISSING)
-    private readonly subjectMissing: Counter<string>
+    private readonly subjectMissing: Counter<string>,
+    @InjectMetric(MetricNames.EXPORT_FILE_DISCARD_FAILED)
+    private readonly discardFailed: Counter<string>
   ) {
     this.logger.setContext(ExportGenerator.name)
   }
@@ -163,7 +169,7 @@ export class ExportGenerator {
       } catch (error) {
         // A read that fails is not a yes. The file is made and no row points at it: it goes now, because a retry on another day
         // writes under another name and would never overwrite it
-        await this.discard(key)
+        await this.discard(row, key)
         throw error
       }
       if (!covered) {
@@ -172,7 +178,7 @@ export class ExportGenerator {
           'an export was cancelled: its requester lost permissions while the file was written'
         )
         // The file first: a row that fails to settle must not leave the file behind
-        await this.discard(key)
+        await this.discard(row, key)
         await this.fail(row, ErrorCodes.PERMISSION_DENIED)
         throw new PermissionLostError()
       }
@@ -192,7 +198,7 @@ export class ExportGenerator {
       )
       if (settled.count === 0) {
         // The row settled meanwhile (given up, failed): nothing will ever point at this file
-        await this.discard(key)
+        await this.discard(row, key)
         return
       }
       this.audit.log({
@@ -216,21 +222,22 @@ export class ExportGenerator {
       this.logger.error({ exportId, errorName: errorName(error) }, 'an export could not be written')
       // A text that names too many customers (it grew since the request) finds the same on every attempt: the export says so and stops
       if (error instanceof PlatformException && error.code === ErrorCodes.SEARCH_TOO_BROAD) {
+        // The file first: a row that fails to settle must not leave the file behind
+        await this.discard(row, key)
         await this.fail(row, ErrorCodes.SEARCH_TOO_BROAD)
-        await this.discard(key)
         throw new UnrecoverableError(error.message)
       }
       if (error instanceof ZipTooLargeError || error instanceof ZipEmptyError) {
         // Trying again finds the same files
         const code =
           error instanceof ZipTooLargeError ? ErrorCodes.EXPORT_TOO_LARGE : ErrorCodes.EXPORT_EMPTY
+        await this.discard(row, key)
         await this.fail(row, code)
-        await this.discard(key)
         throw new UnrecoverableError(error.message)
       }
       if (lastAttempt) {
+        await this.discard(row, key)
         await this.fail(row)
-        await this.discard(key)
       }
       throw error
     }
@@ -337,11 +344,34 @@ export class ExportGenerator {
     return fileStillCovered(row.type, used, held)
   }
 
-  // A file with personal data that no `ready` row points to is never deleted by the cleanup
-  private async discard(key: string): Promise<void> {
-    await this.storage.delete(key).catch((error: unknown) => {
-      this.logger.error({ errorName: errorName(error) }, 'an export file could not be discarded')
-    })
+  // A file with personal data that no `ready` row points to is never deleted by the expiry of ready rows, so a file that the bucket
+  // refuses to delete is not forgotten: the failure is logged (no ids of people) and counted, and the row keeps the key, which is what
+  // the sweep of the cleanup looks for (it also lists the prefix of the export, so a row that cannot be written is found too)
+  private async discard(row: ExportRow, key: string): Promise<void> {
+    try {
+      await this.storage.delete(key)
+      return
+    } catch (error) {
+      this.logger.error(
+        { exportId: row.id, errorName: errorName(error) },
+        'an export file could not be discarded'
+      )
+      this.discardFailed.inc({ stage: ExportDiscardStages.WORKER })
+    }
+    try {
+      await this.jobContext.forStore(row.storeId, () =>
+        this.prisma.client.export.updateMany({
+          // Never over a ready row: its key is the file that people download
+          where: { id: row.id, storeId: row.storeId, status: { not: ExportStatus.READY } },
+          data: { key }
+        })
+      )
+    } catch (error) {
+      this.logger.error(
+        { exportId: row.id, errorName: errorName(error) },
+        'an export file that could not be discarded could not be marked on its row'
+      )
+    }
   }
 
   // Marks the row failed and tells its owner, only if this call is the one that settled it

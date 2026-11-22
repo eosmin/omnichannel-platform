@@ -506,6 +506,107 @@ describe('row-level security, phase 1', () => {
     })
   })
 
+  // The read of the worker that decides whether a plugin requester still holds its right (export-requester-access.ts): the installation of
+  // the store, active, whose plugin is approved. Prisma writes the relational filter as a join of the two tables, both under row security.
+  describe('the plugin of a requester of an export, read by the worker', () => {
+    const READ = `SELECT i.id FROM plugin_installations i
+      WHERE i.id = $1 AND i.store_id = $2 AND i.status = 'active'
+        AND EXISTS (SELECT 1 FROM plugins p WHERE p.id = i.plugin_id AND p.status = 'approved')`
+
+    async function seedPlugins(app: AppSession): Promise<void> {
+      await app.seed('plugins', [
+        { id: `ok-${run}`, organization_id: ORG_A, status: 'approved' },
+        { id: `withdrawn-${run}`, organization_id: ORG_A, status: 'withdrawn' },
+        { id: `theirs-${run}`, organization_id: ORG_B, status: 'approved' }
+      ])
+      await app.seed('plugin_installations', [
+        { id: `i-ok-${run}`, store_id: A, plugin_id: `ok-${run}`, status: 'active' },
+        { id: `i-withdrawn-${run}`, store_id: A, plugin_id: `withdrawn-${run}`, status: 'active' },
+        { id: `i-theirs-${run}`, store_id: A, plugin_id: `theirs-${run}`, status: 'active' }
+      ])
+    }
+
+    it('answers the installation of an approved plugin of the store, and nothing else', async () => {
+      await inCopies(['plugins', 'plugin_installations'], async app => {
+        await seedPlugins(app)
+        const context = { stores: [A], organizations: [ORG_A] }
+        const ok = await app.as(context, READ, [`i-ok-${run}`, A])
+        expect(ids(ok.rows)).toEqual([`i-ok-${run}`])
+        // A withdrawn plugin, and a plugin of an organization that is not the one of the store: no row, which the worker reads as a refusal
+        const withdrawn = await app.as(context, READ, [`i-withdrawn-${run}`, A])
+        expect(withdrawn.rows).toEqual([])
+        const theirs = await app.as(context, READ, [`i-theirs-${run}`, A])
+        expect(theirs.rows).toEqual([])
+      })
+    })
+
+    it('answers nothing in the context of another store or with no context at all (it fails closed)', async () => {
+      await inCopies(['plugins', 'plugin_installations'], async app => {
+        await seedPlugins(app)
+        const other = await app.as({ stores: [B], organizations: [ORG_B] }, READ, [
+          `i-ok-${run}`,
+          A
+        ])
+        expect(other.rows).toEqual([])
+        const none = await app.as({}, READ, [`i-ok-${run}`, A])
+        expect(none.rows).toEqual([])
+      })
+    })
+  })
+
+  // What the sweep of the cleanup reads and writes (expired-exports-cleaner.service.ts): the settled exports of one store
+  describe('the sweep of the files of a failed export', () => {
+    const SWEEP = `SELECT id FROM exports WHERE store_id = $1 AND status IN ('failed', 'expired')
+      AND (key IS NOT NULL OR (completed_at >= now() - interval '7 days' AND completed_at <= now() - interval '1 hour'))`
+
+    async function seedExports(app: AppSession): Promise<void> {
+      await app.seed('exports', [
+        {
+          id: `fa-${run}`,
+          store_id: A,
+          status: 'failed',
+          key: `stores/${A}/exports/fa-${run}/x.csv`
+        },
+        {
+          id: `fb-${run}`,
+          store_id: B,
+          status: 'failed',
+          key: `stores/${B}/exports/fb-${run}/x.csv`
+        }
+      ])
+    }
+
+    it('lists the rows of the store of the context and no other store, even when the query names the other', async () => {
+      await inCopies(['exports'], async app => {
+        await seedExports(app)
+        const mine = await app.as({ stores: [A] }, SWEEP, [A])
+        expect(ids(mine.rows)).toEqual([`fa-${run}`])
+        const theirs = await app.as({ stores: [A] }, SWEEP, [B])
+        expect(theirs.rows).toEqual([])
+        const none = await app.as({}, SWEEP, [A])
+        expect(none.rows).toEqual([])
+      })
+    })
+
+    it('clears the key of its own row and cannot touch the row of another store', async () => {
+      await inCopies(['exports'], async app => {
+        await seedExports(app)
+        const own = await app.as(
+          { stores: [A] },
+          'UPDATE exports SET key = NULL WHERE id = $1 AND store_id = $2',
+          [`fa-${run}`, A]
+        )
+        expect(own.rowCount).toBe(1)
+        const foreign = await app.as(
+          { stores: [A] },
+          'UPDATE exports SET key = NULL WHERE id = $1 AND store_id = $2',
+          [`fb-${run}`, B]
+        )
+        expect(foreign.rowCount).toBe(0)
+      })
+    })
+  })
+
   describe('webhook_deliveries (no store_id: it follows its webhook or its plugin installation)', () => {
     async function seedAll(app: AppSession): Promise<void> {
       await app.seed('webhooks', [
