@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto'
 
 import pg from 'pg'
 
-import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  ensureStore,
+  type OwnerClient,
+  DatabaseRoles
+} from '@platform/core/database-testing'
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { retryOnDeadlock } from '../helpers/deadlock-retry'
@@ -93,7 +98,7 @@ describe('the plan of the searches of the lists with row-level security on', () 
           await raw.query(`DROP POLICY IF EXISTS list_plan ON ${table}`)
           // The policy of the platform for a table scoped by store (rls_apply_policy): the store of the context, as a sub-select
           await raw.query(
-            `CREATE POLICY list_plan ON ${table} AS PERMISSIVE FOR SELECT TO platform_app
+            `CREATE POLICY list_plan ON ${table} AS PERMISSIVE FOR SELECT TO ${DatabaseRoles.APP}
                USING (store_id = ANY ((SELECT app_store_ids())::text[]))`
           )
         }
@@ -102,7 +107,7 @@ describe('the plan of the searches of the lists with row-level security on', () 
       await raw.query('SET LOCAL enable_seqscan = off')
       await raw.query('SET LOCAL enable_indexscan = off')
       await raw.query('SET LOCAL enable_indexonlyscan = off')
-      await raw.query('SET LOCAL ROLE platform_app')
+      await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
       await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
       const { rows } = await raw.query<{ 'QUERY PLAN': { Plan: PlanNode }[] }>(
         `EXPLAIN (FORMAT JSON) ${statement}`,
@@ -192,7 +197,7 @@ describe('the plan of the searches of the lists with row-level security on', () 
         await raw.query('SET LOCAL auto_explain.log_min_duration = 0')
         await raw.query('SET LOCAL auto_explain.log_nested_statements = on')
         await raw.query('SET LOCAL client_min_messages = log')
-        await raw.query('SET LOCAL ROLE platform_app')
+        await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
         await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
         const { rows } = await raw.query<{ id: string }>(
           `SELECT f.id FROM public.rls_search_customer_list($1, $2, $3, false, NULL, NULL, 25) AS f`,

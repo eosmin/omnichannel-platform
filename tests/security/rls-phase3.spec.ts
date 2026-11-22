@@ -3,7 +3,12 @@ import { resolve } from 'node:path'
 
 import pg from 'pg'
 
-import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  ensureStore,
+  type OwnerClient,
+  DatabaseRoles
+} from '@platform/core/database-testing'
 
 import { coveredTables } from '../../scripts/lib/rls'
 import { RLS_EXEMPTIONS } from '../../scripts/rls-exceptions'
@@ -106,7 +111,7 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
         await raw.query(`ALTER TABLE ${table} FORCE ROW LEVEL SECURITY`)
       }
       if (before !== undefined) await before(raw)
-      await raw.query('SET LOCAL ROLE platform_app')
+      await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
       await raw.query(
         "SELECT set_config('app.store_ids', $1, true), set_config('app.organization_ids', $2, true)",
         [(context.stores ?? []).join(','), (context.organizations ?? []).join(',')]
@@ -545,8 +550,10 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
           db => db.query('SELECT * FROM rls_store_tables_with_rows($1::text)', [ctx.storeA.id]),
           async db => {
             // The owner of the function is a role that owns no table and cannot bypass row security
-            await db.query('GRANT CREATE ON SCHEMA public TO platform_app')
-            await db.query('ALTER FUNCTION rls_store_tables_with_rows(text) OWNER TO platform_app')
+            await db.query(`GRANT CREATE ON SCHEMA public TO ${DatabaseRoles.APP}`)
+            await db.query(
+              `ALTER FUNCTION rls_store_tables_with_rows(text) OWNER TO ${DatabaseRoles.APP}`
+            )
           }
         )
       ).rejects.toThrow(/cannot see every row/)
@@ -647,8 +654,8 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
 
     it('is executable by platform_app only, not by the worker nor PUBLIC', async () => {
       const { rows } = await raw.query<{ app: boolean; worker: boolean; pub: boolean }>(
-        `SELECT has_function_privilege('platform_app', 'rls_store_tables_with_rows(text)', 'EXECUTE') AS app,
-                has_function_privilege('platform_worker', 'rls_store_tables_with_rows(text)', 'EXECUTE') AS worker,
+        `SELECT has_function_privilege('${DatabaseRoles.APP}', 'rls_store_tables_with_rows(text)', 'EXECUTE') AS app,
+                has_function_privilege('${DatabaseRoles.WORKER}', 'rls_store_tables_with_rows(text)', 'EXECUTE') AS worker,
                 has_function_privilege('public', 'rls_store_tables_with_rows(text)', 'EXECUTE') AS pub`
       )
       expect(rows[0]).toEqual({ app: true, worker: false, pub: false })

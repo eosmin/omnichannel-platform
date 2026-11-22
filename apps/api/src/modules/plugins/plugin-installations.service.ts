@@ -160,10 +160,11 @@ function manifestSummaryOf(manifest: unknown): {
   }
 }
 
-function namesOf(manifest: unknown): LocalizedText | null {
-  if (typeof manifest !== 'object' || manifest === null) return null
-  const names = (manifest as { names?: unknown }).names
-  return names === undefined ? null : readLocalizedText(names, PluginManifestLimits.NAME_MAX_LENGTH)
+// The `names` of a stored manifest, read defensively (a row is data): nothing, or the texts the reader accepts
+function namesOfStored(names: unknown): LocalizedText | null {
+  return names === undefined || names === null
+    ? null
+    : readLocalizedText(names, PluginManifestLimits.NAME_MAX_LENGTH)
 }
 
 export type PluginInstallResult = PluginCatalogEntry & { setup: PluginSetupOffer | null }
@@ -175,17 +176,18 @@ export interface PluginStoreRef {
   organizationId: string
 }
 
-const CATALOG_SELECT = {
-  id: true,
-  name: true,
-  authorName: true,
-  type: true,
-  isOfficial: true,
-  // Read for the names of the plugin in each language, and for nothing else of the manifest
-  manifest: true,
+// What the catalog reads of a plugin row: the columns it draws and the names of its manifest, never the manifest (a registered one
+// can be large and the list draws nothing else of it). `names` is the `names` key of the manifest as stored, read defensively below.
+interface CatalogRow {
+  id: string
+  name: string
+  authorName: string
+  type: string
+  isOfficial: boolean
   // Whose it is: read to decide who sees it, never sent to the page
-  organizationId: true
-} as const
+  organizationId: string | null
+  names: unknown
+}
 
 // What a store does with the plugin catalog: see it, install a plugin and uninstall it (D19). The
 // registry holds the running plugin and the rows say what exists and what a store installed.
@@ -213,31 +215,59 @@ export class PluginInstallationsService {
   // nobody) and the integration plugins its organization registered, which no registry holds: the row says whose it is. An
   // integration plugin is listed here and installed by its own flow (consent, challenge and setup code: PluginIntegrationInstallService).
   async catalog(store: PluginStoreRef): Promise<PluginCatalogEntry[]> {
+    return this.entriesOf(store, await this.catalogRows(store))
+  }
+
+  // The approved plugins this organization may see, with the names of each in its languages and nothing else of its manifest: one
+  // row each, ordered as the catalog is drawn. With a plugin id, that one row or none (a plugin of another organization is none).
+  private catalogRows(store: PluginStoreRef, pluginId?: string): Promise<CatalogRow[]> {
+    const approved = PluginStatus.APPROVED
+    return pluginId === undefined
+      ? this.prisma.client.$queryRaw<CatalogRow[]>`
+          SELECT id, name, author_name AS "authorName", type, is_official AS "isOfficial",
+                 organization_id AS "organizationId", manifest -> 'names' AS names
+          FROM plugins
+          WHERE status = ${approved} AND (organization_id IS NULL OR organization_id = ${store.organizationId})
+          ORDER BY is_official DESC, name ASC, id ASC`
+      : this.prisma.client.$queryRaw<CatalogRow[]>`
+          SELECT id, name, author_name AS "authorName", type, is_official AS "isOfficial",
+                 organization_id AS "organizationId", manifest -> 'names' AS names
+          FROM plugins
+          WHERE id = ${pluginId} AND status = ${approved}
+            AND (organization_id IS NULL OR organization_id = ${store.organizationId})`
+  }
+
+  // The entries of these rows with what this store holds of each. With one row, only that plugin's installation and connections
+  // are read (the detail of a plugin must not read the catalog of the store).
+  private async entriesOf(
+    store: PluginStoreRef,
+    plugins: readonly CatalogRow[],
+    only?: string
+  ): Promise<PluginCatalogEntry[]> {
     const storeId = store.id
-    const [plugins, installations, live, shipping] = await Promise.all([
-      this.prisma.client.plugin.findMany({
-        // The ones every store sees (the platform's) and the ones this organization registered, never another's
-        where: {
-          status: PluginStatus.APPROVED,
-          OR: [{ organizationId: null }, { organizationId: store.organizationId }]
-        },
-        select: CATALOG_SELECT,
-        orderBy: [{ isOfficial: 'desc' }, { name: 'asc' }, { id: 'asc' }]
-      }),
-      this.prisma.client.pluginInstallation.findMany({
-        where: { storeId },
-        select: { id: true, pluginId: true, status: true, webhookDisabledAt: true }
-      }),
+    const liveOf = (installationIds?: readonly string[]) =>
       this.prisma.client.channelConnection.groupBy({
         by: ['installationId'],
-        where: { storeId, status: { not: ChannelConnectionStatus.DISCONNECTED } },
+        where: {
+          storeId,
+          status: { not: ChannelConnectionStatus.DISCONNECTED },
+          ...(installationIds === undefined ? {} : { installationId: { in: [...installationIds] } })
+        },
         _count: { _all: true }
+      })
+    const [installations, shipping, all] = await Promise.all([
+      this.prisma.client.pluginInstallation.findMany({
+        where: { storeId, ...(only === undefined ? {} : { pluginId: only }) },
+        select: { id: true, pluginId: true, status: true, webhookDisabledAt: true }
       }),
       // Only where the platform runs carriers: a deployment with none has no shipping entry to count for
-      this.carriers.list().length > 0
+      this.carriers.list().length > 0 && (only === undefined || only === ShippingPlugin.ID)
         ? this.shippingUsage(storeId)
-        : Promise.resolve({ active: 0, openShipments: 0, openPickups: 0 })
+        : Promise.resolve({ active: 0, openShipments: 0, openPickups: 0 }),
+      // The whole catalog counts every connection of the store at once; one plugin counts the ones of its own installation
+      only === undefined ? liveOf() : Promise.resolve(null)
     ])
+    const live = all ?? (await liveOf(installations.map(row => row.id)))
     const installationOf = new Map(installations.map(row => [row.pluginId, row]))
     const activeOf = new Map(live.map(row => [row.installationId, row._count._all]))
     return plugins
@@ -248,7 +278,7 @@ export class PluginInstallationsService {
         if (plugin.organizationId !== null) return true
         return this.registry.isVisibleTo(plugin.id, storeId)
       })
-      .map(({ organizationId: owner, manifest, ...plugin }) => {
+      .map(({ organizationId: owner, names, ...plugin }) => {
         const installation = installationOf.get(plugin.id)
         const live =
           installation !== undefined &&
@@ -264,7 +294,7 @@ export class PluginInstallationsService {
           installationStatus: installation?.status ?? null,
           // A revoked installation hears nothing and says nothing of its webhooks (the revocation keeps the column until a new install)
           webhooksDisabledAt: live ? (installation.webhookDisabledAt?.toISOString() ?? null) : null,
-          names: namesOf(manifest),
+          names: namesOfStored(names),
           installationId: installation?.id ?? null,
           activeConnections:
             plugin.id === ShippingPlugin.ID
@@ -283,32 +313,53 @@ export class PluginInstallationsService {
   // store (the ones every store sees and the ones its organization registered), so a plugin another organization registered answers
   // as one that does not exist, as the catalog, the consent and the install do.
   async detail(store: PluginStoreRef, pluginId: string): Promise<PluginDetail> {
-    const entry = await this.entryOf(store, pluginId)
-    const [row, installation] = await Promise.all([
-      this.prisma.client.plugin.findUnique({ where: { id: pluginId }, select: { manifest: true } }),
-      this.prisma.client.pluginInstallation.findUnique({
-        where: { storeId_pluginId: { storeId: store.id, pluginId } },
-        select: {
-          id: true,
-          status: true,
-          scopes: true,
-          apiKeyPrefix: true,
-          rateLimitPerMinute: true,
-          webhookEndpoint: true,
-          webhookConsecutiveFailures: true,
-          webhookLastFailureAt: true,
-          webhookDisabledAt: true,
-          createdAt: true,
-          revokedAt: true
-        }
-      })
-    ])
-    // Gone between the two reads: the same answer as a plugin that was never there
+    // One row of the plugin (with its manifest, which this screen draws) and the installation of this store: the catalog of the store is
+    // not read for one entry, and the entry and the manifest come from the same read
+    const row = await this.prisma.client.plugin.findFirst({
+      where: {
+        id: pluginId,
+        status: PluginStatus.APPROVED,
+        OR: [{ organizationId: null }, { organizationId: store.organizationId }]
+      },
+      select: {
+        id: true,
+        name: true,
+        authorName: true,
+        type: true,
+        isOfficial: true,
+        organizationId: true,
+        manifest: true
+      }
+    })
     if (row === null) throw resourceNotFound('plugin')
-    const webhook = manifestWebhookOf(row.manifest)
+    const { manifest, ...columns } = row
+    const [entry] = await this.entriesOf(
+      store,
+      [{ ...columns, names: (manifest as { names?: unknown } | null)?.names ?? null }],
+      pluginId
+    )
+    // Not visible to this store (a built-in plugin it may not see): the same answer as a plugin that is not there
+    if (entry === undefined) throw resourceNotFound('plugin')
+    const installation = await this.prisma.client.pluginInstallation.findUnique({
+      where: { storeId_pluginId: { storeId: store.id, pluginId } },
+      select: {
+        id: true,
+        status: true,
+        scopes: true,
+        apiKeyPrefix: true,
+        rateLimitPerMinute: true,
+        webhookEndpoint: true,
+        webhookConsecutiveFailures: true,
+        webhookLastFailureAt: true,
+        webhookDisabledAt: true,
+        createdAt: true,
+        revokedAt: true
+      }
+    })
+    const webhook = manifestWebhookOf(manifest)
     return {
       ...entry,
-      ...manifestSummaryOf(row.manifest),
+      ...manifestSummaryOf(manifest),
       webhookEvents: webhook === null ? [] : [...webhook.events],
       installation:
         installation === null
@@ -710,7 +761,7 @@ export class PluginInstallationsService {
   }
 
   private async entryOf(store: PluginStoreRef, pluginId: string): Promise<PluginCatalogEntry> {
-    const entry = (await this.catalog(store)).find(candidate => candidate.id === pluginId)
+    const [entry] = await this.entriesOf(store, await this.catalogRows(store, pluginId), pluginId)
     if (entry === undefined) throw resourceNotFound('plugin')
     return entry
   }

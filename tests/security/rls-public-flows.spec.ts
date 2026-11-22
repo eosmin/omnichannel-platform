@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import pg from 'pg'
 
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, DatabaseRoles } from '@platform/core/database-testing'
 import { ApiKeyStatus, ChannelConnectionStatus } from '@platform/core/domain'
 
 // Row-Level Security, phase 6 (F6-3b): the flows that find their store BEFORE there is a tenant context (the api key of the public
@@ -81,7 +81,7 @@ describe('row-level security, the flows that find their store before there is a 
               pg_get_expr(p.polqual, p.polrelid) AS "using", pg_get_expr(p.polwithcheck, p.polrelid) AS "check"
        FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
        WHERE c.relnamespace = 'public'::regnamespace AND c.relname = ANY ($1::text[])
-         AND 'platform_app'::regrole::oid = ANY (p.polroles)
+         AND '${DatabaseRoles.APP}'::regrole::oid = ANY (p.polroles)
        ORDER BY c.relname, p.polname`,
       [TABLES]
     )
@@ -218,14 +218,16 @@ describe('row-level security, the flows that find their store before there is a 
       await insertFixture('carrier_connections', { id: CARRIER_A, store_id: A, carrier_id: 'c' })
       for (const table of TABLES) {
         await owner.query(`CREATE TEMP TABLE ${table} AS SELECT * FROM public.${table}`)
-        await owner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${table} TO platform_app`)
+        await owner.query(
+          `GRANT SELECT, INSERT, UPDATE, DELETE ON ${table} TO ${DatabaseRoles.APP}`
+        )
         await owner.query(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`)
         await owner.query(`ALTER TABLE ${table} FORCE ROW LEVEL SECURITY`)
         for (const policy of policies.filter(p => p.table === table)) {
           const using = policy.using === null ? '' : ` USING (${policy.using})`
           const check = policy.check === null ? '' : ` WITH CHECK (${policy.check})`
           await owner.query(
-            `CREATE POLICY ${policy.name} ON pg_temp.${table} AS PERMISSIVE FOR ${COMMANDS[policy.command] ?? 'ALL'} TO platform_app${using}${check}`
+            `CREATE POLICY ${policy.name} ON pg_temp.${table} AS PERMISSIVE FOR ${COMMANDS[policy.command] ?? 'ALL'} TO ${DatabaseRoles.APP}${using}${check}`
           )
         }
       }
@@ -237,7 +239,7 @@ describe('row-level security, the flows that find their store before there is a 
 
   // The function as platform_app with NO context at all: the situation these flows are in
   async function resolve(statement: string, values: unknown[]): Promise<Resolved[]> {
-    await owner.query('SET LOCAL ROLE platform_app')
+    await owner.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
     try {
       return (await owner.query<Resolved>(statement, values)).rows
     } finally {
@@ -247,7 +249,7 @@ describe('row-level security, the flows that find their store before there is a 
 
   // Rows of a table as platform_app inside the context a lookup returned (the way contextOf() opens it), or with none
   async function readAs(found: Resolved | null, table: (typeof TABLES)[number]): Promise<string[]> {
-    await owner.query('SET LOCAL ROLE platform_app')
+    await owner.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
     try {
       await owner.query(
         "SELECT set_config('app.store_ids', $1, true), set_config('app.organization_ids', $2, true)",
@@ -366,7 +368,7 @@ describe('row-level security, the flows that find their store before there is a 
 
     it('answers the status of the plugin of an installation whose plugin the policy hides from its store', async () => {
       await inFlows(async () => {
-        const state = await owner.query('SET LOCAL ROLE platform_app').then(async () => {
+        const state = await owner.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`).then(async () => {
           try {
             return (
               await owner.query<{ plugin_status: string }>(
@@ -385,7 +387,7 @@ describe('row-level security, the flows that find their store before there is a 
     it('answers nothing for a key with no plugin row, for a hash of another kind of key and for one that does not exist', async () => {
       await inFlows(async () => {
         for (const hash of [`ph-a-${run}`, `h-a-${run}`, `nope-${run}`]) {
-          await owner.query('SET LOCAL ROLE platform_app')
+          await owner.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
           try {
             const rows = await owner.query('SELECT * FROM lookup_plugin_status_of_key($1)', [hash])
             expect(rows.rows).toEqual([])

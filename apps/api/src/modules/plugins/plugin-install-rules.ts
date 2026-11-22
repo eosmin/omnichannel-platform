@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 
 import type { Permission } from '@platform/core/auth'
-import { PluginChallenge, PluginInstallLimits } from '@platform/core/domain'
+import { PluginChallenge, PluginInstallLimits, PluginManifestLimits } from '@platform/core/domain'
 import { type PluginScope, PluginScopePermissions, PluginScopes } from '@platform/plugins/sdk'
 
 // The rules of the install flow that need no database, no Redis and no network (the service holds the rest), so that they are
@@ -49,6 +49,17 @@ export function rateLimitOf(manifest: {
   limits?: { maxRequestsPerMinute?: number | undefined } | undefined
 }): number {
   return manifest.limits?.maxRequestsPerMinute ?? PluginInstallLimits.DEFAULT_REQUESTS_PER_MINUTE
+}
+
+// The requests a minute the guard holds an installation to. The column has no check of its own, so a row an older parser or a hand
+// wrote is held to what a manifest may ask for today: a value above the range is lowered to its top, and one that is no sense (zero,
+// a negative, no number) takes the default of an install, never "no limit" and never a rate that shuts the plugin out
+// (Step 7.3-B5b, #33)
+export function heldRateLimit(stored: number): number {
+  if (!Number.isFinite(stored) || stored < PluginManifestLimits.MIN_REQUESTS_PER_MINUTE) {
+    return PluginInstallLimits.DEFAULT_REQUESTS_PER_MINUTE
+  }
+  return Math.min(PluginManifestLimits.MAX_REQUESTS_PER_MINUTE, Math.floor(stored))
 }
 
 // What the platform posts to the webhook endpoint of a plugin before it trusts the address

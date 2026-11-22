@@ -18,11 +18,14 @@ export const TEST_DATABASE_NAME = 'platform_test'
 // The database docker-compose.yml creates and `.env.example` points at: the one a person works in
 export const DEVELOPMENT_DATABASE_NAME = 'platform_dev'
 
-// The roles of the api and of the worker, and the read only one of the replica (created by the raw SQL migrations)
+// The roles of the api and of the worker, and the read only one of the replica (created by the raw SQL migrations).
+// READONLY is the monitoring role of a deployment: the migrations do not create it, a suite only proves it is not granted the
+// functions of the application when it exists
 export const DatabaseRoles = {
   APP: 'platform_app',
   WORKER: 'platform_worker',
-  REPLICA: 'platform_replica_ro'
+  REPLICA: 'platform_replica_ro',
+  READONLY: 'platform_readonly'
 } as const
 
 function required(name: string): string {

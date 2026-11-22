@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import pg from 'pg'
 
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, DatabaseRoles } from '@platform/core/database-testing'
 
 // Step 7.2-H1a (migration 20270125100000_dsr_flow): the two lookups of the PUBLIC data request flow, which run before there is a tenant
 // context. `resolve_dsr_store` turns the public key a store gave to its form into the ids that open that store's context, and
@@ -85,7 +85,7 @@ describe('row-level security, public data requests: resolve_dsr_store and resolv
           options.used === true ? new Date() : null
         ]
       )
-      await raw.query('SET LOCAL ROLE platform_app')
+      await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
       await raw.query(
         "SELECT set_config('app.store_ids', '', true), set_config('app.organization_ids', '', true)"
       )
@@ -115,8 +115,8 @@ describe('row-level security, public data requests: resolve_dsr_store and resolv
         definer: boolean
         config: string[]
       }>(
-        `SELECT has_function_privilege('platform_app', $1::regprocedure, 'EXECUTE') AS app,
-                has_function_privilege('platform_worker', $1::regprocedure, 'EXECUTE') AS worker,
+        `SELECT has_function_privilege('${DatabaseRoles.APP}', $1::regprocedure, 'EXECUTE') AS app,
+                has_function_privilege('${DatabaseRoles.WORKER}', $1::regprocedure, 'EXECUTE') AS worker,
                 has_function_privilege('public', $1::regprocedure, 'EXECUTE') AS pub,
                 p.prosecdef AS definer, p.proconfig AS config
          FROM pg_proc p WHERE p.oid = $1::regprocedure`,

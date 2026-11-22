@@ -1,6 +1,6 @@
 import pg from 'pg'
 
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, DatabaseRoles } from '@platform/core/database-testing'
 
 // The function that tells the stores of the lines of a transfer (migration 20270123000000): a SECURITY DEFINER read that the write
 // routes of a plugin use to REFUSE a transfer that holds a line of a sibling store. What the database says of it is fixed here, so a
@@ -30,8 +30,8 @@ describe('rls_transfer_line_store_ids', () => {
       `SELECT p.prosecdef AS definer, p.provolatile AS volatility, p.proconfig AS config,
               p.prorettype::regtype::text AS returns,
               has_function_privilege('public', p.oid, 'EXECUTE') AS public_exec,
-              has_function_privilege('platform_app', p.oid, 'EXECUTE') AS app_exec,
-              has_function_privilege('platform_worker', p.oid, 'EXECUTE') AS worker_exec,
+              has_function_privilege('${DatabaseRoles.APP}', p.oid, 'EXECUTE') AS app_exec,
+              has_function_privilege('${DatabaseRoles.WORKER}', p.oid, 'EXECUTE') AS worker_exec,
               pg_get_function_identity_arguments(p.oid) AS arguments
        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'rls_transfer_line_store_ids'`
     )

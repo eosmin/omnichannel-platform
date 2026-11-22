@@ -90,12 +90,13 @@ export interface RealtimeEventMap {
     status: ConversationStatus
     previousStatus: ConversationStatus
   }
-  [RealtimeEvents.CONVERSATION_READ]: { conversationId: string; userId: string }
+  // `userId` is null when a plugin read it: the whole team hears that the count changed, and who changed it is not theirs to know
+  [RealtimeEvents.CONVERSATION_READ]: { conversationId: string; userId: string | null }
   [RealtimeEvents.CONVERSATION_ATTENTION_CHANGED]: {
     conversationId: string
     reason: AttentionReason | null
   }
-  [RealtimeEvents.CONVERSATION_UNREAD]: { conversationId: string; userId: string }
+  [RealtimeEvents.CONVERSATION_UNREAD]: { conversationId: string; userId: string | null }
   [RealtimeEvents.CONVERSATION_DELETED]: { conversationId: string; customerId: string }
 
   [RealtimeEvents.MESSAGE_RECEIVED]: {

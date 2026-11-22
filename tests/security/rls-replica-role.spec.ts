@@ -91,7 +91,7 @@ describe('the read only role of the replica', () => {
     const { rows } = await owner.query<{ tablename: string; policyname: string }>(
       `SELECT tablename, policyname FROM pg_policies
         WHERE schemaname = 'public' AND cmd IN ('SELECT', 'ALL')
-          AND 'platform_app'::name = ANY (roles) AND NOT ($1::name = ANY (roles))
+          AND '${DatabaseRoles.APP}'::name = ANY (roles) AND NOT ($1::name = ANY (roles))
         ORDER BY tablename, policyname`,
       [DatabaseRoles.REPLICA]
     )

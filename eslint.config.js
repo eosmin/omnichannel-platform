@@ -350,11 +350,18 @@ export default defineConfig([
     rules: { '@nx/enforce-module-boundaries': 'off' }
   },
 
-  // Two files reach other projects by path on purpose: the env validator cross-checks the schemas of
-  // the api, the worker and an app against their .env.example files, and the root prisma.config.ts is
-  // the re-export the Prisma CLI looks for, which loads it without the tsconfig aliases
+  // A few files reach other projects by path on purpose: the env validator cross-checks the schemas of
+  // the api, the worker and an app against their .env.example files, the root prisma.config.ts is
+  // the re-export the Prisma CLI looks for, which loads it without the tsconfig aliases, and two scripts
+  // read only the constants of connection-urls: the barrel of database-testing would load the generated
+  // Prisma client into a spec of `workspace`, which the unit-tests job runs without `prisma generate`
   {
-    files: ['scripts/validate-env-example.ts', 'scripts/lib/dev-services.ts', 'prisma.config.ts'],
+    files: [
+      'scripts/validate-env-example.ts',
+      'scripts/lib/dev-services.ts',
+      'scripts/lib/not-valid-constraints.ts',
+      'prisma.config.ts'
+    ],
     rules: { '@nx/enforce-module-boundaries': 'off' }
   },
 

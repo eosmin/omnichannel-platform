@@ -151,21 +151,35 @@ export class RealtimeEventsListener {
     )
   }
 
-  // What a user has read is theirs alone: their other tabs of this store hear it, nobody else
+  // What a user has read is theirs alone: their other tabs of this store hear it, nobody else. What a plugin read is the team's: the
+  // count it changed is the conversation's, so every socket that may see the conversation reads the row again (ids only, and not
+  // which plugin it was)
   @OnEvent(Events.CONVERSATION_READ)
   @EventContextNotNeeded('only publishes to socket rooms, reads no table')
-  onRead(payload: ConversationReadPayload): void {
-    this.realtime.toStoreUser(payload.storeId, payload.userId, RealtimeEvents.CONVERSATION_READ, {
-      conversationId: payload.conversationId,
-      userId: payload.userId
-    })
+  onRead(payload: ConversationReadPayload): Promise<void> | void {
+    return this.toReaders(payload, RealtimeEvents.CONVERSATION_READ)
   }
 
-  // Marked unread by a user: the same audience as reading it, their own tabs
+  // Marked unread: the same audience as reading it
   @OnEvent(Events.CONVERSATION_UNREAD)
   @EventContextNotNeeded('only publishes to socket rooms, reads no table')
-  onUnread(payload: ConversationReadPayload): void {
-    this.realtime.toStoreUser(payload.storeId, payload.userId, RealtimeEvents.CONVERSATION_UNREAD, {
+  onUnread(payload: ConversationReadPayload): Promise<void> | void {
+    return this.toReaders(payload, RealtimeEvents.CONVERSATION_UNREAD)
+  }
+
+  private toReaders(
+    payload: ConversationReadPayload,
+    event: typeof RealtimeEvents.CONVERSATION_READ | typeof RealtimeEvents.CONVERSATION_UNREAD
+  ): Promise<void> | void {
+    if (payload.byPlugin === true) {
+      return this.realtime.toStoreWhere(
+        payload.storeId,
+        event,
+        { conversationId: payload.conversationId, userId: null },
+        socket => mayAny(socket, [payload.visibility])
+      )
+    }
+    this.realtime.toStoreUser(payload.storeId, payload.userId, event, {
       conversationId: payload.conversationId,
       userId: payload.userId
     })
