@@ -6,7 +6,8 @@ import {
   connectionUrls,
   ensureStore,
   ensureUser,
-  type OwnerClient
+  type OwnerClient,
+  DatabaseRoles
 } from '@platform/core/database-testing'
 import {
   ChannelIds,
@@ -153,7 +154,7 @@ describe('the plan of the searches with row-level security on', () => {
         }
       }
       // The same role and context in both cases, so that the only difference is the policy
-      await raw.query('SET LOCAL ROLE platform_app')
+      await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
       await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
       const { rows } = await raw.query<{ 'QUERY PLAN': unknown }>(
         `EXPLAIN (FORMAT JSON) ${statement}`,

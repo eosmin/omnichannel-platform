@@ -1,6 +1,11 @@
 import pg from 'pg'
 
-import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  ensureStore,
+  type OwnerClient,
+  DatabaseRoles
+} from '@platform/core/database-testing'
 import { CarrierConnectionStatus, PickupStatus } from '@platform/core/domain'
 
 import { createCarrierConnection } from '../builders'
@@ -55,11 +60,11 @@ describe('row-level security, phase 5: the lists of the worker', () => {
   })
 
   const asWorker = <T>(work: (query: pg.Client['query']) => Promise<T>): Promise<T> =>
-    asRole('platform_worker', work)
+    asRole(DatabaseRoles.WORKER, work)
 
   // One transaction: row security on for the tables of the lists, the role of the worker, NO context, the work, ROLLBACK
   async function asRole<T>(
-    role: 'platform_app' | 'platform_worker',
+    role: typeof DatabaseRoles.APP | typeof DatabaseRoles.WORKER,
     work: (query: pg.Client['query']) => Promise<T>
   ): Promise<T> {
     await raw.query('BEGIN')
@@ -83,7 +88,7 @@ describe('row-level security, phase 5: the lists of the worker', () => {
   it('hides the rows from the role of the api with no context, and the list still returns every store to the worker', async () => {
     // The worker still has BYPASSRLS (it loses it in the last PR of the phase), so "no row" is shown with the role of the api, which
     // has none; the list is read as the worker, which is the only role that may call it
-    await asRole('platform_app', async query => {
+    await asRole(DatabaseRoles.APP, async query => {
       const plain = await query('SELECT id FROM carrier_connections WHERE id = ANY ($1)', [pickups])
       expect(plain.rows).toHaveLength(0)
     })
@@ -241,7 +246,7 @@ describe('row-level security, phase 5: the lists of the worker', () => {
   it('is for the worker alone: the role of the api cannot call any list, and the worker can', async () => {
     for (const fn of FUNCTIONS) {
       const result = await raw.query(
-        `SELECT has_function_privilege('platform_app', '${fn}', 'EXECUTE') AS app, has_function_privilege('platform_worker', '${fn}', 'EXECUTE') AS worker, has_function_privilege('public', '${fn}', 'EXECUTE') AS public`
+        `SELECT has_function_privilege('${DatabaseRoles.APP}', '${fn}', 'EXECUTE') AS app, has_function_privilege('${DatabaseRoles.WORKER}', '${fn}', 'EXECUTE') AS worker, has_function_privilege('public', '${fn}', 'EXECUTE') AS public`
       )
       expect(result.rows[0]).toEqual({ app: false, worker: true, public: false })
     }

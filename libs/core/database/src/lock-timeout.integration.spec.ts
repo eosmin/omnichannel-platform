@@ -6,7 +6,7 @@ import pg from 'pg'
 
 import { ApiLockTimeout, isLockTimeoutError } from '@platform/core/errors'
 
-import { connectionUrls } from '../testing/connection-urls'
+import { connectionUrls, DatabaseRoles } from '../testing/connection-urls'
 
 import { PrismaService } from './prisma.service'
 
@@ -57,7 +57,7 @@ describe('the lock timeout of the api role', () => {
     const owner = new pg.Client({ connectionString: urls.owner })
     await owner.connect()
     await owner.query(`CREATE TABLE ${table} (id int)`)
-    await owner.query(`GRANT SELECT, INSERT ON ${table} TO platform_app`)
+    await owner.query(`GRANT SELECT, INSERT ON ${table} TO ${DatabaseRoles.APP}`)
     const prisma = new PrismaService({ databaseUrl: urls.app })
     let release: NodeJS.Timeout | undefined
     try {
@@ -95,7 +95,7 @@ describe('the lock timeout of the api role', () => {
     const owner = new pg.Client({ connectionString: urls.owner })
     await owner.connect()
     await owner.query(`CREATE TABLE ${table} (id int)`)
-    await owner.query(`GRANT SELECT, INSERT ON ${table} TO platform_app`)
+    await owner.query(`GRANT SELECT, INSERT ON ${table} TO ${DatabaseRoles.APP}`)
     const prisma = new PrismaService({ databaseUrl: urls.app })
     let release: NodeJS.Timeout | undefined
     try {

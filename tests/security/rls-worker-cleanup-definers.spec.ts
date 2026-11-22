@@ -1,6 +1,6 @@
 import pg from 'pg'
 
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, DatabaseRoles } from '@platform/core/database-testing'
 import { MediaStatus } from '@platform/core/domain'
 
 // Row-Level Security, phase 5, PR B2 (migration 20270122300000_rls_worker_cleanup_definers): the functions that the cleaners of the worker
@@ -50,8 +50,8 @@ describe('row-level security, phase 5: the cleanup definers of the worker', () =
         config: string[]
         definer: boolean
       }>(
-        `SELECT has_function_privilege('platform_app', $1::regprocedure, 'EXECUTE') AS app,
-                has_function_privilege('platform_worker', $1::regprocedure, 'EXECUTE') AS worker,
+        `SELECT has_function_privilege('${DatabaseRoles.APP}', $1::regprocedure, 'EXECUTE') AS app,
+                has_function_privilege('${DatabaseRoles.WORKER}', $1::regprocedure, 'EXECUTE') AS worker,
                 has_function_privilege('public', $1::regprocedure, 'EXECUTE') AS pub,
                 p.proconfig AS config, p.prosecdef AS definer
          FROM pg_proc p WHERE p.oid = $1::regprocedure`,
@@ -64,14 +64,14 @@ describe('row-level security, phase 5: the cleanup definers of the worker', () =
 
   it('refuses the api role with 42501', async () => {
     await expect(
-      asRole('platform_app', query =>
+      asRole(DatabaseRoles.APP, query =>
         query('SELECT rls_audit_oldest_before($1::timestamp)', ['2000-01-01'])
       )
     ).rejects.toMatchObject({ code: '42501' })
   })
 
   it('answers an empty window and refuses a page that would cut the list or a half cursor', async () => {
-    await asRole('platform_worker', async query => {
+    await asRole(DatabaseRoles.WORKER, async query => {
       const count = await query<{ total: string }>(
         'SELECT rls_audit_count_between($1::timestamp, $2::timestamp) AS total',
         ['1990-01-01', '1990-02-01']
@@ -85,7 +85,7 @@ describe('row-level security, phase 5: the cleanup definers of the worker', () =
     })
     for (const limit of [0, 1001]) {
       await expect(
-        asRole('platform_worker', query =>
+        asRole(DatabaseRoles.WORKER, query =>
           query(
             'SELECT * FROM rls_audit_logs_for_cold_export($1::timestamp, $2::timestamp, NULL, NULL, $3::integer)',
             ['1990-01-01', '1990-02-01', limit]
@@ -94,7 +94,7 @@ describe('row-level security, phase 5: the cleanup definers of the worker', () =
       ).rejects.toMatchObject({ code: '22023' })
     }
     await expect(
-      asRole('platform_worker', query =>
+      asRole(DatabaseRoles.WORKER, query =>
         query(
           'SELECT * FROM rls_audit_logs_for_cold_export($1::timestamp, $2::timestamp, $3::timestamp, NULL, 10)',
           ['1990-01-01', '1990-02-01', '1990-01-05']
@@ -102,7 +102,7 @@ describe('row-level security, phase 5: the cleanup definers of the worker', () =
       )
     ).rejects.toMatchObject({ code: '22023' })
     await expect(
-      asRole('platform_worker', query =>
+      asRole(DatabaseRoles.WORKER, query =>
         query('SELECT * FROM rls_avatar_media_keys($1::text[])', [
           Array.from({ length: 1001 }, (_, i) => String(i))
         ])
@@ -121,7 +121,7 @@ describe('row-level security, phase 5: the cleanup definers of the worker', () =
   })
 
   it('removes nothing for an id that is no avatar, and lists avatars as ids and keys only', async () => {
-    await asRole('platform_worker', async query => {
+    await asRole(DatabaseRoles.WORKER, async query => {
       const cleared = await query<{ key: string | null }>(
         'SELECT rls_clear_orphan_avatar($1::text, $2::timestamp) AS key',
         ['00000000-0000-0000-0000-000000000000', '2000-01-01']

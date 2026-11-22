@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 
 import pg from 'pg'
 
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, DatabaseRoles } from '@platform/core/database-testing'
 
 import { coveredTables } from '../../scripts/lib/rls'
 
@@ -88,7 +88,7 @@ describe('row-level security with enforcement on', () => {
         `CREATE TABLE ${table} (id text PRIMARY KEY, ${column} text NOT NULL, label text NOT NULL DEFAULT '')`
       )
       await owner.query(
-        `GRANT SELECT, INSERT, UPDATE, DELETE ON ${table} TO platform_app, platform_worker`
+        `GRANT SELECT, INSERT, UPDATE, DELETE ON ${table} TO ${DatabaseRoles.APP}, ${DatabaseRoles.WORKER}`
       )
       await owner.query('SELECT rls_apply_policy($1::regclass, $2)', [table, scope])
       await owner.query(
@@ -249,7 +249,7 @@ describe('row-level security with enforcement on', () => {
   describe('the roles and the switch', () => {
     it('keeps platform_app out of the roles that skip row security', async () => {
       const { rows } = await owner.query<{ rolsuper: boolean; rolbypassrls: boolean }>(
-        "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'platform_app'"
+        `SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = '${DatabaseRoles.APP}'`
       )
       expect(rows).toEqual([{ rolsuper: false, rolbypassrls: false }])
     })
@@ -259,7 +259,7 @@ describe('row-level security with enforcement on', () => {
       const { rows } = await client.query<{ user: string; super: string }>(
         "SELECT current_user AS user, current_setting('is_superuser') AS super"
       )
-      expect(rows).toEqual([{ user: 'platform_app', super: 'off' }])
+      expect(rows).toEqual([{ user: DatabaseRoles.APP, super: 'off' }])
     })
 
     it('does not let platform_app turn row security off, change a policy, or read the switch', async () => {
@@ -365,7 +365,7 @@ describe('row-level security, scopes with an optional or a double owner', () => 
     )
     for (const table of [orNull, either]) {
       await owner.query(
-        `GRANT SELECT, INSERT, UPDATE, DELETE ON ${table} TO platform_app, platform_worker`
+        `GRANT SELECT, INSERT, UPDATE, DELETE ON ${table} TO ${DatabaseRoles.APP}, ${DatabaseRoles.WORKER}`
       )
     }
     await owner.query('SELECT rls_apply_policy($1::regclass, $2)', [orNull, 'store_or_null'])

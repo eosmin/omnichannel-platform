@@ -1,6 +1,6 @@
 import pg from 'pg'
 
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, DatabaseRoles } from '@platform/core/database-testing'
 
 // Every SECURITY DEFINER function of the database, read from the catalog (not from a list of migrations), against a CLOSED list of who
 // may call it. The per-function specs fix each function they know; this one is the net for the next one: a definer function that is
@@ -9,8 +9,8 @@ import { connectionUrls } from '@platform/core/database-testing'
 // (`pnpm validate:definer` reads the migrations for the search_path only; it does not look at grants.)
 // The audit of the activation of RLS (area 5, findings D2 and D3) is the origin of this file.
 
-const APP = 'platform_app'
-const WORKER = 'platform_worker'
+const APP = DatabaseRoles.APP
+const WORKER = DatabaseRoles.WORKER
 // A trigger function cannot be called with SELECT: its EXECUTE is the default one, only its search_path and owner are checked
 const TRIGGER = 'trigger'
 

@@ -1,6 +1,6 @@
 import type { ClientBase } from 'pg'
 
-import { DEVELOPMENT_DATABASE_NAME } from '@platform/core/database-testing'
+import { DEVELOPMENT_DATABASE_NAME } from '../../libs/core/database/testing/connection-urls'
 
 // The CHECK constraints that migrations added NOT VALID on purpose (a migration is one transaction, and adding a CHECK takes the
 // strongest lock of the table while it scans it) and that nothing validated afterwards: the person-or-plugin checks of
