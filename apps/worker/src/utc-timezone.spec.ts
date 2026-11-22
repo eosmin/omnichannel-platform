@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 // Jest gives a test its own copy of `process.env`, so setting `TZ` inside a test never reaches the real process and a Date
@@ -19,7 +20,7 @@ interface Seen {
 function inProcessInDubai(loadModule: boolean): Seen {
   const code = `
     ${loadModule ? `require(${JSON.stringify(MODULE)})` : ''}
-    const { CronTime } = require('cron')
+    const { CronTime } = require(${JSON.stringify(require.resolve('cron'))})
     console.log(JSON.stringify({
       tz: process.env.TZ,
       localDateIso: new Date(2026, 10, 22, 4, 30).toISOString(),
@@ -27,7 +28,7 @@ function inProcessInDubai(loadModule: boolean): Seen {
     }))`
   const out = execFileSync(process.execPath, ['--no-warnings', '-e', code], {
     cwd: process.cwd(),
-    // Only the zone: the absolute path of Node needs no PATH, and `cron` resolves from the working directory
+    // Only the zone: the absolute path of Node needs no PATH, and `cron` is given by its absolute path
     env: { TZ: DUBAI },
     encoding: 'utf8'
   })
@@ -47,5 +48,13 @@ describe('utc-timezone', () => {
     expect(seen.tz).toBe('UTC')
     expect(seen.localDateIso).toBe('2026-11-22T04:30:00.000Z')
     expect(seen.nextFireUtc).toBe('04:30')
+  })
+
+  // The module only works if nothing of the worker runs before it: main.ts must import it first
+  it('is the first import of the entry point of the worker', () => {
+    const firstImport = readFileSync(join(__dirname, 'main.ts'), 'utf8')
+      .split('\n')
+      .find(line => line.startsWith('import '))
+    expect(firstImport).toBe("import './utc-timezone'")
   })
 })
