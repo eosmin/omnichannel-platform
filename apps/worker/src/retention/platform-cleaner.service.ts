@@ -9,7 +9,7 @@ import {
   RetentionResourceTypes
 } from '@platform/core/compliance'
 import { JobContext, PrismaService } from '@platform/core/database'
-import { DAY_MS, InvitationStatus } from '@platform/core/domain'
+import { DAY_MS, InvitationStatus, PluginInstallationStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
 import { inEachStoreStrict } from '../schedulers/store-sweep'
@@ -26,6 +26,7 @@ export interface PlatformCleanupReport {
   metricsHourly: number
   mergedCustomers: number
   invitations: number
+  revokedPluginSecrets: number
   // The categories that stopped on a full batch: tomorrow takes the rest
   more: string[]
 }
@@ -59,6 +60,7 @@ export class PlatformCleaner {
       metricsHourly: 0,
       mergedCustomers: 0,
       invitations: 0,
+      revokedPluginSecrets: 0,
       more: []
     }
     const failed: Category[] = []
@@ -80,6 +82,10 @@ export class PlatformCleaner {
 
     const invitationCutoff = new Date(
       now.getTime() - PlatformCleanup.EXPIRED_INVITATION_GRACE_DAYS * DAY_MS
+    ).toISOString()
+
+    const revokedPluginCutoff = new Date(
+      now.getTime() - PlatformCleanup.REVOKED_PLUGIN_SECRET_GRACE_DAYS * DAY_MS
     ).toISOString()
 
     await run('sessions', () =>
@@ -142,6 +148,30 @@ export class PlatformCleaner {
             WHERE status IN (${InvitationStatus.PENDING}, ${InvitationStatus.EXPIRED})
               AND expires_at < (${invitationCutoff}::timestamptz AT TIME ZONE 'UTC')
             ORDER BY expires_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
+      )
+    )
+
+    // The secrets that a revoked installation still holds: the sealed secret and the endpoint of its webhooks and the sealed secrets of its commands.
+    // Only a row that is revoked, revoked longer ago than the grace and still holding one of them (so a batch that is done stops matching and the
+    // loop ends); the outer WHERE repeats the predicate, so an installation that was installed again between the select and the update (status and
+    // `revoked_at` change, new secrets) is never cleared by the batch that selected it. Nothing is read of the secrets, only set to NULL.
+    await run('revokedPluginSecrets', () =>
+      this.perStore(
+        storeId => this.prisma.client.$executeRaw`
+          UPDATE plugin_installations SET
+            webhook_endpoint = NULL, webhook_secret = NULL,
+            command_secret = NULL, command_secret_previous = NULL, command_secret_rotated_at = NULL
+          WHERE store_id = ${storeId}
+            AND status = ${PluginInstallationStatus.REVOKED}
+            AND revoked_at < (${revokedPluginCutoff}::timestamptz AT TIME ZONE 'UTC')
+            AND id IN (
+              SELECT id FROM plugin_installations
+              WHERE store_id = ${storeId}
+                AND status = ${PluginInstallationStatus.REVOKED}
+                AND revoked_at < (${revokedPluginCutoff}::timestamptz AT TIME ZONE 'UTC')
+                AND (webhook_endpoint IS NOT NULL OR webhook_secret IS NOT NULL
+                  OR command_secret IS NOT NULL OR command_secret_previous IS NOT NULL)
+              ORDER BY revoked_at LIMIT ${PlatformCleanup.BATCH_SIZE})`
       )
     )
 
