@@ -189,6 +189,58 @@ describe('Deleting a plugin of the organization', () => {
     expect(await exists(official.id)).toBe(true)
   })
 
+  // What a caller can tell from the answer: status, body and headers, without what changes on every request
+  const VOLATILE_HEADERS = new Set([
+    'date',
+    'etag',
+    'x-request-id',
+    'x-correlation-id',
+    'traceparent',
+    'server-timing',
+    'x-ratelimit-remaining',
+    'x-ratelimit-reset',
+    'retry-after'
+  ])
+  const shapeOf = (
+    response: { status: number; body: unknown; headers: Record<string, unknown> },
+    id: string
+  ) => ({
+    status: response.status,
+    body: JSON.parse(
+      JSON.stringify(response.body, (key, value: unknown) =>
+        key === 'requestId' || key === 'timestamp' ? undefined : value
+      ).replaceAll(id, '<id>')
+    ) as unknown,
+    headers: Object.fromEntries(
+      Object.entries(response.headers)
+        // The length follows the body, and the bodies are compared whole
+        .filter(([name]) => !VOLATILE_HEADERS.has(name) && name !== 'content-length')
+        .sort(([a], [b]) => a.localeCompare(b))
+    )
+  })
+
+  it('answers the same, in status, body and headers, for the plugin of another organization and for an id that is nothing', async () => {
+    const id = await register()
+    // Same length and shape as the real id, and not in the catalog
+    const nothing = `${id.slice(0, -1)}z`
+    expect(await exists(nothing)).toBe(false)
+
+    for (const confirmation of [null, nameOf(id)]) {
+      const foreign = shapeOf(await remove(id, confirmation, asAdminB), id)
+      const none = shapeOf(
+        await remove(nothing, confirmation === null ? null : nameOf(nothing), asAdminB),
+        nothing
+      )
+      expect(foreign.status).toBe(NOT_FOUND)
+      expect(foreign).toEqual(none)
+    }
+    // The read of the same id: another organization's private plugin is as absent as one that is not there
+    const readForeign = shapeOf(await asAdminB().get(ApiRoutes.plugins.byId(id)), id)
+    const readNothing = shapeOf(await asAdminB().get(ApiRoutes.plugins.byId(nothing)), nothing)
+    expect(readForeign).toEqual(readNothing)
+    expect(await exists(id)).toBe(true)
+  })
+
   it('refuses a plugin that is still installed, in any store of the organization, until the last one is revoked and has heard it', async () => {
     const id = await register()
     const installationA = await setUp(id)
