@@ -38,6 +38,8 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
     info: () => undefined,
     warn: () => undefined
   } as unknown as PinoLogger
+  // A value shaped like a sealed one (version byte, IV, tag), whatever its content
+  const shaped = (): Buffer => Buffer.concat([Buffer.from([1]), randomBytes(40)])
   const raw = new pg.Client({ connectionString: connectionUrls().owner })
 
   beforeAll(async () => {
@@ -130,7 +132,9 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
         organizationId: ctx.orgA.id,
         providerId: 'simulator',
         environment: 'sandbox',
-        status: 'closed',
+        status: 'reported',
+        reportedAt: new Date(),
+        windowEndsAt: new Date(Date.now() + 3_600_000),
         origin: 'user',
         reason: 'reseal fixture',
         eventCode: randomUUID(),
@@ -210,6 +214,43 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
     expect(report).toMatchObject({ enabled: false, scanned: 0, resealed: 0 })
   })
 
+  describe('the guard of a reported contingency', () => {
+    it('does not change its responsible by the setting alone, and the function is for the worker only', async () => {
+      const row = await owner.fiscalContingency.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, status: 'reported' }
+      })
+      const inRole = async (role: string, work: () => Promise<unknown>) => {
+        await raw.query('BEGIN')
+        try {
+          await raw.query(`SET LOCAL ROLE ${role}`)
+          await raw.query("SELECT set_config('app.organization_ids', $1, true)", [ctx.orgA.id])
+          return await work()
+        } finally {
+          await raw.query('ROLLBACK').catch(() => undefined)
+        }
+      }
+      await expect(
+        inRole('platform_worker', async () => {
+          await raw.query(`SELECT set_config('${FiscalReseal.SETTING}', 'on', true)`)
+          await raw.query(
+            'UPDATE fiscal_contingencies SET responsible_encrypted = $2::bytea WHERE id = $1',
+            [row.id, shaped()]
+          )
+        })
+      ).rejects.toMatchObject({ message: expect.stringContaining('does not change') as string })
+      await expect(
+        inRole('platform_app', () =>
+          raw.query('SELECT fiscal_reseal_contingency($1, $2, $3::bytea, $4::bytea)', [
+            ctx.orgA.id,
+            row.id,
+            row.responsibleEncrypted,
+            shaped()
+          ])
+        )
+      ).rejects.toMatchObject({ code: '42501' })
+    })
+  })
+
   describe('the guard of a decided document', () => {
     let documentId: string
     beforeAll(async () => {
@@ -267,11 +308,29 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
       ).rejects.toMatchObject({ code: '42501' })
     })
 
+    it('refuses a new receiver that is not shaped like a sealed value and a payload that is erased or invented', async () => {
+      const current = await raw.query<{ r: Buffer; p: Buffer | null }>(
+        'SELECT receiver_encrypted AS r, built_payload_encrypted AS p FROM fiscal_documents WHERE id = $1',
+        [documentId]
+      )
+      const { r, p } = current.rows[0] ?? { r: Buffer.alloc(0), p: null }
+      const call = (newReceiver: Buffer, oldPayload: Buffer | null, newPayload: Buffer | null) =>
+        asRole('platform_worker', () =>
+          raw.query(
+            `SELECT ${FiscalReseal.FUNCTION}($1, $2, $3::bytea, $4::bytea, $5::bytea, $6::bytea)`,
+            [ctx.orgA.id, documentId, r, newReceiver, oldPayload, newPayload]
+          )
+        )
+      await expect(call(Buffer.from('junk'), p, p)).rejects.toMatchObject({ code: '23514' })
+      await expect(call(shaped(), p, null)).rejects.toMatchObject({ code: '23514' })
+      await expect(call(shaped(), null, shaped())).rejects.toMatchObject({ code: '23514' })
+    })
+
     it('swaps nothing when the old bytes are not the ones in the row (compare-and-swap)', async () => {
       const answer = await asRole('platform_worker', () =>
         raw.query<{ changed: boolean }>(
           `SELECT ${FiscalReseal.FUNCTION}($1, $2, $3::bytea, $4::bytea, NULL::bytea, NULL::bytea) AS changed`,
-          [ctx.orgA.id, documentId, Buffer.from('not the row'), Buffer.from('new')]
+          [ctx.orgA.id, documentId, Buffer.from('not the row'), shaped()]
         )
       )
       expect(answer.rows[0]?.changed).toBe(false)
@@ -321,7 +380,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
             ctx.orgA.id,
             documentId,
             current?.receiver_encrypted,
-            Buffer.from('swapped-by-function'),
+            shaped(),
             current?.built_payload_encrypted ?? null
           ]
         )

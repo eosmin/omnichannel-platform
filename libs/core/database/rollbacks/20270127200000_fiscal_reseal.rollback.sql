@@ -2,7 +2,6 @@
 -- ORDER: stop the re-seal (unset CREDENTIALS_ENCRYPTION_KEY_PREVIOUS) first, or roll the code back with this script; a value already
 -- sealed again stays valid (it opens with the current key), so nothing is lost.
 BEGIN;
-DROP FUNCTION IF EXISTS fiscal_reseal_document(text, text, bytea, bytea, bytea, bytea);
 CREATE OR REPLACE FUNCTION fiscal_document_guard() RETURNS trigger
 SET search_path = public, pg_temp AS $$
 BEGIN
@@ -64,4 +63,44 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION fiscal_contingency_guard() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'a fiscal contingency is never deleted' USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.organization_id IS DISTINCT FROM OLD.organization_id
+     OR NEW.provider_id IS DISTINCT FROM OLD.provider_id
+     OR NEW.environment IS DISTINCT FROM OLD.environment
+     OR NEW.origin IS DISTINCT FROM OLD.origin
+     OR NEW.reason IS DISTINCT FROM OLD.reason
+     OR NEW.event_code IS DISTINCT FROM OLD.event_code
+     OR NEW.started_at IS DISTINCT FROM OLD.started_at
+     OR NEW.opened_by IS DISTINCT FROM OLD.opened_by THEN
+    RAISE EXCEPTION 'a fiscal contingency keeps what it was opened with' USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  IF (OLD.status = 'closed' AND NEW.status = 'open')
+     OR (OLD.status = 'reported' AND NEW.status <> 'reported')
+     OR (OLD.status = 'open' AND NEW.status = 'reported') THEN
+    RAISE EXCEPTION 'a fiscal contingency only moves forward' USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  IF OLD.status = 'reported' AND (
+       NEW.ended_at IS DISTINCT FROM OLD.ended_at
+       OR NEW.reported_at IS DISTINCT FROM OLD.reported_at
+       OR NEW.window_ends_at IS DISTINCT FROM OLD.window_ends_at
+       OR NEW.provider_data IS DISTINCT FROM OLD.provider_data
+       OR NEW.response IS DISTINCT FROM OLD.response
+       OR NEW.responsible_encrypted IS DISTINCT FROM OLD.responsible_encrypted
+       OR NEW.motive IS DISTINCT FROM OLD.motive) THEN
+    RAISE EXCEPTION 'a reported fiscal contingency does not change' USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP FUNCTION IF EXISTS fiscal_reseal_contingency(text, text, bytea, bytea);
+DROP FUNCTION IF EXISTS fiscal_reseal_document(text, text, bytea, bytea, bytea, bytea);
+DROP FUNCTION IF EXISTS fiscal_reseal_door_open();
+DROP FUNCTION IF EXISTS fiscal_reseal_shape_ok(bytea);
 COMMIT;

@@ -64,7 +64,8 @@ const DEFINER_FUNCTIONS: Readonly<Record<string, readonly string[] | typeof TRIG
   rls_clear_orphan_avatar: [WORKER],
   rls_avatar_media_keys: [WORKER],
   // the re-seal of a rotation of the credentials key (Step 7.3-S11b): swaps the two sealed columns of a fiscal document, the worker only
-  fiscal_reseal_document: [WORKER]
+  fiscal_reseal_document: [WORKER],
+  fiscal_reseal_contingency: [WORKER]
 }
 
 interface DefinerRow {

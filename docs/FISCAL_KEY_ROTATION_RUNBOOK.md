@@ -29,14 +29,16 @@ signing). The fiscal values can be rotated on their own only in an environment t
    equals the current one, is the placeholder, or is not 64 hex characters). While both are set, the fiscal values open with either key and
    everything that is written is sealed with the new one.
 3. **Wait for the nightly run** of the books (04:30 UTC, `RECONCILE_FINANCE`: the check of each organization runs the re-seal).
-   Check in the worker log: `the fiscal values were checked for the previous key` per organization, with `resealed` and `failed`.
+   Check in the worker log: `the fiscal values were checked for the previous key` per organization, with `resealed`, `failed` and `truncated`.
 4. **Read the failures.** A job that fails with `sealed fiscal values were not sealed again` names its cause by code in the log
    (`a sealed fiscal value was not sealed again`, with `failure`, `what` and the ids of the row, never a value):
    - `key_mismatch`: opens with neither key. A wrong previous key, or a row that was altered. The row is LEFT AS IT WAS (nothing is lost).
      Do not remove the previous key. Find the row by its id and restore it from the backup if it is damaged.
    - `row_damaged`: the bytes are not a sealed value. Same: left as it was.
    - `key_missing`: the key of the process is not 32 bytes.
-5. **Check the end.** Two runs in a row (two nights) where every organization logs `resealed: 0` and `failed: {}`. `resealed: 0` means
+   - `write_failed`: the value opened but the database refused the write (the log has the error name): not a damaged row. Look at the
+     database, not at the backup.
+5. **Check the end.** Two runs in a row (two nights) where every organization logs `resealed: 0`, `failed: {}` and `truncated: false`. `resealed: 0` means
    every value already opens with the new key. Also look at the audit trail: `fiscal.value_resealed` has one entry per value sealed again
    (kind and row id, never content).
 6. **Retire the old key.** Remove `CREDENTIALS_ENCRYPTION_KEY_PREVIOUS` from the api and the worker and restart. Check: the fiscal screens
@@ -52,8 +54,9 @@ except the backup.
 
 - An organization is checked only by the nightly run of the books: an organization with no books set up has no night. Its fiscal data is
   not reached until it has them (debt in the plan, Step 7.3-S11b).
-- The run touches at most `FiscalReseal.MAX_PAGES_PER_KIND` pages of each kind per organization and night; a larger organization takes
-  more than one night, and `resealed` tells when it is done.
-- The guard of a decided fiscal document is not relaxed for anything but this job: only the function `fiscal_reseal_document` (the worker role
-  alone) can swap the two sealed columns, and only for the same content (the job checks that the new value opens to the same text before it
+- The run seals again at most `FiscalReseal.MAX_VALUES_PER_KIND` values of each kind per organization and night (the values already
+  current are only skipped and do not count): a larger organization takes more than one night, and `truncated: true` says the run stopped
+  at the cap. Never retire the previous key while `truncated` is true.
+- The guard of a decided fiscal document (and of a reported contingency) is not relaxed for anything but this job: only the functions
+  `fiscal_reseal_document` and `fiscal_reseal_contingency` (the worker role alone) can swap the two sealed columns, and only for the same content (the job checks that the new value opens to the same text before it
   writes).

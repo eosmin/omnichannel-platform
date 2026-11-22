@@ -5,9 +5,15 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { CredentialCipher, failureOf, SealedWith } from '@platform/core/crypto'
+import { CredentialCipher, DecryptionError, failureOf, SealedWith } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
-import { FiscalReseal, FiscalResourceTypes, SealedValueKind } from '@platform/core/domain'
+import {
+  FISCAL_RESEAL_WRITE_FAILED,
+  FiscalReseal,
+  FiscalResealOutcome,
+  FiscalResourceTypes,
+  SealedValueKind
+} from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
 // What one run of one organization did, by the kind of value. Counts only: never a value, never a fragment of one.
@@ -76,22 +82,44 @@ export class FiscalResealService {
     ] as const
     for (const kind of kinds) {
       let after: string | undefined
-      for (let page = 0; ; page += 1) {
-        if (page >= FiscalReseal.MAX_PAGES_PER_KIND) {
-          report.truncated = true
-          break
-        }
+      // Values of this kind sealed again or failed in this run (the ones already current are skipped and do not count against the cap)
+      let worked = 0
+      for (;;) {
         const rows = await unit(() => this.read(kind, organizationId, after))
         for (const row of rows) {
+          if (worked >= FiscalReseal.MAX_VALUES_PER_KIND) {
+            report.truncated = true
+            break
+          }
           report.scanned += 1
           try {
             const outcome = await unit(() => this.reseal(kind, organizationId, row))
-            if (outcome === 'current') report.current += 1
-            else if (outcome === 'resealed') report.resealed += 1
-            else report.conflicts += 1
+            if (outcome === FiscalResealOutcome.CURRENT) {
+              report.current += 1
+              continue
+            }
+            worked += 1
+            if (outcome === FiscalResealOutcome.CONFLICT) {
+              report.conflicts += 1
+              continue
+            }
+            report.resealed += 1
+            // After the unit resolved: an entry for a swap that was rolled back would be false evidence
+            this.audit.log({
+              action: AuditAction.FISCAL_VALUE_RESEALED,
+              actor: { system: true },
+              organizationId,
+              resourceType: resourceTypeOf(kind),
+              resourceId: row.id,
+              // The kind and how many values of the row were sealed again: never a value
+              metadata: { kind, values: row.payload == null ? 1 : 2 }
+            })
           } catch (error) {
-            // One value that cannot be handled must not stop the others: it is counted by the code of the failure and left as it was
-            const code = failureOf(error)
+            worked += 1
+            // One value that cannot be handled must not stop the others: it is counted by the code of the failure and left as it was. A
+            // cipher failure has its own code; anything else (a write the database refused) is `write_failed`, not a damaged row
+            const code =
+              error instanceof DecryptionError ? failureOf(error) : FISCAL_RESEAL_WRITE_FAILED
             report.failed[code] = (report.failed[code] ?? 0) + 1
             this.logger.error(
               {
@@ -106,7 +134,7 @@ export class FiscalResealService {
           }
         }
         const last = rows.at(-1)
-        if (rows.length < FiscalReseal.PAGE_SIZE || last === undefined) break
+        if (report.truncated || rows.length < FiscalReseal.PAGE_SIZE || last === undefined) break
         after = last.id
       }
     }
@@ -179,7 +207,7 @@ export class FiscalResealService {
     kind: SealedValueKind,
     organizationId: string,
     row: SealedRow
-  ): Promise<'current' | 'resealed' | 'conflict'> {
+  ): Promise<FiscalResealOutcome> {
     const first = this.cipher.openRotating(row.sealed)
     const second =
       kind === SealedValueKind.RECEIVER && row.payload != null
@@ -190,7 +218,7 @@ export class FiscalResealService {
       first.sealedWith === SealedWith.CURRENT &&
       (second?.sealedWith ?? SealedWith.CURRENT) === SealedWith.CURRENT
     ) {
-      return 'current'
+      return FiscalResealOutcome.CURRENT
     }
     const next = new Uint8Array(this.cipher.seal(first.credentials))
     const nextPayload =
@@ -207,17 +235,7 @@ export class FiscalResealService {
       throw new Error('the payload sealed again does not open to the same content')
     }
     const swapped = await this.swap(kind, organizationId, row, next, nextPayload)
-    if (!swapped) return 'conflict'
-    this.audit.log({
-      action: AuditAction.FISCAL_VALUE_RESEALED,
-      actor: { system: true },
-      organizationId,
-      resourceType: resourceTypeOf(kind),
-      resourceId: row.id,
-      // The kind and how many values of the row were sealed again: never a value
-      metadata: { kind, values: nextPayload === null ? 1 : 2 }
-    })
-    return 'resealed'
+    return swapped ? FiscalResealOutcome.RESEALED : FiscalResealOutcome.CONFLICT
   }
 
   private async swap(
@@ -262,19 +280,12 @@ export class FiscalResealService {
             })
           ).count === 1
         )
-      case SealedValueKind.RESPONSIBLE:
-        return (
-          (
-            await client.fiscalContingency.updateMany({
-              where: {
-                id: row.id,
-                organizationId,
-                responsibleEncrypted: row.sealed as Uint8Array<ArrayBuffer>
-              },
-              data: { responsibleEncrypted: next as Uint8Array<ArrayBuffer> }
-            })
-          ).count === 1
-        )
+      case SealedValueKind.RESPONSIBLE: {
+        // A reported contingency never changes through a table write: the function of the migration swaps this one column
+        const answer = await client.$queryRaw<{ changed: boolean }[]>`
+          SELECT fiscal_reseal_contingency(${organizationId}, ${row.id}, ${row.sealed}::bytea, ${next}::bytea) AS changed`
+        return answer[0]?.changed === true
+      }
       default:
         return false
     }
