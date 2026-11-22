@@ -1,3 +1,4 @@
+import './utc-timezone'
 import './instrument'
 
 import { runHttpApp } from '@platform/core/http'

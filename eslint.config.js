@@ -401,6 +401,8 @@ export default defineConfig([
     files: [
       'apps/web/lib/env.ts',
       'apps/web/next.config.ts',
+      // Sets TZ to UTC before anything else of the worker loads (it writes, it reads no configuration)
+      'apps/worker/src/utc-timezone.ts',
       'apps/widget/src/env.ts',
       'libs/core/platform/config/env.ts',
       'scripts/db-role-env.ts',
