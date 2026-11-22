@@ -373,7 +373,6 @@ export const channelDirectoryPageSchema = z.object({
   nextCursor: z.string().nullable(),
   hasMore: z.boolean()
 })
-export const channelDirectorySchema = z.array(channelDirectoryEntrySchema)
 export type ChannelDirectoryEntryView = z.output<typeof channelDirectoryEntrySchema>
 
 // GET /conversations/:id/messages: the thread, newest first. Like the list, a type, author or status

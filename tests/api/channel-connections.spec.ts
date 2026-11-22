@@ -1510,7 +1510,10 @@ describe('The channel connections of a store', () => {
       const first = (await directoryPage({ limit: 1 }, asAdminB)).body as ConnectionPageBody
       const stolen = (await directoryPage({ cursor: first.nextCursor ?? '', limit: 100 }))
         .body as ConnectionPageBody
-      for (const row of stolen.data) expect(mineB).not.toContain(row.id)
+      const own = (await allDirectory()).body.data.map(row => row.id)
+      expect(stolen.data.length).toBeGreaterThan(0)
+      for (const row of stolen.data) expect(own).toContain(row.id)
+      for (const id of mineB) expect(stolen.data.map(row => row.id)).not.toContain(id)
     })
   })
 

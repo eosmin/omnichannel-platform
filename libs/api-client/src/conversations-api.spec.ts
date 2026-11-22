@@ -183,14 +183,14 @@ describe('fetchChannelDirectory', () => {
     )
   })
 
-  it('stops following a cursor that never ends', async () => {
+  it('fails, and does not return a cut list, when the cursor never ends', async () => {
     const { client, fetchImpl } = setup(
       json(200, { data: [entry('k1', 'Shop')], nextCursor: 'again', hasMore: true })
     )
 
-    await fetchChannelDirectory(client, 's1')
+    await expect(fetchChannelDirectory(client, 's1')).rejects.toThrow('more pages')
 
-    expect(fetchImpl.mock.calls.length).toBe(10)
+    expect(fetchImpl.mock.calls.length).toBe(50)
   })
 })
 

@@ -9,6 +9,7 @@ import { ensurePluginInstallation } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { allDirectoryRows } from '../helpers/directory'
 import { withToyChannel } from '../helpers/env'
 import { api } from '../helpers/http'
 
@@ -97,10 +98,10 @@ describe('a channel plugin the platform has never heard of', () => {
     expect(connected.status).toBe(CREATED)
     expect(JSON.stringify(connected.body)).not.toContain('acme-key-1')
 
-    const directory = await asAdmin().get(ApiRoutes.channels.directory)
-    const entry = (directory.body as { data: DirectoryEntry[] }).data.find(
-      item => item.pluginId === TOY_ID
+    const directory = await allDirectoryRows<DirectoryEntry>(query =>
+      asAdmin().get(ApiRoutes.channels.directory).query(query)
     )
+    const entry = directory.rows.find(item => item.pluginId === TOY_ID)
     expect(entry?.limits).toEqual({ textMaxLength: 500, caption: null })
     expect(entry?.descriptor?.displayName.en).toBe('Acme Chat')
   })

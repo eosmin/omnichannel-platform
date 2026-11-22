@@ -142,6 +142,7 @@ import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { allDirectoryRows } from '../helpers/directory'
 import { anonymousApi, api, apiWithoutStore } from '../helpers/http'
 import {
   type IsolationCheck,
@@ -4663,11 +4664,13 @@ describe('Tenant isolation', () => {
         channelType: 'test_channel'
       })
 
-      const response = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.channels.directory)
+      const directory = await allDirectoryRows(query =>
+        api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.channels.directory).query(query)
+      )
 
-      expect(response.status).toBe(200)
-      expect(JSON.stringify(response.body)).toContain(connectionA.id)
-      expect(JSON.stringify(response.body)).not.toContain(connectionB.id)
+      expect(directory.status).toBe(200)
+      expect(JSON.stringify(directory.rows)).toContain(connectionA.id)
+      expect(JSON.stringify(directory.rows)).not.toContain(connectionB.id)
     })
 
     it('is refused for a store the user does not belong to', async () => {

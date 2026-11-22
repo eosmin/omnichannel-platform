@@ -97,8 +97,9 @@ export function fetchMemberDirectory(
 }
 
 // Every page of the directory, joined: the inbox and the routing editor need all the accounts of the store, and the
-// server answers them by pages. The bound stops a server that never says "no more" (10 pages of the largest size).
-const DIRECTORY_MAX_PAGES = 10
+// server answers them by pages. A server that never says "no more" ends in an error, never in a list that is cut
+// without telling: a channel missing from the inbox would look like a channel that does not exist.
+const DIRECTORY_MAX_PAGES = 50
 
 export async function fetchChannelDirectory(
   client: ApiClient,
@@ -115,10 +116,10 @@ export async function fetchChannelDirectory(
       { schema: channelDirectoryPageSchema, storeId, signal }
     )
     found.push(...page.data)
-    if (!page.hasMore || page.nextCursor === null) break
+    if (!page.hasMore || page.nextCursor === null) return found
     cursor = page.nextCursor
   }
-  return found
+  throw new Error('the directory of channels has more pages than the client follows')
 }
 
 // Where the conversation came from, newest first (the card on top of the thread)
