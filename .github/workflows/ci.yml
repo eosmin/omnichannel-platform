@@ -291,7 +291,10 @@ jobs:
         # at four, shards 1/4 and 2/4 ran out of the 4 GB heap of node (PR #542, `JavaScript heap out of memory`) because every
         # spec file adds an app to the process: five shards put fewer files in each process; at five (174 files, 35 per shard) shard 4/5 ran out of the heap again
         # after PR #588 (run 43969526825, 4055 MB of 4096 at the crash), so six shards put 29 files in each process. At six, shard 1/6 ran out of the heap again (4050 MB of 4096 at 237 s, no failed test) once PR #763 and the specs of the short contexts of C3 joined the suite (34 files in a process, the app specs are the heavy ones), so eight shards put 25-26 files in each one; `--logHeapUsage` prints the heap after every file. The heap is not raised
-        # and no spec is skipped. Watch the files per shard (Step 7.3)
+        # and the count of shards is not raised again: the cause is that EVERY spec file leaves about 100 MB in the process (measured in the logs of run 45079614702: 3790 MB
+        # after 32 files in shard 1/8, which passed, 3707 MB after 31 in shard 8/8, which died, and +60 to +480 MB for every file in all of them), so jest now runs the shard in
+        # ONE worker that it replaces when its memory passes `--workerIdleMemoryLimit` (`tests/project.json`; `validate:ci-shards` fails a shard that goes back to `--runInBand`).
+        # No spec is skipped. Watch the files per shard (Step 7.3)
         shard: ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']
     runs-on: ubuntu-latest
     timeout-minutes: 15
