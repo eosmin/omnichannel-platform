@@ -2338,6 +2338,7 @@ applied right after the initial schema migration, with a matching rollback in
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- Full-text search vectors (generated columns, not declared in the Prisma schema)
+-- NOTE (Step 7.3-S14): messages.search_vector and idx_messages_search were dropped; messages are searched with idx_messages_search_unaccent (Step 5.1).
 ALTER TABLE messages
   ADD COLUMN search_vector tsvector
   GENERATED ALWAYS AS (to_tsvector('spanish', coalesce(content, ''))) STORED;
