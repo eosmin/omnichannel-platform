@@ -1,8 +1,9 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 
 import { API_PREFIX, PluginApiRoutes } from '@platform/core/api'
+import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { PLUGIN_API_KEY_TOKEN_PREFIX, RemoteChannelApiLimits } from '@platform/core/domain'
-import { HttpStatusCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 
 import { BodyParserErrorTypes } from './body-parser-error-types'
 
@@ -99,27 +100,25 @@ function readBody(request: Request, limit: number): Promise<Buffer> {
 // before the guard answers 401, ten times what any other route reads. The key cannot be checked here (it is a database lookup), so
 // what bounds it is the limit per address of the keys that do not open the door (`PluginKeyProbeLimiter`, Step 7.3 PR S3): an
 // address that is over it gets the small parser, so the large body is never read for it, and the guard answers it 429 before it
-// looks at the key. Up to the limit an address can still make this read, once per failure of its key.
+// looks at the key. The failures are counted after the key is looked up, so a burst of calls that all arrive before the first
+// failure is recorded would all read; the reads in flight of one address are capped as well (`EVENTS_CONCURRENT_READS_PER_ADDRESS`),
+// which is what bounds the memory of that burst.
 // It takes what the other parser takes for this route and nothing more: `application/json` in UTF-8, no content encoding, an
 // object or an array. Anything else is left to Nest's parser, which refuses or ignores it as it does everywhere.
-const readLargeBody: RequestHandler = (
-  request: Request,
-  response: Response,
-  next: NextFunction
-): void => {
+function wantsLargeRead(request: Request): boolean {
   const token = BEARER.exec(request.headers.authorization ?? '')?.[1]
   const encoding = request.headers['content-encoding']
-  if (
+  return !(
     request.method !== 'POST' ||
     request.path !== EVENTS_PATH ||
     token === undefined ||
     !token.startsWith(PLUGIN_API_KEY_TOKEN_PREFIX) ||
     !isUtf8Json(request.headers['content-type']) ||
     (encoding !== undefined && encoding.toLowerCase() !== 'identity')
-  ) {
-    next()
-    return
-  }
+  )
+}
+
+function readLargeBody(request: Request, response: Response, next: NextFunction): void {
   readBody(request, RemoteChannelApiLimits.EVENTS_BODY_MAX_BYTES)
     .then(raw => {
       let parsed: unknown
@@ -160,23 +159,54 @@ export interface PluginKeyProbeGate {
   retryAfter: (address: string) => Promise<number>
 }
 
-// The parser with the limit in front: asked before a byte of the body is read, and only for the one route. An address that has to
-// wait is handed to Nest's small parser as if it carried no key. The limiter never throws (it lets the call through when Redis
-// fails), but the answer is guarded anyway: a failed read must not stop the request.
+function tooManyRequests(waitSeconds: number): PlatformException {
+  return new PlatformException(
+    ErrorCodes.RATE_LIMIT_EXCEEDED,
+    'too many requests',
+    HttpStatusCodes.TOO_MANY_REQUESTS,
+    { [RETRY_AFTER_METADATA_KEY]: Math.max(waitSeconds, 1) }
+  )
+}
+
+// The parser with the limits in front, for the one route and only for a call that would read the large body (the shape is judged
+// first, so a call that would not read costs no Redis round trip). An address that has to wait for its failed keys, or that has
+// too many large reads in flight, is answered 429 with the time to wait and never gets a 413 for a good batch (a 413 is a verdict
+// on the batch, which a plugin would not retry). The limiter never throws (it lets the call through when Redis fails), but the
+// answer is guarded anyway: a failed read must not stop the request. The count of reads in flight is per replica, as the memory is.
 export function pluginEventsBodyParser(probes?: PluginKeyProbeGate): RequestHandler {
+  const inFlight = new Map<string, number>()
   return (request: Request, response: Response, next: NextFunction): void => {
-    if (probes === undefined || request.method !== 'POST' || request.path !== EVENTS_PATH) {
-      readLargeBody(request, response, next)
+    if (!wantsLargeRead(request)) {
+      next()
       return
     }
-    probes.retryAfter(request.ip ?? '').then(
-      wait => {
-        if (wait > 0) next()
-        else readLargeBody(request, response, next)
-      },
-      () => {
+    const address = request.ip ?? ''
+    const start = (): void => {
+      // An unknown address (no `request.ip`) has no count of its own: it would be one for everybody
+      if (address === '') {
         readLargeBody(request, response, next)
+        return
       }
-    )
+      const current = inFlight.get(address) ?? 0
+      if (current >= RemoteChannelApiLimits.EVENTS_CONCURRENT_READS_PER_ADDRESS) {
+        next(tooManyRequests(1))
+        return
+      }
+      inFlight.set(address, current + 1)
+      response.once('close', () => {
+        const left = (inFlight.get(address) ?? 1) - 1
+        if (left <= 0) inFlight.delete(address)
+        else inFlight.set(address, left)
+      })
+      readLargeBody(request, response, next)
+    }
+    if (probes === undefined) {
+      start()
+      return
+    }
+    probes.retryAfter(address).then(wait => {
+      if (wait > 0) next(tooManyRequests(wait))
+      else start()
+    }, start)
   }
 }

@@ -225,13 +225,14 @@ describe('PluginApiKeyGuard, the limit of the keys that do not open the door', (
     expect(limiter.recordFailure).toHaveBeenCalledWith(ADDRESS)
   })
 
-  it('counts a failure for a key of an installation that is not active', async () => {
+  it('counts nothing for a key that exists but is not active: it is no guess, and its retries must not lock out its siblings', async () => {
     mockResolveInstallation.mockResolvedValue(FOUND)
     const limiter = probes()
 
-    await failureFor(build(installationRow('disabled'), limiter), 'plg_live_secret')
+    const failure = await failureFor(build(installationRow('disabled'), limiter), 'plg_live_secret')
 
-    expect(limiter.recordFailure).toHaveBeenCalledWith(ADDRESS)
+    expect(failure).toMatchObject({ code: ErrorCodes.PLUGIN_API_KEY_INVALID })
+    expect(limiter.recordFailure).not.toHaveBeenCalled()
   })
 
   it('answers every kind of failed key with the same code, status and message', async () => {

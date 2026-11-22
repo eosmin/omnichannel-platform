@@ -46,6 +46,16 @@ describe('PluginKeyProbeLimiter', () => {
     await expect(limiter.recordFailure('203.0.113.7')).resolves.toBeUndefined()
   })
 
+  it('keeps no counter for a call with no address', async () => {
+    const { limiter, storage } = build({ blockedFor: jest.fn().mockResolvedValue(30) })
+
+    await expect(limiter.retryAfter('')).resolves.toBe(0)
+    await limiter.recordFailure('')
+
+    expect(storage.blockedFor).not.toHaveBeenCalled()
+    expect(storage.increment).not.toHaveBeenCalled()
+  })
+
   it('counts a refusal in the metric by throttler, never by address', () => {
     const { limiter, hits } = build()
 

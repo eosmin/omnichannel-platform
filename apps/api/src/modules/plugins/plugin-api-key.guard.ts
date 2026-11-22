@@ -234,7 +234,12 @@ export class PluginApiKeyGuard implements CanActivate {
     installation?: { id: string; pluginId: string; store: { id: string } },
     detail: { status?: { installation: string; plugin: string | null } } = {}
   ): Promise<never> {
-    await this.probes.recordFailure(request.ip ?? '')
+    // A key that exists but is revoked, disabled or of a suspended plugin is not a guess (a key has 256 bits), and counting it would
+    // let one installation whose key was rotated and keeps retrying lock out the healthy installations of the same plugin behind the
+    // same address: only a key that is missing, malformed or unknown counts
+    if (reason !== PluginApiDenialReasons.INACTIVE) {
+      await this.probes.recordFailure(request.ip ?? '')
+    }
     const remaining = PluginApiKeyRefusalFloorMs - (Date.now() - startedAt)
     if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining))
     // The audit is capped, so the log keeps every one of these (never the key)

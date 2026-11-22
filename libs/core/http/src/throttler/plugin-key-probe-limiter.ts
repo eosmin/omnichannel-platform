@@ -24,6 +24,9 @@ export class PluginKeyProbeLimiter {
   // Seconds that the address has to wait (0 when it is free). Counted in the metric when it is refused, by throttler and never by
   // address
   async retryAfter(address: string): Promise<number> {
+    // No address (Express could not tell) has no counter of its own: it would be one for every caller that has none, and one
+    // misconfigured proxy would turn the limit into a switch for the whole plugin API. The limit of the installation still holds.
+    if (address === '') return 0
     try {
       return await this.storage.blockedFor(address, PluginApiKeyProbeThrottle.name)
     } catch (error) {
@@ -38,6 +41,7 @@ export class PluginKeyProbeLimiter {
 
   // A key of this address did not open the door
   async recordFailure(address: string): Promise<void> {
+    if (address === '') return
     try {
       await this.storage.increment(
         address,

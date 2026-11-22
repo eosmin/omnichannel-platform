@@ -1,4 +1,4 @@
-import { type INestApplication, RequestMethod } from '@nestjs/common'
+import { type INestApplication, Logger as NestLogger, RequestMethod } from '@nestjs/common'
 import type { Response } from 'express'
 import { Logger } from 'nestjs-pino'
 
@@ -16,6 +16,11 @@ function probeLimiterOf(app: INestApplication): PluginKeyProbeLimiter | undefine
   try {
     return app.get(PluginKeyProbeLimiter, { strict: false })
   } catch {
+    // An app without the throttler module (a test, a tool) has no limit to ask. Said in the log so that a refactor that drops the
+    // provider from a real app does not leave the large read of the events route unbounded without anyone knowing
+    new NestLogger(configureHttpApp.name).warn(
+      'PluginKeyProbeLimiter is not available: the events body parser runs without the limit of the failed keys'
+    )
     return undefined
   }
 }

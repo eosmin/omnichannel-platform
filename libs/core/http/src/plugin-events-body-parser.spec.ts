@@ -1,5 +1,8 @@
+import { EventEmitter } from 'node:events'
+
 import { Body, Controller, type INestApplication, Post } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
+import type { RequestHandler } from 'express'
 
 import { API_PREFIX, PluginApiRoutes } from '@platform/core/api'
 import { PLUGIN_API_KEY_TOKEN_PREFIX, RemoteChannelApiLimits } from '@platform/core/domain'
@@ -9,6 +12,7 @@ import { MetricsModule } from '@platform/core/metrics-module'
 
 import { configureHttpApp } from './configure-http-app'
 import { HttpErrorsModule } from './http-errors.module'
+import { pluginEventsBodyParser } from './plugin-events-body-parser'
 import { PluginKeyProbeLimiter } from './throttler/plugin-key-probe-limiter'
 
 // What the route sees of the body: how big it was and that it arrived parsed
@@ -178,12 +182,31 @@ describe('the body parser of POST /plugin-api/channel/events with the limit of t
     expect(waitFor).toHaveBeenCalledTimes(1)
   })
 
-  it('does not read the large body for an address that has to wait: Nest 100 KB parser answers instead', async () => {
+  it('answers 429 with the time to wait, and never a 413 for a good batch, when the address has to wait', async () => {
     waitFor.mockResolvedValue(30)
 
     const response = await events(batchOf(300 * 1024))
 
-    expect(response.status).toBe(HttpStatusCodes.PAYLOAD_TOO_LARGE)
+    expect(response.status).toBe(HttpStatusCodes.TOO_MANY_REQUESTS)
+    expect(response.headers.get('retry-after')).toBe('30')
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      ErrorCodes.RATE_LIMIT_EXCEEDED
+    )
+  })
+
+  it('does not ask the limit when no large read would happen (no key, or not JSON)', async () => {
+    await fetch(`${url}${API_PREFIX}${PluginApiRoutes.channel.events}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: batchOf(10)
+    })
+    await fetch(`${url}${API_PREFIX}${PluginApiRoutes.channel.events}`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain', authorization: KEY },
+      body: 'x'
+    })
+
+    expect(waitFor).not.toHaveBeenCalled()
   })
 
   it('does not ask the limit for any other route', async () => {
@@ -200,5 +223,55 @@ describe('the body parser of POST /plugin-api/channel/events with the limit of t
     waitFor.mockRejectedValue(new Error('down'))
 
     expect((await events(batchOf(10))).status).toBe(HttpStatusCodes.CREATED)
+  })
+})
+
+// The reads in flight of one address, with requests whose body never ends so that they stay in flight
+describe('the large reads of one address in flight', () => {
+  const cap = RemoteChannelApiLimits.EVENTS_CONCURRENT_READS_PER_ADDRESS
+
+  function call(
+    handler: RequestHandler,
+    ip: string | undefined
+  ): { next: jest.Mock; response: EventEmitter } {
+    const request = Object.assign(new EventEmitter(), {
+      method: 'POST',
+      path: `${API_PREFIX}${PluginApiRoutes.channel.events}`,
+      ip,
+      headers: { authorization: KEY, 'content-type': 'application/json' },
+      pause: jest.fn(),
+      destroy: jest.fn()
+    })
+    const response = Object.assign(new EventEmitter(), { setHeader: jest.fn() })
+    const next = jest.fn()
+    handler(request as never, response as never, next)
+    return { next, response }
+  }
+  // A read that is in flight has not called next yet; a refusal has, at once, with the 429
+  const refused = (next: jest.Mock): boolean => {
+    const calls = next.mock.calls as unknown[][]
+    const answer = calls[0]?.[0] as { statusCode?: number } | undefined
+    return calls.length === 1 && answer?.statusCode === HttpStatusCodes.TOO_MANY_REQUESTS
+  }
+
+  it('refuses the read past the cap of an address with a 429 and gives the place back when a response closes', () => {
+    const handler = pluginEventsBodyParser()
+    const inFlight = Array.from({ length: cap }, () => call(handler, '203.0.113.7'))
+    expect(inFlight.every(({ next }) => next.mock.calls.length === 0)).toBe(true)
+
+    expect(refused(call(handler, '203.0.113.7').next)).toBe(true)
+
+    inFlight[0]?.response.emit('close')
+    expect(call(handler, '203.0.113.7').next.mock.calls.length).toBe(0)
+  })
+
+  it('counts each address on its own, and none for a call with no address', () => {
+    const handler = pluginEventsBodyParser()
+    for (let i = 0; i < cap; i += 1) call(handler, '203.0.113.7')
+
+    expect(call(handler, '198.51.100.9').next.mock.calls.length).toBe(0)
+    for (let i = 0; i < cap + 2; i += 1) {
+      expect(call(handler, undefined).next.mock.calls.length).toBe(0)
+    }
   })
 })
