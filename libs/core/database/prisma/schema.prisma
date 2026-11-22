@@ -1829,6 +1829,7 @@ model CookieConsent {
 
   @@index([visitorId, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
+  @@index([createdAt])
   @@map("cookie_consents")
 }
 

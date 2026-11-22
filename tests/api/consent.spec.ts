@@ -8,6 +8,7 @@ import { Permissions } from '@platform/core/auth'
 import {
   ConsentPurposes,
   ConsentSources,
+  COOKIE_CONSENT_COOKIE_MAX_AGE_SECONDS,
   COOKIE_POLICY_VERSION,
   LegalBases
 } from '@platform/core/compliance'
@@ -349,6 +350,17 @@ describe('The answer to the cookie banner', () => {
     const changed = await post(answer(id, { functional: true, analytics: true, marketing: false }))
     expect(changed.body).toEqual({ recorded: true })
     expect(await owner.cookieConsent.count({ where: { visitorId: id } })).toBe(2)
+  })
+
+  it('writes the same answer again once the row is older than a choice can last, so the newest row proves it', async () => {
+    const id = visitor()
+    await post(answer(id))
+    const old = new Date(Date.now() - (COOKIE_CONSENT_COOKIE_MAX_AGE_SECONDS + 60) * 1000)
+    await owner.cookieConsent.updateMany({ where: { visitorId: id }, data: { createdAt: old } })
+    expect((await post(answer(id))).body).toEqual({ recorded: true })
+    expect(await owner.cookieConsent.count({ where: { visitorId: id } })).toBe(2)
+    // And inside the year it is nothing again
+    expect((await post(answer(id))).body).toEqual({ recorded: false })
   })
 
   it('takes the account from the token, never from the body', async () => {

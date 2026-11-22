@@ -128,6 +128,15 @@ export const envSchema = z
 
     // Auth: login is a magic link, so there are no passwords and no OAuth credentials
     JWT_SECRET: z.string().min(32),
+    // The key that hashes the address of a visitor who answers the cookie banner (`cookie_consents.ip_hash`, Step 7.2-K2): its own secret,
+    // so that a leak of the signing secret does not also give the addresses back by brute force. A deployed environment must set it (it
+    // must not be JWT_SECRET or CREDENTIALS_ENCRYPTION_KEY); a laptop or a test run may leave it out (an empty value counts as left out) and the
+    // key is derived from JWT_SECRET, as before. Generate with `openssl rand -hex 32`. Each hash it makes names the key by a digest of the
+    // key, so rotating it is only setting a new value: rows before keep the name of the old key.
+    CONSENT_HASH_KEY: z.preprocess(
+      value => (value === '' ? undefined : value),
+      z.string().min(32).optional()
+    ),
     // Written as "15m" or "7d", read by the code in seconds
     JWT_EXPIRES_IN: duration('15m'),
     REFRESH_TOKEN_EXPIRES_IN: duration('7d'),
@@ -215,6 +224,9 @@ export const envSchema = z
     // The public intake of data subject requests (POST /compliance/dsr and /verify) is off until the deadline alert of Step 7.2-H2
     // exists: a request that expires unnoticed is a legal risk (owner decision of the coordinator)
     DSR_PUBLIC_INTAKE_ENABLED: z.stringbool().default(false),
+    // The daily cleanup deletes the answers to the cookie banner older than `PlatformCleanup.COOKIE_CONSENT_RETENTION_DAYS` only with this on.
+    // It is off until the owner decides the window: the sweep destroys evidence of consent for good (Step 7.2-K2)
+    COOKIE_CONSENT_RETENTION_ENABLED: z.stringbool().default(false),
     BULL_BOARD_ADMIN_EMAILS: z
       .string()
       .default('')
@@ -406,6 +418,22 @@ export const envSchema = z
         message: 'a deployed environment needs the public https address of the widget script',
         path: ['WIDGET_SCRIPT_URL'],
         input: env.WIDGET_SCRIPT_URL
+      })
+    }
+    if (
+      env.CONSENT_HASH_KEY === undefined ||
+      env.CONSENT_HASH_KEY === env.JWT_SECRET ||
+      env.CONSENT_HASH_KEY === env.CREDENTIALS_ENCRYPTION_KEY ||
+      env.CONSENT_HASH_KEY.startsWith(PLACEHOLDER_JWT_SECRET_PREFIX)
+    ) {
+      // Its own key, never the signing secret and never the placeholder of `.env.example`
+      ctx.issues.push({
+        code: 'custom',
+        message:
+          'a deployed environment needs its own CONSENT_HASH_KEY (at least 32 characters, not JWT_SECRET or CREDENTIALS_ENCRYPTION_KEY, not the placeholder)',
+        path: ['CONSENT_HASH_KEY'],
+        // Never the value: it is a secret, and an issue travels in error objects and ends in logs
+        input: undefined
       })
     }
     if (env.JWT_SECRET.startsWith(PLACEHOLDER_JWT_SECRET_PREFIX)) {

@@ -106,6 +106,12 @@ export const PlatformCleanup = {
   // invited again); it is deleted this long after it expired (MVP_TRIM_CHECKLIST §10 item 21). An accepted or
   // revoked one is the history of who joined and is not touched here
   EXPIRED_INVITATION_GRACE_DAYS: 30,
+  // The record of the cookie banner (`cookie_consents`, TDD_05 §10.5) is the proof of what a browser said, and the choice it proves lasts at
+  // most a year (`COOKIE_CONSENT_COOKIE_MAX_AGE_SECONDS`, then the banner asks again, which writes a new row): a row older than this is either
+  // replaced by a newer one or from a visitor who never came back, and the address hash and the browser it holds are no longer worth keeping.
+  // The newest row of a visitor goes with the rest once it is this old. PROPOSAL, NOT DECIDED: the sweep is OFF until the owner sets the window and turns on `COOKIE_CONSENT_RETENTION_ENABLED`;
+  // two years, a year of choice plus a year for a complaint about it
+  COOKIE_CONSENT_RETENTION_DAYS: 730,
   // A revoked plugin installation closes its webhook subscription with its last delivery; the cleanup clears the sealed secrets and the endpoint of
   // one that still holds them this long after it was revoked (the last delivery did not close it: a job lost, a write that failed)
   REVOKED_PLUGIN_SECRET_GRACE_DAYS: 1
@@ -203,9 +209,13 @@ export const CookieConsentLimits = {
   USER_AGENT_MAX_LENGTH: 512
 } as const
 
-// The key that hashes the address of a visitor in `CookieConsent.ipHash`. Derived from the signing secret with its own label by
-// `CompliancePlatformModule`; the token lives here so that what uses it imports no env.
+// The key that hashes the address of a visitor in `CookieConsent.ipHash` (a `ConsentHashKey`, see `consent-hash.ts`): `CONSENT_HASH_KEY`, or one
+// derived from the signing secret where none is set. Made by `CompliancePlatformModule`; the token lives here so that what uses it imports no env.
 export const COOKIE_CONSENT_HASH_KEY = Symbol('COOKIE_CONSENT_HASH_KEY')
+
+// Whether the daily cleanup deletes the old answers to the cookie banner (`COOKIE_CONSENT_RETENTION_ENABLED`, off by default): the sweep
+// destroys evidence of consent for good, so the owner decides the window and turns it on. Made by `CompliancePlatformModule`.
+export const COOKIE_CONSENT_RETENTION_ENABLED = Symbol('COOKIE_CONSENT_RETENTION_ENABLED')
 
 // What the public flow of data requests needs from the validated env, derived once (`CompliancePlatformModule`): whether it is on, the key
 // that hashes an address, and the key that seals the job of the intake
