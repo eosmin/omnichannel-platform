@@ -28,6 +28,7 @@ describe('export state', () => {
     expect(mayOpenExports(permission => permission === 'media:download_all')).toBe(true)
     expect(mayOpenExports(permission => permission === 'orders:export')).toBe(true)
     expect(mayOpenExports(permission => permission === 'analytics:export')).toBe(true)
+    expect(mayOpenExports(permission => permission === 'org:view_audit_log')).toBe(true)
     expect(mayOpenExports(() => false)).toBe(false)
   })
 
@@ -40,6 +41,10 @@ describe('export state', () => {
     ).toEqual(['analytics'])
     expect(visibleExportTypes(permission => permission === 'customers:export')).toEqual([
       'customers'
+    ])
+    // The audit log kind is offered to who may read the log, and to nobody else
+    expect(visibleExportTypes(permission => permission === 'org:view_audit_log')).toEqual([
+      'audit_log'
     ])
   })
 })

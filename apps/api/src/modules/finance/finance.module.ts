@@ -22,6 +22,7 @@ import { FinancePeriodsService } from './finance-periods.service'
 import { FinancePostingListener } from './finance-posting.listener'
 import { FinancePostingQueue } from './finance-posting.queue'
 import { FinanceReconciliationService } from './finance-reconciliation.service'
+import { FinanceReportGate } from './finance-report-gate.service'
 import { FinanceReportsController } from './finance-reports.controller'
 import { FinanceReportsService } from './finance-reports.service'
 import { FinanceSettingsService } from './finance-settings.service'
@@ -50,6 +51,7 @@ import { FinanceController } from './finance.controller'
     FinanceBooksController
   ],
   providers: [
+    FinanceReportGate,
     FinanceSetupService,
     FinanceSettingsService,
     FinanceAccountsService,

@@ -137,6 +137,13 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       labelKey: 'retention',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.RETENTION),
       permission: ClientPermissions.SETTINGS_MANAGE_RETENTION
+    },
+    {
+      id: StoreSettingsSections.AUDIT_LOG,
+      labelKey: 'auditLog',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.AUDIT_LOG),
+      // The api asks this for every call of the page: the list, one entry and the file
+      permission: ClientPermissions.ORG_VIEW_AUDIT_LOG
     }
   ]
 }
