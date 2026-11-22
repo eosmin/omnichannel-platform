@@ -25,7 +25,6 @@ import { officialRedactedKeys, PluginRegistry, PluginsModule } from '@platform/p
 
 import { AnalyticsModule } from './analytics/analytics.module'
 import { CarriersWorkerModule } from './carriers/carriers.module'
-import { DsrWorkerModule } from './compliance/dsr.module'
 import { ExportsModule } from './exports/exports.module'
 import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { WORKER_RLS_CONTEXT_ON, WorkerRoleCheck } from './health/worker-role.check'
@@ -99,8 +98,6 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     ShippingWorkerModule,
     // The platform cleanup is run by its scheduler below; the processors of the heavy and exports queues run the rest
     RetentionWorkerModule,
-    // The public data request flow: the intake job of the heavy queue (Step 7.2-H1)
-    DsrWorkerModule,
     // The posting service of the books (TDD_18 §6.1): the processors of Step 4B.6 post through it; nothing else writes the journal
     LedgerModule
   ],

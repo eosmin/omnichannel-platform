@@ -11,6 +11,7 @@ import { FiscalRuntimeModule } from '@platform/fiscal/runtime'
 import { PluginsModule } from '@platform/plugins/runtime'
 
 import { CarriersWorkerModule } from '../carriers/carriers.module'
+import { DsrWorkerModule } from '../compliance/dsr.module'
 import { FinancePostingWorkerModule } from '../finance/finance-posting.module'
 import { InventoryReconcileModule } from '../inventory/inventory.module'
 import { HeavyProcessingProcessor } from '../processors/heavy-processing.processor'
@@ -43,6 +44,8 @@ import { UnavailableFileMarker } from './unavailable-file-marker.service'
     FiscalRuntimeModule,
     // ... and the nightly retention of a store
     RetentionWorkerModule,
+    // ... and the intake of a public data request (Step 7.2-H1a)
+    DsrWorkerModule,
     ShippingWorkerModule,
     // The processor of the heavy queue also replays the carrier events kept under a code the owner mapped
     CarriersWorkerModule

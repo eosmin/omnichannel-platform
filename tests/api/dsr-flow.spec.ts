@@ -130,10 +130,14 @@ describe('the public data request flow, tenancy against the database', () => {
   })
 
   afterAll(async () => {
-    await owner.query(
-      'DELETE FROM verification_tokens WHERE subject IN (SELECT id FROM data_subject_requests WHERE organization_id = $1)',
+    // The tokens of this run, by their ids (the worker made some, the cases made others): a delete by another column would be a wide one
+    const tokens = await owner.query<{ id: string }>(
+      'SELECT id FROM verification_tokens WHERE subject IN (SELECT id FROM data_subject_requests WHERE organization_id = $1)',
       [org]
     )
+    await owner.query('DELETE FROM verification_tokens WHERE id = ANY($1)', [
+      tokens.rows.map(row => row.id)
+    ])
     await owner.query('DELETE FROM data_subject_requests WHERE organization_id = $1', [org])
     await owner.query('DELETE FROM customers WHERE store_id = ANY($1)', [[storeA, storeB, storeC]])
     await owner.query('DELETE FROM stores WHERE organization_id = $1', [org])
