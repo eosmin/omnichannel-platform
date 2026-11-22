@@ -11,6 +11,8 @@ import {
   resourceNotFound,
   PlatformException
 } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 
 import { type Actor, isPermission, missingPermissions, TenantContextService } from '../tenancy'
 
@@ -49,7 +51,8 @@ export class RolesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly tenants: TenantContextService
+    private readonly tenants: TenantContextService,
+    private readonly events: DomainEvents
   ) {}
 
   async list(storeId: string): Promise<RoleView[]> {
@@ -114,6 +117,13 @@ export class RolesService {
           ...(body.description === undefined ? {} : { description: body.description })
         },
         select: ROLE_SELECT
+      })
+      // What the holders of the role may do changed, and with it who can be given a conversation: the
+      // directory is read again by every open session (ids only), and only if this commits
+      this.events.publish(tx, Events.TEAM_DIRECTORY_CHANGED, {
+        storeId,
+        membershipId: null,
+        roleId
       })
       return { before: currentNames, after: updated }
     })
@@ -195,7 +205,7 @@ export class RolesService {
         ErrorCodes.PERMISSION_DENIED,
         'a role cannot hold permissions the caller lacks',
         HttpStatusCodes.FORBIDDEN,
-        { permissions: missing }
+        { required: missing }
       )
     }
   }

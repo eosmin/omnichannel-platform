@@ -3,6 +3,8 @@ import type { Query } from '@tanstack/react-query'
 import { QueryKeys } from '@platform/api-client'
 import { RealtimeEvents } from '@platform/core/realtime'
 
+import { TeamKeys } from '../settings/team-keys'
+
 import {
   createInvalidationBatcher,
   invalidationFilterOf,
@@ -219,6 +221,16 @@ describe('queryKeysForEvent', () => {
 })
 
 describe('queryKeysAfterReconnect', () => {
+  it('reads the directory of members and the lists of Settings → Team again when the team changes', () => {
+    expect(
+      queryKeysForEvent(
+        RealtimeEvents.TEAM_DIRECTORY_CHANGED,
+        { membershipId: 'm1', roleId: null },
+        's1'
+      )
+    ).toEqual([QueryKeys.members.directory('s1'), TeamKeys.root('s1')])
+  })
+
   it('refreshes the exports center when an export of the person settles', () => {
     expect(queryKeysForEvent(RealtimeEvents.EXPORT_UPDATED, { exportId: 'e1' }, 's1')).toEqual([
       QueryKeys.exports.all('s1')
@@ -236,7 +248,10 @@ describe('queryKeysAfterReconnect', () => {
         QueryKeys.presence.team('s1'),
         QueryKeys.exports.all('s1'),
         // A picture that was waiting for its variants when the event was lost
-        QueryKeys.media.all('s1')
+        QueryKeys.media.all('s1'),
+        // A change of the team that was lost with the socket
+        QueryKeys.members.directory('s1'),
+        TeamKeys.root('s1')
       ])
     )
     // A thread key sits under messages.all, so one invalidation reaches every thread

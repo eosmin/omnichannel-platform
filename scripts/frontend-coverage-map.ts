@@ -475,6 +475,7 @@ export const REALTIME_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   BULK_LABELS_DONE: { step: '4.14' },
   NOTIFICATION: { step: '3.5' },
   EXPORT_UPDATED: { step: '3.5' },
+  TEAM_DIRECTORY_CHANGED: { step: '7.3' },
   HEARTBEAT: { step: '3.1' },
   JOIN_CONVERSATION: { step: '3.1' },
   LEAVE_CONVERSATION: { step: '3.1' },

@@ -22,7 +22,8 @@ import {
   type MessageQueuedPayload,
   type MessageStatusPayload,
   type OrderCreatedPayload,
-  type OrderEventPayload
+  type OrderEventPayload,
+  type TeamDirectoryChangedPayload
 } from '@platform/core/events'
 import { canSeeConversation, isHiddenStatus, viewerOf } from '@platform/core/messaging'
 import { RealtimeEvents } from '@platform/core/realtime'
@@ -194,6 +195,19 @@ export class RealtimeEventsListener {
   onExportSettled(payload: ExportSettledPayload): void {
     this.realtime.toStoreUser(payload.storeId, payload.requestedBy, RealtimeEvents.EXPORT_UPDATED, {
       exportId: payload.exportId
+    })
+  }
+
+  // Who can be given a conversation changed (a member joined, left or changed role, or a role changed what it
+  // holds): every socket of the store hears it and reads the directory again through the api, which applies the
+  // permissions of whoever asks. Ids only: the list never travels in the event, so a socket that may not read the
+  // directory learns that something changed and nothing else.
+  @OnEvent(Events.TEAM_DIRECTORY_CHANGED)
+  @EventContextNotNeeded('only publishes to socket rooms, reads no table')
+  onTeamDirectoryChanged(payload: TeamDirectoryChangedPayload): void {
+    this.realtime.toStore(payload.storeId, RealtimeEvents.TEAM_DIRECTORY_CHANGED, {
+      membershipId: payload.membershipId,
+      roleId: payload.roleId
     })
   }
 

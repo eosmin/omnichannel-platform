@@ -21,7 +21,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { type Actor, api } from '../helpers/http'
 
 interface ErrorBody {
-  error: { code: string; metadata?: { permissions?: string[] } }
+  error: { code: string; metadata?: { required?: string[] } }
 }
 interface MemberBody {
   id: string
@@ -313,7 +313,7 @@ describe('The team of a store', () => {
 
       expect(response.status).toBe(403)
       expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.PERMISSION_DENIED)
-      expect((response.body as ErrorBody).error.metadata?.permissions?.length).toBeGreaterThan(0)
+      expect((response.body as ErrorBody).error.metadata?.required?.length).toBeGreaterThan(0)
     })
 
     it('does not touch a member who can do more than the caller', async () => {
@@ -541,6 +541,78 @@ describe('The team of a store', () => {
       )
 
       expect(response.status).toBe(403)
+    })
+  })
+
+  describe('telling the open sessions that who can be given a conversation changed', () => {
+    type Heard = { storeId: string; membershipId: string | null; roleId: string | null }
+    // The domain events the change commits, caught where the realtime listener would hear them
+    const hearing = async (change: () => Promise<unknown>): Promise<Heard[]> => {
+      const heard: Heard[] = []
+      const emitter = app.get(EventEmitter2)
+      const listener = (payload: Heard) => heard.push(payload)
+      emitter.on(Events.TEAM_DIRECTORY_CHANGED, listener)
+      try {
+        await change()
+      } finally {
+        emitter.off(Events.TEAM_DIRECTORY_CHANGED, listener)
+      }
+      return heard
+    }
+
+    it('says it, with ids only, when a role is given, a member is suspended, brought back or removed', async () => {
+      const { membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+      const once = (change: () => Promise<unknown>) => hearing(change)
+
+      expect(
+        await once(() =>
+          asAdmin()
+            .patch(ApiRoutes.settings.memberById(membershipId))
+            .send({ roleId: ctx.roleIds[RoleNames.SUPERVISOR] })
+        )
+      ).toEqual([{ storeId: ctx.storeA.id, membershipId, roleId: null }])
+      for (const change of [
+        () => api(app, ctx.adminA, ctx.storeA).post(ApiRoutes.settings.memberSuspend(membershipId)),
+        () =>
+          api(app, ctx.adminA, ctx.storeA).post(ApiRoutes.settings.memberReactivate(membershipId)),
+        () => asAdmin().delete(ApiRoutes.settings.memberById(membershipId))
+      ]) {
+        expect(await once(change)).toEqual([{ storeId: ctx.storeA.id, membershipId, roleId: null }])
+      }
+    })
+
+    it('says it, with the id of the role, when a role changes what it holds', async () => {
+      const roleId = await roleWith(ctx.storeA.id, [Permissions.TEAM_VIEW])
+
+      const heard = await hearing(() =>
+        asAdmin()
+          .patch(ApiRoutes.settings.roleById(roleId))
+          .send({ permissions: [Permissions.TEAM_VIEW, Permissions.ANALYTICS_VIEW] })
+      )
+
+      expect(heard).toEqual([{ storeId: ctx.storeA.id, membershipId: null, roleId }])
+    })
+
+    it('says nothing when the change is refused or changes nothing', async () => {
+      const boss = await manager()
+      const { membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+      const strong = await roleWith(ctx.storeA.id, [Permissions.ORDERS_CANCEL])
+
+      const heard = await hearing(async () => {
+        // The same role: nothing changed
+        await asAdmin()
+          .patch(ApiRoutes.settings.memberById(membershipId))
+          .send({ roleId: ctx.roleIds[RoleNames.AGENT] })
+        // Refused for lack of a permission: the transaction ends without the event
+        await api(app, boss.actor, ctx.storeA)
+          .patch(ApiRoutes.settings.roleById(strong))
+          .send({ permissions: [] })
+        await api(app, boss.actor, ctx.storeA)
+          .patch(ApiRoutes.settings.memberById(membershipId))
+          .send({ roleId: ctx.roleIds[RoleNames.ADMIN] })
+      })
+
+      expect(heard).toEqual([])
     })
   })
 
