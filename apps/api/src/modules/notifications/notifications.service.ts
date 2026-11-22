@@ -295,7 +295,15 @@ export class NotificationsService {
     if (userIds.length === 0) return
     // The check and the write are one step per kind and resource: handlers that run together for a
     // burst of messages must not all find nothing unread and all write
-    await this.exclusively(`${input.storeId}:${input.type}:${input.resourceId}`, async () => {
+    const key = `${input.storeId}:${input.type}:${input.resourceId}`
+    await this.exclusively(key, async () => {
+      // With row level security on, the handler of an event runs in a transaction that commits after it returns, so the queue above
+      // lets the next one go before this line is visible. The transaction lock holds until that commit (and across instances): the
+      // next handler waits here and then finds the line. Without a tenant context (RLS off) there is no transaction and the queue is the guard
+      if (this.prisma.currentTenantContext() !== undefined) {
+        await this.prisma.client.$queryRaw`
+          SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`notification-once:${key}`}, 0))) AS lock`
+      }
       const { alsoUnread = [], ...notification } = input
       const pending = await this.prisma.client.notification.findMany({
         where: {

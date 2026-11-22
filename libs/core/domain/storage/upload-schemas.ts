@@ -26,14 +26,23 @@ export type ClientUploadPurpose = (typeof ClientUploadPurposes)[number]
 // Does not compile when a purpose is added above without rules in upload-rules.ts
 export const UPLOAD_PURPOSES_HAVE_RULES: readonly UploadRulePurpose[] = ClientUploadPurposes
 
-const filenameSchema = z.string().min(1).max(255)
+const FILENAME_TRICKS = /[\p{Cc}\p{Zl}\p{Zp}\u202A-\u202E\u2066-\u2069]/u
+// A name with a control, line-break or direction-changing character is a mistake or a trick ("a\u202Eexe.pdf"): refused here, and the key and the header
+// are made from the sanitized name anyway
+export const uploadFilenameSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .refine(value => !FILENAME_TRICKS.test(value), {
+    message: 'a file name has no control, line-break or direction-override character'
+  })
 const contentTypeSchema = z.string().min(1).max(127)
 const fileSizeSchema = z.number().int().positive()
 
 // What a file of each purpose says about itself. A product picture and an order file name their parent; a message file has
 // none, and a `parentId` on it is refused like any field the schema does not know (the shapes are strict).
 const fileFields = {
-  filename: filenameSchema,
+  filename: uploadFilenameSchema,
   contentType: contentTypeSchema,
   fileSizeBytes: fileSizeSchema
 }
