@@ -1,59 +1,64 @@
-import { json, type NextFunction, type Request, type RequestHandler, type Response } from 'express'
+import type { NextFunction, Request, RequestHandler, Response } from 'express'
 
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { ErrorCodes, type ErrorResponse, HttpStatusCodes } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { BodyParserErrorTypes } from './body-parser-error-types'
+import { isUtf8Json, readBody } from './plugin-events-body-parser'
 
-// `/api/v1/webhooks/carriers/<id>`: the id is any one segment (a malformed one is answered by the service like a wrong one)
+// `/api/v1/webhooks/carriers/<id>`: the id is any one segment (a malformed one is answered by the service like a wrong one).
 // Express matches a route without regard to case, so this does too: a path written in capitals reaches the same route
 const CARRIER_WEBHOOK_PATH = new RegExp(
   `^${API_PREFIX}${ApiRoutes.webhooks.carrier('[^/]+')}/?$`,
   'i'
 )
-// What Nest's own parser reads
-const PARSER_LIMIT = '100kb'
+// What Nest's own parser reads (100 KB)
+const PARSER_LIMIT_BYTES = 102_400
 
 // The body of a carrier webhook is read here, before Nest's parser, so that a body that is not JSON gets the answer of every other
 // thing that is wrong with the call: the uniform 401 (a wrong signature, a connection that does not exist, a malformed id). A
 // refusal of the parser as a 400 would say, to whoever has no key, that it reached the parser; the uniform answer says nothing. The
-// bytes are kept as `rawBody`, which the signature is over, and a body that parses goes on exactly as it did. Only a body that is
-// not JSON changes: it is a 401 here, before any row is read. Other refusals of the parser (too large, an encoding we do not
-// read) keep their answers.
+// bytes are kept as `rawBody`, which the signature is over, and a body that parses goes on exactly as it did (`_body` tells Nest's
+// parser it was read). Only a body that is not JSON changes: it is a 401 here, before any row is read. Other refusals (too large,
+// an aborted upload) keep the answer of the global filter, and a body that is not declared as UTF-8 JSON is left to Nest's parser.
 export function carrierWebhookBodyParser(): RequestHandler {
-  const parse = json({
-    limit: PARSER_LIMIT,
-    verify: (request, _response, raw) => {
-      ;(request as Request & { rawBody?: Buffer }).rawBody = raw
-    }
-  })
   return (request: Request, response: Response, next: NextFunction): void => {
-    if (request.method !== 'POST' || !CARRIER_WEBHOOK_PATH.test(request.path)) {
+    const encoding = request.headers['content-encoding']
+    if (
+      request.method !== 'POST' ||
+      !CARRIER_WEBHOOK_PATH.test(request.path) ||
+      !isUtf8Json(request.headers['content-type']) ||
+      (encoding !== undefined && encoding.toLowerCase() !== 'identity')
+    ) {
       next()
       return
     }
-    parse(request, response, (error?: unknown) => {
-      if (isParseFailure(error)) {
-        const body: ErrorResponse = {
-          error: {
-            code: ErrorCodes.CARRIER_WEBHOOK_SIGNATURE_INVALID,
-            message: 'invalid signature',
-            metadata: {}
-          },
-          correlationId: (request as AuthenticatedRequest).correlationId
+    readBody(request, PARSER_LIMIT_BYTES).then(
+      raw => {
+        let parsed: unknown
+        try {
+          parsed = raw.length === 0 ? {} : (JSON.parse(raw.toString('utf8')) as unknown)
+        } catch {
+          const body: ErrorResponse = {
+            error: {
+              code: ErrorCodes.CARRIER_WEBHOOK_SIGNATURE_INVALID,
+              message: 'invalid signature',
+              metadata: {}
+            },
+            correlationId: (request as AuthenticatedRequest).correlationId
+          }
+          response.status(HttpStatusCodes.UNAUTHORIZED).json(body)
+          return
         }
-        response.status(HttpStatusCodes.UNAUTHORIZED).json(body)
-        return
+        const read = request as Request & { rawBody?: Buffer; _body?: boolean }
+        read.rawBody = raw
+        read.body = parsed
+        read._body = true
+        next()
+      },
+      (error: unknown) => {
+        next(error)
       }
-      next(error)
-    })
+    )
   }
-}
-
-function isParseFailure(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error as Error & { type?: unknown }).type === BodyParserErrorTypes.PARSE_FAILED
-  )
 }

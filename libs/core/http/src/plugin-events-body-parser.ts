@@ -15,7 +15,7 @@ const UTF8_CHARSET = /^utf-?8$/i
 
 // `application/json`, with or without parameters, and a charset (if it says one) that is UTF-8: what the parser this one sits in
 // front of reads for the same route
-function isUtf8Json(contentType: string | undefined): boolean {
+export function isUtf8Json(contentType: string | undefined): boolean {
   if (contentType === undefined) return false
   const [type = '', ...parameters] = contentType.split(';')
   if (type.trim().toLowerCase() !== JSON_MEDIA_TYPE) return false
@@ -36,7 +36,7 @@ function refusal(status: number, type: string, message: string): Error {
 
 // Reads the body of the request up to `limit` bytes, counting as it arrives: a body that goes past it is refused without reading
 // the rest, and a `Content-Length` that already says so is refused before a byte is read.
-function readBody(request: Request, limit: number): Promise<Buffer> {
+export function readBody(request: Request, limit: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const declared = Number(request.headers['content-length'])
     if (Number.isFinite(declared) && declared > limit) {
