@@ -217,6 +217,15 @@ describe('the permissions of the requester when the file of an export is finishe
       expect(t.updateMany).not.toHaveBeenCalledWith(KEEPS_KEY(expect.anything()))
     })
 
+    it('deletes the file even when the row cannot be failed on the last attempt', async () => {
+      const t = build([membershipOf(Permissions.CUSTOMERS_EXPORT)], () =>
+        Promise.reject(new Error('the source failed'))
+      )
+      t.updateMany.mockRejectedValue(new Error('database down'))
+      await expect(t.generator.generate(STORE, EXPORT, true)).rejects.toThrow('database down')
+      expect(t.storage.delete).toHaveBeenCalledTimes(1)
+    })
+
     it('still settles the export when the key cannot be left on the row either', async () => {
       const t = build([membershipOf(Permissions.CUSTOMERS_EXPORT), null], () =>
         Promise.resolve({ rowCount: 1 })

@@ -92,9 +92,8 @@ export class ExpiredExportsCleaner {
         )
         filesDeleted += marked.count
       } catch (error) {
-        this.discardFailed.inc({ stage: ExportDiscardStages.SWEEP })
         this.logger.error(
-          { exportId: row.id, errorName: errorName(error) },
+          { exportId: row.id, errorName: errorName(this.refusalOf(error)) },
           'an expired export could not be deleted'
         )
       }
@@ -112,8 +111,7 @@ export class ExpiredExportsCleaner {
     for (const row of stale) {
       try {
         // A worker killed after the upload and before the row turned `ready` left a file no row names
-        const { objects } = await this.storage.list(StorageKeys.exportPrefix(row.storeId, row.id))
-        for (const object of objects) await this.storage.delete(object.key)
+        await this.deleteFilesOf(row.storeId, row.id, null)
         // The row and the announcement are one transaction: an announcement that fails leaves the export pending, and the next run
         // closes it again (its objects are already gone)
         const marked = await this.jobContext.forStore(storeId, async () => {
@@ -130,7 +128,7 @@ export class ExpiredExportsCleaner {
         abandoned += marked.count
       } catch (error) {
         this.logger.error(
-          { exportId: row.id, errorName: errorName(error) },
+          { exportId: row.id, errorName: errorName(this.refusalOf(error)) },
           'an abandoned export could not be closed'
         )
       }
@@ -147,23 +145,36 @@ export class ExpiredExportsCleaner {
     const settled = [ExportStatus.FAILED, ExportStatus.EXPIRED]
     const from = new Date(now.getTime() - ExportLimits.FILE_SWEEP_DAYS * 86_400_000)
     const until = new Date(now.getTime() - ExportLimits.FILE_SWEEP_GRACE_MINUTES * 60_000)
-    const rows = await this.jobContext.forStore(storeId, () =>
+    // Two lists of their own: the rows that hold a key (a file known to be there, which a bucket that keeps refusing makes come back at
+    // every run) must not take the places of the rows of the window
+    const marked = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.export.findMany({
+        where: { storeId, status: { in: settled }, key: { not: null } },
+        select: { id: true, storeId: true, key: true },
+        orderBy: { id: 'asc' },
+        take: ExportLimits.CLEANUP_BATCH
+      })
+    )
+    const windowed = await this.jobContext.forStore(storeId, () =>
       this.prisma.client.export.findMany({
         where: {
           storeId,
           status: { in: settled },
-          OR: [{ key: { not: null } }, { completedAt: { gte: from, lte: until } }]
+          key: null,
+          completedAt: { gte: from, lte: until }
         },
         select: { id: true, storeId: true, key: true },
-        // The rows that hold a key are the ones known to leave a file: they come first
-        orderBy: [{ key: { sort: 'asc', nulls: 'last' } }, { completedAt: 'desc' }],
+        orderBy: { completedAt: 'desc' },
         take: ExportLimits.CLEANUP_BATCH
       })
     )
+    const rows = [...marked, ...windowed]
     let swept = 0
     for (const row of rows) {
       try {
-        await this.deleteFilesOf(row.storeId, row.id, row.key)
+        const found = await this.deleteFilesOf(row.storeId, row.id, row.key)
+        // Work done: a file was found under the prefix, or the key of the row is cleared (not every row of the window has anything)
+        if (found > 0 || row.key !== null) swept += 1
         if (row.key !== null) {
           await this.jobContext.forStore(storeId, () =>
             this.prisma.client.export.updateMany({
@@ -177,14 +188,9 @@ export class ExpiredExportsCleaner {
             })
           )
         }
-        swept += 1
       } catch (error) {
-        this.discardFailed.inc({ stage: ExportDiscardStages.SWEEP })
         this.logger.error(
-          {
-            exportId: row.id,
-            errorName: errorName(error instanceof FileNotDeletedError ? error.reason : error)
-          },
+          { exportId: row.id, errorName: errorName(this.refusalOf(error)) },
           'the files of a settled export could not be deleted'
         )
         // A row that did not hold the key now holds it, so the next run finds it however old it is
@@ -221,14 +227,29 @@ export class ExpiredExportsCleaner {
     }
   }
 
-  // Every object under the prefix of the export, and its key if it is somewhere else. Throws the first refusal of the bucket.
+  // What a refusal of the bucket is counted and logged as: only a refusal to delete is counted (a database that blips is not), and the
+  // error that is logged is the one of the bucket, not the wrapper
+  private refusalOf(error: unknown): unknown {
+    if (!(error instanceof FileNotDeletedError)) return error
+    this.discardFailed.inc({ stage: ExportDiscardStages.SWEEP })
+    return error.reason
+  }
+
+  // Every object under the prefix of the export (every page of the list), and its key if it is somewhere else. Returns how many objects
+  // the list found. Throws the first refusal of the bucket.
   private async deleteFilesOf(
     storeId: string,
     exportId: string,
     key: string | null
-  ): Promise<void> {
-    const { objects } = await this.storage.list(StorageKeys.exportPrefix(storeId, exportId))
-    const keys = new Set(objects.map(object => object.key))
+  ): Promise<number> {
+    const found = new Set<string>()
+    let token: string | undefined
+    do {
+      const page = await this.storage.list(StorageKeys.exportPrefix(storeId, exportId), token)
+      for (const object of page.objects) found.add(object.key)
+      token = page.next
+    } while (token !== undefined)
+    const keys = new Set(found)
     if (key !== null) keys.add(key)
     for (const each of keys) {
       try {
@@ -237,5 +258,6 @@ export class ExpiredExportsCleaner {
         throw new FileNotDeletedError(each, error)
       }
     }
+    return found.size
   }
 }

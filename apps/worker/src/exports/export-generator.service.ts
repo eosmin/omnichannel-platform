@@ -222,21 +222,22 @@ export class ExportGenerator {
       this.logger.error({ exportId, errorName: errorName(error) }, 'an export could not be written')
       // A text that names too many customers (it grew since the request) finds the same on every attempt: the export says so and stops
       if (error instanceof PlatformException && error.code === ErrorCodes.SEARCH_TOO_BROAD) {
-        await this.fail(row, ErrorCodes.SEARCH_TOO_BROAD)
+        // The file first: a row that fails to settle must not leave the file behind
         await this.discard(row, key)
+        await this.fail(row, ErrorCodes.SEARCH_TOO_BROAD)
         throw new UnrecoverableError(error.message)
       }
       if (error instanceof ZipTooLargeError || error instanceof ZipEmptyError) {
         // Trying again finds the same files
         const code =
           error instanceof ZipTooLargeError ? ErrorCodes.EXPORT_TOO_LARGE : ErrorCodes.EXPORT_EMPTY
-        await this.fail(row, code)
         await this.discard(row, key)
+        await this.fail(row, code)
         throw new UnrecoverableError(error.message)
       }
       if (lastAttempt) {
-        await this.fail(row)
         await this.discard(row, key)
+        await this.fail(row)
       }
       throw error
     }

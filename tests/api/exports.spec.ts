@@ -1631,6 +1631,37 @@ describe('Exports', () => {
       expect((await owner.export.findUniqueOrThrow({ where: { id: stuck.id } })).key).toBeNull()
     })
 
+    it('reaches a file with no key even when a hundred rows keep a key the bucket refuses to delete', async () => {
+      const prefixOfStuck = `stores/${ctx.storeA.id}/exports/stuck-${randomUUID()}/`
+      const stuckKeys: string[] = []
+      for (let index = 0; index < ExportLimits.CLEANUP_BATCH; index += 1) {
+        const key = `${prefixOfStuck}${index}.csv`
+        stuckKeys.push(key)
+        await owner.export.create({
+          data: {
+            storeId: ctx.storeA.id,
+            requestedBy: ctx.adminA.id,
+            type: ExportTypes.CUSTOMERS,
+            format: ExportFormats.CSV,
+            status: ExportStatus.FAILED,
+            key,
+            completedAt: new Date(Date.now() - 2 * HOUR),
+            expiresAt: new Date(Date.now() + DAY)
+          }
+        })
+      }
+      const lost = await leftBehind(ExportStatus.FAILED, 2 * HOUR, false)
+      const realDelete = storage.delete.bind(storage)
+      const spy = jest.spyOn(storage, 'delete').mockImplementation(async key => {
+        if (stuckKeys.includes(key)) throw new Error('bucket refused')
+        await realDelete(key)
+      })
+      await cleaner.run()
+      spy.mockRestore()
+      expect(await storage.head(lost.key)).toBeNull()
+      await owner.export.deleteMany({ where: { key: { in: stuckKeys } } })
+    })
+
     it('sweeps the rows of every store, each with its own files', async () => {
       const a = await leftBehind(ExportStatus.FAILED, 2 * HOUR, false, ctx.storeA.id)
       const b = await leftBehind(ExportStatus.FAILED, 2 * HOUR, false, ctx.storeB.id)
