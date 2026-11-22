@@ -26,6 +26,19 @@ describe('openSealed', () => {
     expect(error).not.toHaveBeenCalled()
   })
 
+  it('opens a value of the previous key during a rotation, and says nothing', () => {
+    const { error, logger: log } = logger()
+    const previous = randomBytes(32)
+    const rotated = new CredentialCipher(randomBytes(32), previous)
+    const sealed = new CredentialCipher(previous).seal({ a: 'b' })
+    expect(
+      openSealed(rotated, log, sealed, SealedValueKind.RECEIVER, { documentId: 'd1' })
+    ).toEqual({
+      a: 'b'
+    })
+    expect(error).not.toHaveBeenCalled()
+  })
+
   it('logs the name, the cause as a code and the ids, and never the message or the bytes', () => {
     const { error, logger: log } = logger()
     const other = new CredentialCipher(randomBytes(32))

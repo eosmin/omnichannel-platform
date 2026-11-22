@@ -1,0 +1,296 @@
+import { isDeepStrictEqual } from 'node:util'
+
+import { Injectable } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
+
+import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
+import { CredentialCipher, failureOf, SealedWith } from '@platform/core/crypto'
+import { PrismaService } from '@platform/core/database'
+import { FiscalReseal, FiscalResourceTypes, SealedValueKind } from '@platform/core/domain'
+import { errorName } from '@platform/core/errors'
+
+// What one run of one organization did, by the kind of value. Counts only: never a value, never a fragment of one.
+export interface FiscalResealReport {
+  // False when no previous key is held: there is nothing to re-seal and nothing is read
+  enabled: boolean
+  // Values read, values that already opened with the current key, values sealed again, values a concurrent change left alone
+  scanned: number
+  current: number
+  resealed: number
+  conflicts: number
+  // Values that opened with neither key (or could not be sealed again): left exactly as they were, by the code of the failure
+  failed: Record<string, number>
+  // A kind that hit the cap of one run (the next run goes on from the start: what is done is skipped quickly)
+  truncated: boolean
+}
+
+// The unit of work the caller opens: one short transaction in the context of the organization. A value that fails aborts only its own.
+export type FiscalResealUnit = <T>(work: () => Promise<T>) => Promise<T>
+
+interface SealedRow {
+  id: string
+  // The bytes of the value (and the second one of a document), as read
+  sealed: Uint8Array
+  payload?: Uint8Array | null
+}
+
+const emptyReport = (enabled: boolean): FiscalResealReport => ({
+  enabled,
+  scanned: 0,
+  current: 0,
+  resealed: 0,
+  conflicts: 0,
+  failed: {},
+  truncated: false
+})
+
+// The re-seal of a rotation of CREDENTIALS_ENCRYPTION_KEY (Step 7.3-S11b): every sealed value of the fiscal area that opens only with the
+// previous key is sealed again with the current one. It never removes or rewrites a value that it cannot open (the failure is counted and
+// the row stays as it is: a value is never lost), it checks in the same transaction that the new value opens to exactly the same content
+// before writing it, it writes by compare-and-swap (the old bytes are in the WHERE), and it is idempotent: a value that already opens with
+// the current key is skipped, so a run that stopped half way, or runs twice, ends in the same state. It runs only while a previous key is held.
+//
+// Covered: the receiver and the built payload of the fiscal documents (a decided document goes through the function of the migration that the
+// guard recognises; nothing else can change it), the fiscal data of the customers, the credentials of the issuer and the responsible of a
+// contingency. NOT covered (Step 7.3-S11c): the sealed values outside the fiscal area; the previous key does not serve them.
+@Injectable()
+export class FiscalResealService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cipher: CredentialCipher,
+    private readonly audit: AuditService,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(FiscalResealService.name)
+  }
+
+  async run(organizationId: string, unit: FiscalResealUnit): Promise<FiscalResealReport> {
+    if (!this.cipher.hasPreviousKey) return emptyReport(false)
+    const report = emptyReport(true)
+    const kinds = [
+      SealedValueKind.ISSUER_CREDENTIALS,
+      SealedValueKind.CUSTOMER_DATA,
+      SealedValueKind.RESPONSIBLE,
+      SealedValueKind.RECEIVER
+    ] as const
+    for (const kind of kinds) {
+      let after: string | undefined
+      for (let page = 0; ; page += 1) {
+        if (page >= FiscalReseal.MAX_PAGES_PER_KIND) {
+          report.truncated = true
+          break
+        }
+        const rows = await unit(() => this.read(kind, organizationId, after))
+        for (const row of rows) {
+          report.scanned += 1
+          try {
+            const outcome = await unit(() => this.reseal(kind, organizationId, row))
+            if (outcome === 'current') report.current += 1
+            else if (outcome === 'resealed') report.resealed += 1
+            else report.conflicts += 1
+          } catch (error) {
+            // One value that cannot be handled must not stop the others: it is counted by the code of the failure and left as it was
+            const code = failureOf(error)
+            report.failed[code] = (report.failed[code] ?? 0) + 1
+            this.logger.error(
+              {
+                errorName: errorName(error),
+                failure: code,
+                what: kind,
+                organizationId,
+                rowId: row.id
+              },
+              'a sealed fiscal value was not sealed again'
+            )
+          }
+        }
+        const last = rows.at(-1)
+        if (rows.length < FiscalReseal.PAGE_SIZE || last === undefined) break
+        after = last.id
+      }
+    }
+    return report
+  }
+
+  // One page of one kind of value of the organization, by id
+  private async read(
+    kind: SealedValueKind,
+    organizationId: string,
+    after: string | undefined
+  ): Promise<SealedRow[]> {
+    const cursor = after === undefined ? {} : { id: { gt: after } }
+    const take = FiscalReseal.PAGE_SIZE
+    const client = this.prisma.client
+    switch (kind) {
+      case SealedValueKind.RECEIVER: {
+        const rows = await client.fiscalDocument.findMany({
+          where: { organizationId, ...cursor },
+          select: { id: true, receiverEncrypted: true, builtPayloadEncrypted: true },
+          orderBy: { id: 'asc' },
+          take
+        })
+        return rows.map(r => ({
+          id: r.id,
+          sealed: r.receiverEncrypted,
+          payload: r.builtPayloadEncrypted
+        }))
+      }
+      case SealedValueKind.CUSTOMER_DATA: {
+        const rows = await client.customerFiscalData.findMany({
+          where: { store: { organizationId }, ...cursor },
+          select: { id: true, dataEncrypted: true },
+          orderBy: { id: 'asc' },
+          take
+        })
+        return rows.map(r => ({ id: r.id, sealed: r.dataEncrypted }))
+      }
+      case SealedValueKind.ISSUER_CREDENTIALS: {
+        const rows = await client.fiscalIssuer.findMany({
+          where: { organizationId, credentialsEncrypted: { not: null } },
+          select: { organizationId: true, credentialsEncrypted: true },
+          take: 1
+        })
+        // One issuer per organization: its key is the organization, so the row id of the report is that
+        return rows.flatMap(r =>
+          r.credentialsEncrypted === null
+            ? []
+            : [{ id: r.organizationId, sealed: r.credentialsEncrypted }]
+        )
+      }
+      case SealedValueKind.RESPONSIBLE: {
+        const rows = await client.fiscalContingency.findMany({
+          where: { organizationId, responsibleEncrypted: { not: null }, ...cursor },
+          select: { id: true, responsibleEncrypted: true },
+          orderBy: { id: 'asc' },
+          take
+        })
+        return rows.flatMap(r =>
+          r.responsibleEncrypted === null ? [] : [{ id: r.id, sealed: r.responsibleEncrypted }]
+        )
+      }
+      default:
+        return []
+    }
+  }
+
+  // One value (and, for a document, its payload), inside the unit of the caller: open, seal again, check, swap, audit
+  private async reseal(
+    kind: SealedValueKind,
+    organizationId: string,
+    row: SealedRow
+  ): Promise<'current' | 'resealed' | 'conflict'> {
+    const first = this.cipher.openRotating(row.sealed)
+    const second =
+      kind === SealedValueKind.RECEIVER && row.payload != null
+        ? this.cipher.openRotating(row.payload)
+        : null
+    // Both values of a document must be read before anything is written: a document with one value that opens with neither key is left whole
+    if (
+      first.sealedWith === SealedWith.CURRENT &&
+      (second?.sealedWith ?? SealedWith.CURRENT) === SealedWith.CURRENT
+    ) {
+      return 'current'
+    }
+    const next = new Uint8Array(this.cipher.seal(first.credentials))
+    const nextPayload =
+      second === null ? null : new Uint8Array(this.cipher.seal(second.credentials))
+    // What was sealed again must open, with the current key alone, to the very same content (the same transaction, before the write)
+    if (!isDeepStrictEqual(this.cipher.open(next), first.credentials)) {
+      throw new Error('the value sealed again does not open to the same content')
+    }
+    if (
+      second !== null &&
+      nextPayload !== null &&
+      !isDeepStrictEqual(this.cipher.open(nextPayload), second.credentials)
+    ) {
+      throw new Error('the payload sealed again does not open to the same content')
+    }
+    const swapped = await this.swap(kind, organizationId, row, next, nextPayload)
+    if (!swapped) return 'conflict'
+    this.audit.log({
+      action: AuditAction.FISCAL_VALUE_RESEALED,
+      actor: { system: true },
+      organizationId,
+      resourceType: resourceTypeOf(kind),
+      resourceId: row.id,
+      // The kind and how many values of the row were sealed again: never a value
+      metadata: { kind, values: nextPayload === null ? 1 : 2 }
+    })
+    return 'resealed'
+  }
+
+  private async swap(
+    kind: SealedValueKind,
+    organizationId: string,
+    row: SealedRow,
+    next: Uint8Array,
+    nextPayload: Uint8Array | null
+  ): Promise<boolean> {
+    const client = this.prisma.client
+    switch (kind) {
+      case SealedValueKind.RECEIVER: {
+        // A decided document cannot be updated by a table write: the function of the migration swaps the two columns and nothing else
+        const answer = await client.$queryRaw<{ changed: boolean }[]>`
+          SELECT fiscal_reseal_document(
+            ${organizationId}, ${row.id}, ${row.sealed}::bytea, ${next}::bytea, ${row.payload ?? null}::bytea, ${nextPayload}::bytea
+          ) AS changed`
+        return answer[0]?.changed === true
+      }
+      case SealedValueKind.CUSTOMER_DATA:
+        return (
+          (
+            await client.customerFiscalData.updateMany({
+              where: {
+                id: row.id,
+                store: { organizationId },
+                dataEncrypted: row.sealed as Uint8Array<ArrayBuffer>
+              },
+              data: { dataEncrypted: next as Uint8Array<ArrayBuffer> }
+            })
+          ).count === 1
+        )
+      case SealedValueKind.ISSUER_CREDENTIALS:
+        return (
+          (
+            await client.fiscalIssuer.updateMany({
+              where: {
+                organizationId,
+                credentialsEncrypted: row.sealed as Uint8Array<ArrayBuffer>
+              },
+              data: { credentialsEncrypted: next as Uint8Array<ArrayBuffer> }
+            })
+          ).count === 1
+        )
+      case SealedValueKind.RESPONSIBLE:
+        return (
+          (
+            await client.fiscalContingency.updateMany({
+              where: {
+                id: row.id,
+                organizationId,
+                responsibleEncrypted: row.sealed as Uint8Array<ArrayBuffer>
+              },
+              data: { responsibleEncrypted: next as Uint8Array<ArrayBuffer> }
+            })
+          ).count === 1
+        )
+      default:
+        return false
+    }
+  }
+}
+
+function resourceTypeOf(kind: SealedValueKind): string {
+  switch (kind) {
+    case SealedValueKind.RECEIVER:
+    case SealedValueKind.BUILT_PAYLOAD:
+      return FiscalResourceTypes.DOCUMENT
+    case SealedValueKind.CUSTOMER_DATA:
+      return FiscalResourceTypes.CUSTOMER_DATA
+    case SealedValueKind.ISSUER_CREDENTIALS:
+      return FiscalResourceTypes.ISSUER
+    default:
+      return FiscalResourceTypes.CONTINGENCY
+  }
+}

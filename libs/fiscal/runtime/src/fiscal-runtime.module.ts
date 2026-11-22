@@ -15,6 +15,7 @@ import { FiscalDocumentsService } from './fiscal-documents.service'
 import { FiscalEvidenceService } from './fiscal-evidence.service'
 import { FiscalIssuerService } from './fiscal-issuer.service'
 import { FISCAL_PROVIDERS, FiscalProviderRegistry } from './fiscal-provider.registry'
+import { FiscalResealService } from './fiscal-reseal.service'
 import { FiscalSweepService } from './fiscal-sweep.service'
 import { officialFiscalProviders } from './official-providers'
 
@@ -40,6 +41,7 @@ import { officialFiscalProviders } from './official-providers'
     FiscalEvidenceService,
     FiscalDocumentsService,
     FiscalCustomerDataService,
+    FiscalResealService,
     FiscalSweepService
   ],
   exports: [
@@ -49,6 +51,7 @@ import { officialFiscalProviders } from './official-providers'
     FiscalIssuerService,
     FiscalCustomerDataService,
     FiscalProviderRegistry,
+    FiscalResealService,
     FiscalSweepService
   ]
 })

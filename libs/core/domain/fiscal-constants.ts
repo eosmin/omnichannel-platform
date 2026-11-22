@@ -355,3 +355,13 @@ export const SealedValueKind = {
   RESPONSIBLE: 'responsible'
 } as const
 export type SealedValueKind = (typeof SealedValueKind)[keyof typeof SealedValueKind]
+
+// The re-seal of the fiscal values after a rotation of CREDENTIALS_ENCRYPTION_KEY (Step 7.3-S11b). The names are the database's: the
+// function that swaps the sealed columns of a decided document and the transaction-local setting that only that function turns on
+export const FiscalReseal = {
+  FUNCTION: 'fiscal_reseal_document',
+  SETTING: 'app.fiscal_reseal',
+  // Rows read and swapped per page of one organization, and the most one run of one organization touches (the next run goes on)
+  PAGE_SIZE: 100,
+  MAX_PAGES_PER_KIND: 200
+} as const

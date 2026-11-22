@@ -14,8 +14,8 @@ const TAG_BYTES = 16
 const HEADER_BYTES = 1 + IV_BYTES
 
 // Why a sealed value did not open, as a code that carries no data (never the value, never a fragment of it). AES-GCM cannot tell a key that
-// changed from a row that was altered (both fail the authentication tag): `KEY_MISMATCH` is both until a previous key is held to try
-// (Step 7.3-S11b); a row whose bytes are not even shaped like a sealed value is `ROW_DAMAGED`; a key that is not there is `KEY_MISSING`.
+// changed from a row that was altered (both fail the authentication tag): `KEY_MISMATCH` is both, even when the previous key of a rotation was
+// tried too (`CredentialCipher.openRotating`, Step 7.3-S11b); a row whose bytes are not even shaped like a sealed value is `ROW_DAMAGED`; a key that is not there is `KEY_MISSING`.
 export const DecryptionFailure = {
   KEY_MISSING: 'key_missing',
   KEY_MISMATCH: 'key_mismatch',

@@ -175,6 +175,24 @@ describe('parseEnv', () => {
     )
   })
 
+  it('takes a previous encryption key only when it is 64 hex characters, not the current key and not the placeholder', () => {
+    const previous = 'b'.repeat(64)
+    expect(parseEnv({ ...validEnv, CREDENTIALS_ENCRYPTION_KEY_PREVIOUS: previous })).toMatchObject({
+      CREDENTIALS_ENCRYPTION_KEY_PREVIOUS: previous
+    })
+    expect(parseEnv(validEnv).CREDENTIALS_ENCRYPTION_KEY_PREVIOUS).toBeUndefined()
+    for (const bad of [
+      'zz'.repeat(32),
+      'b'.repeat(63),
+      validEnv['CREDENTIALS_ENCRYPTION_KEY'],
+      '0'.repeat(64)
+    ]) {
+      expect(() => parseEnv({ ...validEnv, CREDENTIALS_ENCRYPTION_KEY_PREVIOUS: bad })).toThrow(
+        /CREDENTIALS_ENCRYPTION_KEY_PREVIOUS/
+      )
+    }
+  })
+
   it('treats an empty optional URL as invalid, which is why .env.example comments them out', () => {
     expect(() => parseEnv({ ...validEnv, SENTRY_DSN: '' })).toThrow(/SENTRY_DSN/)
     expect(parseEnv(validEnv).SENTRY_DSN).toBeUndefined()

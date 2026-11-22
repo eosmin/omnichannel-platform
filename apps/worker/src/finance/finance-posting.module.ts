@@ -7,13 +7,14 @@ import { FiscalRuntimeModule } from '@platform/fiscal/runtime'
 import { FinanceChainChecker } from './finance-chain-checker.service'
 import { FinanceReconciler } from './finance-reconciler.service'
 import { FiscalReconciler } from './fiscal-reconciler.service'
+import { FiscalResealer } from './fiscal-resealer.service'
 
 // The automatic entries of the books (TDD_18 §6.1): the processor of the heavy queue posts one event of one source through the
 // posting service. The database, the event bus and the logger are the global modules of the worker.
 @Module({
   // The queues: the daily check asks the heavy queue for the posting jobs it finds
   imports: [LedgerModule, QueuesPlatformModule, FiscalRuntimeModule],
-  providers: [FinanceReconciler, FinanceChainChecker, FiscalReconciler],
-  exports: [LedgerModule, FinanceReconciler, FinanceChainChecker, FiscalReconciler]
+  providers: [FinanceReconciler, FinanceChainChecker, FiscalReconciler, FiscalResealer],
+  exports: [LedgerModule, FinanceReconciler, FinanceChainChecker, FiscalReconciler, FiscalResealer]
 })
 export class FinancePostingWorkerModule {}

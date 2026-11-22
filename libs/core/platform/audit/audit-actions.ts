@@ -259,6 +259,8 @@ export const AuditAction = {
   FISCAL_CUSTOMER_DATA_CHANGED: 'fiscal.customer_data_changed',
   FISCAL_CUSTOMER_DATA_CLEARED: 'fiscal.customer_data_cleared',
   FISCAL_EVIDENCE_READ: 'fiscal.evidence_read',
+  // A sealed fiscal value sealed again with the current key after a rotation (the platform is the actor; the kind and the row, never the value)
+  FISCAL_VALUE_RESEALED: 'fiscal.value_resealed',
   FISCAL_ISSUER_CHANGE_CONFIRMED: 'fiscal.issuer_change_confirmed',
   FINANCE_TRANSACTION_RECORDED: 'finance.transaction_recorded',
   FINANCE_TRANSACTION_VOIDED: 'finance.transaction_voided',

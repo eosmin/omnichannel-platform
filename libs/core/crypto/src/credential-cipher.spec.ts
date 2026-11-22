@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 
 import { DecryptionError, DecryptionFailure, encrypt, failureOf } from './aes-gcm'
-import { CredentialCipher } from './credential-cipher'
+import { CredentialCipher, SealedWith } from './credential-cipher'
 
 describe('CredentialCipher', () => {
   const cipher = new CredentialCipher(randomBytes(32))
@@ -99,6 +99,62 @@ describe('CredentialCipher', () => {
       const sealed = cipher.seal({ a: 'b' })
       expect(failureOfOpen(() => new CredentialCipher(Buffer.alloc(0)).open(sealed)).failure).toBe(
         DecryptionFailure.KEY_MISSING
+      )
+    })
+  })
+
+  describe('the open of a rotation (Step 7.3-S11b)', () => {
+    const oldKey = randomBytes(32)
+    const newKey = randomBytes(32)
+    const rotated = new CredentialCipher(newKey, oldKey)
+
+    it('opens with the current key first and says so', () => {
+      const sealed = new CredentialCipher(newKey).seal({ taxId: 'T-1' })
+      expect(rotated.openRotating(sealed)).toEqual({
+        credentials: { taxId: 'T-1' },
+        sealedWith: SealedWith.CURRENT
+      })
+    })
+
+    it('falls back to the previous key and says so, so the value can be sealed again', () => {
+      const sealed = new CredentialCipher(oldKey).seal({ taxId: 'T-2' })
+      expect(rotated.openRotating(sealed)).toEqual({
+        credentials: { taxId: 'T-2' },
+        sealedWith: SealedWith.PREVIOUS
+      })
+      // `open` alone never reaches the previous key: nothing but the rotation job uses it
+      expect(() => rotated.open(sealed)).toThrow(DecryptionError)
+    })
+
+    it('never seals with the previous key', () => {
+      const sealed = rotated.seal({ a: 'b' })
+      expect(() => new CredentialCipher(oldKey).open(sealed)).toThrow(DecryptionError)
+      expect(new CredentialCipher(newKey).open(sealed)).toEqual({ a: 'b' })
+    })
+
+    it('fails closed with key_mismatch when neither key opens the value, and with row_damaged for what is no sealed value at all', () => {
+      const stranger = new CredentialCipher(randomBytes(32)).seal({ a: 'b' })
+      let failure: unknown
+      try {
+        rotated.openRotating(stranger)
+      } catch (error) {
+        failure = failureOf(error)
+      }
+      expect(failure).toBe(DecryptionFailure.KEY_MISMATCH)
+      expect(() => rotated.openRotating(Buffer.from([1, 2, 3]))).toThrow(DecryptionError)
+      try {
+        rotated.openRotating(Buffer.from([1, 2, 3]))
+      } catch (error) {
+        expect(failureOf(error)).toBe(DecryptionFailure.ROW_DAMAGED)
+      }
+    })
+
+    it('without a previous key behaves as open', () => {
+      const plain = new CredentialCipher(newKey)
+      expect(plain.hasPreviousKey).toBe(false)
+      expect(rotated.hasPreviousKey).toBe(true)
+      expect(() => plain.openRotating(new CredentialCipher(oldKey).seal({ a: 'b' }))).toThrow(
+        DecryptionError
       )
     })
   })
