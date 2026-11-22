@@ -1,6 +1,11 @@
 import pg from 'pg'
 
-import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  ensureStore,
+  type OwnerClient,
+  DatabaseRoles
+} from '@platform/core/database-testing'
 import {
   PluginCatalogTypes,
   PluginInstallationStatus,
@@ -102,7 +107,7 @@ describe('row-level security, phase 5: the list of remote channel plugins', () =
 
   // One transaction: row security on for the tables of the list, the role, NO context, the work, ROLLBACK
   async function asRole<T>(
-    role: 'platform_app' | 'platform_worker',
+    role: typeof DatabaseRoles.APP | typeof DatabaseRoles.WORKER,
     work: (query: pg.Client['query']) => Promise<T>
   ): Promise<T> {
     await raw.query('BEGIN')
@@ -134,7 +139,7 @@ describe('row-level security, phase 5: the list of remote channel plugins', () =
   }
   const mine = (rows: Listed[]): Listed[] => rows.filter(row => Object.values(ids).includes(row.id))
 
-  for (const role of ['platform_app', 'platform_worker'] as const) {
+  for (const role of [DatabaseRoles.APP, DatabaseRoles.WORKER] as const) {
     it(`hides the installations from ${role} with no context, and the list still returns every store`, async () => {
       await asRole(role, async query => {
         const plain = await query(
@@ -142,7 +147,7 @@ describe('row-level security, phase 5: the list of remote channel plugins', () =
           [Object.values(ids)]
         )
         // The worker still has BYPASSRLS until the last PR of the phase: the proof of "no row" is the one of the api
-        if (role === 'platform_app') expect(plain.rows).toHaveLength(0)
+        if (role === DatabaseRoles.APP) expect(plain.rows).toHaveLength(0)
         const rows = mine(await list(query))
         // Compared as sets: the order of the database follows its collation, not the byte order of JavaScript
         expect(rows.map(row => row.id).sort()).toEqual(wanted)
@@ -156,7 +161,7 @@ describe('row-level security, phase 5: the list of remote channel plugins', () =
   }
 
   it('leaves out an official plugin, one not approved, an integration and one with no ACTIVE installation', async () => {
-    await asRole('platform_app', async query => {
+    await asRole(DatabaseRoles.APP, async query => {
       const seen = mine(await list(query)).map(row => row.id)
       for (const id of [ids.official, ids.pending, ids.integration, ids.revoked]) {
         expect(seen).not.toContain(id)
@@ -165,7 +170,7 @@ describe('row-level security, phase 5: the list of remote channel plugins', () =
   })
 
   it('walks the list page by page with no row twice or skipped', async () => {
-    await asRole('platform_app', async query => {
+    await asRole(DatabaseRoles.APP, async query => {
       const seen: string[] = []
       let after: string | null = null
       for (let guard = 0; guard < 10_000; guard += 1) {
@@ -181,7 +186,7 @@ describe('row-level security, phase 5: the list of remote channel plugins', () =
   })
 
   it('refuses a page outside 1..1000 and a missing filter, with the message and not a clamp', async () => {
-    await asRole('platform_app', async query => {
+    await asRole(DatabaseRoles.APP, async query => {
       for (const limit of [0, 1001, -1]) {
         await raw.query('SAVEPOINT page')
         await expect(list(query, null, limit)).rejects.toThrow(/page/i)
@@ -206,14 +211,14 @@ describe('row-level security, phase 5: the list of remote channel plugins', () =
   it('is callable by the api and the worker and by nobody else', async () => {
     const { rows } = await raw.query<{ role: string; allowed: boolean }>(
       `SELECT r AS role, has_function_privilege(r, $1, 'EXECUTE') AS allowed
-       FROM unnest(ARRAY['platform_app', 'platform_worker', 'platform_readonly']::text[]) AS r
+       FROM unnest(ARRAY['${DatabaseRoles.APP}', '${DatabaseRoles.WORKER}', '${DatabaseRoles.READONLY}']::text[]) AS r
        WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r)`,
       [`public.${FUNCTION}`]
     )
     const allowed = Object.fromEntries(rows.map(row => [row.role, row.allowed]))
-    expect(allowed['platform_app']).toBe(true)
-    expect(allowed['platform_worker']).toBe(true)
-    if ('platform_readonly' in allowed) expect(allowed['platform_readonly']).toBe(false)
+    expect(allowed[DatabaseRoles.APP]).toBe(true)
+    expect(allowed[DatabaseRoles.WORKER]).toBe(true)
+    if (DatabaseRoles.READONLY in allowed) expect(allowed[DatabaseRoles.READONLY]).toBe(false)
     // Grantee 0 is PUBLIC: the REVOKE ALL FROM PUBLIC of the migration must have left no entry for it
     const publicCan = await raw.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM pg_proc p, aclexplode(p.proacl) a

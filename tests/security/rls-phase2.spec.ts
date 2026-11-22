@@ -6,7 +6,8 @@ import {
   connectionUrls,
   ensureStore,
   ensureUser,
-  type OwnerClient
+  type OwnerClient,
+  DatabaseRoles
 } from '@platform/core/database-testing'
 import {
   ChannelIds,
@@ -300,7 +301,7 @@ describe('row-level security, phase 2: conversations, customers, files, channel 
       for (const table of [...COVERED_BY_THE_PHASE].sort()) {
         await raw.query(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`)
       }
-      await raw.query('SET LOCAL ROLE platform_app')
+      await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
       await raw.query(
         "SELECT set_config('app.store_ids', $1, true), set_config('app.organization_ids', '', true), set_config('app.user_id', $2, true)",
         [(context.stores ?? []).join(','), context.userId ?? '']
@@ -697,15 +698,15 @@ describe('row-level security, phase 2: conversations, customers, files, channel 
         pub: boolean
       }>(
         `SELECT p.prosecdef AS secdef, p.proconfig AS config, pg_get_userbyid(p.proowner) AS owner,
-                has_function_privilege('platform_app', p.oid, 'EXECUTE') AS app,
-                has_function_privilege('platform_worker', p.oid, 'EXECUTE') AS worker,
+                has_function_privilege('${DatabaseRoles.APP}', p.oid, 'EXECUTE') AS app,
+                has_function_privilege('${DatabaseRoles.WORKER}', p.oid, 'EXECUTE') AS worker,
                 has_function_privilege('public', p.oid, 'EXECUTE') AS pub
          FROM pg_proc p WHERE p.proname = 'rls_resolve_channel_connection'`
       )
       expect(rows).toHaveLength(1)
       expect(rows[0]?.secdef).toBe(true)
       expect(rows[0]?.config?.join(',')).toContain('search_path')
-      expect(rows[0]?.owner).not.toBe('platform_app')
+      expect(rows[0]?.owner).not.toBe(DatabaseRoles.APP)
       expect([rows[0]?.app, rows[0]?.worker, rows[0]?.pub]).toEqual([true, true, false])
     })
   })

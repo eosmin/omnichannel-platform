@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import pg from 'pg'
 
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, DatabaseRoles } from '@platform/core/database-testing'
 
 // Row-Level Security, phase 1 (migration 20270121110000_rls_phase1): the policies of the configuration, catalog, audit and analytics
 // tables, and the lookups that run before there is a context. The REAL policies are read from the catalog of the database and
@@ -120,16 +120,18 @@ describe('row-level security, phase 1', () => {
         await owner.query(
           `CREATE TEMP TABLE ${table} AS SELECT * FROM public.${table} WITH NO DATA`
         )
-        await owner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${table} TO platform_app`)
+        await owner.query(
+          `GRANT SELECT, INSERT, UPDATE, DELETE ON ${table} TO ${DatabaseRoles.APP}`
+        )
         await owner.query(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`)
         await owner.query(`ALTER TABLE ${table} FORCE ROW LEVEL SECURITY`)
         for (const policy of policies.filter(
-          p => p.table === table && p.roles.includes('platform_app')
+          p => p.table === table && p.roles.includes(DatabaseRoles.APP)
         )) {
           const using = policy.using === null ? '' : ` USING (${policy.using})`
           const check = policy.check === null ? '' : ` WITH CHECK (${policy.check})`
           await owner.query(
-            `CREATE POLICY ${policy.name} ON pg_temp.${table} AS PERMISSIVE FOR ${COMMANDS[policy.command] ?? 'ALL'} TO platform_app${using}${check}`
+            `CREATE POLICY ${policy.name} ON pg_temp.${table} AS PERMISSIVE FOR ${COMMANDS[policy.command] ?? 'ALL'} TO ${DatabaseRoles.APP}${using}${check}`
           )
         }
       }
@@ -162,7 +164,7 @@ describe('row-level security, phase 1', () => {
       organizations?: string[]
       settings?: Record<string, string>
     }): Promise<void> => {
-      await owner.query('SET LOCAL ROLE platform_app')
+      await owner.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
       await owner.query(
         "SELECT set_config('app.store_ids', $1, true), set_config('app.organization_ids', $2, true)",
         [(context.stores ?? []).join(','), (context.organizations ?? []).join(',')]
@@ -243,7 +245,7 @@ describe('row-level security, phase 1', () => {
 
     it('leaves UPDATE and DELETE of audit_logs with no policy for the application roles (they are revoked)', () => {
       const commands = policies
-        .filter(p => p.table === 'audit_logs' && p.roles.includes('platform_app'))
+        .filter(p => p.table === 'audit_logs' && p.roles.includes(DatabaseRoles.APP))
         .map(p => p.command)
         .sort()
       expect(commands).toEqual(['a', 'r'])
@@ -670,22 +672,22 @@ describe('row-level security, phase 1', () => {
         await owner.query(
           `CREATE TEMP TABLE webhook_deliveries AS SELECT * FROM public.webhook_deliveries WITH NO DATA`
         )
-        await owner.query(`GRANT SELECT ON webhooks, plugin_installations TO platform_app`)
-        await owner.query(`GRANT SELECT, INSERT ON webhook_deliveries TO platform_app`)
+        await owner.query(`GRANT SELECT ON webhooks, plugin_installations TO ${DatabaseRoles.APP}`)
+        await owner.query(`GRANT SELECT, INSERT ON webhook_deliveries TO ${DatabaseRoles.APP}`)
         await owner.query(`ALTER TABLE webhook_deliveries ENABLE ROW LEVEL SECURITY`)
         await owner.query(`ALTER TABLE webhook_deliveries FORCE ROW LEVEL SECURITY`)
         for (const policy of policies.filter(
           p => p.table === 'webhook_deliveries' && p.name === 'webhook_deliveries_tenant'
         )) {
           await owner.query(
-            `CREATE POLICY ${policy.name} ON pg_temp.webhook_deliveries FOR ALL TO platform_app USING (${policy.using ?? 'false'}) WITH CHECK (${policy.check ?? 'false'})`
+            `CREATE POLICY ${policy.name} ON pg_temp.webhook_deliveries FOR ALL TO ${DatabaseRoles.APP} USING (${policy.using ?? 'false'}) WITH CHECK (${policy.check ?? 'false'})`
           )
         }
         await insertFixture('webhooks', { id: `wa-${run}`, store_id: A })
         await insertFixture('webhooks', { id: `wb-${run}`, store_id: B })
         await insertFixture('webhook_deliveries', { id: `d1-${run}`, webhook_id: `wa-${run}` })
         await insertFixture('webhook_deliveries', { id: `d2-${run}`, webhook_id: `wb-${run}` })
-        await owner.query('SET LOCAL ROLE platform_app')
+        await owner.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
         await owner.query("SELECT set_config('app.store_ids', $1, true)", [A])
         const rows = await owner.query<{ id: string }>('SELECT id FROM webhook_deliveries')
         expect(rows.rows.map(row => row.id)).toEqual([`d1-${run}`])
@@ -742,7 +744,7 @@ describe('row-level security, phase 1', () => {
       statement: string,
       values: unknown[]
     ): Promise<Array<Record<string, unknown>>> {
-      await owner.query('SET LOCAL ROLE platform_app')
+      await owner.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
       try {
         // No tenant context at all: this is the situation the lookup is for
         return (await owner.query(statement, values)).rows as Array<Record<string, unknown>>
@@ -818,8 +820,8 @@ describe('row-level security, phase 1', () => {
       }>(
         `SELECT p.prosecdef AS definer, p.proconfig AS config,
                 has_function_privilege('public', p.oid, 'EXECUTE') AS public_exec,
-                has_function_privilege('platform_app', p.oid, 'EXECUTE') AS app_exec,
-                has_function_privilege('platform_worker', p.oid, 'EXECUTE') AS worker_exec,
+                has_function_privilege('${DatabaseRoles.APP}', p.oid, 'EXECUTE') AS app_exec,
+                has_function_privilege('${DatabaseRoles.WORKER}', p.oid, 'EXECUTE') AS worker_exec,
                 ARRAY(SELECT unnest(p.proargnames[p.pronargs + 1:]))::text[] AS columns
          FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'lookup_plugin_status_of_key'`
       )
@@ -848,8 +850,8 @@ describe('row-level security, phase 1', () => {
         `SELECT p.proname AS name, p.prosecdef AS definer, p.provolatile AS volatility, p.proconfig AS config,
                 p.proowner = (SELECT relowner FROM pg_class WHERE oid = 'public.api_keys'::regclass) AS owned_by_tables_owner,
                 has_function_privilege('public', p.oid, 'EXECUTE') AS public_exec,
-                has_function_privilege('platform_app', p.oid, 'EXECUTE') AS app_exec,
-                has_function_privilege('platform_worker', p.oid, 'EXECUTE') AS worker_exec
+                has_function_privilege('${DatabaseRoles.APP}', p.oid, 'EXECUTE') AS app_exec,
+                has_function_privilege('${DatabaseRoles.WORKER}', p.oid, 'EXECUTE') AS worker_exec
          FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'resolve\\_%'`
       )
       expect(result.rows).toHaveLength(RESOLVERS.length)

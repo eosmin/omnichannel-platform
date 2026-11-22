@@ -10,7 +10,8 @@ import {
   ensureStore,
   ensureStoreWarehouse,
   ensureWarehouse,
-  type OwnerClient
+  type OwnerClient,
+  DatabaseRoles
 } from '@platform/core/database-testing'
 import { InventoryMovementType } from '@platform/core/domain'
 
@@ -530,7 +531,7 @@ describe('The tables of stock and warehouses', () => {
           SELECT has_table_privilege(${role}, 'inventory_movements', ${privilege}) AS allowed`
         return rows[0]?.allowed ?? true
       }
-      for (const role of ['platform_app', 'platform_worker']) {
+      for (const role of [DatabaseRoles.APP, DatabaseRoles.WORKER]) {
         for (const privilege of ['UPDATE', 'DELETE', 'TRUNCATE']) {
           expect({ role, privilege, allowed: await has(role, privilege) }).toEqual({
             role,

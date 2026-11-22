@@ -1,6 +1,11 @@
 import pg from 'pg'
 
-import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  ensureStore,
+  type OwnerClient,
+  DatabaseRoles
+} from '@platform/core/database-testing'
 
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { retryOnDeadlock } from '../helpers/deadlock-retry'
@@ -92,11 +97,11 @@ describe('the plan of the customers of an orders search with row-level security 
         await raw.query('ALTER TABLE customers ENABLE ROW LEVEL SECURITY')
         await raw.query('DROP POLICY IF EXISTS order_plan ON customers')
         await raw.query(
-          `CREATE POLICY order_plan ON customers AS PERMISSIVE FOR SELECT TO platform_app
+          `CREATE POLICY order_plan ON customers AS PERMISSIVE FOR SELECT TO ${DatabaseRoles.APP}
              USING (store_id = ANY ((SELECT app_store_ids())::text[]))`
         )
       }
-      await raw.query('SET LOCAL ROLE platform_app')
+      await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
       await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
       const { rows } = await raw.query<{ 'QUERY PLAN': { Plan: PlanNode }[] }>(
         `EXPLAIN (FORMAT JSON) SELECT c.id FROM customers c
@@ -146,7 +151,7 @@ describe('the plan of the customers of an orders search with row-level security 
         await raw.query('SET LOCAL auto_explain.log_min_duration = 0')
         await raw.query('SET LOCAL auto_explain.log_nested_statements = on')
         await raw.query('SET LOCAL client_min_messages = log')
-        await raw.query('SET LOCAL ROLE platform_app')
+        await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
         await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
         const { rows } = await raw.query<{ id: string }>(
           `SELECT f.id FROM public.rls_search_order_customers($1, $1, $2, 101) AS f`,

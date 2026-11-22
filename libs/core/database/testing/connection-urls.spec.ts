@@ -1,5 +1,6 @@
 import {
   connectionUrls,
+  DatabaseRoles,
   poolerAdminUrl,
   PoolerAdmin,
   replicaConnectionUrl,
@@ -50,6 +51,17 @@ describe('connectionUrls', () => {
     expect(owner.port).toBe('5432')
     expect(owner.username).toBe('platform')
     expect(owner.password).toBe('dev_password')
+  })
+
+  // The suites of security name the roles through this constant: if a value drifted, they would all keep agreeing with
+  // each other and stop proving anything about the real roles. The names are the ones the SQL migrations create.
+  it('names the roles exactly as the migrations create them', () => {
+    expect(DatabaseRoles).toEqual({
+      APP: 'platform_app',
+      WORKER: 'platform_worker',
+      REPLICA: 'platform_replica_ro',
+      READONLY: 'platform_readonly'
+    })
   })
 
   it('connects each service with its own role', () => {
