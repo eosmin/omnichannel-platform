@@ -435,6 +435,9 @@ export interface ConversationReadPayload {
   conversationId: string
   userId: string
   visibility: ConversationVisibility
+  // Set when a plugin read or unread the conversation: the count it changed is the whole team's, so every screen that may see the
+  // conversation hears it, not only the tabs of one person (`userId` is then the author the plugin wrote as, never a person)
+  byPlugin?: true
 }
 
 // A reply an agent wrote, stored and waiting for its channel. Ids and dates only: the text is read

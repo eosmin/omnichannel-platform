@@ -1,9 +1,11 @@
 import { Permissions } from '@platform/core/auth'
+import { PluginInstallLimits, PluginManifestLimits } from '@platform/core/domain'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import {
   bearerTokenOf,
   challengeBody,
+  heldRateLimit,
   isChallengeAnswered,
   isPluginScope,
   isSetupCode,
@@ -108,5 +110,31 @@ describe('bearerTokenOf', () => {
     expect(bearerTokenOf('Bearer ')).toBeUndefined()
     expect(bearerTokenOf('Bearer a b')).toBeUndefined()
     expect(bearerTokenOf(undefined)).toBeUndefined()
+  })
+})
+
+describe('heldRateLimit', () => {
+  const { MIN_REQUESTS_PER_MINUTE: MIN, MAX_REQUESTS_PER_MINUTE: MAX } = PluginManifestLimits
+
+  it('keeps what lies inside the range a manifest may ask for', () => {
+    expect(heldRateLimit(MIN)).toBe(MIN)
+    expect(heldRateLimit(60)).toBe(60)
+    expect(heldRateLimit(MAX)).toBe(MAX)
+  })
+
+  // A row an older parser wrote must neither lift the limit nor shut the plugin out for good
+  it('lowers a stored value above the range to its top, and gives one that is no sense the default', () => {
+    expect(heldRateLimit(0)).toBe(PluginInstallLimits.DEFAULT_REQUESTS_PER_MINUTE)
+    expect(heldRateLimit(-10)).toBe(PluginInstallLimits.DEFAULT_REQUESTS_PER_MINUTE)
+    expect(heldRateLimit(MAX + 1)).toBe(MAX)
+    expect(heldRateLimit(10_000_000)).toBe(MAX)
+    expect(heldRateLimit(7.9)).toBe(7)
+  })
+
+  it('falls back to the default of an install for a value that is no number', () => {
+    expect(heldRateLimit(Number.NaN)).toBe(PluginInstallLimits.DEFAULT_REQUESTS_PER_MINUTE)
+    expect(heldRateLimit(Number.POSITIVE_INFINITY)).toBe(
+      PluginInstallLimits.DEFAULT_REQUESTS_PER_MINUTE
+    )
   })
 })
