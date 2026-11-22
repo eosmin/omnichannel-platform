@@ -1270,6 +1270,21 @@ describe('The fiscal documents (Step 4B.7)', () => {
         expect(row.claimToken).toBeNull()
       })
 
+      it('lets one of two concurrent claimants take over an expired claim', async () => {
+        const { documentId } = await sale()
+        await heldBy(documentId, 'owner-a')
+        await owner.$executeRaw`UPDATE fiscal_documents SET updated_at = now() - interval '1 day' WHERE id = ${documentId}`
+        await Promise.allSettled([
+          documents.submit(ctx.orgA.id, documentId),
+          documents.submit(ctx.orgA.id, documentId)
+        ])
+        const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+        // One takeover: the attempt that held it counted 1, the one that took it over counts the second; the other found it held
+        expect(row.attempts).toBe(2)
+        expect(row.status).toBe(FiscalDocumentStatus.ACCEPTED)
+        expect(row.claimToken).toBeNull()
+      })
+
       it('refuses, in the database, a decided document that holds a token', async () => {
         const { documentId } = await sale()
         await documents.submit(ctx.orgA.id, documentId)
