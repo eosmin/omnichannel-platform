@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
-import type { BulkActions, ConversationStatus } from '@platform/core/domain'
+import { type BulkActions, type ConversationStatus, PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 import {
@@ -10,7 +10,7 @@ import {
   type BulkResultView,
   bulkResultSchema,
   type ChannelDirectoryEntryView,
-  channelDirectorySchema,
+  channelDirectoryPageSchema,
   type ChannelTemplateView,
   channelTemplateListSchema,
   type ConversationCountsView,
@@ -96,16 +96,30 @@ export function fetchMemberDirectory(
   })
 }
 
-export function fetchChannelDirectory(
+// Every page of the directory, joined: the inbox and the routing editor need all the accounts of the store, and the
+// server answers them by pages. A server that never says "no more" ends in an error, never in a list that is cut
+// without telling: a channel missing from the inbox would look like a channel that does not exist.
+const DIRECTORY_MAX_PAGES = 50
+
+export async function fetchChannelDirectory(
   client: ApiClient,
   storeId: string,
   signal?: AbortSignal
 ): Promise<ChannelDirectoryEntryView[]> {
-  return client.request(ApiRoutes.channels.directory, {
-    schema: channelDirectorySchema,
-    storeId,
-    signal
-  })
+  const found: ChannelDirectoryEntryView[] = []
+  let cursor: string | null = null
+  for (let pages = 0; pages < DIRECTORY_MAX_PAGES; pages += 1) {
+    const params = new URLSearchParams({ limit: String(PaginationLimits.MAX) })
+    if (cursor !== null) params.set('cursor', cursor)
+    const page: z.output<typeof channelDirectoryPageSchema> = await client.request(
+      `${ApiRoutes.channels.directory}?${params.toString()}`,
+      { schema: channelDirectoryPageSchema, storeId, signal }
+    )
+    found.push(...page.data)
+    if (!page.hasMore || page.nextCursor === null) return found
+    cursor = page.nextCursor
+  }
+  throw new Error('the directory of channels has more pages than the client follows')
 }
 
 // Where the conversation came from, newest first (the card on top of the thread)

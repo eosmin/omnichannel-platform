@@ -367,7 +367,12 @@ export const channelDirectoryEntrySchema = z.object({
   // whose plugin is gone or whose descriptor is not valid.
   descriptor: channelDescriptorSchema.nullable().optional().catch(null)
 })
-export const channelDirectorySchema = z.array(channelDirectoryEntrySchema)
+// One page of the directory, in order of creation: the position is a cursor that is not ours to read
+export const channelDirectoryPageSchema = z.object({
+  data: z.array(channelDirectoryEntrySchema),
+  nextCursor: z.string().nullable(),
+  hasMore: z.boolean()
+})
 export type ChannelDirectoryEntryView = z.output<typeof channelDirectoryEntrySchema>
 
 // GET /conversations/:id/messages: the thread, newest first. Like the list, a type, author or status

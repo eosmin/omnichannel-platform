@@ -1341,6 +1341,7 @@ model ChannelConnection {
 
   @@unique([pluginId, connectionId])
   @@index([storeId, status])
+  @@index([storeId, createdAt, id], map: "channel_connections_store_id_created_at_id_idx")
   @@index([installationId])
   @@map("channel_connections")
 }

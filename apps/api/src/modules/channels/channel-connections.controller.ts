@@ -31,7 +31,9 @@ import {
   type ConnectChannelBody,
   connectChannelSchema,
   type ListConnectionsQuery,
+  type ListDirectoryQuery,
   listConnectionsQuerySchema,
+  listDirectoryQuerySchema,
   type RenameConnectionBody,
   renameConnectionSchema
 } from './channel-connections.schemas'
@@ -71,8 +73,11 @@ export class ChannelConnectionsController {
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @NoStore()
   @Get(ApiRoutes.channels.directory)
-  directory(@CurrentStore() store: Store): Promise<ChannelDirectoryEntry[]> {
-    return this.connections.directory(store.id, this.multiFileEnabled)
+  directory(
+    @CurrentStore() store: Store,
+    @Query(new ZodValidationPipe(listDirectoryQuerySchema)) query: ListDirectoryQuery
+  ): Promise<CursorPage<ChannelDirectoryEntry>> {
+    return this.connections.directory(store.id, this.multiFileEnabled, query)
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
