@@ -91,3 +91,110 @@ export function declaredRedactedKeys(declared: unknown): readonly string[] {
   }
   return Object.freeze(names)
 }
+
+// --- Redaction of anything that is logged, by the name of the field (Step 7.3, S13) ---
+//
+// A name rule, not a list: the key is lower-cased and stripped of everything that is not a letter or a digit,
+// so `apiKey`, `api_key`, `API-KEY` and `x-api-key` are the same name. A field whose name holds one of these
+// fragments is secret wherever it sits, so a field added tomorrow with a secret-like name fails closed.
+export const SECRET_NAME_FRAGMENTS: readonly string[] = [
+  'password',
+  'passwd',
+  'passphrase',
+  'secret',
+  'token',
+  'apikey',
+  'authorization',
+  'cookie',
+  'signature',
+  'credential',
+  'privatekey',
+  'accesskey',
+  'signingkey',
+  'encryptionkey',
+  'sessionid',
+  'bearer',
+  'keyhash',
+  // The sealed blobs of the database (credentialsEncrypted, dataEncrypted, ...): ciphertext is not for a log
+  'encrypted',
+  'ciphertext'
+]
+
+// Names too short to be a fragment (`sig` would hit `design`), matched whole. The names of the sensitive query
+// params minus the three that are everyday words in a log line (`key`, `code`, `state`).
+const NOT_SECRET_ON_THEIR_OWN: ReadonlySet<string> = new Set(['key', 'code', 'state'])
+export const SECRET_EXACT_NAMES: readonly string[] = [
+  ...SENSITIVE_QUERY_PARAMS.filter(name => !NOT_SECRET_ON_THEIR_OWN.has(name)),
+  // Tax data of a person and the certificate of the issuer (TDD_18 §9.2, Step 4B.7b-3)
+  'taxId',
+  'registrationId',
+  'taxpayerType',
+  'economicActivity',
+  'certificate'
+]
+
+// A snake or kebab name that ends in `_key` or `-key` (idempotency_key, x-signing-key). The camel spelling
+// (`cacheKey`, `objectKey`) is an everyday word and is not matched; the fragments above catch its real secrets.
+export const SECRET_KEY_SUFFIX = /[_-]key$/i
+
+// The closed list of names that match a fragment and are not secrets, each with why. A field that is not here
+// and looks like a secret is redacted; a name is added here only with a reason, and the test of the Prisma
+// fields fails until the author of a new field either renames it or lists it. Compared in the normalized form.
+export const LOGGABLE_NAMES_THAT_LOOK_SECRET: Readonly<Record<string, string>> = {
+  tokencount: 'a count of tokens of a text, not a credential',
+  tokensused: 'a count of tokens, not a credential',
+  maxtokens: 'a limit on the tokens of a text',
+  prompttokens: 'a count of tokens',
+  completiontokens: 'a count of tokens',
+  totaltokens: 'a count of tokens',
+  inputtokens: 'a count of tokens',
+  outputtokens: 'a count of tokens',
+  tokenlimit: 'a limit, not a credential',
+  tokentype: 'the scheme of a token (Bearer), not its value',
+  tokenexpiresat: 'the date a token expires, not its value',
+  tokenexpiresin: 'the seconds a token lasts, not its value',
+  accesstokenexpiresat: 'the date a token expires, not its value',
+  refreshtokenexpiresat: 'the date a token expires, not its value'
+}
+
+// What stands where a secret value was, or where the walk stopped
+export const REDACTION_CIRCULAR = '[circular]'
+export const REDACTION_TRUNCATED = '[truncated]'
+export const REDACTION_BINARY = '[binary]'
+
+// Bounds of the walk, so a large payload costs a log line a fixed amount of work
+export const REDACTION_MAX_DEPTH = 10
+export const REDACTION_MAX_NODES = 5000
+
+// A credential that travels inside a string: `Authorization: Bearer abc` in the raw text of a request, or
+// a `Bearer abc` in a message. The value is replaced; the scheme and the header name stay.
+// A pair `"name": "value"` or `name=value` inside a string (a request body that an HTTP client kept as text, a
+// query string): the name is matched by the fragments of SECRET_NAME_FRAGMENTS with an optional `_` or `-` between
+// letters (api_key, private-key), the value is replaced and the name stays.
+const spaced = (fragment: string): string => fragment.split('').join('[_-]?')
+const FRAGMENTS_IN_TEXT = SECRET_NAME_FRAGMENTS.map(spaced).join('|')
+export const SECRET_PAIR_PATTERNS: readonly RegExp[] = [
+  new RegExp(
+    String.raw`("[^"\\]{0,64}(?:${FRAGMENTS_IN_TEXT})[^"\\]{0,64}"\s*:\s*)"(?:[^"\\]|\\.)*"`,
+    'gi'
+  ),
+  new RegExp(String.raw`(\b[\w.-]{0,64}?(?:${FRAGMENTS_IN_TEXT})[\w.-]{0,64}=)[^&\s"']+`, 'gi')
+]
+
+// Strings longer than this are scrubbed up to here and cut: the patterns above cost time in proportion to the text
+export const REDACTION_MAX_TEXT = 65536
+
+// A password in the address of a connection (redis://:pw@host, postgres://user:pw@host/db), which the errors of the
+// drivers carry in their message, and a JWT, which is a credential wherever it is written
+export const SECRET_URL_USERINFO = /(\b[a-z][a-z0-9+.-]*:\/\/[^/\s:@]{0,128}:)[^@\s/]{1,256}@/gi
+export const SECRET_JWT = /\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{4,}/g
+
+// Own names a walk reads on an error and on the objects it skips
+export const ERROR_FIELDS: readonly string[] = ['name', 'message', 'stack', 'cause']
+export const SERIALIZED_LOG_KEYS: readonly string[] = ['req', 'res', 'err']
+export const REDACTION_HANDLE = '[handle]'
+
+export const SECRET_TEXT_PATTERNS: readonly RegExp[] = [
+  /\b(Bearer|Basic) [A-Za-z0-9._~+/=-]{16,}/g,
+  /^((?:proxy-)?authorization|cookie|set-cookie|x-api-key)\s*:[^\r\n]*/gim
+]

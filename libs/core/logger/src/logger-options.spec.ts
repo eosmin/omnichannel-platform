@@ -559,3 +559,99 @@ describe('redactedPathsFor, the keys a plugin declares', () => {
     expect(options.redact).toEqual({ paths: redactedPathsFor(declared), remove: true })
   })
 })
+
+// S13: what the real options of the logger write, with the real pino. The exact paths cannot know a name nobody
+// listed; the walk by name can, at any depth and in the error of an HTTP client.
+describe('redaction by the name of the field', () => {
+  function line(payload: object, redactedKeys: readonly string[] = []): string {
+    let output = ''
+    const stream = new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        output += chunk.toString()
+        done()
+      }
+    })
+    const { redact, formatters, serializers } = buildPinoHttpOptions({
+      level: 'info',
+      redactedKeys
+    })
+    pino({ redact, formatters, serializers }, stream).info(payload, 'event')
+    return output
+  }
+
+  it('removes a secret with a name nobody listed, deeper than the paths reach', () => {
+    const output = line({
+      job: {
+        data: { a: { b: { c: { d: { e: { sessionToken: 'leak-1', widgetSecret: 'leak-2' } } } } } }
+      },
+      ctx: { 'x-hub-signature-256': 'leak-3', Cookie: 'leak-4', ownerPassword: 'leak-5' },
+      meta: { idempotency_key: 'leak-6' }
+    })
+    for (let n = 1; n <= 6; n += 1) expect(output).not.toContain(`leak-${n}`)
+  })
+
+  it('removes the config and headers of the error of an HTTP client, whatever the key of the log', () => {
+    const failure = Object.assign(new Error('Request failed with status code 403'), {
+      config: { headers: { Authorization: 'Bearer leak-1', 'X-Api-Key': 'leak-2' } },
+      response: { headers: { 'set-cookie': ['sid=leak-3'] } }
+    })
+    const output = line({ err: failure, cause: failure, error: { inner: failure } })
+    for (let n = 1; n <= 3; n += 1) expect(output).not.toContain(`leak-${n}`)
+    expect(output).toContain('Request failed with status code 403')
+  })
+
+  it('redacts the request and response the http logger serializes', () => {
+    const { serializers } = buildPinoHttpOptions({ level: 'info' })
+    const request = serializers?.['req'] as (value: unknown) => unknown
+    const response = serializers?.['res'] as (value: unknown) => unknown
+    const text = JSON.stringify([
+      request({ method: 'GET', url: '/x', headers: { 'x-signing-key': 'leak-1', accept: 'json' } }),
+      response({ statusCode: 200, headers: { 'Set-Cookie': 'sid=leak-2', etag: 'kept' } })
+    ])
+    expect(text).not.toContain('leak-')
+    for (const kept of ['json', 'kept', '/x']) expect(text).toContain(kept)
+  })
+
+  it('keeps the format of an ordinary line, and the counters whose names look like a secret', () => {
+    const output = JSON.parse(
+      line({ storeId: 's1', tokenCount: 7, nested: { attempt: 2 } })
+    ) as Record<string, unknown>
+    expect(output).toMatchObject({
+      storeId: 's1',
+      tokenCount: 7,
+      nested: { attempt: 2 },
+      msg: 'event'
+    })
+  })
+
+  it('removes the names a plugin declared', () => {
+    expect(line({ ctx: { acmeBadge: 'leak-1' } }, ['acmeBadge'])).not.toContain('leak-1')
+  })
+
+  it('redacts what it keeps of a large payload and cuts the rest', () => {
+    const wide = Object.fromEntries(
+      Array.from({ length: 20000 }, (_, index) => [`field${index}`, { token: `leak-${index}` }])
+    )
+    const output = line({ wide, first: { token: 'leak-first' } })
+    expect(output).not.toContain('leak-')
+    expect(output).toContain('[truncated]')
+  })
+
+  it('keeps the class name of an error that pino-http already serialized, and never throws', () => {
+    const { serializers } = buildPinoHttpOptions({ level: 'info' })
+    const err = serializers?.['err'] as (value: unknown) => Record<string, unknown>
+    const serialized = err({
+      type: 'AxiosError',
+      message: 'boom',
+      config: { headers: { Authorization: 'x' } }
+    })
+    expect(serialized['type']).toBe('AxiosError')
+    expect(JSON.stringify(serialized)).not.toContain('"x"')
+    const hostile = {
+      get boom(): string {
+        throw new Error('getter')
+      }
+    }
+    expect(() => line({ hostile })).not.toThrow()
+  })
+})

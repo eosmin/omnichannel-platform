@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
+import { stdSerializers } from 'pino'
 import type { Options } from 'pino-http'
 
 import { API_PREFIX, InfraRoutes } from '@platform/core/api'
@@ -8,8 +9,11 @@ import {
   isRecord,
   isSecretHeader,
   REDACTED,
+  REDACTION_TRUNCATED,
+  redactSecrets,
   scrubQuery,
-  scrubUrl
+  scrubUrl,
+  SERIALIZED_LOG_KEYS
 } from '@platform/core/domain'
 
 import type { AuthenticatedRequest } from './authenticated-request'
@@ -36,6 +40,9 @@ const QUIET_PATHS: ReadonlySet<string> = new Set([
 // depth (`*` stands for exactly one level), so every depth is listed; each added level makes pino
 // look at more of the logged object, which is cheap for a log line and not for a large payload.
 const REDACTION_DEPTH = 4
+
+// Keys with a serializer of their own below, which already redacts them
+const SERIALIZED_KEYS: ReadonlySet<string> = new Set(SERIALIZED_LOG_KEYS)
 
 // The path of `name` at the top level of what is logged and at each depth up to REDACTION_DEPTH
 function atEveryDepth(name: string): string[] {
@@ -175,6 +182,28 @@ export function redactedPathsFor(declared: readonly string[]): string[] {
   return [...REDACTED_PATHS, ...declaredRedactedKeys([...declared]).flatMap(atEveryDepth)]
 }
 
+// pino-http hands over an error it has already serialized; a bare pino hands over the Error itself
+function serializeError(error: unknown): unknown {
+  return error instanceof Error ? stdSerializers.err(error) : error
+}
+
+// The keys a pino serializer handles are left to it (it redacts them itself); the rest of the object is walked
+function redactLogObject(
+  object: Record<string, unknown>,
+  declared: readonly string[]
+): Record<string, unknown> {
+  const rest = Object.fromEntries(
+    Object.entries(object).filter(([name]) => !SERIALIZED_KEYS.has(name))
+  )
+  const walked = redactSecrets(rest, declared)
+  // A walk that failed leaves a marker, and the fields are not logged: failing closed, never raising
+  const redacted =
+    typeof walked === 'object' && walked !== null
+      ? (walked as Record<string, unknown>)
+      : Object.fromEntries(Object.keys(rest).map(name => [name, REDACTION_TRUNCATED]))
+  return { ...object, ...redacted }
+}
+
 export function buildPinoHttpOptions({
   level,
   redactedKeys = []
@@ -193,8 +222,17 @@ export function buildPinoHttpOptions({
       }
     },
 
+    // Two layers. The paths are exact and cheap, and pino removes what they name. The walk below catches the rest
+    // by the NAME of a field (password, secret, token, apiKey, cookie, signature, ... in any spelling, at any
+    // depth), so a secret nobody listed fails closed: what is logged alone or in a context (`formatters.log`),
+    // the request and response, and the error of an HTTP client with its `config.headers` (the serializers).
     redact: { paths: redactedPathsFor(redactedKeys), remove: true },
-    serializers: { req: scrubRequest },
+    formatters: { log: (object: Record<string, unknown>) => redactLogObject(object, redactedKeys) },
+    serializers: {
+      req: (request: LoggedRequest) => redactSecrets(scrubRequest(request), redactedKeys),
+      res: (response: unknown) => redactSecrets(response, redactedKeys),
+      err: (error: unknown) => redactSecrets(serializeError(error), redactedKeys)
+    },
 
     autoLogging: {
       ignore: (req: IncomingMessage) => QUIET_PATHS.has((req.url ?? '').split('?')[0] ?? '')
