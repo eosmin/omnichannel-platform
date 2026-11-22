@@ -172,4 +172,107 @@ describe('FinanceReportGate', () => {
       expect((error as PlatformException).code).toBe(ErrorCodes.FINANCE_REPORT_BUSY)
     })
   })
+
+  describe('files being sent', () => {
+    const MOST_FILES = FinanceReportLimits.MAX_CONCURRENT_STREAMS_PER_ORGANIZATION
+
+    async function* pagesOf(count: number): AsyncGenerator<number> {
+      await Promise.resolve()
+      for (let index = 0; index < count; index += 1) yield index
+    }
+    const prepared = (count: number) => () => Promise.resolve(() => pagesOf(count))
+
+    it('holds a place of its own until the file ends, apart from the reads', async () => {
+      const redis = new FakeRedis()
+      const gate = gateOf(redis)
+      const stream = await gate.openStream('org-1', prepared(2))
+      expect(redis.held()).toBe(1)
+      // Reads still have all their places: a download does not starve the reports
+      const reads = Array.from({ length: MOST }, () => pending())
+      const running = reads.map(report => gate.read('org-1', report.work))
+      await new Promise(resolve => setImmediate(resolve))
+      expect(redis.held()).toBe(MOST + 1)
+      reads.forEach(report => report.done())
+      await Promise.all(running)
+      const seen: number[] = []
+      for await (const page of stream) seen.push(page)
+      expect(seen).toEqual([0, 1])
+      expect(redis.held()).toBe(0)
+    })
+
+    it('refuses the next file of a full organization before anything is prepared, and gives each place back', async () => {
+      const redis = new FakeRedis()
+      const gate = gateOf(redis)
+      const open = await Promise.all(
+        Array.from({ length: MOST_FILES }, () => gate.openStream('org-1', prepared(1)))
+      )
+      const prepare = jest.fn(() => Promise.resolve(() => pagesOf(1)))
+      const error = await gate.openStream('org-1', prepare).catch((e: unknown) => e)
+      expect((error as PlatformException).code).toBe(ErrorCodes.FINANCE_REPORT_BUSY)
+      expect((error as PlatformException).statusCode).toBe(HttpStatusCodes.TOO_MANY_REQUESTS)
+      // The audit row of the count is written by `prepare`: a refused file leaves none
+      expect(prepare).not.toHaveBeenCalled()
+      for (const stream of open) for await (const page of stream) expect(page).toBe(0)
+      expect(redis.held()).toBe(0)
+      await expect(gate.openStream('org-1', prepared(1))).resolves.toBeDefined()
+    })
+
+    it('gives the place back when the client drops the stream after its first page', async () => {
+      const redis = new FakeRedis()
+      const gate = gateOf(redis)
+      const stream = await gate.openStream('org-1', prepared(5))
+      await stream.next()
+      expect(redis.held()).toBe(1)
+      await stream.return(undefined)
+      expect(redis.held()).toBe(0)
+    })
+
+    it('gives the place back when a page fails, and when the check of the request fails', async () => {
+      const redis = new FakeRedis()
+      const gate = gateOf(redis)
+      async function* broken(): AsyncGenerator<number> {
+        await Promise.resolve()
+        yield 1
+        throw new RangeError('pool timeout')
+      }
+      const stream = await gate.openStream('org-1', () => Promise.resolve(() => broken()))
+      await expect(
+        (async () => {
+          for await (const page of stream) expect(page).toBe(1)
+        })()
+      ).rejects.toThrow('pool timeout')
+      expect(redis.held()).toBe(0)
+      await expect(
+        gate.openStream('org-1', () => Promise.reject(new RangeError('too large')))
+      ).rejects.toThrow('too large')
+      expect(redis.held()).toBe(0)
+    })
+
+    it('keeps the place alive at every page and takes one again, or fails the file, when it expired', async () => {
+      const redis = new FakeRedis()
+      const gate = gateOf(redis)
+      const stream = await gate.openStream('org-1', prepared(3))
+      await stream.next()
+      const set = [...redis.places.values()][0] as Map<string, number>
+      set.clear()
+      await stream.next()
+      expect(redis.held()).toBe(1)
+      set.clear()
+      for (let index = 0; index < MOST_FILES; index += 1)
+        set.set(`other-${String(index)}`, Date.now())
+      const error = await stream.next().catch((e: unknown) => e)
+      expect((error as PlatformException).code).toBe(ErrorCodes.FINANCE_REPORT_BUSY)
+    })
+
+    it('runs without the cap, and says so, when Redis cannot be reached', async () => {
+      const redis = new FakeRedis()
+      redis.down = true
+      const gate = gateOf(redis)
+      const stream = await gate.openStream('org-1', prepared(2))
+      const seen: number[] = []
+      for await (const page of stream) seen.push(page)
+      expect(seen).toEqual([0, 1])
+      expect(warn).toHaveBeenCalled()
+    })
+  })
 })

@@ -4,6 +4,7 @@ import type { AuditService } from '@platform/core/audit-module'
 import type { JobContext, PrismaService } from '@platform/core/database'
 import { FinanceReportLimits } from '@platform/core/domain'
 
+import type { FinanceReportGate } from './finance-report-gate.service'
 import { FinanceReportsService } from './finance-reports.service'
 
 const ORGANIZATION_ID = 'org-a'
@@ -45,6 +46,14 @@ function line(number: bigint, lineNo: number) {
 }
 
 // What the service asks the database, told apart by its text; `inUnit` says whether a unit of the organization was open at the time
+// The cap of the files is proved in finance-report-gate.service.spec.ts and finance-report-cap.spec.ts; here the gate only lets the file through
+const passGate = {
+  openStream: async (
+    _organizationId: string,
+    prepare: () => Promise<() => AsyncGenerator<unknown>>
+  ) => (await prepare())()
+} as unknown as FinanceReportGate
+
 function build(pages: ReturnType<typeof line>[][]) {
   let inUnit = false
   const asked: { text: string; values: unknown[]; inUnit: boolean }[] = []
@@ -73,7 +82,7 @@ function build(pages: ReturnType<typeof line>[][]) {
   const error = jest.fn()
   const logger = { setContext: jest.fn(), error } as unknown as PinoLogger // what the class calls
   return {
-    service: new FinanceReportsService(prisma, audit, jobContext, logger),
+    service: new FinanceReportsService(prisma, audit, jobContext, passGate, logger),
     error,
     asked,
     inOrganization,
@@ -135,6 +144,7 @@ describe('FinanceReportsService.journalCsv', () => {
       {
         inOrganization: (_org: string, work: () => Promise<unknown>) => work()
       } as unknown as JobContext,
+      passGate,
       { setContext: jest.fn(), error: jest.fn() } as unknown as PinoLogger
     )
 
@@ -171,6 +181,7 @@ describe('FinanceReportsService.journalCsv', () => {
       {
         inOrganization: (_org: string, work: () => Promise<unknown>) => work()
       } as unknown as JobContext,
+      passGate,
       { setContext: jest.fn(), error } as unknown as PinoLogger
     )
 
