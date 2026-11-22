@@ -3,7 +3,7 @@ import { PDFDocument, PDFName, PDFString } from 'pdf-lib'
 
 import { DocumentSanitizing } from '@platform/core/storage'
 
-import { isSanitizedDocumentType, sanitizeDocument } from './document-sanitizer'
+import { isSanitizedDocumentType, sanitizeDocumentInline } from './document-sanitizer'
 
 const AUTHOR = 'Jane Q. Author'
 const PROGRAM = 'Acme Writer 9'
@@ -55,18 +55,25 @@ function docxWithMetadata(): Buffer {
   )
 }
 
-describe('sanitizeDocument: a PDF', () => {
+describe('sanitizeDocumentInline: a PDF', () => {
   it('loses the information dictionary and the XMP and keeps its pages', async () => {
     const dirty = await pdfWithMetadata()
     expect(dirty.includes(AUTHOR)).toBe(true)
 
-    const result = await sanitizeDocument(dirty, 'application/pdf')
+    const result = await sanitizeDocumentInline(dirty, 'application/pdf')
 
     expect(result.kind).toBe('sanitized')
     if (result.kind !== 'sanitized') return
     // Not even as an object that nothing points to
     expect(result.body.includes(AUTHOR)).toBe(false)
     expect(result.body.includes(PROGRAM)).toBe(false)
+    // What the parent of the document thread reads at the two ends of what the cleaner writes: begins and ends as a PDF
+    expect(result.body.subarray(0, 5).toString('latin1')).toBe(DocumentSanitizing.PDF_MAGIC)
+    expect(
+      result.body
+        .subarray(result.body.length - DocumentSanitizing.PDF_END_WINDOW_BYTES)
+        .includes(DocumentSanitizing.PDF_END_MARK)
+    ).toBe(true)
     const again = await PDFDocument.load(result.body, { updateMetadata: false })
     expect(again.getPageCount()).toBe(2)
     expect(again.getAuthor()).toBeUndefined()
@@ -74,17 +81,17 @@ describe('sanitizeDocument: a PDF', () => {
   })
 
   it('leaves a PDF that has nothing to cut, and one it cannot read, as it came', async () => {
-    const first = await sanitizeDocument(await pdfWithMetadata(), 'application/pdf')
+    const first = await sanitizeDocumentInline(await pdfWithMetadata(), 'application/pdf')
     if (first.kind !== 'sanitized') throw new Error('expected a cleaned pdf')
 
-    expect(await sanitizeDocument(first.body, 'application/pdf')).toEqual({
+    expect(await sanitizeDocumentInline(first.body, 'application/pdf')).toEqual({
       kind: 'untouched',
       why: 'already_clean'
     })
     // Nothing in it to cut, or not readable at all: either way it is kept as it came
-    expect((await sanitizeDocument(Buffer.from('%PDF-1.4 broken'), 'application/pdf')).kind).toBe(
-      'untouched'
-    )
+    expect(
+      (await sanitizeDocumentInline(Buffer.from('%PDF-1.4 broken'), 'application/pdf')).kind
+    ).toBe('untouched')
   })
 
   it('drops the properties an incremental update left behind, and the XMP of a page', async () => {
@@ -103,7 +110,7 @@ describe('sanitizeDocument: a PDF', () => {
     const dirty = Buffer.from(await doc.save({ useObjectStreams: false }))
     expect(leaks(dirty, 'Alice Old')).toBe(true)
 
-    const result = await sanitizeDocument(dirty, 'application/pdf')
+    const result = await sanitizeDocumentInline(dirty, 'application/pdf')
 
     expect(result.kind).toBe('sanitized')
     if (result.kind !== 'sanitized') return
@@ -142,7 +149,7 @@ describe('sanitizeDocument: a PDF', () => {
     doc.catalog.set(PDFName.of('Outlines'), outlines)
     const dirty = Buffer.from(await doc.save({ useObjectStreams: false }))
 
-    const result = await sanitizeDocument(dirty, 'application/pdf')
+    const result = await sanitizeDocumentInline(dirty, 'application/pdf')
 
     expect(result.kind).toBe('sanitized')
     if (result.kind !== 'sanitized') return
@@ -166,14 +173,14 @@ describe('sanitizeDocument: a PDF', () => {
     const signed = Buffer.from(await doc.save({ useObjectStreams: false }))
     expect(signed.includes('/ByteRange')).toBe(true)
 
-    expect(await sanitizeDocument(signed, 'application/pdf')).toEqual({
+    expect(await sanitizeDocumentInline(signed, 'application/pdf')).toEqual({
       kind: 'untouched',
       why: 'not_cleanable'
     })
   })
 
   it('leaves a PDF that would be bigger than the limit as it came', async () => {
-    expect(await sanitizeDocument(await pdfWithMetadata(), 'application/pdf', 10)).toEqual({
+    expect(await sanitizeDocumentInline(await pdfWithMetadata(), 'application/pdf', 10)).toEqual({
       kind: 'untouched',
       why: 'not_cleanable'
     })
@@ -183,14 +190,19 @@ describe('sanitizeDocument: a PDF', () => {
 describe.each([
   ['docx', DocumentSanitizing.DOCX_CONTENT_TYPE],
   ['xlsx', DocumentSanitizing.XLSX_CONTENT_TYPE]
-])('sanitizeDocument: a %s', (_name, contentType) => {
+])('sanitizeDocumentInline: a %s', (_name, contentType) => {
   it('is written again with empty properties, no thumbnail and the same content', async () => {
     const dirty = docxWithMetadata()
 
-    const result = await sanitizeDocument(dirty, contentType)
+    const result = await sanitizeDocumentInline(dirty, contentType)
 
     expect(result.kind).toBe('sanitized')
     if (result.kind !== 'sanitized') return
+    // ... and as a zip: its end record is the last 22 bytes
+    expect([...result.body.subarray(0, 4)]).toEqual(DocumentSanitizing.ZIP_MAGIC)
+    expect([...result.body.subarray(result.body.length - 22, result.body.length - 18)]).toEqual(
+      DocumentSanitizing.ZIP_END_MAGIC
+    )
     const parts = unzipSync(new Uint8Array(result.body))
     const all = Object.values(parts)
       .map(part => strFromU8(part))
@@ -208,8 +220,8 @@ describe.each([
   })
 
   it('does not write the day it ran into the file: two runs are the same bytes', async () => {
-    const one = await sanitizeDocument(docxWithMetadata(), contentType)
-    const two = await sanitizeDocument(docxWithMetadata(), contentType)
+    const one = await sanitizeDocumentInline(docxWithMetadata(), contentType)
+    const two = await sanitizeDocumentInline(docxWithMetadata(), contentType)
     if (one.kind !== 'sanitized' || two.kind !== 'sanitized') throw new Error('expected cleaned')
     expect(one.body.equals(two.body)).toBe(true)
   })
@@ -230,7 +242,7 @@ describe.each([
       })
     )
 
-    const result = await sanitizeDocument(dirty, contentType)
+    const result = await sanitizeDocumentInline(dirty, contentType)
 
     expect(result.kind).toBe('sanitized')
     if (result.kind !== 'sanitized') return
@@ -257,7 +269,7 @@ describe.each([
     // Past the cap of the list, and under it (the walk itself must not grow with the square of the size)
     for (const copies of [40_000, 4_000]) {
       const started = Date.now()
-      const result = await sanitizeDocument(hostile(copies), contentType)
+      const result = await sanitizeDocumentInline(hostile(copies), contentType)
       expect(result).toEqual({ kind: 'untouched', why: 'not_cleanable' })
       expect(Date.now() - started).toBeLessThan(1000)
     }
@@ -276,7 +288,7 @@ describe.each([
       })
     )
 
-    const result = await sanitizeDocument(dirty, contentType)
+    const result = await sanitizeDocumentInline(dirty, contentType)
 
     expect(result.kind).toBe('sanitized')
     if (result.kind !== 'sanitized') return
@@ -303,20 +315,20 @@ describe.each([
     )
     dirty.writeUInt32LE(5, central + 24)
 
-    expect(await sanitizeDocument(dirty, contentType)).toEqual({
+    expect(await sanitizeDocumentInline(dirty, contentType)).toEqual({
       kind: 'untouched',
       why: 'not_cleanable'
     })
   })
 
   it('is left as it came when it is cleaned already, is not a package or is too big when opened', async () => {
-    const first = await sanitizeDocument(docxWithMetadata(), contentType)
+    const first = await sanitizeDocumentInline(docxWithMetadata(), contentType)
     if (first.kind !== 'sanitized') throw new Error('expected cleaned')
-    expect(await sanitizeDocument(first.body, contentType)).toEqual({
+    expect(await sanitizeDocumentInline(first.body, contentType)).toEqual({
       kind: 'untouched',
       why: 'already_clean'
     })
-    expect(await sanitizeDocument(Buffer.from('PK not really a zip'), contentType)).toEqual({
+    expect(await sanitizeDocumentInline(Buffer.from('PK not really a zip'), contentType)).toEqual({
       kind: 'untouched',
       why: 'not_cleanable'
     })
@@ -326,7 +338,7 @@ describe.each([
         'big.bin': new Uint8Array(DocumentSanitizing.MAX_UNCOMPRESSED_BYTES + 1)
       })
     )
-    expect(await sanitizeDocument(bomb, contentType)).toEqual({
+    expect(await sanitizeDocumentInline(bomb, contentType)).toEqual({
       kind: 'untouched',
       why: 'not_cleanable'
     })
