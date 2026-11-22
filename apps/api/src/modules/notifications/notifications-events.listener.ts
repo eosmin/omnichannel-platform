@@ -26,6 +26,7 @@ import {
   FiscalResourceTypes,
   formatBpsAsPercent,
   GuideBalanceAlertLevel,
+  MediaStatus,
   MembershipStatus,
   OrderResourceTypes,
   OrderStatus,
@@ -1262,20 +1263,17 @@ export class NotificationsEventsListener {
         where: conversationReaders(payload.visibility, { storeId, notes: payload.internal }),
         select: { userId: true }
       })
-      // Announced once per infected file: a message with two of them must not tell anyone twice
-      const told = await this.prisma.client.notification.findMany({
-        where: { storeId, type: NotificationTypes.MEDIA_INFECTED, resourceId: messageId },
-        select: { userId: true }
-      })
-      const already = new Set(told.map(row => row.userId))
-      await this.notifications.sendToUsers(
-        readers.map(reader => reader.userId).filter(userId => !already.has(userId)),
+      // Told once per message, for good: a message with two infected files must not tell anyone twice, and two
+      // deliveries of the event at once must not either (the check and the write share one lock)
+      await this.notifications.sendToUsersOnce(
+        readers.map(reader => reader.userId),
         {
           storeId,
           type: NotificationTypes.MEDIA_INFECTED,
           resourceType: NotificationResourceTypes.MESSAGE,
           resourceId: messageId,
-          actionPath: AppPaths.store.conversation(storeId, conversationId)
+          actionPath: AppPaths.store.conversation(storeId, conversationId),
+          ever: true
         }
       )
     } catch (error) {
@@ -1300,19 +1298,21 @@ export class NotificationsEventsListener {
         where: conversationReaders(payload.visibility, { storeId, notes: payload.internal }),
         select: { userId: true }
       })
-      const told = await this.prisma.client.notification.findMany({
-        where: { storeId, type: NotificationTypes.MEDIA_UNSCANNABLE, resourceId: messageId },
-        select: { userId: true }
+      // The picture of an ad hangs from its origin, not from the message that carried it: nobody can send it
+      // again, so "ask for it again" would mislead. The audit entry stays; the notice does not go out.
+      const own = await this.prisma.client.media.count({
+        where: { storeId, messageId, status: MediaStatus.UNSCANNABLE }
       })
-      const already = new Set(told.map(row => row.userId))
-      await this.notifications.sendToUsers(
-        readers.map(reader => reader.userId).filter(userId => !already.has(userId)),
+      if (own === 0) return
+      await this.notifications.sendToUsersOnce(
+        readers.map(reader => reader.userId),
         {
           storeId,
           type: NotificationTypes.MEDIA_UNSCANNABLE,
           resourceType: NotificationResourceTypes.MESSAGE,
           resourceId: messageId,
-          actionPath: AppPaths.store.conversation(storeId, conversationId)
+          actionPath: AppPaths.store.conversation(storeId, conversationId),
+          ever: true
         }
       )
     } catch (error) {

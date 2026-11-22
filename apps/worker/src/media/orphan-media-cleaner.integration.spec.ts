@@ -428,7 +428,7 @@ describe('OrphanMediaCleaner', () => {
 
     const report = await sweep()
 
-    expect(report.infectedFilesDeleted).toBeGreaterThanOrEqual(1)
+    expect(report.refusedFilesDeleted).toBeGreaterThanOrEqual(1)
     expect(await storage.head(key)).toBeNull()
   })
 
@@ -456,7 +456,7 @@ describe('OrphanMediaCleaner', () => {
 
     const report = await sweep()
 
-    expect(report.infectedFilesDeleted).toBeGreaterThanOrEqual(1)
+    expect(report.refusedFilesDeleted).toBeGreaterThanOrEqual(1)
     expect(await storage.head(key)).toBeNull()
     expect(await heavy.getJob(`${JobNames.SCAN_FILE}-${id}`)).toBeUndefined()
     expect(await mediaRowCount(id)).toBe(1)
@@ -797,7 +797,7 @@ describe('OrphanMediaCleaner', () => {
         objectsDeleted: 0,
         scansRequeued: 0,
         rowsDropped: 0,
-        infectedFilesDeleted: 0,
+        refusedFilesDeleted: 0,
         unsentFilesDropped: 0
       })
       expect(await storage.head(stray)).not.toBeNull()

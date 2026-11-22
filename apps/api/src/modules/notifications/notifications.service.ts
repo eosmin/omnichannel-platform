@@ -290,6 +290,9 @@ export class NotificationsService {
       // Other types about the same resource that count as "told already" (an assignment says the
       // conversation is theirs, so the first message of it adds nothing)
       alsoUnread?: readonly NotificationType[]
+      // The line is written once for each person and resource, for good: reading it or letting a day pass does not
+      // allow a second one (a verdict on a file is one fact, not a burst)
+      ever?: boolean
     }
   ): Promise<void> {
     if (userIds.length === 0) return
@@ -304,15 +307,19 @@ export class NotificationsService {
         await this.prisma.client.$queryRaw`
           SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`notification-once:${key}`}, 0))) AS lock`
       }
-      const { alsoUnread = [], ...notification } = input
+      const { alsoUnread = [], ever = false, ...notification } = input
       const pending = await this.prisma.client.notification.findMany({
         where: {
           storeId: input.storeId,
           type: { in: [input.type, ...alsoUnread] },
           resourceId: input.resourceId,
           userId: { in: [...userIds] },
-          readAt: null,
-          createdAt: { gte: new Date(Date.now() - NotificationLimits.DEDUP_WINDOW_MS) }
+          ...(ever
+            ? {}
+            : {
+                readAt: null,
+                createdAt: { gte: new Date(Date.now() - NotificationLimits.DEDUP_WINDOW_MS) }
+              })
         },
         select: { userId: true }
       })

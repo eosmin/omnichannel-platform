@@ -64,7 +64,7 @@ export interface CleanupReport {
   objectsDeleted: number
   scansRequeued: number
   rowsDropped: number
-  infectedFilesDeleted: number
+  refusedFilesDeleted: number
   unsentFilesDropped: number
 }
 
@@ -115,7 +115,7 @@ export class OrphanMediaCleaner {
       objectsDeleted: 0,
       scansRequeued: 0,
       rowsDropped: 0,
-      infectedFilesDeleted: 0,
+      refusedFilesDeleted: 0,
       unsentFilesDropped: 0
     }
     report.objectsDeleted =
@@ -125,8 +125,8 @@ export class OrphanMediaCleaner {
       0
     report.rowsDropped +=
       (await this.pass('unattached avatars', () => this.dropUnattachedAvatars(now, scope))) ?? 0
-    report.infectedFilesDeleted =
-      (await this.pass('infected files', () => this.deleteInfectedFiles(scope))) ?? 0
+    report.refusedFilesDeleted =
+      (await this.pass('refused files', () => this.deleteInfectedFiles(scope))) ?? 0
     report.unsentFilesDropped =
       (await this.pass('unsent message files', () => this.dropUnsentMessageFiles(now, scope))) ?? 0
     const stuck = await this.pass('stuck scans', () => this.settleStuckScans(now, scope))
