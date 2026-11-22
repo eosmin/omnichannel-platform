@@ -5,6 +5,7 @@
 ALTER TABLE "invitations" ADD COLUMN "email_outbox" BYTEA;
 ALTER TABLE "invitations" ADD COLUMN "email_claimed_at" TIMESTAMP(3);
 ALTER TABLE "invitations" ADD COLUMN "email_attempts" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "invitations" ADD COLUMN "email_retry_at" TIMESTAMP(3);
 ALTER TABLE "invitations" ADD COLUMN "email_sent_at" TIMESTAMP(3);
 
 -- Few rows (the emails not delivered yet): the sweep reads exactly them

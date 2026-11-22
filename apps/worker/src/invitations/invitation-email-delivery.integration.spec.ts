@@ -11,6 +11,7 @@ import {
   type EmailService,
   type InvitationEmail,
   InvitationOutbox,
+  invitationRetryDelayMs,
   sealInvitationEmail
 } from '@platform/core/email'
 import { EmailTemplates } from '@platform/core/queues'
@@ -147,8 +148,11 @@ describe('InvitationEmailDelivery', () => {
       email_attempts: number
       email_sent_at: Date | null
       email_claimed_at: Date | null
+      // As epoch: the driver would read a `timestamp` without a zone in the local zone of the machine
+      email_retry_ms: number | null
     }>(
-      `SELECT email_outbox, email_attempts, email_sent_at, email_claimed_at FROM invitations WHERE id = $1`,
+      `SELECT email_outbox, email_attempts, email_sent_at, email_claimed_at,
+              (extract(epoch FROM email_retry_at) * 1000)::float8 AS email_retry_ms FROM invitations WHERE id = $1`,
       [id]
     )
     const [row] = rows
@@ -190,18 +194,38 @@ describe('InvitationEmailDelivery', () => {
     expect(send).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps the email when the provider fails, and the next delivery sends it (the link is not lost)', async () => {
+  it('keeps the email when the provider fails, waits a backoff, and then sends it (the link is not lost)', async () => {
     const { id } = await pending()
     send.mockRejectedValueOnce(new Error(`provider down ${SECRET_URL}`))
+    const failedAt = new Date()
 
-    expect(await delivery.deliver(storeId, id)).toBe('failed')
+    expect(await delivery.deliver(storeId, id, failedAt)).toBe('failed')
     const afterFailure = await state(id)
     expect(afterFailure.email_outbox).not.toBeNull()
     expect(afterFailure.email_claimed_at).toBeNull()
     expect(afterFailure.email_attempts).toBe(1)
+    expect(afterFailure.email_retry_ms).toBe(failedAt.getTime() + invitationRetryDelayMs(1))
 
-    expect(await delivery.deliver(storeId, id)).toBe('sent')
+    // Not before the backoff: a minute-by-minute sweep must not burn the attempts of a provider that is down
+    expect(await delivery.deliver(storeId, id, new Date(failedAt.getTime() + 1000))).toBe('skipped')
+    expect(send).toHaveBeenCalledTimes(1)
+    const later = new Date(failedAt.getTime() + invitationRetryDelayMs(1) + 1000)
+    expect(await delivery.deliver(storeId, id, later)).toBe('sent')
     expect(send).toHaveBeenCalledTimes(2)
+  })
+
+  it('doubles the backoff with every failed attempt, up to a cap', () => {
+    expect(invitationRetryDelayMs(1)).toBe(InvitationOutbox.RETRY_BASE_MS)
+    expect(invitationRetryDelayMs(2)).toBe(2 * InvitationOutbox.RETRY_BASE_MS)
+    expect(invitationRetryDelayMs(30)).toBe(InvitationOutbox.RETRY_MAX_MS)
+  })
+
+  it('does not clear the outbox of a row whose last attempt another worker is sending right now', async () => {
+    const { id } = await pending({ attempts: InvitationOutbox.MAX_ATTEMPTS, claimedAt: new Date() })
+
+    expect(await delivery.deliver(storeId, id)).toBe('skipped')
+
+    expect((await state(id)).email_outbox).not.toBeNull()
   })
 
   it('never writes the link, the token or the address to a log', async () => {

@@ -9,8 +9,11 @@ import { EmailTemplates, type SendEmailJob } from '@platform/core/queues'
 // the invitation; a job of the worker opens it, sends it and clears it. Nothing here logs, and what is sealed is never put in a job or a log.
 export const InvitationOutbox = {
   // A delivery that fails this many times is given up (the outbox is cleared and the invitee needs a resend), so a dead provider
-  // does not keep a token sealed for ever
-  MAX_ATTEMPTS: 8,
+  // does not keep a token sealed for ever. With the backoff below the twelve attempts span about eight hours
+  MAX_ATTEMPTS: 12,
+  // After a failed attempt the next one waits RETRY_BASE_MS doubled for each attempt already made, up to RETRY_MAX_MS
+  RETRY_BASE_MS: 60_000,
+  RETRY_MAX_MS: 3_600_000,
   // A claim older than this is a worker that died after sending or before releasing: the email is delivered again (at least once)
   CLAIM_TTL_MS: 300_000,
   // The sweep leaves a fresh row to the job the api queued after the commit; only a row older than this is taken by the sweep
@@ -44,4 +47,12 @@ export function sealInvitationEmail(
 // renamed) throws, and the delivery counts it as a failed attempt.
 export function openInvitationEmail(cipher: CredentialCipher, sealed: Uint8Array): InvitationEmail {
   return sealedEmailSchema.parse(cipher.open(sealed))
+}
+
+// How long after a failed attempt the next one may start (`attemptsMade` counts the one that just failed)
+export function invitationRetryDelayMs(attemptsMade: number): number {
+  return Math.min(
+    InvitationOutbox.RETRY_BASE_MS * 2 ** Math.max(attemptsMade - 1, 0),
+    InvitationOutbox.RETRY_MAX_MS
+  )
 }
