@@ -1062,6 +1062,19 @@ describe('Notifications', () => {
       expect(kept.map(row => row.endpoint)).not.toContain(urls[0])
     })
 
+    it('never ends above the limit when several browsers register at the same time', async () => {
+      for (let index = 0; index < PushLimits.MAX_SUBSCRIPTIONS_PER_USER; index += 1) {
+        await register(endpoint())
+      }
+
+      const answers = await Promise.all(Array.from({ length: 4 }, () => register(endpoint())))
+
+      expect(answers.map(answer => answer.status)).toEqual(Array(4).fill(NO_CONTENT))
+      expect(await owner.pushSubscription.count({ where: { userId: ctx.adminA.id } })).toBe(
+        PushLimits.MAX_SUBSCRIPTIONS_PER_USER
+      )
+    })
+
     it('removes the own browser, and answers the same for one that is someone else’s or unknown', async () => {
       const mine = endpoint()
       const theirs = endpoint()
