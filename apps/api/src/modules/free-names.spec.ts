@@ -1,5 +1,3 @@
-import { connectAnswerSchema } from './carriers/carrier-connections.support'
-import { connectResultSchema } from './channels/channel-connections.schemas'
 import { putConnectionSchema } from './channels/plugin-channel.schemas'
 import { createAddressSchema } from './customers/customers.schemas'
 import { acceptInvitationSchema } from './invitations/invitations.schemas'
@@ -59,38 +57,6 @@ describe('free names that are shown in lists', () => {
       expect(requestAvatarUploadSchema.safeParse({ ...body, filename: 'año.png' }).success).toBe(
         true
       )
-    })
-  })
-
-  describe('reported by a provider: cleaned, never refused, so the connection is still made', () => {
-    it('the name of a carrier account', () => {
-      const parsed = connectAnswerSchema.parse({
-        displayName: 'Mi  cuenta\n‮',
-        credentials: {},
-        metadata: {}
-      })
-      expect(parsed.displayName).toBe('Mi cuenta')
-    })
-
-    it('the name of a channel account', () => {
-      const parsed = connectResultSchema.parse({
-        connectionId: 'abc',
-        displayName: 'Tienda\nNorte​',
-        credentials: {},
-        metadata: {}
-      })
-      expect(parsed.displayName).toBe('Tienda Norte')
-    })
-
-    it('a name that is nothing once cleaned is still refused', () => {
-      expect(
-        connectResultSchema.safeParse({
-          connectionId: 'abc',
-          displayName: '​\n',
-          credentials: {},
-          metadata: {}
-        }).success
-      ).toBe(false)
     })
   })
 })

@@ -5,7 +5,6 @@ import {
   ChannelConnectionListStates,
   InboundLimits,
   PaginationLimits,
-  cleanName,
   singleLineText,
   queryIntSchema
 } from '@platform/core/domain'
@@ -49,12 +48,7 @@ export const connectResultSchema = z.object({
     .max(InboundLimits.ID_MAX_LENGTH)
     // eslint-disable-next-line no-control-regex -- the point is to refuse them
     .regex(/^[^\u0000-\u001f\u007f]+$/),
-  // What the provider calls the account: cleaned to one visible line; refused only when nothing visible is left (a provider that answers that is broken)
-  displayName: z
-    .string()
-    .max(ChannelConnectionLimits.DISPLAY_NAME_MAX_LENGTH)
-    .transform(cleanName)
-    .pipe(z.string().min(1)),
+  displayName: z.string().min(1).max(ChannelConnectionLimits.DISPLAY_NAME_MAX_LENGTH),
   displayNameIsPlaceholder: z.boolean().optional(),
   // What the client may send it may get back, unchanged: the same bound, on the plain JSON
   credentials: boundedJson(z.record(z.string(), z.unknown())),

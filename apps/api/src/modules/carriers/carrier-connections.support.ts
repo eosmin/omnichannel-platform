@@ -7,7 +7,6 @@ import {
   type CarrierHealthReason,
   CarrierReportableStatuses,
   CarrierStatusMappingSource,
-  cleanName,
   normalizeProviderStatusCode,
   pickupRulesProblem,
   rateCentsOf,
@@ -28,11 +27,7 @@ import {
 // What a plugin answers to connect(): checked before any of it is stored or shown. The credentials it returns may differ
 // from the input (an exchanged token) and are what is kept; the metadata is not secret.
 export const connectAnswerSchema = z.object({
-  displayName: z
-    .string()
-    .max(CarrierConnectionLimits.DISPLAY_NAME_MAX_LENGTH)
-    .transform(cleanName)
-    .pipe(z.string().min(1)),
+  displayName: z.string().trim().min(1).max(CarrierConnectionLimits.DISPLAY_NAME_MAX_LENGTH),
   credentials: z.record(z.string(), z.unknown()),
   // Not secret, and small: what a plugin keeps of an account is a few settings
   metadata: z.record(z.string(), z.json()).refine(value => JSON.stringify(value).length <= 2048, {
@@ -203,11 +198,7 @@ export const locationsAnswerSchema = z
         .min(1)
         .max(CarrierLocationLimits.ID_MAX_LENGTH)
         .regex(CarrierLocationLimits.ID_PATTERN),
-      name: z
-        .string()
-        .max(CarrierLocationLimits.NAME_MAX_LENGTH)
-        .transform(cleanName)
-        .pipe(z.string().min(1)),
+      name: z.string().min(1).max(CarrierLocationLimits.NAME_MAX_LENGTH),
       parentId: z
         .string()
         .min(1)
