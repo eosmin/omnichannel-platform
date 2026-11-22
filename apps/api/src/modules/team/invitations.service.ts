@@ -69,22 +69,25 @@ const INVITATION_SELECT = {
   expiresAt: true,
   createdAt: true,
   emailSentAt: true,
-  // Read only to know whether the email still waits: view() turns it into a flag and drops the bytes
-  emailOutbox: true,
+  emailAttempts: true,
   role: { select: { id: true, name: true } },
   invitedBy: { select: { name: true } }
 } as const
 
-function view(row: {
-  id: string
-  email: string
-  expiresAt: Date
-  createdAt: Date
-  emailSentAt: Date | null
-  emailOutbox: Uint8Array | null
-  role: { id: string; name: string }
-  invitedBy: { name: string }
-}): InvitationView {
+// `waiting`: the outbox of the row still holds the email. It is asked with a filter, never by reading the sealed bytes
+function view(
+  waiting: boolean,
+  row: {
+    id: string
+    email: string
+    expiresAt: Date
+    createdAt: Date
+    emailSentAt: Date | null
+    emailAttempts: number
+    role: { id: string; name: string }
+    invitedBy: { name: string }
+  }
+): InvitationView {
   return {
     id: row.id,
     email: row.email,
@@ -94,8 +97,9 @@ function view(row: {
     createdAt: row.createdAt,
     expired: row.expiresAt.getTime() <= Date.now(),
     emailStatus: invitationEmailStatusOf({
-      waiting: row.emailOutbox !== null,
-      emailSentAt: row.emailSentAt
+      waiting,
+      emailSentAt: row.emailSentAt,
+      emailAttempts: row.emailAttempts
     })
   }
 }
@@ -122,7 +126,15 @@ export class InvitationsService {
       select: INVITATION_SELECT,
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }]
     })
-    return rows.map(view)
+    const waiting = new Set(
+      (
+        await this.prisma.client.invitation.findMany({
+          where: { storeId, id: { in: rows.map(row => row.id) }, emailOutbox: { not: null } },
+          select: { id: true }
+        })
+      ).map(row => row.id)
+    )
+    return rows.map(row => view(waiting.has(row.id), row))
   }
 
   // Inviting an address that already has a pending invitation replaces it: the old link stops
@@ -267,7 +279,8 @@ export class InvitationsService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    return view(invitation)
+    // Written with the outbox in the same transaction: it waits
+    return view(true, invitation)
   }
 
   async revoke(storeId: string, invitationId: string, actor: Actor): Promise<void> {

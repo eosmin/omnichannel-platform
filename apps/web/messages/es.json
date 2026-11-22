@@ -3552,7 +3552,8 @@
         "emailStatus": {
           "pending": "Correo en camino",
           "sent": "Correo enviado",
-          "failed": "No se pudo entregar el correo. Reenvía la invitación."
+          "failed": "No se pudo entregar el correo. Reenvía la invitación.",
+          "failedNoAction": "No se pudo entregar el correo. Alguien con permiso para invitar debe reenviarla."
         },
         "resend": {
           "action": "Reenviar",

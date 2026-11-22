@@ -139,9 +139,9 @@ function InvitationRow({
               })}
         </span>
         {emailFailed ? (
-          <span role="alert" className="text-destructive flex items-center gap-1 text-xs">
+          <span className="text-destructive flex items-center gap-1 text-xs">
             <MailWarning aria-hidden className="size-3.5" />
-            {t('emailStatus.failed')}
+            {canInvite && canResend ? t('emailStatus.failed') : t('emailStatus.failedNoAction')}
           </span>
         ) : (
           <span className="text-muted-foreground text-xs">

@@ -39,15 +39,19 @@ describe('the outbox of an invitation email', () => {
     expect(openInvitationEmail(cipher, legacy, here)).toEqual(email)
   })
 
-  it('reads the status from the outbox and the sent time', () => {
-    expect(invitationEmailStatusOf({ waiting: true, emailSentAt: null })).toBe(
+  it('calls failed only an email that used up its attempts, and never one that is still held', () => {
+    const none = { emailSentAt: null, emailAttempts: 0 }
+    expect(invitationEmailStatusOf({ ...none, waiting: true })).toBe(InvitationEmailStatus.PENDING)
+    expect(invitationEmailStatusOf({ waiting: true, emailSentAt: null, emailAttempts: 12 })).toBe(
       InvitationEmailStatus.PENDING
     )
-    expect(invitationEmailStatusOf({ waiting: false, emailSentAt: new Date() })).toBe(
-      InvitationEmailStatus.SENT
-    )
-    expect(invitationEmailStatusOf({ waiting: false, emailSentAt: null })).toBe(
+    expect(
+      invitationEmailStatusOf({ waiting: false, emailSentAt: new Date(), emailAttempts: 3 })
+    ).toBe(InvitationEmailStatus.SENT)
+    expect(invitationEmailStatusOf({ waiting: false, emailSentAt: null, emailAttempts: 12 })).toBe(
       InvitationEmailStatus.FAILED
     )
+    // An invitation from before the outbox, or one cleared by its expiry: not a failure
+    expect(invitationEmailStatusOf({ ...none, waiting: false })).toBe(InvitationEmailStatus.SENT)
   })
 })
