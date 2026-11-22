@@ -249,9 +249,11 @@ export interface OrderPage {
   hasMore: boolean
 }
 
-// What the list reads: the row plus the sort key of the customer
+// What the list reads: the row plus the sort key of the customer. The customer is null when the database hides it from the
+// store of the request (an order that names a customer of another store, under row-level security): the list answers the order
+// with no customer, as it always did, and never fails on it
 export interface ListQueryRow extends Omit<ListRow, 'customer'> {
-  customer: ListRow['customer'] & { nameSearch: string | null }
+  customer: (ListRow['customer'] & { nameSearch: string | null }) | null
 }
 
 export function summaryView({
@@ -260,10 +262,13 @@ export function summaryView({
   ...order
 }: ListQueryRow): OrderSummaryView {
   // `nameSearch` is the sort key of the list by customer: it goes to the cursor and never to the client
-  const { id, name, isCaution } = order.customer
+  const customer =
+    order.customer === null
+      ? null
+      : { id: order.customer.id, name: order.customer.name, isCaution: order.customer.isCaution }
   return {
     ...order,
-    customer: { id, name, isCaution },
+    customer: customer as OrderSummaryView['customer'],
     scheduledDeliveryDate:
       scheduledDeliveryDate === null ? null : dateToCalendarDay(scheduledDeliveryDate),
     priceModified: items.length > 0

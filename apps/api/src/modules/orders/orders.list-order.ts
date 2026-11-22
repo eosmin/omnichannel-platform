@@ -68,9 +68,9 @@ export function orderCursorWhere(
 // What the next cursor remembers of the last row of the page, beyond its day, date and id
 export function orderCursorKey(
   sort: OrderSort,
-  last: { totalCents: number; customer: { nameSearch: string | null } }
+  last: { totalCents: number; customer: { nameSearch: string | null } | null }
 ): number | string | null {
   if (sort === OrderSorts.TOTAL_HIGHEST) return last.totalCents
-  if (sort === OrderSorts.CUSTOMER_NAME) return last.customer.nameSearch ?? ''
+  if (sort === OrderSorts.CUSTOMER_NAME) return last.customer?.nameSearch ?? ''
   return null
 }
