@@ -1,3 +1,6 @@
+import { spawnSync } from 'node:child_process'
+import { join } from 'node:path'
+
 import pg from 'pg'
 
 import { connectionUrls } from '@platform/core/database-testing'
@@ -124,7 +127,7 @@ describe('Validating the constraints added NOT VALID', () => {
       `SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname = $1`,
       [constraint.name]
     )
-    expect(after.rows[0].definition).toBe(`${before.rows[0].definition} NOT VALID`)
+    expect(after.rows[0]?.definition).toBe(`${before.rows[0]?.definition} NOT VALID`)
     await expect(
       owner.query(`INSERT INTO ${SCHEMA}.back (created_by, created_by_plugin_id) VALUES ('u', 'p')`)
     ).rejects.toMatchObject({ code: '23514' })
@@ -138,4 +141,21 @@ describe('Validating the constraints added NOT VALID', () => {
       []
     )
   })
+
+  it('the command refuses to change a database that is not confirmed, before any statement', () => {
+    const run = (...args: string[]) =>
+      spawnSync(
+        process.execPath,
+        ['--import', 'tsx', 'scripts/validate-not-valid-constraints.ts', ...args],
+        {
+          cwd: join(__dirname, '../..'),
+          env: { DIRECT_DATABASE_URL: connectionUrls().owner },
+          encoding: 'utf8'
+        }
+      )
+    const refused = run('run')
+    expect(refused.status).toBe(2)
+    expect(refused.stderr).toContain('Nothing changed')
+    expect(run('status').status).not.toBe(2)
+  }, 60_000)
 })

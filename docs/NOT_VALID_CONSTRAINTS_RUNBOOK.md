@@ -59,17 +59,22 @@ Per constraint: `validated`, `already-valid` (run again is safe), `lock-timeout`
 
 It cannot happen with data written by the application: every row that existed had a null in the new column, and every write since the
 migration is checked. It means a row was changed by hand, or the constraint was dropped (a rollback) and the application wrote after it.
-The tool prints only HOW MANY rows break the check (these tables hold customer data and the output goes to logs). Look at them by id, never
-by content:
+The tool prints only HOW MANY rows break the check (these tables hold customer data and the output goes to logs). Read the rule
+of the constraint first (`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = '<name>'`) and look at the rows by id,
+never by content. Three kinds:
+
+- "never both" (`edited_by_id IS NULL OR edited_by_plugin_id IS NULL`, and the like): both columns are set.
+- "exactly one" (`(created_by IS NULL) <> (created_by_plugin_id IS NULL)`, on `orders` and the stock tables): both are set, or BOTH ARE NULL.
+- The rules on stock transfers, stock counts and `value_cents` are not about people (a dispatched transfer with no sender, an applied
+  count with half of its pair, a negative value).
 
 ```sql
--- the check is in pg_get_constraintdef; for the person-or-plugin ones it is "both set"
 SELECT id FROM messages WHERE edited_by_id IS NOT NULL AND edited_by_plugin_id IS NOT NULL;
 ```
 
-Decide each row with the owner of the data (who really did it: the person or the plugin), set the OTHER column to null in a transaction
-with the reason in the change log, and run step 2 again. Never delete a row to make the check pass, and never drop the constraint to get
-a green run. A constraint that stays `violated` stays `NOT VALID`, which is as safe as it was.
+Decide each row with the owner of the data (who really did it, or what the true value is), correct it in a transaction with the reason in
+the change log, and run step 2 again. Never delete a row to make the check pass, and never drop the constraint to get a green run.
+A constraint that stays `violated` stays `NOT VALID`, which is as safe as it was.
 
 ## 3. Check
 

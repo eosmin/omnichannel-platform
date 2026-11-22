@@ -1,5 +1,7 @@
 import type { ClientBase } from 'pg'
 
+import { DEVELOPMENT_DATABASE_NAME } from '@platform/core/database-testing'
+
 // The CHECK constraints that migrations added NOT VALID on purpose (a migration is one transaction, and adding a CHECK takes the
 // strongest lock of the table while it scans it) and that nothing validated afterwards: the person-or-plugin checks of
 // `plugin_actor` (M1c), `order_plugin_actor` (E3b) and `stock_plugin_actor` (E4b-2), and the value check of the movements.
@@ -139,6 +141,9 @@ export async function validateConstraint(
       }
     }
     throw error
+  } finally {
+    await client.query('RESET lock_timeout')
+    await client.query('RESET statement_timeout')
   }
 }
 
@@ -196,8 +201,14 @@ export function constraintEvents(
 ): { kind: 'not-valid' | 'validate' | 'drop'; name: string }[] {
   const events: { kind: 'not-valid' | 'validate' | 'drop'; name: string; at: number }[] = []
   const sql = withoutComments(migrationSql)
-  for (const match of sql.matchAll(/ADD\s+CONSTRAINT\s+"?(\w+)"?[^;]*?\bNOT\s+VALID\s*;/g)) {
-    if (match[1] !== undefined) events.push({ kind: 'not-valid', name: match[1], at: match.index })
+  // One ALTER TABLE may add several constraints, separated by commas: each clause says for itself whether it is NOT VALID
+  for (const statement of sql.matchAll(/[^;]*;/g)) {
+    for (const clause of statement[0].split(/,(?=\s*ADD\s+CONSTRAINT)/)) {
+      const added = /ADD\s+CONSTRAINT\s+"?(\w+)"?/.exec(clause)
+      if (added?.[1] !== undefined && /\bNOT\s+VALID\s*;?\s*$/.test(clause)) {
+        events.push({ kind: 'not-valid', name: added[1], at: statement.index + (added.index ?? 0) })
+      }
+    }
   }
   for (const match of sql.matchAll(/VALIDATE\s+CONSTRAINT\s+"?(\w+)"?/g)) {
     if (match[1] !== undefined) events.push({ kind: 'validate', name: match[1], at: match.index })
@@ -209,7 +220,7 @@ export function constraintEvents(
 }
 
 // The development database of the owner is never changed by this tool (a session must not: runbook of the owner)
-export const PROTECTED_DATABASES: readonly string[] = ['platform_dev']
+export const PROTECTED_DATABASES: readonly string[] = [DEVELOPMENT_DATABASE_NAME]
 
 // Why a run that CHANGES the database (`run`, `revert`) must not start, or null when it may: the database is not a protected
 // one, and the person named it on the command line (`--confirm=<database>`), as `pnpm db:rls:worker-role` asks. Fails closed.

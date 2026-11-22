@@ -36,21 +36,22 @@ if (url === undefined) {
 }
 
 async function run(selected: (typeof MODES)[number]): Promise<void> {
-  const target = new URL(url ?? '')
-  const databaseName = decodeURIComponent(target.pathname.slice(1))
-  console.log(`database ${databaseName} on ${target.hostname}`)
-  // Before any connection: a refused run never touches the server
-  if (selected !== 'status') {
-    const refusal = refusalToChange(databaseName, argv.slice(3))
-    if (refusal !== null) {
-      console.error(`${refusal}. Nothing changed.`)
-      process.exitCode = 2
-      return
-    }
-  }
   const client = new pg.Client({ connectionString: url })
   await client.connect()
   try {
+    // The server says which database it reached: the path of the URL can be empty (the user's name is used) or be overridden
+    const reached = await client.query<{ name: string }>('SELECT current_database() AS name')
+    const databaseName = reached.rows[0]?.name ?? ''
+    console.log(`database ${databaseName} on ${client.host ?? 'the socket'}`)
+    // Before any statement that changes anything
+    if (selected !== 'status') {
+      const refusal = refusalToChange(databaseName, argv.slice(3))
+      if (refusal !== null) {
+        console.error(`${refusal}. Nothing changed.`)
+        process.exitCode = 2
+        return
+      }
+    }
     if (selected === 'run') {
       for (const outcome of await validateConstraints(client, NOT_VALID_CONSTRAINTS)) {
         const detail =
@@ -76,6 +77,7 @@ async function run(selected: (typeof MODES)[number]): Promise<void> {
     for (const constraint of NOT_VALID_CONSTRAINTS) {
       const { state } = await statusOf(client, constraint)
       if (state !== 'valid') notValid += 1
+      if (state === 'missing' || (selected === 'run' && state !== 'valid')) process.exitCode = 1
       if (selected === 'status' || state !== 'valid') console.log(`${label(constraint)}: ${state}`)
     }
     console.log(

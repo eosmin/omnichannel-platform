@@ -56,6 +56,13 @@ describe('constraintEvents', () => {
   })
 })
 
+describe('constraintEvents with several clauses', () => {
+  it('sees each constraint of one ALTER on its own', () => {
+    const sql = `ALTER TABLE "t" ADD CONSTRAINT a_check CHECK (a > 0), ADD CONSTRAINT b_check CHECK (b > 0) NOT VALID;`
+    expect(constraintEvents(sql)).toEqual([{ kind: 'not-valid', name: 'b_check' }])
+  })
+})
+
 describe('quoteIdentifier', () => {
   it('doubles the quotes of an identifier', () => {
     expect(quoteIdentifier('a"b')).toBe('"a""b"')
