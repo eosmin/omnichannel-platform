@@ -1,3 +1,5 @@
+import { encrypt, parseEncryptionKey } from '@platform/core/crypto'
+
 import {
   dsrEmailHash,
   dsrIntakeSchema,
@@ -5,6 +7,7 @@ import {
   type DsrIntake,
   normalizeDsrEmail,
   openDsrIntake,
+  openDsrNotifyAddress,
   sealDsrIntake
 } from './dsr-intake'
 
@@ -79,5 +82,29 @@ describe('dsrIntakeSchema', () => {
     expect(dsrIntakeSchema.safeParse({ ...intake, email: 'not-an-address' }).success).toBe(false)
     expect(dsrIntakeSchema.safeParse({ ...intake, type: 'sell' }).success).toBe(false)
     expect(dsrIntakeSchema.safeParse({ ...intake, locale: 'fr' }).success).toBe(false)
+  })
+})
+
+// A rotation of CREDENTIALS_ENCRYPTION_KEY (Step 7.3-S11c): what was sealed with the key before still opens while it is held as the previous one
+describe('the intake and the notify address with a previous key', () => {
+  const OLD = 'c'.repeat(64)
+  const NEW = 'd'.repeat(64)
+
+  it('opens a job and an address sealed with the previous key, and only while it is held', () => {
+    const job = sealDsrIntake(intake, OLD)
+    expect(openDsrIntake(job, NEW, OLD)).toMatchObject({ type: 'erasure' })
+    expect(openDsrIntake(job, NEW)).toBeNull()
+    const column = encrypt('ana@example.com', parseEncryptionKey(OLD))
+    expect(openDsrNotifyAddress(column, NEW, OLD)).toBe('ana@example.com')
+    expect(openDsrNotifyAddress(column, NEW)).toBeNull()
+  })
+
+  it('opens what the current key sealed without trying the previous one, and a third key opens nothing', () => {
+    expect(openDsrNotifyAddress(encrypt('a@b.co', parseEncryptionKey(NEW)), NEW, OLD)).toBe(
+      'a@b.co'
+    )
+    expect(
+      openDsrNotifyAddress(encrypt('a@b.co', parseEncryptionKey('e'.repeat(64))), NEW, OLD)
+    ).toBeNull()
   })
 })

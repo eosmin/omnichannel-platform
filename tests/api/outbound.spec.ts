@@ -218,7 +218,9 @@ describe('Replies on their way to a channel', () => {
     events = (await workerServices(app, prisma)).events
     writer = new MessageStatusWriter(prisma, events, new JobContext(prisma))
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
-    const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
+    const cipher = {
+      openRotating: () => ({ credentials: {}, sealedWith: 'current' })
+    } as unknown as CredentialCipher // test double of the cipher
     const contexts = new ChannelContextFactory(cipher)
     sender = new OutboundSender(
       prisma,

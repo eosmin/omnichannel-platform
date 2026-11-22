@@ -82,7 +82,9 @@ describe('An agent reacting to a message', () => {
     registry.register(buildChannelPlugin({ id: PLAIN_TEXT_CHANNEL }))
     const events = app.get(DomainEvents, { strict: false })
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
-    const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
+    const cipher = {
+      openRotating: () => ({ credentials: {}, sealedWith: 'current' })
+    } as unknown as CredentialCipher // test double of the cipher
     const reactions = new ReactionSender(
       prisma,
       registry,

@@ -71,7 +71,9 @@ describe('Sending only the text under a file again', () => {
     const registry = app.get(PluginRegistry, { strict: false })
     registry.register(buildChannelPlugin({ sendMessage: (c, p) => sendMessage(c, p) }))
     const events = app.get(DomainEvents, { strict: false })
-    const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
+    const cipher = {
+      openRotating: () => ({ credentials: {}, sealedWith: 'current' })
+    } as unknown as CredentialCipher // test double of the cipher
     const status = new MessageChangeStatusWriter(prisma, events, new JobContext(prisma))
     sender = new MessageChangeSender(
       prisma,

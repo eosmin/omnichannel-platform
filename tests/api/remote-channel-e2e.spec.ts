@@ -173,7 +173,9 @@ describe('A remote channel plugin, from its registration to the status of a repl
     const conversations = app.get(ConversationsService, { strict: false })
     const connections = new ChannelConnectionResolver(prisma)
     const writer = new MessageStatusWriter(prisma, events, new JobContext(prisma))
-    const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher: the plugin holds the credentials
+    const cipher = {
+      openRotating: () => ({ credentials: {}, sealedWith: 'current' })
+    } as unknown as CredentialCipher // test double of the cipher: the plugin holds the credentials
     const contexts = new ChannelContextFactory(cipher)
     sender = new OutboundSender(
       prisma,

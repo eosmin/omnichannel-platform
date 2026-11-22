@@ -53,7 +53,9 @@ describe('Showing the customer that an agent is typing', () => {
     )
     registry.register(buildChannelPlugin({ id: PLAIN_TEXT_CHANNEL }))
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
-    const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
+    const cipher = {
+      openRotating: () => ({ credentials: {}, sealedWith: 'current' })
+    } as unknown as CredentialCipher // test double of the cipher
     sender = new TypingSender(
       app.get(PrismaService, { strict: false }),
       registry,

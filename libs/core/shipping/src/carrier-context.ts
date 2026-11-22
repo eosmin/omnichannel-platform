@@ -30,7 +30,7 @@ export function buildCarrierContext(
   let credentials: Record<string, unknown> = {}
   if (row.credentials !== null) {
     try {
-      credentials = cipher.open(row.credentials)
+      credentials = cipher.openRotating(row.credentials).credentials
     } catch (error) {
       throw new CarrierCredentialsUnreadableError(error)
     }

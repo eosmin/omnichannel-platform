@@ -72,7 +72,9 @@ describe('Telling the channel that an agent read a conversation', () => {
       return pending
     })
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
-    const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
+    const cipher = {
+      openRotating: () => ({ credentials: {}, sealedWith: 'current' })
+    } as unknown as CredentialCipher // test double of the cipher
     // The sender is the worker's: its own connection, and a context for the store of each job (the app keeps the api's)
     const prisma = createGuardedWorkerPrisma()
     sender = new ReadReceiptSender(

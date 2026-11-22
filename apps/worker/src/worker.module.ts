@@ -26,6 +26,7 @@ import { officialRedactedKeys, PluginRegistry, PluginsModule } from '@platform/p
 import { AnalyticsModule } from './analytics/analytics.module'
 import { CarriersWorkerModule } from './carriers/carriers.module'
 import { DsrWorkerModule } from './compliance/dsr.module'
+import { CredentialsResealWorkerModule } from './credentials/credentials-reseal.module'
 import { ExportsModule } from './exports/exports.module'
 import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { WORKER_RLS_CONTEXT_ON, WorkerRoleCheck } from './health/worker-role.check'
@@ -53,6 +54,7 @@ import { AutoArchiveScheduler } from './schedulers/auto-archive.scheduler'
 import { BenefitCloseScheduler } from './schedulers/benefit-close.scheduler'
 import { BulkLabelsScheduler } from './schedulers/bulk-labels.scheduler'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
+import { CredentialsResealScheduler } from './schedulers/credentials-reseal.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
 import { DsrEraseDueScheduler } from './schedulers/dsr-erase-due.scheduler'
 import { DsrExpireScheduler } from './schedulers/dsr-expire.scheduler'
@@ -94,6 +96,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     WorkerReadinessModule,
     InboundModule,
     MediaModule,
+    CredentialsResealWorkerModule,
     ExportsModule,
     // The sweep of the data requests that were never confirmed is run by its scheduler below
     DsrWorkerModule,
@@ -155,6 +158,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     AutoArchiveScheduler,
     InventoryReconcileScheduler,
     FinanceReconcileScheduler,
+    CredentialsResealScheduler,
     FinanceChainScheduler,
     AnalyticsRollupScheduler,
     ShipmentPollScheduler,

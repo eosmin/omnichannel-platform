@@ -422,7 +422,11 @@ export class DsrReviewService {
     outcome: DsrResultOutcome
   ): Promise<void> {
     if (row.notifyToEncrypted === null) return
-    const to = openDsrNotifyAddress(row.notifyToEncrypted, this.config.encryptionKeyHex)
+    const to = openDsrNotifyAddress(
+      row.notifyToEncrypted,
+      this.config.encryptionKeyHex,
+      this.config.previousEncryptionKeyHex
+    )
     // An address that does not open (a key that changed) cannot be mailed, and must not keep the request from being decided
     if (to === null) {
       this.logger.error({ requestId: row.id }, 'the address of a data request could not be opened')

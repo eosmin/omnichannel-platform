@@ -567,7 +567,13 @@ export class DsrEraseDueSweeper {
           })
           const sealed = row.notifyToEncrypted
           const to =
-            sealed === null ? null : openDsrNotifyAddress(sealed, this.config.encryptionKeyHex)
+            sealed === null
+              ? null
+              : openDsrNotifyAddress(
+                  sealed,
+                  this.config.encryptionKeyHex,
+                  this.config.previousEncryptionKeyHex
+                )
           // An address that does not open (a key that changed) cannot be mailed, and must not stay for ever
           if (to === null) {
             this.logger.error({ requestId }, 'the address of a data request could not be opened')

@@ -2,7 +2,13 @@ import { createHmac } from 'node:crypto'
 
 import { z } from 'zod'
 
-import { decrypt, encrypt, parseEncryptionKey } from '@platform/core/crypto'
+import {
+  DecryptionFailure,
+  decrypt,
+  encrypt,
+  failureOf,
+  parseEncryptionKey
+} from '@platform/core/crypto'
 import { DsrType } from '@platform/core/domain'
 import { type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
 
@@ -34,10 +40,43 @@ export function sealDsrIntake(intake: DsrIntake, encryptionKeyHex: string): stri
   return encrypt(JSON.stringify(intake), parseEncryptionKey(encryptionKeyHex)).toString('base64')
 }
 
-// null: the payload does not open or does not fit (a tampered or an old job): the worker drops it without a retry
-export function openDsrIntake(sealed: string, encryptionKeyHex: string): DsrIntake | null {
+// Opens with the current key, and while a rotation is on (a previous key is held) with the previous one: a job or a column sealed before the
+// rotation still opens until it is sealed again (Step 7.3-S11c). A value that opens with neither is damaged.
+function decryptRotating(
+  sealed: Uint8Array,
+  encryptionKeyHex: string,
+  previousEncryptionKeyHex: string | undefined
+): string {
   try {
-    const text = decrypt(Buffer.from(sealed, 'base64'), parseEncryptionKey(encryptionKeyHex))
+    return decrypt(sealed, parseEncryptionKey(encryptionKeyHex))
+  } catch (error) {
+    // The same rule as the cipher: only a failed tag can mean "another key"; a value that is damaged is damaged under any key
+    if (
+      previousEncryptionKeyHex === undefined ||
+      failureOf(error) !== DecryptionFailure.KEY_MISMATCH
+    ) {
+      throw error
+    }
+    try {
+      return decrypt(sealed, parseEncryptionKey(previousEncryptionKeyHex))
+    } catch {
+      throw error
+    }
+  }
+}
+
+// null: the payload does not open or does not fit (a tampered or an old job): the worker drops it without a retry
+export function openDsrIntake(
+  sealed: string,
+  encryptionKeyHex: string,
+  previousEncryptionKeyHex?: string
+): DsrIntake | null {
+  try {
+    const text = decryptRotating(
+      Buffer.from(sealed, 'base64'),
+      encryptionKeyHex,
+      previousEncryptionKeyHex
+    )
     const parsed = dsrIntakeSchema.safeParse(JSON.parse(text))
     return parsed.success ? parsed.data : null
   } catch {
@@ -47,9 +86,13 @@ export function openDsrIntake(sealed: string, encryptionKeyHex: string): DsrInta
 
 // The address a request will be answered at, from its sealed column. null when it does not open (a key that changed, a damaged value): the
 // caller closes the request without a mail instead of being unable to close it at all
-export function openDsrNotifyAddress(sealed: Uint8Array, encryptionKeyHex: string): string | null {
+export function openDsrNotifyAddress(
+  sealed: Uint8Array,
+  encryptionKeyHex: string,
+  previousEncryptionKeyHex?: string
+): string | null {
   try {
-    return decrypt(Buffer.from(sealed), parseEncryptionKey(encryptionKeyHex))
+    return decryptRotating(Buffer.from(sealed), encryptionKeyHex, previousEncryptionKeyHex)
   } catch {
     return null
   }

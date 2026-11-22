@@ -159,3 +159,33 @@ describe('CredentialCipher', () => {
     })
   })
 })
+
+describe('CredentialCipher, sealed text with a rotation (Step 7.3-S11c)', () => {
+  const oldKey = randomBytes(32)
+  const newKey = randomBytes(32)
+
+  it('opens a text sealed with the previous key and says so, opens a current one as current, and the check opens with the current key alone', () => {
+    const old = new CredentialCipher(oldKey)
+    const rotated = new CredentialCipher(newKey, oldKey)
+    const sealedOld = old.sealText('closing@example.com')
+    expect(rotated.openTextRotating(sealedOld)).toEqual({
+      text: 'closing@example.com',
+      sealedWith: SealedWith.PREVIOUS
+    })
+    const sealedNew = rotated.sealText('closing@example.com')
+    expect(rotated.openTextRotating(sealedNew).sealedWith).toBe(SealedWith.CURRENT)
+    expect(rotated.openText(sealedNew)).toBe('closing@example.com')
+    // The old key never seals, and the current key alone does not open what the old one sealed
+    expect(() => rotated.openText(sealedOld)).toThrow(DecryptionError)
+  })
+
+  it('throws the failure of the CURRENT key when neither opens the text, and without a previous key does not guess', () => {
+    const stranger = new CredentialCipher(randomBytes(32)).sealText('x')
+    expect(() => new CredentialCipher(newKey, oldKey).openTextRotating(stranger)).toThrow(
+      DecryptionError
+    )
+    expect(() =>
+      new CredentialCipher(newKey).openTextRotating(new CredentialCipher(oldKey).sealText('x'))
+    ).toThrow(DecryptionError)
+  })
+})

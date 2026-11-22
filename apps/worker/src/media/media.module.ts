@@ -12,6 +12,7 @@ import { PluginsModule } from '@platform/plugins/runtime'
 
 import { CarriersWorkerModule } from '../carriers/carriers.module'
 import { DsrWorkerModule } from '../compliance/dsr.module'
+import { CredentialsResealWorkerModule } from '../credentials/credentials-reseal.module'
 import { FinancePostingWorkerModule } from '../finance/finance-posting.module'
 import { InventoryReconcileModule } from '../inventory/inventory.module'
 import { HeavyProcessingProcessor } from '../processors/heavy-processing.processor'
@@ -42,6 +43,8 @@ import { VersionedBucketGuard } from './versioned-bucket.guard'
     InventoryReconcileModule,
     // ... and the automatic entries of the books
     FinancePostingWorkerModule,
+    // ... and the re-seal of the sealed credentials after a rotation of the key (Step 7.3-S11c)
+    CredentialsResealWorkerModule,
     // ... and the fiscal documents (TDD_18 §8): the lifecycle submits them through the provider of the issuer
     FiscalRuntimeModule,
     // ... and the nightly retention of a store

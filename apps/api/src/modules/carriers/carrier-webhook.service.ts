@@ -207,7 +207,7 @@ export class CarrierWebhookService {
       return { rejection: CarrierWebhookRejections.NO_WEBHOOK }
     }
     try {
-      const opened = secretSchema.parse(this.cipher.open(row.webhookSecret))
+      const opened = secretSchema.parse(this.cipher.openRotating(row.webhookSecret).credentials)
       return {
         connection: { id: row.id, storeId: row.storeId, carrierId: row.carrierId },
         plugin,
