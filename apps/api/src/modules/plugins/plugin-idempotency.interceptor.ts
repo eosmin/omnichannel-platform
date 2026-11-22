@@ -48,10 +48,10 @@ interface Subject {
 // route with no key behaves as it always did. It runs after PluginApiKeyGuard (which says who the installation is), inside the
 // transaction of the request when the switch of the context is on.
 //
-// The claim and its removal are units of their own, so a concurrent call sees the claim at once; the answer is written where the route
-// wrote (the transaction of the request, when there is one), so the answer and the write stand or fall together. What is left open:
-// with the switch off, a process that dies between the write and the answer leaves a claim that, after STALE_CLAIM_SECONDS, a retry
-// takes and runs again (Step 7.3, plan "S4").
+// With the switch of the context on, the claim, the write and the answer are one transaction (one connection): a failed call rolls
+// back its claim, and a concurrent call with the same key waits on the unique index until it commits. With the switch off, the claim
+// and its removal are units of their own, so a concurrent call sees the claim at once; what is left open is that a process that dies
+// between the write and the answer leaves a claim that, after STALE_CLAIM_SECONDS, a retry takes and runs again (plan, Step 7.3-S4).
 // rls-context: the table is read and written inside the context of the store of the installation (the one the guard resolved)
 @Injectable()
 export class PluginIdempotencyInterceptor implements NestInterceptor {
@@ -93,7 +93,7 @@ export class PluginIdempotencyInterceptor implements NestInterceptor {
     const claim = await this.claim(subject, requestFingerprint(request))
     if (claim.kind === 'replay') {
       response.status(claim.status)
-      response.setHeader(PluginIdempotency.REPLAY_HEADER, 'true')
+      response.setHeader(PluginIdempotency.REPLAY_HEADER, PluginIdempotency.REPLAY_VALUE)
       return of(claim.body)
     }
     return next.handle().pipe(
@@ -112,7 +112,7 @@ export class PluginIdempotencyInterceptor implements NestInterceptor {
     const now = new Date()
     const expiresAt = new Date(now.getTime() + PluginIdempotency.TTL_HOURS * HOUR_MS)
     const staleBefore = new Date(now.getTime() - PluginIdempotency.STALE_CLAIM_SECONDS * 1000)
-    return this.prisma.detachedTenantTransaction(subject.tenant, async () => {
+    return this.inUnit(subject, async () => {
       const table = this.prisma.client.pluginIdempotencyKey
       const made = await table.createMany({
         data: [
@@ -138,7 +138,14 @@ export class PluginIdempotencyInterceptor implements NestInterceptor {
       if (abandoned) {
         // Only the call that read this very claim takes it
         const taken = await table.updateMany({
-          where: { id: row.id, storeId, claimedAt: row.claimedAt },
+          where: {
+            id: row.id,
+            storeId,
+            claimedAt: row.claimedAt,
+            // What was read, not only the claim: a call that closed it since then is not taken
+            state: row.state,
+            expiresAt: row.expiresAt
+          },
           data: {
             requestHash,
             state: PluginIdempotencyState.IN_PROGRESS,
@@ -177,10 +184,17 @@ export class PluginIdempotencyInterceptor implements NestInterceptor {
     body: unknown
   ): Promise<void> {
     const { storeId, installationId, key } = subject
-    const json = body === undefined ? undefined : JSON.stringify(body)
-    const omitted = json !== undefined && Buffer.byteLength(json) > PluginIdempotency.BODY_MAX_BYTES
-    const parsed = json === undefined || omitted ? null : (JSON.parse(json) as Json | null)
     try {
+      // An answer that is not JSON (or is too big) is not kept: the write is done, and a replay says so
+      let json: string | undefined
+      let omitted = false
+      try {
+        json = body === undefined ? undefined : JSON.stringify(body)
+        omitted = json !== undefined && Buffer.byteLength(json) > PluginIdempotency.BODY_MAX_BYTES
+      } catch {
+        omitted = true
+      }
+      const parsed = json === undefined || omitted ? null : (JSON.parse(json) as Json | null)
       const write = () =>
         this.prisma.client.pluginIdempotencyKey.updateMany({
           where: {
@@ -197,9 +211,7 @@ export class PluginIdempotencyInterceptor implements NestInterceptor {
             responseOmitted: omitted
           }
         })
-      await (this.prisma.hasTenantContext()
-        ? write()
-        : this.prisma.tenantTransaction(subject.tenant, write))
+      await this.inUnit(subject, write)
       if (omitted) {
         this.logger.warn(
           { installationId },
@@ -215,11 +227,13 @@ export class PluginIdempotencyInterceptor implements NestInterceptor {
     }
   }
 
-  // The call failed: the key is free again for the retry. Never throws: the error of the call is the one that matters.
+  // The call failed: the key is free again for the retry. Never throws: the error of the call is the one that matters. Inside the
+  // transaction of the request there is nothing to remove: the request rolls back, and the claim with it.
   private async release(subject: Subject, claimedAt: Date): Promise<void> {
+    if (this.prisma.hasTenantContext()) return
     const { storeId, installationId, key } = subject
     try {
-      await this.prisma.detachedTenantTransaction(subject.tenant, () =>
+      await this.prisma.tenantTransaction(subject.tenant, () =>
         this.prisma.client.pluginIdempotencyKey.deleteMany({
           where: {
             storeId,
@@ -236,6 +250,14 @@ export class PluginIdempotencyInterceptor implements NestInterceptor {
         'the claim of an idempotency key could not be released'
       )
     }
+  }
+
+  // In the transaction of the request when it has one (the switch of the context is on): one connection, and the claim, the write and
+  // the answer stand or fall together. With no transaction, each step is a unit of its own, so a concurrent call sees the claim at once.
+  private inUnit<T>(subject: Subject, work: () => Promise<T>): Promise<T> {
+    return this.prisma.hasTenantContext()
+      ? work()
+      : this.prisma.tenantTransaction(subject.tenant, work)
   }
 
   private conflict(reason: string): PlatformException {

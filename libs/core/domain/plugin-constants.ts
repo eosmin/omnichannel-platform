@@ -158,6 +158,7 @@ export const PluginIdempotency = {
   HEADER: 'idempotency-key',
   // Set to "true" on an answer that is a replay of the first call
   REPLAY_HEADER: 'idempotent-replayed',
+  REPLAY_VALUE: 'true',
   KEY_MAX_LENGTH: 255,
   TTL_HOURS: 24,
   // A claim that no answer closed for this long (the process died between the write and its result) may be taken by a retry

@@ -95,11 +95,14 @@ function firstRow(table: FakeTable): Row {
 const STORE = { id: 'store-1', organizationId: 'org-1' }
 const INSTALLATION = { id: 'inst-1', pluginId: 'plug', scopes: [] }
 
-function build(table = new FakeTable()) {
+function build(table = new FakeTable(), inRequestTransaction = false) {
+  const opened = jest.fn()
   const prisma = {
-    detachedTenantTransaction: <T>(_tenant: unknown, work: () => Promise<T>) => work(),
-    tenantTransaction: <T>(_tenant: unknown, work: () => Promise<T>) => work(),
-    hasTenantContext: () => false,
+    tenantTransaction: <T>(_tenant: unknown, work: () => Promise<T>) => {
+      opened()
+      return work()
+    },
+    hasTenantContext: () => inRequestTransaction,
     client: { pluginIdempotencyKey: table }
   }
   const logger = { setContext: jest.fn(), warn: jest.fn(), error: jest.fn() }
@@ -107,7 +110,7 @@ function build(table = new FakeTable()) {
     prisma as unknown as PrismaService,
     logger as unknown as PinoLogger
   )
-  return { interceptor, table, logger }
+  return { interceptor, table, logger, opened }
 }
 
 function call(
@@ -312,6 +315,52 @@ describe('PluginIdempotencyInterceptor', () => {
     expect(retry.run).toHaveBeenCalledTimes(1)
     expect(table.rows).toHaveLength(1)
     expect(table.rows[0]).toMatchObject({ state: PluginIdempotencyState.COMPLETED })
+  })
+
+  it('does not take a claim that the first call closed after it was read as abandoned', async () => {
+    const { interceptor, table } = build()
+    const old = new Date(Date.now() - (PluginIdempotency.STALE_CLAIM_SECONDS + 5) * 1000)
+    table.rows.push({
+      id: 'row-z',
+      storeId: STORE.id,
+      installationId: INSTALLATION.id,
+      key: 'k13',
+      requestHash: 'x',
+      state: PluginIdempotencyState.IN_PROGRESS,
+      responseStatus: null,
+      responseBody: null,
+      responseOmitted: false,
+      claimedAt: old,
+      expiresAt: new Date(old.getTime() + 24 * 3_600_000)
+    })
+    // The retry reads the claim as abandoned; before it writes, the slow first call closes it
+    const read = table.findFirst.bind(table)
+    table.findFirst = args => {
+      const snapshot = { ...(read(args) as Row) }
+      Object.assign(table.rows[0] as Row, {
+        state: PluginIdempotencyState.COMPLETED,
+        responseStatus: 201
+      })
+      return snapshot
+    }
+
+    const retry = call(interceptor, { header: 'k13' })
+
+    await expect(retry.outcome).rejects.toMatchObject({ statusCode: 409 })
+    expect(retry.run).not.toHaveBeenCalled()
+    expect(firstRow(table)).toMatchObject({ state: PluginIdempotencyState.COMPLETED })
+  })
+
+  it('opens no transaction of its own inside the one of the request, and leaves the removal of a failed claim to its rollback', async () => {
+    const { interceptor, table, opened } = build(new FakeTable(), true)
+
+    const ok = call(interceptor, { header: 'k14' })
+    await expect(ok.outcome).resolves.toEqual({ id: 'order-1' })
+    const failed = call(interceptor, { header: 'k15', handler: () => new Error('boom') })
+    await expect(failed.outcome).rejects.toThrow('boom')
+
+    expect(opened).not.toHaveBeenCalled()
+    expect(table.rows.map(row => row.key)).toEqual(['k14', 'k15'])
   })
 
   it('runs again a key whose day is over, with the new request', async () => {
