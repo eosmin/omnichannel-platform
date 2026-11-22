@@ -33,21 +33,29 @@ export function carrierWebhookBodyParser(): RequestHandler {
       next()
       return
     }
+    const uniform401 = (): void => {
+      const body: ErrorResponse = {
+        error: {
+          code: ErrorCodes.CARRIER_WEBHOOK_SIGNATURE_INVALID,
+          message: 'invalid signature',
+          metadata: {}
+        },
+        correlationId: (request as AuthenticatedRequest).correlationId
+      }
+      response.status(HttpStatusCodes.UNAUTHORIZED).json(body)
+    }
     readBody(request, PARSER_LIMIT_BYTES).then(
       raw => {
         let parsed: unknown
         try {
           parsed = raw.length === 0 ? {} : (JSON.parse(raw.toString('utf8')) as unknown)
         } catch {
-          const body: ErrorResponse = {
-            error: {
-              code: ErrorCodes.CARRIER_WEBHOOK_SIGNATURE_INVALID,
-              message: 'invalid signature',
-              metadata: {}
-            },
-            correlationId: (request as AuthenticatedRequest).correlationId
-          }
-          response.status(HttpStatusCodes.UNAUTHORIZED).json(body)
+          uniform401()
+          return
+        }
+        // An object or an array, as the strict parser of Express took: a bare string, number or null is not a body
+        if (typeof parsed !== 'object' || parsed === null) {
+          uniform401()
           return
         }
         const read = request as Request & { rawBody?: Buffer; _body?: boolean }
@@ -57,6 +65,12 @@ export function carrierWebhookBodyParser(): RequestHandler {
         next()
       },
       (error: unknown) => {
+        // A body that goes on past the limit is not read to the end: the answer says the connection closes and the request is
+        // destroyed once it is sent, so a client that keeps streaming holds no socket
+        response.setHeader('Connection', 'close')
+        response.once('finish', () => {
+          request.destroy()
+        })
         next(error)
       }
     )

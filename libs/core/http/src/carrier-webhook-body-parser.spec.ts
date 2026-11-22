@@ -1,3 +1,6 @@
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
+
 import { Controller, type INestApplication, type RawBodyRequest, Post, Req } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import type { Request } from 'express'
@@ -7,6 +10,7 @@ import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { LoggerModule } from '@platform/core/logger'
 import { MetricsModule } from '@platform/core/metrics-module'
 
+import { carrierWebhookBodyParser } from './carrier-webhook-body-parser'
 import { configureHttpApp } from './configure-http-app'
 import { HttpErrorsModule } from './http-errors.module'
 
@@ -61,7 +65,7 @@ describe('the body parser of the webhook of a carrier', () => {
     expect(await response.json()).toEqual({ raw, body: { events: [] } })
   })
 
-  it.each(['{"events": [', 'not json', '[1,', '{"a":1}}'])(
+  it.each(['{"events": [', 'not json', '[1,', '{"a":1}}', '"abc"', '123', 'null', 'true'])(
     'answers the uniform 401 for a body that is not JSON (%s), and not the 400 of the parser',
     async body => {
       const response = await post(route, body)
@@ -81,9 +85,32 @@ describe('the body parser of the webhook of a carrier', () => {
     expect(response.status).toBe(HttpStatusCodes.UNAUTHORIZED)
   })
 
-  it('keeps the answer of the parser for a body that is too large', async () => {
-    const response = await post(route, JSON.stringify({ x: 'x'.repeat(110_000) }))
-    expect(response.status).toBe(HttpStatusCodes.PAYLOAD_TOO_LARGE)
+  it('takes an array as a body, as the strict parser did', async () => {
+    const response = await post(route, '[1]')
+    expect(response.status).toBe(HttpStatusCodes.CREATED)
+  })
+
+  it('refuses a streamed body past the limit, answers with the connection closing and destroys the request once the answer is sent', async () => {
+    const request = Object.assign(new PassThrough(), {
+      method: 'POST',
+      path: `${API_PREFIX}${route}`,
+      // No content-length: the size is only known by counting what arrives
+      headers: { 'content-type': 'application/json' }
+    })
+    const destroy = jest.spyOn(request, 'destroy')
+    const response = Object.assign(new EventEmitter(), { setHeader: jest.fn() })
+    const next = jest.fn<void, [unknown?]>()
+
+    carrierWebhookBodyParser()(request as never, response as never, next)
+    request.write(`{"x":"${'x'.repeat(110_000)}`)
+    await new Promise(resolve => setImmediate(resolve))
+
+    expect(next).toHaveBeenCalledTimes(1)
+    expect(next.mock.calls[0]?.[0]).toMatchObject({ status: HttpStatusCodes.PAYLOAD_TOO_LARGE })
+    expect(response.setHeader).toHaveBeenCalledWith('Connection', 'close')
+    expect(destroy).not.toHaveBeenCalled()
+    response.emit('finish')
+    expect(destroy).toHaveBeenCalledTimes(1)
   })
 
   it('leaves every other route, and a body that is not JSON there, to Nest', async () => {
