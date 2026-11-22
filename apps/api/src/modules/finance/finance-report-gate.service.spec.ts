@@ -10,10 +10,17 @@ class FakeRedis {
   places = new Map<string, Map<string, number>>()
   down = false
   evalCalls = 0
+  // Runs in the middle of the next renewal (the await on Redis), then the renewal answers that the place is gone
+  duringRenew: (() => Promise<void>) | undefined
 
   eval(script: string, _keys: number, key: string, ...args: (string | number)[]): Promise<number> {
     this.evalCalls += 1
     if (this.down) return Promise.reject(new Error('connection lost'))
+    if (!script.includes('ZCARD') && this.duringRenew !== undefined) {
+      const during = this.duringRenew
+      this.duringRenew = undefined
+      return during().then(() => 0)
+    }
     const set = this.places.get(key) ?? new Map<string, number>()
     this.places.set(key, set)
     if (script.includes('ZCARD')) {
@@ -252,6 +259,18 @@ describe('FinanceReportGate', () => {
       // The response closed: the controller gave the place back by hand, and the generator still pulls its next page
       await stream.dispose()
       expect(redis.held()).toBe(0)
+      await stream.next()
+      await stream.return(undefined)
+      expect(redis.held()).toBe(0)
+    })
+
+    it('does not take the place again when the transport gives it back in the middle of a renewal that finds it expired', async () => {
+      const redis = new FakeRedis()
+      const gate = gateOf(redis)
+      const stream = await gate.openStream('org-1', prepared(3))
+      await stream.next()
+      // The renewal of the next page finds the place gone, and while it waits for Redis the response closes and `dispose` runs
+      redis.duringRenew = () => stream.dispose()
       await stream.next()
       await stream.return(undefined)
       expect(redis.held()).toBe(0)

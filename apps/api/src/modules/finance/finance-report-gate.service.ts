@@ -135,7 +135,8 @@ export class FinanceReportGate {
     const renew = async (): Promise<void> => {
       // A place the transport already gave back is never taken again: the page in hand is the last one of a file nobody reads
       if (!taken || released) return
-      if (!(await this.renew(STREAMS, organizationId, token))) {
+      // `dispose` may have run while the renewal waited for Redis: look at `released` again before taking the place back
+      if (!(await this.renew(STREAMS, organizationId, token)) && !released) {
         await this.acquire(STREAMS, organizationId, token)
       }
     }
