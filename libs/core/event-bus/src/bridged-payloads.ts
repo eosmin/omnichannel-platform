@@ -207,6 +207,25 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     oldestAgeDays: z.number().int().min(0),
     totalOwedCents: z.number().int().min(0)
   }),
+  // A data request that needs the reviewers: ids and a code, never an address or a name
+  [Events.DSR_DEADLINE_APPROACHING]: z.object({
+    storeId: id,
+    requestId: id,
+    type: z.string().min(1).max(32),
+    daysLeft: z.number().int().min(0).max(366)
+  }),
+  [Events.DSR_RETURNED_TO_REVIEW]: z.object({
+    storeId: id,
+    requestId: id,
+    type: z.string().min(1).max(32),
+    reason: z.string().min(1).max(64)
+  }),
+  [Events.DSR_NOTICE_FAILED]: z.object({
+    storeId: id,
+    requestId: id,
+    type: z.string().min(1).max(32),
+    reason: z.string().min(1).max(64)
+  }),
   // A webhook turned off: its id and the count of failures, never its address or the response that failed
   [Events.WEBHOOK_AUTO_DISABLED]: z.object({
     storeId: id,

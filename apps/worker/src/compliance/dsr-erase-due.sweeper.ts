@@ -1,8 +1,5 @@
-import { InjectQueue } from '@nestjs/bullmq'
 import { Inject, Injectable } from '@nestjs/common'
-import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
-import { z } from 'zod'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -13,10 +10,8 @@ import {
   DsrErasureReturnReasons,
   type DsrErasureReturnReason,
   DsrResourceTypes,
-  DsrResultOutcomes,
   LegalBases,
   hasOpenWork,
-  openDsrNotifyAddress,
   type DsrOpenWork
 } from '@platform/core/compliance'
 import {
@@ -32,16 +27,12 @@ import {
 } from '@platform/core/database'
 import { type Actor, DsrStatus, DsrType } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
-import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
-import {
-  dsrResultMailJobId,
-  EmailTemplates,
-  JobNames,
-  QueueNames,
-  type SendEmailJob
-} from '@platform/core/queues'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 
 import { allStoreIds } from '../schedulers/store-sweep'
+
+import { DsrNoticeSender } from './dsr-notice-sender.service'
 
 // rls-context: the stores are listed from `stores`; every read and write of a request and of a customer runs inside JobContext.forStore
 
@@ -90,7 +81,8 @@ export class DsrEraseDueSweeper {
     private readonly audit: AuditService,
     private readonly erasure: CustomerErasureService,
     private readonly openWork: DsrOpenWorkService,
-    @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
+    private readonly notices: DsrNoticeSender,
+    private readonly events: DomainEvents,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig,
     private readonly logger: PinoLogger
   ) {
@@ -134,8 +126,9 @@ export class DsrEraseDueSweeper {
     // Each was audited in the transaction that gave it back
     report.returned += exhausted.length
     // The closing notices that a queue that was down left unsent: the erasure is committed, the person still has to be told
-    const unsent = await this.jobContext.forStore(storeId, () => this.unsentNoticesOf(storeId))
-    for (const requestId of unsent) await this.notify(storeId, requestId, report)
+    const unsent = await this.notices.sendPending(storeId)
+    report.notified += unsent.queued
+    report.failed += unsent.failed
     const candidates = await this.jobContext.forStore(storeId, () =>
       this.candidatesOf(storeId, now)
     )
@@ -173,7 +166,9 @@ export class DsrEraseDueSweeper {
         report.completed += 1
         // Audited inside the transaction that ended the request (a death between the commit and a later line cannot lose the entry)
         // After the commit: the person is told only of an erasure that happened
-        await this.notify(storeId, requestId, report)
+        const notice = await this.notices.send(storeId, requestId)
+        if (notice === 'queued') report.notified += 1
+        if (notice === 'failed') report.failed += 1
       } else {
         // Audited inside the transaction that gave the request back
         report.returned += 1
@@ -219,6 +214,7 @@ export class DsrEraseDueSweeper {
         if (done.count === 1) {
           given.push(row)
           this.logReturned(
+            tx,
             storeId,
             row.organizationId,
             row.id,
@@ -445,6 +441,7 @@ export class DsrEraseDueSweeper {
           })
           // Audited with the move, in this transaction
           this.logReturned(
+            tx,
             storeId,
             row.organizationId,
             requestId,
@@ -477,7 +474,7 @@ export class DsrEraseDueSweeper {
       // next approval starts clean
       data: { ...this.backToReview(reason), erasureAttempts: 0, erasureAttemptedAt: null }
     })
-    if (done.count === 1) this.logReturned(storeId, organizationId, requestId, reason, openWork)
+    if (done.count === 1) this.logReturned(tx, storeId, organizationId, requestId, reason, openWork)
   }
 
   // Back to the queue of the reviewers: the grace period and the approvals are cleared, so a new approval starts the cycle again (an approver
@@ -497,6 +494,7 @@ export class DsrEraseDueSweeper {
   }
 
   private logReturned(
+    tx: PrismaTransaction,
     storeId: string,
     organizationId: string,
     requestId: string,
@@ -513,25 +511,13 @@ export class DsrEraseDueSweeper {
       // A reason and counts: no customer, no address
       metadata: { type: DsrType.ERASURE, reason, ...(openWork === null ? {} : { openWork }) }
     })
-  }
-
-  // Ended erasures that still hold their sealed address: the mail was not queued yet
-  private unsentNoticesOf(storeId: string): Promise<string[]> {
-    return this.prisma
-      .transaction(tx =>
-        tx.dataSubjectRequest.findMany({
-          where: {
-            storeId,
-            type: DsrType.ERASURE,
-            status: DsrStatus.COMPLETED,
-            notifyToEncrypted: { not: null }
-          },
-          orderBy: [{ completedAt: 'asc' }, { id: 'asc' }],
-          take: ComplianceConfig.DSR_ERASE_BATCH,
-          select: { id: true }
-        })
-      )
-      .then(rows => rows.map(row => row.id))
+    // The reviewers are told (debt (a) of H2b-1): the request is back in their queue and nobody else knows. A reason code, never a person
+    this.events.publish(tx, Events.DSR_RETURNED_TO_REVIEW, {
+      storeId,
+      requestId,
+      type: DsrType.ERASURE,
+      reason
+    })
   }
 
   // The try a claim counted, given back when nothing was tried
@@ -548,95 +534,4 @@ export class DsrEraseDueSweeper {
       })
     )
   }
-
-  // One closing mail, in its own transaction, after the erasure committed: the address is opened, the mail queued and the address cleared, in
-  // that order, so a queue that is down changes nothing and the next night tries again. A failure here never undoes an erasure.
-  private async notify(storeId: string, requestId: string, report: DsrEraseReport): Promise<void> {
-    try {
-      const sent = await this.jobContext.forStore(storeId, () =>
-        this.prisma.transaction(async tx => {
-          const locked = await tx.$queryRaw<{ id: string }[]>`
-            SELECT id FROM data_subject_requests
-            WHERE id = ${requestId} AND store_id = ${storeId} AND type = ${DsrType.ERASURE}
-              AND status = ${DsrStatus.COMPLETED} AND notify_to_encrypted IS NOT NULL
-            FOR UPDATE SKIP LOCKED`
-          if (locked.length === 0) return false
-          const row = await tx.dataSubjectRequest.findFirstOrThrow({
-            where: { id: requestId, storeId },
-            select: { notifyToEncrypted: true, retainedRecordsSummary: true }
-          })
-          const sealed = row.notifyToEncrypted
-          const to =
-            sealed === null ? null : openDsrNotifyAddress(sealed, this.config.encryptionKeyHex)
-          // An address that does not open (a key that changed) cannot be mailed, and must not stay for ever
-          if (to === null) {
-            this.logger.error({ requestId }, 'the address of a data request could not be opened')
-          } else {
-            await this.queueMail(
-              tx,
-              storeId,
-              requestId,
-              to,
-              retainedOrdersOf(row.retainedRecordsSummary)
-            )
-          }
-          await tx.dataSubjectRequest.updateMany({
-            where: { id: requestId, storeId, status: DsrStatus.COMPLETED },
-            data: { notifyToEncrypted: null }
-          })
-          return to !== null
-        })
-      )
-      if (sent) report.notified += 1
-    } catch (error) {
-      report.failed += 1
-      this.logger.error(
-        { storeId, requestId, errorName: errorName(error) },
-        'the closing mail of an erased data request could not be queued; the next run tries again'
-      )
-    }
-  }
-
-  private async queueMail(
-    tx: PrismaTransaction,
-    storeId: string,
-    requestId: string,
-    to: string,
-    retainedOrders: number
-  ): Promise<void> {
-    const store = await tx.store.findUnique({
-      where: { id: storeId },
-      select: { defaultLocale: true }
-    })
-    const locale: Locale =
-      SUPPORTED_LOCALES.find(candidate => candidate === store?.defaultLocale) ?? DEFAULT_LOCALE
-    await this.emailQueue.add(
-      JobNames.SEND_EMAIL,
-      {
-        template: EmailTemplates.DSR_RESULT,
-        to,
-        locale,
-        data: {
-          outcome: DsrResultOutcomes.COMPLETED,
-          requestType: DsrType.ERASURE,
-          retainedOrders
-        },
-        tags: { template: EmailTemplates.DSR_RESULT }
-      },
-      // The job holds the address: gone as soon as it is sent or fails
-      {
-        jobId: dsrResultMailJobId(requestId),
-        removeOnComplete: true,
-        // The job holds the address in the clear, so it is dropped when it fails too. The sealed address on the request is cleared in the same
-        // transaction that queues this job: a mail that fails ALL its attempts in the mail queue is not queued again (debt (o) of the plan)
-        removeOnFail: true
-      }
-    )
-  }
-}
-
-// What the summary of a finished request says it kept (the number the closing mail states)
-function retainedOrdersOf(summary: unknown): number {
-  const parsed = z.object({ orders: z.number().int().nonnegative() }).safeParse(summary)
-  return parsed.success ? parsed.data.orders : 0
 }

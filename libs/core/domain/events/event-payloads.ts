@@ -167,6 +167,22 @@ export interface RemittanceDifferenceWrittenOffPayload {
   actor: ActorRef
 }
 
+// A data request the reviewers must look at (Step 7.2-H2b-2): ids and a code only, never an address or a name. `reason` says why it came back
+// (a name of `DsrErasureReturnReasons` or of `DsrFailureCodes`)
+export interface DsrAttentionPayload {
+  storeId: string
+  requestId: string
+  type: string
+  reason: string
+}
+export interface DsrDeadlinePayload {
+  storeId: string
+  requestId: string
+  type: string
+  // Whole days that are left of the legal deadline when it is raised
+  daysLeft: number
+}
+
 // A remittance of cash collected on delivery that was confirmed or voided (TDD_17 §4.15): the totals are in the remittance, the
 // event only says which one and who did it
 export interface RemittanceEventPayload {
@@ -680,6 +696,9 @@ export interface DomainEventPayloads {
   [Events.CARRIER_GUIDES_PURCHASED]: CarrierGuidesMovementPayload
   [Events.CARRIER_GUIDES_PURCHASE_VOIDED]: CarrierGuidesMovementPayload
   [Events.REMITTANCE_OVERDUE]: RemittanceOverduePayload
+  [Events.DSR_DEADLINE_APPROACHING]: DsrDeadlinePayload
+  [Events.DSR_RETURNED_TO_REVIEW]: DsrAttentionPayload
+  [Events.DSR_NOTICE_FAILED]: DsrAttentionPayload
   [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload
   [Events.FINANCE_POSTING_FAILED]: FinancePostingFailedPayload

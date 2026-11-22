@@ -5,6 +5,7 @@ import type { Counter } from '@prometheus-io/client'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
+import { DsrResourceTypes } from '@platform/core/compliance'
 import {
   EventContext,
   InEventOrganization,
@@ -50,6 +51,8 @@ import {
   type CarrierBenefitAlertPayload,
   type CarrierGuideBalanceAlertPayload,
   type CarrierStatusUnmappedPayload,
+  type DsrAttentionPayload,
+  type DsrDeadlinePayload,
   type RemittanceOverduePayload,
   type WebhookAutoDisabledPayload,
   type CountSubmittedPayload,
@@ -400,6 +403,72 @@ export class NotificationsEventsListener {
         { connectionId, err: String(error) },
         'an overdue remittance could not be notified'
       )
+    }
+  }
+
+  // A data request is near its legal deadline (TDD_05 §10.2, day 25 of 30). Raised once by the daily check of the worker; the people who review
+  // data requests are told, and only while they still hold the permission. The request is read under the store of the event.
+  @OnEvent(Events.DSR_DEADLINE_APPROACHING)
+  @InEventStore()
+  async onDsrDeadlineApproaching(payload: DsrDeadlinePayload): Promise<void> {
+    await this.notifyDsrReviewers(
+      NotificationTypes.DSR_DEADLINE_APPROACHING,
+      payload.storeId,
+      payload.requestId,
+      { days: payload.daysLeft }
+    )
+  }
+
+  // An approved request (an erasure the sweep could not carry out, an export that failed) is back in the review queue
+  @OnEvent(Events.DSR_RETURNED_TO_REVIEW)
+  @InEventStore()
+  async onDsrReturnedToReview(payload: DsrAttentionPayload): Promise<void> {
+    await this.notifyDsrReviewers(
+      NotificationTypes.DSR_MANUAL_REVIEW,
+      payload.storeId,
+      payload.requestId,
+      {}
+    )
+  }
+
+  // The closing mail of a request never reached the person: a reviewer has to tell them another way (a right of the person, TDD_05 §10.3)
+  @OnEvent(Events.DSR_NOTICE_FAILED)
+  @InEventStore()
+  async onDsrNoticeFailed(payload: DsrAttentionPayload): Promise<void> {
+    await this.notifyDsrReviewers(
+      NotificationTypes.DSR_NOTICE_FAILED,
+      payload.storeId,
+      payload.requestId,
+      {}
+    )
+  }
+
+  // The request is read under the store of the event: an id of another store tells nobody. No name and no address ever reach the text.
+  private async notifyDsrReviewers(
+    type: NotificationType,
+    storeId: string,
+    requestId: string,
+    params: Record<string, string | number>
+  ): Promise<void> {
+    try {
+      const request = await this.prisma.client.dataSubjectRequest.findFirst({
+        where: { id: requestId, storeId },
+        select: { id: true }
+      })
+      if (request === null) {
+        this.logger.warn({ requestId }, 'a data request notice names a request of another store')
+        return
+      }
+      await this.notifications.sendToStore({
+        storeId,
+        type,
+        params,
+        resourceType: DsrResourceTypes.REQUEST,
+        resourceId: requestId,
+        requiredPermission: Permissions.CUSTOMERS_DSR_REVIEW
+      })
+    } catch (error) {
+      this.logger.error({ requestId, err: String(error) }, 'a data request could not be notified')
     }
   }
 

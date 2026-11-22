@@ -645,6 +645,7 @@
         "body": "Your request for {type} was cancelled and nothing was erased. You can write to the store if you want to know why."
       },
       "retained": "The store keeps {orders} orders and their invoices because the law requires it for tax purposes (legal obligation).",
+      "exportDelivery": "The store will give you the file with your data by a safe way. It never travels in this message.",
       "footer": "This is an automatic message.",
       "types": {
         "access": "access to your data",
@@ -994,11 +995,15 @@
     "dsr": {
       "deadline_approaching": {
         "title": "A data request is about to expire",
-        "body": "A data subject request is close to its deadline."
+        "body": "A data subject request has {days} days left of its legal deadline."
       },
       "manual_review": {
         "title": "A data request needs review",
         "body": "A data subject request needs a person to review it."
+      },
+      "notice_failed": {
+        "title": "A person was not told the outcome of their data request",
+        "body": "The closing notice of a data request could not be delivered. Tell the person another way."
       }
     },
     "export": {

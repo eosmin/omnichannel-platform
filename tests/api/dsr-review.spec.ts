@@ -285,8 +285,9 @@ describe('The review queue of the data requests', () => {
       expect((await rowOf(erasure.id)).status).toBe(DsrStatus.MANUAL_REVIEW)
 
       executor = true
-      const access = await inReview({ type: DsrType.ACCESS })
-      const noExecutor = await approve(access.id)
+      // Rectification, restriction and objection have no sweep that carries them out (access and portability do since H2b-2)
+      const rectification = await inReview({ type: DsrType.RECTIFICATION })
+      const noExecutor = await approve(rectification.id)
       expect(noExecutor.status).toBe(CONFLICT)
       expect(codeOf(noExecutor.body)).toBe(ErrorCodes.DSR_EXECUTOR_UNAVAILABLE)
     })
@@ -531,6 +532,23 @@ describe('The review queue of the data requests', () => {
       expect(row.status).toBe(DsrStatus.REJECTED)
       expect(row.notifyToEncrypted).toBeNull()
       expect(emailsOf(app).jobs).toHaveLength(0)
+      // The person could not be told, and the reviewer SEES it in the answer and in the audit (Step 7.2-H2b-2)
+      expect(row.noticeFailedAt).not.toBeNull()
+      expect((response.body as { noticeStatus?: string }).noticeStatus).toBe('failed')
+      await waitForAuditEntries(owner, { action: AuditAction.DSR_NOTICE_FAILED, resourceId: id })
+    })
+
+    it('queues the closing mail with the ids the processor confirms it by, and the address nowhere else', async () => {
+      const { id, email } = await inReview()
+
+      const response = await reject(id)
+
+      expect(response.status).toBe(OK)
+      const [mail] = emailsOf(app).to(email)
+      expect(mail?.dsrNotice).toEqual({ requestId: id, storeId: ctx.storeA.id })
+      expect(JSON.stringify({ ...mail, to: null })).not.toContain(email)
+      // Nothing confirmed it yet: the request does not say it was told
+      expect((response.body as { noticeStatus?: string }).noticeStatus).toBe('none')
     })
 
     it('cancels nothing that is not an approved erasure still inside its grace period', async () => {
@@ -591,5 +609,138 @@ describe('The review queue of the data requests', () => {
     const later = await customerWith(ctx.storeA.id, email)
     expect((await approve(id)).status).toBe(OK)
     expect((await rowOf(id)).subjectCustomerIds).not.toContain(later)
+  })
+
+  // Access and portability (Step 7.2-H2b-2): approved like an erasure, but with no grace period and no open-work block, and the file is reached by
+  // a short signed link that only this store's reviewers can ask for
+  describe('access and portability', () => {
+    it.each([DsrType.ACCESS, DsrType.PORTABILITY])(
+      'approves %s at once: in progress, no date, no tries, and open work does not block it',
+      async type => {
+        const { id, customerId } = await inReview({ type })
+        // An order that is still open stops an erasure, never an export of what is held
+        const order = await createOrder(owner, {
+          storeId: ctx.storeA.id,
+          status: OrderStatus.PENDING_CONFIRMATION
+        })
+        await owner.order.update({ where: { id: order.id }, data: { customerId } })
+
+        const response = await approve(id)
+
+        expect(response.status).toBe(OK)
+        const row = await rowOf(id)
+        expect(row).toMatchObject({
+          status: DsrStatus.IN_PROGRESS,
+          erasureDueAt: null,
+          exportAttempts: 0,
+          resultKey: null
+        })
+        expect(
+          (await owner.customer.findUniqueOrThrow({ where: { id: customerId } })).erasedAt
+        ).toBeNull()
+      }
+    )
+
+    it('refuses to approve an export for a customer that was erased or whose address moved to someone else', async () => {
+      const erased = await inReview({ type: DsrType.ACCESS })
+      await owner.customer.update({
+        where: { id: erased.customerId },
+        data: { erasedAt: new Date() }
+      })
+      const moved = await inReview({ type: DsrType.ACCESS })
+      await owner.customer.update({
+        where: { id: moved.customerId },
+        data: { email: addressOf('other') }
+      })
+
+      for (const { id } of [erased, moved]) {
+        const response = await approve(id)
+        expect(response.status).toBe(CONFLICT)
+        expect(codeOf(response.body)).toBe(ErrorCodes.DSR_SUBJECT_CHANGED)
+        expect((await rowOf(id)).status).toBe(DsrStatus.MANUAL_REVIEW)
+      }
+    })
+
+    async function finishedExport(
+      overrides: {
+        storeId?: string
+        type?: string
+        expiresAt?: Date | null
+        key?: string | null
+      } = {}
+    ): Promise<string> {
+      const email = addressOf('exp')
+      const storeId = overrides.storeId ?? ctx.storeA.id
+      const customerId = await customerWith(storeId, email)
+      const id = await requestOf({
+        storeId,
+        organizationId: storeId === ctx.storeB.id ? ctx.orgB.id : ctx.orgA.id,
+        customerIds: [customerId],
+        email,
+        type: overrides.type ?? DsrType.ACCESS,
+        status: DsrStatus.COMPLETED
+      })
+      await owner.dataSubjectRequest.update({
+        where: { id },
+        data: {
+          completedAt: new Date(),
+          resultKey:
+            overrides.key === undefined ? `compliance/dsr/${id}/export.zip` : overrides.key,
+          resultExpiresAt:
+            overrides.expiresAt === undefined ? new Date(Date.now() + DAY_MS) : overrides.expiresAt
+        }
+      })
+      return id
+    }
+    const link = (id: string, actor: Actor = ctx.adminA, store = ctx.storeA) =>
+      api(app, actor, store).get(ApiRoutes.compliance.dsrExport(id))
+
+    it('gives a short signed link to the file, audits who asked, and shows the file as ready', async () => {
+      const id = await finishedExport()
+
+      const response = await link(id)
+
+      expect(response.status).toBe(OK)
+      const body = response.body as { url: string; expiresInSeconds: number; filename: string }
+      expect(body.url).toContain(`compliance/dsr/${id}/export.zip`)
+      expect(body.expiresInSeconds).toBe(ComplianceConfig.DSR_EXPORT_DOWNLOAD_URL_SECONDS)
+      expect(body.filename).toBe(ComplianceConfig.DSR_EXPORT_FILENAME)
+      await waitForAuditEntries(owner, {
+        action: AuditAction.DSR_EXPORT_DOWNLOADED,
+        resourceId: id
+      })
+      const detail = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.compliance.dsrById(id))
+      expect(detail.body).toMatchObject({ exportReady: true })
+    })
+
+    it.each([
+      ['a request of another organization', () => finishedExport({ storeId: ctx.storeB.id })],
+      ['a request of a sibling store', () => finishedExport({ storeId: ctx.storeA2.id })],
+      ['an erasure', () => finishedExport({ type: DsrType.ERASURE })],
+      [
+        'an export whose date passed',
+        () => finishedExport({ expiresAt: new Date(Date.now() - 1000) })
+      ],
+      ['an export whose file was purged', () => finishedExport({ key: null })]
+    ])('answers the same 404 for %s', async (_name, make) => {
+      const id = await make()
+      const missing = await link(randomUUID())
+
+      const response = await link(id)
+
+      expect(response.status).toBe(NOT_FOUND)
+      expect((response.body as ErrorBody).error?.code).toBe((missing.body as ErrorBody).error?.code)
+      expect(
+        await owner.auditLog.count({
+          where: { action: AuditAction.DSR_EXPORT_DOWNLOADED, resourceId: id }
+        })
+      ).toBe(0)
+    })
+
+    it('refuses the link to a member without customers:dsr_review', async () => {
+      const id = await finishedExport()
+
+      expect((await link(id, viewOnly)).status).toBe(FORBIDDEN)
+    })
   })
 })

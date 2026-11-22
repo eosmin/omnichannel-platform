@@ -9,6 +9,7 @@ import {
   ComplianceConfig,
   DSR_CONFIG,
   type DsrConfig,
+  dsrNoticeJob,
   DsrRejectionReasons,
   DsrResultOutcomes,
   openDsrNotifyAddress,
@@ -18,7 +19,7 @@ import { JobContext, PrismaService } from '@platform/core/database'
 import { DsrStatus, VerificationTokenType } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
-import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
+import { QueueNames, type SendEmailJob } from '@platform/core/queues'
 
 import { inEachStoreStrict } from '../schedulers/store-sweep'
 
@@ -153,21 +154,15 @@ export class DsrExpireSweeper {
         })
         const locale: Locale =
           SUPPORTED_LOCALES.find(candidate => candidate === store?.defaultLocale) ?? DEFAULT_LOCALE
-        await this.emailQueue.add(
-          JobNames.SEND_EMAIL,
-          {
-            template: EmailTemplates.DSR_RESULT,
-            to,
-            locale,
-            data: { outcome: DsrResultOutcomes.EXPIRED, requestType: row.type },
-            tags: { template: EmailTemplates.DSR_RESULT }
-          },
-          // The job holds the address: gone as soon as it is sent, and an hour after a failure
-          {
-            removeOnComplete: true,
-            removeOnFail: { age: ComplianceConfig.DSR_INTAKE_JOB_TTL_MS / 1000 }
-          }
-        )
+        const job = dsrNoticeJob({
+          requestId,
+          storeId,
+          to,
+          locale,
+          outcome: DsrResultOutcomes.EXPIRED,
+          requestType: row.type
+        })
+        await this.emailQueue.add(job.name, job.data, job.opts)
       }
       return { id: requestId, type: row.type, organizationId: row.organizationId }
     })

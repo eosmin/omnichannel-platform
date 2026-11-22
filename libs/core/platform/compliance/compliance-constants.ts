@@ -48,7 +48,55 @@ export const ComplianceConfig = {
   DSR_ERASE_MAX_ATTEMPTS: 3,
   DSR_ERASE_LEASE_MS: 60 * 60 * 1000,
   // The transaction of one request erases every customer it names (the default of a job transaction is 15 s)
-  DSR_ERASE_TRANSACTION_TIMEOUT_MS: 2 * 60 * 1000
+  DSR_ERASE_TRANSACTION_TIMEOUT_MS: 2 * 60 * 1000,
+  // The closing notice of an ended request (Step 7.2-H2b-2): the mail job spends its own attempts in the mail queue; when it spends them all
+  // the request is marked, and an erasure (whose sealed address is the only way to reach the person) is queued again on the next nights, this
+  // many times in all, before it is given up and the address is cleared
+  DSR_NOTICE_MAX_ATTEMPTS: 3,
+  // A closing mail that was queued is not queued again for this long (the mail job spends its three attempts in minutes)
+  DSR_NOTICE_LEASE_MS: 60 * 60 * 1000,
+  // The export of an access or portability request (Step 7.2-H2b-2): tries before the request goes back to the review queue, how long a try
+  // keeps the request before another sweep may take it, the most one export may hold (rows of each kind of record, bytes of the file) and
+  // how long the link the reviewer gets lives
+  DSR_EXPORT_MAX_ATTEMPTS: 3,
+  DSR_EXPORT_LEASE_MS: 60 * 60 * 1000,
+  DSR_EXPORT_MAX_ROWS_PER_KIND: 20_000,
+  DSR_EXPORT_MAX_BYTES: 64 * 1024 * 1024,
+  DSR_EXPORT_DOWNLOAD_URL_SECONDS: 5 * 60,
+  DSR_EXPORT_FILENAME: 'data-export.zip',
+  // Requests the export sweep and the purge of expired exports take per store and per run
+  DSR_EXPORT_BATCH: 10
+} as const
+
+// Where the closing notice of an ended request stands (what the review queue shows, derived from the row, never stored as a word):
+// `none` = there is no address to tell (a request made by a team member with no mail), `pending` = the address is sealed and the mail not
+// confirmed, `sent` = the mail processor confirmed it, `failed` = the person was NEVER told (the mail failed all its attempts, or the
+// address did not open): the reviewer has to reach them another way
+export const DsrNoticeStatuses = {
+  NONE: 'none',
+  PENDING: 'pending',
+  SENT: 'sent',
+  FAILED: 'failed'
+} as const
+export type DsrNoticeStatus = (typeof DsrNoticeStatuses)[keyof typeof DsrNoticeStatuses]
+
+export function dsrNoticeStatusOf(row: {
+  noticeSentAt: Date | null
+  noticeFailedAt: Date | null
+  notifyToEncrypted: Uint8Array | null
+}): DsrNoticeStatus {
+  if (row.noticeSentAt !== null) return DsrNoticeStatuses.SENT
+  if (row.noticeFailedAt !== null && row.notifyToEncrypted === null) return DsrNoticeStatuses.FAILED
+  if (row.notifyToEncrypted !== null) return DsrNoticeStatuses.PENDING
+  return DsrNoticeStatuses.NONE
+}
+
+// Why an export or a notice failed: the name of what went wrong, never a message
+export const DsrFailureCodes = {
+  ADDRESS_UNREADABLE: 'address_unreadable',
+  MAIL_FAILED: 'mail_failed',
+  EXPORT_TOO_LARGE: 'export_too_large',
+  EXPORT_FAILED: 'export_failed'
 } as const
 
 // Platform-wide floors and ceilings. Tenant-configurable values live in RetentionSettings, and

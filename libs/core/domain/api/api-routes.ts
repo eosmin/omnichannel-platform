@@ -633,6 +633,7 @@ export const ApiRoutes = {
     dsrApprove: (id: string) => `/compliance/dsr/${id}/approve`,
     dsrReject: (id: string) => `/compliance/dsr/${id}/reject`,
     dsrCancel: (id: string) => `/compliance/dsr/${id}/cancel`,
+    dsrExport: (id: string) => `/compliance/dsr/${id}/export`, // The signed link to the file of a finished access or portability request
     dsrVerify: '/compliance/dsr/verify', // Public, token in body
     consent: '/compliance/consent',
     cookieConsent: '/compliance/cookie-consent'

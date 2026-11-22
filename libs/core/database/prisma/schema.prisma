@@ -1775,6 +1775,13 @@ model DataSubjectRequest {
   erasureAttempts        Int       @default(0) @map("erasure_attempts") // Tries of the sweep that carries the erasure out; written before each try
   erasureAttemptedAt     DateTime? @map("erasure_attempted_at") // The last try: the lease a second sweep respects
   erasureFailureCode     String?   @map("erasure_failure_code") // Name of the error of the last failed try, never its message
+  noticeAttempts         Int       @default(0) @map("notice_attempts") // Times the closing mail of an ended request ran out of attempts
+  noticeQueuedAt         DateTime? @map("notice_queued_at") // The closing mail was queued: a second run does not queue it again within the lease
+  noticeSentAt           DateTime? @map("notice_sent_at") // The mail processor confirmed the closing mail
+  noticeFailedAt         DateTime? @map("notice_failed_at") // The closing mail failed all its attempts: the person may never have been told
+  exportAttempts         Int       @default(0) @map("export_attempts") // Tries of the export of an access or portability request; written before each try
+  exportAttemptedAt      DateTime? @map("export_attempted_at") // The last try: the lease a second run respects
+  exportFailureCode      String?   @map("export_failure_code") // Name of the error of the last failed try, never its message
   requestedBy            String?   @map("requested_by")
   requestedAt            DateTime  @default(now()) @map("requested_at")
   deadlineAt             DateTime  @map("deadline_at")

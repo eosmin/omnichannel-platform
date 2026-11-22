@@ -54,8 +54,10 @@ import { BenefitCloseScheduler } from './schedulers/benefit-close.scheduler'
 import { BulkLabelsScheduler } from './schedulers/bulk-labels.scheduler'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
+import { DsrDeadlineScheduler } from './schedulers/dsr-deadline.scheduler'
 import { DsrEraseDueScheduler } from './schedulers/dsr-erase-due.scheduler'
 import { DsrExpireScheduler } from './schedulers/dsr-expire.scheduler'
+import { DsrExportScheduler } from './schedulers/dsr-export.scheduler'
 import { EmailDigestScheduler } from './schedulers/email-digest.scheduler'
 import { ExistingDocumentsScheduler } from './schedulers/existing-documents.scheduler'
 import { ExistingPicturesScheduler } from './schedulers/existing-pictures.scheduler'
@@ -149,6 +151,8 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     ExpiredExportsScheduler,
     DsrExpireScheduler,
     DsrEraseDueScheduler,
+    DsrExportScheduler,
+    DsrDeadlineScheduler,
     EmailDigestScheduler,
     ReportDispatchScheduler,
     SnoozeWakeScheduler,

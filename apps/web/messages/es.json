@@ -645,6 +645,7 @@
         "body": "Tu solicitud de {type} fue cancelada y no se borró nada. Puedes escribir a la tienda si quieres saber por qué."
       },
       "retained": "La tienda conserva {orders} pedidos y sus facturas porque la ley lo exige por razones de impuestos (obligación legal).",
+      "exportDelivery": "La tienda te entregará el archivo con tus datos por un medio seguro. Nunca viaja en este mensaje.",
       "footer": "Este es un mensaje automático.",
       "types": {
         "access": "acceso a tus datos",
@@ -994,11 +995,15 @@
     "dsr": {
       "deadline_approaching": {
         "title": "Una solicitud de datos está por vencer",
-        "body": "Una solicitud de datos personales está cerca de su plazo."
+        "body": "A una solicitud de datos personales le quedan {days} días de su plazo legal."
       },
       "manual_review": {
         "title": "Una solicitud de datos necesita revisión",
         "body": "Una solicitud de datos personales necesita que una persona la revise."
+      },
+      "notice_failed": {
+        "title": "A una persona no se le avisó el resultado de su solicitud",
+        "body": "No se pudo entregar el aviso de cierre de una solicitud de datos. Avísale a la persona por otro medio."
       }
     },
     "export": {

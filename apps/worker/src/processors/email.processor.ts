@@ -1,7 +1,9 @@
 import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
+import { PinoLogger } from 'nestjs-pino'
 import { ZodError } from 'zod'
 
+import { DsrFailureCodes } from '@platform/core/compliance'
 import { EmailService } from '@platform/core/email'
 import { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import {
@@ -16,9 +18,10 @@ import {
   sendEmailJobSchema
 } from '@platform/core/queues'
 
+import { DsrNoticeLedger } from '../compliance/dsr-notice-ledger.service'
 import { InvitationEmailDelivery } from '../invitations/invitation-email-delivery.service'
 
-import { BaseProcessor } from './base.processor'
+import { BaseProcessor, isLastAttempt } from './base.processor'
 import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
@@ -34,9 +37,12 @@ export class EmailProcessor extends BaseProcessor<
     support: ProcessorSupport,
     private readonly email: EmailService,
     private readonly magicLinks: MagicLinkIssuer,
-    private readonly invitations: InvitationEmailDelivery
+    private readonly invitations: InvitationEmailDelivery,
+    private readonly notices: DsrNoticeLedger,
+    private readonly logger: PinoLogger
   ) {
     super(QueueNames.EMAIL, support)
+    this.logger.setContext(EmailProcessor.name)
   }
 
   protected async handle(
@@ -64,7 +70,7 @@ export class EmailProcessor extends BaseProcessor<
       case JobNames.SEND_EMAIL: {
         const parsed = sendEmailJobSchema.safeParse(job.data)
         if (!parsed.success) throw new JobRejectedError('the email job does not fit its schema')
-        await this.sendEmail(parsed.data)
+        await this.sendEmail(parsed.data, job)
         return
       }
       default:
@@ -73,14 +79,47 @@ export class EmailProcessor extends BaseProcessor<
     }
   }
 
-  private async sendEmail(data: SendEmailJob): Promise<void> {
+  private async sendEmail(data: SendEmailJob, job: Job): Promise<void> {
     try {
       await this.email.send(data)
     } catch (error) {
+      // The closing notice of a data request ran out of attempts: the request says the person was never told (Step 7.2-H2b-2). Never lets
+      // the bookkeeping hide the failure of the mail
+      const rejected = error instanceof ZodError || error instanceof UnrecoverableError
+      if (data.dsrNotice !== undefined && (rejected || isLastAttempt(job))) {
+        await this.noticeFailed(data.dsrNotice)
+      }
       // A payload the template rejects will be rejected again: retrying it only delays the dead letter
       if (error instanceof ZodError)
         throw new JobRejectedError('the email data does not fit its template')
       throw error
     }
+    if (data.dsrNotice !== undefined) await this.noticeSent(data.dsrNotice)
+  }
+
+  // The mail left. If the request cannot be told (the database is down) the mail is NOT sent again: the sealed address stays and the sweep of
+  // the night asks for the mail once more, so the person may get it twice but is never left without
+  private async noticeSent(notice: { requestId: string; storeId: string }): Promise<void> {
+    try {
+      await this.notices.sent(notice.storeId, notice.requestId)
+    } catch (error) {
+      this.logger.error(
+        { requestId: notice.requestId, errorName: errorOf(error) },
+        'the closing notice of a data request left but could not be recorded'
+      )
+    }
+  }
+
+  private async noticeFailed(notice: { requestId: string; storeId: string }): Promise<void> {
+    try {
+      await this.notices.failed(notice.storeId, notice.requestId, DsrFailureCodes.MAIL_FAILED)
+    } catch (error) {
+      this.logger.error(
+        { requestId: notice.requestId, errorName: errorOf(error) },
+        'the failure of a closing notice could not be recorded'
+      )
+    }
   }
 }
+
+const errorOf = (error: unknown): string => (error instanceof Error ? error.name : 'unknown')
