@@ -108,6 +108,7 @@ model Store {
   media                    Media[]
   channelConnections       ChannelConnection[]
   pluginInstallations      PluginInstallation[]
+  pluginIdempotencyKeys    PluginIdempotencyKey[]
   webhooks                 Webhook[]
   apiKeys                  ApiKey[]
   notifications            Notification[]
@@ -1415,14 +1416,43 @@ model PluginInstallation {
   updatedAt                  DateTime  @updatedAt @map("updated_at")
   revokedAt                  DateTime? @map("revoked_at")
 
-  store              Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  plugin             Plugin              @relation(fields: [pluginId], references: [id], onDelete: Restrict)
+  store              Store                  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  plugin             Plugin                 @relation(fields: [pluginId], references: [id], onDelete: Restrict)
   channelConnections ChannelConnection[]
   webhookDeliveries  WebhookDelivery[]
+  idempotencyKeys    PluginIdempotencyKey[]
 
   @@unique([storeId, pluginId])
   @@index([storeId, status])
   @@map("plugin_installations")
+}
+
+// The answer of a write that a plugin made with an Idempotency-Key (Step 7.3 S4): the same installation with the same key gets this
+// answer back instead of a second write. One row per (installation, key); it is claimed before the write, closed with the answer, and
+// removed when the write fails. `expiresAt` is 24 hours after the claim; the platform cleanup deletes the expired rows. The answer
+// is the one the route gave (it can hold customer data), so it is kept no longer than that.
+model PluginIdempotencyKey {
+  id              String   @id @default(uuid())
+  storeId         String   @map("store_id")
+  installationId  String   @map("installation_id")
+  // What the plugin sent: visible ASCII, at most 255 characters
+  key             String
+  // sha256 of the method, the address and the canonical body: a key used for a different request is refused
+  requestHash     String   @map("request_hash")
+  state           String // PluginIdempotencyState
+  responseStatus  Int?     @map("response_status")
+  responseBody    Json?    @map("response_body")
+  // The answer was too big to keep: a replay says so instead of repeating the write
+  responseOmitted Boolean  @default(false) @map("response_omitted")
+  claimedAt       DateTime @default(now()) @map("claimed_at")
+  expiresAt       DateTime @map("expires_at")
+
+  store        Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  installation PluginInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, key])
+  @@index([storeId, expiresAt])
+  @@map("plugin_idempotency_keys")
 }
 
 // Tenant-created outbound webhooks (Settings → Webhooks).

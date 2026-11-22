@@ -28,6 +28,7 @@ import { ReadReceiptSender } from '../outbound/read-receipt-sender.service'
 import { TypingSender } from '../outbound/typing-sender.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 type OutboundJob =
@@ -89,13 +90,13 @@ export class OutboundProcessor extends BaseProcessor<OutboundJob> {
     }
     const parsed = outboundMessageJobSchema.safeParse(job.data)
     // The job crossed Redis: what does not fit now will not fit when it is tried again
-    if (!parsed.success) throw new UnrecoverableError('the outbound job does not fit its schema')
+    if (!parsed.success) throw new JobRejectedError('the outbound job does not fit its schema')
     await this.sender.send(parsed.data, isLastAttempt(job))
   }
 
   private async handleChange(job: Job<OutboundJob>): Promise<void> {
     const unfit = (): UnrecoverableError =>
-      new UnrecoverableError('the change job does not fit its schema')
+      new JobRejectedError('the change job does not fit its schema')
     if (job.name === JobNames.SEND_OUTBOUND_EDIT) {
       const parsed = outboundEditJobSchema.safeParse(job.data)
       if (!parsed.success) throw unfit()
@@ -113,20 +114,19 @@ export class OutboundProcessor extends BaseProcessor<OutboundJob> {
 
   private async handleReadReceipt(job: Job<OutboundJob>): Promise<void> {
     const parsed = outboundReadReceiptJobSchema.safeParse(job.data)
-    if (!parsed.success)
-      throw new UnrecoverableError('the read receipt job does not fit its schema')
+    if (!parsed.success) throw new JobRejectedError('the read receipt job does not fit its schema')
     await this.readReceipts.send(parsed.data, isLastAttempt(job))
   }
 
   private async handleTyping(job: Job<OutboundJob>): Promise<void> {
     const parsed = outboundTypingJobSchema.safeParse(job.data)
-    if (!parsed.success) throw new UnrecoverableError('the typing job does not fit its schema')
+    if (!parsed.success) throw new JobRejectedError('the typing job does not fit its schema')
     await this.typing.send(parsed.data)
   }
 
   private async handleReaction(job: Job<OutboundJob>): Promise<void> {
     const parsed = outboundReactionJobSchema.safeParse(job.data)
-    if (!parsed.success) throw new UnrecoverableError('the reaction job does not fit its schema')
+    if (!parsed.success) throw new JobRejectedError('the reaction job does not fit its schema')
     await this.reactions.send(parsed.data, isLastAttempt(job))
   }
 }

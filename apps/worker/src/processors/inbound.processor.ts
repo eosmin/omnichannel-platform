@@ -2,7 +2,7 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { CHANNEL_ID_PATTERN, MessageMetadataKeys } from '@platform/core/domain'
+import { MessageMetadataKeys } from '@platform/core/domain'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
 import {
   InboundMessageChangesService,
@@ -10,7 +10,7 @@ import {
   MessageReactionsService
 } from '@platform/core/messaging'
 import { QueueNames } from '@platform/core/queues'
-import { channelEventSchema, type ProcessChannelEventJob } from '@platform/plugins/runtime'
+import type { ProcessChannelEventJob } from '@platform/plugins/runtime'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 import { ProfileRequester } from '../inbound/profile-requester.service'
@@ -18,6 +18,8 @@ import { unsupportedLogFields, unsupportedShapeOf } from '../inbound/unsupported
 import { ChannelReceipts } from '../outbound/channel-receipts.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
+import { processChannelEventJobSchema } from './inbound-job.schema'
+import { JobRejectedError } from './job-rejected.error'
 import { ProcessorSupport } from './processor-support'
 
 // The worker half of TDD_10 §4: the controller of the api queued what the plugin normalized, and this
@@ -43,13 +45,10 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
   }
 
   private async handleEvent(job: Job<ProcessChannelEventJob>): Promise<void> {
-    const { pluginId } = job.data
-    const parsed = channelEventSchema.safeParse(job.data.event)
+    const parsed = processChannelEventJobSchema.safeParse(job.data)
     // What does not fit now will not fit when it is tried again: it goes to the dead letter queue
-    if (!CHANNEL_ID_PATTERN.test(pluginId) || !parsed.success) {
-      throw new UnrecoverableError('the channel event does not fit its schema')
-    }
-    const event = parsed.data
+    if (!parsed.success) throw new JobRejectedError('the channel event does not fit its schema')
+    const { pluginId, event, receivedAt } = parsed.data
 
     switch (event.type) {
       case ChannelEventTypes.MESSAGE_RECEIVED: {
@@ -58,7 +57,7 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
           await this.inbound.handleMessageReceived(
             pluginId,
             { ...event, message: event.message },
-            new Date(job.data.receivedAt)
+            new Date(receivedAt)
           )
         } catch (error) {
           throw unrecoverableIfInvalid(error)
@@ -89,7 +88,7 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
             pluginId,
             { ...event, message: event.message },
             isLastAttempt(job),
-            new Date(job.data.receivedAt)
+            new Date(receivedAt)
           )
         } catch (error) {
           throw unrecoverableIfInvalid(error)
