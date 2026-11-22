@@ -44,6 +44,7 @@ interface ArchiveMonth {
 
 // What one request may spend: the bytes and the time. Shared by every part the request reads
 interface ReadBudget {
+  parts: number
   compressed: number
   inflated: number
   signal: AbortSignal
@@ -120,6 +121,7 @@ export class AuditLogArchiveReader {
 
   private async guarded<T>(read: (budget: ReadBudget) => Promise<T>): Promise<T> {
     const budget: ReadBudget = {
+      parts: 0,
       compressed: 0,
       inflated: 0,
       signal: AbortSignal.timeout(AuditColdRead.MAX_READ_MS)
@@ -129,7 +131,7 @@ export class AuditLogArchiveReader {
     } catch (error) {
       if (error instanceof PlatformException) throw error
       this.logger.error(
-        { limit: error instanceof ArchiveLimitError, err: error },
+        { limit: error instanceof ArchiveLimitError, errorName: errorNameOf(error) },
         'the archive of the audit log could not be read'
       )
       throw new PlatformException(
@@ -180,6 +182,8 @@ export class AuditLogArchiveReader {
     storeId: string,
     take: (line: ArchiveLine) => void
   ): Promise<void> {
+    budget.parts += 1
+    if (budget.parts > AuditColdRead.MAX_PARTS) throw new ArchiveLimitError('too many parts')
     const body = await this.storage.stream(key)
     // A part that listed and is gone is a month that is being replaced: the read is not complete, so it is not answered
     if (body === null) throw new Error('a part of the archive is not in the bucket')
@@ -188,7 +192,13 @@ export class AuditLogArchiveReader {
     const needle = Buffer.from(JSON.stringify(storeId))
     const line = (bytes: Buffer): void => {
       if (bytes.length === 0 || bytes.indexOf(needle) === -1) return
-      const parsed: unknown = JSON.parse(bytes.toString('utf8'))
+      // The error of the parser quotes a piece of the line, which is an audit row (an address, an agent): it is never passed on
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(bytes.toString('utf8'))
+      } catch {
+        throw new Error('a line of the archive is not JSON')
+      }
       const result = lineSchema.safeParse(parsed)
       if (!result.success) throw new Error('a line of the archive is not an audit entry')
       const row = result.data
@@ -246,4 +256,9 @@ function keepNewest(top: ArchiveLine[], row: ArchiveLine, size: number): void {
   }
   top.splice(at, 0, row)
   if (top.length > size) top.pop()
+}
+
+// Only the kind of the failure is logged: the message of a parser or of a stream may carry a piece of the data it was reading
+function errorNameOf(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error
 }

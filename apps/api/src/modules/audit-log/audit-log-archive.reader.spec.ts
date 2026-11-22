@@ -56,6 +56,7 @@ function bucket(objects: Record<string, Buffer>) {
   }
   const logger = { setContext: jest.fn(), error: jest.fn() }
   return {
+    logger,
     streamed,
     storage,
     reader: new AuditLogArchiveReader(
@@ -194,6 +195,21 @@ describe('AuditLogArchiveReader', () => {
     })
   })
 
+  it('keeps the text of a corrupt line out of the error and the log', async () => {
+    const secret = '203.0.113.77'
+    const { reader, logger } = bucket({
+      [MARCH]: gzipSync(`{"storeId":"${STORE}","ip":"${secret}","id":x}\n`)
+    })
+
+    const error: unknown = await reader.readPage(STORE, {}, undefined, 10).catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(PlatformException)
+    expect(JSON.stringify([(error as Error).message, logger.error.mock.calls])).not.toContain(
+      secret
+    )
+    expect(JSON.stringify(logger.error.mock.calls)).toContain('errorName')
+  })
+
   it('refuses a part that listed and is gone', async () => {
     const { reader, storage } = bucket({ [MARCH]: part([]) })
     storage.stream.mockResolvedValueOnce(null)
@@ -210,5 +226,54 @@ describe('AuditLogArchiveReader', () => {
     await expect(reader.readPage(STORE, {}, undefined, 10)).rejects.toBeInstanceOf(
       PlatformException
     )
+  })
+
+  describe('ceilings of one request', () => {
+    const ceilings = AuditColdRead as unknown as Record<string, number>
+    const own = (id: string) => ({ id, storeId: STORE, timestamp: '2001-03-02T00:00:00.000Z' })
+    afterEach(() => jest.restoreAllMocks())
+
+    it('refuses more inflated bytes than the ceiling, even from a small gzip', async () => {
+      jest.replaceProperty(ceilings, 'MAX_INFLATED_BYTES', 200)
+      const { reader } = bucket({ [MARCH]: part([own('a'), own('b'), own('c'), own('d')]) })
+
+      await expect(reader.readPage(STORE, {}, undefined, 10)).rejects.toBeInstanceOf(
+        PlatformException
+      )
+    })
+
+    it('refuses more compressed bytes than the ceiling', async () => {
+      jest.replaceProperty(ceilings, 'MAX_COMPRESSED_BYTES', 10)
+      const { reader } = bucket({ [MARCH]: part([own('a')]) })
+
+      await expect(reader.readPage(STORE, {}, undefined, 10)).rejects.toBeInstanceOf(
+        PlatformException
+      )
+    })
+
+    it('refuses to open more parts than the ceiling', async () => {
+      jest.replaceProperty(ceilings, 'MAX_PARTS', 1)
+      const { reader } = bucket({ [MARCH]: part([own('a')]), [MARCH_2]: part([own('b')]) })
+
+      await expect(reader.readPage(STORE, {}, undefined, 10)).rejects.toBeInstanceOf(
+        PlatformException
+      )
+    })
+
+    it('refuses a listing longer than the ceiling of pages', async () => {
+      jest.replaceProperty(ceilings, 'MAX_LIST_PAGES', 1)
+      const { reader, storage } = bucket({ [MARCH]: part([own('a')]) })
+      storage.list.mockResolvedValue({ objects: [], next: 'more' } as never)
+
+      await expect(reader.readPage(STORE, {}, undefined, 10)).rejects.toBeInstanceOf(
+        PlatformException
+      )
+    })
+
+    it('answers within the ceilings', async () => {
+      const { reader } = bucket({ [MARCH]: part([own('a')]) })
+
+      expect((await reader.readPage(STORE, {}, undefined, 10)).map(row => row.id)).toEqual(['a'])
+    })
   })
 })

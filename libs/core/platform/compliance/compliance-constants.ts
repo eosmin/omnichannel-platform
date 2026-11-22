@@ -128,6 +128,8 @@ export const AuditColdRead = {
   PREFIX: 'audit/',
   // Objects the listing of the prefix may return before the read gives up (pages of the bucket listing)
   MAX_LIST_PAGES: 20,
+  // Parts (objects) one request may open
+  MAX_PARTS: 120,
   // The bytes of the objects (gzipped) one request may read, and the bytes they may inflate to (a bomb guard)
   MAX_COMPRESSED_BYTES: 512 * 1024 * 1024,
   MAX_INFLATED_BYTES: 4 * 1024 * 1024 * 1024,

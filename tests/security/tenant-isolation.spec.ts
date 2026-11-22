@@ -1,4 +1,5 @@
 import { createHash, randomInt, randomUUID } from 'node:crypto'
+import { gzipSync } from 'node:zlib'
 
 import type { INestApplication } from '@nestjs/common'
 import supertest from 'supertest'
@@ -50,7 +51,7 @@ import {
   ShippingPlugin,
   TransferStatus
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { Events } from '@platform/core/events'
 import { Locales } from '@platform/core/i18n'
 import {
@@ -7293,6 +7294,74 @@ describe('Tenant isolation', () => {
       expect((await owner.plugin.findUniqueOrThrow({ where: { id: pluginId } })).name).toBe(
         'Private plugin'
       )
+    })
+  })
+  // The cold parts of the audit log (Step 7.2-K) hold the rows of every store in one object: the viewer keeps each row by its own
+  // store, not by the file, and a row with no store is nobody's
+  describe('the cold parts of the audit log', () => {
+    const year = 1972
+    const key = StorageKeys.auditArchive(year, 5)
+    const ids = { a: randomUUID(), a2: randomUUID(), b: randomUUID(), none: randomUUID() }
+    const range = `from=${year}-05-01T00:00:00.000Z&before=${year}-06-01T00:00:00.000Z`
+    const at = `at=${encodeURIComponent(`${year}-05-10T00:00:00.000Z`)}`
+    let storage: StorageService
+
+    beforeAll(async () => {
+      storage = app.get(StorageService)
+      await owner.store.updateMany({
+        where: { id: { in: [ctx.storeA.id, ctx.storeA2.id, ctx.storeB.id] } },
+        data: { createdAt: new Date(`${year - 1}-01-01T00:00:00.000Z`) }
+      })
+      const line = (id: string, storeId: string | null) =>
+        JSON.stringify({
+          id,
+          action: `${prefix}.cold`,
+          userId: null,
+          storeId,
+          organizationId: null,
+          resourceType: null,
+          resourceId: null,
+          metadata: null,
+          ipAddress: null,
+          userAgent: null,
+          timestamp: `${year}-05-10T00:00:00.000Z`
+        })
+      const lines = [
+        line(ids.a, ctx.storeA.id),
+        line(ids.a2, ctx.storeA2.id),
+        line(ids.b, ctx.storeB.id),
+        line(ids.none, null)
+      ]
+      await storage.put(key, gzipSync(`${lines.join('\n')}\n`), 'application/gzip')
+    })
+    afterAll(async () => {
+      await storage.delete(key)
+    })
+
+    it('lists only the rows of the store of the request, even from the same file, a sibling store or another organization', async () => {
+      const read = async (actor: typeof ctx.adminA, store: typeof ctx.storeA) =>
+        (
+          (await api(app, actor, store).get(`${ApiRoutes.organizations.auditLog}?${range}`))
+            .body as { data: { id: string }[] }
+        ).data.map(item => item.id)
+
+      expect(await read(ctx.adminA, ctx.storeA)).toEqual([ids.a])
+      expect(await read(ctx.adminA2, ctx.storeA2)).toEqual([ids.a2])
+      expect(await read(ctx.adminB, ctx.storeB)).toEqual([ids.b])
+    })
+
+    it('answers the same 404 for the row of another store, one with no store and one that does not exist', async () => {
+      const get = async (id: string) =>
+        (
+          await api(app, ctx.adminA, ctx.storeA).get(
+            `${ApiRoutes.organizations.auditLogEntry(id)}?${at}`
+          )
+        ).status
+      expect(await get(ids.a)).toBe(HttpStatusCodes.OK)
+      expect(await get(ids.a2)).toBe(HttpStatusCodes.NOT_FOUND)
+      expect(await get(ids.b)).toBe(HttpStatusCodes.NOT_FOUND)
+      expect(await get(ids.none)).toBe(HttpStatusCodes.NOT_FOUND)
+      expect(await get(randomUUID())).toBe(HttpStatusCodes.NOT_FOUND)
     })
   })
 })
