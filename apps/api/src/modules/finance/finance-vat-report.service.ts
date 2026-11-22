@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { JobContext, PrismaService } from '@platform/core/database'
+import { PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   FinanceCurrency,
@@ -19,12 +19,12 @@ import {
   VatSide
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import { ExportLimits } from '@platform/core/exports'
 import { vatLinesOfOrder } from '@platform/core/finance'
 import { financeRefusal } from '@platform/core/finance-ledger'
 
 import type { Actor } from '../tenancy'
 
+import { FinanceReportGate } from './finance-report-gate.service'
 import { vatReportCsv } from './finance-vat-report.csv'
 import type { VatReportQuery } from './finance.schemas'
 import { isoDay, type VatMonthView, type VatReportView, type VatRowView } from './finance.views'
@@ -48,7 +48,7 @@ export class FinanceVatReportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly jobContext: JobContext
+    private readonly gate: FinanceReportGate
   ) {}
 
   // The same report as a file taken out (TDD_18 §7, §10): held to the cap of every other file (never cut short, a cut file looks whole to
@@ -56,15 +56,10 @@ export class FinanceVatReportService {
   // of the other exports, so a text that starts like a formula is written as text. The audit row is written the way every finance audit
   // row is (not awaited, debt (k) of 4B.8a).
   // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
-  // (a request holds the store of the header alone with RLS on, and the report would change with the header)
+  // (a request holds the store of the header alone with RLS on, and the report would change with the header). The report is read inside one
+  // place of the cap of reads of the organization (the report joins it) and as short units, never one for the whole range
   async csv(organizationId: string, query: VatReportQuery, actor: Actor): Promise<string> {
-    return this.jobContext.inOrganization(
-      organizationId,
-      () => this.readCsv(organizationId, query, actor),
-      {
-        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
-      }
-    )
+    return this.gate.read(organizationId, () => this.readCsv(organizationId, query, actor))
   }
 
   private async readCsv(
@@ -104,23 +99,19 @@ export class FinanceVatReportService {
   }
 
   // Reads the orders of EVERY store of the organization: the route is @NoTenantTransaction and the read opens the context of the organization
-  // (a request holds the store of the header alone with RLS on, and the report would change with the header)
+  // (a request holds the store of the header alone with RLS on, and the report would change with the header). One place of the cap of reads of
+  // the organization; the read of the ids of the range, each page of orders and the sums of the books are each their own unit (debt (c) of F6-3)
   async report(organizationId: string, query: VatReportQuery): Promise<VatReportView> {
-    return this.jobContext.inOrganization(
-      organizationId,
-      () => this.readReport(organizationId, query),
-      {
-        timeout: FinanceReportLimits.READ_UNIT_TIMEOUT_MS
-      }
-    )
+    return this.gate.read(organizationId, () => this.readReport(organizationId, query))
   }
 
   private async readReport(organizationId: string, query: VatReportQuery): Promise<VatReportView> {
-    const db = this.prisma.client
-    const settings = await db.financeSettings.findUnique({
-      where: { organizationId },
-      select: { recognizeSaleOn: true, accountingStartDate: true }
-    })
+    const settings = await this.gate.unit(organizationId, () =>
+      this.prisma.client.financeSettings.findUnique({
+        where: { organizationId },
+        select: { recognizeSaleOn: true, accountingStartDate: true }
+      })
+    )
     if (settings === null) throw financeRefusal(ErrorCodes.FINANCE_SETUP_REQUIRED)
     const recognizedOn = settings.recognizeSaleOn as SaleRecognition
     const buckets = new Map<
@@ -158,7 +149,9 @@ export class FinanceVatReportService {
     const shipped = recognizedOn === SaleRecognition.SHIPPED
     // The first day the books post from: a sale recognized before it is never posted (TDD_18 §6.1), so the report does not count it either (INV-TAX-8)
     const startDay = isoDay(settings.accountingStartDate)
-    const recognized = await db.$queryRaw<{ id: string; month: string; status: string }[]>`
+    const recognized = await this.gate.unit(
+      organizationId,
+      () => this.prisma.client.$queryRaw<{ id: string; month: string; status: string }[]>`
       WITH known AS MATERIALIZED (SELECT lower(name) AS name FROM pg_timezone_names),
       zones AS (
         -- A zone the database does not know (a value written around the api, which validates it) is the UTC day, as the books do
@@ -218,31 +211,34 @@ export class FinanceVatReportService {
       JOIN zones z ON z.store_id = o.store_id
       WHERE o.status <> ${OrderStatus.CANCELLED}
       ORDER BY 1`
+    )
     let ordersWithoutTaxSnapshot = 0
     let ordersNotReadable = 0
     let returnedOrdersIncluded = 0
-    for (let start = 0; start < recognized.length; start += ExportLimits.ROW_PAGE_SIZE) {
-      const page = recognized.slice(start, start + ExportLimits.ROW_PAGE_SIZE)
-      const orders = await db.order.findMany({
-        where: { id: { in: page.map(row => row.id) }, store: { organizationId } },
-        select: {
-          id: true,
-          discountCents: true,
-          shippingCents: true,
-          taxCents: true,
-          pricesIncludeTax: true,
-          shippingTaxRateBps: true,
-          items: {
-            select: {
-              unitPriceCents: true,
-              quantity: true,
-              taxTreatment: true,
-              taxRateBps: true,
-              taxCents: true
+    for (let start = 0; start < recognized.length; start += FinanceReportLimits.VAT_PAGE_SIZE) {
+      const page = recognized.slice(start, start + FinanceReportLimits.VAT_PAGE_SIZE)
+      const orders = await this.gate.unit(organizationId, () =>
+        this.prisma.client.order.findMany({
+          where: { id: { in: page.map(row => row.id) }, store: { organizationId } },
+          select: {
+            id: true,
+            discountCents: true,
+            shippingCents: true,
+            taxCents: true,
+            pricesIncludeTax: true,
+            shippingTaxRateBps: true,
+            items: {
+              select: {
+                unitPriceCents: true,
+                quantity: true,
+                taxTreatment: true,
+                taxRateBps: true,
+                taxCents: true
+              }
             }
           }
-        }
-      })
+        })
+      )
       const monthOf = new Map(page.map(row => [row.id, row]))
       for (const order of orders) {
         const recognizedRow = monthOf.get(order.id)
@@ -280,16 +276,18 @@ export class FinanceVatReportService {
       }
     }
 
-    // The output side of the incomes registered by hand (TDD_18 §2.6, §7): the books credit the output account of the rate for them, and
-    // they have no order. By the day of the entry, as the books do: a void is its own reversing entry, dated like the income it undoes
-    // (the first open day when that month is closed), so it takes the tax out of the month of its entry. The base is what the income
-    // received without the tax. An income with no rate carries no tax and is not a line; a rate of 0 % is a taxed line of rate 0, the
-    // base of zero-rated incomes being read from the transactions (debt (f) of 4B.4a). The rate is the one the tax rate row has today
-    // (a transaction keeps no snapshot of it, debt (q) of 4B.8b).
-    {
-      const rows = await db.$queryRaw<
-        { month: string; rate_bps: number; base: bigint; cents: bigint; documents: bigint }[]
-      >`
+    // The sums of the books: three reads of the ledger that return one row per month, in one unit
+    await this.gate.unit(organizationId, async () => {
+      // The output side of the incomes registered by hand (TDD_18 §2.6, §7): the books credit the output account of the rate for them, and
+      // they have no order. By the day of the entry, as the books do: a void is its own reversing entry, dated like the income it undoes
+      // (the first open day when that month is closed), so it takes the tax out of the month of its entry. The base is what the income
+      // received without the tax. An income with no rate carries no tax and is not a line; a rate of 0 % is a taxed line of rate 0, the
+      // base of zero-rated incomes being read from the transactions (debt (f) of 4B.4a). The rate is the one the tax rate row has today
+      // (a transaction keeps no snapshot of it, debt (q) of 4B.8b).
+      {
+        const rows = await this.prisma.client.$queryRaw<
+          { month: string; rate_bps: number; base: bigint; cents: bigint; documents: bigint }[]
+        >`
         SELECT to_char(e.entry_date, 'YYYY-MM') AS month, r.rate_bps,
                SUM(x.sign * (t.amount_cents - t.tax_cents))::bigint AS base,
                SUM(x.sign * t.tax_cents)::bigint AS cents,
@@ -310,23 +308,23 @@ export class FinanceVatReportService {
         GROUP BY 1, 2
         -- An income and its void inside one month cancel out: no row of zeros
         HAVING SUM(x.sign * t.tax_cents) <> 0 OR SUM(x.sign * (t.amount_cents - t.tax_cents)) <> 0`
-      for (const row of rows) {
-        const bucket = touch(row.month, VatSide.OUTPUT, VatLineKind.TAXED, row.rate_bps)
-        bucket.base = (bucket.base ?? 0) + Number(row.base)
-        bucket.tax += Number(row.cents)
-        bucket.documents += Number(row.documents)
+        for (const row of rows) {
+          const bucket = touch(row.month, VatSide.OUTPUT, VatLineKind.TAXED, row.rate_bps)
+          bucket.base = (bucket.base ?? 0) + Number(row.base)
+          bucket.tax += Number(row.cents)
+          bucket.documents += Number(row.documents)
+        }
       }
-    }
 
-    // The tax the returns (E8) give back (HC-003): the books debit VAT_OUTPUT for it, so the report takes it off the output side, in the
-    // month of the entry of the return (the default of the books; whether the accountant wants it in the month of the sale is open, see
-    // the plan, 4B.8b-2c). An E8 entry has no rate on its lines, so the tax is one line of its own, `returns`, with no rate, and a return of goods with no tax still has its base and its document; its base is
-    // what the return took off the revenue and the shipping, without tax, negative. A void of a return is its reversing entry, which gives
-    // the tax back to the sale in its own month, so the sum is of debits less credits over the return and its reversal.
-    {
-      const rows = await db.$queryRaw<
-        { month: string; base: bigint; cents: bigint; documents: bigint }[]
-      >`
+      // The tax the returns (E8) give back (HC-003): the books debit VAT_OUTPUT for it, so the report takes it off the output side, in the
+      // month of the entry of the return (the default of the books; whether the accountant wants it in the month of the sale is open, see
+      // the plan, 4B.8b-2c). An E8 entry has no rate on its lines, so the tax is one line of its own, `returns`, with no rate, and a return of goods with no tax still has its base and its document; its base is
+      // what the return took off the revenue and the shipping, without tax, negative. A void of a return is its reversing entry, which gives
+      // the tax back to the sale in its own month, so the sum is of debits less credits over the return and its reversal.
+      {
+        const rows = await this.prisma.client.$queryRaw<
+          { month: string; base: bigint; cents: bigint; documents: bigint }[]
+        >`
         WITH roles AS (
           SELECT m.account_id, m.role FROM account_role_mappings m
           WHERE m.organization_id = ${organizationId}
@@ -359,20 +357,20 @@ export class FinanceVatReportService {
         GROUP BY 1
         -- A return and its void inside one month cancel out: no row of zeros. A return of goods with no tax still has its base.
         HAVING COALESCE(SUM(l.debit_cents - l.credit_cents), 0) <> 0`
-      for (const row of rows) {
-        // A return takes tax out: the figures of the line are negative
-        const bucket = touch(row.month, VatSide.OUTPUT, VatLineKind.RETURNS, null)
-        bucket.base = (bucket.base ?? 0) - Number(row.base)
-        bucket.tax -= Number(row.cents)
-        bucket.documents += Number(row.documents)
+        for (const row of rows) {
+          // A return takes tax out: the figures of the line are negative
+          const bucket = touch(row.month, VatSide.OUTPUT, VatLineKind.RETURNS, null)
+          bucket.base = (bucket.base ?? 0) - Number(row.base)
+          bucket.tax -= Number(row.cents)
+          bucket.documents += Number(row.documents)
+        }
       }
-    }
 
-    // The input side: the tax the books credited, from the lines of the account that holds it. The base is not on a line.
-    {
-      const rows = await db.$queryRaw<
-        { month: string; rate_bps: number | null; cents: bigint; entries: bigint }[]
-      >`
+      // The input side: the tax the books credited, from the lines of the account that holds it. The base is not on a line.
+      {
+        const rows = await this.prisma.client.$queryRaw<
+          { month: string; rate_bps: number | null; cents: bigint; entries: bigint }[]
+        >`
         SELECT to_char(e.entry_date, 'YYYY-MM') AS month, r.rate_bps,
                SUM(l.debit_cents - l.credit_cents)::bigint AS cents,
                (COUNT(DISTINCT e.id) FILTER (WHERE e.reverses_entry_id IS NULL))::bigint AS entries
@@ -389,12 +387,13 @@ export class FinanceVatReportService {
           )
           AND e.entry_date BETWEEN ${query.from}::date AND ${query.to}::date
         GROUP BY 1, 2`
-      for (const row of rows) {
-        const bucket = touch(row.month, VatSide.INPUT, VatLineKind.TAXED, row.rate_bps)
-        bucket.tax += Number(row.cents)
-        bucket.documents += Number(row.entries)
+        for (const row of rows) {
+          const bucket = touch(row.month, VatSide.INPUT, VatLineKind.TAXED, row.rate_bps)
+          bucket.tax += Number(row.cents)
+          bucket.documents += Number(row.entries)
+        }
       }
-    }
+    })
 
     const rows: VatRowView[] = [...buckets.values()]
       .map(bucket => ({

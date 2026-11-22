@@ -23,7 +23,11 @@ export const NotificationFailureReasons = {
     ErrorCodes.CHANNEL_NOT_CONNECTED,
     ErrorCodes.RATE_LIMIT_EXCEEDED
   ],
-  [NotificationTypes.EXPORT_FAILED]: [ErrorCodes.EXPORT_TOO_LARGE, ErrorCodes.EXPORT_EMPTY]
+  [NotificationTypes.EXPORT_FAILED]: [
+    ErrorCodes.EXPORT_TOO_LARGE,
+    ErrorCodes.EXPORT_EMPTY,
+    ErrorCodes.PERMISSION_DENIED
+  ]
 } as const
 
 // The message keys that the constants imply (TDD_09 §15.3): a new enum value, error code or

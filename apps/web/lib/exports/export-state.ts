@@ -38,7 +38,9 @@ export const ExportPermissions: readonly Permission[] = [
   ClientPermissions.CONVERSATIONS_EXPORT,
   ClientPermissions.CUSTOMERS_EXPORT,
   ClientPermissions.MEDIA_DOWNLOAD_ALL,
-  ClientPermissions.ORDERS_EXPORT
+  ClientPermissions.ORDERS_EXPORT,
+  // An auditor holds only the permission to read the audit log, and the file of it is theirs
+  ClientPermissions.ORG_VIEW_AUDIT_LOG
 ]
 
 export function mayOpenExports(can: (permission: Permission) => boolean): boolean {
@@ -51,6 +53,7 @@ export const FILTERABLE_TYPES: readonly ExportType[] = [
   ExportTypes.CONVERSATIONS,
   ExportTypes.CUSTOMERS,
   ExportTypes.ORDERS,
+  ExportTypes.AUDIT_LOG,
   ExportTypes.ANALYTICS,
   ExportTypes.MEDIA_ZIP
 ]

@@ -142,6 +142,18 @@ describe('settings entries', () => {
     expect(viewer).not.toContain('/s/s-1/settings/retention')
   })
 
+  it('shows the Audit log to who holds org:view_audit_log, and to nobody else', () => {
+    const entries = storeSettingsEntries('s-1')
+    const hrefsOf = (...held: string[]): string[] =>
+      visibleEntries(entries, holding(...held)).map(entry => entry.href)
+    expect(hrefsOf(Permissions.ORG_VIEW_AUDIT_LOG)).toEqual(['/s/s-1/settings/audit-log'])
+    // Neither the settings nor the retention of data open it: reading who did what is its own right
+    expect(hrefsOf(Permissions.SETTINGS_VIEW)).not.toContain('/s/s-1/settings/audit-log')
+    expect(hrefsOf(Permissions.SETTINGS_MANAGE_RETENTION)).not.toContain(
+      '/s/s-1/settings/audit-log'
+    )
+  })
+
   it('hides Order messages from who may see settings but not orders', () => {
     const hrefs = visibleEntries(
       storeSettingsEntries('s-1'),

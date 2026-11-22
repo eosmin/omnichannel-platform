@@ -689,6 +689,7 @@
     "FINANCE_PERIOD_ALREADY_CLOSED": "The period is closed already",
     "FINANCE_CURRENCY_UNSUPPORTED": "Only USD is supported",
     "FINANCE_SETUP_REQUIRED": "Finance has not been set up for this organization yet",
+    "FINANCE_REPORT_BUSY": "Finance reports are already being prepared for this organization: wait a few seconds and try again",
     "FINANCE_TAX_RATE_NOT_CONFIGURED": "A product of this order is taxed and no tax rate is set for it: choose a default tax rate in Finance first",
     "FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED": "Changing whether the prices include the tax moves the total of the whole catalog: confirm the change of price mode",
     "PURCHASE_ORDER_INVALID_STATUS_TRANSITION": "The purchase order cannot move to that status from where it is",
@@ -960,7 +961,8 @@
         "body": "Your export could not be made. Try asking for it again.",
         "reason": {
           "EXPORT_TOO_LARGE": "The export is too large. Narrow the filters or the dates and ask for it again.",
-          "EXPORT_EMPTY": "There was nothing to export with those filters."
+          "EXPORT_EMPTY": "There was nothing to export with those filters.",
+          "PERMISSION_DENIED": "The export was cancelled: you no longer have permission to export this. Ask an administrator."
         }
       }
     },
@@ -3046,6 +3048,7 @@
         "webhooks": "Outgoing integrations",
         "apiKeys": "API keys",
         "retention": "Data retention",
+        "auditLog": "Audit log",
         "safety": "Safety and confirmations"
       },
       "org": {
@@ -3227,6 +3230,19 @@
         "requested": "Access it asks for",
         "events": "Events it follows",
         "newCode": "Get a new setup code",
+        "rotateKey": "Make a new access key",
+        "apiKey": {
+          "title": "New access key for {name}",
+          "description": "Copy it now: it is shown only once. The previous key stopped working the moment this one was made.",
+          "label": "Access key",
+          "how": "Give it to the plugin as its Bearer token. Until the plugin uses it, every call it makes is refused."
+        },
+        "rotateKeyConfirm": {
+          "title": "Make a new access key for {name}?",
+          "body": "The current key stops working at once, with no grace time: {name} cannot reach your store until it is given the new key. The new key is shown one time only.",
+          "cancel": "Cancel",
+          "confirm": "Make a new key"
+        },
         "rotateSecret": "Make a new command secret",
         "commandSecret": {
           "title": "New command secret for {name}",
@@ -4880,6 +4896,61 @@
           "expiryPast": "The last day cannot be before today.",
           "expiryInvalid": "That is not a valid day."
         }
+      }
+    },
+    "auditLog": {
+      "title": "Audit log",
+      "intro": "Who did what in this store, newest first. Each entry keeps ids, counts and the name of the action, never the name or the text of a customer. Reading the log is itself recorded.",
+      "caption": "Entries of the audit log of the store, newest first",
+      "filters": {
+        "label": "Filters of the audit log",
+        "action": "Action",
+        "actionPlaceholder": "order.created",
+        "actor": "Person",
+        "anyActor": "Anyone",
+        "from": "From",
+        "to": "To",
+        "apply": "Apply filters",
+        "clear": "Clear filters",
+        "reversed": "The first day is after the last one."
+      },
+      "columns": {
+        "when": "When",
+        "actor": "Who",
+        "action": "Action",
+        "resource": "On what",
+        "details": "Details"
+      },
+      "actor": {
+        "system": "System or plugin",
+        "unknown": "Someone no longer on the team ({id})"
+      },
+      "noResource": "None",
+      "open": "Details",
+      "loadMore": "Load more",
+      "empty": "No entries match these filters.",
+      "export": {
+        "button": "Export CSV",
+        "hint": "The file holds what the filters show, as the log was when you ask for it.",
+        "applyFirst": "Apply the filters first: the file holds what the table shows.",
+        "queued": "The audit log file is being prepared. It will be ready in the exports center.",
+        "view": "View exports",
+        "tooLarge": "The file would have too many entries. Narrow the dates or the filters and ask for it again."
+      },
+      "entry": {
+        "title": "Audit log entry",
+        "description": "What the log kept for this action.",
+        "when": "When",
+        "actor": "Who",
+        "action": "Action",
+        "resourceType": "Resource type",
+        "resourceId": "Resource id",
+        "ip": "IP address",
+        "userAgent": "Browser",
+        "id": "Entry id",
+        "none": "None",
+        "metadata": "Metadata",
+        "noMetadata": "This entry has no metadata."
       }
     },
     "retention": {

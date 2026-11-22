@@ -11,6 +11,8 @@ export function mayOpenStoreSettings(can: (permission: Permission) => boolean): 
     // A role that only manages one of these (an integrator with API keys) still has a page to open
     can(ClientPermissions.SETTINGS_MANAGE_WEBHOOKS) ||
     can(ClientPermissions.SETTINGS_MANAGE_API_KEYS) ||
-    can(ClientPermissions.SETTINGS_MANAGE_RETENTION)
+    can(ClientPermissions.SETTINGS_MANAGE_RETENTION) ||
+    // An auditor holds only the permission to read the audit log
+    can(ClientPermissions.ORG_VIEW_AUDIT_LOG)
   )
 }

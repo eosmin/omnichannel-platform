@@ -26,7 +26,9 @@ import {
   registerPlugin,
   type RegisteredPluginView,
   rotateCommandSecret,
-  type RotatedCommandSecretView
+  rotatePluginApiKey,
+  type RotatedCommandSecretView,
+  type RotatedPluginApiKeyView
 } from './plugins-requests'
 
 // The hooks of Settings → Plugins (Step 5.6 PR W1). Only that page loads this file.
@@ -121,5 +123,18 @@ export function useRotateCommandSecret(
   return useMutation({
     mutationFn: (installationId: string) => rotateCommandSecret(apiClient, storeId, installationId),
     gcTime: 0
+  })
+}
+
+// gcTime 0 and no cache entry: the key lives in the state of the mutation only until the dialog that shows it calls `reset`
+export function useRotatePluginApiKey(
+  storeId: string
+): UseMutationResult<RotatedPluginApiKeyView, Error, string> {
+  const refresh = useRefreshPlugins(storeId)
+  return useMutation({
+    mutationFn: (installationId: string) => rotatePluginApiKey(apiClient, storeId, installationId),
+    gcTime: 0,
+    // The prefix of the key on the detail is another one now
+    onSuccess: refresh
   })
 }

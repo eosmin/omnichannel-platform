@@ -77,6 +77,7 @@ const TITLE_OF_PAGE: Record<string, string> = {
   's/[storeId]/settings/api-keys/page.tsx': 'settingsApiKeys',
   's/[storeId]/settings/safety/page.tsx': 'settingsSafety',
   's/[storeId]/settings/retention/page.tsx': 'settingsRetention',
+  's/[storeId]/settings/audit-log/page.tsx': 'settingsAuditLog',
   'account/profile/page.tsx': 'accountProfile',
   'account/preferences/page.tsx': 'accountPreferences',
   'account/notifications/page.tsx': 'accountNotifications',

@@ -689,6 +689,7 @@
     "FINANCE_PERIOD_ALREADY_CLOSED": "El periodo ya está cerrado",
     "FINANCE_CURRENCY_UNSUPPORTED": "Solo se admite USD",
     "FINANCE_SETUP_REQUIRED": "Las finanzas aún no se han configurado para esta organización",
+    "FINANCE_REPORT_BUSY": "Ya se están preparando reportes de Finanzas de esta organización: espera unos segundos e inténtalo de nuevo",
     "FINANCE_TAX_RATE_NOT_CONFIGURED": "Un producto de este pedido lleva impuesto y no hay una tasa definida para él: define primero una tasa por defecto en Finanzas",
     "FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED": "Cambiar si los precios incluyen el impuesto cambia el total de todo el catálogo: confirma el cambio de modo de precios",
     "PURCHASE_ORDER_INVALID_STATUS_TRANSITION": "La orden de compra no puede pasar a ese estado desde el que tiene",
@@ -960,7 +961,8 @@
         "body": "No se pudo generar tu exportación. Intenta pedirla de nuevo.",
         "reason": {
           "EXPORT_TOO_LARGE": "La exportación es demasiado grande. Acota los filtros o las fechas y pídela de nuevo.",
-          "EXPORT_EMPTY": "No había nada que exportar con esos filtros."
+          "EXPORT_EMPTY": "No había nada que exportar con esos filtros.",
+          "PERMISSION_DENIED": "Se canceló la exportación: ya no tienes permiso para exportar esto. Consulta a un administrador."
         }
       }
     },
@@ -3046,6 +3048,7 @@
         "webhooks": "Integraciones salientes",
         "apiKeys": "Claves de API",
         "retention": "Retención de datos",
+        "auditLog": "Registro de auditoría",
         "safety": "Seguridad y confirmaciones"
       },
       "org": {
@@ -3227,6 +3230,19 @@
         "requested": "Acceso que pide",
         "events": "Eventos que sigue",
         "newCode": "Obtener un código nuevo",
+        "rotateKey": "Crear una clave de acceso nueva",
+        "apiKey": {
+          "title": "Clave de acceso nueva para {name}",
+          "description": "Cópiala ahora: solo se muestra una vez. La clave anterior dejó de funcionar en el momento en que se creó esta.",
+          "label": "Clave de acceso",
+          "how": "Entrégasela al plugin como su token Bearer. Mientras el plugin no la use, todas sus llamadas son rechazadas."
+        },
+        "rotateKeyConfirm": {
+          "title": "¿Crear una clave de acceso nueva para {name}?",
+          "body": "La clave actual deja de funcionar de inmediato, sin tiempo de gracia: {name} no podrá entrar a tu tienda hasta que se le dé la clave nueva. La clave nueva se muestra una sola vez.",
+          "cancel": "Cancelar",
+          "confirm": "Crear clave nueva"
+        },
         "rotateSecret": "Crear un secreto de comandos nuevo",
         "commandSecret": {
           "title": "Secreto de comandos nuevo de {name}",
@@ -4880,6 +4896,61 @@
           "expiryPast": "El último día no puede ser anterior a hoy.",
           "expiryInvalid": "Ese día no es válido."
         }
+      }
+    },
+    "auditLog": {
+      "title": "Registro de auditoría",
+      "intro": "Quién hizo qué en esta tienda, de lo más reciente a lo más antiguo. Cada entrada guarda ids, cantidades y el nombre de la acción, nunca el nombre ni el texto de un cliente. Leer el registro también queda registrado.",
+      "caption": "Entradas del registro de auditoría de la tienda, de la más reciente a la más antigua",
+      "filters": {
+        "label": "Filtros del registro de auditoría",
+        "action": "Acción",
+        "actionPlaceholder": "order.created",
+        "actor": "Persona",
+        "anyActor": "Cualquiera",
+        "from": "Desde",
+        "to": "Hasta",
+        "apply": "Aplicar filtros",
+        "clear": "Quitar filtros",
+        "reversed": "El primer día es posterior al último."
+      },
+      "columns": {
+        "when": "Cuándo",
+        "actor": "Quién",
+        "action": "Acción",
+        "resource": "Sobre qué",
+        "details": "Detalle"
+      },
+      "actor": {
+        "system": "Sistema o plugin",
+        "unknown": "Alguien que ya no está en el equipo ({id})"
+      },
+      "noResource": "Ninguno",
+      "open": "Ver detalle",
+      "loadMore": "Cargar más",
+      "empty": "Ninguna entrada coincide con estos filtros.",
+      "export": {
+        "button": "Exportar CSV",
+        "hint": "El archivo trae lo que muestran los filtros, tal como estaba el registro al pedirlo.",
+        "applyFirst": "Aplica primero los filtros: el archivo trae lo que muestra la tabla.",
+        "queued": "Se está preparando el archivo del registro de auditoría. Estará listo en el centro de exportaciones.",
+        "view": "Ver exportaciones",
+        "tooLarge": "El archivo tendría demasiadas entradas. Acota las fechas o los filtros y pídelo de nuevo."
+      },
+      "entry": {
+        "title": "Entrada del registro de auditoría",
+        "description": "Lo que el registro guardó de esta acción.",
+        "when": "Cuándo",
+        "actor": "Quién",
+        "action": "Acción",
+        "resourceType": "Tipo de recurso",
+        "resourceId": "Id del recurso",
+        "ip": "Dirección IP",
+        "userAgent": "Navegador",
+        "id": "Id de la entrada",
+        "none": "Ninguno",
+        "metadata": "Metadatos",
+        "noMetadata": "Esta entrada no tiene metadatos."
       }
     },
     "retention": {

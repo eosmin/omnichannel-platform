@@ -91,4 +91,26 @@ describe('RLS phase 6: the reports of the books read the orders of every store o
 
     expect((fromA.body as VatBody).ordersWithoutTaxSnapshot).toBe(2)
   })
+
+  // The reports are read in short units, one per page (Step 7.3-D): each opens its own context of the organization, so a read that took its
+  // client BEFORE the unit opened (the client is the one of the open context) would read nothing with the switch on. The margin and the
+  // aging have no sale or party lines here, so what they prove is that every unit of the read sees the organization: the setup of the books,
+  // the role mappings and the account lines.
+  it('reads the margin and the aging in units that see the organization, with the header of either store', async () => {
+    for (const [actor, store] of [
+      [ctx.adminA, ctx.storeA],
+      [ctx.adminA2, ctx.storeA2]
+    ] as const) {
+      const margin = await api(app, actor, store)
+        .get(ApiRoutes.finance.reports.margin)
+        .query({ from: isoDay(-30), to: isoDay(1) })
+      const aging = await api(app, actor, store)
+        .get(ApiRoutes.finance.reports.aging)
+        .query({ kind: 'payables', asOf: isoDay(1) })
+      expect(margin.status).toBe(OK)
+      expect(aging.status).toBe(OK)
+      expect((margin.body as { warnings: string[] }).warnings).not.toContain('orders_not_readable')
+      expect((aging.body as { missingRoles: string[] }).missingRoles).toEqual([])
+    }
+  })
 })
