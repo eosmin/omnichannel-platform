@@ -444,7 +444,8 @@ describe('the export of the data requests of access and portability', () => {
   it('goes back to review at once, without spending the other tries, for an export that is too large', async () => {
     const mine = await personOfStoreA('big')
     const id = await approvedExport({ customerIds: [mine.customerId], email: mine.email })
-    jest.replaceProperty(ComplianceConfig, 'DSR_EXPORT_MAX_ROWS_PER_KIND', 0)
+    // The constant is a literal type: the cast lowers it for this case only (restored by `jest.restoreAllMocks`)
+    jest.replaceProperty(ComplianceConfig, 'DSR_EXPORT_MAX_ROWS_PER_KIND', 0 as never)
 
     await runner.run()
 
