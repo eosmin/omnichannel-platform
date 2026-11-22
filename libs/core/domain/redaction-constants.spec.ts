@@ -71,3 +71,22 @@ describe('the names of the data request flow (Step 7.2-H1a)', () => {
     expect(isSecretName(name)).toBe(true)
   })
 })
+
+describe('the idempotency key of a plugin write', () => {
+  it.each([
+    'idempotencyKey',
+    'idempotency_key',
+    'idempotencyKeys',
+    'pluginIdempotencyKeys',
+    'requestHash',
+    'request_hash'
+  ])('reads %s as a secret name', name => {
+    expect(isSecretName(name)).toBe(true)
+  })
+
+  it('leaves a near name that holds neither alone', () => {
+    for (const name of ['keyCount', 'idempotent', 'requestId', 'hashAlgorithm']) {
+      expect(isSecretName(name)).toBe(false)
+    }
+  })
+})
