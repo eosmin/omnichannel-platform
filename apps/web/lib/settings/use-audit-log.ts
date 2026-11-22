@@ -48,10 +48,14 @@ export function useAuditLog(
 
 // One entry by its id. Opening an entry is a deliberate act that the api audits each time, so it is read once per opening and
 // never refetched behind the person's back.
-export function useAuditLogEntry(storeId: string, id: string): UseQueryResult<AuditLogEntryView> {
+export function useAuditLogEntry(
+  storeId: string,
+  id: string,
+  at?: string
+): UseQueryResult<AuditLogEntryView> {
   return useQuery({
     queryKey: QueryKeys.auditLog.entry(storeId, id),
-    queryFn: ({ signal }) => fetchAuditLogEntry(apiClient, storeId, id, signal),
+    queryFn: ({ signal }) => fetchAuditLogEntry(apiClient, storeId, id, signal, at),
     staleTime: Infinity,
     gcTime: 0,
     refetchOnWindowFocus: false,

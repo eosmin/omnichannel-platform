@@ -12,6 +12,8 @@ import type { ExportView } from '../exports'
 import { actorOf, CurrentStore, RequirePermissions } from '../tenancy'
 
 import {
+  type AuditLogEntryQuery,
+  auditLogEntryQuerySchema,
   type ExportAuditLogQuery,
   exportAuditLogQuerySchema,
   type ListAuditLogQuery,
@@ -59,8 +61,9 @@ export class AuditLogController {
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
+    @Query(new ZodValidationPipe(auditLogEntryQuerySchema)) query: AuditLogEntryQuery,
     @Req() req: AuthenticatedRequest
   ): Promise<AuditLogEntryView> {
-    return this.auditLog.get(store.id, actorOf(user, store, req), id)
+    return this.auditLog.get(store.id, actorOf(user, store, req), id, query.at)
   }
 }
