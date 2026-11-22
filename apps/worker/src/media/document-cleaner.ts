@@ -6,6 +6,9 @@ import type { SanitizedDocument } from '@platform/core/document-sanitizer'
 // an error of the machine propagates so that the queue retries.
 export abstract class DocumentCleaner {
   abstract clean(input: Buffer, contentType: string, maxBytes?: number): Promise<SanitizedDocument>
+  // True while the cleaner cannot take a document (a thread that could not be stopped is still alive): the sweep does not count an attempt
+  // for a document it would only be refused
+  abstract isBusy(): boolean
 }
 
 // What the thread receives (a copy of the bytes: the caller keeps its own) and what it sends back. Nothing else crosses: the thread has no

@@ -38,14 +38,33 @@ export const defaultThreadOptions = (): DocumentThreadOptions => ({
 
 const { ThreadReplies, Untouched } = DocumentSanitizing
 
-// Whether the bytes begin as a document of the type they are said to be (what the cleaner writes: a PDF, or a zip for a docx and an xlsx)
-const startsAsItsType = (body: Buffer, contentType: string): boolean =>
-  contentType === DocumentSanitizing.PDF_CONTENT_TYPE
-    ? body.subarray(0, DocumentSanitizing.PDF_MAGIC.length).toString('latin1') ===
-      DocumentSanitizing.PDF_MAGIC
-    : body
-        .subarray(0, DocumentSanitizing.ZIP_MAGIC.length)
-        .equals(Buffer.from(DocumentSanitizing.ZIP_MAGIC))
+// Whether the bytes look like a document of the type they are said to be (what the cleaner writes): a PDF begins with `%PDF-` and has its
+// `%%EOF` in the last KiB; a docx or an xlsx is a zip, begins with `PK\x03\x04` and has its end record in the last 64 KiB. Only the two ends are
+// read, no parse: a thread that was taken over can still write any body with both ends right (the limit of this check is in the plan)
+const startsAsItsType = (body: Buffer, contentType: string): boolean => {
+  const {
+    PDF_MAGIC,
+    PDF_END_MARK,
+    PDF_END_WINDOW_BYTES,
+    ZIP_MAGIC,
+    ZIP_END_MAGIC,
+    ZIP_END_WINDOW_BYTES
+  } = DocumentSanitizing
+  if (contentType === DocumentSanitizing.PDF_CONTENT_TYPE) {
+    return (
+      body.subarray(0, PDF_MAGIC.length).toString('latin1') === PDF_MAGIC &&
+      body
+        .subarray(Math.max(0, body.length - PDF_END_WINDOW_BYTES))
+        .includes(PDF_END_MARK, 0, 'latin1')
+    )
+  }
+  return (
+    body.subarray(0, ZIP_MAGIC.length).equals(Buffer.from(ZIP_MAGIC)) &&
+    body
+      .subarray(Math.max(0, body.length - ZIP_END_WINDOW_BYTES))
+      .includes(Buffer.from(ZIP_END_MAGIC))
+  )
+}
 
 // The threads of this process that have not exited yet. `terminate()` cannot interrupt a thread inside a synchronous native call (inflate) until
 // it returns, so a thread can outlive its document: the cleaner then waits for it only up to `stopTimeoutMs` and, while it is alive, takes no
@@ -65,6 +84,12 @@ let live = 0
 export class ThreadDocumentCleaner extends DocumentCleaner {
   constructor(private readonly options: DocumentThreadOptions) {
     super()
+  }
+
+  // Whether a thread of an earlier document is still alive and takes no new one (see `live`): a caller that counts attempts must not count one
+  // for a document that was never tried
+  isBusy(): boolean {
+    return live > 0
   }
 
   clean(

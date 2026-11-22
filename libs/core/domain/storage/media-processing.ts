@@ -238,6 +238,11 @@ export const DocumentSanitizing = {
   // How a document the cleaner wrote begins: a PDF, and the zip of a docx or an xlsx (the parent checks what comes back from the thread)
   PDF_MAGIC: '%PDF-',
   ZIP_MAGIC: [0x50, 0x4b, 0x03, 0x04],
+  // ... and how it ends: the PDF trailer mark in the last KiB, the end-of-central-directory record of the zip in the last 64 KiB + 22 bytes
+  PDF_END_MARK: '%%EOF',
+  PDF_END_WINDOW_BYTES: 1024,
+  ZIP_END_MAGIC: [0x50, 0x4b, 0x05, 0x06],
+  ZIP_END_WINDOW_BYTES: 65_557,
   DOCX_CONTENT_TYPE: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   XLSX_CONTENT_TYPE: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   // The sum of what a zip may inflate to: a bigger one is not opened (a zip bomb); the document stays as it came

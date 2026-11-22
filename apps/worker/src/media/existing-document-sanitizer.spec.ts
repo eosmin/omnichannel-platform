@@ -392,6 +392,30 @@ describe('ExistingDocumentSanitizer', () => {
     expect(storage.put).not.toHaveBeenCalled()
   })
 
+  it('uses no attempt while a thread that could not be stopped is alive: the documents wait for the next run', async () => {
+    const rowsOf = [
+      store('d1', await pdfWithMarkers()),
+      store('d2', await pdfWithMarkers()),
+      store('d3', await pdfWithMarkers())
+    ]
+    const busy = jest.spyOn(cleaner, 'isBusy').mockReturnValue(true)
+    const clean = jest.spyOn(cleaner, 'clean')
+    try {
+      const report = await sanitizer.runScoped([STORE])
+      expect(report).toEqual({ cleaned: 0, alreadyClean: 0, skipped: 0, failed: 0 })
+      // None was opened and none was counted: their rows are as they were
+      expect(clean).not.toHaveBeenCalled()
+      for (const row of rowsOf) expect(row.scanResult).toBeNull()
+      expect(storage.read).not.toHaveBeenCalled()
+    } finally {
+      busy.mockRestore()
+      clean.mockRestore()
+    }
+    // Once the thread is gone the same documents are cleaned
+    const again = await sanitizer.runScoped([STORE])
+    expect(again.cleaned).toBe(3)
+  })
+
   it('does not cut a slow document at the budget of the run: it finishes clean with no attempt left on the row, and the next one is not opened', async () => {
     const dirty = await pdfWithMarkers()
     const slow = store('d1', dirty)

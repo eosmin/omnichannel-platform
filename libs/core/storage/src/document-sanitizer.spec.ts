@@ -67,6 +67,13 @@ describe('sanitizeDocumentInline: a PDF', () => {
     // Not even as an object that nothing points to
     expect(result.body.includes(AUTHOR)).toBe(false)
     expect(result.body.includes(PROGRAM)).toBe(false)
+    // What the parent of the document thread reads at the two ends of what the cleaner writes: begins and ends as a PDF
+    expect(result.body.subarray(0, 5).toString('latin1')).toBe(DocumentSanitizing.PDF_MAGIC)
+    expect(
+      result.body
+        .subarray(result.body.length - DocumentSanitizing.PDF_END_WINDOW_BYTES)
+        .includes(DocumentSanitizing.PDF_END_MARK)
+    ).toBe(true)
     const again = await PDFDocument.load(result.body, { updateMetadata: false })
     expect(again.getPageCount()).toBe(2)
     expect(again.getAuthor()).toBeUndefined()
@@ -191,6 +198,11 @@ describe.each([
 
     expect(result.kind).toBe('sanitized')
     if (result.kind !== 'sanitized') return
+    // ... and as a zip: its end record is the last 22 bytes
+    expect([...result.body.subarray(0, 4)]).toEqual(DocumentSanitizing.ZIP_MAGIC)
+    expect([...result.body.subarray(result.body.length - 22, result.body.length - 18)]).toEqual(
+      DocumentSanitizing.ZIP_END_MAGIC
+    )
     const parts = unzipSync(new Uint8Array(result.body))
     const all = Object.values(parts)
       .map(part => strFromU8(part))

@@ -24,7 +24,7 @@ const cleanerOf = (
 // documents' side of the contract (a file that spins, that eats memory, that answers badly); the cleaner itself is covered by
 // `document-thread.reply.spec.ts` and by the check of the bundle
 describe('ThreadDocumentCleaner', () => {
-  const bytes = Buffer.from('%PDF-1.4 a customer document')
+  const bytes = Buffer.from('%PDF-1.4 a customer document\n%%EOF\n')
 
   it('hands the bytes to the thread and takes the cleaned bytes back', async () => {
     const result = await cleanerOf('answer.cjs').clean(bytes, PDF)
@@ -84,6 +84,48 @@ describe('ThreadDocumentCleaner', () => {
     )
   })
 
+  // The check reads two ends of the bytes the cleaner just wrote, so a document that was cleaned is never refused for how its original was
+  // padded; these cases show the windows are wide enough for what a writer may leave
+  it('accepts a PDF with 900 bytes after its end mark, and a zip whose end record has a 60 000 byte comment before the end of the file', async () => {
+    const padded = Buffer.concat([bytes, Buffer.alloc(900, 0x20)])
+    await expect(cleanerOf('answer.cjs').clean(padded, PDF)).resolves.toEqual({
+      kind: 'sanitized',
+      body: padded
+    })
+    const record = Buffer.concat([
+      Buffer.from([0x50, 0x4b, 0x05, 0x06]),
+      Buffer.alloc(16),
+      Buffer.from([0x60, 0xea]), // the length of the comment: 60 000
+      Buffer.alloc(60_000, 0x41)
+    ])
+    const zip = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(64), record])
+    await expect(
+      cleanerOf('answer.cjs').clean(
+        zip,
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      )
+    ).resolves.toEqual({ kind: 'sanitized', body: zip })
+  })
+
+  it('refuses the right beginning with a body of garbage, and never hands it on', async () => {
+    const garbage = Buffer.concat([Buffer.from('%PDF-'), Buffer.alloc(5000, 0x41)])
+    await expect(cleanerOf('answer.cjs').clean(garbage, PDF)).rejects.toThrow(
+      'the document thread failed'
+    )
+  })
+
+  it('does not take a result that begins as the type but does not end as it', async () => {
+    await expect(cleanerOf('cut-short.cjs').clean(bytes, PDF)).rejects.toThrow(
+      'the document thread failed'
+    )
+    await expect(
+      cleanerOf('zip-without-end.cjs').clean(
+        bytes,
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      )
+    ).rejects.toThrow('the document thread failed')
+  })
+
   it('survives a thread that holds gigabytes of buffers, which the heap limit of the thread does not count', async () => {
     const result = await cleanerOf('buffers.cjs', { timeoutMs: 20_000 }).clean(bytes, PDF)
     expect(result).toEqual({ kind: 'untouched', why: 'not_cleanable' })
@@ -121,7 +163,9 @@ describe('ThreadDocumentCleaner', () => {
     const result = await cleanerOf('sees.cjs').clean(bytes, PDF)
     expect(result.kind).toBe('sanitized')
     const seen = JSON.parse(
-      result.kind === 'sanitized' ? result.body.toString('utf8').slice('%PDF-'.length) : '{}'
+      result.kind === 'sanitized'
+        ? result.body.toString('utf8').slice('%PDF-'.length).replace('\n%%EOF', '')
+        : '{}'
     ) as {
       env: string[]
       argv: string[]

@@ -178,6 +178,15 @@ export class ExistingDocumentSanitizer {
     )
     for (const row of rows) {
       if (Date.now() >= deadline) return
+      // A thread that could not be stopped is still alive and takes no document: every one tried now would use an attempt of its row (the
+      // count is written before the parse) for a refusal that is not its fault. The rest waits for the next run, with no attempt used
+      if (this.documents.isBusy()) {
+        this.logger.warn(
+          { storeId },
+          'the sweep of documents stopped: a document thread that could not be stopped is still running'
+        )
+        return
+      }
       const attempt = attemptsOf(row.scanResult) + 1
       try {
         const left = await this.sweepOne(row, storeId, attempt)
