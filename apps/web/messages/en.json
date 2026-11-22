@@ -3423,7 +3423,8 @@
           "merge": "Merge customers",
           "export": "Export customers",
           "flag_caution": "Flag customers with caution",
-          "erase": "Erase the personal data of customers"
+          "erase": "Erase the personal data of customers",
+          "dsr_review": "Review the requests for the data of a person"
         },
         "orders": {
           "view": "View orders",

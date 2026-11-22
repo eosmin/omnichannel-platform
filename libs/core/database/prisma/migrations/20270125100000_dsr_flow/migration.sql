@@ -30,7 +30,7 @@ CREATE INDEX "ix_dsr_open_by_subject" ON "data_subject_requests" ("store_id", "s
 -- context and nothing else. A token is found only while it is unused and not expired, and its request still waits for it.
 CREATE FUNCTION resolve_dsr_store(p_public_key text)
   RETURNS TABLE (id text, store_id text, organization_id text)
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $$
     SELECT s.id, s.id, s.organization_id
     FROM stores s
@@ -40,7 +40,7 @@ CREATE FUNCTION resolve_dsr_store(p_public_key text)
 
 CREATE FUNCTION resolve_dsr_verification(p_token_hash text)
   RETURNS TABLE (id text, store_id text, organization_id text)
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $$
     SELECT r.id, r.store_id, r.organization_id
     FROM verification_tokens t

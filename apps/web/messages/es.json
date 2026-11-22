@@ -637,7 +637,7 @@
         "body": "Tu solicitud de {type} no fue aceptada. Puedes escribir a la tienda si quieres saber por qué."
       },
       "expired": {
-        "heading": "Tu solicitud venció",
+        "heading": "Tu solicitud expiró",
         "body": "Tu solicitud de {type} no se confirmó a tiempo y se cerró. Puedes hacer una nueva."
       },
       "retained": "La tienda conserva {orders} pedidos y sus facturas porque la ley lo exige por razones de impuestos (obligación legal).",
@@ -3423,7 +3423,8 @@
           "merge": "Fusionar clientes",
           "export": "Exportar clientes",
           "flag_caution": "Marcar clientes con precaución",
-          "erase": "Borrar los datos personales de clientes"
+          "erase": "Borrar los datos personales de clientes",
+          "dsr_review": "Revisar las solicitudes de datos de una persona"
         },
         "orders": {
           "view": "Ver pedidos",
