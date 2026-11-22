@@ -44,10 +44,18 @@ signing). The fiscal values can be rotated on their own only in an environment t
    every value already opens with the new key. Also look at the audit trail: `fiscal.value_resealed` has one entry per value sealed again
    (kind and row id, never content).
    **Condition, a risk of LOSING DATA:** every organization that holds fiscal rows must appear in the log of the run. An organization
-   with no books set up is not checked, and its fiscal data is NOT sealed again; retiring the previous key would make it unreadable. Count
-   the organizations with fiscal values (counts only, never values) and compare with the organizations in the log:
-   `SELECT count(DISTINCT organization_id) FROM fiscal_documents;` (and the same over `fiscal_issuers`, `fiscal_contingencies`, and
-   `customer_fiscal_data` joined to `stores`). Any organization missing from the log blocks step 6.
+   with no books set up is not checked, and its fiscal data is NOT sealed again; retiring the previous key would make it unreadable. Ask
+   for the IDs (never a count: a count cannot tell a missing organization from an extra one) of every organization with a fiscal value in
+   any of the four tables, and take away the organizations that appear in the log of the last run:
+   ```sql
+   SELECT organization_id FROM fiscal_documents
+   UNION SELECT organization_id FROM fiscal_issuers
+   UNION SELECT organization_id FROM fiscal_contingencies
+   UNION SELECT s.organization_id FROM customer_fiscal_data c JOIN stores s ON s.id = c.store_id;
+   ```
+   Run it **as the owner role (the one of the migrations)**: the four tables have row-level security, and with the role of the api and no
+   context the query returns 0 rows, which reads as "all well". Compare the list with the organization ids of the log (`EXCEPT`, or a diff
+   of the two lists). **The difference must be an EMPTY LIST**; any organization left over blocks step 6.
 6. **Retire the old key.** Remove `CREDENTIALS_ENCRYPTION_KEY_PREVIOUS` from the api and the worker and restart. Check: the fiscal screens
    still open a document, a receiver and the issuer's credentials. Only now destroy the old key. Keep the backup of step 1 until then.
 
