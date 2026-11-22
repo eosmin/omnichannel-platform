@@ -493,7 +493,24 @@ describe('The review queue of the data requests', () => {
       expect(row.notifyToEncrypted).toBeNull()
       expect(row.subjectEmailHash).toBeNull()
       expect(emailsOf(app).to(email)).toHaveLength(1)
+      expect(emailsOf(app).to(email)[0]?.data).toMatchObject({ outcome: 'cancelled' })
       await waitForAuditEntries(owner, { action: AuditAction.DSR_CANCELLED, resourceId: id })
+    })
+
+    it('still closes a request whose sealed address cannot be opened (a key that changed), with no mail', async () => {
+      const { id } = await inReview()
+      await owner.dataSubjectRequest.update({
+        where: { id },
+        data: { notifyToEncrypted: Buffer.from('not a sealed address') }
+      })
+
+      const response = await reject(id)
+
+      expect(response.status).toBe(OK)
+      const row = await rowOf(id)
+      expect(row.status).toBe(DsrStatus.REJECTED)
+      expect(row.notifyToEncrypted).toBeNull()
+      expect(emailsOf(app).jobs).toHaveLength(0)
     })
 
     it('cancels nothing that is not an approved erasure still inside its grace period', async () => {

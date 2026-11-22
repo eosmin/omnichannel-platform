@@ -1,6 +1,7 @@
 import { InjectQueue } from '@nestjs/bullmq'
 import { Inject, Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
+import { PinoLogger } from 'nestjs-pino'
 import { z } from 'zod'
 
 import { AuditAction, type AuditActionType } from '@platform/core/audit'
@@ -11,13 +12,15 @@ import {
   type DsrConfig,
   type DsrOpenWork,
   DsrRejectionReasons,
+  type DsrResultOutcome,
+  DsrResultOutcomes,
+  openDsrNotifyAddress,
   DsrResourceTypes,
   dsrEmailHash,
   dsrExecutorAvailable,
   hasOpenWork,
   normalizeDsrEmail
 } from '@platform/core/compliance'
-import { decrypt, parseEncryptionKey } from '@platform/core/crypto'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { DAY_MS, DsrStatus, DsrType } from '@platform/core/domain'
 import {
@@ -148,8 +151,11 @@ export class DsrReviewService {
     private readonly openWork: DsrOpenWorkService,
     @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig,
-    @Inject(DSR_EXECUTOR_PROBE) private readonly executorAvailable: DsrExecutorProbe
-  ) {}
+    @Inject(DSR_EXECUTOR_PROBE) private readonly executorAvailable: DsrExecutorProbe,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(DsrReviewService.name)
+  }
 
   async list(storeId: string, query: ListDsrQuery): Promise<DsrRequestPage> {
     return this.prisma.transaction(async tx => {
@@ -304,7 +310,7 @@ export class DsrReviewService {
         }
       })
       if (done.count !== 1) throw notReviewable(row.status)
-      await this.mailResult(tx, storeId, row, 'rejected')
+      await this.mailResult(tx, storeId, row, DsrResultOutcomes.REJECTED)
       return viewOf(await readRow(tx, id))
     })
     this.logEnd(AuditAction.DSR_REJECTED, storeId, view, actor)
@@ -336,7 +342,7 @@ export class DsrReviewService {
         }
       })
       if (done.count !== 1) throw notReviewable(row.status)
-      await this.mailResult(tx, storeId, row, 'rejected')
+      await this.mailResult(tx, storeId, row, DsrResultOutcomes.CANCELLED)
       return viewOf(await readRow(tx, id))
     })
     this.logEnd(AuditAction.DSR_CANCELLED, storeId, view, actor)
@@ -405,13 +411,15 @@ export class DsrReviewService {
     tx: PrismaTransaction,
     storeId: string,
     row: Row,
-    outcome: 'rejected'
+    outcome: DsrResultOutcome
   ): Promise<void> {
     if (row.notifyToEncrypted === null) return
-    const to = decrypt(
-      Buffer.from(row.notifyToEncrypted),
-      parseEncryptionKey(this.config.encryptionKeyHex)
-    )
+    const to = openDsrNotifyAddress(row.notifyToEncrypted, this.config.encryptionKeyHex)
+    // An address that does not open (a key that changed) cannot be mailed, and must not keep the request from being decided
+    if (to === null) {
+      this.logger.error({ requestId: row.id }, 'the address of a data request could not be opened')
+      return
+    }
     const store = await tx.store.findUnique({
       where: { id: storeId },
       select: { defaultLocale: true }

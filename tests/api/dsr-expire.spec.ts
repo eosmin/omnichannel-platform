@@ -227,6 +227,24 @@ describe('the sweep of data requests whose verification expired', () => {
     expect(mails.map(mail => mail.to)).toEqual([email('f')])
   })
 
+  it('closes a request whose sealed address cannot be opened, without a mail, and does not keep the sweep from the others', async () => {
+    const broken = `req-broken-${runId}`
+    const fine = `req-fine-${runId}`
+    await insertRequest(broken, storeA, 'pending_verification', email('x'), 'expired')
+    await owner.query(`UPDATE data_subject_requests SET notify_to_encrypted = $2 WHERE id = $1`, [
+      broken,
+      Buffer.from('not a sealed address')
+    ])
+    await insertRequest(fine, storeA, 'pending_verification', email('y'), 'expired')
+
+    const report = await sweeper.run()
+
+    expect(report).toEqual({ expired: 2, failed: 0 })
+    expect((await rowOf(broken))?.status).toBe('rejected')
+    expect((await rowOf(broken))?.notify_to_encrypted).toBeNull()
+    expect(mails.map(mail => mail.to)).toEqual([email('y')])
+  })
+
   it('does not close a request that is no longer waiting for its link (the person confirmed it)', async () => {
     const id = `req-race-${runId}`
     await insertRequest(id, storeA, 'pending_verification', email('race'), 'expired')

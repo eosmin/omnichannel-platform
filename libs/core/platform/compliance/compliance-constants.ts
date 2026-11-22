@@ -210,3 +210,12 @@ export const DsrRejectionReasons = {
   // A reviewer decided it; what they wrote is in the notes of the request, never in the audit log
   REVIEWER_DECISION: 'reviewer_decision'
 } as const
+
+// What the closing notice of a data request says happened (the `outcome` of the `dsr-result` mail)
+export const DsrResultOutcomes = {
+  COMPLETED: 'completed',
+  REJECTED: 'rejected',
+  EXPIRED: 'expired',
+  CANCELLED: 'cancelled'
+} as const
+export type DsrResultOutcome = (typeof DsrResultOutcomes)[keyof typeof DsrResultOutcomes]

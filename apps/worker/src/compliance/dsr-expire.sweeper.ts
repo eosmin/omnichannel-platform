@@ -11,9 +11,10 @@ import {
   DSR_CONFIG,
   type DsrConfig,
   DsrRejectionReasons,
+  DsrResultOutcomes,
+  openDsrNotifyAddress,
   DsrResourceTypes
 } from '@platform/core/compliance'
-import { decrypt, parseEncryptionKey } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { DsrStatus, VerificationTokenType } from '@platform/core/domain'
 import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
@@ -137,11 +138,15 @@ export class DsrExpireSweeper {
         }
       })
       if (done.count !== 1) return null
-      if (row.notifyToEncrypted !== null) {
-        const to = decrypt(
-          Buffer.from(row.notifyToEncrypted),
-          parseEncryptionKey(this.config.encryptionKeyHex)
-        )
+      const to =
+        row.notifyToEncrypted === null
+          ? null
+          : openDsrNotifyAddress(row.notifyToEncrypted, this.config.encryptionKeyHex)
+      // An address that does not open (a key that changed) is not mailed, and must not keep the request open for ever
+      if (row.notifyToEncrypted !== null && to === null) {
+        this.logger.error({ requestId }, 'the address of a data request could not be opened')
+      }
+      if (to !== null) {
         const store = await tx.store.findUnique({
           where: { id: storeId },
           select: { defaultLocale: true }
@@ -154,7 +159,7 @@ export class DsrExpireSweeper {
             template: EmailTemplates.DSR_RESULT,
             to,
             locale,
-            data: { outcome: 'expired', requestType: row.type },
+            data: { outcome: DsrResultOutcomes.EXPIRED, requestType: row.type },
             tags: { template: EmailTemplates.DSR_RESULT }
           },
           // The job holds the address: gone as soon as it is sent, and an hour after a failure

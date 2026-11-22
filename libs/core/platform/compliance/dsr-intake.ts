@@ -44,3 +44,13 @@ export function openDsrIntake(sealed: string, encryptionKeyHex: string): DsrInta
     return null
   }
 }
+
+// The address a request will be answered at, from its sealed column. null when it does not open (a key that changed, a damaged value): the
+// caller closes the request without a mail instead of being unable to close it at all
+export function openDsrNotifyAddress(sealed: Uint8Array, encryptionKeyHex: string): string | null {
+  try {
+    return decrypt(Buffer.from(sealed), parseEncryptionKey(encryptionKeyHex))
+  } catch {
+    return null
+  }
+}
