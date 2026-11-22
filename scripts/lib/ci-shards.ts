@@ -89,8 +89,49 @@ function needsOf(workflow: string, job: string): string[] {
         .filter(item => item !== '')
 }
 
+// The jest of a shard runs its files one after the other (the specs share one database), but not in the process of jest itself: every
+// spec file adds its app to the heap and jest 30 never gives it back (about 100 MB a file, 3.7-3.8 GB after 31 files of a 4 GB heap, in
+// every shard), so the one worker is replaced when its `heapUsed` passes the limit (jest-worker reads `process.memoryUsage().heapUsed` of the child). Jest runs in band, and ignores the limit, unless `maxWorkers` is
+// above one OR the limit is set: `--maxWorkers=1` with `--workerIdleMemoryLimit` is one worker that is recycled. `--runInBand` would
+// silently bring the leak back, and a second worker would run specs at the same time against one database.
+export const SECURITY_JEST_CONFIG = 'jest.config.cts'
+export function jestInvocationProblems(command: string): string[] {
+  const calls = command
+    .split(/\bjest --config /)
+    .slice(1)
+    .filter(call => call.startsWith(SECURITY_JEST_CONFIG))
+    .map(call => /^[^;|]*/.exec(call)?.[0] ?? '')
+  if (calls.length === 0) {
+    return [
+      `tests/project.json: no \`jest --config ${SECURITY_JEST_CONFIG}\` found in test-security`
+    ]
+  }
+  const problems: string[] = []
+  for (const call of calls) {
+    if (/--run-?in-?band|--detectOpenHandles|\s-i(\s|$)/i.test(call)) {
+      problems.push(
+        'tests/project.json: the shards of test-security must not run in band (`--runInBand`, `-i`, `--detectOpenHandles`: the heap of a process only grows; see jestInvocationProblems)'
+      )
+    }
+    const workers = call.match(/--maxWorkers=\S+/g) ?? []
+    if (workers.length !== 1 || workers[0] !== '--maxWorkers=1') {
+      problems.push(
+        'tests/project.json: the shards of test-security need `--maxWorkers=1` (one worker: the specs share one database)'
+      )
+    }
+    if (!/--workerIdleMemoryLimit=\d+MB(\s|$)/.test(call)) {
+      problems.push(
+        'tests/project.json: the shards of test-security need `--workerIdleMemoryLimit=<n>MB`, or the heap of the worker grows until it runs out'
+      )
+    }
+  }
+  // The loop and the single-shard branch are two calls: one line for each fault, not one for each call
+  return [...new Set(problems)]
+}
+
 export function findShardProblems(sources: ShardSources): string[] {
   const problems: string[] = []
+  problems.push(...jestInvocationProblems(sources.securityCommand))
   const denominators = new Set<number>()
 
   for (const job of SECURITY_JOBS) {
