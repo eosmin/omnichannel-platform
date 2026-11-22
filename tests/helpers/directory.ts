@@ -5,7 +5,7 @@ interface DirectoryPageBody {
   nextCursor: string | null
 }
 
-export async function allDirectoryRows<T extends { id: string }>(
+export async function allDirectoryRows<T>(
   get: (query: { limit: number; cursor?: string }) => PromiseLike<{ status: number; body: unknown }>
 ): Promise<{ status: number; rows: T[] }> {
   const rows: T[] = []

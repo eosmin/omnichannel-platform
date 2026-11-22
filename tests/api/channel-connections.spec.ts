@@ -1569,7 +1569,7 @@ describe('The channel connections of a store', () => {
       const list = await allDirectory()
 
       const mediaOf = (pluginId: string) =>
-        (list.body as { data: { pluginId: string; media: unknown[] }[] }).data.find(
+        (list.body as unknown as { data: { pluginId: string; media: unknown[] }[] }).data.find(
           item => item.pluginId === pluginId
         )?.media
       // The switch for several files is off in the suite: the channel's five become one, as the route says
