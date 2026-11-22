@@ -151,6 +151,39 @@ export const PluginLockScopes = {
   API_KEY: 'plugin_api_key'
 } as const
 
+// The idempotency key of a write that a plugin makes through /api/v1/plugin-api/* (Step 7.3 S4). A plugin sends `Idempotency-Key: <1..255
+// visible ASCII characters>` on a POST, PUT, PATCH or DELETE; the same installation with the same key gets the answer of the first call
+// and no second write, for `TTL_HOURS`. The header is optional (a plugin that does not send it keeps the behaviour it had).
+export const PluginIdempotency = {
+  HEADER: 'idempotency-key',
+  // Set to "true" on an answer that is a replay of the first call
+  REPLAY_HEADER: 'idempotent-replayed',
+  REPLAY_VALUE: 'true',
+  KEY_MAX_LENGTH: 255,
+  TTL_HOURS: 24,
+  // A claim that no answer closed for this long (the process died between the write and its result) may be taken by a retry
+  STALE_CLAIM_SECONDS: 120,
+  // The biggest answer that is kept to be replayed; a bigger one is not kept and its replay says so instead of repeating the write
+  BODY_MAX_BYTES: 262_144,
+  METHODS: ['POST', 'PUT', 'PATCH', 'DELETE']
+} as const
+
+// PluginIdempotencyKey.state
+export const PluginIdempotencyState = {
+  IN_PROGRESS: 'in_progress',
+  COMPLETED: 'completed'
+} as const
+
+// The `reason` in the metadata of the 409 (RESOURCE_CONFLICT) that a key can get
+export const PluginIdempotencyConflicts = {
+  // The key was used for another request (other route, parameters or body)
+  KEY_REUSED: 'idempotency_key_reused',
+  // The first call has not answered yet
+  IN_PROGRESS: 'idempotency_in_progress',
+  // The first call was done, its answer was too big to keep
+  RESULT_NOT_KEPT: 'idempotency_result_not_kept'
+} as const
+
 // What the owner types to revoke an integration plugin (TDD_10 §6.6): the word, as written, so that a click cannot revoke
 export const PLUGIN_REVOKE_CONFIRMATION = 'REVOKE'
 
