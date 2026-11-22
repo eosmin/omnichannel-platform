@@ -2,9 +2,10 @@
 -- `idx_messages_search_unaccent`), and it costs a write on every message insert. Drop it first, on its own, so the next
 -- migration drops a column with no index left to unlink under its lock.
 -- Rollback: rollbacks/20270127500000_drop_messages_search_index.rollback.sql (run it AFTER the rollback of 20270127600000: it needs the column).
--- Alone in its file and one statement only: -- It waits for every transaction that could still use the index, so an idle-in-transaction session makes the deploy wait. If it is cancelled it leaves the
--- index INVALID (still maintained on writes) and the migration failed: check `select indisvalid from pg_index where indexrelid = 'idx_messages_search'::regclass`;
--- if the row exists, run `prisma migrate resolve --rolled-back 20270127500000_drop_messages_search_index` and deploy again (IF EXISTS makes the retry safe).
-DROP INDEX CONCURRENTLY cannot run in a transaction block, and Prisma sends a file of
+-- Alone in its file and one statement only: DROP INDEX CONCURRENTLY cannot run in a transaction block, and Prisma sends a file of
 -- one statement without wrapping it, so the writes to `messages` are never blocked.
+-- It waits for every transaction that could still use the index, so an idle-in-transaction session makes the deploy wait.
+-- If it is cancelled it leaves the index INVALID (still maintained on writes) and the migration failed: check
+-- `select indisvalid from pg_index where indexrelid = 'idx_messages_search'::regclass`; if the row exists, run
+-- `prisma migrate resolve --rolled-back 20270127500000_drop_messages_search_index` and deploy again (IF EXISTS makes the retry safe).
 DROP INDEX CONCURRENTLY IF EXISTS "idx_messages_search";
