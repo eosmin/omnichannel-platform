@@ -1,10 +1,12 @@
 // rls-context: every database access of this file runs inside a JobContext (forStore, or forUser for an avatar) opened around that one call; the provider, the bucket and the scanner are called outside of it
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
+import type { Counter } from '@prometheus-io/client'
 import { type Queue, UnrecoverableError } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 import sharp from 'sharp'
 
+import { isCleanableType as isAvType } from '@platform/core/av-sanitizer'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { isSanitizedDocumentType } from '@platform/core/document-sanitizer'
 import { MediaStatus } from '@platform/core/domain'
@@ -13,6 +15,8 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { ImageNotSanitizable, isSanitizedType, sanitizeImage } from '@platform/core/image-sanitizer'
 import { publishMessageChanged } from '@platform/core/messaging'
+import { MetricNames } from '@platform/core/metrics'
+import { InjectMetric } from '@platform/core/metrics-module'
 import { JobNames, type MediaScope, type ProcessImageJob, QueueNames } from '@platform/core/queues'
 import {
   AllowedContentTypes,
@@ -21,6 +25,7 @@ import {
   ImageVariantSpecs,
   AvatarProcessing,
   AvatarUpload,
+  AvSanitizing,
   DocumentSanitizing,
   isEvidenceMedia,
   keepsAnimation,
@@ -35,6 +40,7 @@ import {
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
+import { AvCleaner } from './av-cleaner'
 import { ClamavClient } from './clamav.client'
 import { DocumentCleaner } from './document-cleaner'
 import { findActivePdfNames } from './pdf-active-content'
@@ -44,6 +50,13 @@ const hasSanitizedMark = (scanResult: unknown): boolean =>
   typeof scanResult === 'object' &&
   scanResult !== null &&
   (scanResult as { sanitized?: unknown }).sanitized === true
+
+// Media.scanResult of a video or an audio file that the cleaning of this version already looked at (cleaned, or kept as it came)
+const hasAvMark = (scanResult: unknown): boolean =>
+  typeof scanResult === 'object' &&
+  scanResult !== null &&
+  (scanResult as Record<string, unknown>)[AvSanitizing.CLEANING_VERSION_KEY] ===
+    AvSanitizing.CLEANING_VERSION
 
 const isImage = (contentType: string): boolean =>
   (AllowedContentTypes.IMAGE as readonly string[]).includes(contentType)
@@ -60,7 +73,9 @@ export class MediaPipeline {
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ProcessImageJob>,
     private readonly logger: PinoLogger,
     private readonly jobContext: JobContext,
-    private readonly documents: DocumentCleaner
+    private readonly documents: DocumentCleaner,
+    private readonly avCleaner: AvCleaner,
+    @InjectMetric(MetricNames.AV_CLEANING) private readonly avResults: Counter<string>
   ) {
     this.logger.setContext(MediaPipeline.name)
   }
@@ -158,6 +173,12 @@ export class MediaPipeline {
     // which is kept as it came. A document that cannot be cleaned without risk is kept and logged, never refused
     if (isSanitizedDocumentType(media.contentType) && !isEvidenceMedia(media.purpose)) {
       if (!(await this.sanitizeDocumentFile(media, scope))) return
+    }
+    // A video or an audio file loses its container metadata (where it was shot, with what, when) the same way, whoever sent it. The row stays
+    // `pending` until this is done, and only a `clean` row is sent, opened or signed for a channel, so nothing leaves before it is cleaned.
+    // A file that cannot be cleaned without risk is kept and logged, never refused
+    if (isAvType(media.contentType) && media.purpose !== String(MediaPurpose.AVATAR)) {
+      if (!(await this.sanitizeAvFile(media, scope, lastAttempt))) return
     }
     // A PDF that stays as the receipt of a transaction must not run anything when it is opened (TAX-436)
     if (
@@ -277,6 +298,92 @@ export class MediaPipeline {
       })
     )
     return moved.count > 0
+  }
+
+  // Replaces the video or audio file with the same streams in a container with no metadata (`AvCleaner`, ffmpeg in a process of its own). Made
+  // and read back in memory first; the object is written only then, so a failure leaves the original. The mark (the version of the cleaning)
+  // keeps a retry from copying it again. What cannot be cleaned without risk (the file's own fault) is kept as it came, marked and logged by
+  // id, and the scan goes on: nothing is refused or lost. An error of the MACHINE (the tools are missing, no process starts) propagates so
+  // that the queue retries (its attempts are the counter, kept by the queue before each try). When they are spent:
+  //  - a file a person uploaded (`uploadedBy` set: it is on its way OUT) is NOT marked clean and the error propagates: the row stays `pending`
+  //    and only a `clean` row is sent, opened or signed, so nothing leaves with its metadata; the sweep of stuck scans queues it again until
+  //    the tools are back;
+  //  - a file that came IN (`uploadedBy` null: the customer sent it, its metadata are theirs and already here) is kept as it came, marked
+  //    `av_unavailable` for the sweep of stored files (J-3), and the scan goes on.
+  // False when the row moved on or the file is gone.
+  private async sanitizeAvFile(
+    media: {
+      id: string
+      key: string
+      contentType: string
+      storeId: string | null
+      uploadedBy: string | null
+      scanResult: unknown
+    },
+    scope: MediaScope,
+    lastAttempt: boolean
+  ): Promise<boolean> {
+    if (hasAvMark(media.scanResult)) return true
+    const original = await this.storage.read(media.key, UploadLimits.MAX_VIDEO_SIZE_BYTES)
+    if (original === null) {
+      if (await this.isGone(media.id, scope)) return false
+      throw new Error('the file to clean is not in the bucket')
+    }
+    const { Outcomes } = AvSanitizing
+    let kept: string | null = null
+    let body = original
+    try {
+      const cleaned = await this.avCleaner.clean(original, media.contentType, media.id)
+      if (cleaned.kind === AvSanitizing.Results.CLEANED) body = cleaned.body
+      else kept = cleaned.why
+    } catch (error) {
+      if (!lastAttempt) throw error
+      // Counts last attempts that failed, not files: an uploaded file that waits for the tools counts again on every requeue of the sweep
+      this.avResults.inc({ result: Outcomes.AV_UNAVAILABLE })
+      this.logger.error(
+        {
+          mediaId: media.id,
+          storeId: media.storeId,
+          outbound: media.uploadedBy !== null,
+          error: errorName(error)
+        },
+        'the video and audio tools failed on every attempt'
+      )
+      // Outbound: nothing leaves with its metadata, the row stays pending. The error ends this job; the sweep queues the scan again
+      if (media.uploadedBy !== null) throw error
+      kept = Outcomes.AV_UNAVAILABLE
+    }
+    // Written only now, with bytes that were made and read back; a failure of the bucket leaves the original and the queue retries
+    if (kept === null) await this.storage.put(media.key, body, media.contentType)
+    const moved = await this.within(scope, () =>
+      this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.PENDING },
+        data: {
+          fileSize: body.length,
+          scanResult:
+            kept === null
+              ? {
+                  sanitized: true,
+                  [AvSanitizing.CLEANING_VERSION_KEY]: AvSanitizing.CLEANING_VERSION
+                }
+              : {
+                  [AvSanitizing.OUTCOME_KEY]: kept,
+                  [AvSanitizing.CLEANING_VERSION_KEY]: AvSanitizing.CLEANING_VERSION
+                }
+        }
+      })
+    )
+    if (moved.count === 0) {
+      // The row was deleted (a conversation or a customer erased) or settled while the file was cleaned: a write that brought back an object
+      // nobody points at is taken back; a row that still exists keeps its file
+      if (kept === null && (await this.isGone(media.id, scope)))
+        await this.storage.delete(media.key)
+      return false
+    }
+    if (kept !== Outcomes.AV_UNAVAILABLE) {
+      this.avResults.inc({ result: kept === null ? Outcomes.CLEANED : Outcomes.NOT_CLEANABLE })
+    }
+    return true
   }
 
   // Looks in the clear for the active names of a PDF of a financial document (see `findActivePdfNames`; best effort, not a

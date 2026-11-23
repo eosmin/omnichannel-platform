@@ -336,7 +336,7 @@ export const AvSanitizing = {
   PRLIMIT_PATH: '/usr/bin/prlimit',
   LIMIT_ADDRESS_SPACE_BYTES: 1024 * 1024 * 1024,
   LIMIT_CPU_SECONDS: 20,
-  LIMIT_FILE_BYTES: UploadLimits.MAX_FILE_SIZE_BYTES * 2,
+  LIMIT_FILE_BYTES: UploadLimits.MAX_VIDEO_SIZE_BYTES * 2,
   LIMIT_OPEN_FILES: 64,
   // The deadline of each child (ffprobe, ffmpeg, ffprobe again), counted from its start; then it and its whole process group are killed
   TOOL_TIMEOUT_MS: 20_000,
@@ -375,6 +375,20 @@ export const AvSanitizing = {
     TIMED_OUT: 'timed_out'
   },
   Results: { CLEANED: 'cleaned', UNTOUCHED: 'untouched' },
+  // The marks of the scan in `Media.scanResult` (Step 7.1-J-2), as the pictures and documents have theirs: the version of the cleaning that
+  // looked at the file, so that a retry of the scan and the sweep (J-3) do not copy it again, and a newer version takes it again.
+  // `OUTCOME_KEY` is written when the file was kept as it came: the value is `Untouched.*` (the file's own fault: damaged, too big, a
+  // deadline) or `Outcomes.AV_UNAVAILABLE` (an INBOUND file whose every attempt hit an error of the machine: the sweep of stored files, J-3,
+  // takes it again when the tools are back). Nothing is refused and nothing is lost
+  CLEANING_VERSION: 1,
+  CLEANING_VERSION_KEY: 'cleaningVersion',
+  OUTCOME_KEY: 'avCleaning',
+  // The label `result` of `MetricNames.AV_CLEANING` (closed set: no id, no name, no content)
+  Outcomes: {
+    CLEANED: 'cleaned',
+    NOT_CLEANABLE: 'not_cleanable',
+    AV_UNAVAILABLE: 'av_unavailable'
+  },
   // Why a copy was not taken (`verifyCleaned`); the reason is logged by the caller as a code, never with a piece of the file
   Refusals: {
     EMPTY: 'empty',
