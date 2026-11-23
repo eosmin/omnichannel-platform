@@ -63,7 +63,9 @@ describe('MediaPipeline and the properties of a document', () => {
       { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
       logger as unknown as PinoLogger,
       { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never,
-      new InlineDocumentCleaner()
+      new InlineDocumentCleaner(),
+      { clean: jest.fn() },
+      { inc: jest.fn() } as never
     )
     return { pipeline, storage, updateMany, logger }
   }

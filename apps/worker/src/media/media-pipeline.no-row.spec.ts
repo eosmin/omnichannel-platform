@@ -25,7 +25,9 @@ describe('MediaPipeline with no row for the job', () => {
     { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
     { setContext: jest.fn(), warn } as unknown as PinoLogger,
     { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never,
-    new InlineDocumentCleaner()
+    new InlineDocumentCleaner(),
+    { clean: jest.fn() },
+    { inc: jest.fn() } as never
   )
 
   beforeEach(() => {

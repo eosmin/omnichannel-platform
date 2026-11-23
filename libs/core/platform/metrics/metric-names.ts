@@ -67,6 +67,10 @@ export const MetricNames = {
   // service gives (the worker then stops counting 400s against browsers, see PushLimits.SOUND_WINDOW)
   WEB_PUSH_ATTEMPTS: 'platform_web_push_attempts_total',
 
+  // The cleaning of the metadata of video and audio (Step 7.1-J-2), by result: cleaned, not_cleanable (the file's own fault, kept as it came)
+  // or av_unavailable (the tools failed on every attempt). The alert (Step 7.6): av_unavailable above 0 over 15 minutes
+  AV_CLEANING: 'platform_av_cleaning_total',
+
   // Channels
   CHANNEL_WEBHOOK_RECEIVED: 'platform_channel_webhook_received_total',
   CHANNEL_WEBHOOK_REJECTED: 'platform_channel_webhook_rejected_total',

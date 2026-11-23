@@ -193,6 +193,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'Web pushes to one browser, by outcome: delivered, gone, retry or one of the refused outcomes',
     labels: ['outcome']
   },
+  [MetricNames.AV_CLEANING]: {
+    kind: 'counter',
+    help: 'Video and audio files seen by the cleaning of their metadata, by result: cleaned, not_cleanable or av_unavailable',
+    labels: ['result']
+  },
   [MetricNames.CHANNEL_WEBHOOK_RECEIVED]: {
     kind: 'counter',
     help: 'Channel webhooks received',

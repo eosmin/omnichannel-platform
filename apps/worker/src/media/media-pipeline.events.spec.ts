@@ -65,7 +65,9 @@ describe('MediaPipeline announcements', () => {
       { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
       logger as unknown as PinoLogger,
       { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never,
-      new InlineDocumentCleaner()
+      new InlineDocumentCleaner(),
+      { clean: jest.fn() },
+      { inc: jest.fn() } as never
     )
   }
 
@@ -132,7 +134,9 @@ describe('MediaPipeline announcements', () => {
         { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
         logger as unknown as PinoLogger,
         { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never,
-        new InlineDocumentCleaner()
+        new InlineDocumentCleaner(),
+        { clean: jest.fn() },
+        { inc: jest.fn() } as never
       )
       return { pipeline, update }
     }
@@ -202,7 +206,9 @@ describe('MediaPipeline announcements', () => {
         { add: jest.fn() } as unknown as Queue<ProcessImageJob>,
         logger as unknown as PinoLogger,
         { forStore: (_id: string, work: () => Promise<unknown>) => work() } as never,
-        new InlineDocumentCleaner()
+        new InlineDocumentCleaner(),
+        { clean: jest.fn() },
+        { inc: jest.fn() } as never
       )
       return { pipeline, update, put, remove }
     }
