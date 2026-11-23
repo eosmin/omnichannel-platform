@@ -876,18 +876,20 @@ describe('Closing the months, the reports and the auditor files', () => {
       // Only the first call is held: a second one that got in (the refusal removed) answers at once and the case fails on its status,
       // instead of waiting for a gate that nobody opens
       let held = false
+      // ... and only a check of this organization: another caller of the shared monitor must not take the held place
       const spy = jest.spyOn(monitor, 'check').mockImplementation(async (...args) => {
-        if (!held) {
+        if (!held && args[0] === ctx.orgB.id) {
           held = true
           reachedCheck()
           await gate
         }
         return real(...args)
       })
+      // Kept outside the `try` so the `finally` can wait for it: a held request that is still running would keep the organization busy for
+      // the next case
+      let first: Promise<{ status: number }> = Promise.resolve({ status: 0 })
       try {
-        const first = Promise.resolve(
-          asAdminB().post(ApiRoutes.finance.reports.verifyChain).send({})
-        )
+        first = Promise.resolve(asAdminB().post(ApiRoutes.finance.reports.verifyChain).send({}))
         // A first request that never reaches the check (a 401, a failed guard) fails here with its status, not at the timeout of jest
         const arrived = await Promise.race([reached.then(() => true), first.then(() => false)])
         expect(arrived).toBe(true)
@@ -905,6 +907,7 @@ describe('Closing the months, the reports and the auditor files', () => {
         expect(third.status).toBe(OK)
       } finally {
         release()
+        await first.catch(() => undefined)
         spy.mockRestore()
       }
     })
