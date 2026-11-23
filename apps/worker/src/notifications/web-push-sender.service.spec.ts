@@ -392,6 +392,10 @@ describe('WebPushSender', () => {
       for (let i = 0; i < PushLimits.MAX_REFUSALS * 2; i += 1) await one.send(USER, NOTIFICATION)
       expect(updateSubscription).not.toHaveBeenCalled()
       expect(deleteSubscriptions).not.toHaveBeenCalled()
+      // Not counted against the browser, but visible to the alert
+      expect(outcomesCounted()).toEqual(
+        Array(PushLimits.MAX_REFUSALS * 2).fill(PushOutcomes.REFUSED_BAD_REQUEST)
+      )
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({ reason: 'refused_unproven' }),
         expect.any(String)
