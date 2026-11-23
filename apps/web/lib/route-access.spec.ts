@@ -15,6 +15,13 @@ describe('accessFor', () => {
     expect(accessFor('/auth/refresh', false)).toBe(RouteAccess.ALLOW)
   })
 
+  it('lets a visitor with no session open the page of the one-click unsubscribe, and no page under it', () => {
+    expect(accessFor('/unsubscribe', false)).toBe(RouteAccess.ALLOW)
+    expect(accessFor('/unsubscribe', true)).toBe(RouteAccess.ALLOW)
+    expect(accessFor('/unsubscribe/other', false)).toBe(RouteAccess.TO_LOGIN)
+    expect(accessFor('/unsubscribed', false)).toBe(RouteAccess.TO_LOGIN)
+  })
+
   it('does not treat a look-alike path as public', () => {
     expect(accessFor('/login-admin', false)).toBe(RouteAccess.TO_LOGIN)
     expect(accessFor('/authors', false)).toBe(RouteAccess.TO_LOGIN)

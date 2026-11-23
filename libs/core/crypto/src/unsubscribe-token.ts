@@ -61,3 +61,30 @@ export function verifyUnsubscribeToken(
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null
   return { scope: scope as UnsubscribeScope, id }
 }
+
+// The keys a link may have been signed under, in the order they are tried: the one in force and, while a rotation is open, the one before it. The
+// previous key only VERIFIES: `signUnsubscribeToken` is never given it. The derived key counts as the one in force where the env sets none.
+export function unsubscribeVerificationKeys(input: {
+  jwtSecret: string
+  unsubscribeTokenKey: string | undefined
+  unsubscribeTokenKeyPrevious: string | undefined
+}): string[] {
+  const current = unsubscribeKeyOf(input)
+  return input.unsubscribeTokenKeyPrevious === undefined ||
+    input.unsubscribeTokenKeyPrevious === current
+    ? [current]
+    : [current, input.unsubscribeTokenKeyPrevious]
+}
+
+// A token that verifies under ANY of the keys. Every key is tried (no early exit), so the time says nothing about which key signed it.
+export function verifyUnsubscribeTokenUnderKeys(
+  keys: readonly string[],
+  token: string
+): VerifiedUnsubscribeToken | null {
+  let found: VerifiedUnsubscribeToken | null = null
+  for (const key of keys) {
+    const verified = verifyUnsubscribeToken(key, token)
+    if (found === null && verified !== null) found = verified
+  }
+  return found
+}

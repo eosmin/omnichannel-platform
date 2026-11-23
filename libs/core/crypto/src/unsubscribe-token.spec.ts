@@ -4,7 +4,9 @@ import {
   signUnsubscribeToken,
   UnsubscribeScopes,
   unsubscribeKeyOf,
-  verifyUnsubscribeToken
+  unsubscribeVerificationKeys,
+  verifyUnsubscribeToken,
+  verifyUnsubscribeTokenUnderKeys
 } from './unsubscribe-token'
 
 const KEY = 'k'.repeat(40)
@@ -82,5 +84,76 @@ describe('unsubscribe token', () => {
         unsubscribeKeyOf({ jwtSecret: 'x'.repeat(40), unsubscribeTokenKey: undefined })
       )
     })
+  })
+})
+
+describe('the previous key of a rotation', () => {
+  const JWT = 'j'.repeat(40)
+  const NEW_KEY = 'n'.repeat(40)
+  const OLD_KEY = 'p'.repeat(40)
+
+  it('verifies a link signed under the old key while a rotation is open', () => {
+    const oldLink = signUnsubscribeToken(OLD_KEY, 'ne', USER)
+    const keys = unsubscribeVerificationKeys({
+      jwtSecret: JWT,
+      unsubscribeTokenKey: NEW_KEY,
+      unsubscribeTokenKeyPrevious: OLD_KEY
+    })
+    expect(verifyUnsubscribeTokenUnderKeys(keys, oldLink)).toEqual({ scope: 'ne', id: USER })
+  })
+
+  it('does not verify the old link once the previous key is gone', () => {
+    const oldLink = signUnsubscribeToken(OLD_KEY, 'ne', USER)
+    const keys = unsubscribeVerificationKeys({
+      jwtSecret: JWT,
+      unsubscribeTokenKey: NEW_KEY,
+      unsubscribeTokenKeyPrevious: undefined
+    })
+    expect(keys).toEqual([NEW_KEY])
+    expect(verifyUnsubscribeTokenUnderKeys(keys, oldLink)).toBeNull()
+  })
+
+  it('still verifies the links of the key in force, and refuses a key that is neither', () => {
+    const keys = unsubscribeVerificationKeys({
+      jwtSecret: JWT,
+      unsubscribeTokenKey: NEW_KEY,
+      unsubscribeTokenKeyPrevious: OLD_KEY
+    })
+    expect(
+      verifyUnsubscribeTokenUnderKeys(keys, signUnsubscribeToken(NEW_KEY, 'ne', USER))
+    ).toEqual({
+      scope: 'ne',
+      id: USER
+    })
+    expect(
+      verifyUnsubscribeTokenUnderKeys(keys, signUnsubscribeToken(OTHER_KEY, 'ne', USER))
+    ).toBeNull()
+  })
+
+  it('lists the key in force first and never lists the same key twice', () => {
+    expect(
+      unsubscribeVerificationKeys({
+        jwtSecret: JWT,
+        unsubscribeTokenKey: NEW_KEY,
+        unsubscribeTokenKeyPrevious: OLD_KEY
+      })
+    ).toEqual([NEW_KEY, OLD_KEY])
+    expect(
+      unsubscribeVerificationKeys({
+        jwtSecret: JWT,
+        unsubscribeTokenKey: NEW_KEY,
+        unsubscribeTokenKeyPrevious: NEW_KEY
+      })
+    ).toEqual([NEW_KEY])
+  })
+
+  it('a token signed under the derived key of JWT_SECRET is the one in force where no key is set', () => {
+    const derived = unsubscribeKeyOf({ jwtSecret: JWT, unsubscribeTokenKey: undefined })
+    const keys = unsubscribeVerificationKeys({
+      jwtSecret: JWT,
+      unsubscribeTokenKey: undefined,
+      unsubscribeTokenKeyPrevious: OLD_KEY
+    })
+    expect(keys).toEqual([derived, OLD_KEY])
   })
 })

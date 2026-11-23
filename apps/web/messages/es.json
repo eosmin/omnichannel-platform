@@ -555,7 +555,9 @@
       "storeAt": "{store} · {at}",
       "center": "Abrir la aplicación",
       "settings": "Recibes este correo por tu configuración de notificaciones.",
-      "settingsLink": "Cámbiala en tus preferencias de notificaciones"
+      "settingsLink": "Cámbiala en tus preferencias de notificaciones",
+      "unsubscribe": "¿No quieres recibir más estos correos?",
+      "unsubscribeLink": "Dejar de recibirlos"
     },
     "orderMessage": {
       "subject": "Pedido {order} de {store}",
@@ -890,6 +892,18 @@
     "mismatchTitle": "Esta invitación es para otro correo",
     "mismatchBody": "Iniciaste sesión como {current} y la invitación es para {invited}. Cierra la sesión y abre el enlace de nuevo.",
     "unavailableTitle": "Esta invitación no está disponible"
+  },
+  "unsubscribe": {
+    "title": "Dejar de recibir avisos",
+    "heading": "¿Dejar de recibir estos avisos por correo?",
+    "body": "Dejarás de recibir por correo los avisos de notificaciones de tus tiendas. Los seguirás viendo dentro de la aplicación, y puedes volver a activarlos cuando quieras en tus preferencias de notificaciones.",
+    "confirm": "Dejar de recibirlos",
+    "working": "Guardando…",
+    "doneTitle": "Listo",
+    "done": "Ya no recibirás avisos de notificaciones por correo.",
+    "invalid": "Este enlace está incompleto. Abre de nuevo el enlace del correo.",
+    "failed": "No pudimos guardar el cambio. Revisa tu conexión e inténtalo de nuevo.",
+    "tooMany": "Hubo demasiados intentos. Espera unos minutos e inténtalo de nuevo."
   },
   "login": {
     "title": "Iniciar sesión",

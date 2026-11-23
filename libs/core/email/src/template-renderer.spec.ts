@@ -254,6 +254,27 @@ describe('TemplateRenderer: notification digest', () => {
     expect(email.text).toContain('https://app.example.com/account/notifications')
   })
 
+  it('carries the link of the one-click unsubscribe in the footer, in both languages, and none when the job has none', async () => {
+    const unsubscribeUrl = 'https://app.example.com/unsubscribe#token=v1.ne.abc.mac'
+    const en = await renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.EN, {
+      ...digest,
+      unsubscribeUrl
+    })
+    const es = await renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.ES, {
+      ...digest,
+      unsubscribeUrl
+    })
+    expect(en.html).toContain(`href="${unsubscribeUrl}"`)
+    expect(en.text).toContain('Stop receiving them')
+    expect(es.html).toContain(`href="${unsubscribeUrl}"`)
+    expect(es.text).toContain('Dejar de recibirlos')
+
+    // A job queued before the link existed still renders, with no footer line about it
+    const old = await renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.EN, digest)
+    expect(old.html).not.toContain('unsubscribe')
+    expect(old.text).not.toContain('Stop receiving them')
+  })
+
   it('says when each one happened, and words the link by where it goes', async () => {
     const email = await renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.EN, {
       ...digest,

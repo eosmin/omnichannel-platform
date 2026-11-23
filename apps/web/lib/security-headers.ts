@@ -73,6 +73,19 @@ export function buildContentSecurityPolicy(options: ContentSecurityPolicyOptions
   return directives.join('; ')
 }
 
+// The page of the one-click unsubscribe: the signed token is in its fragment, which a browser never sends; none of these leaves it anywhere else.
+// No Referer at all (a link on the page would carry the address), and nothing of it kept by a cache or a proxy
+// The path of that page. Written here and not read from `AppPaths`: `next.config.ts` loads this file before the aliases exist, so it cannot import
+// them (security-headers.spec.ts fixes that it is `AppPaths.unsubscribe`)
+export const UNSUBSCRIBE_PAGE_SOURCE = '/unsubscribe'
+
+export const UNSUBSCRIBE_PAGE_HEADERS: ReadonlyArray<{ key: string; value: string }> = [
+  { key: 'Referrer-Policy', value: 'no-referrer' },
+  { key: 'Cache-Control', value: 'no-store' },
+  // A page that exists for one person and one link is not for a search engine
+  { key: 'X-Robots-Tag', value: 'noindex, nofollow' }
+]
+
 export const STATIC_SECURITY_HEADERS: ReadonlyArray<{ key: string; value: string }> = [
   { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },

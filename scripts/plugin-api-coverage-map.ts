@@ -96,6 +96,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'notifications.preferences': { none: OWN_NOTIFICATIONS },
   'notifications.pushSubscription': { none: OWN_NOTIFICATIONS },
   'notifications.pushSubscriptionRemove': { none: OWN_NOTIFICATIONS },
+  'notifications.unsubscribe': { none: PUBLIC },
   'presence.team': { none: PRESENCE },
   'members.directory': { none: TEAM_PEOPLE },
   'invitations.byToken': { none: INVITE },

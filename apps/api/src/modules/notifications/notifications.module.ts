@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common'
 
-import { QueuesPlatformModule } from '@platform/core/http'
+import { QueuesPlatformModule, UnsubscribePlatformModule } from '@platform/core/http'
 
 import { RealtimeModule } from '../realtime/realtime.module'
 import { TenancyModule } from '../tenancy'
 
 import { NotificationPreferencesService } from './notification-preferences.service'
+import { NotificationUnsubscribeController } from './notification-unsubscribe.controller'
+import { NotificationUnsubscribeService } from './notification-unsubscribe.service'
 import { NotificationsEventsListener } from './notifications-events.listener'
 import { NotificationsInboxListener } from './notifications-inbox.listener'
 import { NotificationsController } from './notifications.controller'
@@ -15,11 +17,12 @@ import { PushSubscriptionsService } from './push-subscriptions.service'
 // Needs the database module of the app. NotificationsService is exported for the modules that notify
 // (conversations, media, exports).
 @Module({
-  imports: [TenancyModule, RealtimeModule, QueuesPlatformModule],
-  controllers: [NotificationsController],
+  imports: [TenancyModule, RealtimeModule, QueuesPlatformModule, UnsubscribePlatformModule],
+  controllers: [NotificationsController, NotificationUnsubscribeController],
   providers: [
     NotificationsService,
     NotificationPreferencesService,
+    NotificationUnsubscribeService,
     NotificationsEventsListener,
     NotificationsInboxListener,
     PushSubscriptionsService

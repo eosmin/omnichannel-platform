@@ -22,7 +22,10 @@ import {
   type DigestLinks,
   isDailyDigestHour,
   NotificationDefaults,
-  NotificationSettingsDefaults
+  NotificationSettingsDefaults,
+  UNSUBSCRIBE_LINKS,
+  type UnsubscribeLinkSet,
+  type UnsubscribeLinks
 } from '@platform/core/notifications'
 import {
   EmailTemplates,
@@ -108,6 +111,7 @@ export class EmailDigestService {
     @InjectQueue(QueueNames.NOTIFICATIONS) private readonly digestQueue: Queue<SendEmailDigestJob>,
     @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
     @Inject(DIGEST_LINKS) private readonly links: DigestLinks,
+    @Inject(UNSUBSCRIBE_LINKS) private readonly unsubscribeLinks: UnsubscribeLinks,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(EmailDigestService.name)
@@ -396,6 +400,9 @@ export class EmailDigestService {
       const settingsUrl = new URL(AppPaths.account.notifications, this.links.frontendUrl).toString()
       // The newest store the email speaks of: the button opens its inbox, not the root of the app
       const newestStore = firstStoreId
+      // Signed for this person: the page the footer opens, and the POST url the mail client of the header calls (RFC 8058)
+      // A link that cannot be signed (an id of a shape the token refuses) must not hold back the person's whole digest: it goes without the link
+      const unsubscribe = this.unsubscribeOf(userId)
       await this.emailQueue.add(
         JobNames.SEND_EMAIL,
         {
@@ -409,11 +416,19 @@ export class EmailDigestService {
               newestStore === undefined ? AppPaths.home : AppPaths.store.inbox(newestStore),
               this.links.frontendUrl
             ).toString(),
-            settingsUrl
+            settingsUrl,
+            ...(unsubscribe === null ? {} : { unsubscribeUrl: unsubscribe.pageUrl })
           },
-          // The mailbox's own "unsubscribe" opens the page where the digest is switched off. There is
-          // no one-click POST (RFC 8058): that needs a signed token endpoint, written in the plan
-          headers: { 'List-Unsubscribe': `<${settingsUrl}>` },
+          // One click (RFC 8058): the mailbox POSTs `List-Unsubscribe=One-Click` to the signed url, which switches the person's notification
+          // email off and nothing else. The url carries the token, so it is only here and in the footer; the job holds it as it holds the address
+          ...(unsubscribe === null
+            ? {}
+            : {
+                headers: {
+                  'List-Unsubscribe': `<${unsubscribe.postUrl}>`,
+                  'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+                }
+              }),
           tags: { template: EmailTemplates.NOTIFICATION_DIGEST }
         },
         // The newest row names the batch: a run repeated after a crash queues the same email once
@@ -428,6 +443,16 @@ export class EmailDigestService {
         create: { userId, lastDigestSentAt: now },
         update: { lastDigestSentAt: now }
       })
+    }
+  }
+
+  private unsubscribeOf(userId: string): UnsubscribeLinkSet | null {
+    try {
+      return this.unsubscribeLinks.forUser(userId)
+    } catch {
+      // Never the error text or the id's value beyond what a log already holds; the digest itself is not lost
+      this.logger.warn('the unsubscribe link of a digest could not be signed; it goes without it')
+      return null
     }
   }
 

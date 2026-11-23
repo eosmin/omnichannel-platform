@@ -497,7 +497,10 @@ export const ApiRoutes = {
     preferences: '/notifications/preferences',
     pushSubscription: '/notifications/push-subscription',
     // A POST and not a DELETE with a body, which proxies and fetch wrappers drop
-    pushSubscriptionRemove: '/notifications/push-subscription/remove'
+    pushSubscriptionRemove: '/notifications/push-subscription/remove',
+    // The one-click unsubscribe of the notification emails (Step 7.3, B6b-3b2b). PUBLIC: no session, the signed token is the credential. POST
+    // only: a GET that changed state would be fired by every mail scanner that opens the links of a message
+    unsubscribe: '/notifications/unsubscribe'
   },
 
   analytics: {

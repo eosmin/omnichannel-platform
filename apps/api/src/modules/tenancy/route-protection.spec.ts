@@ -5,11 +5,13 @@ import '../../testing/load-example-env'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
+import { RequestMethod } from '@nestjs/common'
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants'
 
-import { pluginApiPaths, PluginApiRoutes } from '@platform/core/api'
+import { ApiRoutes, pluginApiPaths, PluginApiRoutes } from '@platform/core/api'
 import { IS_PUBLIC_KEY } from '@platform/core/auth-module'
 
+import { NotificationUnsubscribeController } from '../notifications/notification-unsubscribe.controller'
 import {
   type PluginApiRouteFacts,
   pluginApiRouteViolations
@@ -219,5 +221,35 @@ describe('the protection of every route', () => {
       .map(label)
 
     expect(mixed).toEqual([])
+  })
+})
+
+// The one public route that changes a person's choice with no session (owner decision of 2026-11-23, recorded in IMPLEMENTATION_PLAN.md): the
+// one-click unsubscribe of the notification emails. Its public status is on purpose and so is its shape: ONE route, a POST (a GET that changed state
+// would be fired by every mail scanner), no permission, authenticated by the signed token it carries.
+describe('the public route of the one-click unsubscribe', () => {
+  const routes = ROOTS.flatMap(controllerFiles)
+    .flatMap(routesOf)
+    .filter(route => route.controller === NotificationUnsubscribeController.name)
+
+  it('is public on purpose, with no permission and no store', () => {
+    expect(routes.map(route => route.handler)).toEqual(['handle'])
+    const [route] = routes
+    expect(route?.isPublic).toBe(true)
+    expect(route?.permissions).toEqual([])
+    expect(route?.memberOnly).toBe(false)
+  })
+
+  it('answers to the POST of its route and to nothing else (no GET that changes state)', () => {
+    const handler = Object.getOwnPropertyDescriptor(
+      NotificationUnsubscribeController.prototype,
+      'handle'
+    )?.value as object
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.POST)
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe(ApiRoutes.notifications.unsubscribe)
+    const own = Object.getOwnPropertyNames(NotificationUnsubscribeController.prototype).filter(
+      name => name !== 'constructor'
+    )
+    expect(own).toEqual(['handle'])
   })
 })

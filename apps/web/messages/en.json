@@ -555,7 +555,9 @@
       "storeAt": "{store} · {at}",
       "center": "Open the app",
       "settings": "You get this email because of your notification settings.",
-      "settingsLink": "Change it in your notification preferences"
+      "settingsLink": "Change it in your notification preferences",
+      "unsubscribe": "Do not want these emails anymore?",
+      "unsubscribeLink": "Stop receiving them"
     },
     "orderMessage": {
       "subject": "Order {order} from {store}",
@@ -890,6 +892,18 @@
     "mismatchTitle": "This invitation is for another address",
     "mismatchBody": "You are signed in as {current}, and the invitation is for {invited}. Sign out and open the link again.",
     "unavailableTitle": "This invitation is not available"
+  },
+  "unsubscribe": {
+    "title": "Stop notification emails",
+    "heading": "Stop getting these notification emails?",
+    "body": "You will stop getting the notification emails of your stores. You will still see them inside the app, and you can turn them back on whenever you want in your notification preferences.",
+    "confirm": "Stop receiving them",
+    "working": "Saving…",
+    "doneTitle": "Done",
+    "done": "You will no longer get notification emails.",
+    "invalid": "This link is incomplete. Open the link of the email again.",
+    "failed": "We could not save the change. Check your connection and try again.",
+    "tooMany": "There were too many attempts. Wait a few minutes and try again."
   },
   "login": {
     "title": "Sign in",

@@ -29,7 +29,9 @@ export const notificationDigestSchema = z.object({
   // Notifications that did not fit in the email; they wait in the center
   moreCount: z.number().int().nonnegative(),
   appUrl: z.url({ protocol: /^https?$/ }),
-  settingsUrl: z.url({ protocol: /^https?$/ })
+  settingsUrl: z.url({ protocol: /^https?$/ }),
+  // The page of the one-click unsubscribe (the signed token is in its fragment). Optional so that a job queued before it existed still renders
+  unsubscribeUrl: z.url({ protocol: /^https?$/ }).optional()
 })
 export type NotificationDigestProps = z.infer<typeof notificationDigestSchema>
 
@@ -38,6 +40,7 @@ export function NotificationDigest({
   moreCount,
   appUrl,
   settingsUrl,
+  unsubscribeUrl,
   locale,
   t
 }: NotificationDigestProps & { locale: Locale; t: Translator }): React.JSX.Element {
@@ -90,6 +93,14 @@ export function NotificationDigest({
               {t('settingsLink')}
             </Link>
           </Text>
+          {unsubscribeUrl === undefined ? null : (
+            <Text style={footer}>
+              {t('unsubscribe')}{' '}
+              <Link style={link} href={unsubscribeUrl}>
+                {t('unsubscribeLink')}
+              </Link>
+            </Text>
+          )}
         </Container>
       </Body>
     </Html>

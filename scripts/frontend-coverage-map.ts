@@ -341,6 +341,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'notifications.preferences': { step: '3.5' },
   'notifications.pushSubscription': { step: '3.5' },
   'notifications.pushSubscriptionRemove': { step: '3.5' },
+  // The page of the one-click unsubscribe (apps/web/app/unsubscribe), public: the POST it sends is this route
+  'notifications.unsubscribe': { step: '7.3' },
   'analytics.metrics': { step: '5.2' },
   'analytics.myPerformance': { step: '5.2' },
   'analytics.reports': { step: '5.2' },

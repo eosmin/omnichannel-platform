@@ -33,6 +33,9 @@ export const AppPaths = {
   magicLink: '/login/verify', // The one page that POSTs the magic-link token
   noAccess: '/no-access', // A user with no membership: after a revocation or a removal
   invitation: (token: string) => `/invitations/${token}`,
+  // The page of the one-click unsubscribe of the notification emails: public, the signed token travels in the fragment (`#t=...`), which a
+  // browser never sends to a server and never puts in a Referer
+  unsubscribe: '/unsubscribe',
   store: {
     inbox: (storeId: string) => `/s/${storeId}/inbox`,
     conversation: (storeId: string, conversationId: string) =>

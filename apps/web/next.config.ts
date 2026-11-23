@@ -3,7 +3,11 @@ import path from 'node:path'
 import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
 
-import { STATIC_SECURITY_HEADERS } from './lib/security-headers'
+import {
+  STATIC_SECURITY_HEADERS,
+  UNSUBSCRIBE_PAGE_HEADERS,
+  UNSUBSCRIBE_PAGE_SOURCE
+} from './lib/security-headers'
 
 const nextConfig: NextConfig = {
   // `next dev` would write an AGENTS.md here; the agent instructions of this repo live in CLAUDE.md
@@ -15,7 +19,12 @@ const nextConfig: NextConfig = {
   // Next.js would answer every dynamic page with `X-Powered-By: Next.js`, naming the framework
   poweredByHeader: false,
   // The Content-Security-Policy is set per request in proxy.ts, because it carries a nonce
-  headers: () => Promise.resolve([{ source: '/(.*)', headers: [...STATIC_SECURITY_HEADERS] }])
+  // The second rule overrides the same keys of the first for the page of the one-click unsubscribe only
+  headers: () =>
+    Promise.resolve([
+      { source: '/(.*)', headers: [...STATIC_SECURITY_HEADERS] },
+      { source: UNSUBSCRIBE_PAGE_SOURCE, headers: [...UNSUBSCRIBE_PAGE_HEADERS] }
+    ])
 }
 
 const withNextIntl = createNextIntlPlugin()

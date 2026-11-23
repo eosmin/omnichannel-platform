@@ -52,6 +52,11 @@ describe('EmailDigestService', () => {
   const findPreferences = jest.fn<Promise<unknown>, [unknown]>()
   const forStore = jest.fn((_storeId: string, work: () => Promise<unknown>) => work())
   const forUser = jest.fn((_userId: string, work: () => Promise<unknown>) => work())
+  // What the signed links are is checked in unsubscribe-links.spec.ts: here only that the person of the email is the one they are made for
+  const unsubscribeFor = jest.fn((userId: string) => ({
+    pageUrl: `https://app.example.com/unsubscribe#token=for-${userId}`,
+    postUrl: `https://api.example.com/api/v1/notifications/unsubscribe?token=for-${userId}`
+  }))
 
   const service = (): EmailDigestService =>
     new EmailDigestService(
@@ -75,11 +80,16 @@ describe('EmailDigestService', () => {
       { addBulk } as unknown as Queue<SendEmailDigestJob>,
       { add: addEmail } as unknown as Queue<SendEmailJob>,
       { frontendUrl: 'https://app.example.com' },
+      { forUser: unsubscribeFor },
       { setContext: jest.fn(), warn } as unknown as PinoLogger
     )
 
   beforeEach(() => {
     jest.resetAllMocks()
+    unsubscribeFor.mockImplementation(userId => ({
+      pageUrl: `https://app.example.com/unsubscribe#token=for-${userId}`,
+      postUrl: `https://api.example.com/api/v1/notifications/unsubscribe?token=for-${userId}`
+    }))
     forStore.mockImplementation((_storeId, work) => work())
     forUser.mockImplementation((_userId, work) => work())
     updateNotifications.mockResolvedValue({ count: 1 })
@@ -304,14 +314,24 @@ describe('EmailDigestService', () => {
           moreCount: 0,
           appUrl: 'https://app.example.com/s/s1/inbox',
           settingsUrl: 'https://app.example.com/account/notifications',
+          // The footer link opens the page of the one-click unsubscribe made for THIS person
+          unsubscribeUrl: `https://app.example.com/unsubscribe#token=for-${USER}`,
           items: [{ storeName: 'Shop', url: 'https://app.example.com/s/s1/inbox/c1' }]
         },
-        headers: { 'List-Unsubscribe': '<https://app.example.com/account/notifications>' }
+        // RFC 8058: the url of the header is the signed POST url of this person, and the second header names the one-click form
+        headers: {
+          'List-Unsubscribe': `<https://api.example.com/api/v1/notifications/unsubscribe?token=for-${USER}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+        }
       })
+      expect(unsubscribeFor).toHaveBeenCalledWith(USER)
+      expect(unsubscribeFor).not.toHaveBeenCalledWith(OTHER)
       // What the service queues is what the template accepts, in both languages
       const queued = data as { template: typeof EmailTemplates.NOTIFICATION_DIGEST; data: unknown }
       const email = await new TemplateRenderer().render(queued.template, Locales.EN, queued.data)
       expect(email.text).toContain('Conversation assigned')
+      // The footer says it, in the language of the person, with the link
+      expect(email.html).toContain(`https://app.example.com/unsubscribe#token=for-${USER}`)
       expect(options?.jobId).toBe(`${EmailTemplates.NOTIFICATION_DIGEST}-${USER}-n2`)
       // The read one is cleared too, so it is not looked at again
       expect(updateNotifications).toHaveBeenCalledWith({
@@ -321,6 +341,23 @@ describe('EmailDigestService', () => {
       expect(upsertSettings).toHaveBeenCalledWith(
         expect.objectContaining({ update: { lastDigestSentAt: NOW } })
       )
+    })
+
+    it('still sends the digest, without the unsubscribe link, when the link cannot be signed', async () => {
+      findNotifications.mockResolvedValue([row('n1')])
+      unsubscribeFor.mockImplementation(() => {
+        throw new Error('invalid id')
+      })
+
+      await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+      expect(addEmail).toHaveBeenCalledTimes(1)
+      const job = addEmail.mock.calls[0]?.[1] as {
+        headers?: unknown
+        data: Record<string, unknown>
+      }
+      expect(job.headers).toBeUndefined()
+      expect(job.data['unsubscribeUrl']).toBeUndefined()
     })
 
     it('lists at most the limit and counts the rest', async () => {
