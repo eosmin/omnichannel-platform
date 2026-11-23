@@ -7,6 +7,7 @@ import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  FinanceConflicts,
   FinanceCountryCodes,
   FinanceReportLimits,
   JournalEntryType,
@@ -15,6 +16,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type ChainEntry, verifyChain } from '@platform/core/finance-hash'
+import { FinanceChainMonitor } from '@platform/core/finance-ledger'
 
 import { tamperWithLedger } from '../builders/finance'
 import { actorWithPermissions } from '../helpers/actors'
@@ -858,13 +860,51 @@ describe('Closing the months, the reports and the auditor files', () => {
       ])
     })
 
-    it('refuses a second check while one runs for the organization', async () => {
-      const [first, second] = await Promise.all([
-        asAdminB().post(ApiRoutes.finance.reports.verifyChain).send({}),
-        asAdminB().post(ApiRoutes.finance.reports.verifyChain).send({})
-      ])
+    // The refusal is a set of the process (`FinanceChainService.running`), so it is proved by HOLDING the first check inside the monitor
+    // until the second has been answered, not by sending two requests and hoping that their milliseconds overlap
+    it('refuses a second check while one runs for the organization, and runs one again once it ended', async () => {
+      const monitor = app.get(FinanceChainMonitor)
+      const real = monitor.check.bind(monitor)
+      let reachedCheck: () => void = () => undefined
+      const reached = new Promise<void>(resolve => {
+        reachedCheck = resolve
+      })
+      let release: () => void = () => undefined
+      const gate = new Promise<void>(resolve => {
+        release = resolve
+      })
+      // Only the first call is held: a second one that got in (the refusal removed) answers at once and the case fails on its status,
+      // instead of waiting for a gate that nobody opens
+      let held = false
+      const spy = jest.spyOn(monitor, 'check').mockImplementation(async (...args) => {
+        if (!held) {
+          held = true
+          reachedCheck()
+          await gate
+        }
+        return real(...args)
+      })
+      try {
+        const first = Promise.resolve(
+          asAdminB().post(ApiRoutes.finance.reports.verifyChain).send({})
+        )
+        await reached
 
-      expect([first.status, second.status].sort()).toEqual([OK, CONFLICT].sort())
+        const second = await asAdminB().post(ApiRoutes.finance.reports.verifyChain).send({})
+        expect(second.status).toBe(CONFLICT)
+        expect(errorOf(second).metadata?.conflict).toBe(FinanceConflicts.CHAIN_CHECK_RUNNING)
+        expect(spy).toHaveBeenCalledTimes(1)
+
+        release()
+        expect((await first).status).toBe(OK)
+
+        spy.mockRestore()
+        const third = await asAdminB().post(ApiRoutes.finance.reports.verifyChain).send({})
+        expect(third.status).toBe(OK)
+      } finally {
+        release()
+        spy.mockRestore()
+      }
     })
 
     it('finds a figure changed in place', async () => {
