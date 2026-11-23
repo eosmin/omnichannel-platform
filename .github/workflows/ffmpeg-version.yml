@@ -1,0 +1,30 @@
+name: ffmpeg-version
+
+# Trivy does not see the ffmpeg of the worker image (built by hand into /opt/ffmpeg, not an OS package or a lockfile entry). This is its watch:
+# the pinned version must not fall behind the newest release published on ffmpeg.org. A failed run is the alarm (Step 7.3, dependency review).
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-is-current:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The pinned ffmpeg is the newest release
+        run: |
+          pinned=$(sed -n 's/^ARG FFMPEG_VERSION=//p' docker/node-service.Dockerfile)
+          test -n "$pinned"
+          latest=$(curl --fail --silent --show-error --retry 5 --retry-all-errors --proto '=https' --tlsv1.2 https://ffmpeg.org/releases/ \
+            | grep -o 'ffmpeg-[0-9][0-9.]*\.tar\.xz"' | sed 's/^ffmpeg-//; s/\.tar\.xz"$//' | sort -V | tail -n 1)
+          test -n "$latest"
+          echo "pinned=$pinned latest=$latest"
+          if [ "$pinned" != "$latest" ]; then
+            echo "::error::ffmpeg $pinned is pinned in docker/node-service.Dockerfile and $latest is published: read the release notes and security advisories, then change FFMPEG_VERSION and FFMPEG_SHA256 together"
+            exit 1
+          fi

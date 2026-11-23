@@ -208,6 +208,13 @@ export class FfmpegAvCleaner extends AvCleaner {
         // A tool that ended on its own leaves nothing to kill, and its group id may be someone else's by now: only a child that was stopped
         // (deadline, output) has its group killed again, which is when a grandchild can still be running
         if (timedOut || tooMuchOutput) killGroup(child)
+        // Under prlimit a tool that is missing or cannot run is not a `spawn` error: prlimit itself exits 126 (found, not executable) or 127
+        // (not found). That is the machine's fault and not the file's: it must throw so that the queue retries, and never end as a file that
+        // cannot be cleaned for ever
+        if (limits !== null && !timedOut && !tooMuchOutput && (code === 126 || code === 127)) {
+          reject(new AvToolUnavailable())
+          return
+        }
         resolve({ code, stdout: Buffer.concat(chunks), timedOut, tooMuchOutput })
       })
     })

@@ -227,6 +227,36 @@ require('child_process').execFileSync(tool, rest, { stdio: ['ignore', 'inherit',
     expect(cleanDirectories().length).toBe(before)
   })
 
+  it.each([
+    ['ffmpeg', 'ffmpegPath'],
+    ['ffprobe', 'ffprobePath']
+  ] as const)(
+    'throws when prlimit runs and %s is not there (exit 127), so that the queue retries',
+    async (_tool, option) => {
+      // A prlimit that behaves as the real one does when the tool is missing: it exits 127 and no spawn error happens
+      const prlimit = join(work, 'prlimit')
+      writeFileSync(
+        prlimit,
+        `#!${process.execPath}
+const args = process.argv.slice(2)
+const tool = args[args.indexOf('--') + 1]
+process.exit(require('fs').existsSync(tool) ? require('child_process').spawnSync(tool, args.slice(args.indexOf('--') + 2), { stdio: ['ignore', 'inherit', 'ignore'], env: {} }).status ?? 1 : 127)
+`,
+        { mode: 0o755 }
+      )
+      const before = cleanDirectories().length
+      await expect(
+        make({ prlimitPath: prlimit, [option]: join(work, 'missing') }).clean(
+          Buffer.from('DIRTY clip'),
+          'video/mp4',
+          'media-15'
+        )
+      ).rejects.toThrow('could not be started')
+      expect(cleanDirectories().length).toBe(before)
+      expect(warn).not.toHaveBeenCalled()
+    }
+  )
+
   it('logs the id and the reason and never the name of the file or what the tool printed', async () => {
     await make().clean(Buffer.from('BROKEN secret-name.mp4'), 'video/mp4', 'media-14')
     expect(JSON.stringify(warn.mock.calls)).not.toContain('secret-name')
