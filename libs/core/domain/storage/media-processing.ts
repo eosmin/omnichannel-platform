@@ -185,7 +185,7 @@ export const ExistingAvSweep = {
   BATCH_PER_STORE: 5,
   MAX_PER_RUN: 20,
   MAX_ATTEMPTS: ExistingPictureSweep.MAX_ATTEMPTS,
-  // Under the lock of its schedule (540 s): the run stops taking files after this, and the last file may take up to a minute more
+  // Under the lock of its schedule (900 s): the run stops taking files after this, and the last file may take a few minutes more (a slow bucket, three children)
   MAX_RUN_MS: 420_000,
   // The number of the try in progress, written BEFORE the file is opened and replaced when the work ends. Its own key: the pictures and the
   // documents use `sweepAttempts` for theirs

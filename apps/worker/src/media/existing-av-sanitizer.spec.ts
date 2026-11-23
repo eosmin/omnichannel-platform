@@ -78,13 +78,19 @@ describe('ExistingAvSanitizer', () => {
   let behaviour: (id: string) => Promise<CleanedAv>
   let updates: { where: Condition; data: Condition }[]
   let denyRowWrite: boolean
+  // Which call of the bucket throws, as an outage of it would
+  let bucketFails: 'head' | 'read' | 'put' | null
 
   const etagOf = (key: string): string =>
     createHash('md5')
       .update(bucket.get(key) ?? '')
       .digest('hex')
+  const down = (call: 'head' | 'read' | 'put'): void => {
+    if (bucketFails === call) throw new Error('the bucket is down')
+  }
   const storage = {
     head: jest.fn((key: string) => {
+      down('head')
       const body = bucket.get(key)
       if (body === undefined) return Promise.resolve(null)
       const calls = (headCalls.get(key) ?? 0) + 1
@@ -94,9 +100,13 @@ describe('ExistingAvSanitizer', () => {
         contentLength: body.length
       })
     }),
-    read: jest.fn((key: string) => Promise.resolve(bucket.get(key) ?? null)),
+    read: jest.fn((key: string) => {
+      down('read')
+      return Promise.resolve(bucket.get(key) ?? null)
+    }),
     delete: jest.fn(),
     put: jest.fn((key: string, body: Buffer) => {
+      down('put')
       puts.push(key)
       bucket.set(key, body)
       return Promise.resolve()
@@ -111,6 +121,8 @@ describe('ExistingAvSanitizer', () => {
               .filter(row => matches(row, args.where))
               .sort((a, b) => a.id.localeCompare(b.id))
               .slice(0, args.take)
+              // As the database answers: copies, so a write to the row later is not seen through the rows the batch read
+              .map(row => ({ ...row }))
           )
         ),
         updateMany: jest.fn((args: { where: Condition; data: Condition }) => {
@@ -119,7 +131,10 @@ describe('ExistingAvSanitizer', () => {
           // The row changed (or went) between the object being written and the mark
           if (denyRowWrite && args.data.fileSize !== undefined) return Promise.resolve({ count: 0 })
           for (const row of hit) {
-            row.scanResult = args.data.scanResult as Record<string, unknown>
+            row.scanResult =
+              args.data.scanResult === DatabaseNull
+                ? null
+                : (args.data.scanResult as Record<string, unknown>)
             if (args.data.fileSize !== undefined) row.fileSize = args.data.fileSize as number
           }
           return Promise.resolve({ count: hit.length })
@@ -178,6 +193,7 @@ describe('ExistingAvSanitizer', () => {
     headCalls = new Map()
     changeAfterFirstHead = false
     denyRowWrite = false
+    bucketFails = null
     behaviour = () => Promise.resolve({ kind: 'cleaned', body: cleanedBody, hadMetadata: true })
     jest.clearAllMocks()
   })
@@ -299,19 +315,65 @@ describe('ExistingAvSanitizer', () => {
     expect(bucket.get(row.key)).toEqual(Buffer.from('dirty video with gps'))
   })
 
-  it('counts an error that is not the tools missing (a crash of the cleaner) and ends the file at MAX_ATTEMPTS, logged and kept', async () => {
-    behaviour = () => Promise.reject(new Error('the child died'))
-    const row = store('poison')
+  it.each([
+    ['the bucket cannot be asked (head)', 'head'],
+    ['the object cannot be read', 'read'],
+    ['the cleaned object cannot be written', 'put']
+  ] as const)(
+    'does not count an attempt when %s: an outage of any length leaves the file as it was, never final',
+    async (_name, failing) => {
+      const row = store('v1')
+      bucketFails = failing
+      for (let run = 0; run < MAX_ATTEMPTS + 3; run += 1) {
+        const report = await sanitizer.runScoped([STORE])
+        expect(report).toMatchObject({ failed: 1, cleaned: 0 })
+        expect(row.scanResult).toBeNull()
+      }
 
-    for (let run = 0; run < MAX_ATTEMPTS; run += 1) {
-      expect(await sanitizer.runScoped([STORE])).toMatchObject({ failed: 1 })
+      bucketFails = null
+      const back = await sanitizer.runScoped([STORE])
+
+      expect(back.cleaned).toBe(1)
+      expect(row.scanResult).toEqual(CLEANED_MARK)
+    }
+  )
+
+  it('gives back the mark an unavailable file held, when the bucket fails while it works on it', async () => {
+    const held = kept(AvSanitizing.Outcomes.AV_UNAVAILABLE)
+    const row = store('in', { scanResult: held })
+    bucketFails = 'read'
+
+    for (let run = 0; run < MAX_ATTEMPTS + 1; run += 1) await sanitizer.runScoped([STORE])
+
+    expect(row.scanResult).toEqual(held)
+  })
+
+  it('stops the run at the first failure of the bucket: one file is asked, not the batch', async () => {
+    store('v1')
+    store('v2')
+    store('v3')
+    bucketFails = 'head'
+
+    await sanitizer.runScoped([STORE])
+
+    expect(storage.head).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not count an error of the cleaner that is not the tools missing, and goes on with the next file', async () => {
+    behaviour = id =>
+      id === 'bug'
+        ? Promise.reject(new Error('spawn ENOMEM'))
+        : Promise.resolve({ kind: 'cleaned', body: cleanedBody, hadMetadata: true })
+    const bug = store('bug')
+    const good = store('good')
+
+    for (let run = 0; run < MAX_ATTEMPTS + 2; run += 1) {
+      const report = await sanitizer.runScoped([STORE])
+      expect(bug.scanResult).toBeNull()
+      if (run === 0) expect(report).toMatchObject({ cleaned: 1, failed: 1 })
     }
 
-    expect(row.scanResult).toEqual(kept(ExistingAvSweep.ATTEMPTS_EXHAUSTED))
-    expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ mediaId: 'poison', last: true }),
-      expect.any(String)
-    )
+    expect(good.scanResult).toEqual(CLEANED_MARK)
   })
 
   it('closes a file that a process death left at MAX_ATTEMPTS before it reads the batch, and does not open it', async () => {

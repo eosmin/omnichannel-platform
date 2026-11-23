@@ -42,6 +42,15 @@ const SWEPT_TYPES = Object.keys(AvSanitizing.FORMATS)
 const { Outcomes } = AvSanitizing
 const { ATTEMPTS_KEY, MAX_ATTEMPTS, CHANGED } = ExistingAvSweep
 
+// The cleaner threw something that is not `AvToolUnavailable` and is not a verdict on the file (a spawn that failed for want of memory, a bug): the
+// machine's fault as far as anyone can tell, so it does not count as an attempt of THAT file. Kept apart from the errors of the bucket and the
+// database only to decide whether the run goes on with the next file or stops
+class CleanerFailed extends Error {
+  constructor(readonly original: unknown) {
+    super('the video and audio cleaner failed')
+  }
+}
+
 export interface ExistingAvReport {
   // Rewritten and marked
   cleaned: number
@@ -110,9 +119,11 @@ const CLEANED_MARK = {
 // deployed environment (`VersionedBucketGuard`, in the scheduler).
 //
 // The attempts: the number of the try is on the row BEFORE the file is opened, so a file that kills the process (memory, a deadline) is not
-// taken for ever: at MAX_ATTEMPTS it ends `attempts_exhausted`, kept as it came. Only that counts. A tool that is missing fails at once, is
-// not the file's fault and does NOT add to the count: the row is marked `av_unavailable` and taken again, so a broken deployment never
-// turns good videos into final ones (the alert on `av_unavailable` of Step 7.6 says so).
+// taken for ever: at MAX_ATTEMPTS it ends `attempts_exhausted`, kept as it came. ONLY what kills or exhausts the process with THAT file
+// counts (a process that dies leaves the number on the row; a deadline of the child is counted by hand). Everything that is the machine's fault
+// does NOT add to the count: a tool that is missing marks the row `av_unavailable`, and a failure of the bucket, the database or the cleaner
+// gives the try back (`release`), so an outage of any length never turns good videos into final ones, with their metadata inside (the alert on
+// `av_unavailable` of Step 7.6 says so).
 @Injectable()
 export class ExistingAvSanitizer {
   constructor(
@@ -228,9 +239,14 @@ export class ExistingAvSanitizer {
         else report.kept += 1
       } catch (error) {
         // A store deleted while its batch runs has nothing left: the run skips it, as it does at the level of the store
-        if (error instanceof JobContextGoneError) throw error
+        const cause = error instanceof CleanerFailed ? error.original : error
+        if (cause instanceof JobContextGoneError) throw cause
+        // Not a verdict on the file: the bucket, the database or the machine failed. The try is given back (the row goes to what the batch read), so
+        // an outage of any length never turns a good file into a final one; only what kills or exhausts the process with THAT file counts
         report.failed += 1
-        await this.recordFailure(row, storeId, attempt, error)
+        await this.release(row, storeId, attempt, error)
+        // The bucket or the database is down: the next file would fail the same way. A failure of the cleaner alone goes on with the next file
+        if (!(error instanceof CleanerFailed)) return true
       }
     }
     return false
@@ -275,7 +291,7 @@ export class ExistingAvSanitizer {
     } catch (error) {
       // The tools could not be started: the machine's fault. The file keeps what it had, marked so that nothing sends it and the next run takes
       // it again; the attempt is NOT counted (the mark replaces the number)
-      if (!(error instanceof AvToolUnavailable)) throw error
+      if (!(error instanceof AvToolUnavailable)) throw new CleanerFailed(error)
       this.logger.error(
         { mediaId: row.id, storeId },
         'the video and audio tools could not be started for a stored file'
@@ -375,29 +391,33 @@ export class ExistingAvSanitizer {
     return outcome
   }
 
-  // An error that is not the tools missing (the bucket, the database, a crash of the cleaner): the number stays on the row and the next run
-  // takes it again; at MAX_ATTEMPTS the file is final, logged at error level
-  private async recordFailure(
+  // Gives back the try of a file that failed for a reason that is not its own: the row holds again what the batch read, only while it still holds
+  // this try. If the write fails too (the database is the thing that is down) the number stays, which costs one try of one file per run
+  private async release(
     row: Candidate,
     storeId: string,
     attempt: number,
     error: unknown
   ): Promise<void> {
-    const last = attempt >= MAX_ATTEMPTS
     this.logger.error(
-      { mediaId: row.id, storeId, attempt, last, errorName: errorName(error) },
-      last
-        ? 'a stored video or audio file could not be cleaned and was given up'
-        : 'a stored video or audio file could not be cleaned; the next run tries again'
+      {
+        mediaId: row.id,
+        storeId,
+        errorName: errorName(error instanceof CleanerFailed ? error.original : error)
+      },
+      'a stored video or audio file could not be cleaned for a reason that is not its own; the next run tries again'
     )
-    if (!last) return
     try {
-      await this.finish(row.id, storeId, attempt, ExistingAvSweep.ATTEMPTS_EXHAUSTED)
+      await this.jobContext.forStore(storeId, () =>
+        this.prisma.client.media.updateMany({
+          where: { id: row.id, storeId, status: MediaStatus.CLEAN, ...inProgress(attempt) },
+          data: { scanResult: row.scanResult === null ? DatabaseNull : (row.scanResult as object) }
+        })
+      )
     } catch (writeError) {
-      // The count is a bound, not the data: if the end cannot be written, `closeExhausted` closes it on the next run
       this.logger.error(
         { mediaId: row.id, storeId, errorName: errorName(writeError) },
-        'the end of a stored video or audio file could not be recorded'
+        'the try of a stored video or audio file could not be given back'
       )
     }
   }
