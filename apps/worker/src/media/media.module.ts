@@ -24,6 +24,7 @@ import { ShippingWorkerModule } from '../shipping/shipping.module'
 import { AvCleaner } from './av-cleaner'
 import { ClamavClient } from './clamav.client'
 import { DocumentCleaner } from './document-cleaner'
+import { ExistingAvSanitizer } from './existing-av-sanitizer.service'
 import { ExistingDocumentSanitizer } from './existing-document-sanitizer.service'
 import { ExistingPictureSanitizer } from './existing-picture-sanitizer.service'
 import { defaultAvToolOptions, FfmpegAvCleaner } from './ffmpeg-av-cleaner'
@@ -96,6 +97,7 @@ import { VersionedBucketGuard } from './versioned-bucket.guard'
     OrphanMediaCleaner,
     ExistingPictureSanitizer,
     ExistingDocumentSanitizer,
+    ExistingAvSanitizer,
     VersionedBucketGuard,
     HeavyProcessingProcessor
   ],
@@ -104,6 +106,7 @@ import { VersionedBucketGuard } from './versioned-bucket.guard'
     OrphanMediaCleaner,
     ExistingPictureSanitizer,
     ExistingDocumentSanitizer,
+    ExistingAvSanitizer,
     VersionedBucketGuard
   ]
 })

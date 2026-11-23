@@ -61,6 +61,7 @@ import { DsrEraseDueScheduler } from './schedulers/dsr-erase-due.scheduler'
 import { DsrExpireScheduler } from './schedulers/dsr-expire.scheduler'
 import { DsrExportScheduler } from './schedulers/dsr-export.scheduler'
 import { EmailDigestScheduler } from './schedulers/email-digest.scheduler'
+import { ExistingAvScheduler } from './schedulers/existing-av.scheduler'
 import { ExistingDocumentsScheduler } from './schedulers/existing-documents.scheduler'
 import { ExistingPicturesScheduler } from './schedulers/existing-pictures.scheduler'
 import { ExpiredExportsScheduler } from './schedulers/expired-exports.scheduler'
@@ -151,6 +152,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     OrphanMediaScheduler,
     ExistingPicturesScheduler,
     ExistingDocumentsScheduler,
+    ExistingAvScheduler,
     ExpiredExportsScheduler,
     DsrExpireScheduler,
     DsrEraseDueScheduler,

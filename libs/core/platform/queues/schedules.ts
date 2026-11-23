@@ -19,6 +19,7 @@ export const Schedules = {
   CLEAN_ORPHAN_MEDIA: '50 * * * *', // Hourly: stray uploads, stuck scans, files of infected rows
   SANITIZE_EXISTING_PICTURES: '*/10 * * * *', // Every 10 minutes: a bounded batch of the pictures stored before the cleaning of metadata existed
   SANITIZE_EXISTING_DOCUMENTS: '5-55/10 * * * *', // Every 10 minutes, five past: a bounded batch of the PDF, docx and xlsx stored before their cleaning existed
+  SANITIZE_EXISTING_AV: '8-58/10 * * * *', // Every 10 minutes, eight past: a bounded batch of the video and audio stored before their cleaning existed (Step 7.1-J-3)
   CLEAN_EXPIRED_EXPORTS: '40 * * * *', // Hourly: the files of exports past their date, and the ones that never got made
   CHECK_DSR_DEADLINES: '0 7 * * *', // 07:00 UTC daily: the alert of the requests that are close to their legal deadline (TDD_05 §10.2, Step 7.2-H2b-2)
   EXPIRE_DSR_REQUESTS: '25 3 * * *', // 03:25 UTC daily: the data requests whose verification link expired unused (Step 7.2-H1b)
