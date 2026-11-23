@@ -7,6 +7,7 @@ const validEnv: Record<string, string> = {
   JWT_SECRET: 'x'.repeat(32),
   // A deployed environment needs its own (the cases below take it away); the others do not
   CONSENT_HASH_KEY: 'h'.repeat(40),
+  UNSUBSCRIBE_TOKEN_KEY: 'u'.repeat(40),
   CREDENTIALS_ENCRYPTION_KEY: 'a'.repeat(64),
   AWS_ACCESS_KEY_ID: 'key',
   AWS_SECRET_ACCESS_KEY: 'secret',
@@ -683,5 +684,67 @@ describe('COOKIE_CONSENT_RETENTION_ENABLED, the sweep of the cookie banner recor
       parseEnv({ ...validEnv, COOKIE_CONSENT_RETENTION_ENABLED: 'true' })
         .COOKIE_CONSENT_RETENTION_ENABLED
     ).toBe(true)
+  })
+})
+
+describe('UNSUBSCRIBE_TOKEN_KEY, the key of the one-click unsubscribe link (Step 7.3, B6b-3b2b)', () => {
+  const withoutKey: Record<string, string> = Object.fromEntries(
+    Object.entries(validEnv).filter(([name]) => name !== 'UNSUBSCRIBE_TOKEN_KEY')
+  )
+  const OWN_KEY = 'u'.repeat(40)
+  const deployedWithoutKey: Record<string, string> = {
+    ...withoutKey,
+    RESEND_API_KEY: 're_key',
+    FRONTEND_URL: 'https://app.example.com',
+    WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
+    TRUST_PROXY_HOPS: '1'
+  }
+  const deployed: Record<string, string> = { ...deployedWithoutKey, UNSUBSCRIBE_TOKEN_KEY: OWN_KEY }
+
+  it('may be left out outside a deployed environment, and an empty value counts as left out', () => {
+    expect(parseEnv(withoutKey).UNSUBSCRIBE_TOKEN_KEY).toBeUndefined()
+    expect(
+      parseEnv({ ...withoutKey, UNSUBSCRIBE_TOKEN_KEY: '' }).UNSUBSCRIBE_TOKEN_KEY
+    ).toBeUndefined()
+  })
+
+  it.each(['staging', 'production'])('is required in %s', nodeEnv => {
+    expect(() => parseEnv({ ...deployedWithoutKey, NODE_ENV: nodeEnv })).toThrow(
+      /UNSUBSCRIBE_TOKEN_KEY/
+    )
+    expect(() => parseEnv({ ...deployed, NODE_ENV: nodeEnv })).not.toThrow()
+  })
+
+  it('is refused in a deployed environment when it is another secret or the placeholder', () => {
+    for (const value of [
+      withoutKey['JWT_SECRET'] ?? '',
+      withoutKey['CREDENTIALS_ENCRYPTION_KEY'] ?? '',
+      withoutKey['CONSENT_HASH_KEY'] ?? '',
+      'change-me-to-at-least-32-characters-long-value'
+    ]) {
+      expect(() =>
+        parseEnv({ ...deployed, NODE_ENV: 'production', UNSUBSCRIBE_TOKEN_KEY: value })
+      ).toThrow(/UNSUBSCRIBE_TOKEN_KEY/)
+    }
+  })
+
+  it('never puts the value of a refused key in the error', () => {
+    const value = withoutKey['JWT_SECRET'] ?? ''
+    let thrown: unknown
+    try {
+      parseEnv({ ...deployed, NODE_ENV: 'production', UNSUBSCRIBE_TOKEN_KEY: value })
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeDefined()
+    expect(JSON.stringify(thrown, Object.getOwnPropertyNames(thrown as object))).not.toContain(
+      value
+    )
+  })
+
+  it('takes at least 32 characters', () => {
+    expect(() => parseEnv({ ...validEnv, UNSUBSCRIBE_TOKEN_KEY: 'short' })).toThrow(
+      /UNSUBSCRIBE_TOKEN_KEY/
+    )
   })
 })

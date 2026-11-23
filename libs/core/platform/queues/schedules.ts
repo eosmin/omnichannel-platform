@@ -10,8 +10,7 @@ export const Schedules = {
   DELIVER_INVITATION_EMAILS: '* * * * *', // Every minute: the emails of invitations that wait in their outbox (Step 7.1-H)
   AUTO_ARCHIVE_RESOLVED: '30 * * * *', // Hourly
   DISPATCH_REPORTS: '0 * * * *', // Hourly, checks per-store send hour
-  SEND_EMAIL_DIGEST_HOURLY: '10 * * * *',
-  SEND_EMAIL_DIGEST_DAILY: '10 * * * *', // Every hour at :10; sends to the users whose local time is 08:10
+  SEND_EMAIL_DIGEST: '10 * * * *', // Every hour at :10: the hourly digests, and the daily ones of the users whose local time is 08:10
   CHECK_CHANNEL_HEALTH: '*/5 * * * *', // Every 5 minutes (TDD_10 §10)
   CHECK_REMOTE_CHANNEL_HEALTH: '*/5 * * * *', // The same, for the plugins that run outside the platform, with a lock of their own (TDD_10 §6.7.7)
   CHECK_TOKEN_EXPIRY: '15 */6 * * *', // Every 6 hours: each connection is asked about once a day at most (TokenExpiryLimits)

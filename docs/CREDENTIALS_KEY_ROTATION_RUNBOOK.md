@@ -44,8 +44,8 @@ everything that is written is sealed with the new key.
 
 **Values derived from the key.** None. `CREDENTIALS_ENCRYPTION_KEY` is used only to seal and open (AES-256-GCM); it feeds no hash, no HMAC
 signature, no blind index and no fingerprint. The hash keys are their own: the keys of the data subject request hashes derive from
-`JWT_SECRET`, `CONSENT_HASH_KEY` is its own, tokens are plain SHA-256 of a random value. A rotation of `CREDENTIALS_ENCRYPTION_KEY` therefore
-invalidates nothing derived. (Rotating `JWT_SECRET` or `CONSENT_HASH_KEY` is another procedure, not covered here.)
+`JWT_SECRET`, `CONSENT_HASH_KEY` and `UNSUBSCRIBE_TOKEN_KEY` (the signature of the unsubscribe link) are their own, tokens are plain SHA-256 of a random value. A rotation of `CREDENTIALS_ENCRYPTION_KEY` therefore
+invalidates nothing derived. (Rotating `JWT_SECRET`, `CONSENT_HASH_KEY` or `UNSUBSCRIBE_TOKEN_KEY` is another procedure, not covered here.)
 
 **Never sealed with this key:** the secrets that the plugins hold and the carriers hold on their side; the keys of the fiscal provider
 kept in the environment.

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
-import { NotificationChannel } from '@platform/core/domain'
+import { DigestFrequency, NotificationChannel } from '@platform/core/domain'
 import {
   NotificationDefaults,
   NotificationSettingsDefaults,
@@ -170,11 +170,37 @@ export class NotificationPreferencesService {
             SET in_app = EXCLUDED.in_app, push = EXCLUDED.push, email = EXCLUDED.email, sound = EXCLUDED.sound`
       }
       if (body.settings !== undefined && Object.keys(body.settings).length > 0) {
+        // What the person had before, to know whether the frequency changes (the marks are touched only then)
+        const before =
+          body.settings.digestFrequency === undefined
+            ? null
+            : await tx.userNotificationSettings.findUnique({
+                where: { userId },
+                select: { digestFrequency: true }
+              })
         await tx.userNotificationSettings.upsert({
           where: { userId },
           create: { userId, ...body.settings },
           update: body.settings
         })
+        const next = body.settings.digestFrequency
+        const previous =
+          Object.values(DigestFrequency).find(known => known === before?.digestFrequency) ??
+          NotificationSettingsDefaults.digestFrequency
+        // Off and immediate never read the marks of the batches again: the marks of this store that waited for an hourly or daily email would
+        // stay until the 48 h drop, and a later switch back to a batch would send them as news. They go now (the worker clears the
+        // marks of the person's other stores, which this request cannot see: `EmailDigestService.dropStale`). The same value again changes
+        // nothing: the mark of a notification that is still on its way to an immediate email is not touched
+        if (
+          next !== undefined &&
+          next !== previous &&
+          (next === DigestFrequency.OFF || next === DigestFrequency.IMMEDIATE)
+        ) {
+          await tx.notification.updateMany({
+            where: { userId, storeId, emailPendingAt: { not: null } },
+            data: { emailPendingAt: null }
+          })
+        }
       }
     })
     return this.get(userId, storeId)
