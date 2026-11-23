@@ -36,8 +36,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          title='ffmpeg of the worker image is behind the latest release'
+          title='Weekly dependency check failed: ffmpeg version'
           open=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')
           if [ "$open" = "0" ]; then
-            gh issue create --title "$title" --body "The weekly check found a newer ffmpeg than the one pinned in docker/node-service.Dockerfile (Trivy does not watch that binary). Read the release notes and the security advisories, then change FFMPEG_VERSION and FFMPEG_SHA256 together. Run: $RUN_URL"
+            gh issue create --title "$title" --body "The weekly version check failed. See the run: $RUN_URL"
           fi
