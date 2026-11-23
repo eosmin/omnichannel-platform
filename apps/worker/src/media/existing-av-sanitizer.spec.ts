@@ -76,7 +76,6 @@ describe('ExistingAvSanitizer', () => {
   let headCalls: Map<string, number>
   let changeAfterFirstHead: boolean
   let behaviour: (id: string) => Promise<CleanedAv>
-  let metric: { inc: jest.Mock }
   let updates: { where: Condition; data: Condition }[]
   let denyRowWrite: boolean
 
@@ -128,6 +127,7 @@ describe('ExistingAvSanitizer', () => {
       }
     }
   }
+  const metric = { inc: jest.fn() }
   const logger = { setContext: jest.fn(), warn: jest.fn(), error: jest.fn(), info: jest.fn() }
   const cleaner: AvCleaner = { clean: (_input, _type, id) => behaviour(id) }
   const sanitizer = new ExistingAvSanitizer(
@@ -178,8 +178,6 @@ describe('ExistingAvSanitizer', () => {
     headCalls = new Map()
     changeAfterFirstHead = false
     denyRowWrite = false
-    metric = { inc: jest.fn() }
-    ;(sanitizer as unknown as { results: typeof metric }).results = metric
     behaviour = () => Promise.resolve({ kind: 'cleaned', body: cleanedBody, hadMetadata: true })
     jest.clearAllMocks()
   })
