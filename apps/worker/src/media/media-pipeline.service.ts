@@ -21,6 +21,7 @@ import {
   ImageVariantSpecs,
   AvatarProcessing,
   AvatarUpload,
+  DocumentSanitizing,
   isEvidenceMedia,
   keepsAnimation,
   MAX_IMAGE_PIXELS,
@@ -256,11 +257,23 @@ export class MediaPipeline {
     const body = cleaned.kind === 'sanitized' ? cleaned.body : original
     if (cleaned.kind === 'sanitized') {
       await this.storage.put(media.key, body, media.contentType)
+      if (cleaned.keptParts > 0) {
+        this.logger.warn(
+          { mediaId: media.id, storeId: media.storeId, keptParts: cleaned.keptParts },
+          'a document was cleaned but some of its parts could not be and were kept as they came'
+        )
+      }
     }
     const moved = await this.within(scope, () =>
       this.prisma.client.media.updateMany({
         where: { id: media.id, status: MediaStatus.PENDING },
-        data: { fileSize: body.length, scanResult: { sanitized: true } }
+        data: {
+          fileSize: body.length,
+          scanResult: {
+            sanitized: true,
+            [DocumentSanitizing.CLEANING_VERSION_KEY]: DocumentSanitizing.CLEANING_VERSION
+          }
+        }
       })
     )
     return moved.count > 0

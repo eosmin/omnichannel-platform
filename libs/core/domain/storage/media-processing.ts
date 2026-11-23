@@ -284,6 +284,27 @@ export const DocumentSanitizing = {
   THUMBNAIL_RELATIONSHIP_SUFFIX: '/thumbnail',
   APP_PROPERTIES_PATH: 'docProps/app.xml',
   CUSTOM_PROPERTIES_PATH: 'docProps/custom.xml',
+  // The version of the cleaning of a document (Step 7.3, `office-user-paths-and-embedded-media`). Version 1 cleaned the properties; version 2
+  // also anonymizes the paths of the author's machine and cleans the metadata of the photos inside the document. A row that was cleaned
+  // with an older version carries the mark without this key, and the sweep of stored documents takes it again; the mark of a document
+  // cleaned now carries it. Raise it when the cleaning learns something new that an old row may still hold.
+  CLEANING_VERSION: 2,
+  CLEANING_VERSION_KEY: 'cleaningVersion',
+  // The part of an xlsx that records where the file was last saved (`x15ac:absPath`), and the parts of a package that hold the photos
+  WORKBOOK_PATH: 'xl/workbook.xml',
+  ABSOLUTE_PATH_ELEMENT: 'absPath',
+  ABSOLUTE_PATH_ATTRIBUTE: 'url',
+  EMBEDDED_IMAGE_DIRECTORIES: ['word/media/', 'xl/media/'],
+  // What replaces the path of the author's machine: a local target that points nowhere and names nobody. The relationship stays (the
+  // document refers to it by id), only where it points changes
+  NEUTRAL_LOCAL_TARGET: 'file:///local-file',
+  NEUTRAL_LOCAL_PATH: 'C:\\local-file\\',
+  // The longest tag of a package read for a path, and how far back from the name of an element its `<` is looked for
+  MAX_PATH_TAG_BYTES: 8192,
+  MAX_ELEMENT_PREFIX_BYTES: 40,
+  // How long the photos of one document are cleaned: a document of many photos keeps the rest as it came (and the properties are cleaned
+  // anyway) rather than pass the deadline of its thread and keep everything
+  EMBEDDED_IMAGES_BUDGET_MS: 12_000,
   THUMBNAIL_PATH_PATTERN: '^docProps/thumbnail\\.[a-z]+$',
   RELATIONSHIPS_PATH: '_rels/.rels',
   CORE_PROPERTIES_XML:

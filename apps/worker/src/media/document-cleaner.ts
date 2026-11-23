@@ -20,7 +20,8 @@ export interface DocumentThreadInput {
 }
 
 export type DocumentThreadReply =
-  | { kind: 'sanitized'; body: Uint8Array }
+  // `keptParts`: what the cleaning meant to reach and left as it came (see `SanitizedDocument`); absent counts as none
+  | { kind: 'sanitized'; body: Uint8Array; keptParts?: number }
   | { kind: 'untouched'; why: 'type' | 'already_clean' | 'not_cleanable' }
   // An error of the machine (memory, threads): the document is not to blame, the caller retries. The text of the error is not sent, because
   // the one of a parser may carry a piece of the file
