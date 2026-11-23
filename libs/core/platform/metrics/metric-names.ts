@@ -64,7 +64,7 @@ export const MetricNames = {
 
   // Web push (TDD_06 §7.1): one count for each push to one browser, by `outcome` (PushOutcomes). The alert is the share of the refused_*
   // outcomes among all of them over an hour: a wrong or rotated VAPID key (refused_auth), a payload too big, or a 400 that every push
-  // service gives (the worker then stops counting 400s against browsers, see PushLimits.SYSTEMIC_*)
+  // service gives (the worker then stops counting 400s against browsers, see PushLimits.SOUND_WINDOW)
   WEB_PUSH_ATTEMPTS: 'platform_web_push_attempts_total',
 
   // Channels

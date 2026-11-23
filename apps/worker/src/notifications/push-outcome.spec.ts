@@ -13,13 +13,13 @@ describe('refusalOutcomeOf', () => {
     [401, PushOutcomes.REFUSED_AUTH],
     [403, PushOutcomes.REFUSED_AUTH],
     [413, PushOutcomes.REFUSED_TOO_LARGE],
-    [404 + 1, PushOutcomes.REFUSED_OTHER]
+    [422, PushOutcomes.REFUSED_OTHER]
   ])('tells a %i apart', (status, outcome) => {
     expect(refusalOutcomeOf(pushError(status))).toBe(outcome)
   })
 
-  it('files an error of the library under the other refusals', () => {
-    expect(refusalOutcomeOf(new Error('bad key'))).toBe(PushOutcomes.REFUSED_OTHER)
+  it('files an error of the library or the certificate apart from the answers of a service', () => {
+    expect(refusalOutcomeOf(new Error('bad key'))).toBe(PushOutcomes.REFUSED_LOCAL)
   })
 })
 
@@ -28,41 +28,28 @@ describe('PushOutcomeWindow', () => {
     window: PushOutcomeWindow,
     outcome: Parameters<PushOutcomeWindow['record']>[0],
     n: number
-  ) => {
+  ): void => {
     for (let i = 0; i < n; i += 1) window.record(outcome)
   }
 
-  it('is not systemic before enough pushes are known, even if all were 400', () => {
+  it('does not look sound when it is empty or has only refusals', () => {
     const window = new PushOutcomeWindow()
-    fill(window, PushOutcomes.REFUSED_BAD_REQUEST, PushLimits.SYSTEMIC_MIN_SAMPLE - 1)
-    expect(window.isSystemicBadRequest()).toBe(false)
+    expect(window.serverLooksSound()).toBe(false)
+    fill(window, PushOutcomes.REFUSED_BAD_REQUEST, 30)
+    fill(window, PushOutcomes.REFUSED_AUTH, 30)
+    expect(window.serverLooksSound()).toBe(false)
   })
 
-  it('is systemic when the share of 400s reaches the limit', () => {
+  it('looks sound after a delivered push', () => {
     const window = new PushOutcomeWindow()
-    fill(window, PushOutcomes.DELIVERED, PushLimits.SYSTEMIC_MIN_SAMPLE / 2)
-    fill(window, PushOutcomes.REFUSED_BAD_REQUEST, PushLimits.SYSTEMIC_MIN_SAMPLE / 2)
-    expect(window.isSystemicBadRequest()).toBe(true)
+    window.record(PushOutcomes.DELIVERED)
+    expect(window.serverLooksSound()).toBe(true)
   })
 
-  it('is not systemic while most pushes are delivered', () => {
+  it('forgets a delivered push that is older than the window', () => {
     const window = new PushOutcomeWindow()
-    fill(window, PushOutcomes.DELIVERED, PushLimits.SYSTEMIC_WINDOW)
-    fill(window, PushOutcomes.REFUSED_BAD_REQUEST, 3)
-    expect(window.isSystemicBadRequest()).toBe(false)
-  })
-
-  it('forgets what is older than the window', () => {
-    const window = new PushOutcomeWindow()
-    fill(window, PushOutcomes.REFUSED_BAD_REQUEST, PushLimits.SYSTEMIC_WINDOW)
-    expect(window.isSystemicBadRequest()).toBe(true)
-    fill(window, PushOutcomes.DELIVERED, PushLimits.SYSTEMIC_WINDOW)
-    expect(window.isSystemicBadRequest()).toBe(false)
-  })
-
-  it('does not count a 401 or a 413 as a bad request', () => {
-    const window = new PushOutcomeWindow()
-    fill(window, PushOutcomes.REFUSED_AUTH, PushLimits.SYSTEMIC_WINDOW)
-    expect(window.isSystemicBadRequest()).toBe(false)
+    window.record(PushOutcomes.DELIVERED)
+    fill(window, PushOutcomes.REFUSED_BAD_REQUEST, PushLimits.SOUND_WINDOW)
+    expect(window.serverLooksSound()).toBe(false)
   })
 })

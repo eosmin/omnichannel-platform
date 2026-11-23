@@ -187,7 +187,11 @@ export class WebPushSender {
   // The counter is what the alert reads; the window is what tells a systemic 400 from a bad browser. Neither may fail a push.
   private note(outcome: PushOutcome): void {
     this.recent.record(outcome)
-    this.attempts.inc({ outcome })
+    try {
+      this.attempts.inc({ outcome })
+    } catch (error) {
+      this.logger.warn({ err: String(error) }, 'a web push was not counted in the metric')
+    }
   }
 
   private async settle(
@@ -197,6 +201,7 @@ export class WebPushSender {
     error: unknown
   ): Promise<'dropped' | 'retry' | 'failed'> {
     if (error instanceof WebPushError && GONE.has(error.statusCode)) {
+      this.note(PushOutcomes.GONE)
       // The browser unsubscribed or the push service forgot it: it never comes back
       try {
         await this.jobContext.forUser(userId, () =>
@@ -218,7 +223,6 @@ export class WebPushSender {
         },
         'a web push subscription was dropped: the browser or its push service forgot it'
       )
-      this.note(PushOutcomes.GONE)
       return 'dropped'
     }
     const statusCode = error instanceof WebPushError ? error.statusCode : undefined
@@ -230,21 +234,20 @@ export class WebPushSender {
     // The push service refused it for good (the VAPID keys, a payload): worth an alert (`platform_web_push_attempts_total`), not a retry
     const outcome = refusalOutcomeOf(error)
     this.note(outcome)
-    this.logger.error({ userId, statusCode, subscriptionId }, 'a web push was refused')
     // Only a 400 names this browser's own subscription (a keys or endpoint the service will not take). A 401, 403 or 413, an error
     // of the library or of the certificate says the server is misconfigured (a rotated or wrong VAPID key, no CA bundle, a payload
-    // too big): counting those would empty every list of browsers after five pushes. Those stay an alert (Step 7.3).
-    if (outcome === PushOutcomes.REFUSED_BAD_REQUEST) {
-      // ... unless most of what this process sends is refused with a 400: then it is the server's own fault (a payload or a header
-      // every push service rejects) and counting would empty the lists of browsers, so nothing is counted and the log says why
-      if (this.recent.isSystemicBadRequest()) {
-        this.logger.error(
-          { userId, subscriptionId, reason: 'refused_systemic' },
-          'web pushes are refused with a 400 across browsers: the refusal is not counted against this one'
-        )
-      } else {
-        await this.countRefusal(subscriptionId, userId, notificationId)
-      }
+    // too big): counting those would empty every list of browsers after five pushes. Those stay an alert (`platform_web_push_attempts_total`).
+    // A 400 too says nothing about the browser while this process delivers nothing at all (a payload or header every service rejects).
+    if (outcome !== PushOutcomes.REFUSED_BAD_REQUEST) {
+      this.logger.error({ userId, statusCode, subscriptionId }, 'a web push was refused')
+    } else if (this.recent.serverLooksSound()) {
+      this.logger.error({ userId, statusCode, subscriptionId }, 'a web push was refused')
+      await this.countRefusal(subscriptionId, userId, notificationId)
+    } else {
+      this.logger.error(
+        { userId, statusCode, subscriptionId, reason: 'refused_unproven' },
+        'a web push was refused with a 400 and this process has delivered none lately: not counted against the browser'
+      )
     }
     return 'failed'
   }

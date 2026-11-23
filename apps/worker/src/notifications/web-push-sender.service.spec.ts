@@ -80,6 +80,16 @@ describe('WebPushSender', () => {
     )
   }
 
+  // A process that has delivered a push lately: only then is a 400 told to be the fault of the browser
+  const soundSender = async (): Promise<WebPushSender> => {
+    const one = sender()
+    await one.send(USER, NOTIFICATION)
+    updateSubscription.mockClear()
+    inc.mockClear()
+    send.mockReset()
+    return one
+  }
+
   beforeEach(() => {
     jest.resetAllMocks()
     forUser.mockImplementation((_userId, work) => work())
@@ -233,8 +243,9 @@ describe('WebPushSender', () => {
   })
 
   it('counts a 400, which names the subscription itself, and drops it only at the limit', async () => {
+    const one = await soundSender()
     send.mockRejectedValue(pushError(400))
-    await sender().send(USER, NOTIFICATION)
+    await one.send(USER, NOTIFICATION)
     expect(updateSubscription).toHaveBeenCalledWith({
       where: {
         id: 's1',
@@ -252,8 +263,9 @@ describe('WebPushSender', () => {
   // A rotated or wrong VAPID key, a payload that is too big, a library or certificate error: the fault is the server's, and counting it
   // would empty every list of browsers after five pushes
   it.each([401, 403, 413])('does not count a %i against the browser', async status => {
+    const one = await soundSender()
     send.mockRejectedValue(pushError(status))
-    await sender().send(USER, NOTIFICATION)
+    await one.send(USER, NOTIFICATION)
     expect(updateSubscription).not.toHaveBeenCalled()
     expect(deleteSubscriptions).not.toHaveBeenCalled()
   })
@@ -265,11 +277,12 @@ describe('WebPushSender', () => {
   })
 
   it('counts a notification once for a browser even when the job is retried for another one', async () => {
+    const one = await soundSender()
     findSubscriptions.mockResolvedValue([subscription('s1'), subscription('s2')])
     send.mockImplementation(({ endpoint }) =>
       Promise.reject(endpoint.endsWith('/s1') ? pushError(400) : pushError(503))
     )
-    await expect(sender().send(USER, NOTIFICATION)).rejects.toThrow('could not be reached')
+    await expect(one.send(USER, NOTIFICATION)).rejects.toThrow('could not be reached')
     const counting = updateSubscription.mock.calls as [
       { where: { id: string; OR: unknown[] }; data: { refusedNotificationId: string } }
     ][]
@@ -284,9 +297,10 @@ describe('WebPushSender', () => {
   })
 
   it('says why a browser was dropped when its refusals reach the limit', async () => {
+    const one = await soundSender()
     send.mockRejectedValue(pushError(400))
     deleteSubscriptions.mockResolvedValue({ count: 1 })
-    await sender().send(USER, NOTIFICATION)
+    await one.send(USER, NOTIFICATION)
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ reason: 'refused_too_often', subscriptionId: 's1' }),
       expect.any(String)
@@ -294,9 +308,10 @@ describe('WebPushSender', () => {
   })
 
   it('does not retry the job when a refusal could not be counted', async () => {
+    const one = await soundSender()
     send.mockRejectedValue(pushError(400))
     updateSubscription.mockRejectedValue(new Error('db down'))
-    await expect(sender().send(USER, NOTIFICATION)).resolves.toBeUndefined()
+    await expect(one.send(USER, NOTIFICATION)).resolves.toBeUndefined()
     expect(deleteSubscriptions).not.toHaveBeenCalled()
   })
 
@@ -371,31 +386,49 @@ describe('WebPushSender', () => {
       ])
     })
 
-    it('stops counting 400s against browsers when most pushes of the process are 400s', async () => {
+    it('counts no 400 against a browser while the process has delivered nothing', async () => {
       send.mockRejectedValue(pushError(400))
       const one = sender()
-      for (let i = 0; i < PushLimits.SYSTEMIC_MIN_SAMPLE; i += 1) await one.send(USER, NOTIFICATION)
-      // The first ones were counted (the process looked sound), the ones after the sample was big enough were not
-      const counted = updateSubscription.mock.calls.length
-      expect(counted).toBeLessThan(PushLimits.SYSTEMIC_MIN_SAMPLE)
-      expect(counted).toBeGreaterThan(0)
-      await one.send(USER, NOTIFICATION)
-      expect(updateSubscription.mock.calls.length).toBe(counted)
+      for (let i = 0; i < PushLimits.MAX_REFUSALS * 2; i += 1) await one.send(USER, NOTIFICATION)
+      expect(updateSubscription).not.toHaveBeenCalled()
+      expect(deleteSubscriptions).not.toHaveBeenCalled()
       expect(logger.error).toHaveBeenCalledWith(
-        expect.objectContaining({ reason: 'refused_systemic' }),
+        expect.objectContaining({ reason: 'refused_unproven' }),
         expect.any(String)
       )
     })
 
-    it('keeps counting a lone 400 while the rest of the pushes are delivered', async () => {
-      const one = sender()
-      for (let i = 0; i < PushLimits.SYSTEMIC_MIN_SAMPLE; i += 1) await one.send(USER, NOTIFICATION)
-      send.mockRejectedValueOnce(pushError(400))
+    it('counts a 400 once a push was delivered, and again not after it leaves the window', async () => {
+      const one = await soundSender()
+      send.mockRejectedValue(pushError(400))
       await one.send(USER, NOTIFICATION)
-      const counting = (
-        updateSubscription.mock.calls as [{ data: { refusedCount: unknown } }][]
-      ).filter(call => call[0].data.refusedCount !== 0)
-      expect(counting).toHaveLength(1)
+      expect(updateSubscription).toHaveBeenCalledTimes(1)
+      updateSubscription.mockClear()
+      // Enough refusals push the delivered one out of the window: the process proves nothing again
+      for (let i = 0; i < PushLimits.SOUND_WINDOW; i += 1) await one.send(USER, NOTIFICATION)
+      const after = updateSubscription.mock.calls.length
+      await one.send(USER, NOTIFICATION)
+      expect(updateSubscription.mock.calls.length).toBe(after)
+    })
+
+    it('files an error that is not an answer of a push service apart', async () => {
+      send.mockRejectedValue(new Error('unable to get local issuer certificate'))
+      await sender().send(USER, NOTIFICATION)
+      expect(outcomesCounted()).toEqual([PushOutcomes.REFUSED_LOCAL])
+    })
+
+    it('does not fail a delivered push when the counter throws', async () => {
+      inc.mockImplementation(() => {
+        throw new Error('registry')
+      })
+      await expect(sender().send(USER, NOTIFICATION)).resolves.toBeUndefined()
+    })
+
+    it('counts a browser that is gone even when dropping it fails', async () => {
+      send.mockRejectedValue(pushError(410))
+      deleteSubscriptions.mockRejectedValue(new Error('db down'))
+      await expect(sender().send(USER, NOTIFICATION)).rejects.toThrow('db down')
+      expect(outcomesCounted()).toEqual([PushOutcomes.GONE])
     })
   })
 })
