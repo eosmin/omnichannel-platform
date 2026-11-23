@@ -85,15 +85,23 @@ describe('FfmpegAvCleaner', () => {
 
   it('returns the copy once it has been read back', async () => {
     const result = await make().clean(Buffer.from('DIRTY clip'), 'video/mp4', 'media-1')
-    expect(result).toEqual({ kind: 'cleaned', body: Buffer.from('cleaned bytes') })
+    expect(result).toEqual({
+      kind: 'cleaned',
+      body: Buffer.from('cleaned bytes'),
+      hadMetadata: true
+    })
     expect(warn).not.toHaveBeenCalled()
   })
 
-  it('does not rewrite a file that carries nothing', async () => {
+  it('rewrites a file even when the probe shows nothing to cut (an atom ffprobe does not show may hold a position)', async () => {
     const result = await make().clean(Buffer.from('CLEAN clip'), 'audio/mpeg', 'media-2')
-    expect(result).toEqual({ kind: 'untouched', why: 'already_clean' })
-    // one probe, no copy
-    expect(calls()).toHaveLength(1)
+    expect(result).toEqual({
+      kind: 'cleaned',
+      body: Buffer.from('cleaned bytes'),
+      hadMetadata: false
+    })
+    // probe, copy, probe again
+    expect(calls()).toHaveLength(3)
   })
 
   it('runs every tool with an empty environment, no shell, in a private directory and with fixed arguments', async () => {
@@ -256,6 +264,27 @@ process.exit(require('fs').existsSync(tool) ? require('child_process').spawnSync
       expect(warn).not.toHaveBeenCalled()
     }
   )
+
+  it('throws when prlimit cannot execute the tool (exit 126, a file that is not executable)', async () => {
+    const prlimit = join(work, 'prlimit')
+    writeFileSync(
+      prlimit,
+      `#!${process.execPath}
+const tool = process.argv[process.argv.indexOf('--') + 1]
+try { require('fs').accessSync(tool, require('fs').constants.X_OK) } catch { process.exit(126) }
+process.exit(0)
+`,
+      { mode: 0o755 }
+    )
+    writeFileSync(join(work, 'not-executable'), 'x', { mode: 0o644 })
+    await expect(
+      make({ prlimitPath: prlimit, ffprobePath: join(work, 'not-executable') }).clean(
+        Buffer.from('DIRTY clip'),
+        'video/mp4',
+        'media-16'
+      )
+    ).rejects.toThrow('could not be started')
+  })
 
   it('logs the id and the reason and never the name of the file or what the tool printed', async () => {
     await make().clean(Buffer.from('BROKEN secret-name.mp4'), 'video/mp4', 'media-14')

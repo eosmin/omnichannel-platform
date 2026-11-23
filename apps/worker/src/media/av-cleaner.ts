@@ -7,7 +7,8 @@ import type { AvSanitizing } from '@platform/core/storage'
 export type AvUntouchedReason = (typeof AvSanitizing.Untouched)[keyof typeof AvSanitizing.Untouched]
 
 export type CleanedAv =
-  { kind: 'cleaned'; body: Buffer } | { kind: 'untouched'; why: AvUntouchedReason }
+  | { kind: 'cleaned'; body: Buffer; hadMetadata: boolean }
+  | { kind: 'untouched'; why: AvUntouchedReason }
 
 export abstract class AvCleaner {
   // `id` is the id of the media row: it is what the log says when a file is kept as it came (never the name, never a piece of the file)

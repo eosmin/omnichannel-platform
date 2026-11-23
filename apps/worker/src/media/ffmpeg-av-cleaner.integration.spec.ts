@@ -72,20 +72,34 @@ maybe('FfmpegAvCleaner with the real tools', () => {
       const [lengthBefore] = field(before, 'duration').slice(-1)
       const [lengthAfter] = field(after, 'duration').slice(-1)
       expect(Math.abs(Number(lengthBefore) - Number(lengthAfter))).toBeLessThan(0.25)
-      // the original was not touched and a second pass finds nothing to cut
+      // the original was not touched, and a second pass writes a copy that holds nothing the first did not
       expect(original.equals(fixture(name))).toBe(true)
-      expect(await cleaner.clean(result.body, type, 'media-real')).toEqual({
-        kind: 'untouched',
-        why: 'already_clean'
-      })
+      const again = await cleaner.clean(result.body, type, 'media-real')
+      if (again.kind !== 'cleaned') throw new Error('the second pass did not clean')
+      expect(again.hadMetadata).toBe(false)
     }
   )
 
-  it('leaves a file that carries nothing as it is', async () => {
-    expect(await cleaner.clean(fixture('clean.mp3'), 'audio/mpeg', 'media-real')).toEqual({
-      kind: 'untouched',
-      why: 'already_clean'
-    })
+  it('cleans a file that carries nothing without changing what it plays', async () => {
+    const result = await cleaner.clean(fixture('clean.mp3'), 'audio/mpeg', 'media-real')
+    if (result.kind !== 'cleaned') throw new Error('not cleaned')
+    expect(result.hadMetadata).toBe(false)
+    expect(probe(result.body, 'mp3')).toContain('codec_name=mp3')
+  })
+
+  it('removes a position held in an atom that ffprobe does not show (a free box with coordinates)', async () => {
+    const first = await cleaner.clean(fixture('dirty.mp4'), 'video/mp4', 'media-real')
+    if (first.kind !== 'cleaned') throw new Error('not cleaned')
+    const text = Buffer.from('+40.7128-074.0060/ dashcam gps')
+    const free = Buffer.alloc(8 + text.length)
+    free.writeUInt32BE(free.length, 0)
+    free.write('free', 4, 'latin1')
+    text.copy(free, 8)
+    const withHidden = Buffer.concat([first.body, free])
+    expect(probe(withHidden, 'mov')).not.toContain('40.7128')
+    const result = await cleaner.clean(withHidden, 'video/mp4', 'media-real')
+    if (result.kind !== 'cleaned') throw new Error('not cleaned')
+    expect(result.body.includes('40.7128')).toBe(false)
   })
 
   it('cuts the cover picture out of an audio file', async () => {

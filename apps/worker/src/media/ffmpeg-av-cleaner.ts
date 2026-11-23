@@ -120,8 +120,10 @@ export class FfmpegAvCleaner extends AvCleaner {
     const before = await this.probe(directory, contentType, AvSanitizing.INPUT_FILE)
     if (before === Untouched.TIMED_OUT) return this.kept(id, Untouched.TIMED_OUT)
     if (before === null) return this.kept(id, Untouched.NOT_CLEANABLE)
-    if (!carriesMetadata(before, input))
-      return { kind: Results.UNTOUCHED, why: Untouched.ALREADY_CLEAN }
+    // Always rewritten, even when the probe shows nothing: an atom that ffprobe does not show (the GPS of a dashcam in `free` or `udta`, an iXML
+    // chunk of a wav) would otherwise leave as "already clean" with its coordinates. `hadMetadata` only says whether the probe or the bytes
+    // showed something, for the caller's log; the idempotence of the sweeps is the mark on the row (J-2, J-3), not skipping the copy here
+    const hadMetadata = carriesMetadata(before, input)
 
     const copy = await this.run(directory, this.options.ffmpegPath, cleanArgs(contentType))
     if (copy.timedOut) return this.kept(id, Untouched.TIMED_OUT)
@@ -137,7 +139,7 @@ export class FfmpegAvCleaner extends AvCleaner {
     // The bytes that are checked are the bytes that are returned: the child is dead and the directory is private
     const body = await readFile(join(directory, AvSanitizing.OUTPUT_FILE))
     if (verifyCleaned(before, after, body) !== null) return this.kept(id, Untouched.NOT_CLEANABLE)
-    return { kind: Results.CLEANED, body }
+    return { kind: Results.CLEANED, body, hadMetadata }
   }
 
   private async probe(directory: string, contentType: string, file: string) {

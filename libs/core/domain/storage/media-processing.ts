@@ -349,7 +349,6 @@ export const AvSanitizing = {
   // Why a file was left as it came (it is never lost and never refused: the caller logs the id and keeps the original)
   Untouched: {
     TYPE: 'type',
-    ALREADY_CLEAN: 'already_clean',
     TOO_LARGE: 'too_large',
     NOT_CLEANABLE: 'not_cleanable',
     TIMED_OUT: 'timed_out'
