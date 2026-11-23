@@ -39,6 +39,56 @@ RUN version="$(node -p "require('/tmp/repo-package.json').dependencies.sharp")" 
 FROM native-sharp AS native-worker
 FROM native-sharp AS native-api
 
+# ffmpeg and ffprobe for the worker (Step 7.1-J: the metadata of video and audio, GPS included, is cut out of what customers and agents
+# send). Built from the source of a release, never downloaded as a binary, with the version and the SHA-256 of the tarball PINNED here:
+# a download that does not match stops the build, so a changed or poisoned file never gets in. The checksum is the one of the tarball
+# published at https://ffmpeg.org/releases/ (checked against the file, 2026-11-23).
+# Why this build and not `apk add ffmpeg`: the package of the distribution is GPL (x264, x265, ...) and carries every codec and every
+# protocol, which is attack surface the cleaner never needs, because it only copies the streams (`-c copy`). This one is LGPL 2.1+
+# (`--disable-gpl --disable-nonfree --disable-version3`: no GPL codec, no non-free one, nothing that raises the license), shared
+# libraries so that the LGPL relinking right is met by the files themselves (the recipe is this file), and `--disable-everything` plus a
+# list of the five demuxers and six muxers of the types the platform accepts (`AllowedContentTypes`: mp4, mov, mp3, ogg, wav, m4a, aac).
+# One decoder (aac: a raw ADTS file has its sample rate only after the first frame is decoded, without it the copy fails), no encoder,
+# no filter, no network (`--disable-network`: the sockets are not even compiled in) and only the `file` protocol.
+# Updating: change both ARGs together, read the release notes for the demuxers listed here, and run the build (it prints the licence
+# and the lists that the smoke test below checks).
+FROM ${RUNTIME_IMAGE} AS ffmpeg-build
+ARG FFMPEG_VERSION=8.1.3
+ARG FFMPEG_SHA256=7138d28c96d9d3e3af4ee3d8cad72741f8ffb40da90c1112235dea3ecd3178a3
+RUN apk add --no-cache build-base curl xz
+WORKDIR /src
+RUN curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+      --output ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
+ && echo "${FFMPEG_SHA256}  ffmpeg.tar.xz" | sha256sum -c - \
+ && tar -xJf ffmpeg.tar.xz --strip-components=1 \
+ && rm ffmpeg.tar.xz
+RUN ./configure \
+      --prefix=/opt/ffmpeg \
+      --disable-everything --disable-autodetect --disable-network \
+      --disable-gpl --disable-nonfree --disable-version3 \
+      --disable-doc --disable-debug --disable-ffplay --disable-avdevice --disable-asm \
+      --enable-pic --enable-shared --disable-static \
+      --extra-ldflags='-Wl,-rpath,/opt/ffmpeg/lib' \
+      --enable-protocol=file \
+      --enable-demuxer=mov,mp3,ogg,wav,aac \
+      --enable-muxer=mp4,mov,mp3,ogg,wav,adts \
+      --enable-parser=aac,aac_latm,h264,hevc,mpeg4video,mpegaudio,opus,vorbis,flac,av1,vp9 \
+      --enable-decoder=aac \
+ && make -j"$(nproc)" \
+ && make install \
+ && mkdir -p /opt/ffmpeg/share/licenses \
+ && cp COPYING.LGPLv2.1 LICENSE.md /opt/ffmpeg/share/licenses/ \
+ && rm -rf /opt/ffmpeg/include /opt/ffmpeg/lib/pkgconfig /opt/ffmpeg/share/man /opt/ffmpeg/share/ffmpeg
+# Smoke test of the build: the license is LGPL, no network, only the file protocol
+RUN /opt/ffmpeg/bin/ffmpeg -hide_banner -version | tee /dev/stderr | grep -q -- '--disable-gpl' \
+ && ! /opt/ffmpeg/bin/ffmpeg -hide_banner -L | grep -qi 'GNU General' \
+ && test "$(/opt/ffmpeg/bin/ffmpeg -hide_banner -protocols | sed -n '/Input:/,/Output:/p' | grep -Evc 'Input:|Output:')" = "1"
+# The worker takes the stage with the tools; the api, which never cleans a video, takes an empty one
+FROM ffmpeg-build AS av-worker
+FROM ${RUNTIME_IMAGE} AS av-api
+RUN mkdir -p /opt/ffmpeg
+FROM av-${APP} AS av
+
 # The stage of the app being built (COPY --from cannot expand a variable, FROM can)
 FROM native-${APP} AS native
 
@@ -55,6 +105,16 @@ WORKDIR /app
 # The bundle is an ES module
 RUN echo '{"type":"module"}' > package.json
 ARG APP
+# ffmpeg and ffprobe, owned by root and read-only for the service, for the worker alone (stage av: the api takes an empty directory). prlimit
+# (util-linux) sets the limits of the kernel on each child of the cleaner of video and audio metadata (`FfmpegAvCleaner`); the build stops
+# if the tools do not start on this base, so a mismatch of libc is found here and not in production
+COPY --from=av /opt/ffmpeg/ /opt/ffmpeg/
+RUN if [ "$APP" = "worker" ]; then \
+      apk add --no-cache util-linux-misc \
+      && /opt/ffmpeg/bin/ffmpeg -hide_banner -version >/dev/null \
+      && /opt/ffmpeg/bin/ffprobe -hide_banner -version >/dev/null \
+      && prlimit --version >/dev/null; \
+    fi
 COPY --from=build --chown=node:node /repo/dist/apps/${APP}/ ./
 # The one thing found on disk at run time: Bull Board looks for the files of its page in
 # node_modules/@bull-board/ui (3 MB), starting from the working directory. Without them the api fails

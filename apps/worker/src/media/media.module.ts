@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelConnectionsLibModule } from '@platform/channels/connections'
 import {
@@ -19,10 +20,12 @@ import { ProcessorSupport } from '../processors/processor-support'
 import { RetentionWorkerModule } from '../retention/retention.module'
 import { ShippingWorkerModule } from '../shipping/shipping.module'
 
+import { AvCleaner } from './av-cleaner'
 import { ClamavClient } from './clamav.client'
 import { DocumentCleaner } from './document-cleaner'
 import { ExistingDocumentSanitizer } from './existing-document-sanitizer.service'
 import { ExistingPictureSanitizer } from './existing-picture-sanitizer.service'
+import { defaultAvToolOptions, FfmpegAvCleaner } from './ffmpeg-av-cleaner'
 import { InboundMediaFetcher } from './inbound-media-fetcher.service'
 import { MediaPipeline } from './media-pipeline.service'
 import { OriginMediaFetcher } from './origin-media-fetcher.service'
@@ -66,6 +69,23 @@ import { VersionedBucketGuard } from './versioned-bucket.guard'
       provide: DocumentCleaner,
       useFactory: () => new ThreadDocumentCleaner(defaultThreadOptions())
     },
+    // The metadata of a video or an audio file is cut out by ffmpeg in a process of its own, with limits and a deadline (Step 7.1-J-1). Nothing
+    // calls it yet: the scan (J-2) and the sweep of stored files (J-3) do
+    {
+      provide: AvCleaner,
+      inject: [PinoLogger],
+      useFactory: (logger: PinoLogger) => {
+        logger.setContext(FfmpegAvCleaner.name)
+        const options = defaultAvToolOptions()
+        // Without prlimit only the deadline bounds the child: the image build checks that the worker has it, and this says so if it is gone
+        if (options.prlimitPath === null) {
+          logger.warn(
+            'prlimit is missing: the video and audio tools run with a deadline and no memory limit'
+          )
+        }
+        return new FfmpegAvCleaner(options, logger)
+      }
+    },
     MediaPipeline,
     UnavailableFileMarker,
     InboundMediaFetcher,
@@ -77,6 +97,7 @@ import { VersionedBucketGuard } from './versioned-bucket.guard'
     HeavyProcessingProcessor
   ],
   exports: [
+    AvCleaner,
     OrphanMediaCleaner,
     ExistingPictureSanitizer,
     ExistingDocumentSanitizer,

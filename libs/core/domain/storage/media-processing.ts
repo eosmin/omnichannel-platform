@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { ImageVariants } from './storage-keys'
+import { UploadLimits } from './upload-constants'
 
 // What the worker makes of a clean image (TDD_07 §6.5). Every variant is re-encoded to WebP, so what
 // is served inline is never the bytes the uploader sent.
@@ -299,4 +300,86 @@ export const DocumentSanitizing = {
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" ' +
     'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"/>'
+} as const
+
+// The metadata of video and audio (Step 7.1-J-1). A phone puts where the clip was taken (`©xyz`, ISO 6709), the model and the time in the container,
+// and a player or a download shows it. The cleaner copies the streams into a new container with no metadata (`ffmpeg -c copy`, nothing is
+// decoded or re-encoded, so the picture and the sound are the same bytes) in a process of its own, because it reads the file of a stranger.
+// Every argument below is a constant: nothing that comes from the file or its name is ever put on a command line.
+export const AvSanitizing = {
+  // The tools the worker image carries (the `ffmpeg-build` stage of `docker/node-service.Dockerfile`, LGPL, demuxers and muxers only)
+  FFMPEG_PATH: '/opt/ffmpeg/bin/ffmpeg',
+  FFPROBE_PATH: '/opt/ffmpeg/bin/ffprobe',
+  // Limits the child gets from the kernel (util-linux `prlimit`, run by the same fixed command line): address space, CPU seconds, the size of
+  // a file it writes and the files it holds open. A copy of 10 MB needs a few MB of each; these only stop a file that makes it run away
+  PRLIMIT_PATH: '/usr/bin/prlimit',
+  LIMIT_ADDRESS_SPACE_BYTES: 1024 * 1024 * 1024,
+  LIMIT_CPU_SECONDS: 20,
+  LIMIT_FILE_BYTES: UploadLimits.MAX_FILE_SIZE_BYTES * 2,
+  LIMIT_OPEN_FILES: 64,
+  // The deadline of each child (ffprobe, ffmpeg, ffprobe again), counted from its start; then it and its whole process group are killed
+  TOOL_TIMEOUT_MS: 20_000,
+  // What ffprobe may print before the file is given up as hostile (a real clip prints a few KB)
+  MAX_PROBE_OUTPUT_BYTES: 512 * 1024,
+  // The names inside the private directory of one clean (cwd of the child): fixed, so the command lines never hold a path
+  INPUT_FILE: 'input.bin',
+  OUTPUT_FILE: 'output.bin',
+  TEMP_DIR_PREFIX: 'av-clean-',
+  // The length of the clip may move by this much between the original and the copy (a container may round the end of a stream)
+  DURATION_TOLERANCE_SECONDS: 0.25,
+  DURATION_TOLERANCE_RATIO: 0.01,
+  // The tags a file may show and still be called clean, each with the only values it may have: the ones a muxer writes by itself. Any other value
+  // (a handler named after a person, a brand with a place in it) is metadata, in the file as it came and in the copy. Keys in lowercase
+  ALLOWED_TAGS: {
+    major_brand: '^[ -~]{4}$',
+    minor_version: '^[0-9]{1,10}$',
+    compatible_brands: '^[A-Za-z0-9 ]{0,64}$',
+    handler_name: '^(VideoHandler|SoundHandler)$',
+    vendor_id: '^(FFMP|\\[0\\]\\[0\\]\\[0\\]\\[0\\])$',
+    language: '^und$'
+  } as Readonly<Record<string, string>>,
+  // Names in the bytes of a file that mean where or with what it was shot. The cleaned file must hold none of them. Only long names: a four-byte
+  // name such as `\u00a9xyz` shows up by chance in 10 MB of audio now and then, and a false alarm would leave the original, with its GPS, in place;
+  // the atoms of a mov or mp4 are read as tags by ffprobe, which is the check for the short ones
+  FORBIDDEN_BYTE_PATTERNS: ['ISO6709', 'com.apple.quicktime.', 'creation_time'],
+  // An ID3 tag at the start of an mp3 or an aac (its position is the first bytes, so it is checked there and not as a pattern); the header is 10
+  // bytes, the last four its size
+  ID3_MAGIC: 'ID3',
+  ID3_HEADER_BYTES: 10,
+  // Why a file was left as it came (it is never lost and never refused: the caller logs the id and keeps the original)
+  Untouched: {
+    TYPE: 'type',
+    ALREADY_CLEAN: 'already_clean',
+    TOO_LARGE: 'too_large',
+    NOT_CLEANABLE: 'not_cleanable',
+    TIMED_OUT: 'timed_out'
+  },
+  Results: { CLEANED: 'cleaned', UNTOUCHED: 'untouched' },
+  // Why a copy was not taken (`verifyCleaned`); the reason is logged by the caller as a code, never with a piece of the file
+  Refusals: {
+    EMPTY: 'empty',
+    NO_MEDIA_STREAM: 'no_media_stream',
+    COVER_KEPT: 'cover_kept',
+    DATA_KEPT: 'data_kept',
+    STREAMS_CHANGED: 'streams_changed',
+    DURATION_UNKNOWN: 'duration_unknown',
+    DURATION_CHANGED: 'duration_changed',
+    TAGS_KEPT: 'tags_kept',
+    SOURCE_NAMED: 'source_named'
+  },
+  // How each type is read and written: the demuxer and muxer are named, never probed, so a file cannot pass for another format. `args` come
+  // after the maps. Audio drops the video streams (`-vn`): in an audio file they are the cover, a picture that carries its own EXIF
+  FORMATS: {
+    'video/mp4': { input: 'mov', output: 'mp4', args: [] },
+    'video/quicktime': { input: 'mov', output: 'mov', args: [] },
+    'audio/mp4': { input: 'mov', output: 'mp4', args: ['-vn'] },
+    'audio/mpeg': {
+      input: 'mp3',
+      output: 'mp3',
+      args: ['-vn', '-write_id3v2', '0']
+    },
+    'audio/ogg': { input: 'ogg', output: 'ogg', args: ['-vn'] },
+    'audio/wav': { input: 'wav', output: 'wav', args: ['-vn'] },
+    'audio/aac': { input: 'aac', output: 'adts', args: ['-vn'] }
+  } as Readonly<Record<string, { input: string; output: string; args: readonly string[] }>>
 } as const

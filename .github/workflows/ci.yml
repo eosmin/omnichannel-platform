@@ -233,6 +233,13 @@ jobs:
       - name: Every migration has a rollback
         run: pnpm validate:rollbacks
       - uses: ./.github/actions/clamav-wait
+      # The cleaner of video and audio metadata is run against a real ffmpeg (ffmpeg-av-cleaner.integration.spec.ts, which
+      # reads /usr/bin; the step stops the job if the tools are not there). The image of the worker ships its own LGPL build: the security-scan job runs that one on the same clips
+      - name: ffmpeg for the cleaner of video and audio
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+          test -x /usr/bin/ffmpeg && test -x /usr/bin/ffprobe
       # The api suite holds the coverage gates of the auth (95%) and tenancy (100%) folders (apps/api/jest.integration.config.cts), core-redis and core-audit their own
       - name: Integration suites
         run: pnpm exec nx run-many --target=test-integration --projects=core-database,core-redis,core-audit,worker,api
@@ -842,12 +849,19 @@ jobs:
       # The api writes the catalog of official plugins when it boots (D19), so it needs a migrated
       # database: it is not the empty one the worker is happy with
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        if: matrix.app == 'api'
+        if: matrix.app == 'api' || matrix.app == 'worker'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: matrix.app == 'api'
+        if: matrix.app == 'api' || matrix.app == 'worker'
         with:
           node-version-file: .nvmrc
           cache: pnpm
+      # The ffmpeg that the worker image ships cleans every type of video and audio the platform accepts, with no network, and what it
+      # writes passes the checks of the cleaner (the same command lines and the same checks, read from the code)
+      - name: The ffmpeg of the worker image cleans the clips of the specs
+        if: matrix.app == 'worker'
+        run: |
+          pnpm install --frozen-lockfile --prefer-offline
+          pnpm exec tsx scripts/smoke-av-image.ts platform-worker:ci
       - name: Migrate the database the api image starts against
         if: matrix.app == 'api'
         env:
