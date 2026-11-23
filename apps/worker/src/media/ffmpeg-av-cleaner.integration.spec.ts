@@ -65,9 +65,14 @@ maybe('FfmpegAvCleaner with the real tools', () => {
   ])(
     'cuts the metadata out of %s and keeps the streams and the length',
     async (name, type, format) => {
+      // Raw ADTS has no container to hold a tag, so the clip carries nothing the probe could show: the copy must still come out the same
+      const hasTags = name !== 'dirty.aac'
       const original = fixture(name)
       const before = probe(original, format)
-      expect(before).toMatch(/TAG:(location|artist|comment|ARTIST|COMMENT)=|TAG:.*Someone|PhoneX/i)
+      if (hasTags)
+        expect(before).toMatch(
+          /TAG:(location|artist|comment|ARTIST|COMMENT)=|TAG:.*Someone|PhoneX/i
+        )
 
       const result = await cleaner.clean(original, type, 'media-real')
       if (result.kind !== 'cleaned') throw new Error(`not cleaned: ${result.why}`)
