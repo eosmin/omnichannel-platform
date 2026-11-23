@@ -62,6 +62,11 @@ export const MetricNames = {
   // delivery lost with no other trace than the log: alert on it
   WEBHOOK_DISPATCH_LOST: 'platform_webhook_dispatch_lost_total',
 
+  // Web push (TDD_06 §7.1): one count for each push to one browser, by `outcome` (PushOutcomes). The alert is the share of the refused_*
+  // outcomes among all of them over an hour: a wrong or rotated VAPID key (refused_auth), a payload too big, or a 400 that every push
+  // service gives (the worker then stops counting 400s against browsers, see PushLimits.SYSTEMIC_*)
+  WEB_PUSH_ATTEMPTS: 'platform_web_push_attempts_total',
+
   // Channels
   CHANNEL_WEBHOOK_RECEIVED: 'platform_channel_webhook_received_total',
   CHANNEL_WEBHOOK_REJECTED: 'platform_channel_webhook_rejected_total',

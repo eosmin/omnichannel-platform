@@ -1,10 +1,16 @@
+import type { Counter } from '@prometheus-io/client'
 import { UnrecoverableError } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 import { WebPushError } from 'web-push'
 
 import { JobContextGoneError, type JobContext, type PrismaService } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
-import { NotificationTypes, notificationMessageKey, PushLimits } from '@platform/core/notifications'
+import {
+  NotificationTypes,
+  notificationMessageKey,
+  PushLimits,
+  PushOutcomes
+} from '@platform/core/notifications'
 
 import { WebPushSender } from './web-push-sender.service'
 import type { WebPushGateway } from './web-push.gateway'
@@ -43,6 +49,7 @@ describe('WebPushSender', () => {
   const deleteSubscriptions = jest.fn()
   const send = jest.fn<Promise<void>, [{ endpoint: string }, string, boolean]>()
   const forUser = jest.fn((_userId: string, work: () => Promise<unknown>) => work())
+  const inc = jest.fn()
   const logger = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   let enabled = true
 
@@ -68,7 +75,8 @@ describe('WebPushSender', () => {
       prisma as unknown as PrismaService,
       { forUser } as unknown as JobContext,
       gateway as unknown as WebPushGateway,
-      logger as unknown as PinoLogger
+      logger as unknown as PinoLogger,
+      { inc } as unknown as Counter<string>
     )
   }
 
@@ -335,5 +343,59 @@ describe('WebPushSender', () => {
   it('refuses for good a notification that does not fit a push', async () => {
     findNotification.mockResolvedValue(notificationRow({ type: 'not.a.type' }))
     await expect(sender().send(USER, NOTIFICATION)).rejects.toBeInstanceOf(UnrecoverableError)
+  })
+
+  describe('the alert counter and the systemic 400', () => {
+    const outcomesCounted = (): string[] =>
+      inc.mock.calls.map((call: unknown[]) => (call[0] as { outcome: string }).outcome)
+
+    it('counts each push by what became of it', async () => {
+      await sender().send(USER, NOTIFICATION)
+      send.mockRejectedValueOnce(pushError(410))
+      await sender().send(USER, NOTIFICATION)
+      send.mockRejectedValueOnce(pushError(401))
+      await sender().send(USER, NOTIFICATION)
+      send.mockRejectedValueOnce(pushError(413))
+      await sender().send(USER, NOTIFICATION)
+      send.mockRejectedValueOnce(pushError(400))
+      await sender().send(USER, NOTIFICATION)
+      send.mockRejectedValueOnce(pushError(503))
+      await expect(sender().send(USER, NOTIFICATION)).rejects.toThrow()
+      expect(outcomesCounted()).toEqual([
+        PushOutcomes.DELIVERED,
+        PushOutcomes.GONE,
+        PushOutcomes.REFUSED_AUTH,
+        PushOutcomes.REFUSED_TOO_LARGE,
+        PushOutcomes.REFUSED_BAD_REQUEST,
+        PushOutcomes.RETRY
+      ])
+    })
+
+    it('stops counting 400s against browsers when most pushes of the process are 400s', async () => {
+      send.mockRejectedValue(pushError(400))
+      const one = sender()
+      for (let i = 0; i < PushLimits.SYSTEMIC_MIN_SAMPLE; i += 1) await one.send(USER, NOTIFICATION)
+      // The first ones were counted (the process looked sound), the ones after the sample was big enough were not
+      const counted = updateSubscription.mock.calls.length
+      expect(counted).toBeLessThan(PushLimits.SYSTEMIC_MIN_SAMPLE)
+      expect(counted).toBeGreaterThan(0)
+      await one.send(USER, NOTIFICATION)
+      expect(updateSubscription.mock.calls.length).toBe(counted)
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'refused_systemic' }),
+        expect.any(String)
+      )
+    })
+
+    it('keeps counting a lone 400 while the rest of the pushes are delivered', async () => {
+      const one = sender()
+      for (let i = 0; i < PushLimits.SYSTEMIC_MIN_SAMPLE; i += 1) await one.send(USER, NOTIFICATION)
+      send.mockRejectedValueOnce(pushError(400))
+      await one.send(USER, NOTIFICATION)
+      const counting = (
+        updateSubscription.mock.calls as [{ data: { refusedCount: unknown } }][]
+      ).filter(call => call[0].data.refusedCount !== 0)
+      expect(counting).toHaveLength(1)
+    })
   })
 })

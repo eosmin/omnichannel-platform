@@ -188,6 +188,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     buckets: [0.05, 0.1, 0.5, 1, 5, 15, 30, 60, 120]
   },
 
+  [MetricNames.WEB_PUSH_ATTEMPTS]: {
+    kind: 'counter',
+    help: 'Web pushes to one browser, by outcome: delivered, gone, retry or one of the refused outcomes',
+    labels: ['outcome']
+  },
   [MetricNames.CHANNEL_WEBHOOK_RECEIVED]: {
     kind: 'counter',
     help: 'Channel webhooks received',

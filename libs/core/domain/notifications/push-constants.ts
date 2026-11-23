@@ -22,8 +22,29 @@ export const PushLimits = {
   MAX_USER_AGENT_LENGTH: 512,
   // A browser the push service refuses for good (not gone: a payload or a key it will not take) this many times in a row is dropped;
   // one delivered push resets the count. A person who still wants push registers again from the switch.
-  MAX_REFUSALS: 5
+  MAX_REFUSALS: 5,
+  // A 400 is counted against a browser only while the server itself looks sound. Over the last SYSTEMIC_WINDOW pushes this process
+  // tried, once at least SYSTEMIC_MIN_SAMPLE are known and this share or more of them were 400s, the cause is the server (a payload or a
+  // header every push service refuses), not forty browsers gone bad at once: nothing is counted, so no list of browsers is emptied.
+  SYSTEMIC_WINDOW: 50,
+  SYSTEMIC_MIN_SAMPLE: 20,
+  SYSTEMIC_BAD_REQUEST_SHARE: 0.5
 } as const
+
+// What became of one push to one browser: the label of `platform_web_push_attempts_total`. The refusals are told apart by what they
+// say about the fault (a 400 names the browser; the rest name the server), so an alert can watch the ones that are the server's.
+export const PushOutcomes = {
+  DELIVERED: 'delivered',
+  GONE: 'gone',
+  RETRY: 'retry',
+  REFUSED_BAD_REQUEST: 'refused_bad_request',
+  // 401 and 403: the VAPID key is wrong, rotated, or not the one the browser subscribed with
+  REFUSED_AUTH: 'refused_auth',
+  REFUSED_TOO_LARGE: 'refused_too_large',
+  // Any other refusal, and the errors of the library or the certificate
+  REFUSED_OTHER: 'refused_other'
+} as const
+export type PushOutcome = (typeof PushOutcomes)[keyof typeof PushOutcomes]
 
 // The worker posts to the endpoint a browser gave the api, so an endpoint is a url the server will
 // call: it is accepted only on the host of a known push service, never a host the caller chooses.
