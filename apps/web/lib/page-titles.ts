@@ -45,6 +45,7 @@ export const PageTitles = {
   settingsApiKeys: ['settings.nav.store.apiKeys', 'shell.nav.settings'],
   settingsSafety: ['settings.nav.store.safety', 'shell.nav.settings'],
   settingsRetention: ['settings.nav.store.retention', 'shell.nav.settings'],
+  settingsDataRequests: ['settings.nav.store.dataRequests', 'shell.nav.settings'],
   settingsAuditLog: ['settings.nav.store.auditLog', 'shell.nav.settings'],
   accountProfile: ['settings.nav.account.profile', 'settings.nav.account.title'],
   accountPreferences: ['settings.nav.account.preferences', 'settings.nav.account.title'],

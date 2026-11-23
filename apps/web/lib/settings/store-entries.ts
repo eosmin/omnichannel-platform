@@ -139,6 +139,13 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       permission: ClientPermissions.SETTINGS_MANAGE_RETENTION
     },
     {
+      id: StoreSettingsSections.DATA_REQUESTS,
+      labelKey: 'dataRequests',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.DATA_REQUESTS),
+      // The api asks this for every call of the page: the queue, one request and each decision
+      permission: ClientPermissions.CUSTOMERS_DSR_REVIEW
+    },
+    {
       id: StoreSettingsSections.AUDIT_LOG,
       labelKey: 'auditLog',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.AUDIT_LOG),

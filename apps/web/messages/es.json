@@ -3100,6 +3100,7 @@
         "webhooks": "Integraciones salientes",
         "apiKeys": "Claves de API",
         "retention": "Retención de datos",
+        "dataRequests": "Solicitudes de datos",
         "auditLog": "Registro de auditoría",
         "safety": "Seguridad y confirmaciones"
       },
@@ -5010,6 +5011,251 @@
         "none": "Ninguno",
         "metadata": "Metadatos",
         "noMetadata": "Esta entrada no tiene metadatos."
+      }
+    },
+    "dataRequests": {
+      "title": "Solicitudes de datos",
+      "intro": "Solicitudes de personas sobre sus datos: acceder a ellos, llevárselos o que se eliminen. Una persona del equipo revisa cada una antes de hacer nada. La ley da 30 días para responder y no hay prórroga.",
+      "caption": "Solicitudes de datos de la tienda, de la más reciente a la más antigua",
+      "empty": "No hay solicitudes de datos.",
+      "emptyFiltered": "Ninguna solicitud coincide con estos filtros.",
+      "loadMore": "Cargar más",
+      "partial": "{count, plural, one {Se muestra # solicitud.} other {Se muestran # solicitudes.}} Hay más.",
+      "open": "Abrir",
+      "noPermission": "Puedes leer esta solicitud, pero no tienes el permiso para decidir sobre ella.",
+      "banners": {
+        "noticeFailed": {
+          "title": "{count, plural, one {# persona nunca supo cómo terminó su solicitud} other {# personas nunca supieron cómo terminó su solicitud}}",
+          "body": "No se pudo enviar el correo de cierre. La solicitud está marcada en la lista. Comunícate con la persona por otro medio y dile el resultado: tiene derecho a saberlo."
+        },
+        "deadline": {
+          "title": "{count, plural, one {# solicitud abierta vence en {days} días o menos, o ya venció} other {# solicitudes abiertas vencen en {days} días o menos, o ya vencieron}}",
+          "body": "El plazo legal es de 30 días desde la solicitud y no se puede prorrogar. Decide primero sobre estas."
+        },
+        "returned": {
+          "title": "{count, plural, one {# eliminación aprobada volvió a revisión} other {# eliminaciones aprobadas volvieron a revisión}}",
+          "body": "Abre cada una para ver el motivo. Cuando esté resuelto, apruébala de nuevo."
+        }
+      },
+      "filters": {
+        "label": "Filtros",
+        "status": "Estado",
+        "anyStatus": "Cualquier estado",
+        "type": "Tipo",
+        "anyType": "Cualquier tipo",
+        "clear": "Quitar filtros"
+      },
+      "columns": {
+        "type": "Tipo",
+        "status": "Estado",
+        "requested": "Solicitada",
+        "deadline": "Plazo",
+        "marks": "Atención",
+        "details": "Detalle"
+      },
+      "deadline": {
+        "left": "{count, plural, =0 {Vence hoy} one {Queda # día} other {Quedan # días}}",
+        "overdue": "{count, plural, one {Vencida hace # día} other {Vencida hace # días}}",
+        "none": "Terminada",
+        "pending": "Esperando que la persona verifique"
+      },
+      "marks": {
+        "noticeFailed": "Persona sin avisar",
+        "returned": "Volvió a revisión",
+        "exportFailed": "Falló el archivo",
+        "exportReady": "Archivo listo",
+        "erasesOn": "Se elimina el {date}"
+      },
+      "types": {
+        "access": "Acceso a los datos",
+        "portability": "Portabilidad",
+        "rectification": "Rectificación",
+        "erasure": "Eliminación",
+        "restriction": "Limitación",
+        "objection": "Oposición",
+        "unknown": "Otra solicitud"
+      },
+      "statuses": {
+        "pending_verification": "Esperando verificación",
+        "in_progress": "Aprobada",
+        "manual_review": "En revisión",
+        "completed": "Completada",
+        "rejected": "Rechazada",
+        "cancelled": "Cancelada",
+        "unknown": "Estado desconocido"
+      },
+      "rejectionReasons": {
+        "reviewer_decision": "Decisión de quien revisó",
+        "verification_expired": "La persona no verificó a tiempo",
+        "unknown": "Sin indicar"
+      },
+      "detail": {
+        "title": "Solicitud de datos",
+        "titleOf": "Solicitud: {type}",
+        "description": "En qué punto está la solicitud, si se avisó a la persona cómo terminó y qué puedes hacer con ella."
+      },
+      "facts": {
+        "status": "Estado",
+        "requested": "Solicitada",
+        "verified": "Verificada",
+        "notVerified": "Aún sin verificar",
+        "deadline": "Plazo legal",
+        "erasureDue": "Se elimina el",
+        "customers": "Clientes que nombra",
+        "customersCount": "{count, plural, one {# cliente} other {# clientes}}",
+        "reviewed": "Revisada",
+        "ended": "Terminada",
+        "rejectionReason": "Por qué terminó",
+        "note": "Nota de quien revisó",
+        "notice": "Aviso a la persona"
+      },
+      "notice": {
+        "notEnded": "Se avisa a la persona cuando la solicitud termina.",
+        "failedTitle": "La persona nunca supo cómo terminó su solicitud",
+        "failedBody": "El correo de cierre falló o no se pudo leer la dirección. Comunícate con la persona por otro medio y dile el resultado.",
+        "statuses": {
+          "none": "No hay dirección a la que avisar",
+          "pending": "En camino, aún sin confirmar",
+          "sent": "Enviado",
+          "failed": "Nunca se entregó",
+          "unknown": "Desconocido"
+        }
+      },
+      "failure": {
+        "returned": "Por qué volvió a revisión:",
+        "exportFailed": "Por qué falló el archivo:",
+        "codes": {
+          "subject_changed": "El cliente cambió desde que se hizo la solicitud.",
+          "undoable_merge": "El cliente se fusionó con otro y la fusión aún se puede deshacer. Espera a que pase su plazo o deshaz la fusión.",
+          "blocked_by_open_work": "El cliente tiene pedidos, envíos, devoluciones, remesas o saldos abiertos.",
+          "attempts_exhausted": "La eliminación falló en todos los intentos.",
+          "export_failed": "No se pudo hacer el archivo.",
+          "export_too_large": "Los datos de la persona son demasiado grandes para un solo archivo.",
+          "mail_failed": "El correo de cierre falló en todos los intentos.",
+          "mail_lost": "El correo de cierre se aceptó para envío, pero no se pudo confirmar que saliera.",
+          "address_unreadable": "No se pudo leer la dirección de la persona.",
+          "unknown": "Esta pantalla no conoce el motivo. Consulta al equipo de la plataforma."
+        }
+      },
+      "openWork": {
+        "title": "Lo que espera una eliminación, contado ahora",
+        "orders": "{count, plural, one {# pedido abierto} other {# pedidos abiertos}}",
+        "shipments": "{count, plural, one {# envío en tránsito} other {# envíos en tránsito}}",
+        "returns": "{count, plural, one {# devolución abierta} other {# devoluciones abiertas}}",
+        "remittances": "{count, plural, one {# remesa abierta} other {# remesas abiertas}}",
+        "receivables": "{count, plural, one {# saldo por cobrar} other {# saldos por cobrar}}",
+        "hint": "Mientras alguno siga abierto no se pueden eliminar los datos del cliente."
+      },
+      "summary": {
+        "kept": "Lo que se conservó",
+        "holds": "Lo que contiene el archivo",
+        "counts": {
+          "customers": "Clientes: {count}",
+          "conversations": "Conversaciones: {count}",
+          "messages": "Mensajes: {count}",
+          "orders": "Pedidos: {count}",
+          "addresses": "Direcciones: {count}",
+          "consents": "Consentimientos: {count}",
+          "files": "Archivos: {count}"
+        },
+        "bases": {
+          "consent": "Base legal: el consentimiento de la persona.",
+          "contract": "Base legal: un contrato.",
+          "legal_obligation": "Base legal: una obligación legal (los pedidos, los documentos fiscales y los libros deben conservarse).",
+          "legitimate_interests": "Base legal: un interés legítimo.",
+          "unknown": "Esta pantalla no conoce la base legal."
+        }
+      },
+      "actions": {
+        "close": "Cerrar",
+        "approve": "Aprobar",
+        "reject": "Rechazar",
+        "cancel": "Cancelar eliminación",
+        "download": "Descargar archivo",
+        "rejectOnly": "La plataforma aún no puede llevar a cabo este tipo de solicitud: solo se puede rechazar."
+      },
+      "decision": {
+        "effectsTitle": "Qué hace esto",
+        "keptTitle": "Qué se conserva y por qué",
+        "kept": {
+          "orders": "Los pedidos se conservan, por obligación legal. Siguen apuntando al cliente, que ya no conserva nombre ni datos de contacto.",
+          "conversations": "Las conversaciones se conservan vinculadas al cliente, que ya no conserva nombre ni datos de contacto.",
+          "fiscal": "Los documentos fiscales y los asientos del libro ya hechos nunca se tocan, por obligación legal.",
+          "consents": "Los consentimientos se conservan como prueba, revocados y sin la dirección ni el navegador de la persona.",
+          "copied": "Los datos personales copiados en un pedido (destinatario, dirección, notas) todavía no se eliminan con esta solicitud."
+        },
+        "stale": "La solicitud cambió y ya no admite esta decisión. Vuelve para ver en qué punto está.",
+        "blocked": "Este cliente tiene trabajo abierto (mira el detalle), así que la eliminación aún no se puede aprobar.",
+        "reason": "Motivo de tu decisión",
+        "reasonHint": "Queda en la solicitud para el equipo. No se envía a la persona ni se escribe en el registro de auditoría.",
+        "problems": {
+          "required": "Escribe el motivo.",
+          "tooLong": "El motivo es demasiado largo: máximo {max} caracteres.",
+          "confirm": "Marca la casilla para confirmar."
+        },
+        "openWorkLine": {
+          "orders": "{count, plural, one {# pedido abierto} other {# pedidos abiertos}}",
+          "shipments": "{count, plural, one {# envío en tránsito} other {# envíos en tránsito}}",
+          "returns": "{count, plural, one {# devolución abierta} other {# devoluciones abiertas}}",
+          "remittances": "{count, plural, one {# remesa abierta} other {# remesas abiertas}}",
+          "receivables": "{count, plural, one {# saldo por cobrar} other {# saldos por cobrar}}"
+        },
+        "back": "Volver",
+        "sending": "Enviando…",
+        "approveErasure": {
+          "title": "Aprobar la eliminación",
+          "effects": {
+            "grace": "Los datos personales del cliente se eliminan en {days} días. Hasta entonces puedes cancelar la eliminación.",
+            "final": "Después ya no se puede deshacer.",
+            "mail": "Se avisa a la persona por correo cómo terminó la solicitud."
+          },
+          "acknowledge": "Entiendo que los datos se eliminarán para siempre después del plazo de espera.",
+          "submit": "Aprobar eliminación",
+          "confirm": "Aprobar",
+          "confirmTitle": "¿Aprobar esta eliminación?",
+          "confirmDescription": "Los datos se eliminarán después del plazo de espera. Puedes cancelarla hasta entonces.",
+          "done": "Se aprobó la eliminación."
+        },
+        "approveExport": {
+          "title": "Aprobar la solicitud",
+          "effects": {
+            "file": "En la próxima ejecución nocturna se hace un archivo con los datos que se tienen de la persona.",
+            "download": "Quien tenga este permiso lo descarga desde esta pantalla. Cada descarga queda registrada.",
+            "mail": "Se avisa a la persona por correo cómo terminó la solicitud."
+          },
+          "acknowledge": "Entiendo que el archivo contiene datos personales y lo entregaré por un canal seguro.",
+          "submit": "Aprobar solicitud",
+          "confirm": "Aprobar",
+          "confirmTitle": "¿Aprobar esta solicitud?",
+          "confirmDescription": "Se hará un archivo con los datos personales de la persona.",
+          "done": "Se aprobó la solicitud."
+        },
+        "reject": {
+          "title": "Rechazar la solicitud",
+          "effects": {
+            "mail": "Se avisa a la persona por correo que la solicitud fue rechazada.",
+            "final": "La solicitud termina para siempre. La persona tiene que volver a pedirla.",
+            "reason": "El motivo que escribes no va en el correo."
+          },
+          "submit": "Rechazar solicitud",
+          "confirm": "Rechazar",
+          "confirmTitle": "¿Rechazar esta solicitud?",
+          "confirmDescription": "La solicitud termina para siempre y se avisa a la persona que fue rechazada.",
+          "done": "Se rechazó la solicitud."
+        },
+        "cancel": {
+          "title": "Cancelar la eliminación",
+          "effects": {
+            "stops": "La eliminación no se llevará a cabo.",
+            "mail": "Se avisa a la persona por correo que la solicitud no se llevará a cabo.",
+            "final": "La solicitud termina para siempre."
+          },
+          "submit": "Cancelar eliminación",
+          "confirm": "Cancelar eliminación",
+          "confirmTitle": "¿Cancelar esta eliminación?",
+          "confirmDescription": "La solicitud termina para siempre y se avisa a la persona que no se llevará a cabo.",
+          "done": "Se canceló la eliminación."
+        }
       }
     },
     "retention": {

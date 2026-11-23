@@ -48,6 +48,9 @@ export const DestructiveActionTiers = {
   VOID_FISCAL_DOCUMENT: HIGH, // TDD_18 §8.3; the invalidation of an accepted fiscal document with the authority: it cannot be taken back and is audited
   CONFIRM_FISCAL_ISSUER_CHANGE: HIGH, // TDD_18 §8.3; a person states that a document is not at the issuer it was made with, so it is sent to the new one: if it was there, the sale ends up with two documents
   VOID_FINANCE_TRANSACTION: HIGH, // TDD_18 §4.3; voiding an expense, an income or a transfer writes a reversing entry that stays in the journal for good, and a voided one is not voided again
+  APPROVE_DSR_REQUEST: HIGH, // Settings → Data requests; an approved erasure is carried out after its grace period and cannot be undone, an approved export hands a person's data to the team
+  REJECT_DSR_REQUEST: HIGH, // Settings → Data requests; the request ends for good and the person is told by mail that it was refused
+  CANCEL_DSR_ERASURE: HIGH, // Settings → Data requests; the approved erasure ends for good and the person is told by mail that it will not be carried out
   DELETE_WEBHOOK: HIGH, // Settings → Webhooks; the endpoint stops receiving events and its delivery log goes with it
   ROTATE_WEBHOOK_SECRET: HIGH, // Settings → Webhooks; the old secret stops working at once, so the receiver must be updated right after
 

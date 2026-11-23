@@ -12,6 +12,8 @@ export function mayOpenStoreSettings(can: (permission: Permission) => boolean): 
     can(ClientPermissions.SETTINGS_MANAGE_WEBHOOKS) ||
     can(ClientPermissions.SETTINGS_MANAGE_API_KEYS) ||
     can(ClientPermissions.SETTINGS_MANAGE_RETENTION) ||
+    // Whoever reviews the requests of people for their data has that one page
+    can(ClientPermissions.CUSTOMERS_DSR_REVIEW) ||
     // An auditor holds only the permission to read the audit log
     can(ClientPermissions.ORG_VIEW_AUDIT_LOG)
   )
