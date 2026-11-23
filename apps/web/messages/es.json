@@ -5035,7 +5035,7 @@
           "body": "No se pudo confirmar el envío del correo de cierre. La solicitud está marcada en la lista. Por si no le llegó, comunícate con la persona por otro medio y dile el resultado: tiene derecho a saberlo."
         },
         "deadline": {
-          "title": "{count, plural, one {# solicitud abierta vence en {days} días o menos, o ya venció} other {# solicitudes abiertas vencen en {days} días o menos, o ya vencieron}}",
+          "title": "{count, plural, one {# solicitud abierta tiene {days} días o menos de plazo, o ya lo superó} other {# solicitudes abiertas tienen {days} días o menos de plazo, o ya lo superaron}}",
           "body": "El plazo legal es de 30 días desde la solicitud y no se puede prorrogar. Decide primero sobre estas."
         },
         "returned": {
@@ -5060,8 +5060,8 @@
         "details": "Detalle"
       },
       "deadline": {
-        "left": "{count, plural, =0 {Vence hoy} one {Queda # día} other {Quedan # días}}",
-        "overdue": "{count, plural, one {Vencida hace # día} other {Vencida hace # días}}",
+        "left": "{count, plural, =0 {Plazo termina hoy} one {Queda # día} other {Quedan # días}}",
+        "overdue": "{count, plural, one {Plazo superado hace # día} other {Plazo superado hace # días}}",
         "none": "Terminada",
         "pending": "Esperando que la persona verifique"
       },

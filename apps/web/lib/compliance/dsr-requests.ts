@@ -77,7 +77,8 @@ const pageSchema = z.object({
 export type DsrRequestPageView = z.output<typeof pageSchema>
 
 const exportLinkSchema = z.object({
-  url: z.url(),
+  // The page goes to this address: only a web address, never `javascript:` or `data:`
+  url: z.url({ protocol: /^https?$/ }),
   filename: z.string(),
   expiresInSeconds: z.number(),
   fileExpiresAt: z.string()

@@ -175,6 +175,18 @@ describe('the data requests api calls', () => {
     expect(call().url).toBe('https://api.example.com/api/v1/compliance/dsr/r1/export')
   })
 
+  it('refuses a link that is not a web address, so the page never goes to javascript: or data:', async () => {
+    for (const url of ['javascript:alert(1)', 'data:text/html,x', 'ftp://files.example.com/x']) {
+      const { client } = setup({
+        url,
+        filename: 'data-export.zip',
+        expiresInSeconds: 300,
+        fileExpiresAt: '2026-12-01T00:00:00.000Z'
+      })
+      await expect(fetchDsrExportLink(client, 'store-1', 'r1')).rejects.toBeDefined()
+    }
+  })
+
   it('passes a refusal of the api through with its code and its counts', async () => {
     const { client } = setup(
       {
