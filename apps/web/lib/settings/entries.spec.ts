@@ -154,6 +154,17 @@ describe('settings entries', () => {
     )
   })
 
+  it('shows Data requests to who holds customers:dsr_review, and to nobody else, and opens the settings for them', () => {
+    const entries = storeSettingsEntries('s-1')
+    const hrefsOf = (...held: string[]): string[] =>
+      visibleEntries(entries, holding(...held)).map(entry => entry.href)
+    expect(hrefsOf(Permissions.CUSTOMERS_DSR_REVIEW)).toEqual(['/s/s-1/settings/data-requests'])
+    // Neither the settings nor the erasure of a customer open it: deciding on the data of a person is its own right
+    expect(hrefsOf(Permissions.SETTINGS_VIEW)).not.toContain('/s/s-1/settings/data-requests')
+    expect(hrefsOf(Permissions.CUSTOMERS_ERASE)).not.toContain('/s/s-1/settings/data-requests')
+    expect(mayOpenStoreSettings(holding(Permissions.CUSTOMERS_DSR_REVIEW))).toBe(true)
+  })
+
   it('hides Order messages from who may see settings but not orders', () => {
     const hrefs = visibleEntries(
       storeSettingsEntries('s-1'),

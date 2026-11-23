@@ -14,6 +14,7 @@ export const StoreSettingsSections = {
   SAFETY: 'safety',
   RETENTION: 'retention',
   AUDIT_LOG: 'audit-log',
+  DATA_REQUESTS: 'data-requests',
   WEBHOOKS: 'webhooks',
   API_KEYS: 'api-keys',
   INVENTORY: 'inventory',

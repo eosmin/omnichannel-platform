@@ -3106,6 +3106,7 @@
         "webhooks": "Outgoing integrations",
         "apiKeys": "API keys",
         "retention": "Data retention",
+        "dataRequests": "Data requests",
         "auditLog": "Audit log",
         "safety": "Safety and confirmations"
       },
@@ -5016,6 +5017,251 @@
         "none": "None",
         "metadata": "Metadata",
         "noMetadata": "This entry has no metadata."
+      }
+    },
+    "dataRequests": {
+      "title": "Data requests",
+      "intro": "Requests of people for their data: to access it, to take it with them or to have it erased. Each one is reviewed by a person before anything is done. The law gives 30 days to answer, and there is no extension.",
+      "caption": "Data requests of the store, newest first",
+      "empty": "There are no data requests.",
+      "emptyFiltered": "No request matches these filters.",
+      "loadMore": "Load more",
+      "partial": "{count, plural, one {# request is shown.} other {# requests are shown.}} There are more.",
+      "open": "Open",
+      "noPermission": "You can read this request, but you do not hold the permission to decide on it.",
+      "banners": {
+        "noticeFailed": {
+          "title": "{count, plural, one {# closing notice is unconfirmed} other {# closing notices are unconfirmed}}",
+          "body": "The sending of the closing mail could not be confirmed. The request is marked in the list. In case it did not arrive, reach the person another way and tell them the outcome: they have a right to know."
+        },
+        "deadline": {
+          "title": "{count, plural, one {# open request is due in {days} days or fewer, or is overdue} other {# open requests are due in {days} days or fewer, or are overdue}}",
+          "body": "The legal deadline is 30 days from the request and cannot be extended. Decide on these first."
+        },
+        "returned": {
+          "title": "{count, plural, one {# approved erasure came back to review} other {# approved erasures came back to review}}",
+          "body": "Open each one to see why. When it is solved, approve it again."
+        }
+      },
+      "filters": {
+        "label": "Filters",
+        "status": "Status",
+        "anyStatus": "Any status",
+        "type": "Type",
+        "anyType": "Any type",
+        "clear": "Clear filters"
+      },
+      "columns": {
+        "type": "Type",
+        "status": "Status",
+        "requested": "Requested",
+        "deadline": "Deadline",
+        "marks": "Attention",
+        "details": "Details"
+      },
+      "deadline": {
+        "left": "{count, plural, =0 {Due today} one {# day left} other {# days left}}",
+        "overdue": "{count, plural, one {Overdue by # day} other {Overdue by # days}}",
+        "none": "Ended",
+        "pending": "Waiting for the person to verify"
+      },
+      "marks": {
+        "noticeFailed": "Notice unconfirmed",
+        "returned": "Returned to review",
+        "exportFailed": "File failed",
+        "exportReady": "File ready",
+        "erasesOn": "Erases on {date}"
+      },
+      "types": {
+        "access": "Access to data",
+        "portability": "Portability",
+        "rectification": "Rectification",
+        "erasure": "Erasure",
+        "restriction": "Restriction",
+        "objection": "Objection",
+        "unknown": "Other request"
+      },
+      "statuses": {
+        "pending_verification": "Waiting for verification",
+        "in_progress": "Approved",
+        "manual_review": "In review",
+        "completed": "Completed",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled",
+        "unknown": "Unknown status"
+      },
+      "rejectionReasons": {
+        "reviewer_decision": "Decided by a reviewer",
+        "verification_expired": "The person did not verify in time",
+        "unknown": "Not stated"
+      },
+      "detail": {
+        "title": "Data request",
+        "titleOf": "Request: {type}",
+        "description": "Where the request stands, whether the person was told how it ended, and what you may do with it."
+      },
+      "facts": {
+        "status": "Status",
+        "requested": "Requested",
+        "verified": "Verified",
+        "notVerified": "Not verified yet",
+        "deadline": "Legal deadline",
+        "erasureDue": "Erases on",
+        "customers": "Customers it names",
+        "customersCount": "{count, plural, one {# customer} other {# customers}}",
+        "reviewed": "Reviewed",
+        "ended": "Ended",
+        "rejectionReason": "Why it ended",
+        "note": "Reviewer note",
+        "notice": "Notice to the person"
+      },
+      "notice": {
+        "notEnded": "The person is told when the request ends.",
+        "failedTitle": "It could not be confirmed that the person received the closing notice",
+        "failedBody": "The closing mail failed, was not confirmed or the address could not be read, so the person may not have received it. Reach them another way and tell them the outcome.",
+        "statuses": {
+          "none": "There is no address to tell",
+          "pending": "On its way, not confirmed yet",
+          "sent": "Sent",
+          "failed": "Sending unconfirmed",
+          "unknown": "Unknown"
+        }
+      },
+      "failure": {
+        "returned": "Why it came back to review:",
+        "exportFailed": "Why the file failed:",
+        "codes": {
+          "subject_changed": "The customer changed since the request was made.",
+          "undoable_merge": "The customer was merged into another one and the merge can still be undone. Wait for its window to pass or undo the merge.",
+          "blocked_by_open_work": "The customer has open orders, shipments, returns, remittances or balances.",
+          "attempts_exhausted": "The erasure failed in every attempt.",
+          "export_failed": "The file could not be made.",
+          "export_too_large": "The data of the person is too large for one file.",
+          "mail_failed": "The closing mail failed in every attempt.",
+          "mail_lost": "The closing mail was accepted for delivery but its sending could not be confirmed.",
+          "address_unreadable": "The address of the person could not be read.",
+          "unknown": "The reason is not known to this screen. Ask the platform team."
+        }
+      },
+      "openWork": {
+        "title": "What an erasure waits for, counted now",
+        "orders": "{count, plural, one {# open order} other {# open orders}}",
+        "shipments": "{count, plural, one {# shipment in transit} other {# shipments in transit}}",
+        "returns": "{count, plural, one {# open return} other {# open returns}}",
+        "remittances": "{count, plural, one {# open remittance} other {# open remittances}}",
+        "receivables": "{count, plural, one {# balance to collect} other {# balances to collect}}",
+        "hint": "While any of these is open the customer's data cannot be erased."
+      },
+      "summary": {
+        "kept": "What was kept",
+        "holds": "What the file holds",
+        "counts": {
+          "customers": "Customers: {count}",
+          "conversations": "Conversations: {count}",
+          "messages": "Messages: {count}",
+          "orders": "Orders: {count}",
+          "addresses": "Addresses: {count}",
+          "consents": "Consents: {count}",
+          "files": "Files: {count}"
+        },
+        "bases": {
+          "consent": "Legal basis: the consent of the person.",
+          "contract": "Legal basis: a contract.",
+          "legal_obligation": "Legal basis: a legal obligation (orders, fiscal documents and the books must be kept).",
+          "legitimate_interests": "Legal basis: a legitimate interest.",
+          "unknown": "The legal basis is not known to this screen."
+        }
+      },
+      "actions": {
+        "close": "Close",
+        "approve": "Approve",
+        "reject": "Reject",
+        "cancel": "Cancel erasure",
+        "download": "Download file",
+        "rejectOnly": "This kind of request cannot be carried out by the platform yet: it can only be rejected."
+      },
+      "decision": {
+        "effectsTitle": "What this does",
+        "keptTitle": "What is kept, and why",
+        "kept": {
+          "orders": "Orders stay, by legal obligation. They keep pointing to the customer, who keeps no name or contact data.",
+          "conversations": "Conversations stay linked to the customer, who keeps no name or contact data.",
+          "fiscal": "Fiscal documents and ledger entries already made are never touched, by legal obligation.",
+          "consents": "Consents stay as proof, revoked and without the address or the browser of the person.",
+          "copied": "Personal data copied into an order (recipient, address, notes) is not erased by this request yet."
+        },
+        "stale": "This request changed and no longer takes this decision. Go back to see where it stands.",
+        "blocked": "This customer has open work (see the detail), so the erasure cannot be approved yet.",
+        "reason": "Reason for your decision",
+        "reasonHint": "It stays in the request for the team. It is not sent to the person and not written in the audit log.",
+        "problems": {
+          "required": "Write the reason.",
+          "tooLong": "The reason is too long: {max} characters at most.",
+          "confirm": "Tick the box to confirm."
+        },
+        "openWorkLine": {
+          "orders": "{count, plural, one {# open order} other {# open orders}}",
+          "shipments": "{count, plural, one {# shipment in transit} other {# shipments in transit}}",
+          "returns": "{count, plural, one {# open return} other {# open returns}}",
+          "remittances": "{count, plural, one {# open remittance} other {# open remittances}}",
+          "receivables": "{count, plural, one {# balance to collect} other {# balances to collect}}"
+        },
+        "back": "Back",
+        "sending": "Sending…",
+        "approveErasure": {
+          "title": "Approve the erasure",
+          "effects": {
+            "grace": "The personal data of the customer is erased in {days} days. Until then you can cancel the erasure.",
+            "final": "After that it cannot be undone.",
+            "mail": "The person is told by mail how the request ended."
+          },
+          "acknowledge": "I understand that the data will be erased for good after the waiting period.",
+          "submit": "Approve erasure",
+          "confirm": "Approve",
+          "confirmTitle": "Approve this erasure?",
+          "confirmDescription": "The data will be erased after the waiting period. You can cancel it until then.",
+          "done": "The erasure was approved."
+        },
+        "approveExport": {
+          "title": "Approve the request",
+          "effects": {
+            "file": "A file with the data held about the person is made in the next nightly run.",
+            "download": "Whoever holds this permission downloads it from this screen. Each download is recorded.",
+            "mail": "The person is told by mail how the request ended."
+          },
+          "acknowledge": "I understand that the file holds personal data and I will hand it over through a safe channel.",
+          "submit": "Approve request",
+          "confirm": "Approve",
+          "confirmTitle": "Approve this request?",
+          "confirmDescription": "A file with the personal data of the person will be made.",
+          "done": "The request was approved."
+        },
+        "reject": {
+          "title": "Reject the request",
+          "effects": {
+            "mail": "The person is told by mail that the request was refused.",
+            "final": "The request ends for good. The person has to ask again.",
+            "reason": "The reason you write is not in the mail."
+          },
+          "submit": "Reject request",
+          "confirm": "Reject",
+          "confirmTitle": "Reject this request?",
+          "confirmDescription": "The request ends for good and the person is told it was refused.",
+          "done": "The request was rejected."
+        },
+        "cancel": {
+          "title": "Cancel the erasure",
+          "effects": {
+            "stops": "The erasure will not be carried out.",
+            "mail": "The person is told by mail that the request will not be carried out.",
+            "final": "The request ends for good."
+          },
+          "submit": "Cancel erasure",
+          "confirm": "Cancel erasure",
+          "confirmTitle": "Cancel this erasure?",
+          "confirmDescription": "The request ends for good and the person is told it will not be carried out.",
+          "done": "The erasure was cancelled."
+        }
       }
     },
     "retention": {
