@@ -1,4 +1,4 @@
-import type { RetentionField } from '@platform/core/domain'
+import { DsrNoticeStatuses, type DsrNoticeStatus, type RetentionField } from '@platform/core/domain'
 
 // Whether the executor of approved erasures exists: the nightly sweep `dsr-erase-due` of Step 7.2-H2b-1. A function, not a bare constant read in
 // a condition. It lets an erasure be approved; it does NOT turn the public form on (that is `DSR_PUBLIC_INTAKE_ENABLED`, off by default and
@@ -75,13 +75,8 @@ export const ComplianceConfig = {
 // `none` = there is no address to tell (a request made by a team member with no mail), `pending` = the address is sealed and the mail not
 // confirmed, `sent` = the mail processor confirmed it, `failed` = the person was NEVER told (the mail failed all its attempts, or the
 // address did not open): the reviewer has to reach them another way
-export const DsrNoticeStatuses = {
-  NONE: 'none',
-  PENDING: 'pending',
-  SENT: 'sent',
-  FAILED: 'failed'
-} as const
-export type DsrNoticeStatus = (typeof DsrNoticeStatuses)[keyof typeof DsrNoticeStatuses]
+// The states and their words are the domain's: the browser reads them too
+export { DsrNoticeStatuses, type DsrNoticeStatus }
 
 export function dsrNoticeStatusOf(row: {
   noticeSentAt: Date | null

@@ -1,5 +1,5 @@
 import { ApiError, createApiClient } from '@platform/api-client'
-import { DsrNoticeStatuses, DsrStatus, DsrType } from '@platform/core/domain'
+import { DSR_REQUEST_VIEW_KEYS, DsrNoticeStatuses, DsrStatus, DsrType } from '@platform/core/domain'
 
 import {
   approveDsrRequest,
@@ -60,6 +60,13 @@ const request = {
 }
 
 describe('the data requests api calls', () => {
+  it('reads exactly the fields the api pins as its answer (DSR_REQUEST_VIEW_KEYS)', async () => {
+    expect(Object.keys(request).sort()).toEqual([...DSR_REQUEST_VIEW_KEYS].sort())
+    const { client } = setup({ data: [request], nextCursor: null, hasMore: false })
+    const page = await fetchDsrRequests(client, 'store-1', null)
+    expect(Object.keys(page.data[0] ?? {}).sort()).toEqual([...DSR_REQUEST_VIEW_KEYS].sort())
+  })
+
   it('reads the queue by the store of the header, a hundred at a time, from a cursor', async () => {
     const { client, call } = setup({ data: [request], nextCursor: 'r1', hasMore: true })
     const page = await fetchDsrRequests(client, 'store-1', 'r0')

@@ -5,7 +5,12 @@ import {
   DsrReviewLimits
 } from '@platform/core/domain'
 
-import { ComplianceConfig, DsrErasureReturnReasons, LegalBases } from './compliance-constants'
+import {
+  ComplianceConfig,
+  DsrErasureReturnReasons,
+  DsrFailureCodes,
+  LegalBases
+} from './compliance-constants'
 
 // The review queue of the web reads its vocabulary from the domain lib (the browser may not import this one). The two must not drift.
 describe('the vocabulary of the review queue of the web', () => {
@@ -20,6 +25,11 @@ describe('the vocabulary of the review queue of the web', () => {
   it('names every reason an approved erasure goes back to review', () => {
     const known: readonly string[] = Object.values(DsrReviewCodes)
     for (const reason of Object.values(DsrErasureReturnReasons)) expect(known).toContain(reason)
+  })
+
+  it('names every failure code of an export or a notice', () => {
+    const known: readonly string[] = Object.values(DsrReviewCodes)
+    for (const code of Object.values(DsrFailureCodes)) expect(known).toContain(code)
   })
 
   it('names every legal basis', () => {
