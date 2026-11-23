@@ -6754,7 +6754,8 @@
       },
       "titleLoading": "Entry",
       "loading": "Loading the entry…",
-      "belongsToPurchase": "This entry belongs to a purchase or a supplier payment. Undo it from the purchase."
+      "belongsToPurchase": "This entry belongs to a purchase or a supplier payment. Undo it from the purchase.",
+      "openOrder": "Open the order"
     },
     "manual": {
       "title": "Write an entry",

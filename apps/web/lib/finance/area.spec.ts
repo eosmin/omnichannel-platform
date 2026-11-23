@@ -1,8 +1,15 @@
 import { type Permission, Permissions } from '@platform/core/auth'
+import { FinanceAreaFamily } from '@platform/core/domain'
 
 import { FINANCE_SETTINGS_ENTRIES, firstVisibleHref, visibleEntries } from '../settings/entries'
 
 import { bestFinanceMembership, FINANCE_AREA_PERMISSIONS, mayOpenFinance } from './area'
+import {
+  FINANCE_ENTRY_FAMILY,
+  financeFamilyOfPath,
+  financeMembershipOfFamily,
+  visibleFinanceEntries
+} from './family'
 
 const holding =
   (...held: Permission[]) =>
@@ -184,5 +191,141 @@ describe('bestFinanceMembership', () => {
     ).toBe('first')
     expect(bestFinanceMembership([store('none', Permissions.ORDERS_VIEW)])).toBeUndefined()
     expect(bestFinanceMembership([])).toBeUndefined()
+  })
+})
+
+describe('the family of each finance page', () => {
+  it('gives every entry of the navigation a family', () => {
+    for (const entry of FINANCE_SETTINGS_ENTRIES) {
+      expect(FINANCE_ENTRY_FAMILY[entry.id]).toBeDefined()
+    }
+  })
+
+  it('reads the family of a path from the longest entry that starts it', () => {
+    const family = (path: string): FinanceAreaFamily =>
+      financeFamilyOfPath(path, FINANCE_SETTINGS_ENTRIES)
+    expect(family('/finance/fiscal')).toBe(FinanceAreaFamily.FISCAL)
+    expect(family('/finance/fiscal/issuer')).toBe(FinanceAreaFamily.FISCAL)
+    expect(family('/finance/purchases/abc')).toBe(FinanceAreaFamily.PURCHASES)
+    expect(family('/finance/payables')).toBe(FinanceAreaFamily.PURCHASES)
+    expect(family('/finance/journal')).toBe(FinanceAreaFamily.BOOKS)
+    // A path that no entry names is the books
+    expect(family('/finance')).toBe(FinanceAreaFamily.BOOKS)
+    // A prefix that is not a whole segment is not the entry
+    expect(family('/finance/fiscalx')).toBe(FinanceAreaFamily.BOOKS)
+  })
+})
+
+describe('the store each family is asked through', () => {
+  const books = { id: 'books', permissions: [Permissions.FINANCE_VIEW] }
+  const fiscal = { id: 'fiscal', permissions: [Permissions.FISCAL_VIEW] }
+  const both = { id: 'both', permissions: [Permissions.FINANCE_VIEW, Permissions.FISCAL_VIEW] }
+  const buyer = { id: 'buyer', permissions: [Permissions.FINANCE_MANAGE_PURCHASES] }
+
+  it('asks each family through the store that holds its own permissions', () => {
+    const stores = [books, fiscal, buyer]
+    expect(financeMembershipOfFamily(FinanceAreaFamily.BOOKS, stores)).toBe(books)
+    expect(financeMembershipOfFamily(FinanceAreaFamily.FISCAL, stores)).toBe(fiscal)
+    expect(financeMembershipOfFamily(FinanceAreaFamily.PURCHASES, stores)).toBe(buyer)
+  })
+
+  it('has no store for a family that none opens, and keeps the first of a tie', () => {
+    expect(financeMembershipOfFamily(FinanceAreaFamily.FISCAL, [books, buyer])).toBeUndefined()
+    expect(financeMembershipOfFamily(FinanceAreaFamily.BOOKS, [books, both])).toBe(books)
+  })
+
+  it('prefers the store that holds more of the permissions of the family', () => {
+    const manager = {
+      id: 'manager',
+      permissions: [Permissions.FISCAL_VIEW, Permissions.FISCAL_MANAGE]
+    }
+    expect(financeMembershipOfFamily(FinanceAreaFamily.FISCAL, [fiscal, manager])).toBe(manager)
+  })
+
+  it('lists the fiscal pages for fiscal:view held in another store than finance:view', () => {
+    // The page of the fiscal documents is asked of the api through `fiscal`, where the permission is, and the books through `books`
+    expect(
+      visibleFinanceEntries(FINANCE_SETTINGS_ENTRIES, [books, fiscal]).map(entry => entry.id)
+    ).toEqual(expect.arrayContaining(['accounts', 'fiscal', 'fiscalIssuer']))
+  })
+
+  it('does not list the books for a person who holds only fiscal permissions', () => {
+    expect(
+      visibleFinanceEntries(FINANCE_SETTINGS_ENTRIES, [fiscal]).map(entry => entry.id)
+    ).toEqual(['fiscal', 'fiscalIssuer'])
+  })
+
+  it('judges a page by the permissions of its own family store, not by the sum of the stores', () => {
+    // The journal needs finance:view_journal IN the store the books are asked through: a store that only reads the books does not give it
+    const journalElsewhere = { id: 'j', permissions: [Permissions.FINANCE_VIEW_JOURNAL] }
+    expect(
+      visibleFinanceEntries(FINANCE_SETTINGS_ENTRIES, [books, journalElsewhere]).map(
+        entry => entry.id
+      )
+    ).not.toContain('journal')
+  })
+
+  it('picks, for the purchases, the store that also reads the chart over one that only manages purchases', () => {
+    const a = { id: 'a', permissions: [Permissions.FINANCE_MANAGE_PURCHASES] }
+    const b = {
+      id: 'b',
+      permissions: [Permissions.FINANCE_MANAGE_PURCHASES, Permissions.FINANCE_VIEW]
+    }
+    expect(financeMembershipOfFamily(FinanceAreaFamily.PURCHASES, [a, b])).toBe(b)
+    expect(financeMembershipOfFamily(FinanceAreaFamily.PURCHASES, [b, a])).toBe(b)
+  })
+
+  it('opens the purchases for a store that holds only finance:move_money', () => {
+    const payer = { id: 'p', permissions: [Permissions.FINANCE_MOVE_MONEY] }
+    expect(financeMembershipOfFamily(FinanceAreaFamily.PURCHASES, [payer])).toBe(payer)
+  })
+
+  it('weighs fiscal:manage over a store that only reads the fiscal documents', () => {
+    const reader = { id: 'r', permissions: [Permissions.FISCAL_VIEW] }
+    const manager = {
+      id: 'm',
+      permissions: [Permissions.FISCAL_VIEW, Permissions.FISCAL_MANAGE]
+    }
+    expect(financeMembershipOfFamily(FinanceAreaFamily.FISCAL, [reader, manager])).toBe(manager)
+  })
+})
+
+describe('the exact family of every entry', () => {
+  it('is the table below, no more and no less', () => {
+    expect(FINANCE_ENTRY_FAMILY).toEqual({
+      accounts: FinanceAreaFamily.BOOKS,
+      journal: FinanceAreaFamily.BOOKS,
+      transactions: FinanceAreaFamily.BOOKS,
+      taxes: FinanceAreaFamily.BOOKS,
+      periods: FinanceAreaFamily.BOOKS,
+      reports: FinanceAreaFamily.BOOKS,
+      reconciliation: FinanceAreaFamily.BOOKS,
+      settings: FinanceAreaFamily.BOOKS,
+      suppliers: FinanceAreaFamily.PURCHASES,
+      purchases: FinanceAreaFamily.PURCHASES,
+      payables: FinanceAreaFamily.PURCHASES,
+      fiscal: FinanceAreaFamily.FISCAL,
+      fiscalIssuer: FinanceAreaFamily.FISCAL,
+      statements: FinanceAreaFamily.BOOKS,
+      aging: FinanceAreaFamily.BOOKS,
+      books: FinanceAreaFamily.BOOKS,
+      vat: FinanceAreaFamily.BOOKS,
+      margin: FinanceAreaFamily.BOOKS
+    })
+  })
+
+  it('lists for each lone permission exactly the pages it opens', () => {
+    const ids = (...held: string[]): string[] =>
+      visibleFinanceEntries(FINANCE_SETTINGS_ENTRIES, [{ id: 's', permissions: held }]).map(
+        entry => entry.id
+      )
+    expect(ids(Permissions.FINANCE_MANAGE_PURCHASES)).toEqual([
+      'suppliers',
+      'purchases',
+      'payables'
+    ])
+    expect(ids(Permissions.FINANCE_MOVE_MONEY)).toEqual(['payables'])
+    expect(ids(Permissions.FINANCE_VIEW_REPORTS)).toEqual([])
+    expect(ids(Permissions.FINANCE_VIEW_JOURNAL)).toEqual([])
   })
 })

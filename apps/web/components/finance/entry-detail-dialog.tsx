@@ -8,6 +8,7 @@ import { ClientPermissions } from '@platform/core/auth'
 import { FinanceSourceType, JournalEntryType } from '@platform/core/domain'
 
 import { isCalendarDay } from '../../lib/finance/dates'
+import { storeOfEntryLines } from '../../lib/finance/order-link'
 import { useFinanceEntry, useReverseFinanceEntry } from '../../lib/finance/use-finance'
 import { useReverseErrorText } from '../../lib/finance/use-reverse-error-text'
 import { useSubmitGuard } from '../../lib/submit-guard'
@@ -20,6 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 import { EntryLines } from './entry-lines'
 import { TextField } from './fields'
+import { OrderLink } from './order-link'
 
 // One entry of the journal with its lines (TDD_18 §4.2). Who may write entries (`finance:post_manual`) can reverse it, once: a reversal
 // is another entry that stays in the journal next to this one. An entry that belongs to a transaction is voided through the transaction.
@@ -100,7 +102,19 @@ function EntryBody({
         <Fact label={t('fields.origin')}>{t(`origins.${entry.origin as 'user'}`)}</Fact>
         <Fact label={t('fields.memo')}>{entry.memo ?? ''}</Fact>
         {entry.sourceType === null ? null : (
-          <Fact label={t('fields.source')}>{t(`sources.${entry.sourceType as 'order'}`)}</Fact>
+          <Fact label={t('fields.source')}>
+            {t(`sources.${entry.sourceType as 'order'}`)}
+            {entry.sourceType === String(FinanceSourceType.ORDER) ? (
+              // The order of a sale, for who may read the orders of the store its lines name (nothing is drawn for who may not)
+              <OrderLink
+                storeId={storeOfEntryLines(entry.lines)}
+                orderId={entry.sourceId}
+                className="block w-fit"
+              >
+                {t('openOrder')}
+              </OrderLink>
+            ) : null}
+          </Fact>
         )}
         <Fact label={t('fields.createdAt')}>
           {format.dateTime(new Date(entry.createdAt), { dateStyle: 'medium', timeStyle: 'short' })}

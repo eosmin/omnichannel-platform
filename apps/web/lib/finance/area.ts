@@ -15,7 +15,7 @@ export const FINANCE_AREA_PERMISSIONS = [
 
 // What else the books give a person to do once the area is open: the pages and the writes of the later steps of 4B.9 add theirs here.
 // They do not open the area (reading the books is `finance:view`); they only weigh in choosing the store the books are asked through.
-const FINANCE_WORKING_PERMISSIONS = [
+export const FINANCE_WORKING_PERMISSIONS = [
   ClientPermissions.FINANCE_MANAGE_ACCOUNTS,
   ClientPermissions.FINANCE_VIEW_JOURNAL,
   ClientPermissions.FINANCE_MANAGE_TRANSACTIONS,
