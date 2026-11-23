@@ -11,12 +11,12 @@ import { SettingsFrame } from '../../components/settings/settings-frame'
 import { PermissionDenied } from '../../components/settings/states'
 import { AppFrame } from '../../components/shell/app-frame'
 import { LoadingScreen, SessionGate } from '../../components/shell/session-gate'
+import { bestFinanceMembership } from '../../lib/finance/area'
 import {
-  bestFinanceMembership,
   financeFamilyOfPath,
   financeMembershipOfFamily,
   visibleFinanceEntries
-} from '../../lib/finance/area'
+} from '../../lib/finance/family'
 import { FINANCE_SETTINGS_ENTRIES, SettingsAreas } from '../../lib/settings/entries'
 import { useProfile } from '../../lib/use-profile'
 

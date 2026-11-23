@@ -3,15 +3,13 @@ import { FinanceAreaFamily } from '@platform/core/domain'
 
 import { FINANCE_SETTINGS_ENTRIES, firstVisibleHref, visibleEntries } from '../settings/entries'
 
+import { bestFinanceMembership, FINANCE_AREA_PERMISSIONS, mayOpenFinance } from './area'
 import {
-  bestFinanceMembership,
-  FINANCE_AREA_PERMISSIONS,
   FINANCE_ENTRY_FAMILY,
   financeFamilyOfPath,
   financeMembershipOfFamily,
-  mayOpenFinance,
   visibleFinanceEntries
-} from './area'
+} from './family'
 
 const holding =
   (...held: Permission[]) =>
