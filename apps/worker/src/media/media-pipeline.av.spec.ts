@@ -4,7 +4,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import type { PrismaService } from '@platform/core/database'
 import type { DomainEvents } from '@platform/core/event-bus'
 import type { ProcessImageJob } from '@platform/core/queues'
-import { AvSanitizing } from '@platform/core/storage'
+import { AvSanitizing, UploadLimits } from '@platform/core/storage'
 import type { StorageService } from '@platform/core/storage-module'
 
 import type { CleanedAv } from './av-cleaner'
@@ -25,24 +25,23 @@ describe('MediaPipeline and the metadata of video and audio', () => {
     const updateMany = jest
       .fn<Promise<{ count: number }>, [unknown]>()
       .mockResolvedValue({ count: 1 })
+    const row = {
+      id: 'media-1',
+      storeId: 'store-1',
+      key: 'stores/s/clip.mp4',
+      contentType: over.contentType ?? 'video/mp4',
+      purpose: 'message',
+      uploadedBy: over.uploadedBy === undefined ? null : over.uploadedBy,
+      status: 'pending',
+      processedAt: null,
+      scanResult: over.scanResult ?? null,
+      messageId: null,
+      origin: null
+    }
     const prisma = {
+      row,
       client: {
-        media: {
-          findUnique: jest.fn().mockResolvedValue({
-            id: 'media-1',
-            storeId: 'store-1',
-            key: 'stores/s/clip.mp4',
-            contentType: over.contentType ?? 'video/mp4',
-            purpose: 'message',
-            uploadedBy: over.uploadedBy === undefined ? null : over.uploadedBy,
-            status: 'pending',
-            processedAt: null,
-            scanResult: over.scanResult ?? null,
-            messageId: null,
-            origin: null
-          }),
-          updateMany
-        }
+        media: { findUnique: jest.fn().mockResolvedValue(row), updateMany }
       },
       transaction: jest.fn()
     }
@@ -67,7 +66,7 @@ describe('MediaPipeline and the metadata of video and audio', () => {
       { clean },
       { inc } as never
     )
-    return { pipeline, storage, updateMany, clean, inc, logger }
+    return { pipeline, storage, updateMany, clean, inc, logger, prisma }
   }
   const scope = { storeId: 'store-1' }
   const wroteClean = (updateMany: jest.Mock): boolean =>
@@ -166,6 +165,33 @@ describe('MediaPipeline and the metadata of video and audio', () => {
     await pipeline.scan('media-1', scope)
     expect(updateMany).toHaveBeenCalledTimes(1)
     expect(inc).not.toHaveBeenCalled()
+  })
+
+  it('reads a video up to the video limit, not the limit of a file (a 25 MB clip is accepted by the upload)', async () => {
+    const { pipeline, clean, storage } = build()
+    clean.mockResolvedValue({ kind: 'untouched', why: 'timed_out' })
+    await pipeline.scan('media-1', scope)
+    expect(storage.read).toHaveBeenCalledWith(
+      'stores/s/clip.mp4',
+      UploadLimits.MAX_VIDEO_SIZE_BYTES
+    )
+  })
+
+  it('takes back the object it wrote when the row was deleted while the file was cleaned', async () => {
+    const { pipeline, clean, updateMany, storage, prisma } = build()
+    clean.mockResolvedValue({ kind: 'cleaned', body: CLEANED, hadMetadata: true })
+    updateMany.mockResolvedValue({ count: 0 })
+    prisma.client.media.findUnique.mockResolvedValueOnce(prisma.row).mockResolvedValueOnce(null)
+    await pipeline.scan('media-1', scope)
+    expect(storage.delete).toHaveBeenCalledWith('stores/s/clip.mp4')
+  })
+
+  it('leaves the object when the row still exists but moved on', async () => {
+    const { pipeline, clean, updateMany, storage } = build()
+    clean.mockResolvedValue({ kind: 'cleaned', body: CLEANED, hadMetadata: true })
+    updateMany.mockResolvedValue({ count: 0 })
+    await pipeline.scan('media-1', scope)
+    expect(storage.delete).not.toHaveBeenCalled()
   })
 
   it.each(['application/pdf', 'image/png'])(

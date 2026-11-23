@@ -195,7 +195,7 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
   },
   [MetricNames.AV_CLEANING]: {
     kind: 'counter',
-    help: 'Video and audio files seen by the cleaning of their metadata, by result: cleaned, not_cleanable or av_unavailable',
+    help: 'Video and audio files seen by the cleaning of their metadata, by result: cleaned, not_cleanable or av_unavailable (the last counts last attempts that failed, not files)',
     labels: ['result']
   },
   [MetricNames.CHANNEL_WEBHOOK_RECEIVED]: {

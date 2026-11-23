@@ -336,7 +336,7 @@ export const AvSanitizing = {
   PRLIMIT_PATH: '/usr/bin/prlimit',
   LIMIT_ADDRESS_SPACE_BYTES: 1024 * 1024 * 1024,
   LIMIT_CPU_SECONDS: 20,
-  LIMIT_FILE_BYTES: UploadLimits.MAX_FILE_SIZE_BYTES * 2,
+  LIMIT_FILE_BYTES: UploadLimits.MAX_VIDEO_SIZE_BYTES * 2,
   LIMIT_OPEN_FILES: 64,
   // The deadline of each child (ffprobe, ffmpeg, ffprobe again), counted from its start; then it and its whole process group are killed
   TOOL_TIMEOUT_MS: 20_000,

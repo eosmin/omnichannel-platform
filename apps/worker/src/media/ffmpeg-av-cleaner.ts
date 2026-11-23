@@ -36,7 +36,7 @@ export const defaultAvToolOptions = (): AvToolOptions => ({
   ffprobePath: AvSanitizing.FFPROBE_PATH,
   prlimitPath: existsSync(AvSanitizing.PRLIMIT_PATH) ? AvSanitizing.PRLIMIT_PATH : null,
   timeoutMs: AvSanitizing.TOOL_TIMEOUT_MS,
-  maxInputBytes: UploadLimits.MAX_FILE_SIZE_BYTES
+  maxInputBytes: UploadLimits.MAX_VIDEO_SIZE_BYTES
 })
 
 interface ToolRun {

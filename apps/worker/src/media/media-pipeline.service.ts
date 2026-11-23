@@ -324,7 +324,7 @@ export class MediaPipeline {
     lastAttempt: boolean
   ): Promise<boolean> {
     if (hasAvMark(media.scanResult)) return true
-    const original = await this.storage.read(media.key, UploadLimits.MAX_FILE_SIZE_BYTES)
+    const original = await this.storage.read(media.key, UploadLimits.MAX_VIDEO_SIZE_BYTES)
     if (original === null) {
       if (await this.isGone(media.id, scope)) return false
       throw new Error('the file to clean is not in the bucket')
@@ -334,10 +334,11 @@ export class MediaPipeline {
     let body = original
     try {
       const cleaned = await this.avCleaner.clean(original, media.contentType, media.id)
-      if (cleaned.kind === 'cleaned') body = cleaned.body
+      if (cleaned.kind === AvSanitizing.Results.CLEANED) body = cleaned.body
       else kept = cleaned.why
     } catch (error) {
       if (!lastAttempt) throw error
+      // Counts last attempts that failed, not files: an uploaded file that waits for the tools counts again on every requeue of the sweep
       this.avResults.inc({ result: Outcomes.AV_UNAVAILABLE })
       this.logger.error(
         {
@@ -372,10 +373,17 @@ export class MediaPipeline {
         }
       })
     )
-    if (moved.count > 0 && kept !== Outcomes.AV_UNAVAILABLE) {
+    if (moved.count === 0) {
+      // The row was deleted (a conversation or a customer erased) or settled while the file was cleaned: a write that brought back an object
+      // nobody points at is taken back; a row that still exists keeps its file
+      if (kept === null && (await this.isGone(media.id, scope)))
+        await this.storage.delete(media.key)
+      return false
+    }
+    if (kept !== Outcomes.AV_UNAVAILABLE) {
       this.avResults.inc({ result: kept === null ? Outcomes.CLEANED : Outcomes.NOT_CLEANABLE })
     }
-    return moved.count > 0
+    return true
   }
 
   // Looks in the clear for the active names of a PDF of a financial document (see `findActivePdfNames`; best effort, not a

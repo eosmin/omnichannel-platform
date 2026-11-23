@@ -72,8 +72,8 @@ import { VersionedBucketGuard } from './versioned-bucket.guard'
       provide: DocumentCleaner,
       useFactory: () => new ThreadDocumentCleaner(defaultThreadOptions())
     },
-    // The metadata of a video or an audio file is cut out by ffmpeg in a process of its own, with limits and a deadline (Step 7.1-J-1). Nothing
-    // calls it yet: the scan (J-2) and the sweep of stored files (J-3) do
+    // The metadata of a video or an audio file is cut out by ffmpeg in a process of its own, with limits and a deadline (Step 7.1-J-1). The scan
+    // of the media pipeline calls it (J-2); the sweep of stored files (J-3) does not yet
     {
       provide: AvCleaner,
       inject: [PinoLogger],
