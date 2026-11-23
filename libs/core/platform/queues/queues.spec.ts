@@ -47,8 +47,8 @@ describe('Schedules', () => {
     expect(Object.keys(Schedules)).not.toEqual(expect.arrayContaining(['PROCESS_DUNNING']))
   })
 
-  it('runs the daily digest every hour, so each user is reached at their own 08:10', () => {
-    expect(Schedules.SEND_EMAIL_DIGEST_DAILY.split(' ')[1]).toBe('*')
+  it('runs the digest every hour, so each user is reached at their own 08:10', () => {
+    expect(Schedules.SEND_EMAIL_DIGEST.split(' ')[1]).toBe('*')
   })
 
   it('derives one lock name per schedule', () => {

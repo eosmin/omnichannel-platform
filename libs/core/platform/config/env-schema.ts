@@ -137,6 +137,14 @@ export const envSchema = z
       value => (value === '' ? undefined : value),
       z.string().min(32).optional()
     ),
+    // The key that signs the one-click unsubscribe link of the notification emails (Step 7.3, B6b-3b2b): its own secret and its own domain label, never
+    // JWT_SECRET by itself, so that a link cannot be forged from the session secret and a session token cannot be made from this key. A deployed
+    // environment must set it (not JWT_SECRET, not CREDENTIALS_ENCRYPTION_KEY, not CONSENT_HASH_KEY, not the placeholder); a laptop or a test run may leave it
+    // out (an empty value counts as left out) and a key is derived from JWT_SECRET with a label of its own. Generate with `openssl rand -hex 32`.
+    UNSUBSCRIBE_TOKEN_KEY: z.preprocess(
+      value => (value === '' ? undefined : value),
+      z.string().min(32).optional()
+    ),
     // Written as "15m" or "7d", read by the code in seconds
     JWT_EXPIRES_IN: duration('15m'),
     REFRESH_TOKEN_EXPIRES_IN: duration('7d'),
@@ -454,6 +462,22 @@ export const envSchema = z
         message:
           'a deployed environment needs its own CONSENT_HASH_KEY (at least 32 characters, not JWT_SECRET or CREDENTIALS_ENCRYPTION_KEY, not the placeholder)',
         path: ['CONSENT_HASH_KEY'],
+        // Never the value: it is a secret, and an issue travels in error objects and ends in logs
+        input: undefined
+      })
+    }
+    if (
+      env.UNSUBSCRIBE_TOKEN_KEY === undefined ||
+      env.UNSUBSCRIBE_TOKEN_KEY === env.JWT_SECRET ||
+      env.UNSUBSCRIBE_TOKEN_KEY === env.CREDENTIALS_ENCRYPTION_KEY ||
+      env.UNSUBSCRIBE_TOKEN_KEY === env.CONSENT_HASH_KEY ||
+      env.UNSUBSCRIBE_TOKEN_KEY.startsWith(PLACEHOLDER_JWT_SECRET_PREFIX)
+    ) {
+      ctx.issues.push({
+        code: 'custom',
+        message:
+          'a deployed environment needs its own UNSUBSCRIBE_TOKEN_KEY (at least 32 characters, not JWT_SECRET, CREDENTIALS_ENCRYPTION_KEY or CONSENT_HASH_KEY, not the placeholder)',
+        path: ['UNSUBSCRIBE_TOKEN_KEY'],
         // Never the value: it is a secret, and an issue travels in error objects and ends in logs
         input: undefined
       })

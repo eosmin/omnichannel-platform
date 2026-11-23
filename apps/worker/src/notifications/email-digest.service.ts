@@ -4,7 +4,12 @@ import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import { JobContext, JobContextGoneError, PrismaService } from '@platform/core/database'
-import { AppPaths, DigestFrequency, MembershipStatus } from '@platform/core/domain'
+import {
+  AppPaths,
+  DigestFrequency,
+  MembershipStatus,
+  NotificationChannel
+} from '@platform/core/domain'
 import type { Locale } from '@platform/core/i18n'
 import { createTranslator, hasTranslation } from '@platform/core/i18n-server'
 import {
@@ -16,6 +21,7 @@ import {
   digestLinkKindOf,
   type DigestLinks,
   isDailyDigestHour,
+  NotificationDefaults,
   NotificationSettingsDefaults
 } from '@platform/core/notifications'
 import {
@@ -33,6 +39,8 @@ import { messageParams, pushLocale } from './push-payload'
 // rls-context: the notifications are read inside JobContext.forStore (the scan and the stale marks) or JobContext.forUser (a person's batch)
 
 const HOUR_MS = 3_600_000
+// A mark of an immediate or off person older than this is a leftover: the job of an immediate mark runs within moments, and its retries end well before
+const LEFTOVER_MARK_HOURS = 6
 // Rows one run reads for one person; what is left waits for the next run
 const READ_BATCH = 200
 
@@ -43,6 +51,12 @@ function frequencyFrom(value: string | undefined): DigestFrequency {
     NotificationSettingsDefaults.digestFrequency
   )
 }
+
+type BatchFrequency = DigestFrequency.HOURLY | DigestFrequency.DAILY
+const BATCH_FREQUENCIES: ReadonlySet<DigestFrequency> = new Set([
+  DigestFrequency.HOURLY,
+  DigestFrequency.DAILY
+])
 
 export interface ScanReport {
   queued: number
@@ -72,6 +86,7 @@ interface DigestGroup {
 
 interface DigestRow {
   id: string
+  type: string
   messageKey: string
   params: unknown
   actionPath: string | null
@@ -98,22 +113,22 @@ export class EmailDigestService {
     this.logger.setContext(EmailDigestService.name)
   }
 
-  // The scheduler: queues one job for each person whose digest is due now
-  async scan(
-    frequency: DigestFrequency.HOURLY | DigestFrequency.DAILY,
-    now: Date
-  ): Promise<ScanReport> {
+  // The scheduler: queues one job for each person whose digest is due now, hourly and daily in ONE pass. The two used to be two scans of the
+  // same marks (the same `distinct` read in every store, twice an hour); one read now serves both and the frequency of each person
+  // decides which of the two they are in
+  async scan(now: Date): Promise<ScanReport> {
     await this.dropStale(now)
 
     // The notifications are rows of a store: each store is read in its own context, and the people are joined. A store that cannot be read
     // is logged and left to the next run (queueing a digest is additive and each job is idempotent); a pool that is down throws.
+    const dueZones = this.dueDailyZones(now)
     let anyStoreFull = false
     const waiting = await readInEachStore(
       this.prisma,
       this.jobContext,
       async storeId => {
         const rows = await this.prisma.client.notification.findMany({
-          // Only the people this pass can serve: the others would fill the batch and starve the rest
+          // Only the people a batch can serve: the others would fill the read and starve the rest
           where: {
             storeId,
             emailPendingAt: { not: null },
@@ -122,8 +137,16 @@ export class EmailDigestService {
             user: {
               memberships: { some: { storeId, status: MembershipStatus.ACTIVE } },
               OR: [
-                { notificationSettings: { digestFrequency: frequency } },
-                ...(frequency === NotificationSettingsDefaults.digestFrequency
+                { notificationSettings: { digestFrequency: DigestFrequency.HOURLY } },
+                // A daily person takes a place in the read only in the hour their own clock reads the digest hour: marks that wait
+                // all day would otherwise fill the read every hour and starve the hourly people behind them
+                {
+                  notificationSettings: {
+                    digestFrequency: DigestFrequency.DAILY,
+                    timezone: { in: dueZones }
+                  }
+                },
+                ...(NotificationSettingsDefaults.digestFrequency === DigestFrequency.HOURLY
                   ? [{ notificationSettings: { is: null } }]
                   : [])
               ]
@@ -153,15 +176,18 @@ export class EmailDigestService {
     const byUser = new Map(settings.map(row => [row.userId, row]))
 
     const bucket = Math.floor(now.getTime() / HOUR_MS)
-    const due = userIds.filter(userId => {
+    const due: { userId: string; frequency: BatchFrequency }[] = []
+    for (const userId of userIds) {
       const own = byUser.get(userId)
-      if (frequencyFrom(own?.digestFrequency) !== frequency) return false
-      if (frequency === DigestFrequency.HOURLY) return true
-      return this.isDailyHour(own?.timezone, now)
-    })
+      const frequency = frequencyFrom(own?.digestFrequency)
+      if (frequency === DigestFrequency.HOURLY) due.push({ userId, frequency })
+      else if (frequency === DigestFrequency.DAILY && this.isDailyHour(own?.timezone, now)) {
+        due.push({ userId, frequency })
+      }
+    }
     if (due.length > 0) {
       await this.digestQueue.addBulk(
-        due.map(userId => ({
+        due.map(({ userId, frequency }) => ({
           name: JobNames.SEND_EMAIL_DIGEST,
           data: { userId, frequency },
           // One per person and hour: a second run of the same hour queues nothing new
@@ -218,6 +244,32 @@ export class EmailDigestService {
           where: { storeId, emailPendingAt: { not: null, lt: cutoff } },
           data: { emailPendingAt: null }
         })
+        // The marks of a person who is now on immediate or off: no batch reads them any more, and the request that changed the choice only
+        // cleared those of its own store. An immediate mark is read by its own job within moments, so only one older than
+        // `LEFTOVER_MARK_HOURS` (6 h) is taken as left over
+        await this.prisma.client.notification.updateMany({
+          where: {
+            storeId,
+            emailPendingAt: {
+              not: null,
+              lt: new Date(now.getTime() - LEFTOVER_MARK_HOURS * HOUR_MS)
+            },
+            user: {
+              OR: [
+                {
+                  notificationSettings: {
+                    digestFrequency: { in: [DigestFrequency.IMMEDIATE, DigestFrequency.OFF] }
+                  }
+                },
+                // A person with no row has the default frequency, which a batch does not serve if it is one of these two
+                ...(BATCH_FREQUENCIES.has(NotificationSettingsDefaults.digestFrequency)
+                  ? []
+                  : [{ notificationSettings: { is: null } }])
+              ]
+            }
+          },
+          data: { emailPendingAt: null }
+        })
         return []
       },
       (storeId, error) =>
@@ -226,6 +278,14 @@ export class EmailDigestService {
           'the stale marks of a store could not be cleared'
         )
     )
+  }
+
+  // The time zones whose clock reads the daily digest hour right now. A zone that is stored is a canonical IANA name (the preferences
+  // route checks it), so the list of the runtime covers it; the default zone and UTC are added because the list may leave them out
+  private dueDailyZones(now: Date): string[] {
+    const known = new Set([...Intl.supportedValuesOf('timeZone'), 'UTC'])
+    known.add(NotificationSettingsDefaults.timezone)
+    return [...known].filter(zone => this.isDailyHour(zone, now))
   }
 
   // A time zone the runtime does not know is read as the default one: it must not stop the scan of everyone
@@ -278,6 +338,7 @@ export class EmailDigestService {
           take: READ_BATCH,
           select: {
             id: true,
+            type: true,
             messageKey: true,
             params: true,
             actionPath: true,
@@ -309,8 +370,15 @@ export class EmailDigestService {
       select: { storeId: true }
     })
     const stores = new Set(memberships.map(row => row.storeId))
+    // The choice of the person for each type, read now and not when the mark was made: they may have turned the email of that type off
+    // since. A type with no row of theirs has the factory choice
+    const choices = await this.emailChoicesOf(userId, [...stores])
     const unread = pending.filter(
-      row => row.readAt === null && row.createdAt >= cutoff && stores.has(row.storeId)
+      row =>
+        row.readAt === null &&
+        row.createdAt >= cutoff &&
+        stores.has(row.storeId) &&
+        this.emailStillWanted(row, choices)
     )
     if (user === null || !user.emailValid || unread.length === 0) {
       await this.clear(userId, pendingIds)
@@ -361,6 +429,34 @@ export class EmailDigestService {
         update: { lastDigestSentAt: now }
       })
     }
+  }
+
+  // `email` of the rows of the person, by store and type
+  private async emailChoicesOf(userId: string, storeIds: string[]): Promise<Map<string, boolean>> {
+    if (storeIds.length === 0) return new Map()
+    const rows =
+      (await this.unlessUserGone(
+        this.jobContext.forUser(userId, () =>
+          this.prisma.client.notificationPreference.findMany({
+            where: { userId, storeId: { in: storeIds } },
+            select: { storeId: true, type: true, email: true }
+          })
+        )
+      )) ?? []
+    return new Map(rows.map(row => [`${row.storeId}:${row.type}`, row.email]))
+  }
+
+  private emailStillWanted(row: DigestRow, choices: ReadonlyMap<string, boolean>): boolean {
+    const chosen = choices.get(`${row.storeId}:${row.type}`)
+    if (chosen !== undefined) return chosen
+    const known = (
+      NotificationDefaults as Record<
+        string,
+        { channels: readonly NotificationChannel[] } | undefined
+      >
+    )[row.type]
+    // A type this code does not know has no factory choice and no text: it is not mailed
+    return known?.channels.includes(NotificationChannel.EMAIL) ?? false
   }
 
   // The same store, the same kind of notification, the same place it points to and the same text

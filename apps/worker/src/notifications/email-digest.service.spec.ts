@@ -27,6 +27,7 @@ const HOUR = 3_600_000
 
 const row = (id: string, overrides: Record<string, unknown> = {}) => ({
   id,
+  type: NotificationTypes.CONVERSATION_ASSIGNED,
   messageKey: notificationMessageKey(NotificationTypes.CONVERSATION_ASSIGNED),
   params: {},
   actionPath: '/s/s1/inbox/c1',
@@ -48,6 +49,7 @@ describe('EmailDigestService', () => {
   const addEmail = jest.fn<Promise<unknown>, [string, Record<string, unknown>, { jobId: string }]>()
   const warn = jest.fn()
   const findMemberships = jest.fn<Promise<unknown>, [unknown]>()
+  const findPreferences = jest.fn<Promise<unknown>, [unknown]>()
   const forStore = jest.fn((_storeId: string, work: () => Promise<unknown>) => work())
   const forUser = jest.fn((_userId: string, work: () => Promise<unknown>) => work())
 
@@ -63,6 +65,7 @@ describe('EmailDigestService', () => {
           },
           user: { findUnique: findUser },
           membership: { findMany: findMemberships },
+          notificationPreference: { findMany: findPreferences },
           // The one store the sweeps of the digest walk
           store: { findMany: () => Promise.resolve([{ id: STORE }]) }
         }
@@ -84,6 +87,17 @@ describe('EmailDigestService', () => {
       const ids = (args as { where: { storeId: { in: string[] } } }).where.storeId.in
       return Promise.resolve(ids.map(storeId => ({ storeId })))
     })
+    // By default the person has the email on for the two types the rows of these tests are about, in every store asked
+    findPreferences.mockImplementation((args: unknown) => {
+      const ids = (args as { where: { storeId: { in: string[] } } }).where.storeId.in
+      return Promise.resolve(
+        ids.flatMap(storeId =>
+          [NotificationTypes.CONVERSATION_ASSIGNED, NotificationTypes.CONVERSATION_REOPENED].map(
+            type => ({ storeId, type, email: true })
+          )
+        )
+      )
+    })
     addBulk.mockResolvedValue([])
     addEmail.mockResolvedValue({})
     upsertSettings.mockResolvedValue({})
@@ -95,7 +109,7 @@ describe('EmailDigestService', () => {
     it('queues one job for each person who chose the frequency, once per hour', async () => {
       findNotifications.mockResolvedValue([{ userId: USER }, { userId: OTHER }])
       findSettings.mockResolvedValue([{ userId: OTHER, digestFrequency: 'daily', timezone: 'UTC' }])
-      const report = await service().scan(DigestFrequency.HOURLY, NOW)
+      const report = await service().scan(NOW)
       expect(report).toEqual({ queued: 1, full: false })
       const jobs = (addBulk.mock.calls as unknown[][])[0]?.[0] as {
         data: unknown
@@ -110,7 +124,7 @@ describe('EmailDigestService', () => {
 
     it('reads the waiting notifications in the context of each store, never outside one', async () => {
       findNotifications.mockResolvedValue([])
-      await service().scan(DigestFrequency.HOURLY, NOW)
+      await service().scan(NOW)
       expect(forStore).toHaveBeenCalledWith(STORE, expect.any(Function))
       const asked = findNotifications.mock.calls[0]?.[0] as { where: { storeId: string } }
       expect(asked.where.storeId).toBe(STORE)
@@ -118,7 +132,7 @@ describe('EmailDigestService', () => {
 
     it('drops the marks older than the limit on every run', async () => {
       findNotifications.mockResolvedValue([])
-      await service().scan(DigestFrequency.HOURLY, NOW)
+      await service().scan(NOW)
       expect(updateNotifications).toHaveBeenCalledWith({
         where: {
           storeId: STORE,
@@ -126,9 +140,73 @@ describe('EmailDigestService', () => {
         },
         data: { emailPendingAt: null }
       })
-      updateNotifications.mockClear()
-      await service().scan(DigestFrequency.DAILY, NOW)
-      expect(updateNotifications).toHaveBeenCalledTimes(1)
+    })
+
+    it('clears the marks of a person who is on immediate or off, once they are six hours old', async () => {
+      findNotifications.mockResolvedValue([])
+      await service().scan(NOW)
+      expect(updateNotifications).toHaveBeenCalledWith({
+        where: {
+          storeId: STORE,
+          // Hours, not minutes: the job of an immediate mark and its retries end well before
+          emailPendingAt: { not: null, lt: new Date(NOW.getTime() - 6 * HOUR) },
+          user: {
+            OR: [
+              {
+                notificationSettings: {
+                  digestFrequency: { in: [DigestFrequency.IMMEDIATE, DigestFrequency.OFF] }
+                }
+              }
+            ]
+          }
+        },
+        data: { emailPendingAt: null }
+      })
+    })
+
+    it('serves the hourly and the daily people with ONE read of the waiting marks', async () => {
+      findNotifications.mockResolvedValue([{ userId: USER }, { userId: OTHER }])
+      findSettings.mockResolvedValue([
+        { userId: USER, digestFrequency: 'hourly', timezone: 'UTC' },
+        { userId: OTHER, digestFrequency: 'daily', timezone: 'America/El_Salvador' }
+      ])
+      const report = await service().scan(NOW)
+      expect(report.queued).toBe(2)
+      // The read that decides who is waiting is made once per store, not once per frequency
+      expect(findNotifications).toHaveBeenCalledTimes(1)
+      const jobs = (addBulk.mock.calls as unknown[][])[0]?.[0] as {
+        data: { userId: string; frequency: string }
+      }[]
+      expect(jobs.map(job => job.data)).toEqual([
+        { userId: USER, frequency: DigestFrequency.HOURLY },
+        { userId: OTHER, frequency: DigestFrequency.DAILY }
+      ])
+    })
+
+    it('asks only for the hourly people, the daily ones whose clock reads the digest hour, and who chose nothing', async () => {
+      findNotifications.mockResolvedValue([])
+      await service().scan(NOW)
+      const asked = findNotifications.mock.calls[0]?.[0] as {
+        where: { user: { OR: { notificationSettings: { timezone?: { in: string[] } } }[] } }
+      }
+      const [hourly, daily, nothing] = asked.where.user.OR
+      expect(hourly).toEqual({ notificationSettings: { digestFrequency: DigestFrequency.HOURLY } })
+      expect(nothing).toEqual({ notificationSettings: { is: null } })
+      // 14:10 UTC is 08:10 in El Salvador and not on the clock of UTC or Tokyo
+      const zones = daily?.notificationSettings.timezone?.in ?? []
+      expect(zones).toContain('America/El_Salvador')
+      expect(zones).not.toContain('UTC')
+      expect(zones).not.toContain('Asia/Tokyo')
+    })
+
+    it('does not queue a person whose settings turned immediate or off since the read', async () => {
+      findNotifications.mockResolvedValue([{ userId: USER }, { userId: OTHER }])
+      findSettings.mockResolvedValue([
+        { userId: USER, digestFrequency: 'immediate', timezone: 'UTC' },
+        { userId: OTHER, digestFrequency: 'off', timezone: 'UTC' }
+      ])
+      expect((await service().scan(NOW)).queued).toBe(0)
+      expect(addBulk).not.toHaveBeenCalled()
     })
 
     it('sends the daily digest only to who reads 08:00 on their own clock', async () => {
@@ -137,7 +215,7 @@ describe('EmailDigestService', () => {
         { userId: USER, digestFrequency: 'daily', timezone: 'America/El_Salvador' },
         { userId: OTHER, digestFrequency: 'daily', timezone: 'UTC' }
       ])
-      const report = await service().scan(DigestFrequency.DAILY, NOW)
+      const report = await service().scan(NOW)
       expect(report.queued).toBe(1)
       const jobs = (addBulk.mock.calls as unknown[][])[0]?.[0] as { data: { userId: string } }[]
       expect(jobs.map(job => job.data.userId)).toEqual([USER])
@@ -149,7 +227,7 @@ describe('EmailDigestService', () => {
       }))
       findNotifications.mockResolvedValue(waiting)
       findSettings.mockResolvedValue([])
-      const report = await service().scan(DigestFrequency.HOURLY, NOW)
+      const report = await service().scan(NOW)
       expect(report).toEqual({ queued: DigestLimits.SCAN_BATCH, full: true })
     })
   })
@@ -161,7 +239,7 @@ describe('EmailDigestService', () => {
         { userId: USER, digestFrequency: 'daily', timezone: 'Mars/Olympus' },
         { userId: OTHER, digestFrequency: 'daily', timezone: 'America/El_Salvador' }
       ])
-      const report = await service().scan(DigestFrequency.DAILY, NOW)
+      const report = await service().scan(NOW)
       expect(report.queued).toBe(2)
     })
   })
@@ -256,6 +334,75 @@ describe('EmailDigestService', () => {
       expect(data.data.moreCount).toBe(5)
     })
 
+    describe('the choice of the person for each type, read when the email is made', () => {
+      const sentItems = () =>
+        (addEmail.mock.calls[0]?.[1] as { data: { items: unknown[] } } | undefined)?.data.items
+
+      it('does not mail a type the person switched off after the mark was made, and clears its mark', async () => {
+        findNotifications.mockResolvedValue([
+          row('n2', {
+            type: NotificationTypes.CONVERSATION_REOPENED,
+            actionPath: '/s/s1/inbox/c2'
+          }),
+          row('n1')
+        ])
+        findPreferences.mockResolvedValue([
+          { storeId: 's1', type: NotificationTypes.CONVERSATION_REOPENED, email: false },
+          { storeId: 's1', type: NotificationTypes.CONVERSATION_ASSIGNED, email: true }
+        ])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+        expect(sentItems()).toHaveLength(1)
+        expect(updateNotifications).toHaveBeenCalledWith({
+          where: { id: { in: ['n2', 'n1'] }, userId: USER, emailPendingAt: { not: null } },
+          data: { emailPendingAt: null }
+        })
+      })
+
+      it('sends no email at all when every type was switched off, but still clears the marks', async () => {
+        findNotifications.mockResolvedValue([row('n1')])
+        findPreferences.mockResolvedValue([
+          { storeId: 's1', type: NotificationTypes.CONVERSATION_ASSIGNED, email: false }
+        ])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+        expect(addEmail).not.toHaveBeenCalled()
+        expect(updateNotifications).toHaveBeenCalledTimes(1)
+      })
+
+      it('reads the choice of a store apart from the same type in another store', async () => {
+        findNotifications.mockResolvedValue([
+          row('a', { storeId: 's1' }),
+          row('b', { storeId: 's2', actionPath: '/s/s2/inbox/c1', store: { name: 'Other' } })
+        ])
+        findPreferences.mockResolvedValue([
+          { storeId: 's1', type: NotificationTypes.CONVERSATION_ASSIGNED, email: false },
+          { storeId: 's2', type: NotificationTypes.CONVERSATION_ASSIGNED, email: true }
+        ])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+        expect(sentItems()).toHaveLength(1)
+      })
+
+      it('uses the factory choice of a type the person never touched, and no choice for a type it does not know', async () => {
+        findNotifications.mockResolvedValue([
+          // No row of theirs: this type has the email on in the factory matrix
+          row('m', { type: NotificationTypes.CONVERSATION_MENTIONED }),
+          // The factory matrix has no email for it
+          row('a', { actionPath: '/s/s1/inbox/c2' }),
+          row('x', { type: 'something.removed', actionPath: '/s/s1/inbox/c3' })
+        ])
+        findPreferences.mockResolvedValue([])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+        expect(sentItems()).toHaveLength(1)
+      })
+
+      it('reads the choices in the context of the person, with the notifications', async () => {
+        findNotifications.mockResolvedValue([row('n1')])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+        expect(forUser).toHaveBeenCalledTimes(3)
+        const asked = findPreferences.mock.calls[0]?.[0] as { where: { userId: string } }
+        expect(asked.where.userId).toBe(USER)
+      })
+    })
+
     describe('grouping', () => {
       const sent = () =>
         addEmail.mock.calls[0]?.[1] as {
@@ -284,7 +431,7 @@ describe('EmailDigestService', () => {
         findNotifications.mockResolvedValue([
           row('a1', { actionPath: '/s/s1/inbox/c1' }),
           row('b1', { actionPath: '/s/s1/inbox/c2' }),
-          row('c1', { messageKey: reopened }),
+          row('c1', { type: NotificationTypes.CONVERSATION_REOPENED, messageKey: reopened }),
           row('a2', { actionPath: '/s/s1/inbox/c1' }),
           { ...row('d1'), storeId: 's2', store: { name: 'Other shop' } }
         ])

@@ -941,6 +941,71 @@ describe('Notifications', () => {
       ).toBe(0)
     })
 
+    describe('a change of the digest frequency and the marks that wait for email', () => {
+      const markedRow = (storeId: string): Promise<{ id: string }> =>
+        owner.notification.create({
+          data: {
+            userId: ctx.adminA.id,
+            storeId,
+            type: NotificationTypes.CONVERSATION_MENTIONED,
+            severity: NotificationSeverity.INFO,
+            messageKey: notificationMessageKey(NotificationTypes.CONVERSATION_MENTIONED),
+            emailPendingAt: new Date()
+          },
+          select: { id: true }
+        })
+      const markOf = async (id: string): Promise<Date | null> =>
+        (await owner.notification.findUniqueOrThrow({ where: { id } })).emailPendingAt
+      const choose = (digestFrequency: string): Promise<{ status: number }> =>
+        asAdmin().put(ApiRoutes.notifications.preferences).send({ settings: { digestFrequency } })
+
+      it.each([DigestFrequency.IMMEDIATE, DigestFrequency.OFF])(
+        'drops the marks of this store when the person switches from a batch to %s, and leaves another store to the worker',
+        async next => {
+          await owner.userNotificationSettings.create({
+            data: { userId: ctx.adminA.id, digestFrequency: DigestFrequency.HOURLY }
+          })
+          const here = await markedRow(ctx.storeA.id)
+          const elsewhere = await markedRow(ctx.storeA2.id)
+
+          expect((await choose(next)).status).toBe(OK)
+
+          expect(await markOf(here.id)).toBeNull()
+          expect(await markOf(elsewhere.id)).toBeInstanceOf(Date)
+        }
+      )
+
+      it('keeps the marks when the person sets the frequency they already have', async () => {
+        await owner.userNotificationSettings.create({
+          data: { userId: ctx.adminA.id, digestFrequency: DigestFrequency.IMMEDIATE }
+        })
+        const waiting = await markedRow(ctx.storeA.id)
+
+        await choose(DigestFrequency.IMMEDIATE)
+
+        expect(await markOf(waiting.id)).toBeInstanceOf(Date)
+      })
+
+      it('keeps the marks when the person moves between two batches', async () => {
+        await owner.userNotificationSettings.create({
+          data: { userId: ctx.adminA.id, digestFrequency: DigestFrequency.HOURLY }
+        })
+        const waiting = await markedRow(ctx.storeA.id)
+
+        await choose(DigestFrequency.DAILY)
+
+        expect(await markOf(waiting.id)).toBeInstanceOf(Date)
+      })
+
+      it('treats a person with no settings as hourly: switching to off drops the marks', async () => {
+        const waiting = await markedRow(ctx.storeA.id)
+
+        await choose(DigestFrequency.OFF)
+
+        expect(await markOf(waiting.id)).toBeNull()
+      })
+    })
+
     it('refuse a bad body as a whole', async () => {
       const bad = [
         {},
