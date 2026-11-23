@@ -245,8 +245,8 @@ export class EmailDigestService {
           data: { emailPendingAt: null }
         })
         // The marks of a person who is now on immediate or off: no batch reads them any more, and the request that changed the choice only
-        // cleared those of its own store. An immediate mark is read by its own job within moments, so only one older than an hour is
-        // taken as left over
+        // cleared those of its own store. An immediate mark is read by its own job within moments, so only one older than
+        // `LEFTOVER_MARK_HOURS` (6 h) is taken as left over
         await this.prisma.client.notification.updateMany({
           where: {
             storeId,
