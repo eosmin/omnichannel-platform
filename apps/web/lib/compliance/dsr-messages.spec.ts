@@ -55,22 +55,62 @@ describe.each([
     }
   })
 
-  // The server does not know that the person never got the mail (`mail_lost` was accepted by the queue and may have arrived): no text of
-  // a notice that failed may say so as a fact
-  it('never states as a fact that the person was not told', () => {
-    const forbidden =
-      /nunca|never|no recibi[óo]|did not receive|didn't receive|sin avisar|not notified/i
-    const texts = [
-      messages.banners.noticeFailed.title,
-      messages.banners.noticeFailed.body,
-      messages.marks.noticeFailed,
-      messages.notice.failedTitle,
-      messages.notice.failedBody,
-      messages.notice.statuses.failed,
-      messages.failure.codes.mail_failed,
-      messages.failure.codes.mail_lost,
-      messages.failure.codes.address_unreadable
-    ]
-    for (const text of texts) expect(text).not.toMatch(forbidden)
+  it('never states as a fact that the person was not told, under any key of a notice', () => {
+    expect(noticeTextsOf(messages).length).toBeGreaterThan(12)
+    expect(wordedAsCertain(messages)).toEqual([])
+  })
+})
+
+// The server does not know that the person never got the mail (`mail_lost` was accepted by the queue and may have arrived): no text of a
+// notice that failed may say so as a fact. Checked by PREFIX over every leaf, so a key added later is held too, not only the ones listed.
+const CERTAIN =
+  /nunca|jam[áa]s|never|no recibi[óo]|no supo|did not receive|didn't receive|did not know|sin avisar|not notified/i
+const NOTICE_PREFIXES = [
+  /^banners\.noticeFailed\./,
+  /^marks\.noticeFailed$/,
+  /^notice\./,
+  /^failure\.codes\.(mail_[a-z]+|address_unreadable)$/
+]
+
+function leavesOf(node: unknown, path = ''): { path: string; text: string }[] {
+  if (typeof node === 'string') return [{ path, text: node }]
+  if (node === null || typeof node !== 'object') return []
+  return Object.entries(node).flatMap(([key, value]) =>
+    leavesOf(value, path === '' ? key : `${path}.${key}`)
+  )
+}
+
+function noticeTextsOf(tree: unknown): { path: string; text: string }[] {
+  return leavesOf(tree).filter(leaf => NOTICE_PREFIXES.some(prefix => prefix.test(leaf.path)))
+}
+
+function wordedAsCertain(tree: unknown): string[] {
+  return noticeTextsOf(tree)
+    .filter(leaf => CERTAIN.test(leaf.text))
+    .map(leaf => leaf.path)
+}
+
+describe('the check of the texts of a notice', () => {
+  it('catches a certain statement under each prefix, in either language, so it dies if the check is loosened', () => {
+    const planted = {
+      banners: { noticeFailed: { extra: 'La persona nunca lo supo' } },
+      marks: { noticeFailed: 'Never told' },
+      notice: { newKey: { deep: 'No supo nada' }, statuses: { other: 'Jamás llegó' } },
+      failure: {
+        codes: {
+          mail_new: 'The person did not receive it',
+          address_unreadable: 'No recibió el aviso',
+          attempts_exhausted: 'nunca (outside the prefixes, allowed)'
+        }
+      }
+    }
+    expect(wordedAsCertain(planted).sort()).toEqual([
+      'banners.noticeFailed.extra',
+      'failure.codes.address_unreadable',
+      'failure.codes.mail_new',
+      'marks.noticeFailed',
+      'notice.newKey.deep',
+      'notice.statuses.other'
+    ])
   })
 })

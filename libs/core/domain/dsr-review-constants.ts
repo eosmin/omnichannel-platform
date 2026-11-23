@@ -5,7 +5,7 @@ import { DsrType } from './status-enums'
 // in step (`dsr-review-constants.spec.ts`).
 
 // Whether the person was told how their request ended (derived by the api from the request, never stored as a word). `failed` means the
-// the sending of the closing notice could not be confirmed (it failed, was lost or the address did not open): the person MAY not have been told, and the reviewer reaches them another way in case it did not arrive (TDD_05 §10.3). Never worded as certain
+// sending of the closing notice could not be confirmed (it failed, was lost or the address did not open): the person MAY not have been told, and the reviewer reaches them another way in case it did not arrive (TDD_05 §10.3). Never worded as certain
 export const DsrNoticeStatuses = {
   NONE: 'none',
   PENDING: 'pending',
