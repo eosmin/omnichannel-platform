@@ -60,7 +60,7 @@ export function openInvitationEmail(
   aad: { storeId: string; invitationId: string }
 ): InvitationEmail {
   return sealedEmailSchema.parse(
-    cipher.open(sealed, invitationOutboxAad(aad.storeId, aad.invitationId))
+    cipher.openRotating(sealed, invitationOutboxAad(aad.storeId, aad.invitationId)).credentials
   )
 }
 

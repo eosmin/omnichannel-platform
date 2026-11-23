@@ -16,7 +16,11 @@ if (!isMainThread && parentPort !== null) {
       // The bytes move to the parent, they are not copied
       const body = new Uint8Array(reply.body)
       port.postMessage(
-        { kind: DocumentSanitizing.ThreadReplies.SANITIZED, body } satisfies DocumentThreadReply,
+        {
+          kind: DocumentSanitizing.ThreadReplies.SANITIZED,
+          body,
+          keptParts: reply.keptParts
+        } satisfies DocumentThreadReply,
         [body.buffer]
       )
     } else {

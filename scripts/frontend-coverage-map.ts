@@ -424,6 +424,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'compliance.dsrApprove': { step: '7.2' },
   'compliance.dsrReject': { step: '7.2' },
   'compliance.dsrCancel': { step: '7.2' },
+  'compliance.dsrExport': { step: '7.2' },
   'compliance.dsrVerify': { step: '7.2' },
   'compliance.consent': { step: '7.2' },
   'compliance.cookieConsent': { step: '7.2' },

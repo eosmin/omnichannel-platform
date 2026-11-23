@@ -1351,16 +1351,16 @@ describe('The fiscal documents (Step 4B.7)', () => {
       const list = await asAdminA().get(ApiRoutes.fiscal.documents.list)
       expect(list.status).toBe(OK)
       expect(JSON.stringify(list.body)).not.toContain('0614-010101-101-1')
-      // The name is minimized as the tax id is: the list and the detail show the first letter of each word
+      // The name is minimized as the tax id is: the list and the detail show the first letter and a fixed fill, never the length
       expect(JSON.stringify(list.body)).not.toContain('Receptora')
-      expect(JSON.stringify(list.body)).toContain('A** R********')
+      expect(JSON.stringify(list.body)).toContain('A***********')
       const one = await asAdminA().get(ApiRoutes.fiscal.documents.byId(documentId))
       expect(
         (one.body as { data: { receiver: { taxIdMasked: string } } }).data.receiver.taxIdMasked
-      ).toBe(`${'*'.repeat(13)}01-1`)
+      ).toBe('********1011')
       expect(JSON.stringify(one.body)).not.toContain('Receptora')
       expect((one.body as { data: { receiver: { name: string } } }).data.receiver.name).toBe(
-        'A** R********'
+        'A***********'
       )
     })
 

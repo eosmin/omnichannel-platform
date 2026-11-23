@@ -15,7 +15,9 @@ export async function replyFor({
 }: DocumentThreadInput): Promise<DocumentThreadReply> {
   try {
     const result = await sanitizeDocumentInline(Buffer.from(input), contentType, maxBytes)
-    if (result.kind === 'sanitized') return { kind: ThreadReplies.SANITIZED, body: result.body }
+    if (result.kind === 'sanitized') {
+      return { kind: ThreadReplies.SANITIZED, body: result.body, keptParts: result.keptParts }
+    }
     return {
       kind: ThreadReplies.UNTOUCHED,
       why: result.why === Untouched.TIMED_OUT ? Untouched.NOT_CLEANABLE : result.why

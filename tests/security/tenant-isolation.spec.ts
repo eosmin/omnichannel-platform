@@ -13,6 +13,7 @@ import {
   ReportMetrics
 } from '@platform/core/analytics'
 import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
+import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
 import { ConsentPurposes } from '@platform/core/compliance'
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -24,6 +25,7 @@ import {
   ConversationStatus,
   DeliveryStatus,
   DsrStatus,
+  DsrType,
   FinanceSourceType,
   FinanceTransactionKind,
   InventoryAdjustmentReason,
@@ -7568,6 +7570,52 @@ describe('Tenant isolation', () => {
         expect(naming.status).toBe(403)
       }
     )
+
+    // The file of a finished export (Step 7.2-H2b-2): the signed link is asked for by the id of the request under the store of the guard
+    it("export link: another store's finished export is the 404 of an id that does not exist, and no link is audited", async () => {
+      const exportOf = async (storeId: string) => {
+        const row = await createDataSubjectRequest(owner, { storeId, status: DsrStatus.COMPLETED })
+        await owner.dataSubjectRequest.update({
+          where: { id: row.id },
+          data: {
+            type: DsrType.ACCESS,
+            resultKey: StorageKeys.dsrExport(row.id),
+            resultExpiresAt: new Date(Date.now() + 86_400_000)
+          }
+        })
+        return row
+      }
+      const inB = await exportOf(ctx.storeB.id)
+      const inSibling = await exportOf(ctx.storeA2.id)
+      const own = await exportOf(ctx.storeA.id)
+      const missing = await api(app, ctx.adminA, ctx.storeA).get(
+        ApiRoutes.compliance.dsrExport(randomUUID())
+      )
+
+      for (const row of [inB, inSibling]) {
+        const response = await api(app, ctx.adminA, ctx.storeA).get(
+          ApiRoutes.compliance.dsrExport(row.id)
+        )
+        expect(response.status).toBe(404)
+        expect((response.body as { error: unknown }).error).toEqual(
+          (missing.body as { error: unknown }).error
+        )
+        expect(
+          await owner.auditLog.count({
+            where: { action: AuditAction.DSR_EXPORT_DOWNLOADED, resourceId: row.id }
+          })
+        ).toBe(0)
+        // Naming the other store in the header is refused before the request is looked at
+        const naming = await api(app, ctx.adminA, ctx.storeB).get(
+          ApiRoutes.compliance.dsrExport(row.id)
+        )
+        expect(naming.status).toBe(403)
+      }
+      // The own store's is found: the filter is the store and not the type of the route
+      expect(
+        (await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.compliance.dsrExport(own.id))).status
+      ).toBe(200)
+    })
   })
 
   // The cold parts of the audit log (Step 7.2-K) hold the rows of every store in one object: the viewer keeps each row by its own

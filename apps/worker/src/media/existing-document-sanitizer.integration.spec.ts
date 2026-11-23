@@ -6,6 +6,7 @@ import pg from 'pg'
 
 import { PrismaService } from '@platform/core/database'
 import { connectionUrls } from '@platform/core/database-testing'
+import { sanitizeDocumentInline } from '@platform/core/document-sanitizer'
 import {
   DocumentSanitizing,
   ExistingDocumentSweep,
@@ -21,6 +22,11 @@ import { ExistingDocumentSanitizer } from './existing-document-sanitizer.service
 import { InlineDocumentCleaner } from './testing/inline-document-cleaner'
 
 const AUTHOR = 'Jane Q. Author'
+// What the current version of the cleaning writes on a row
+const CURRENT_MARK = {
+  [ExistingPictureSweep.CLEANED_KEY]: true,
+  [DocumentSanitizing.CLEANING_VERSION_KEY]: DocumentSanitizing.CLEANING_VERSION
+}
 
 interface MediaRow {
   status: string
@@ -47,6 +53,16 @@ async function pdfWithMarkers(): Promise<Buffer> {
 
 // The sweep of the documents stored before their cleaning existed, against the real bucket and database. Every case names the stores it
 // sweeps (runScoped): the database and the bucket are shared with other suites.
+// A PDF that the cleaner left clean (its own fixed point)
+async function cleanPdf(): Promise<Buffer> {
+  const result = await sanitizeDocumentInline(
+    await pdfWithMarkers(),
+    DocumentSanitizing.PDF_CONTENT_TYPE
+  )
+  if (result.kind !== 'sanitized') throw new Error('the fixture was not cleaned')
+  return result.body
+}
+
 describe('ExistingDocumentSanitizer', () => {
   let moduleRef: TestingModule
   let sanitizer: ExistingDocumentSanitizer
@@ -146,7 +162,7 @@ describe('ExistingDocumentSanitizer', () => {
     expect(after.key).toBe(media.key)
     expect(after.status).toBe('clean')
     expect(after.fileSize).toBe(kept.length)
-    expect(after.scanResult).toEqual({ [ExistingPictureSweep.CLEANED_KEY]: true })
+    expect(after.scanResult).toEqual(CURRENT_MARK)
   })
 
   it('is safe to repeat: a document already cleaned is not taken again, and its bytes do not change', async () => {
@@ -194,7 +210,7 @@ describe('ExistingDocumentSanitizer', () => {
     const original = await pdfWithMarkers()
     const pending = await oldDocument(original, { status: 'pending' })
     const evidence = await oldDocument(original, { purpose: 'finance_document' })
-    const marked = await oldDocument(original, { scanResult: { sanitized: true } })
+    const marked = await oldDocument(original, { scanResult: CURRENT_MARK })
 
     const report = await sanitizer.runScoped([storeId])
 
@@ -202,6 +218,49 @@ describe('ExistingDocumentSanitizer', () => {
     for (const media of [pending, evidence, marked]) {
       expect((await stored(media.key)).equals(original)).toBe(true)
     }
+  })
+
+  // Step 7.3 (`office-user-paths-and-embedded-media`), against the real database: the query matches the whole mark of the first version of the
+  // cleaning (`{ sanitized: true }`, with or without the outcome `already_clean`), and a row with anything else in it is not taken
+  it('takes again a document that the first version of the cleaning finished, once, and leaves a row with another mark', async () => {
+    const original = await pdfWithMarkers()
+    const old = await oldDocument(original, {
+      scanResult: { [ExistingPictureSweep.CLEANED_KEY]: true }
+    })
+    const oldClean = await oldDocument(await cleanPdf(), {
+      scanResult: {
+        [ExistingPictureSweep.CLEANED_KEY]: true,
+        [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.ALREADY_CLEAN
+      }
+    })
+    const lower = await oldDocument(original, {
+      scanResult: { ...CURRENT_MARK, [DocumentSanitizing.CLEANING_VERSION_KEY]: 1 }
+    })
+    const other = await oldDocument(original, {
+      scanResult: {
+        [ExistingPictureSweep.CLEANED_KEY]: true,
+        [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.NOT_CLEANABLE
+      }
+    })
+
+    const first = await sanitizer.runScoped([storeId])
+
+    expect(first).toMatchObject({ cleaned: 2, alreadyClean: 1, failed: 0 })
+    expect((await stored(lower.key)).includes(AUTHOR)).toBe(false)
+    expect((await row(lower.id)).scanResult).toEqual(CURRENT_MARK)
+    expect((await stored(old.key)).includes(AUTHOR)).toBe(false)
+    expect((await row(old.id)).scanResult).toEqual(CURRENT_MARK)
+    expect((await row(oldClean.id)).scanResult).toEqual({
+      ...CURRENT_MARK,
+      [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.ALREADY_CLEAN
+    })
+    expect((await stored(other.key)).equals(original)).toBe(true)
+    expect(await sanitizer.runScoped([storeId])).toEqual({
+      cleaned: 0,
+      alreadyClean: 0,
+      skipped: 0,
+      failed: 0
+    })
   })
 
   it('names no store, sweeps no store', async () => {

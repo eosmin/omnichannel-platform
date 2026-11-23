@@ -19,8 +19,32 @@ export const PushLimits = {
   AUTH_BYTES: 16,
   VAPID_PUBLIC_BYTES: 65,
   VAPID_PRIVATE_BYTES: 32,
-  MAX_USER_AGENT_LENGTH: 512
+  MAX_USER_AGENT_LENGTH: 512,
+  // A browser the push service refuses for good (not gone: a payload or a key it will not take) this many times in a row is dropped;
+  // one delivered push resets the count. A person who still wants push registers again from the switch.
+  MAX_REFUSALS: 5,
+  // A 400 is counted against a browser only while this process has delivered at least one push among its last SOUND_WINDOW attempts: a
+  // fault of the server (a payload or a header every push service refuses) delivers nothing, so it proves nothing about the browsers and
+  // must not empty their lists. Fail-safe: a fresh process, or one that delivers nothing, counts nothing and drops nothing.
+  SOUND_WINDOW: 200
 } as const
+
+// What became of one push to one browser: the label of `platform_web_push_attempts_total`. The refusals are told apart by what they
+// say about the fault (a 400 names the browser; the rest name the server), so an alert can watch the ones that are the server's.
+export const PushOutcomes = {
+  DELIVERED: 'delivered',
+  GONE: 'gone',
+  RETRY: 'retry',
+  REFUSED_BAD_REQUEST: 'refused_bad_request',
+  // 401 and 403: the VAPID key is wrong, rotated, or not the one the browser subscribed with
+  REFUSED_AUTH: 'refused_auth',
+  REFUSED_TOO_LARGE: 'refused_too_large',
+  // An HTTP refusal that is none of the above
+  REFUSED_OTHER: 'refused_other',
+  // An error of the library, the certificate or the network that is not an answer of a push service: the host or its config is at fault
+  REFUSED_LOCAL: 'refused_local'
+} as const
+export type PushOutcome = (typeof PushOutcomes)[keyof typeof PushOutcomes]
 
 // The worker posts to the endpoint a browser gave the api, so an endpoint is a url the server will
 // call: it is accepted only on the host of a known push service, never a host the caller chooses.

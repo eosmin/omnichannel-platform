@@ -65,7 +65,9 @@ function build(options: { resolved: boolean; signatureValid: boolean }) {
       (_id: string, capability: string) => capability === CarrierCapability.WEBHOOK_STATUS
     )
   }
-  const cipher = { open: jest.fn(() => ({ secret: 'the-secret' })) }
+  const cipher = {
+    openRotating: jest.fn(() => ({ credentials: { secret: 'the-secret' }, sealedWith: 'current' }))
+  }
   const queue = { addBulk: jest.fn(() => Promise.resolve([])) }
   const received = { inc: jest.fn() }
   const rejected = { inc: jest.fn() }

@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelContextFactory } from '@platform/channels/connections'
-import type { CredentialCipher } from '@platform/core/crypto'
+import { type CredentialCipher, SealedWith } from '@platform/core/crypto'
 import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
@@ -75,7 +75,9 @@ describe('The name and photo of a customer', () => {
     )
     registry.register(buildChannelPlugin({ id: PLAIN_CHANNEL }))
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
-    const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
+    const cipher = {
+      openRotating: () => ({ credentials: {}, sealedWith: SealedWith.CURRENT })
+    } as unknown as CredentialCipher // test double of the cipher
     fetcher = new ProfileFetcher(
       prisma,
       registry,

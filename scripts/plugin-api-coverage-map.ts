@@ -142,6 +142,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'compliance.dsrApprove': { none: COMPLIANCE },
   'compliance.dsrReject': { none: COMPLIANCE },
   'compliance.dsrCancel': { none: COMPLIANCE },
+  'compliance.dsrExport': { none: COMPLIANCE },
   'compliance.dsrVerify': { none: COMPLIANCE },
   'compliance.consent': { none: COMPLIANCE },
   'compliance.cookieConsent': { none: COMPLIANCE },

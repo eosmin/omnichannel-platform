@@ -174,6 +174,19 @@ export class DsrReviewController {
     return this.review.get(store.id, requestId)
   }
 
+  // The signed link to the file of a finished access or portability request: short-lived, audited with who asked for it
+  @RequirePermissions(Permissions.CUSTOMERS_DSR_REVIEW)
+  @NoStore()
+  @Get(ApiRoutes.compliance.dsrExport(':id'))
+  exportLink(
+    @CurrentStore() store: ResolvedTenant['store'],
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) requestId: string,
+    @Req() req: AuthenticatedRequest
+  ): ReturnType<DsrReviewService['exportLink']> {
+    return this.review.exportLink(store.id, requestId, actorOf(user, store, req))
+  }
+
   @RequirePermissions(Permissions.CUSTOMERS_DSR_REVIEW)
   @NoStore()
   @Post(ApiRoutes.compliance.dsrApprove(':id'))

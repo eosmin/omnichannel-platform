@@ -1005,6 +1005,21 @@ describe('Notifications', () => {
       expect(rows[0]).toMatchObject({ userId: ctx.adminA.id, p256dh: P256DH_NEW, auth: AUTH_NEW })
     })
 
+    it('starts the refusal count of a browser again when it registers again', async () => {
+      const url = endpoint()
+      await register(url)
+      await owner.pushSubscription.updateMany({
+        where: { endpoint: url },
+        data: { refusedCount: 4, refusedNotificationId: randomUUID() }
+      })
+
+      await register(url)
+
+      const row = await owner.pushSubscription.findFirstOrThrow({ where: { endpoint: url } })
+      expect(row.refusedCount).toBe(0)
+      expect(row.refusedNotificationId).toBeNull()
+    })
+
     it('moves the browser to the next person who signs in on it', async () => {
       const url = endpoint()
       await register(url)
@@ -1045,6 +1060,19 @@ describe('Notifications', () => {
       const kept = await owner.pushSubscription.findMany({ where: { userId: ctx.adminA.id } })
       expect(kept).toHaveLength(PushLimits.MAX_SUBSCRIPTIONS_PER_USER)
       expect(kept.map(row => row.endpoint)).not.toContain(urls[0])
+    })
+
+    it('never ends above the limit when several browsers register at the same time', async () => {
+      for (let index = 0; index < PushLimits.MAX_SUBSCRIPTIONS_PER_USER; index += 1) {
+        await register(endpoint())
+      }
+
+      const answers = await Promise.all(Array.from({ length: 4 }, () => register(endpoint())))
+
+      expect(answers.map(answer => answer.status)).toEqual(Array(4).fill(NO_CONTENT))
+      expect(await owner.pushSubscription.count({ where: { userId: ctx.adminA.id } })).toBe(
+        PushLimits.MAX_SUBSCRIPTIONS_PER_USER
+      )
     })
 
     it('removes the own browser, and answers the same for one that is someone else’s or unknown', async () => {

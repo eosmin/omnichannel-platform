@@ -72,4 +72,15 @@ describe('the outbox of an invitation email', () => {
       InvitationEmailStatus.NOT_SENT
     )
   })
+
+  it('opens an email sealed with the previous key while a rotation is on, bound to its row', () => {
+    const oldKey = randomBytes(32)
+    const before = new CredentialCipher(oldKey)
+    const rotated = new CredentialCipher(randomBytes(32), oldKey)
+    const sealed = sealInvitationEmail(before, email, here)
+    expect(openInvitationEmail(rotated, sealed, here)).toEqual(email)
+    expect(() => openInvitationEmail(rotated, sealed, { ...here, storeId: 's2' })).toThrow(
+      DecryptionError
+    )
+  })
 })

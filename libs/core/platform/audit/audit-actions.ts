@@ -261,6 +261,8 @@ export const AuditAction = {
   FISCAL_EVIDENCE_READ: 'fiscal.evidence_read',
   // A sealed fiscal value sealed again with the current key after a rotation (the platform is the actor; the kind and the row, never the value)
   FISCAL_VALUE_RESEALED: 'fiscal.value_resealed',
+  // A sealed credential, secret or address outside the fiscal area sealed again with the current key after a rotation (the platform is the actor; the column and the row, never the value)
+  CREDENTIALS_VALUE_RESEALED: 'credentials.value_resealed',
   FISCAL_ISSUER_CHANGE_CONFIRMED: 'fiscal.issuer_change_confirmed',
   FINANCE_TRANSACTION_RECORDED: 'finance.transaction_recorded',
   FINANCE_TRANSACTION_VOIDED: 'finance.transaction_voided',
@@ -296,6 +298,11 @@ export const AuditAction = {
   DSR_EXPIRED: 'dsr.expired',
   // An approved erasure the sweep did not carry out and gave back to the review queue (reason in the metadata)
   DSR_ERASURE_RETURNED: 'dsr.erasure_returned',
+  DSR_NOTICE_FAILED: 'dsr.notice_failed',
+  DSR_EXPORT_FAILED: 'dsr.export_failed',
+  DSR_EXPORT_DOWNLOADED: 'dsr.export_downloaded',
+  DSR_EXPORT_PURGED: 'dsr.export_purged',
+  DSR_DEADLINE_ALERTED: 'dsr.deadline_alerted',
   CONSENT_RECORDED: 'consent.recorded'
 } as const
 

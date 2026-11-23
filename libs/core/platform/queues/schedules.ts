@@ -21,12 +21,14 @@ export const Schedules = {
   SANITIZE_EXISTING_PICTURES: '*/10 * * * *', // Every 10 minutes: a bounded batch of the pictures stored before the cleaning of metadata existed
   SANITIZE_EXISTING_DOCUMENTS: '5-55/10 * * * *', // Every 10 minutes, five past: a bounded batch of the PDF, docx and xlsx stored before their cleaning existed
   CLEAN_EXPIRED_EXPORTS: '40 * * * *', // Hourly: the files of exports past their date, and the ones that never got made
-  CHECK_DSR_DEADLINES: '0 7 * * *', // 07:00 UTC daily (TDD_05 §10.2)
+  CHECK_DSR_DEADLINES: '0 7 * * *', // 07:00 UTC daily: the alert of the requests that are close to their legal deadline (TDD_05 §10.2, Step 7.2-H2b-2)
   EXPIRE_DSR_REQUESTS: '25 3 * * *', // 03:25 UTC daily: the data requests whose verification link expired unused (Step 7.2-H1b)
   ERASE_DSR_REQUESTS: '30 5 * * *', // 05:30 UTC daily: the approved erasures whose grace period ended (Step 7.2-H2b-1)
+  EXPORT_DSR_REQUESTS: '45 5 * * *', // 05:45 UTC daily: the approved access and portability exports, and the purge of the expired files (Step 7.2-H2b-2)
   COLLECT_QUEUE_METRICS: '*/15 * * * * *', // Every 15 seconds (6-field cron, @nestjs/schedule)
   RECONCILE_INVENTORY: '0 4 * * *', // 04:00 UTC daily, one job per store (TDD_16 §4.8)
   RECONCILE_FINANCE: '30 4 * * *', // 04:30 UTC daily, one job per organization with books (TDD_18 §11)
+  RESEAL_CREDENTIALS: '45 4 * * *', // 04:45 UTC daily, one job per organization (all of them, with or without books), only while a previous key is held (Step 7.3-S11c)
   VERIFY_LEDGER_CHAIN: '0 5 * * 0', // 05:00 UTC on Sundays, one job per organization with books (TDD_18 §3, §11)
   EVALUATE_PICKUPS: '* * * * *', // Every minute; the job decides which connections are due (TDD_17 §4.10)
   POLL_SHIPMENT_STATUS: '*/10 * * * *', // The job applies each connection's own interval

@@ -21,6 +21,16 @@ const STORE = 'store-1'
 const AUTHOR = 'Jane Q. Author'
 const PDF = DocumentSanitizing.PDF_CONTENT_TYPE
 const DOCX = DocumentSanitizing.DOCX_CONTENT_TYPE
+// What the current version of the cleaning writes on a document it cleaned or found clean, and what the first version wrote
+const VERSION_MARK = {
+  [ExistingPictureSweep.CLEANED_KEY]: true,
+  [DocumentSanitizing.CLEANING_VERSION_KEY]: DocumentSanitizing.CLEANING_VERSION
+}
+const OLD_MARK = { [ExistingPictureSweep.CLEANED_KEY]: true }
+const OLD_CLEAN_MARK = {
+  [ExistingPictureSweep.CLEANED_KEY]: true,
+  [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.ALREADY_CLEAN
+}
 
 interface Row {
   id: string
@@ -130,12 +140,32 @@ describe('ExistingDocumentSanitizer', () => {
     })
   }
   // A row is not finished while it has no scan_result or fewer attempts than the limit
+  const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
+  // A row that an older version finished: exactly the mark it wrote (the query matches it whole, not by a missing key)
+  // The conditions of the query, read as the database reads them: a null, a whole value, or a number under a key
+  const matchesOne = (row: Row, condition: { scanResult: Record<string, unknown> }): boolean => {
+    const guard = condition.scanResult
+    const path = guard.path as string[] | undefined
+    if (path !== undefined) {
+      const value = row.scanResult?.[path[0] as string]
+      if (typeof value !== 'number') return false
+      return 'lt' in guard ? value < (guard.lt as number) : value === guard.equals
+    }
+    return isMark(guard.equals) ? sameJson(row.scanResult, guard.equals) : row.scanResult === null
+  }
+  const matchesQuery = (row: Row, where: Record<string, unknown>): boolean =>
+    (where.OR as { scanResult: Record<string, unknown> }[]).some(condition =>
+      matchesOne(row, condition)
+    )
   const notFinished = (row: Row): boolean =>
     row.scanResult === null ||
     (typeof row.scanResult[ExistingPictureSweep.ATTEMPTS_KEY] === 'number' &&
       (row.scanResult[ExistingPictureSweep.ATTEMPTS_KEY] as number) <
         ExistingDocumentSweep.MAX_ATTEMPTS &&
       row.scanResult[ExistingPictureSweep.OUTCOME_KEY] === undefined)
+  // A whole-value guard (`{ equals: { sanitized: true } }`), as against the null that `DatabaseNull` stands for
+  const isMark = (value: unknown): boolean =>
+    typeof value === 'object' && value !== null && Object.keys(value).length > 0
   const prisma = {
     client: {
       media: {
@@ -146,7 +176,7 @@ describe('ExistingDocumentSanitizer', () => {
           findManyArgs.push(args)
           return Promise.resolve(
             rows
-              .filter(notFinished)
+              .filter(row => matchesQuery(row, args.where))
               .sort((a, b) => a.id.localeCompare(b.id))
               .slice(0, args.take)
           )
@@ -163,7 +193,9 @@ describe('ExistingDocumentSanitizer', () => {
               guard?.path !== undefined
                 ? row.scanResult?.[guard.path[0] as string] === guard.equals
                 : guard?.equals !== undefined
-                  ? row.scanResult === null
+                  ? isMark(guard.equals)
+                    ? sameJson(row.scanResult, guard.equals)
+                    : row.scanResult === null
                   : notFinished(row)
             if (!allowed) return Promise.resolve({ count: 0 })
             row.scanResult = args.data.scanResult as Record<string, unknown>
@@ -235,11 +267,11 @@ describe('ExistingDocumentSanitizer', () => {
     const again = await PDFDocument.load(body)
     expect(again.catalog.get(PDFName.of('Outlines'))).toBeDefined()
     expect(again.getPage(0).node.Annots()?.size()).toBe(1)
-    expect(row.scanResult).toEqual({ [ExistingPictureSweep.CLEANED_KEY]: true })
+    expect(row.scanResult).toEqual(VERSION_MARK)
     expect(row.fileSize).toBe(body.length)
   })
 
-  it('cleans a stored docx of its properties and keeps its content, and says where the path of a user stays (Step 7.3)', async () => {
+  it('cleans a stored docx of its properties and of the path of its author and keeps its content', async () => {
     const row = store('d2', docxWithUserPath(), { contentType: DOCX })
 
     const report = await sanitizer.runScoped([STORE])
@@ -248,8 +280,11 @@ describe('ExistingDocumentSanitizer', () => {
     const parts = unzipSync(new Uint8Array(bucket.get(row.key) as Buffer))
     expect(strFromU8(parts['docProps/core.xml'] as Uint8Array)).not.toContain(AUTHOR)
     expect(strFromU8(parts['word/document.xml'] as Uint8Array)).toContain('the real text')
-    // Known limit, written in the plan (task `office-user-paths-and-embedded-media`): the sweep does not rewrite the relationships
-    expect(strFromU8(parts['word/_rels/settings.xml.rels'] as Uint8Array)).toContain(USER_PATH)
+    // The path of the author is gone (Step 7.3, `office-user-paths-and-embedded-media`) and the relationship stays
+    const rels = strFromU8(parts['word/_rels/settings.xml.rels'] as Uint8Array)
+    expect(rels).not.toContain(USER_PATH)
+    expect(rels).toContain(DocumentSanitizing.NEUTRAL_LOCAL_TARGET)
+    expect(rels).toContain('Id="rId1"')
   })
 
   it('does not lose the original when the bucket refuses the write, tries again on the next run and then does nothing', async () => {
@@ -263,7 +298,7 @@ describe('ExistingDocumentSanitizer', () => {
     expect(run1).toMatchObject({ cleaned: 1, failed: 1 })
     expect(bucket.get(second.key)).toBe(dirty) // the original, untouched
     expect(second.scanResult).toEqual({ [ExistingPictureSweep.ATTEMPTS_KEY]: 1 })
-    expect(first.scanResult).toEqual({ [ExistingPictureSweep.CLEANED_KEY]: true })
+    expect(first.scanResult).toEqual(VERSION_MARK)
 
     failPutOn.clear()
     const run2 = await sanitizer.runScoped([STORE])
@@ -306,7 +341,7 @@ describe('ExistingDocumentSanitizer', () => {
     expect(report).toMatchObject({ alreadyClean: 1, cleaned: 0 })
     expect(puts).toEqual([])
     expect(row.scanResult).toEqual({
-      [ExistingPictureSweep.CLEANED_KEY]: true,
+      ...VERSION_MARK,
       [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.ALREADY_CLEAN
     })
   })
@@ -433,7 +468,7 @@ describe('ExistingDocumentSanitizer', () => {
     clock.mockRestore()
 
     expect(report).toEqual({ cleaned: 1, alreadyClean: 0, skipped: 0, failed: 0 })
-    expect(slow.scanResult).toEqual({ [ExistingPictureSweep.CLEANED_KEY]: true }) // the attempt was replaced by the mark
+    expect(slow.scanResult).toEqual(VERSION_MARK) // the attempt was replaced by the mark
     expect(next.scanResult).toBeNull() // never begun, so no attempt was counted against it
     expect(bucket.get(next.key)).toBe(dirty)
   })
@@ -535,5 +570,112 @@ describe('ExistingDocumentSanitizer', () => {
 
     expect(report.cleaned).toBe(ExistingDocumentSweep.BATCH_PER_STORE)
     expect(rows.filter(row => row.scanResult === null)).toHaveLength(3)
+  })
+  // Step 7.3 (`office-user-paths-and-embedded-media`): a document that the first version of the cleaning finished is taken again by the version
+  // that also cleans the paths of the author and the photos inside it
+  describe('a document that an older version of the cleaning finished', () => {
+    const DOCX_RELS_PATH = 'word/_rels/settings.xml.rels'
+
+    it('is taken again, cleaned of what the older version left, and marked with the current version', async () => {
+      const row = store('d1', docxWithUserPath(), {
+        contentType: DOCX,
+        scanResult: { ...OLD_MARK }
+      })
+
+      const report = await sanitizer.runScoped([STORE])
+
+      expect(report).toEqual({ cleaned: 1, alreadyClean: 0, skipped: 0, failed: 0 })
+      const parts = unzipSync(new Uint8Array(bucket.get(row.key) as Buffer))
+      expect(strFromU8(parts[DOCX_RELS_PATH] as Uint8Array)).not.toContain(USER_PATH)
+      expect(row.scanResult).toEqual(VERSION_MARK)
+      expect(row.fileSize).toBe((bucket.get(row.key) as Buffer).length)
+    })
+
+    it('is taken again when the older version had found it clean, and only marked when it still is: nothing is written', async () => {
+      const clean = await cleanPdf()
+      const row = store('d1', clean, { scanResult: { ...OLD_CLEAN_MARK } })
+
+      const report = await sanitizer.runScoped([STORE])
+
+      expect(report).toMatchObject({ alreadyClean: 1, cleaned: 0 })
+      expect(puts).toEqual([])
+      expect(bucket.get(row.key)).toBe(clean)
+      expect(row.scanResult).toEqual({
+        ...VERSION_MARK,
+        [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.ALREADY_CLEAN
+      })
+    })
+
+    it('is taken once: after the current version marks it, the next run does not open it', async () => {
+      store('d1', docxWithUserPath(), { contentType: DOCX, scanResult: { ...OLD_MARK } })
+      store('d2', await cleanPdf(), { scanResult: { ...OLD_CLEAN_MARK } })
+      await sanitizer.runScoped([STORE])
+      storage.read.mockClear()
+
+      const again = await sanitizer.runScoped([STORE])
+
+      expect(again).toEqual({ cleaned: 0, alreadyClean: 0, skipped: 0, failed: 0 })
+      expect(storage.read).not.toHaveBeenCalled()
+    })
+
+    it('is taken again when it carries a version below the current one: a later version of the cleaning needs no new mark in the query', async () => {
+      const row = store('d1', docxWithUserPath(), {
+        contentType: DOCX,
+        scanResult: { ...VERSION_MARK, [DocumentSanitizing.CLEANING_VERSION_KEY]: 1 }
+      })
+
+      const report = await sanitizer.runScoped([STORE])
+
+      expect(report).toMatchObject({ cleaned: 1 })
+      expect(row.scanResult).toEqual(VERSION_MARK)
+    })
+
+    it('is not taken when the current version already marked it, or when the mark is anything else', async () => {
+      const dirty = docxWithUserPath()
+      const marks: Record<string, unknown>[] = [
+        { ...VERSION_MARK },
+        // What an older run could not clean stays that way: the reason it was kept (encrypted, signed, damaged) is still true of it
+        { [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.NOT_CLEANABLE },
+        { [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.FAILED },
+        { [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.MISSING },
+        // The mark of an older version is the whole value, never a value with something else in it
+        { ...OLD_MARK, extra: 1 },
+        // A version above the current one (a rollback of the code) is not taken either
+        { ...VERSION_MARK, [DocumentSanitizing.CLEANING_VERSION_KEY]: 99 }
+      ]
+      const taken = marks.map((mark, index) =>
+        store(`d${index}`, dirty, { contentType: DOCX, scanResult: mark })
+      )
+
+      const report = await sanitizer.runScoped([STORE])
+
+      expect(report).toEqual({ cleaned: 0, alreadyClean: 0, skipped: 0, failed: 0 })
+      expect(puts).toEqual([])
+      taken.forEach((row, index) => expect(row.scanResult).toEqual(marks[index]))
+    })
+
+    it('does not mark a row that changed between the read of the batch and the first write: the guard is the whole mark it read', async () => {
+      const row = store('d1', docxWithUserPath(), {
+        contentType: DOCX,
+        scanResult: { ...OLD_MARK }
+      })
+      // Someone else moves the row on after the batch was read and before the sweep begins on it
+      const read = prisma.client.media.findMany.getMockImplementation()
+      type Args = { where: Record<string, unknown>; take: number }
+      prisma.client.media.findMany.mockImplementationOnce(async (args: Args) => {
+        // The batch is a copy of what was read: the row moves on behind it
+        const found = (await (read as (a: Args) => Promise<Row[]>)(args)).map(each => ({
+          ...each
+        }))
+        row.scanResult = { ...VERSION_MARK }
+        return found
+      })
+
+      const report = await sanitizer.runScoped([STORE])
+
+      expect(report).toEqual({ cleaned: 0, alreadyClean: 0, skipped: 1, failed: 0 })
+      expect(puts).toEqual([])
+      expect(row.scanResult).toEqual(VERSION_MARK)
+    })
   })
 })

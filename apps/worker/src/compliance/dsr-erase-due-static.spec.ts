@@ -24,7 +24,21 @@ describe('who may erase a customer in the worker', () => {
       readFileSync(file, 'utf8').includes(ERASURE_LIB)
     )
 
+    // The export (Step 7.2-H2b-2) reads the same library for the check of the customers of a request (`checkDsrSubject`), which erases nothing:
+    // the next test pins that it never names the service
     expect(relativeTo(WORKER_SRC, importers)).toEqual([
+      'compliance/dsr-erase-due.sweeper.ts',
+      'compliance/dsr-export.runner.ts',
+      'compliance/dsr.module.ts'
+    ])
+  })
+
+  it('lets only the sweep and the module name the erasure service, and the export runner only the check of the customers', () => {
+    const namers = sourcesOf(WORKER_SRC).filter(file =>
+      readFileSync(file, 'utf8').includes('CustomerErasureService')
+    )
+
+    expect(relativeTo(WORKER_SRC, namers)).toEqual([
       'compliance/dsr-erase-due.sweeper.ts',
       'compliance/dsr.module.ts'
     ])

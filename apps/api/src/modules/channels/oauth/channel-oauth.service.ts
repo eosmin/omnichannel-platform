@@ -365,7 +365,7 @@ export class ChannelOAuthService {
 
   private tokenOf(session: OAuthSessionRecord): string {
     try {
-      const opened = this.cipher.open(Buffer.from(session.sealed, 'base64'))
+      const opened = this.cipher.openRotating(Buffer.from(session.sealed, 'base64')).credentials
       if (typeof opened['userToken'] === 'string' && opened['userToken'] !== '') {
         return opened['userToken']
       }

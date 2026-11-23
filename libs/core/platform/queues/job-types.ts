@@ -31,6 +31,8 @@ export interface SendEmailJob extends BaseJob {
   attachments?: { filename: string; contentBase64: string; contentType: string }[]
   headers?: Record<string, string> // Extra mail headers, e.g. List-Unsubscribe
   tags: { storeId?: string; template: EmailTemplate } // Echoed back by the Resend webhook (TDD_07 §5.4)
+  // The closing notice of a data request: the mail processor confirms it on the request (Step 7.2-H2b-2). Ids only, never the address
+  dsrNotice?: { requestId: string; storeId: string }
 }
 
 // The email of an invitation is waiting in the outbox of the invitation. The job holds ids only: the link, the token and the address stay
@@ -181,6 +183,10 @@ export interface PostFinanceEventJob extends BaseJob {
 // The daily check of the books of one organization (TDD_18 §6.1, §11): it finds the sources that should have an entry and have none and
 // queues them again (never an amount: the posting job reads the rows), and compares the balances with the lines. It writes no entry.
 export interface ReconcileFinanceJob extends BaseJob {
+  organizationId: string
+}
+// The nightly re-seal of the sealed credentials of one organization after a rotation of the key (Step 7.3-S11c): ids only, never a secret
+export interface ResealCredentialsJob extends BaseJob {
   organizationId: string
 }
 // The weekly check of the hash chain of one organization's journal (TDD_18 §11): read only; a break opens an incident that stops the close
