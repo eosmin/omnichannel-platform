@@ -5031,8 +5031,8 @@
       "noPermission": "Puedes leer esta solicitud, pero no tienes el permiso para decidir sobre ella.",
       "banners": {
         "noticeFailed": {
-          "title": "{count, plural, one {# persona nunca supo cómo terminó su solicitud} other {# personas nunca supieron cómo terminó su solicitud}}",
-          "body": "No se pudo enviar el correo de cierre. La solicitud está marcada en la lista. Comunícate con la persona por otro medio y dile el resultado: tiene derecho a saberlo."
+          "title": "{count, plural, one {# aviso de cierre sin confirmar} other {# avisos de cierre sin confirmar}}",
+          "body": "No se pudo confirmar el envío del correo de cierre. La solicitud está marcada en la lista. Por si no le llegó, comunícate con la persona por otro medio y dile el resultado: tiene derecho a saberlo."
         },
         "deadline": {
           "title": "{count, plural, one {# solicitud abierta vence en {days} días o menos, o ya venció} other {# solicitudes abiertas vencen en {days} días o menos, o ya vencieron}}",
@@ -5066,7 +5066,7 @@
         "pending": "Esperando que la persona verifique"
       },
       "marks": {
-        "noticeFailed": "Persona sin avisar",
+        "noticeFailed": "Aviso sin confirmar",
         "returned": "Volvió a revisión",
         "exportFailed": "Falló el archivo",
         "exportReady": "Archivo listo",
@@ -5117,13 +5117,13 @@
       },
       "notice": {
         "notEnded": "Se avisa a la persona cuando la solicitud termina.",
-        "failedTitle": "La persona nunca supo cómo terminó su solicitud",
-        "failedBody": "El correo de cierre falló o no se pudo leer la dirección. Comunícate con la persona por otro medio y dile el resultado.",
+        "failedTitle": "No se pudo confirmar que la persona recibiera el aviso de cierre",
+        "failedBody": "El correo de cierre falló, no se confirmó o no se pudo leer la dirección, así que puede que la persona no lo haya recibido. Comunícate con ella por otro medio y dile el resultado.",
         "statuses": {
           "none": "No hay dirección a la que avisar",
           "pending": "En camino, aún sin confirmar",
           "sent": "Enviado",
-          "failed": "Nunca se entregó",
+          "failed": "Envío sin confirmar",
           "unknown": "Desconocido"
         }
       },

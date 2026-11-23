@@ -51,7 +51,7 @@ export const isOverdue = (row: DsrRequestView, now: Date): boolean =>
 export const daysOverdue = (deadlineAt: string, now: Date): number =>
   Math.max(1, Math.ceil((now.getTime() - new Date(deadlineAt).getTime()) / DAY_MS))
 
-// The person was never told how their request ended
+// The sending of the closing notice could not be confirmed: the person may not have been told
 export const isNoticeFailed = (row: Pick<DsrRequestView, 'noticeStatus'>): boolean =>
   row.noticeStatus === DsrNoticeStatuses.FAILED
 

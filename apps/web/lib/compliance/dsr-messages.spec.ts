@@ -54,4 +54,23 @@ describe.each([
       }
     }
   })
+
+  // The server does not know that the person never got the mail (`mail_lost` was accepted by the queue and may have arrived): no text of
+  // a notice that failed may say so as a fact
+  it('never states as a fact that the person was not told', () => {
+    const forbidden =
+      /nunca|never|no recibi[óo]|did not receive|didn't receive|sin avisar|not notified/i
+    const texts = [
+      messages.banners.noticeFailed.title,
+      messages.banners.noticeFailed.body,
+      messages.marks.noticeFailed,
+      messages.notice.failedTitle,
+      messages.notice.failedBody,
+      messages.notice.statuses.failed,
+      messages.failure.codes.mail_failed,
+      messages.failure.codes.mail_lost,
+      messages.failure.codes.address_unreadable
+    ]
+    for (const text of texts) expect(text).not.toMatch(forbidden)
+  })
 })

@@ -5031,8 +5031,8 @@
       "noPermission": "You can read this request, but you do not hold the permission to decide on it.",
       "banners": {
         "noticeFailed": {
-          "title": "{count, plural, one {# person was never told how their request ended} other {# people were never told how their request ended}}",
-          "body": "The closing mail could not be sent. The request is marked in the list. Reach the person another way and tell them the outcome: they have a right to know."
+          "title": "{count, plural, one {# closing notice is unconfirmed} other {# closing notices are unconfirmed}}",
+          "body": "The sending of the closing mail could not be confirmed. The request is marked in the list. In case it did not arrive, reach the person another way and tell them the outcome: they have a right to know."
         },
         "deadline": {
           "title": "{count, plural, one {# open request is due in {days} days or fewer, or is overdue} other {# open requests are due in {days} days or fewer, or are overdue}}",
@@ -5066,7 +5066,7 @@
         "pending": "Waiting for the person to verify"
       },
       "marks": {
-        "noticeFailed": "Person not notified",
+        "noticeFailed": "Notice unconfirmed",
         "returned": "Returned to review",
         "exportFailed": "File failed",
         "exportReady": "File ready",
@@ -5117,13 +5117,13 @@
       },
       "notice": {
         "notEnded": "The person is told when the request ends.",
-        "failedTitle": "The person was never told how their request ended",
-        "failedBody": "The closing mail failed or the address could not be read. Reach the person another way and tell them the outcome.",
+        "failedTitle": "It could not be confirmed that the person received the closing notice",
+        "failedBody": "The closing mail failed, was not confirmed or the address could not be read, so the person may not have received it. Reach them another way and tell them the outcome.",
         "statuses": {
           "none": "There is no address to tell",
           "pending": "On its way, not confirmed yet",
           "sent": "Sent",
-          "failed": "Never delivered",
+          "failed": "Sending unconfirmed",
           "unknown": "Unknown"
         }
       },

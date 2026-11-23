@@ -38,7 +38,7 @@ const TYPES = Object.values(DsrType)
 // Settings → Store → Data requests: the review queue of the requests of people for their data (TDD_05 §10.2, Step 7.2-H2b-3). The whole
 // queue is read (a store has few), so the banners and the marks count every request and never only the ones a filter shows. What needs
 // a person is said at the top, in words and not only in colour: a request near its legal deadline, an approved erasure the sweep gave
-// back, and above all a person who was never told how their request ended (a right of the data subject).
+// back, and above all a closing notice whose sending could not be confirmed (a right of the data subject).
 export function DsrQueuePanel(): ReactElement {
   const t = useTranslations('settings.dataRequests')
   const { storeId } = useStore()
