@@ -7,20 +7,32 @@ import {
   PDFDict,
   PDFDocument,
   PDFName,
+  PDFNumber,
+  PDFRawStream,
   PDFRef,
   PDFStream
 } from 'pdf-lib'
 
-import { DocumentSanitizing, UploadLimits } from '@platform/core/storage'
+import {
+  DocumentSanitizing,
+  FILE_SIGNATURE_WINDOW_BYTES,
+  ImageSanitizing,
+  matchesDeclaredType,
+  UploadLimits
+} from '@platform/core/storage'
 
 import { isEnvironmentError } from './environment-error'
+import { carriesMetadata, sanitizeImage } from './image-sanitizer'
+import { cutJpegMetadata, jpegCarriesMetadata } from './jpeg-metadata-cutter'
 
 export { isEnvironmentError }
 
 // What came of cleaning a document. A document is never refused for failing to clean: it is kept as it came, with its reason, so that the
 // caller can log it (the document is the customer's own, and refusing it would lose a real file for a property block).
+// `keptParts` counts what the cleaning meant to reach and left as it came (a photo that could not be decoded or that came after the time
+// budget, a list of relationships that could not be read): the document is cleaned of the rest, and the caller logs the count with the id.
 export type SanitizedDocument =
-  | { kind: 'sanitized'; body: Buffer }
+  | { kind: 'sanitized'; body: Buffer; keptParts: number }
   | { kind: 'untouched'; why: 'type' | 'already_clean' | 'not_cleanable' | 'timed_out' }
 
 export const isSanitizedDocumentType = (contentType: string): boolean =>
@@ -36,6 +48,11 @@ export const isSanitizedDocumentType = (contentType: string): boolean =>
 const METADATA_KEY = PDFName.of('Metadata')
 const PIECE_INFO_KEY = PDFName.of('PieceInfo')
 const ANNOTATIONS_KEY = PDFName.of('Annots')
+const SUBTYPE_KEY = PDFName.of('Subtype')
+const FILTER_KEY = PDFName.of('Filter')
+const LENGTH_KEY = PDFName.of('Length')
+const IMAGE_NAME = PDFName.of('Image')
+const DCT_FILTER = PDFName.of('DCTDecode')
 
 const dictOf = (object: unknown): PDFDict | undefined =>
   object instanceof PDFDict ? object : object instanceof PDFStream ? object.dict : undefined
@@ -78,10 +95,27 @@ const isXmp = (dict: PDFDict): boolean =>
   dict.get(PDFName.of('Type')) === PDFName.of('Metadata') &&
   dict.get(PDFName.of('Subtype')) === PDFName.of('XML')
 
+// The pictures of the PDF that are a JPEG file as it came (the only filter is `DCTDecode`) and that carry EXIF, XMP, IPTC or a comment. A
+// picture under another filter (`FlateDecode` is raw pixels, with nothing to hold a position) or under two (the JPEG is inside another
+// encoding) is not read: its metadata, if any, stays, and the plan says so.
+function jpegsWithMetadata(context: PDFContext): [PDFRef, PDFRawStream][] {
+  const found: [PDFRef, PDFRawStream][] = []
+  for (const [ref, object] of context.enumerateIndirectObjects()) {
+    if (!(object instanceof PDFRawStream)) continue
+    const { dict } = object
+    if (dict.lookup(SUBTYPE_KEY) !== IMAGE_NAME) continue
+    const filter = dict.lookup(FILTER_KEY)
+    const only = filter instanceof PDFArray && filter.size() === 1 ? filter.lookup(0) : filter
+    if (only !== DCT_FILTER) continue
+    if (jpegCarriesMetadata(object.contents)) found.push([ref, object])
+  }
+  return found
+}
+
 // How many blocks of properties a document holds (the check of the cleaning: zero once it is cleaned)
 function propertyBlocks(doc: PDFDocument): number {
   const { context } = doc
-  let found = context.trailerInfo.Info === undefined ? 0 : 1
+  let found = (context.trailerInfo.Info === undefined ? 0 : 1) + jpegsWithMetadata(context).length
   const reachable = reachableFromCatalog(context)
   for (const [ref, object] of context.enumerateIndirectObjects()) {
     const dict = dictOf(object)
@@ -124,6 +158,14 @@ async function cleanPdf(input: Buffer): Promise<Buffer | 'already_clean'> {
     const dict = dictOf(object)
     dict?.delete(METADATA_KEY)
     dict?.delete(PIECE_INFO_KEY)
+  }
+  // The photos that came as a JPEG file: the segments of EXIF, XMP, IPTC and comments are cut and every other byte is kept, so the image
+  // dictionary (size, colour space, decode) still describes the bytes. The object stays at its number: nothing that points to it changes.
+  for (const [ref, stream] of jpegsWithMetadata(context)) {
+    const cut = cutJpegMetadata(stream.contents)
+    if (cut === undefined) continue
+    stream.dict.set(LENGTH_KEY, PDFNumber.of(cut.length))
+    context.assign(ref, PDFRawStream.of(stream.dict, cut))
   }
   // The XMP streams and the old information are now objects that nothing points to: they go, with any other object of an earlier revision
   const reachable = reachableFromCatalog(context)
@@ -231,7 +273,144 @@ function centralDirectoryCrcs(input: Buffer): Map<string, number> {
   return crcs
 }
 
-function cleanOoxml(input: Buffer): Buffer | 'already_clean' {
+// ---- the paths of the author's machine -------------------------------------------------------------------------------------------
+// A docx or an xlsx remembers where it came from: in an xlsx `xl/workbook.xml` names the folder it was last saved in (`x15ac:absPath`,
+// `C:\Users\<name>\Documents\...`), in a docx `word/_rels/settings.xml.rels` names the template it was made from (`attachedTemplate`,
+// `file:///C:/Users/<name>/...Normal.dotm`), and any relationship that points to a local file (a linked workbook, a link to a file) holds
+// the path of the machine that made it. The rule is per part and the most careful one that leaves the document openable: the value is
+// replaced by a neutral local one, never removed, because the document refers to a relationship by its id and an element of the part
+// may require its attribute. A missing template or linked file is what a document finds when it is opened on another machine, so
+// nothing the reader sees changes.
+const LOCAL_TARGET = /^(?:file:|[a-z]:[\\/]|\\\\)/i
+// A character reference of XML (`&#67;`, `&#x43;`) written for a letter of the path: it is read before the target is judged, so that writing
+// the drive letter as a reference does not keep the path. The count is bounded by the length of the target, which the caller bounds
+const CHARACTER_REFERENCE = /&#(?:x([0-9a-f]{1,6})|(\d{1,7}));/gi
+const decodeReferences = (value: string): string =>
+  value
+    .replace(CHARACTER_REFERENCE, (whole, hex: string | undefined, decimal: string | undefined) => {
+      const code = hex === undefined ? Number(decimal) : Number.parseInt(hex, 16)
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole
+    })
+    .replace(/&amp;/g, '&')
+const PART_OF_RELATIONSHIPS = /(?:^|\/)_rels\/[^/]+\.rels$/
+// What an element prefix may be made of (a name of XML, no more): anything else before `absPath` is not the start of an element
+const ELEMENT_PREFIX = /^[A-Za-z_][\w.-]*:$|^$/
+
+function setAttribute(tag: string, name: string, value: string): string {
+  return tag.replace(
+    new RegExp(`(\\s${name}\\s*=\\s*)(?:"[^"]*"|'[^']*')`),
+    (_whole, head: string) => `${head}"${value}"`
+  )
+}
+
+// The relationships that point outside the package to a place on a machine (a file, a drive, a network share, a rooted path): their target
+// is replaced. A web address, a mail address and a path relative to the package are the customer's content and stay.
+function neutralizeLocalTargets(relationships: string): string {
+  return mapRelationships(relationships, tag => {
+    if (attribute(tag, 'TargetMode')?.toLowerCase() !== 'external') return tag
+    const target = decodeReferences(attribute(tag, 'Target') ?? '').trim()
+    return LOCAL_TARGET.test(target)
+      ? setAttribute(tag, 'Target', DocumentSanitizing.NEUTRAL_LOCAL_TARGET)
+      : tag
+  })
+}
+
+// The `url` of every `x15ac:absPath` element of a workbook, one element at a time: each step moves forward to a `>` it finds once, and the
+// look back for the `<` of the element is bounded, because the part is the customer's and a part of `absPath` repeated would cost time that
+// grows with the square of its size if every one searched back to the start. An element that does not close within the bound is left (the
+// caller counts it).
+function neutralizeAbsolutePaths(workbook: string, onLeft: () => void): string {
+  const NAME = DocumentSanitizing.ABSOLUTE_PATH_ELEMENT
+  let out = ''
+  let at = 0
+  // The next `>` is looked for once per stretch of text, not once per element: when there is none, every later element knows it
+  let nextClose = -2
+  for (;;) {
+    const found = workbook.indexOf(NAME, at)
+    if (found < 0) break
+    let open = found - 1
+    const limit = Math.max(at, found - DocumentSanitizing.MAX_ELEMENT_PREFIX_BYTES)
+    while (open >= limit && workbook.charAt(open) !== '<') open -= 1
+    const isElement =
+      open >= limit && ELEMENT_PREFIX.test(workbook.slice(open + 1, found)) && open >= at
+    if (isElement && nextClose !== -1 && nextClose < found) nextClose = workbook.indexOf('>', found)
+    const close = isElement ? nextClose : -1
+    if (!isElement) {
+      out += workbook.slice(at, found + NAME.length)
+      at = found + NAME.length
+      continue
+    }
+    if (close < 0 || close - open > DocumentSanitizing.MAX_PATH_TAG_BYTES) {
+      onLeft()
+      out += workbook.slice(at, found + NAME.length)
+      at = found + NAME.length
+      continue
+    }
+    const tag = workbook.slice(open, close + 1)
+    // A tag has no `<` inside: another one before the `>` means this element never closed
+    if (tag.indexOf('<', 1) !== -1) {
+      onLeft()
+      out += workbook.slice(at, found + NAME.length)
+      at = found + NAME.length
+      continue
+    }
+    out +=
+      workbook.slice(at, open) +
+      setAttribute(
+        tag,
+        DocumentSanitizing.ABSOLUTE_PATH_ATTRIBUTE,
+        DocumentSanitizing.NEUTRAL_LOCAL_PATH
+      )
+    at = close + 1
+  }
+  return out + workbook.slice(at)
+}
+
+// ---- the photos inside a docx or an xlsx -----------------------------------------------------------------------------------------
+// Each photo of `word/media` and `xl/media` is a file like a picture upload and may carry EXIF with the position it was taken at. The
+// cleaner of pictures is the one that cleans it (a still picture is decoded and encoded again, an animated gif is cut in its container),
+// one at a time inside its decode slot, and only a photo that carries metadata is touched (a clean one stays as it came, bit for bit). The
+// type is the one the bytes have, never the extension, and stays the same; a photo that cannot be cleaned, or that comes after the time
+// budget, is kept as it came and counted.
+const photoTypeOf = (data: Uint8Array): string | undefined =>
+  ImageSanitizing.CONTENT_TYPES.find(type =>
+    matchesDeclaredType(type, data.subarray(0, FILE_SIGNATURE_WINDOW_BYTES))
+  )
+
+const isPhotoPart = (path: string): boolean =>
+  DocumentSanitizing.EMBEDDED_IMAGE_DIRECTORIES.some(directory => path.startsWith(directory))
+
+async function cleanPhotos(
+  files: Record<string, Uint8Array>,
+  onKept: () => void
+): Promise<Map<string, Uint8Array>> {
+  const cleaned = new Map<string, Uint8Array>()
+  const deadline = Date.now() + DocumentSanitizing.EMBEDDED_IMAGES_BUDGET_MS
+  for (const [path, data] of Object.entries(files)) {
+    const type = isPhotoPart(path) && !path.endsWith('/') ? photoTypeOf(data) : undefined
+    if (type === undefined) continue
+    const photo = Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+    try {
+      if (!(await carriesMetadata(photo))) continue
+      if (Date.now() >= deadline) {
+        onKept()
+        continue
+      }
+      const result = await sanitizeImage(photo, type, UploadLimits.MAX_FILE_SIZE_BYTES)
+      if (result.kind === 'sanitized') cleaned.set(path, new Uint8Array(result.body))
+      else onKept()
+    } catch (error) {
+      // An error of the machine is not the photo's: it stops the document, and the queue retries
+      if (isEnvironmentError(error)) throw error
+      onKept()
+    }
+  }
+  return cleaned
+}
+
+async function cleanOoxml(
+  input: Buffer
+): Promise<{ body: Buffer; keptParts: number } | 'already_clean'> {
   let total = 0
   let entries = 0
   const files = unzipSync(new Uint8Array(input), {
@@ -265,16 +444,18 @@ function cleanOoxml(input: Buffer): Buffer | 'already_clean' {
   const relsText = rels === undefined ? '' : strFromU8(rels)
   const thumbnails = new Set<string>()
   const properties = new Set<string>([DocumentSanitizing.CORE_PROPERTIES_PATH])
-  const keptRels = mapRelationships(relsText, tag => {
-    const type = attribute(tag, 'Type') ?? ''
-    const target = packagePath(attribute(tag, 'Target') ?? '')
-    if (type.endsWith(DocumentSanitizing.THUMBNAIL_RELATIONSHIP_SUFFIX)) {
-      thumbnails.add(target)
-      return ''
-    }
-    if (type.endsWith(DocumentSanitizing.CORE_RELATIONSHIP_SUFFIX)) properties.add(target)
-    return tag
-  })
+  const keptRels = neutralizeLocalTargets(
+    mapRelationships(relsText, tag => {
+      const type = attribute(tag, 'Type') ?? ''
+      const target = packagePath(attribute(tag, 'Target') ?? '')
+      if (type.endsWith(DocumentSanitizing.THUMBNAIL_RELATIONSHIP_SUFFIX)) {
+        thumbnails.add(target)
+        return ''
+      }
+      if (type.endsWith(DocumentSanitizing.CORE_RELATIONSHIP_SUFFIX)) properties.add(target)
+      return tag
+    })
+  )
   const thumbnail = new RegExp(DocumentSanitizing.THUMBNAIL_PATH_PATTERN)
   const replacements = new Map<string, string>([
     [DocumentSanitizing.APP_PROPERTIES_PATH, DocumentSanitizing.APP_PROPERTIES_XML],
@@ -282,9 +463,40 @@ function cleanOoxml(input: Buffer): Buffer | 'already_clean' {
   ])
   for (const path of properties) replacements.set(path, DocumentSanitizing.CORE_PROPERTIES_XML)
 
+  // What stays as it came and could not be read or cleaned is counted, so that the caller can log it with the id of the document
+  let keptParts = 0
+  const kept = (): void => {
+    keptParts += 1
+  }
+  // The parts whose text carries a path of the machine: the lists of relationships of the other parts (the one of the package is above)
+  // and the workbook. A list past the cap, or one that never closes, is left as it came and counted: it never stops the document
+  const rewritten = new Map<string, string>()
+  for (const [path, data] of Object.entries(files)) {
+    if (path === DocumentSanitizing.RELATIONSHIPS_PATH) continue
+    if (PART_OF_RELATIONSHIPS.test(path)) {
+      if (data.length > DocumentSanitizing.MAX_RELATIONSHIPS_BYTES) {
+        kept()
+        continue
+      }
+      const text = strFromU8(data)
+      try {
+        const neutral = neutralizeLocalTargets(text)
+        if (neutral !== text) rewritten.set(path, neutral)
+      } catch {
+        kept()
+      }
+    } else if (path === DocumentSanitizing.WORKBOOK_PATH) {
+      const text = strFromU8(data)
+      const neutral = neutralizeAbsolutePaths(text, kept)
+      if (neutral !== text) rewritten.set(path, neutral)
+    }
+  }
+  const photos = await cleanPhotos(files, kept)
+
   // Local components, not a UTC instant: the zip writer reads them in the local time of the machine, and a date before 1980 there throws
   const date = new Date(DocumentSanitizing.ZIP_ENTRY_YEAR, 0, 1)
   const out: Zippable = {}
+  const touched = new Set<string>()
   let changed = keptRels !== relsText
   for (const [path, data] of Object.entries(files)) {
     if (path.endsWith('/')) continue
@@ -294,22 +506,59 @@ function cleanOoxml(input: Buffer): Buffer | 'already_clean' {
     }
     let body: Uint8Array = data
     const replacement = replacements.get(path)
+    const photo = photos.get(path)
+    const text = rewritten.get(path)
     if (replacement !== undefined) {
       body = strToU8(replacement)
+      touched.add(path)
       if (strFromU8(data) !== replacement) changed = true
     } else if (path === DocumentSanitizing.RELATIONSHIPS_PATH && keptRels !== relsText) {
       body = strToU8(keptRels)
+      touched.add(path)
+    } else if (text !== undefined) {
+      body = strToU8(text)
+      touched.add(path)
+      changed = true
+    } else if (photo !== undefined) {
+      body = photo
+      touched.add(path)
+      changed = true
     }
     out[path] = [body, { level: DocumentSanitizing.ZIP_LEVEL, mtime: date }]
   }
   if (!changed) return 'already_clean'
   const zipped = Buffer.from(zipSync(out))
-  // Read back: it opens again and has every part but the thumbnail
+  // Read back: it opens again, has every part but the thumbnail and no other, and every part that the cleaning did not mean to change is
+  // the same bytes; what it did change is clean (no path of a machine left in the text, no metadata in a photo)
   const again = unzipSync(new Uint8Array(zipped))
-  for (const path of Object.keys(out)) {
-    if (again[path] === undefined) throw new Error('the cleaned package lost a part')
+  const againPaths = Object.keys(again).filter(path => !path.endsWith('/'))
+  if (againPaths.length !== Object.keys(out).length) {
+    throw new Error('the cleaned package does not have the parts it should')
   }
-  return zipped
+  for (const path of Object.keys(out)) {
+    const part = again[path]
+    if (part === undefined) throw new Error('the cleaned package lost a part')
+    if (!touched.has(path) && !Buffer.from(part).equals(Buffer.from(files[path] as Uint8Array))) {
+      throw new Error('a part that was not to change is not the same')
+    }
+  }
+  for (const [path, text] of rewritten) {
+    const part = again[path]
+    const now = part === undefined ? '' : strFromU8(part)
+    const again2 =
+      path === DocumentSanitizing.WORKBOOK_PATH
+        ? neutralizeAbsolutePaths(now, () => undefined)
+        : neutralizeLocalTargets(now)
+    if (now !== text || again2 !== now) throw new Error('a path of the machine is still there')
+  }
+  // The photos are the bytes the cleaner of pictures made and verified (it reads its own output for metadata before it returns it)
+  for (const [path, cleaned] of photos) {
+    const part = again[path]
+    if (part === undefined || !Buffer.from(part).equals(Buffer.from(cleaned))) {
+      throw new Error('a cleaned photo is not what was made')
+    }
+  }
+  return { body: zipped, keptParts }
 }
 
 // Cleans a PDF, a docx or an xlsx that is not financial evidence of its properties, ON THE THREAD THAT CALLS IT. The parse is synchronous and
@@ -324,12 +573,14 @@ export async function sanitizeDocumentInline(
   maxBytes: number = UploadLimits.MAX_FILE_SIZE_BYTES
 ): Promise<SanitizedDocument> {
   if (!isSanitizedDocumentType(contentType)) return { kind: 'untouched', why: 'type' }
-  let cleaned: Buffer | 'already_clean'
+  let cleaned: { body: Buffer; keptParts: number } | 'already_clean'
   try {
-    cleaned =
-      contentType === DocumentSanitizing.PDF_CONTENT_TYPE
-        ? await cleanPdf(input)
-        : cleanOoxml(input)
+    if (contentType === DocumentSanitizing.PDF_CONTENT_TYPE) {
+      const pdf = await cleanPdf(input)
+      cleaned = pdf === 'already_clean' ? pdf : { body: pdf, keptParts: 0 }
+    } else {
+      cleaned = await cleanOoxml(input)
+    }
   } catch (error) {
     // An error of the machine is not the document's: the queue retries
     if (isEnvironmentError(error)) throw error
@@ -337,6 +588,6 @@ export async function sanitizeDocumentInline(
   }
   if (cleaned === 'already_clean') return { kind: 'untouched', why: 'already_clean' }
   // A rewrite that came out bigger than the limit is not worth it
-  if (cleaned.length > maxBytes) return { kind: 'untouched', why: 'not_cleanable' }
-  return { kind: 'sanitized', body: cleaned }
+  if (cleaned.body.length > maxBytes) return { kind: 'untouched', why: 'not_cleanable' }
+  return { kind: 'sanitized', body: cleaned.body, keptParts: cleaned.keptParts }
 }

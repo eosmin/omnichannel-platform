@@ -20,6 +20,11 @@ describe('replyFor (the answer of the document thread)', () => {
     expect(body.includes('Jane Q. Author')).toBe(false)
   })
 
+  it('answers with the count of the parts that were kept as they came (none for a PDF with only properties)', async () => {
+    const reply = await replyFor({ input: await pdfWithAuthor(), contentType: PDF, maxBytes: 1e7 })
+    expect(reply).toMatchObject({ kind: 'sanitized', keptParts: 0 })
+  })
+
   it('answers that a damaged file cannot be cleaned, without its text', async () => {
     const reply = await replyFor({
       input: new Uint8Array(Buffer.from('not a pdf at all')),

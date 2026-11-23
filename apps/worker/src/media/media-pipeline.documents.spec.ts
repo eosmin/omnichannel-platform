@@ -6,7 +6,7 @@ import type { PrismaService } from '@platform/core/database'
 import { sanitizeDocumentInline } from '@platform/core/document-sanitizer'
 import type { DomainEvents } from '@platform/core/event-bus'
 import type { ProcessImageJob } from '@platform/core/queues'
-import { MediaPurpose } from '@platform/core/storage'
+import { DocumentSanitizing, MediaPurpose } from '@platform/core/storage'
 import type { StorageService } from '@platform/core/storage-module'
 
 import type { ClamavClient } from './clamav.client'
@@ -115,7 +115,13 @@ describe('MediaPipeline and the properties of a document', () => {
 
     expect(storage.put).not.toHaveBeenCalled()
     expect(updateMany.mock.calls[0]?.[0]).toMatchObject({
-      data: { fileSize: first.body.length, scanResult: { sanitized: true } }
+      data: {
+        fileSize: first.body.length,
+        scanResult: {
+          sanitized: true,
+          [DocumentSanitizing.CLEANING_VERSION_KEY]: DocumentSanitizing.CLEANING_VERSION
+        }
+      }
     })
   })
 

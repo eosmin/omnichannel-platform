@@ -28,7 +28,20 @@ describe('ThreadDocumentCleaner', () => {
 
   it('hands the bytes to the thread and takes the cleaned bytes back', async () => {
     const result = await cleanerOf('answer.cjs').clean(bytes, PDF)
-    expect(result).toEqual({ kind: 'sanitized', body: bytes })
+    expect(result).toEqual({ kind: 'sanitized', body: bytes, keptParts: 0 })
+  })
+
+  it('carries the count of the parts the cleaning left as they came, and believes only a whole number from one up', async () => {
+    expect(await cleanerOf('kept.cjs').clean(bytes, PDF)).toEqual({
+      kind: 'sanitized',
+      body: bytes,
+      keptParts: 3
+    })
+    expect(await cleanerOf('kept-lies.cjs').clean(bytes, PDF)).toEqual({
+      kind: 'sanitized',
+      body: bytes,
+      keptParts: 0
+    })
   })
 
   it('stops a document that never lets the parser go, and says so instead of waiting', async () => {
@@ -90,7 +103,8 @@ describe('ThreadDocumentCleaner', () => {
     const padded = Buffer.concat([bytes, Buffer.alloc(900, 0x20)])
     await expect(cleanerOf('answer.cjs').clean(padded, PDF)).resolves.toEqual({
       kind: 'sanitized',
-      body: padded
+      body: padded,
+      keptParts: 0
     })
     const record = Buffer.concat([
       Buffer.from([0x50, 0x4b, 0x05, 0x06]),
@@ -104,7 +118,7 @@ describe('ThreadDocumentCleaner', () => {
         zip,
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       )
-    ).resolves.toEqual({ kind: 'sanitized', body: zip })
+    ).resolves.toEqual({ kind: 'sanitized', body: zip, keptParts: 0 })
   })
 
   it('refuses the right beginning with a body of garbage, and never hands it on', async () => {
@@ -132,7 +146,8 @@ describe('ThreadDocumentCleaner', () => {
     // The thread is gone and so is its memory: the process still works
     await expect(cleanerOf('answer.cjs').clean(bytes, PDF)).resolves.toEqual({
       kind: 'sanitized',
-      body: bytes
+      body: bytes,
+      keptParts: 0
     })
   })
 
@@ -230,7 +245,8 @@ describe('ThreadDocumentCleaner', () => {
     // and the next document is cleaned as if nothing had happened
     await expect(cleanerOf('answer.cjs').clean(bytes, PDF)).resolves.toEqual({
       kind: 'sanitized',
-      body: bytes
+      body: bytes,
+      keptParts: 0
     })
   })
 
@@ -254,7 +270,8 @@ describe('ThreadDocumentCleaner', () => {
       expect(cleaner.isBusy()).toBe(false)
       await expect(cleanerOf('answer.cjs').clean(bytes, PDF)).resolves.toEqual({
         kind: 'sanitized',
-        body: bytes
+        body: bytes,
+        keptParts: 0
       })
     } finally {
       refuse.mockRestore()

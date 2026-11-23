@@ -230,8 +230,12 @@ export class ThreadDocumentCleaner extends DocumentCleaner {
       }
       // A copy, made after the size was read, and what is checked next is the copy
       const body = Buffer.from(message.body)
+      // A count that is not a whole number from zero up is not believed: the thread is not trusted with the log
+      const announced = (message as { keptParts?: unknown }).keptParts
+      const keptParts =
+        Number.isSafeInteger(announced) && (announced as number) > 0 ? (announced as number) : 0
       return startsAsItsType(body, contentType)
-        ? { kind: ThreadReplies.SANITIZED, body }
+        ? { kind: ThreadReplies.SANITIZED, body, keptParts }
         : ThreadReplies.ENVIRONMENT
     }
     return ThreadReplies.ENVIRONMENT

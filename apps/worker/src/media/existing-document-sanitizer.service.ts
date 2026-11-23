@@ -76,6 +76,51 @@ const NOT_FINISHED = {
   ]
 }
 
+// A document that an older version of the cleaning finished (Step 7.3, `office-user-paths-and-embedded-media`): the row holds exactly the mark of
+// that version, `{ sanitized: true }`, or that mark with the outcome `already_clean` (what the sweep wrote when the file had nothing to
+// remove), and no `cleaningVersion`. The mark is matched whole, not by a missing key: a row that carries anything else (a failure count, a
+// verdict of `not_cleanable`, a version) is not this, and a document that the current version cleaned or found clean carries the version and
+// is not taken again. A `not_cleanable` document is not retaken either: what kept it as it came (encrypted, signed, damaged, too big) is
+// still true of it.
+const OUTDATED_MARKS = [
+  { [ExistingPictureSweep.CLEANED_KEY]: true },
+  {
+    [ExistingPictureSweep.CLEANED_KEY]: true,
+    [ExistingPictureSweep.OUTCOME_KEY]: ExistingDocumentSweep.Outcomes.ALREADY_CLEAN
+  }
+]
+
+// What the current version writes on a document it cleaned or found clean
+const CURRENT_VERSION_MARK = {
+  [ExistingPictureSweep.CLEANED_KEY]: true,
+  [DocumentSanitizing.CLEANING_VERSION_KEY]: DocumentSanitizing.CLEANING_VERSION
+}
+
+// ... and a document that carries a version below the current one (a later version of the cleaning than the second): the key is there, so the
+// comparison is by the number and a later version needs no new mark in the list above
+const TAKEN = {
+  OR: [
+    ...NOT_FINISHED.OR,
+    ...OUTDATED_MARKS.map(mark => ({ scanResult: { equals: mark } })),
+    {
+      scanResult: {
+        path: [DocumentSanitizing.CLEANING_VERSION_KEY],
+        lt: DocumentSanitizing.CLEANING_VERSION
+      }
+    }
+  ]
+}
+
+// The guard of the write that opens the work on a row: the row must still be as the batch read it. A row not begun is null; one that failed
+// before holds its attempt count; one that an older version finished holds its mark, and is compared whole
+const beginGuard = (seen: unknown, attempt: number): object => {
+  if (seen === null) return { scanResult: { equals: DatabaseNull } }
+  const hasCount =
+    typeof seen === 'object' &&
+    (seen as Record<string, unknown>)[ExistingPictureSweep.ATTEMPTS_KEY] !== undefined
+  return hasCount ? inProgress(attempt - 1) : { scanResult: { equals: seen } }
+}
+
 const attemptsOf = (scanResult: unknown): number => {
   const value =
     typeof scanResult === 'object' && scanResult !== null
@@ -169,7 +214,7 @@ export class ExistingDocumentSanitizer {
           status: MediaStatus.CLEAN,
           purpose: { in: SWEPT_PURPOSES },
           contentType: { in: SWEPT_TYPES },
-          ...NOT_FINISHED
+          ...TAKEN
         },
         select: { id: true, key: true, contentType: true, purpose: true, scanResult: true },
         orderBy: { id: 'asc' },
@@ -280,7 +325,7 @@ export class ExistingDocumentSanitizer {
         where: { id: row.id, storeId, status: MediaStatus.CLEAN, ...inProgress(attempt) },
         data: {
           fileSize: cleaned.body.length,
-          scanResult: { [ExistingPictureSweep.CLEANED_KEY]: true }
+          scanResult: CURRENT_VERSION_MARK
         }
       })
     )
@@ -292,6 +337,12 @@ export class ExistingDocumentSanitizer {
       )
       await this.takeBackIfRowGone(row.id, row.key, storeId)
       return ExistingDocumentSweep.CHANGED
+    }
+    if (cleaned.keptParts > 0) {
+      this.logger.warn(
+        { mediaId: row.id, storeId, keptParts: cleaned.keptParts },
+        'a stored document was cleaned but some of its parts could not be and were kept as they came'
+      )
     }
     return undefined
   }
@@ -311,7 +362,7 @@ export class ExistingDocumentSanitizer {
           id: mediaId,
           storeId,
           status: MediaStatus.CLEAN,
-          ...(seen === null ? { scanResult: { equals: DatabaseNull } } : inProgress(attempt - 1))
+          ...beginGuard(seen, attempt)
         },
         data: { scanResult: { [ExistingPictureSweep.ATTEMPTS_KEY]: attempt } }
       })
@@ -383,10 +434,7 @@ export class ExistingDocumentSanitizer {
           ...(fileSize === undefined ? {} : { fileSize }),
           scanResult:
             outcome === ExistingDocumentSweep.Outcomes.ALREADY_CLEAN
-              ? {
-                  [ExistingPictureSweep.CLEANED_KEY]: true,
-                  [ExistingPictureSweep.OUTCOME_KEY]: outcome
-                }
+              ? { ...CURRENT_VERSION_MARK, [ExistingPictureSweep.OUTCOME_KEY]: outcome }
               : { [ExistingPictureSweep.OUTCOME_KEY]: outcome }
         }
       })
