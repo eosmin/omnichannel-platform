@@ -32,6 +32,7 @@ import {
   type PollShipmentStatusJob,
   type ProcessImageJob,
   type ReconcileFinanceJob,
+  type ResealCredentialsJob,
   type ReportFiscalContingencyJob,
   type SubmitFiscalDocumentJob,
   type ReconcileInventoryJob,
@@ -48,6 +49,7 @@ import {
 
 import { CarrierEventReplay, type ReplayReport } from '../carriers/carrier-event-replay.service'
 import { DsrIntakeWorker } from '../compliance/dsr-intake.worker'
+import { CredentialsResealer } from '../credentials/credentials-resealer.service'
 import { FinanceChainChecker } from '../finance/finance-chain-checker.service'
 import { FinanceReconciler } from '../finance/finance-reconciler.service'
 import { FiscalReconciler } from '../finance/fiscal-reconciler.service'
@@ -75,6 +77,7 @@ type HeavyJob =
   | FetchOriginMediaJob
   | ReconcileInventoryJob
   | ReconcileFinanceJob
+  | ResealCredentialsJob
   | VerifyLedgerChainJob
   | PollShipmentStatusJob
   | ReprocessCarrierEventsJob
@@ -131,6 +134,9 @@ const reconcileJobSchema = exactly<ReconcileInventoryJob>()(
   z.object({ storeId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 const reconcileFinanceJobSchema = exactly<ReconcileFinanceJob>()(
+  z.object({ organizationId: z.uuid(), correlationId: jobCorrelationIdSchema })
+)
+const resealCredentialsJobSchema = exactly<ResealCredentialsJob>()(
   z.object({ organizationId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 export const verifyLedgerChainJobSchema = exactly<VerifyLedgerChainJob>()(
@@ -244,7 +250,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly fiscalReconciler: FiscalReconciler,
     private readonly fiscalResealer: FiscalResealer,
     private readonly fiscalDocuments: FiscalDocumentsService,
-    private readonly fiscalContingencies: FiscalContingencyService
+    private readonly fiscalContingencies: FiscalContingencyService,
+    private readonly credentialsResealer: CredentialsResealer
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -295,6 +302,17 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
           'the checks of the books, of the fiscal documents and of the key failed'
         )
       }
+      return
+    }
+    if (job.name === JobNames.RESEAL_CREDENTIALS) {
+      const reseal = resealCredentialsJobSchema.safeParse(job.data)
+      if (!reseal.success) {
+        throw new JobRejectedError('the re-seal job does not fit its schema')
+      }
+      // An organization deleted after the job was queued has nothing left to seal: the job is done, not retried
+      await this.skipIfGone(job, () =>
+        this.credentialsResealer.reconcile(reseal.data.organizationId)
+      )
       return
     }
     if (job.name === JobNames.VERIFY_LEDGER_CHAIN) {

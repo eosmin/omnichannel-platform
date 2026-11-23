@@ -1,6 +1,7 @@
 import {
   clamavImageOf,
   findShardProblems,
+  jestInvocationProblems,
   matrixOf,
   projectShardList,
   type ShardSources
@@ -46,7 +47,7 @@ jobs:
 }
 
 const projectCommand =
-  'if [ -n "$SECURITY_SHARD" ]; then jest --shard="$SECURITY_SHARD"; else status=0; for shard in 1/8 2/8 3/8 4/8 5/8 6/8 7/8 8/8; do jest --shard="$shard" || status=1; done; exit $status; fi'
+  'if [ -n "$SECURITY_SHARD" ]; then jest --config jest.config.cts --maxWorkers=1 --workerIdleMemoryLimit=2000MB --shard="$SECURITY_SHARD"; else status=0; for shard in 1/8 2/8 3/8 4/8 5/8 6/8 7/8 8/8; do jest --config jest.config.cts --maxWorkers=1 --workerIdleMemoryLimit=2000MB --shard="$shard" || status=1; done; echo latency; jest --config jest.latency.config.cts --runInBand || status=1; exit $status; fi'
 
 function sources(overrides: Partial<ShardSources> = {}): ShardSources {
   return {
@@ -185,5 +186,75 @@ describe('findShardProblems', () => {
   it('fails when the clamav image of the action drifts from the compose file', () => {
     const problems = findShardProblems(sources({ actionClamav: 'clamav/clamav:1.5.5-debian' }))
     expect(problems.join('\n')).toMatch(/clamav/)
+  })
+})
+
+describe('jestInvocationProblems', () => {
+  it('accepts one recycled worker for each jest of the shards, and lets the latency run stay in band', () => {
+    expect(jestInvocationProblems(projectCommand)).toEqual([])
+  })
+
+  it('fails a shard that runs in band, which would bring the growing heap back without a word', () => {
+    const problems = jestInvocationProblems(
+      projectCommand.replaceAll('--maxWorkers=1', '--runInBand')
+    )
+    expect(problems.join('\n')).toMatch(/must not run in band/)
+    expect(problems.join('\n')).toMatch(/--maxWorkers=1/)
+  })
+
+  it('fails a shard with no limit, or with more than one worker (the specs would share a database at the same time)', () => {
+    expect(
+      jestInvocationProblems(projectCommand.replaceAll('--workerIdleMemoryLimit=2000MB', '')).join(
+        '\n'
+      )
+    ).toMatch(/workerIdleMemoryLimit/)
+    expect(
+      jestInvocationProblems(projectCommand.replaceAll('--maxWorkers=1', '--maxWorkers=2')).join(
+        '\n'
+      )
+    ).toMatch(/--maxWorkers=1/)
+  })
+
+  it('fails when the loop of one of the two calls loses its flags, and when no call is found', () => {
+    expect(
+      jestInvocationProblems(
+        projectCommand.replace(
+          'do jest --config jest.config.cts --maxWorkers=1 --workerIdleMemoryLimit=2000MB',
+          'do jest --config jest.config.cts'
+        )
+      ).length
+    ).toBeGreaterThan(0)
+    expect(jestInvocationProblems('echo nothing').join('\n')).toMatch(/no `jest --config/)
+  })
+
+  it('fails a second --maxWorkers or the short -i, and says each fault once', () => {
+    expect(
+      jestInvocationProblems(
+        projectCommand.replaceAll('--maxWorkers=1', '--maxWorkers=1 --maxWorkers=4')
+      ).join('\n')
+    ).toMatch(/--maxWorkers=1/)
+    expect(
+      jestInvocationProblems(projectCommand.replaceAll('--maxWorkers=1', '-i')).join('\n')
+    ).toMatch(/in band/)
+    expect(
+      jestInvocationProblems(projectCommand.replaceAll('--maxWorkers=1', '--run-in-band')).join(
+        '\n'
+      )
+    ).toMatch(/in band/)
+    expect(
+      jestInvocationProblems(
+        projectCommand.replaceAll('--maxWorkers=1', '--maxWorkers=1 --detectOpenHandles')
+      ).join('\n')
+    ).toMatch(/in band/)
+    const twice = jestInvocationProblems(projectCommand.replaceAll('--maxWorkers=1', ''))
+    expect(new Set(twice).size).toBe(twice.length)
+  })
+
+  it('is part of the problems of the whole check', () => {
+    expect(
+      findShardProblems(
+        sources({ securityCommand: projectCommand.replaceAll('--maxWorkers=1', '--runInBand') })
+      ).join('\n')
+    ).toMatch(/in band/)
   })
 })

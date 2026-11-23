@@ -44,7 +44,11 @@ describe('NotificationGroupTypes', () => {
     expect(new Set(listed).size).toBe(listed.length)
     const missing = Object.values(NotificationTypes).filter(type => !listed.includes(type))
     expect(missing.sort()).toEqual(
-      [NotificationTypes.DSR_DEADLINE_APPROACHING, NotificationTypes.DSR_MANUAL_REVIEW].sort()
+      [
+        NotificationTypes.DSR_DEADLINE_APPROACHING,
+        NotificationTypes.DSR_MANUAL_REVIEW,
+        NotificationTypes.DSR_NOTICE_FAILED
+      ].sort()
     )
   })
 })

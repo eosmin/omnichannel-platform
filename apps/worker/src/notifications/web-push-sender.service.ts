@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import type { Counter } from '@prometheus-io/client'
 import { UnrecoverableError } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 import { WebPushError } from 'web-push'
@@ -7,12 +8,18 @@ import { z } from 'zod'
 import { JobContext, JobContextGoneError, PrismaService } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
+import { MetricNames } from '@platform/core/metrics'
+import { InjectMetric } from '@platform/core/metrics-module'
 import {
   NotificationSeverity,
   NotificationTypes,
+  PushLimits,
+  type PushOutcome,
+  PushOutcomes,
   type PushPayload
 } from '@platform/core/notifications'
 
+import { PushOutcomeWindow, refusalOutcomeOf } from './push-outcome'
 import { buildPushPayload, pushLocale } from './push-payload'
 import { WebPushGateway } from './web-push.gateway'
 
@@ -60,11 +67,14 @@ function isTransient(error: unknown): boolean {
 // Sends one notification to every browser its recipient registered (TDD_06 §7.1)
 @Injectable()
 export class WebPushSender {
+  private readonly recent = new PushOutcomeWindow()
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jobContext: JobContext,
     private readonly gateway: WebPushGateway,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    @InjectMetric(MetricNames.WEB_PUSH_ATTEMPTS) private readonly attempts: Counter<string>
   ) {
     this.logger.setContext(WebPushSender.name)
   }
@@ -111,12 +121,13 @@ export class WebPushSender {
           .forUser(userId, () =>
             this.prisma.client.pushSubscription.updateMany({
               where: { id: sub.id, userId },
-              data: { lastUsed: new Date() }
+              data: { lastUsed: new Date(), refusedCount: 0, refusedNotificationId: null }
             })
           )
           .catch((error: unknown) =>
             this.logger.warn({ userId, err: String(error) }, 'lastUsed of a push was not saved')
           )
+        this.note(PushOutcomes.DELIVERED)
         return 'sent' as const
       })
     )
@@ -173,6 +184,16 @@ export class WebPushSender {
     this.logger.info({ userId, notificationId, reason }, 'a web push was not sent')
   }
 
+  // The counter is what the alert reads; the window is what tells a systemic 400 from a bad browser. Neither may fail a push.
+  private note(outcome: PushOutcome): void {
+    this.recent.record(outcome)
+    try {
+      this.attempts.inc({ outcome })
+    } catch (error) {
+      this.logger.warn({ err: String(error) }, 'a web push was not counted in the metric')
+    }
+  }
+
   private async settle(
     subscriptionId: string,
     userId: string,
@@ -180,6 +201,7 @@ export class WebPushSender {
     error: unknown
   ): Promise<'dropped' | 'retry' | 'failed'> {
     if (error instanceof WebPushError && GONE.has(error.statusCode)) {
+      this.note(PushOutcomes.GONE)
       // The browser unsubscribed or the push service forgot it: it never comes back
       try {
         await this.jobContext.forUser(userId, () =>
@@ -205,11 +227,66 @@ export class WebPushSender {
     }
     const statusCode = error instanceof WebPushError ? error.statusCode : undefined
     if (isTransient(error)) {
+      this.note(PushOutcomes.RETRY)
       this.logger.warn({ userId, statusCode, subscriptionId }, 'a web push was not delivered')
       return 'retry'
     }
-    // The push service refused it for good (the VAPID keys, a payload): worth an alert, not a retry
-    this.logger.error({ userId, statusCode, subscriptionId }, 'a web push was refused')
+    // The push service refused it for good (the VAPID keys, a payload): worth an alert (`platform_web_push_attempts_total`), not a retry
+    const outcome = refusalOutcomeOf(error)
+    this.note(outcome)
+    // Only a 400 names this browser's own subscription (a keys or endpoint the service will not take). A 401, 403 or 413, an error
+    // of the library or of the certificate says the server is misconfigured (a rotated or wrong VAPID key, no CA bundle, a payload
+    // too big): counting those would empty every list of browsers after five pushes. Those stay an alert (`platform_web_push_attempts_total`).
+    // A 400 too says nothing about the browser while this process delivers nothing at all (a payload or header every service rejects).
+    if (outcome !== PushOutcomes.REFUSED_BAD_REQUEST) {
+      this.logger.error({ userId, statusCode, subscriptionId }, 'a web push was refused')
+    } else if (this.recent.serverLooksSound()) {
+      this.logger.error({ userId, statusCode, subscriptionId }, 'a web push was refused')
+      await this.countRefusal(subscriptionId, userId, notificationId)
+    } else {
+      this.logger.error(
+        { userId, statusCode, subscriptionId, reason: 'refused_unproven' },
+        'a web push was refused with a 400 and this process has delivered none lately: not counted against the browser'
+      )
+    }
     return 'failed'
+  }
+
+  // A browser that is refused for good again and again would stay in the list for ever: it is counted, once for each notification (a
+  // retry of the job sends it again and must not count again), and dropped at the limit. The drop reads the count in its own
+  // filter, so it never removes a browser that is under the limit; a refusal counted late only delays the drop by one push.
+  // Bookkeeping: its failure changes nothing.
+  private async countRefusal(
+    subscriptionId: string,
+    userId: string,
+    notificationId: string
+  ): Promise<void> {
+    try {
+      await this.jobContext.forUser(userId, async () => {
+        await this.prisma.client.pushSubscription.updateMany({
+          where: {
+            id: subscriptionId,
+            userId,
+            OR: [
+              { refusedNotificationId: null },
+              { refusedNotificationId: { not: notificationId } }
+            ]
+          },
+          data: { refusedCount: { increment: 1 }, refusedNotificationId: notificationId }
+        })
+        const dropped = await this.prisma.client.pushSubscription.deleteMany({
+          where: { id: subscriptionId, userId, refusedCount: { gte: PushLimits.MAX_REFUSALS } }
+        })
+        if (dropped.count > 0) {
+          this.logger.warn(
+            { userId, subscriptionId, reason: 'refused_too_often' },
+            'a web push subscription was dropped: its push service refused it for good again and again'
+          )
+        }
+      })
+    } catch (error) {
+      if (error instanceof JobContextGoneError) return
+      this.logger.warn({ userId, err: String(error) }, 'a refusal of a push was not counted')
+    }
   }
 }

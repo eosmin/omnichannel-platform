@@ -13,6 +13,7 @@ import { EmailTemplates, type QueueName, type SendEmailJob } from '@platform/cor
 import { QueueJobOptions, QueuesModule } from '@platform/core/queues-module'
 import { RedisModule } from '@platform/core/redis'
 
+import { DsrNoticeLedger } from '../compliance/dsr-notice-ledger.service'
 import { InvitationEmailDelivery } from '../invitations/invitation-email-delivery.service'
 import { AuthEmailProcessor } from '../processors/auth-email.processor'
 import { EmailProcessor } from '../processors/email.processor'
@@ -48,7 +49,12 @@ export async function startWorkerTestApp(): Promise<WorkerTestApp> {
       // Looking an address up needs the database, which this app does not have
       { provide: MagicLinkIssuer, useValue: { issue: () => Promise.resolve() } },
       // Nor does the delivery of invitation emails, which reads the outbox of a row (its own spec covers it)
-      { provide: InvitationEmailDelivery, useValue: { deliver: () => Promise.resolve('skipped') } }
+      { provide: InvitationEmailDelivery, useValue: { deliver: () => Promise.resolve('skipped') } },
+      // Nor the ledger of the closing notice of a data request, which writes the request (its own specs cover it)
+      {
+        provide: DsrNoticeLedger,
+        useValue: { sent: () => Promise.resolve(), failed: () => Promise.resolve() }
+      }
     ]
   }).compile()
   const app = moduleRef.createNestApplication()

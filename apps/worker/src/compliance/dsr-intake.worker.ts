@@ -52,7 +52,11 @@ export class DsrIntakeWorker {
 
   async handle(sealed: string): Promise<DsrIntakeOutcome> {
     if (!this.config.enabled) return 'dropped'
-    const intake = openDsrIntake(sealed, this.config.encryptionKeyHex)
+    const intake = openDsrIntake(
+      sealed,
+      this.config.encryptionKeyHex,
+      this.config.previousEncryptionKeyHex
+    )
     if (intake === null) return 'dropped'
     const store = await resolveDsrStore(this.prisma.client, intake.storeKey)
     if (store === null) return 'dropped'
