@@ -3298,7 +3298,7 @@ Added by the owner on 2026-11-21: the numbers of Milestone 7 follow the order th
 - [ ] The red of the ffmpeg version workflow provoked once on purpose (`workflow_dispatch` from a branch with an old pin) and the issue or the email seen to arrive.
 - [ ] The public data request flow switched on with its conditions: public download with a token, ZIP encrypted by the app, attachments and fiscal data in the export, the alternative notice (`dsrPublicFlowReady()` stays false until then).
 - [ ] Versioning of the bucket on.
-- [ ] New keys loaded in staging and production, generated at the first deploy and never reused from the test environment: `CONSENT_HASH_KEY`, `UNSUBSCRIBE_TOKEN_KEY`, `CREDENTIALS_ENCRYPTION_KEY`.
+- [ ] New keys loaded in staging and production, generated at the first deploy and never reused from the test environment: `CONSENT_HASH_KEY`, `UNSUBSCRIBE_TOKEN_KEY`, `CREDENTIALS_ENCRYPTION_KEY`. `UNSUBSCRIBE_TOKEN_KEY_PREVIOUS` stays EMPTY at the first deploy (it is only for a later rotation).
 - [ ] `pnpm check:plugin-manifests` run, and every `NOT VALID` constraint validated.
 
 #### Owner decisions 2026-11-23
