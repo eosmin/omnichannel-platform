@@ -888,7 +888,9 @@ describe('Closing the months, the reports and the auditor files', () => {
         const first = Promise.resolve(
           asAdminB().post(ApiRoutes.finance.reports.verifyChain).send({})
         )
-        await reached
+        // A first request that never reaches the check (a 401, a failed guard) fails here with its status, not at the timeout of jest
+        const arrived = await Promise.race([reached.then(() => true), first.then(() => false)])
+        expect(arrived).toBe(true)
 
         const second = await asAdminB().post(ApiRoutes.finance.reports.verifyChain).send({})
         expect(second.status).toBe(CONFLICT)
