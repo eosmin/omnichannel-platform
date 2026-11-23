@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { AvSanitizing } from '@platform/core/storage'
@@ -28,12 +29,24 @@ const fixture = (name: string): Buffer => readFileSync(join(__dirname, '__fixtur
 // What a person would look for in the copy: the fake place, time, model and names of the fixtures
 const LEAKS = ['PhoneX', 'Someone', 'secret', 'SecretHandler', '+40.7128', 'ISO6709', '2024-05-01']
 
-const probe = (body: Buffer, format: string): string =>
-  spawnSync(
-    tools.ffprobePath,
-    ['-v', 'error', '-show_format', '-show_streams', '-f', format, '-i', 'pipe:0'],
-    { input: body, env: {}, encoding: 'utf8' }
-  ).stdout
+// Read from a file, not from a pipe: through a pipe ffprobe cannot give the length of most formats
+const probe = (body: Buffer, format: string): string => {
+  const directory = mkdtempSync(join(tmpdir(), 'av-probe-'))
+  try {
+    const file = join(directory, 'clip.bin')
+    writeFileSync(file, body)
+    return spawnSync(
+      tools.ffprobePath,
+      ['-v', 'error', '-show_format', '-show_streams', '-f', format, '-i', file],
+      {
+        env: {},
+        encoding: 'utf8'
+      }
+    ).stdout
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}
 
 const cleaner = new FfmpegAvCleaner(tools, { warn: jest.fn() })
 
@@ -68,7 +81,10 @@ maybe('FfmpegAvCleaner with the real tools', () => {
       // same codecs and same length
       const field = (text: string, key: string): string[] =>
         [...text.matchAll(new RegExp(`^${key}=(.*)$`, 'gm'))].map(match => match[1] ?? '')
-      expect(field(after, 'codec_name')).toEqual(field(before, 'codec_name'))
+      // the copy writes the video streams and then the audio ones, so a clip with its audio first changes order: same set of codecs
+      expect([...field(after, 'codec_name')].sort()).toEqual(
+        [...field(before, 'codec_name')].sort()
+      )
       const [lengthBefore] = field(before, 'duration').slice(-1)
       const [lengthAfter] = field(after, 'duration').slice(-1)
       expect(Math.abs(Number(lengthBefore) - Number(lengthAfter))).toBeLessThan(0.25)
