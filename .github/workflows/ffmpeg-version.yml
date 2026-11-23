@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   pinned-is-current:
@@ -27,4 +28,16 @@ jobs:
           if [ "$pinned" != "$latest" ]; then
             echo "::error::ffmpeg $pinned is pinned in docker/node-service.Dockerfile and $latest is published: read the release notes and security advisories, then change FFMPEG_VERSION and FFMPEG_SHA256 together"
             exit 1
+          fi
+      # A failed scheduled run only mails whoever touched the cron last: an open issue is seen by the owner and is not opened twice
+      - name: Open an issue for the owner
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title='ffmpeg of the worker image is behind the latest release'
+          open=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')
+          if [ "$open" = "0" ]; then
+            gh issue create --title "$title" --body "The weekly check found a newer ffmpeg than the one pinned in docker/node-service.Dockerfile (Trivy does not watch that binary). Read the release notes and the security advisories, then change FFMPEG_VERSION and FFMPEG_SHA256 together. Run: $RUN_URL"
           fi

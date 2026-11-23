@@ -53,8 +53,8 @@ FROM native-sharp AS native-api
 # Updating: change both ARGs together, read the release notes for the demuxers listed here, and run the build (it prints the licence
 # and the lists that the smoke test below checks).
 # NOT watched by Trivy: it reads the packages of the operating system and the lockfiles, and this binary is neither, so its CVEs are never
-# reported. The control is `.github/workflows/ffmpeg-version.yml` (weekly: fails when FFMPEG_VERSION is behind the latest release of its
-# line or the latest release), whose failure is read by the owner of Step 7.3 (dependency review).
+# reported. The control is `.github/workflows/ffmpeg-version.yml` (weekly: fails and opens an issue when FFMPEG_VERSION is behind the newest
+# release published on ffmpeg.org), whose failure is read by the owner of Step 7.3 (dependency review).
 FROM ${RUNTIME_IMAGE} AS ffmpeg-build
 ARG FFMPEG_VERSION=8.1.3
 ARG FFMPEG_SHA256=7138d28c96d9d3e3af4ee3d8cad72741f8ffb40da90c1112235dea3ecd3178a3
