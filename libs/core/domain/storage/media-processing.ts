@@ -176,6 +176,29 @@ export const ExistingDocumentSweep = {
   }
 } as const
 
+// The sweep that cleans the video and audio stored before their cleaning existed (`ExistingAvSanitizer`, Step 7.1-J-3). The cleaner ALWAYS
+// rewrites (it cannot tell by the content that a file is clean), so the mark in the row (`cleaningVersion`) is what keeps a file from being
+// copied on every run. A file is a few seconds of work and up to three child processes of 20 s, parsed one at a time in the decode slot, so
+// the batch is small. What counts toward the attempts is ONLY what kills or exhausts the process with THAT file (a deadline, a crash): a tool
+// that is missing fails at once and is not the file's fault, so it never turns a good video into a final `not_cleanable`
+export const ExistingAvSweep = {
+  BATCH_PER_STORE: 5,
+  MAX_PER_RUN: 20,
+  MAX_ATTEMPTS: ExistingPictureSweep.MAX_ATTEMPTS,
+  // Under the lock of its schedule (540 s): the run stops taking files after this, and the last file may take up to a minute more
+  MAX_RUN_MS: 420_000,
+  // The number of the try in progress, written BEFORE the file is opened and replaced when the work ends. Its own key: the pictures and the
+  // documents use `sweepAttempts` for theirs
+  ATTEMPTS_KEY: 'avSweepAttempts',
+  // What the sweep answers for a file it did not finish and did not mark: the object or the row changed under it, or the file passed its deadline
+  CHANGED: 'changed',
+  // The file killed or exhausted the process MAX_ATTEMPTS times: final, kept as it came (the value of `AvSanitizing.OUTCOME_KEY`)
+  ATTEMPTS_EXHAUSTED: 'attempts_exhausted',
+  // Other reasons a file is kept as it came, written as `AvSanitizing.OUTCOME_KEY`: its key is outside the folder of its store, or it has no object
+  FOREIGN_KEY: 'foreign_key',
+  MISSING: 'missing'
+} as const
+
 // The guard of the sweeps that rewrite a stored file (pictures and documents): in a deployed environment they run only while the bucket
 // shows versioning on, the one way back for an original that was rewritten (owner's decision, 2026-11-21; TDD_03 §7.3). The question is asked
 // again on every run, and one that is not answered in time counts as off

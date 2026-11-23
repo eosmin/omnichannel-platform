@@ -1134,7 +1134,7 @@ aws s3api put-bucket-lifecycle-configuration --bucket platform-production \
   --lifecycle-configuration '{"Rules":[{"ID":"expire-noncurrent","Status":"Enabled","Filter":{},"Expiration":{"ExpiredObjectDeleteMarker":true},"NoncurrentVersionExpiration":{"NoncurrentDays":30},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}]}'
 ```
 
-The sweeps that rewrite the files stored before the metadata cleaning (`ExistingPictureSanitizer` for pictures, `ExistingDocumentSanitizer` for PDF, docx and xlsx) replace the
+The sweeps that rewrite the files stored before the metadata cleaning (`ExistingPictureSanitizer` for pictures, `ExistingDocumentSanitizer` for PDF, docx and xlsx, `ExistingAvSanitizer` for video and audio) replace the
 original in place, so versioning is their way back, and **they do not run in `staging` or `production` unless the bucket shows versioning on**: `VersionedBucketGuard` asks `inspectProtection`
 at every run, before any row is read, and an answer of off, unknown, an error or no answer in time stops the run (a deployment guide item: versioning on, and the role of the worker allowed `s3:GetBucketVersioning`, are prerequisites of the first production deploy, Step 7.5). With versioning on, the deletion of the bytes of a customer (an erasure, a deleted conversation) adds a delete marker and the bytes live as noncurrent versions until the rule above expires them: a legal deletion is complete up to 30 days later. Replication is not checked here. The 7-year cold retention of the audit archive is a separate feature and
 is not part of this check.

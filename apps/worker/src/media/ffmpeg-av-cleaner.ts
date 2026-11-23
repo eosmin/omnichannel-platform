@@ -48,7 +48,7 @@ interface ToolRun {
 }
 
 // The tool is not there or cannot be started: the machine's fault, not the file's
-class AvToolUnavailable extends Error {
+export class AvToolUnavailable extends Error {
   constructor() {
     super('the video and audio tools could not be started')
   }
