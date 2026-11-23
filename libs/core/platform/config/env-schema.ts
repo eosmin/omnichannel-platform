@@ -145,6 +145,14 @@ export const envSchema = z
       value => (value === '' ? undefined : value),
       z.string().min(32).optional()
     ),
+    // The key that signed the unsubscribe links BEFORE a rotation of UNSUBSCRIBE_TOKEN_KEY: it only VERIFIES, it never signs, so that a link
+    // already in somebody's mailbox keeps working while the new key signs the new ones. Optional everywhere; remove it once the old links are
+    // not worth keeping (the emails have no expiry, so that is the owner's call). Same rules as the current key: at least 32 characters, a
+    // value of its own (checked below, and the value is never printed).
+    UNSUBSCRIBE_TOKEN_KEY_PREVIOUS: z.preprocess(
+      value => (value === '' ? undefined : value),
+      z.string().min(32).optional()
+    ),
     // Written as "15m" or "7d", read by the code in seconds
     JWT_EXPIRES_IN: duration('15m'),
     REFRESH_TOKEN_EXPIRES_IN: duration('7d'),
@@ -311,6 +319,27 @@ export const envSchema = z
         path: ['E2E_MAGIC_LINK_LIMIT'],
         input: env.E2E_MAGIC_LINK_LIMIT
       })
+    }
+    const previousUnsubscribe = env.UNSUBSCRIBE_TOKEN_KEY_PREVIOUS
+    if (previousUnsubscribe !== undefined) {
+      // In every environment: a previous key that is another secret of the platform, the current key or the placeholder is a mistake that
+      // would let that secret verify (or, for the current key, hide that nothing was rotated)
+      if (
+        previousUnsubscribe === env.UNSUBSCRIBE_TOKEN_KEY ||
+        previousUnsubscribe === env.JWT_SECRET ||
+        previousUnsubscribe === env.CREDENTIALS_ENCRYPTION_KEY ||
+        previousUnsubscribe === env.CONSENT_HASH_KEY ||
+        previousUnsubscribe.startsWith(PLACEHOLDER_JWT_SECRET_PREFIX)
+      ) {
+        ctx.issues.push({
+          code: 'custom',
+          message:
+            'UNSUBSCRIBE_TOKEN_KEY_PREVIOUS must be the key before the rotation of UNSUBSCRIBE_TOKEN_KEY: not the current key, not JWT_SECRET, CREDENTIALS_ENCRYPTION_KEY or CONSENT_HASH_KEY, not the placeholder',
+          path: ['UNSUBSCRIBE_TOKEN_KEY_PREVIOUS'],
+          // Never the value: it is a secret, and an issue travels in error objects and ends in logs
+          input: undefined
+        })
+      }
     }
     const previous = env.CREDENTIALS_ENCRYPTION_KEY_PREVIOUS
     if (previous !== undefined) {

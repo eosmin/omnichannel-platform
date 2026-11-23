@@ -1,4 +1,10 @@
-import { buildContentSecurityPolicy, STATIC_SECURITY_HEADERS } from './security-headers'
+import { AppPaths } from '@platform/core/domain'
+
+import {
+  buildContentSecurityPolicy,
+  STATIC_SECURITY_HEADERS,
+  UNSUBSCRIBE_PAGE_SOURCE
+} from './security-headers'
 
 const options = {
   nonce: 'abc123',
@@ -129,6 +135,12 @@ describe('buildContentSecurityPolicy', () => {
     ]) {
       expect(policy).toContain(rule)
     }
+  })
+})
+
+describe('UNSUBSCRIBE_PAGE_SOURCE', () => {
+  it('is the path of the page of the one-click unsubscribe', () => {
+    expect(UNSUBSCRIBE_PAGE_SOURCE).toBe(AppPaths.unsubscribe)
   })
 })
 

@@ -92,3 +92,9 @@ export const removePushSubscriptionBodySchema = z.strictObject({
   endpoint: z.string().min(1).max(PushLimits.MAX_ENDPOINT_LENGTH)
 })
 export type RemovePushSubscriptionBody = z.output<typeof removePushSubscriptionBodySchema>
+
+// The token of the one-click unsubscribe, from the body (the web page) or the query (the POST of a mail client, RFC 8058, which sends
+// `List-Unsubscribe=One-Click` as the body). Anything else is the same as no token: the route answers the same for every reason, so this is
+// parsed with `safeParse` by the service of the route, never with a pipe that would answer 400 for some shapes and 204 for others
+export const unsubscribeTokenSchema = z.string().min(1).max(512)
+export const unsubscribeBodySchema = z.object({ token: unsubscribeTokenSchema })

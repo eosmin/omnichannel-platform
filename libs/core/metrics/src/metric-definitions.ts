@@ -218,6 +218,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'Carrier webhooks rejected (unreadable address, unknown or disconnected connection, bad signature, body too large)',
     labels: ['reason']
   },
+  [MetricNames.NOTIFICATION_UNSUBSCRIBE_REJECTED]: {
+    kind: 'counter',
+    help: 'One-click unsubscribe requests that changed nothing, by reason (token that does not verify, no token, person gone, per-token rate limit; the per-address limit is the guard of the route and is not counted here)',
+    labels: ['reason']
+  },
   [MetricNames.CHANNEL_API_ERRORS]: {
     kind: 'counter',
     help: 'Errors returned by a channel API',

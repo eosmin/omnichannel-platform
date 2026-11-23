@@ -748,3 +748,55 @@ describe('UNSUBSCRIBE_TOKEN_KEY, the key of the one-click unsubscribe link (Step
     )
   })
 })
+
+describe('UNSUBSCRIBE_TOKEN_KEY_PREVIOUS, the key before a rotation (Step 7.3, B6b-3b2b)', () => {
+  const PREVIOUS = 'q'.repeat(40)
+  const base: Record<string, string> = { ...validEnv, UNSUBSCRIBE_TOKEN_KEY: 'u'.repeat(40) }
+
+  it('may be left out, and an empty value counts as left out', () => {
+    expect(parseEnv(base).UNSUBSCRIBE_TOKEN_KEY_PREVIOUS).toBeUndefined()
+    expect(
+      parseEnv({ ...base, UNSUBSCRIBE_TOKEN_KEY_PREVIOUS: '' }).UNSUBSCRIBE_TOKEN_KEY_PREVIOUS
+    ).toBeUndefined()
+  })
+
+  it('is accepted when it is a key of its own', () => {
+    expect(
+      parseEnv({ ...base, UNSUBSCRIBE_TOKEN_KEY_PREVIOUS: PREVIOUS }).UNSUBSCRIBE_TOKEN_KEY_PREVIOUS
+    ).toBe(PREVIOUS)
+  })
+
+  it('takes at least 32 characters', () => {
+    expect(() => parseEnv({ ...base, UNSUBSCRIBE_TOKEN_KEY_PREVIOUS: 'short' })).toThrow(
+      /UNSUBSCRIBE_TOKEN_KEY_PREVIOUS/
+    )
+  })
+
+  it('is refused when it is the current key, another secret of the platform or the placeholder', () => {
+    for (const value of [
+      base['UNSUBSCRIBE_TOKEN_KEY'] ?? '',
+      base['JWT_SECRET'] ?? '',
+      base['CREDENTIALS_ENCRYPTION_KEY'] ?? '',
+      base['CONSENT_HASH_KEY'] ?? '',
+      'change-me-to-at-least-32-characters-long-value'
+    ]) {
+      expect(() => parseEnv({ ...base, UNSUBSCRIBE_TOKEN_KEY_PREVIOUS: value })).toThrow(
+        /UNSUBSCRIBE_TOKEN_KEY_PREVIOUS/
+      )
+    }
+  })
+
+  it('never puts the value of a refused key in the error', () => {
+    const value = base['UNSUBSCRIBE_TOKEN_KEY'] ?? ''
+    let thrown: unknown
+    try {
+      parseEnv({ ...base, UNSUBSCRIBE_TOKEN_KEY_PREVIOUS: value })
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeDefined()
+    expect(JSON.stringify(thrown, Object.getOwnPropertyNames(thrown as object))).not.toContain(
+      value
+    )
+  })
+})

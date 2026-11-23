@@ -114,6 +114,13 @@ export const DsrIntakeThrottle = { limit: 5, ttlMs: 600_000 } as const
 // Confirming a request with the token of the mail: the token has 256 bits, so this is only the flood guard
 export const DsrVerifyThrottle = { limit: 20, ttlMs: 600_000 } as const
 
+// The public one-click unsubscribe of the notification emails (Step 7.3, B6b-3b2b). Per address: only a flood guard on a route that needs no session,
+// and wide on purpose: the one-click POSTs of a mailbox provider come from its few server addresses, shared by all its users, so the real limit is the one per token.
+// Per token: one person's link is not worth more than a few tries from anywhere (a mail client that retries, a person who taps twice), so a
+// token that is hammered from many addresses is cut too. Both answer 429 for everyone alike, never a word about the token.
+export const UnsubscribeThrottle = { limit: 300, ttlMs: 600_000 } as const
+export const UnsubscribeTokenThrottle = { limit: 10, ttlMs: 600_000 } as const
+
 // The login profile of D2: 5 a minute per IP, and the same per hashed email, so the endpoint cannot
 // be used to mail-bomb an address from many IPs
 export const MagicLinkThrottle = { limit: 5, ttlMs: 60_000 } as const

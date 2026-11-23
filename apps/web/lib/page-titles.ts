@@ -10,6 +10,7 @@ export const PageTitles = {
   // The name of the page, not "Iniciando tu sesión": the page stays on the screen when the link fails
   loginVerify: ['login.title'],
   invitation: ['invitation.title'],
+  unsubscribe: ['unsubscribe.title'],
   noAccess: ['noAccess.title'],
   notFound: ['notFound.title'],
   inbox: ['shell.nav.inbox'],

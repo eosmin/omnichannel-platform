@@ -13,6 +13,8 @@ function isPublic(pathname: string): boolean {
   return (
     pathname === AppPaths.login ||
     pathname === AppPaths.magicLink ||
+    // The one-click unsubscribe of the notification emails: the person has no session when they open the link of an email
+    pathname === AppPaths.unsubscribe ||
     pathname.startsWith(INVITATIONS_PREFIX) ||
     pathname.startsWith(SESSION_HANDLERS_PREFIX)
   )

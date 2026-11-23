@@ -39,6 +39,9 @@ export const MetricNames = {
   SHIPMENT_CARRIER_ERRORS_TOTAL: 'platform_shipment_carrier_errors_total',
   SHIPMENT_UNKNOWN_STATUS_TOTAL: 'platform_shipment_unknown_status_total',
   CARRIER_WEBHOOK_RECEIVED: 'platform_carrier_webhook_received_total',
+  // The one-click unsubscribe of the notification emails that did not hold: a token that does not verify (altered, other key, other
+  // purpose), by reason. A burst of them is someone guessing links
+  NOTIFICATION_UNSUBSCRIBE_REJECTED: 'platform_notification_unsubscribe_rejected_total',
   CARRIER_WEBHOOK_REJECTED: 'platform_carrier_webhook_rejected_total',
   PICKUPS_REQUESTED_TOTAL: 'platform_pickups_requested_total',
 

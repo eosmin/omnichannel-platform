@@ -146,6 +146,11 @@ export const CacheKeys = {
     intakeStoreDay: (storeKeyHash: string, day: string) => `dsr:intake:store:${storeKeyHash}:${day}`
   },
 
+  // The count of the public one-click unsubscribe by the hash of the token it presented (never the token itself: a key travels in logs)
+  unsubscribe: {
+    tokenWindow: (tokenHash: string) => `unsubscribe:token:${tokenHash}`
+  },
+
   plugin: {
     manifest: (pluginId: string) => `plugin:${pluginId}:manifest`,
     installation: (storeId: string, pluginId: string) => `store:${storeId}:plugin:${pluginId}`,

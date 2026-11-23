@@ -287,6 +287,10 @@ export const AuditAction = {
   FINANCE_RECONCILIATION_REJECTED: 'finance.reconciliation_rejected',
   FINANCE_RECONCILIATION_UNDONE: 'finance.reconciliation_undone',
 
+  // The person switched off the notification email with the one-click link (no store: the choice is theirs in every store). The
+  // metadata names only the scope; never the address or the token
+  NOTIFICATION_EMAIL_UNSUBSCRIBED: 'notification.email_unsubscribed',
+
   // Compliance
   DSR_CREATED: 'dsr.created',
   DSR_VERIFIED: 'dsr.verified',

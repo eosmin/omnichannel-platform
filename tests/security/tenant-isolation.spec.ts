@@ -16,6 +16,7 @@ import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
 import { ConsentPurposes } from '@platform/core/compliance'
+import { signUnsubscribeToken, UnsubscribeScopes } from '@platform/core/crypto'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CarrierId,
@@ -60,7 +61,8 @@ import { Locales } from '@platform/core/i18n'
 import {
   NotificationSeverity,
   notificationMessageKey,
-  NotificationTypes
+  NotificationTypes,
+  UNSUBSCRIBE_VERIFICATION_KEYS
 } from '@platform/core/notifications'
 import {
   ExportFormats,
@@ -4407,6 +4409,87 @@ describe('Tenant isolation', () => {
   })
 
   // GET /auth/me belongs to a person and takes no store: what it lists is decided by whose token it is
+  // The public one-click unsubscribe has no session, so no store and no person in the request: what separates people is the id inside a
+  // signed token, and the context of that one person (JobContext.forUser) that the write runs in
+  describe('the one-click unsubscribe of the notification emails', () => {
+    const emailOf = async (userId: string, storeId: string) => {
+      await owner.userNotificationSettings.upsert({
+        where: { userId },
+        create: { userId, digestFrequency: 'hourly' },
+        update: { digestFrequency: 'hourly' }
+      })
+      return owner.notification.create({
+        data: {
+          userId,
+          storeId,
+          type: NotificationTypes.EXPORT_READY,
+          severity: NotificationSeverity.INFO,
+          messageKey: notificationMessageKey(NotificationTypes.EXPORT_READY),
+          emailPendingAt: new Date()
+        },
+        select: { id: true }
+      })
+    }
+
+    it('switches off the email of the person the token names and touches nobody of another store or organization', async () => {
+      const key =
+        app.get<readonly string[]>(UNSUBSCRIBE_VERIFICATION_KEYS, { strict: false })[0] ?? ''
+      const mineA = await emailOf(ctx.adminA.id, ctx.storeA.id)
+      const mineB = await emailOf(ctx.adminB.id, ctx.storeB.id)
+
+      const done = await anonymousApi(app)
+        .post(ApiRoutes.notifications.unsubscribe)
+        .send({
+          token: signUnsubscribeToken(key, UnsubscribeScopes.NOTIFICATION_EMAIL, ctx.adminA.id)
+        })
+
+      expect(done.status).toBe(204)
+      const own = await owner.userNotificationSettings.findUnique({
+        where: { userId: ctx.adminA.id }
+      })
+      expect(own?.digestFrequency).toBe('off')
+      expect(
+        (await owner.notification.findUniqueOrThrow({ where: { id: mineA.id } })).emailPendingAt
+      ).toBeNull()
+      // The person of the other organization: the same choice, the same mark
+      const other = await owner.userNotificationSettings.findUnique({
+        where: { userId: ctx.adminB.id }
+      })
+      expect(other?.digestFrequency).toBe('hourly')
+      expect(
+        (await owner.notification.findUniqueOrThrow({ where: { id: mineB.id } })).emailPendingAt
+      ).not.toBeNull()
+    })
+
+    it('does not let a person switch off the email of another by changing the id of the token', async () => {
+      const key =
+        app.get<readonly string[]>(UNSUBSCRIBE_VERIFICATION_KEYS, { strict: false })[0] ?? ''
+      await emailOf(ctx.adminA.id, ctx.storeA.id)
+      await emailOf(ctx.adminB.id, ctx.storeB.id)
+      const [version, scope, , mac] = signUnsubscribeToken(
+        key,
+        UnsubscribeScopes.NOTIFICATION_EMAIL,
+        ctx.adminA.id
+      ).split('.') as [string, string, string, string]
+
+      // The mac of A's token with the id of B in it: it verifies for nobody
+      const forged = await anonymousApi(app)
+        .post(ApiRoutes.notifications.unsubscribe)
+        .send({ token: [version, scope, ctx.adminB.id, mac].join('.') })
+
+      expect(forged.status).toBe(204)
+      const victim = await owner.userNotificationSettings.findUnique({
+        where: { userId: ctx.adminB.id }
+      })
+      expect(victim?.digestFrequency).toBe('hourly')
+      expect(
+        await owner.notification.count({
+          where: { userId: ctx.adminB.id, emailPendingAt: { not: null } }
+        })
+      ).toBeGreaterThan(0)
+    })
+  })
+
   describe('the memberships of the account', () => {
     it('are the ones of the caller: a user never reads the stores of another organization', async () => {
       const response = await anonymousApi(app)
