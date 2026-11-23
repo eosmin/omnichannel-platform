@@ -21,6 +21,8 @@ export function OrderLink({
 }): ReactElement {
   const profile = useProfile()
   const href = orderHrefOf(profile.data?.memberships ?? [], storeId, orderId)
+  // Nothing is decided before the profile is read: neither the link nor its absence
+  if (!profile.isSuccess) return <></>
   if (href === null) return <>{fallback}</>
   return (
     <Link

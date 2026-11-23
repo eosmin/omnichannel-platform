@@ -32,7 +32,9 @@ export function FinanceShell({ children }: { children: ReactNode }): ReactElemen
         ) : (
           <StoreProvider membership={membership}>
             <AppFrame profile={profile} currentStoreId={null}>
-              <FinanceNavigation memberships={profile.memberships}>{children}</FinanceNavigation>
+              <FinanceNavigation areaMembership={membership} memberships={profile.memberships}>
+                {children}
+              </FinanceNavigation>
             </AppFrame>
           </StoreProvider>
         )
@@ -45,9 +47,11 @@ export function FinanceShell({ children }: { children: ReactNode }): ReactElemen
 // permissions: the api checks the permissions of the store of the request, so a person with `finance:*` in one store and `fiscal:*` in
 // another would otherwise see the pages of one family answer 403, or miss the ones the api would allow.
 function FinanceNavigation({
+  areaMembership,
   memberships,
   children
 }: {
+  areaMembership: AccountMembership
   memberships: readonly AccountMembership[]
   children: ReactNode
 }): ReactElement {
@@ -65,25 +69,23 @@ function FinanceNavigation({
       <div className="min-w-0 wrap-anywhere [&_table]:wrap-normal">{children}</div>
     </SettingsFrame>
   )
-  // No store opens this family: the page keeps the store of the area and says "no access" itself
-  return familyMembership === undefined ? (
-    page
-  ) : (
-    <StoreProvider membership={familyMembership}>{page}</StoreProvider>
-  )
+  // No store opens this family: the page keeps the store of the area (the same provider, so the tree is not remounted) and its own
+  // permission check says "no access" before it asks the api for anything
+  return <StoreProvider membership={familyMembership ?? areaMembership}>{page}</StoreProvider>
 }
 
 // /finance has no content of its own: it opens the first page the person may see
 export function FinanceHome(): ReactElement {
-  // The profile is loaded by the session gate above, so it is in the cache here
   const profile = useProfile()
   const router = useRouter()
-  const href =
-    visibleFinanceEntries(FINANCE_SETTINGS_ENTRIES, profile.data?.memberships ?? [])[0]?.href ??
-    null
+  const href = !profile.isSuccess
+    ? null
+    : (visibleFinanceEntries(FINANCE_SETTINGS_ENTRIES, profile.data?.memberships ?? [])[0]?.href ??
+      null)
   useEffect(() => {
     if (href !== null) router.replace(href)
   }, [href, router])
+  if (!profile.isSuccess) return <LoadingScreen />
   return href === null ? <PermissionDenied permission={ClientPermissions.FINANCE_VIEW} /> : <></>
 }
 
