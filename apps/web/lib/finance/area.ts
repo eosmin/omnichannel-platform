@@ -64,7 +64,9 @@ const FAMILY_OPENING: Record<FinanceAreaFamily, readonly Permission[]> = {
 }
 const FAMILY_WORKING: Record<FinanceAreaFamily, readonly Permission[]> = {
   [FinanceAreaFamily.BOOKS]: FINANCE_WORKING_PERMISSIONS,
-  [FinanceAreaFamily.PURCHASES]: [],
+  // The purchase pages read the chart and offer to pay through `finance:view` and `finance:move_money` of THEIR store, so the store that
+  // holds them wins a tie over one that only manages purchases
+  [FinanceAreaFamily.PURCHASES]: [ClientPermissions.FINANCE_VIEW],
   [FinanceAreaFamily.FISCAL]: [ClientPermissions.FISCAL_MANAGE]
 }
 

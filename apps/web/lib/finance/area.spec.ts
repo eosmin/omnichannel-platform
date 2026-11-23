@@ -266,4 +266,68 @@ describe('the store each family is asked through', () => {
       )
     ).not.toContain('journal')
   })
+
+  it('picks, for the purchases, the store that also reads the chart over one that only manages purchases', () => {
+    const a = { id: 'a', permissions: [Permissions.FINANCE_MANAGE_PURCHASES] }
+    const b = {
+      id: 'b',
+      permissions: [Permissions.FINANCE_MANAGE_PURCHASES, Permissions.FINANCE_VIEW]
+    }
+    expect(financeMembershipOfFamily(FinanceAreaFamily.PURCHASES, [a, b])).toBe(b)
+    expect(financeMembershipOfFamily(FinanceAreaFamily.PURCHASES, [b, a])).toBe(b)
+  })
+
+  it('opens the purchases for a store that holds only finance:move_money', () => {
+    const payer = { id: 'p', permissions: [Permissions.FINANCE_MOVE_MONEY] }
+    expect(financeMembershipOfFamily(FinanceAreaFamily.PURCHASES, [payer])).toBe(payer)
+  })
+
+  it('weighs fiscal:manage over a store that only reads the fiscal documents', () => {
+    const reader = { id: 'r', permissions: [Permissions.FISCAL_VIEW] }
+    const manager = {
+      id: 'm',
+      permissions: [Permissions.FISCAL_VIEW, Permissions.FISCAL_MANAGE]
+    }
+    expect(financeMembershipOfFamily(FinanceAreaFamily.FISCAL, [reader, manager])).toBe(manager)
+  })
+})
+
+describe('the exact family of every entry', () => {
+  it('is the table below, no more and no less', () => {
+    expect(FINANCE_ENTRY_FAMILY).toEqual({
+      accounts: FinanceAreaFamily.BOOKS,
+      journal: FinanceAreaFamily.BOOKS,
+      transactions: FinanceAreaFamily.BOOKS,
+      taxes: FinanceAreaFamily.BOOKS,
+      periods: FinanceAreaFamily.BOOKS,
+      reports: FinanceAreaFamily.BOOKS,
+      reconciliation: FinanceAreaFamily.BOOKS,
+      settings: FinanceAreaFamily.BOOKS,
+      suppliers: FinanceAreaFamily.PURCHASES,
+      purchases: FinanceAreaFamily.PURCHASES,
+      payables: FinanceAreaFamily.PURCHASES,
+      fiscal: FinanceAreaFamily.FISCAL,
+      fiscalIssuer: FinanceAreaFamily.FISCAL,
+      statements: FinanceAreaFamily.BOOKS,
+      aging: FinanceAreaFamily.BOOKS,
+      books: FinanceAreaFamily.BOOKS,
+      vat: FinanceAreaFamily.BOOKS,
+      margin: FinanceAreaFamily.BOOKS
+    })
+  })
+
+  it('lists for each lone permission exactly the pages it opens', () => {
+    const ids = (...held: string[]): string[] =>
+      visibleFinanceEntries(FINANCE_SETTINGS_ENTRIES, [{ id: 's', permissions: held }]).map(
+        entry => entry.id
+      )
+    expect(ids(Permissions.FINANCE_MANAGE_PURCHASES)).toEqual([
+      'suppliers',
+      'purchases',
+      'payables'
+    ])
+    expect(ids(Permissions.FINANCE_MOVE_MONEY)).toEqual(['payables'])
+    expect(ids(Permissions.FINANCE_VIEW_REPORTS)).toEqual([])
+    expect(ids(Permissions.FINANCE_VIEW_JOURNAL)).toEqual([])
+  })
 })
