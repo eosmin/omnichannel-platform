@@ -11,12 +11,14 @@ export function OrderLink({
   storeId,
   orderId,
   fallback = null,
+  className = '',
   children
 }: {
   storeId: string | null
   orderId: string | null
   // What stands in its place for who may not read the orders of the store
   fallback?: ReactNode
+  className?: string
   children: ReactNode
 }): ReactElement {
   const profile = useProfile()
@@ -27,7 +29,7 @@ export function OrderLink({
   return (
     <Link
       href={href}
-      className="text-primary underline underline-offset-2"
+      className={`text-primary underline underline-offset-2 ${className}`.trim()}
       data-testid="finance-order-link"
     >
       {children}

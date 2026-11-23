@@ -106,11 +106,13 @@ function EntryBody({
             {t(`sources.${entry.sourceType as 'order'}`)}
             {entry.sourceType === String(FinanceSourceType.ORDER) ? (
               // The order of a sale, for who may read the orders of the store its lines name (nothing is drawn for who may not)
-              <span className="block">
-                <OrderLink storeId={storeOfEntryLines(entry.lines)} orderId={entry.sourceId}>
-                  {t('openOrder')}
-                </OrderLink>
-              </span>
+              <OrderLink
+                storeId={storeOfEntryLines(entry.lines)}
+                orderId={entry.sourceId}
+                className="block w-fit"
+              >
+                {t('openOrder')}
+              </OrderLink>
             ) : null}
           </Fact>
         )}
