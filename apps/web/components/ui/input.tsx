@@ -8,7 +8,7 @@ export function Input({ className, type, ...props }: ComponentProps<'input'>): R
       type={type}
       className={cn(
         'border-input placeholder:text-muted-foreground h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm pointer-coarse:h-11',
-        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+        'focus-visible:border-ring focus-visible:ring-ring focus-visible:ring-[3px]',
         'aria-invalid:border-destructive aria-invalid:ring-destructive/20',
         className
       )}

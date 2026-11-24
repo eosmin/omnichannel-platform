@@ -348,7 +348,7 @@ describe('database roles', () => {
           "SELECT prosecdef, proconfig FROM pg_proc WHERE proname = 'purge_audit_logs'"
         )
         expect(rows[0]?.prosecdef).toBe(true)
-        expect(rows[0]?.proconfig).toContain('search_path=pg_catalog, pg_temp')
+        expect(rows[0]?.proconfig).toContain('search_path=pg_catalog, public, pg_temp')
         expect(rows[0]?.proconfig).toContain('lock_timeout=5s')
       })
       await withClient(urls.worker, async worker => {

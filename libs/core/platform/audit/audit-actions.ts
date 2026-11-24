@@ -307,6 +307,11 @@ export const AuditAction = {
   DSR_EXPORT_DOWNLOADED: 'dsr.export_downloaded',
   DSR_EXPORT_PURGED: 'dsr.export_purged',
   DSR_DEADLINE_ALERTED: 'dsr.deadline_alerted',
+  // The key of the public form: made, replaced (the old one stops at once) or switched off. The metadata holds the last four characters of
+  // the new key and never the whole of it
+  DSR_FORM_KEY_CREATED: 'dsr.form_key_created',
+  DSR_FORM_KEY_ROTATED: 'dsr.form_key_rotated',
+  DSR_FORM_KEY_REVOKED: 'dsr.form_key_revoked',
   CONSENT_RECORDED: 'consent.recorded'
 } as const
 

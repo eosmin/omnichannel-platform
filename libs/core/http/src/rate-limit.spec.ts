@@ -8,7 +8,7 @@ import * as Sentry from '@sentry/nestjs'
 import { API_PREFIX } from '@platform/core/api'
 import { ThrottlerNames } from '@platform/core/auth'
 import { LoggerModule } from '@platform/core/logger'
-import { MetricsModule } from '@platform/core/metrics-module'
+import { MetricsModule, OPEN_METRICS_ACCESS } from '@platform/core/metrics-module'
 
 import { configureHttpApp } from './configure-http-app'
 import { HttpErrorsModule } from './http-errors.module'
@@ -44,7 +44,7 @@ async function startApp(trustProxyHops: number): Promise<{ app: INestApplication
   const module = await Test.createTestingModule({
     imports: [
       LoggerModule.forRoot({ level: 'fatal', pretty: false }),
-      MetricsModule,
+      MetricsModule.forRoot(OPEN_METRICS_ACCESS),
       HttpErrorsModule,
       // The default profile of the test is tiny; production reads it from ThrottleProfiles
       ThrottlerModule.forRoot([{ name: ThrottlerNames.DEFAULT, ttl: 60_000, limit: 3 }])

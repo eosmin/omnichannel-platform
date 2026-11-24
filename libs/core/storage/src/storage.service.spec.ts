@@ -327,4 +327,33 @@ describe('StorageService signing is local', () => {
     expect(url).toContain('https://s3.invalid/bucket/stores/s/messages/a/photo.png')
     expect(url).toContain('X-Amz-Signature=')
   })
+  describe('putStream', () => {
+    class Marker extends Error {}
+
+    // Small (one part) and large (multipart): the error of the body must reach the caller as it is,
+    // because the callers tell a failure that retries from one that does not by its class
+    it.each([
+      ['a body that fails at once', 10],
+      ['a body that fails after several parts', 12 * 1024 * 1024]
+    ])('throws the very error of %s and aborts the upload', async (_name, before) => {
+      const send = jest.fn().mockResolvedValue({ UploadId: 'u', ETag: '"e"' })
+      const marker = new Marker('too large')
+      let sent = 0
+      const body = new Readable({
+        read() {
+          if (sent >= before) {
+            this.destroy(marker)
+            return
+          }
+          const size = Math.min(1024 * 1024, before - sent)
+          sent += size
+          this.push(Buffer.alloc(size, 1))
+        }
+      })
+      const caught = await serviceWith(send)
+        .putStream('k', body, 'application/zip')
+        .catch((error: unknown) => error)
+      expect(caught).toBe(marker)
+    })
+  })
 })

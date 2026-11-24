@@ -1,5 +1,6 @@
 'use client'
 
+import { Lock } from 'lucide-react'
 import { useFormatter, useLocale, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
@@ -25,6 +26,7 @@ import {
 } from '../../lib/inbox/thread-items'
 import { bubbleTextOf, isNoticeType, unsupportedKindOf } from '../../lib/inbox/unsupported-kind'
 import { useAwaitingFiles } from '../../lib/inbox/use-awaiting-files'
+import { viewableFilesOf } from '../../lib/inbox/viewable-file'
 import { useCodeText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 
@@ -379,12 +381,16 @@ function Content({
     unsupportedType: message.unsupportedType
   })
   const hasFiles = message.media.length > 0 || message.unavailableFiles.length > 0
+  // A person without `media:view` gets the files with no name, type or size (BAN-R-meta): those are drawn as a closed
+  // attachment, never as a picture or a link
+  const viewable = viewableFilesOf(message.media)
+  const hiddenFiles = message.media.length - viewable.length
   // The pictures a person sent with texts: the texts are listed under them in the order of the pictures. Unless
   // the text of the message went apart, the first one's (the text of the message) is among them, so it is not
   // drawn apart as well; apart, it is drawn after the list
-  const albumLines = isAlbum(message.media, message.type, sticker)
+  const albumLines = isAlbum(viewable, message.type, sticker)
     ? albumCaptionLinesOf(
-        message.media,
+        viewable,
         {
           hasText: text !== null,
           hasNotice: message.captionState !== null
@@ -420,7 +426,7 @@ function Content({
       {message.contacts === null ? null : <ContactCard contacts={message.contacts} />}
       {hasFiles ? (
         <MessageMedia
-          files={message.media}
+          files={viewable}
           unavailable={message.unavailableFiles}
           messageId={message.id}
           conversationId={conversationId}
@@ -444,6 +450,12 @@ function Content({
             : {})}
         />
       ) : null}
+      {hiddenFiles === 0 ? null : (
+        <p className="text-muted-foreground flex items-center gap-1.5 text-sm italic">
+          <Lock aria-hidden className="size-3.5 shrink-0" />
+          {t('hiddenFiles', { count: hiddenFiles })}
+        </p>
+      )}
       {hasFiles ? null : (
         <PendingMedia type={message.type} awaiting={awaitingFiles} sticker={sticker} />
       )}

@@ -18,6 +18,10 @@ export const ComplianceConfig = {
   DSR_DEADLINE_ALERT_DAY: 25,
   DSR_EXTENSION_DAYS: 60,
   DSR_VERIFICATION_TOKEN_DAYS: 7,
+  // The key a store gives to its public form: 128 random bits, 22 characters of base64url. It is public by design (it travels in the address of
+  // the form), so it is not a secret, but nobody guesses it. The audit log keeps only the last `DSR_FORM_KEY_HINT_LENGTH` characters
+  DSR_FORM_KEY_BYTES: 16,
+  DSR_FORM_KEY_HINT_LENGTH: 4,
   DSR_EXPORT_LINK_DAYS: 7,
   BREACH_NOTIFICATION_HOURS: 72,
   // Owner, 2026-11-22 (option C): an approved erasure waits 7 days, cancelable, before the sweep carries it out. Always read this constant
@@ -70,10 +74,24 @@ export const ComplianceConfig = {
   DSR_EXPORT_LEASE_MS: 60 * 60 * 1000,
   DSR_EXPORT_MAX_ROWS_PER_KIND: 20_000,
   DSR_EXPORT_MAX_BYTES: 64 * 1024 * 1024,
+  // The files of the person (what they sent in a chat) go in the same ZIP, read as a stream and never held whole: no more than this many, and
+  // the whole ZIP (text and files) no more than this many bytes. Past either the request goes back to review (the reviewer arranges the copy)
+  DSR_EXPORT_MAX_FILES: 1_000,
+  DSR_EXPORT_MAX_ZIP_BYTES: 512 * 1024 * 1024,
+  // The transaction of an export holds the lock of the request while the ZIP is streamed to the bucket
+  DSR_EXPORT_TRANSACTION_TIMEOUT_MS: 15 * 60 * 1000,
   DSR_EXPORT_DOWNLOAD_URL_SECONDS: 5 * 60,
   DSR_EXPORT_FILENAME: 'data-export.zip',
   // Requests the export sweep and the purge of expired exports take per store and per run
   DSR_EXPORT_BATCH: 10
+} as const
+
+// Why a file of the person is listed in the export but its bytes are not in the ZIP (`files.json`, field `reason`; read by the person, so
+// they are fixed codes)
+export const DsrExportFileReasons = {
+  NOT_SCANNED_CLEAN: 'not_scanned_clean',
+  NOT_AVAILABLE: 'not_available',
+  OUTSIDE_STORE: 'outside_store'
 } as const
 
 // Where the closing notice of an ended request stands (what the review queue shows, derived from the row, never stored as a word):
@@ -308,7 +326,10 @@ export const DSR_VERIFY_FRAGMENT_KEY = 'token'
 
 // What a data subject request is called where a text is needed (the kind of resource of an audit entry, who the request is about), and why
 // the flow itself closes a request. Never typed at a call site (rule 1).
-export const DsrResourceTypes = { REQUEST: 'data_subject_request' } as const
+export const DsrResourceTypes = {
+  REQUEST: 'data_subject_request',
+  FORM_KEY: 'dsr_form_key'
+} as const
 export const DsrSubjectTypes = { CUSTOMER: 'customer' } as const
 export const DsrRejectionReasons = {
   VERIFICATION_MAIL_NOT_QUEUED: 'verification_mail_not_queued',

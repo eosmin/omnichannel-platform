@@ -4,7 +4,12 @@ import {
   type PrismaTransaction,
   isUniqueViolation
 } from '@platform/core/database'
-import { type AccountType, FinanceConflicts, FinanceTransactionKind } from '@platform/core/domain'
+import {
+  type AccountType,
+  FinanceConflicts,
+  FinanceTransactionKind,
+  MembershipStatus
+} from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -182,4 +187,28 @@ export async function organizationDay(
   })
   const days = stores.map(store => dayInZone(now, store.timezone))
   return days.length === 0 ? now.toISOString().slice(0, 10) : days.reduce((a, b) => (a < b ? a : b))
+}
+
+// The stores a person may charge or point a ledger dimension at: the ones of the organization where they are an active member.
+// A store of another organization, one that does not exist and a sibling the person is not a member of all answer the same 404
+// (SEG-228, owner decision): the accounting dimension is never a way to reach a store the person cannot open.
+export async function assertMemberOfStores(
+  db: Pick<PrismaTransaction, 'membership'>,
+  organizationId: string,
+  userId: string,
+  storeIds: readonly string[]
+): Promise<void> {
+  const wanted = [...new Set(storeIds)]
+  if (wanted.length === 0) return
+  const held = await db.membership.findMany({
+    where: {
+      userId,
+      organizationId,
+      storeId: { in: wanted },
+      status: MembershipStatus.ACTIVE,
+      revokedAt: null
+    },
+    select: { storeId: true }
+  })
+  if (new Set(held.map(row => row.storeId)).size !== wanted.length) throw resourceNotFound('store')
 }

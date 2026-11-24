@@ -27,11 +27,30 @@ const answer = (replyTo: QuotedMessage | null): MessageView =>
     mentions: [MEMBER],
     editedById: MEMBER,
     deletedById: MEMBER,
+    media: [],
     reactions: [
       { emoji: '👍', authorType: AuthorType.AGENT, authorId: MEMBER },
       { emoji: '❤️', authorType: AuthorType.CUSTOMER, authorId: CUSTOMER }
     ]
   }) as unknown as MessageView
+
+describe('pluginMessageViewOf, the files (BAN-R-meta)', () => {
+  const withFile = (): MessageView =>
+    ({
+      ...answer(null),
+      media: [{ id: 'f1', filename: 'cedula.pdf', contentType: 'application/pdf', fileSize: 9 }]
+    }) as unknown as MessageView
+
+  it('takes the name, the type and the size out of a key without media:read', () => {
+    const [file] = pluginMessageViewOf(withFile(), true).media
+    expect(file).toMatchObject({ id: 'f1', filename: null, contentType: null, fileSize: null })
+  })
+
+  it('keeps them for a key with media:read', () => {
+    const [file] = pluginMessageViewOf(withFile(), true, true).media
+    expect(file?.filename).toBe('cedula.pdf')
+  })
+})
 
 describe('pluginMessageViewOf', () => {
   it('leaves an answer that quotes nothing as it is', () => {

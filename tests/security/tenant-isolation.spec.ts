@@ -3443,6 +3443,40 @@ describe('Tenant isolation', () => {
       expect(stores(fromA2.body)).toEqual(stores(fromA.body))
     })
 
+    it('refuse a line charged to a sibling store of which the person is not a member, and take one of a store they belong to (SEG-228)', async () => {
+      const books = await booksOf(owner, ctx.orgA.id)
+      const before = await owner.journalEntry.count({ where: { organizationId: ctx.orgA.id } })
+      const body = (storeId: string) => ({
+        idempotencyKey: `k${randomUUID().replaceAll('-', '')}`,
+        entryDate: new Date().toISOString().slice(0, 10),
+        type: JournalEntryType.MANUAL,
+        memo: 'SEG-228',
+        lines: [
+          { accountId: books.accounts.expense, debitCents: 11, storeId },
+          { accountId: books.accounts.cash, creditCents: 11 }
+        ]
+      })
+
+      // adminA belongs to the first store of the organization and not to its sibling
+      const refused = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.finance.entries.manual)
+        .send(body(ctx.storeA2.id))
+      const ofAnotherOrganization = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.finance.entries.manual)
+        .send(body(ctx.storeB.id))
+      const own = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.finance.entries.manual)
+        .send(body(ctx.storeA.id))
+
+      expect(refused.status).toBe(404)
+      // A store that is not the person's and one that does not exist in their organization answer the same
+      expect(ofAnotherOrganization.status).toBe(404)
+      expect(own.status).toBe(201)
+      expect(await owner.journalEntry.count({ where: { organizationId: ctx.orgA.id } })).toBe(
+        before + 1
+      )
+    })
+
     it('are told the balances of one store of the organization, and never those of a store of another', async () => {
       const books = await booksOf(owner, ctx.orgA.id)
       await postTestEntry(owner, {
