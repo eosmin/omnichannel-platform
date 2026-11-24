@@ -878,7 +878,8 @@
     "WIDGET_TOKEN_INVALID": "The widget session is not valid",
     "CUSTOMER_IDENTITY_HAS_CONVERSATIONS": "This identity has conversations and cannot be unlinked.",
     "ORG_STORE_HAS_DATA": "A store that has data cannot be deleted.",
-    "ORG_STORE_IS_LAST": "The last store of an organization cannot be deleted."
+    "ORG_STORE_IS_LAST": "The last store of an organization cannot be deleted.",
+    "ORG_STORE_CURRENCY_NOT_BASE": "The books of this organization are kept in USD, so the currency of its stores cannot change."
   },
   "invitation": {
     "title": "You are invited",

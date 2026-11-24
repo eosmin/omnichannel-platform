@@ -186,6 +186,23 @@ describe('The books of an organization', () => {
       expect(errorOf(response).code).toBe(ErrorCodes.FINANCE_SETUP_REQUIRED)
     })
 
+    it('refuses to set up the books over a store in another currency, and sets nothing up (FIN-700)', async () => {
+      await owner.store.update({ where: { id: ctx.storeB.id }, data: { currency: 'JPY' } })
+      try {
+        const response = await asAdminB()
+          .post(ApiRoutes.finance.setup)
+          .send({ countryCode: 'SV', accountingStartDate: START })
+
+        expect(response.status).toBe(CONFLICT)
+        expect(errorOf(response).code).toBe(ErrorCodes.ORG_STORE_CURRENCY_NOT_BASE)
+        expect(await owner.financeSettings.count({ where: { organizationId: ctx.orgB.id } })).toBe(
+          0
+        )
+      } finally {
+        await owner.store.update({ where: { id: ctx.storeB.id }, data: { currency: 'USD' } })
+      }
+    })
+
     it('is all or nothing: a chart row that is already there is a conflict and leaves no settings', async () => {
       const code = financeTemplateFor('SV')?.accounts[0]?.code ?? ''
       expect(code).not.toBe('')
