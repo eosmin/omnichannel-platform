@@ -205,10 +205,6 @@ export class OriginMediaFetcher {
   }
 
   private async queueScan(storeId: string, mediaId: string): Promise<void> {
-    await this.heavyQueue.add(
-      JobNames.SCAN_FILE,
-      { mediaId, storeId },
-      scanFileJobOptions(mediaId)
-    )
+    await this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId, storeId }, scanFileJobOptions(mediaId))
   }
 }

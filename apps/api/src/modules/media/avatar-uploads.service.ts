@@ -200,11 +200,7 @@ export class AvatarUploadsService {
   private async queueScan(userId: string, mediaId: string): Promise<void> {
     // After the REAL commit: the scan reads the row of the avatar that this request wrote
     await this.prisma.afterCommitStep(this.prisma.client, () =>
-      this.heavyQueue.add(
-        JobNames.SCAN_FILE,
-        { mediaId, userId },
-        scanFileJobOptions(mediaId)
-      )
+      this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId, userId }, scanFileJobOptions(mediaId))
     )
   }
 

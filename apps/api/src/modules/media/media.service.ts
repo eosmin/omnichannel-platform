@@ -416,11 +416,7 @@ export class MediaService {
   private async queueScan(storeId: string, mediaId: string): Promise<void> {
     // After the REAL commit: the scan reads the row of the file that this request wrote
     await this.prisma.afterCommitStep(this.prisma.client, () =>
-      this.heavyQueue.add(
-        JobNames.SCAN_FILE,
-        { mediaId, storeId },
-        scanFileJobOptions(mediaId)
-      )
+      this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId, storeId }, scanFileJobOptions(mediaId))
     )
   }
 

@@ -50,6 +50,10 @@ describe('MediaPipeline', () => {
 
   // Reads the row the way the owner of the database sees it, never through the connection of the worker: with the policies enforced
   // that one sees a row only inside the context of its store, and what is checked here is the row, not the context
+  // The marks kept in `scan_result`, as plain values
+  const marks = (row: MediaRow): Record<string, unknown> =>
+    (row.scanResult ?? {}) as Record<string, unknown>
+
   async function readMedia(id: string): Promise<MediaRow> {
     const { rows } = await owner.query<MediaRow>(
       `SELECT status, key, filename, store_id AS "storeId", content_type AS "contentType", file_size AS "fileSize", variants,
@@ -543,9 +547,7 @@ describe('MediaPipeline', () => {
       expect(row.status).toBe('pending')
       expect(row.scannedAt).toBeNull()
       expect(await storage.head(media.key)).not.toBeNull()
-      expect(Date.now() - Date.parse(String(row.scanResult?.['unavailableSince']))).toBeLessThan(
-        60_000
-      )
+      expect(Date.now() - Date.parse(String(marks(row)['unavailableSince']))).toBeLessThan(60_000)
 
       // The scanner is back: the sweep queues the scan again and the file is clean
       jest.restoreAllMocks()
@@ -606,8 +608,8 @@ describe('MediaPipeline', () => {
       await expect(pipeline.scan(media.id, { storeId }, true)).rejects.toThrow('the daemon is down')
 
       const row = await readMedia(media.id)
-      expect(row.scanResult?.['sanitized']).toBe(true)
-      expect(typeof row.scanResult?.['unavailableSince']).toBe('string')
+      expect(marks(row)['sanitized']).toBe(true)
+      expect(typeof marks(row)['unavailableSince']).toBe('string')
     })
   })
 

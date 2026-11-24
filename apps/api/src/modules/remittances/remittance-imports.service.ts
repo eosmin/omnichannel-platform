@@ -226,11 +226,7 @@ export class RemittanceImportsService {
     // files, so a queue that is down does not fail an import that was made (as before: the failure is swallowed where it happens)
     await this.prisma.afterCommitStep(this.prisma.client, () =>
       this.heavyQueue
-        .add(
-          JobNames.SCAN_FILE,
-          { mediaId, storeId },
-          scanFileJobOptions(mediaId)
-        )
+        .add(JobNames.SCAN_FILE, { mediaId, storeId }, scanFileJobOptions(mediaId))
         .catch(() => undefined)
     )
   }

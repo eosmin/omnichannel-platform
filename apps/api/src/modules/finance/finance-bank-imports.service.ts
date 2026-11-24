@@ -325,11 +325,7 @@ export class FinanceBankImportsService {
           // After the REAL commit (under RLS_CONTEXT the request is one transaction): the scan reads the row of the file
           await this.prisma.afterCommitStep(this.prisma.client, () =>
             this.heavyQueue
-              .add(
-                JobNames.SCAN_FILE,
-                { mediaId, storeId },
-                scanFileJobOptions(mediaId)
-              )
+              .add(JobNames.SCAN_FILE, { mediaId, storeId }, scanFileJobOptions(mediaId))
               .catch(() => undefined)
           )
           this.audit.log({
