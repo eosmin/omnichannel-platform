@@ -16,6 +16,7 @@ import {
   pngChunkTypes
 } from './animated-image-cleaner'
 import { isEnvironmentError } from './environment-error'
+import { cutJpegMetadata, jpegHasDataAfterEnd } from './jpeg-metadata-cutter'
 
 // The picture cannot be decoded, is not what it says it is, has too many pixels, does not fit the file
 // limit once cleaned, or came out of the encoder with metadata still in it. It is refused: the
@@ -37,6 +38,37 @@ const FORMAT_OF: Readonly<Record<string, 'jpeg' | 'png' | 'webp' | 'gif'>> = {
   'image/png': 'png',
   'image/webp': 'webp',
   'image/gif': 'gif'
+}
+
+// The picture without its metadata, cut out of its container with no pixel decoded (the segments of a jpeg, the chunks of a png, a webp or a
+// gif; every other byte is copied), or `undefined` when the type is not one of those, the file cannot be walked, it is held turned by its
+// orientation tag, it holds data after its end, or what is left still carries metadata (the header is read back). It is the way for a picture that the decoder cannot or may not take (a photo
+// inside a document, after the time budget): a lossless cut costs no raster. An error of the machine propagates.
+export async function cutMetadataInContainer(
+  input: Buffer,
+  contentType: string
+): Promise<Buffer | undefined> {
+  const format = FORMAT_OF[contentType]
+  if (format === undefined) return undefined
+  let cut: Buffer
+  try {
+    // The cut drops the tag that turns the picture upright without turning it: that photo is for the re-encoding, which does (and a
+    // file that holds a second image after its end is not vouched for by a header that describes the first one)
+    const header = await sharp(input, {
+      limitInputPixels: ImageSanitizing.MAX_INPUT_PIXELS
+    }).metadata()
+    if ((header.orientation ?? 1) > 1) return undefined
+    if (format === 'jpeg') {
+      if (jpegHasDataAfterEnd(input)) return undefined
+      cut = Buffer.from(cutJpegMetadata(input) ?? input)
+    } else {
+      cut = cleanAnimation(input, format)
+    }
+    return (await carriesMetadata(cut)) ? undefined : cut
+  } catch (error) {
+    if (isEnvironmentError(error)) throw error
+    return undefined
+  }
 }
 
 // Whether a type is re-encoded: the caller asks before it reads the file

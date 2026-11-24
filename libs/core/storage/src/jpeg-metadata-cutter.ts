@@ -79,3 +79,31 @@ export function cutJpegMetadata(jpeg: Uint8Array): Uint8Array | undefined {
   out.set(jpeg.subarray(from), written)
   return out
 }
+
+// Whether a JPEG holds anything after the end of its first image (the trailer of a phone, a secondary image of a multi-picture file, a
+// depth map or a gain map that carries an EXIF block of its own). A cut of the segments before the scan leaves all of it as it was, and the
+// header that is read back describes the first image only, so the caller must not take such a file as cleaned. Zero padding is not data.
+export function jpegHasDataAfterEnd(jpeg: Uint8Array): boolean {
+  let at = SEGMENT_HEADER_BYTES
+  while (at + 1 < jpeg.length) {
+    if (jpeg[at] !== MARKER_PREFIX) return true // Not walkable: it is not vouched for
+    const marker = jpeg[at + 1] as number
+    if (marker === MARKER_PREFIX) {
+      at += 1
+      continue
+    }
+    if (marker === SOS) break
+    if (isStandalone(marker)) {
+      at += SEGMENT_HEADER_BYTES
+      continue
+    }
+    if (at + SEGMENT_HEADER_BYTES + LENGTH_BYTES > jpeg.length) return true
+    at += SEGMENT_HEADER_BYTES + (((jpeg[at + 2] as number) << 8) | (jpeg[at + 3] as number))
+  }
+  for (let i = at; i + 1 < jpeg.length; i += 1) {
+    if (jpeg[i] === MARKER_PREFIX && jpeg[i + 1] === EOI) {
+      return jpeg.subarray(i + SEGMENT_HEADER_BYTES).some(byte => byte !== 0)
+    }
+  }
+  return false
+}

@@ -212,6 +212,8 @@ export const SWEEP_NEEDS_VERSIONING = Symbol('SWEEP_NEEDS_VERSIONING')
 // so cannot be cleaned of its metadata: it is never stored, never served
 export const MediaRejectionReasons = {
   IMAGE_NOT_SANITIZABLE: 'image_not_sanitizable',
+  // A document an agent uploaded that keeps a part with its metadata (a photo inside it that no cleaner could walk): it is never sent or served
+  DOCUMENT_NOT_CLEANABLE: 'document_not_cleanable',
   // A PDF kept as financial evidence that carries something that runs when it is opened (TAX-436)
   PDF_ACTIVE_CONTENT: 'pdf_active_content'
 } as const
@@ -311,8 +313,9 @@ export const DocumentSanitizing = {
   // The version of the cleaning of a document (Step 7.3, `office-user-paths-and-embedded-media`). Version 1 cleaned the properties; version 2
   // also anonymizes the paths of the author's machine and cleans the metadata of the photos inside the document. A row that was cleaned
   // with an older version carries the mark without this key, and the sweep of stored documents takes it again; the mark of a document
-  // cleaned now carries it. Raise it when the cleaning learns something new that an old row may still hold.
-  CLEANING_VERSION: 2,
+  // cleaned now carries it. Raise it when the cleaning learns something new that an old row may still hold. Version 3: a photo that the decoder
+  // did not reach (time budget, no decode) is cut in its container instead of being kept with its position, so the rows that kept one are taken again.
+  CLEANING_VERSION: 3,
   CLEANING_VERSION_KEY: 'cleaningVersion',
   // The part of an xlsx that records where the file was last saved (`x15ac:absPath`), and the parts of a package that hold the photos
   WORKBOOK_PATH: 'xl/workbook.xml',

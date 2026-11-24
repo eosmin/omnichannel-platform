@@ -22,7 +22,7 @@ import {
 } from '@platform/core/storage'
 
 import { isEnvironmentError } from './environment-error'
-import { carriesMetadata, sanitizeImage } from './image-sanitizer'
+import { carriesMetadata, cutMetadataInContainer, sanitizeImage } from './image-sanitizer'
 import { cutJpegMetadata, jpegCarriesMetadata } from './jpeg-metadata-cutter'
 
 export { isEnvironmentError }
@@ -380,12 +380,20 @@ const photoTypeOf = (data: Uint8Array): string | undefined =>
 const isPhotoPart = (path: string): boolean =>
   DocumentSanitizing.EMBEDDED_IMAGE_DIRECTORIES.some(directory => path.startsWith(directory))
 
+// A photo that the decoder did not take (the time budget is spent, it does not decode, the cleaned one does not fit the file limit) is not
+// left with its position: its container is cut where it is (`cutMetadataInContainer`, no pixel decoded). Only a photo that cannot be walked,
+// or whose cut still carries metadata, is kept as it came and counted: the caller must not let a document that keeps one leave.
 async function cleanPhotos(
   files: Record<string, Uint8Array>,
   onKept: () => void
 ): Promise<Map<string, Uint8Array>> {
   const cleaned = new Map<string, Uint8Array>()
   const deadline = Date.now() + DocumentSanitizing.EMBEDDED_IMAGES_BUDGET_MS
+  const cutOrKeep = async (path: string, photo: Buffer, type: string): Promise<void> => {
+    const cut = await cutMetadataInContainer(photo, type)
+    if (cut === undefined) onKept()
+    else cleaned.set(path, new Uint8Array(cut))
+  }
   for (const [path, data] of Object.entries(files)) {
     const type = isPhotoPart(path) && !path.endsWith('/') ? photoTypeOf(data) : undefined
     if (type === undefined) continue
@@ -393,16 +401,16 @@ async function cleanPhotos(
     try {
       if (!(await carriesMetadata(photo))) continue
       if (Date.now() >= deadline) {
-        onKept()
+        await cutOrKeep(path, photo, type)
         continue
       }
       const result = await sanitizeImage(photo, type, UploadLimits.MAX_FILE_SIZE_BYTES)
       if (result.kind === 'sanitized') cleaned.set(path, new Uint8Array(result.body))
-      else onKept()
+      else await cutOrKeep(path, photo, type)
     } catch (error) {
       // An error of the machine is not the photo's: it stops the document, and the queue retries
       if (isEnvironmentError(error)) throw error
-      onKept()
+      await cutOrKeep(path, photo, type)
     }
   }
   return cleaned
@@ -526,7 +534,8 @@ async function cleanOoxml(
     }
     out[path] = [body, { level: DocumentSanitizing.ZIP_LEVEL, mtime: date }]
   }
-  if (!changed) return 'already_clean'
+  // A package whose text and properties are clean but that keeps a photo it could not clean is not clean: the count must reach the caller
+  if (!changed && keptParts === 0) return 'already_clean'
   const zipped = Buffer.from(zipSync(out))
   // Read back: it opens again, has every part but the thumbnail and no other, and every part that the cleaning did not mean to change is
   // the same bytes; what it did change is clean (no path of a machine left in the text, no metadata in a photo)
