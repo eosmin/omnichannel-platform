@@ -110,6 +110,7 @@ describe('the sweep of the data erasures that are due', () => {
       ledger,
       mailQueue as unknown as Queue<SendEmailJob>,
       CONFIG,
+      { frontendUrl: 'http://web.test' },
       logger as unknown as PinoLogger
     )
     sweeper = new DsrEraseDueSweeper(

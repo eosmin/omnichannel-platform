@@ -217,7 +217,9 @@ export enum DsrStatus {
 
 export enum VerificationTokenType {
   MAGIC_LINK = 'magic_link',
-  DSR_VERIFICATION = 'dsr_verification'
+  DSR_VERIFICATION = 'dsr_verification',
+  // The link of the mail that hands a person the file of their access or portability request (Step 7.2-H2b-3)
+  DSR_EXPORT_DOWNLOAD = 'dsr_export_download'
 }
 
 export enum NotificationChannel {

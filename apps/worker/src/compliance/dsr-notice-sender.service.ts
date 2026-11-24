@@ -7,6 +7,8 @@ import { z } from 'zod'
 import {
   ComplianceConfig,
   DSR_CONFIG,
+  DSR_EXPORT_FRAGMENT_KEY,
+  DSR_EXPORT_WEB_PATH,
   type DsrConfig,
   dsrNoticeJob,
   dsrNoticeLocaleOf,
@@ -14,10 +16,12 @@ import {
   DsrResultOutcomes,
   openDsrNotifyAddress
 } from '@platform/core/compliance'
+import { generateToken, hashToken } from '@platform/core/crypto'
 import { JobContext, PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { DsrStatus, DsrType } from '@platform/core/domain'
+import { DsrStatus, DsrType, VerificationTokenType } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import type { Locale } from '@platform/core/i18n'
+import { DIGEST_LINKS, type DigestLinks } from '@platform/core/notifications'
 import { QueueNames, type SendEmailJob } from '@platform/core/queues'
 
 import { DsrNoticeLedger } from './dsr-notice-ledger.service'
@@ -39,6 +43,7 @@ export class DsrNoticeSender {
     private readonly notices: DsrNoticeLedger,
     @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig,
+    @Inject(DIGEST_LINKS) private readonly links: DigestLinks,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(DsrNoticeSender.name)
@@ -136,7 +141,9 @@ export class DsrNoticeSender {
               type: true,
               notifyToEncrypted: true,
               noticeLocale: true,
-              retainedRecordsSummary: true
+              retainedRecordsSummary: true,
+              resultKey: true,
+              resultExpiresAt: true
             }
           })
           const sealed = row.notifyToEncrypted
@@ -156,7 +163,8 @@ export class DsrNoticeSender {
             row.type,
             to,
             row.retainedRecordsSummary,
-            row.noticeLocale
+            row.noticeLocale,
+            row.resultKey !== null ? row.resultExpiresAt : null
           )
           // The lease: a run that overlaps this one (or the next pass of the same one) sees a notice that is on its way and leaves it alone
           await tx.dataSubjectRequest.updateMany({
@@ -190,7 +198,8 @@ export class DsrNoticeSender {
     requestType: string,
     to: string,
     summary: unknown,
-    requestLocale: string | null
+    requestLocale: string | null,
+    fileExpiresAt: Date | null
   ): Promise<void> {
     const store = await tx.store.findUnique({
       where: { id: storeId },
@@ -206,9 +215,45 @@ export class DsrNoticeSender {
       requestType,
       ...(requestType === String(DsrType.ERASURE)
         ? { retainedOrders: retainedOrdersOf(summary) }
-        : {})
+        : {}),
+      // An export that still holds its file brings the link that hands it over; one whose file is gone brings none (the mail then says so)
+      ...(await this.downloadUrlOf(tx, requestId, requestType, fileExpiresAt))
     })
     await this.emailQueue.add(job.name, job.data, job.opts)
+  }
+
+  // The link that hands a person the file of their access or portability request: a NEW token of 256 bits each time the mail is queued (only its
+  // hash is stored), valid until the file is kept until. The tokens of earlier mails of the same request that were never used are removed first, so
+  // one link is live at a time. It goes in the same transaction as the queueing: a notice that is not queued leaves no token behind. The token
+  // goes in the fragment of the page, which a browser never sends to a server.
+  private async downloadUrlOf(
+    tx: PrismaTransaction,
+    requestId: string,
+    requestType: string,
+    fileExpiresAt: Date | null
+  ): Promise<{ downloadUrl?: string }> {
+    const isExport =
+      requestType === String(DsrType.ACCESS) || requestType === String(DsrType.PORTABILITY)
+    if (!isExport || fileExpiresAt === null || fileExpiresAt.getTime() <= Date.now()) return {}
+    await tx.verificationToken.deleteMany({
+      where: {
+        type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
+        subject: requestId,
+        usedAt: null
+      }
+    })
+    const token = generateToken()
+    await tx.verificationToken.create({
+      data: {
+        type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
+        tokenHash: hashToken(token),
+        subject: requestId,
+        expiresAt: fileExpiresAt
+      }
+    })
+    const url = new URL(DSR_EXPORT_WEB_PATH, this.links.frontendUrl)
+    url.hash = `${DSR_EXPORT_FRAGMENT_KEY}=${token}`
+    return { downloadUrl: url.toString() }
   }
 }
 

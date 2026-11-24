@@ -92,3 +92,14 @@ export async function resolveDsrVerification(
     await db.$queryRaw<ResolvedRecord[]>`SELECT * FROM resolve_dsr_verification(${tokenHash})`
   )
 }
+
+// The request whose file this download token opens (null: unknown, used, expired, or the request is not a completed export that still holds its
+// file). `id` is the request. Step 7.2-H2b-3.
+export async function resolveDsrExportDownload(
+  db: Reader,
+  tokenHash: string
+): Promise<ResolvedRow | null> {
+  return first(
+    await db.$queryRaw<ResolvedRecord[]>`SELECT * FROM resolve_dsr_export_download(${tokenHash})`
+  )
+}

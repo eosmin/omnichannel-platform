@@ -29,6 +29,8 @@ export type StoreSettingsSection =
 
 // The key of the fragment that carries the token of the verification mail of a data request (`#token=...`)
 export const DSR_VERIFY_FRAGMENT_KEY = 'token'
+// The same key carries the token of the page that hands over the file of an access or portability request
+export const DSR_EXPORT_FRAGMENT_KEY = 'token'
 // What that token looks like: 256 bits in base64url (43 characters). The api checks it, and the page does not send what cannot be one
 export const DSR_VERIFY_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/
 
@@ -49,6 +51,9 @@ export const AppPaths = {
   unsubscribe: '/unsubscribe',
   // The page that confirms a public data request (the link of the verification mail): public, the token travels in the fragment
   dsrVerify: '/compliance/dsr/verify',
+  // The page that hands a person the file of their access or portability request (the link of the closing mail): public, the token travels in
+  // the fragment, like the page that confirms a request
+  dsrExport: '/compliance/dsr/export',
   // The public form of data requests: public, the key of the store travels in the fragment (`#key=...`), so no log and no Referer holds it
   dsrRequest: '/compliance/dsr/request',
   store: {

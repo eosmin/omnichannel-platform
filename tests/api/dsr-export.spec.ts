@@ -14,7 +14,7 @@ import {
   dsrEmailHash,
   dsrNoticeStatusOf
 } from '@platform/core/compliance'
-import { CredentialCipher, encrypt, parseEncryptionKey } from '@platform/core/crypto'
+import { CredentialCipher, encrypt, hashToken, parseEncryptionKey } from '@platform/core/crypto'
 import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
@@ -142,6 +142,7 @@ describe('the export of the data requests of access and portability', () => {
       ledger,
       mailQueue as unknown as Queue<SendEmailJob>,
       CONFIG,
+      { frontendUrl: 'http://web.test' },
       logger as unknown as PinoLogger
     )
     runner = new DsrExportRunner(
@@ -157,6 +158,14 @@ describe('the export of the data requests of access and portability', () => {
     )
   })
   afterAll(async () => {
+    // The tokens name a request by a plain text id (no foreign key), so the cleanup of the prefix does not reach them
+    const requests = await owner.dataSubjectRequest.findMany({
+      where: { organizationId: { in: [ctx.orgA.id, ctx.orgB.id] } },
+      select: { id: true }
+    })
+    await owner.verificationToken.deleteMany({
+      where: { subject: { in: requests.map(request => request.id) } }
+    })
     await cleanUp(owner, prefix)
     await app.close()
     await owner.$disconnect()
@@ -354,7 +363,24 @@ describe('the export of the data requests of access and portability', () => {
 
     const toThem = mails.filter(mail => [mail.data.to].flat().includes(mine.email))
     expect(toThem).toHaveLength(1)
-    expect(toThem[0]?.data.data).toEqual({ outcome: 'completed', requestType: 'access' })
+    const { downloadUrl, ...rest } = toThem[0]?.data.data as { downloadUrl?: string }
+    expect(rest).toEqual({ outcome: 'completed', requestType: 'access' })
+    // The mail carries the link to the page that hands the file over, never the file, and the token is in the fragment (no server sees it)
+    const link = new URL(downloadUrl ?? 'invalid:')
+    expect(link.origin + link.pathname).toBe('http://web.test/compliance/dsr/export')
+    expect(link.search).toBe('')
+    const token = new URLSearchParams(link.hash.slice(1)).get('token') ?? ''
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    // Only the hash of the token is kept, it is live until the file is kept until, and it opens this request
+    const stored = await owner.verificationToken.findMany({ where: { subject: id } })
+    expect(stored).toHaveLength(1)
+    expect(stored[0]).toMatchObject({
+      type: 'dsr_export_download',
+      tokenHash: hashToken(token),
+      usedAt: null
+    })
+    expect(JSON.stringify(stored)).not.toContain(token)
+    expect(stored[0]?.expiresAt.getTime()).toBe((await rowOf(id)).resultExpiresAt?.getTime())
     expect(toThem[0]?.options.jobId).toBe(dsrResultMailJobId(id))
     expect(toThem[0]?.data.dsrNotice).toEqual({ requestId: id, storeId: ctx.storeA.id })
     const row = await rowOf(id)
@@ -366,6 +392,30 @@ describe('the export of the data requests of access and portability', () => {
     expect(mails.filter(mail => [mail.data.to].flat().includes(mine.email))).toHaveLength(0)
     await ledger.sent(ctx.storeA.id, id)
     expect(dsrNoticeStatusOf(await rowOf(id))).toBe('sent')
+  })
+
+  it('gives a new link when the notice is asked for again, and leaves only the newest one live', async () => {
+    const mine = await personOfStoreA('again')
+    const id = await approvedExport({ customerIds: [mine.customerId], email: mine.email })
+    await runner.run()
+    const first = await owner.verificationToken.findFirstOrThrow({ where: { subject: id } })
+    // The lease of the first notice ran out without the processor confirming it: the next night asks for the mail again
+    await owner.dataSubjectRequest.update({
+      where: { id },
+      data: { noticeQueuedAt: new Date(Date.now() - 2 * HOUR_MS) }
+    })
+    mails.length = 0
+
+    await runner.run()
+
+    const toThem = mails.filter(mail => [mail.data.to].flat().includes(mine.email))
+    expect(toThem).toHaveLength(1)
+    const stored = await owner.verificationToken.findMany({ where: { subject: id } })
+    expect(stored).toHaveLength(1)
+    expect(stored[0]?.tokenHash).not.toBe(first.tokenHash)
+    const url = (toThem[0]?.data.data as { downloadUrl: string }).downloadUrl
+    const token = new URLSearchParams(new URL(url).hash.slice(1)).get('token') ?? ''
+    expect(hashToken(token)).toBe(stored[0]?.tokenHash)
   })
 
   it('exports the portability kind the same way', async () => {
