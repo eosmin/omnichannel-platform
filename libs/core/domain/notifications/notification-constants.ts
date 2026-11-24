@@ -256,6 +256,36 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
   ]
 }
 
+// The two alerts that cannot be turned off (owner decision, 2026-11-24, BAN-325): a broken chain of the books and a file found
+// infected. Every other type, the critical ones too (`dsr.deadline_approaching`, `webhook.auto_disabled`), may be turned off by the
+// person. For a locked type the channels it is delivered by at the factory stay on: the server refuses a choice that turns one off
+// (`putPreferencesBodySchema`) and reads a stored off as on (`NotificationPreferencesService`), and the page draws those switches
+// locked.
+export const NotificationLockedTypes: ReadonlySet<NotificationType> = new Set([
+  NotificationTypes.FINANCE_CHAIN_BROKEN,
+  NotificationTypes.MEDIA_INFECTED
+])
+
+// The names the preference rows give to the channels of `NotificationChannel`
+export const NotificationChannelPreferenceKeys = {
+  [NotificationChannel.IN_APP]: 'inApp',
+  [NotificationChannel.PUSH]: 'push',
+  [NotificationChannel.EMAIL]: 'email',
+  [NotificationChannel.SOUND]: 'sound'
+} as const
+export type NotificationChannelPreferenceKey =
+  (typeof NotificationChannelPreferenceKeys)[NotificationChannel]
+
+// The channels of a type that the person cannot turn off: its factory channels when it is locked, none otherwise
+// (`type` may be any string, the views of the api carry it as one: an unknown type has no lock)
+export function lockedChannelsOf(type: string): readonly NotificationChannelPreferenceKey[] {
+  const known = Object.values(NotificationTypes).find(candidate => candidate === type)
+  if (known === undefined || !NotificationLockedTypes.has(known)) return []
+  return NotificationDefaults[known].channels.map(
+    channel => NotificationChannelPreferenceKeys[channel]
+  )
+}
+
 // Types that nothing raises yet. The preferences page hides their switches (a switch that changes
 // nothing misleads) and shows each one when the step that emits it is done: Commerce (Milestone 4)
 // raises the order, inventory and shipping ones; Step 5.4 PR A raises `webhook.auto_disabled`, and so it is no longer here; the plugin

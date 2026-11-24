@@ -12,7 +12,9 @@ const BUSY_MAX_RETRIES = 1
 const MAX_RETRY_DELAY_MS = 30_000
 
 const isBusy = (error: unknown): boolean =>
-  error instanceof ApiError && error.code === ClientErrorCodes.DATABASE_BUSY
+  error instanceof ApiError &&
+  (error.code === ClientErrorCodes.DATABASE_BUSY ||
+    error.code === ClientErrorCodes.DEPENDENCY_UNAVAILABLE)
 
 // Only a network failure (status 0) or a 5xx is worth a second try: a refusal, or an answer the page cannot
 // read, will be the same again. A DATABASE_BUSY (the api gave up on a lock after waiting up to 5 s) is tried

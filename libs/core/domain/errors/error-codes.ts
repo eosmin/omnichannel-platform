@@ -321,6 +321,9 @@ export const ErrorCodes = {
   // The database kept a request waiting for a lock longer than the api allows (ApiLockTimeout): try again
   DATABASE_BUSY: 'DATABASE_BUSY',
 
+  // Redis, which a request needs, could not be reached or did not answer in time: try again (503, never a 500)
+  DEPENDENCY_UNAVAILABLE: 'DEPENDENCY_UNAVAILABLE',
+
   // The browser could not reach the api: raised by the api client when no answer came, never by the api
   NETWORK_UNAVAILABLE: 'NETWORK_UNAVAILABLE',
 

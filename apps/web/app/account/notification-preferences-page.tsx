@@ -5,6 +5,7 @@ import { type ReactElement, useId, useMemo, useState } from 'react'
 
 import type { NotificationSettingsView, TypePreferenceView } from '@platform/api-client'
 import { DigestFrequency } from '@platform/core/domain'
+import { lockedChannelsOf } from '@platform/core/notifications'
 
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Label } from '../../components/ui/label'
@@ -150,6 +151,7 @@ function Preferences({
           </div>
         )}
         <p className="text-muted-foreground text-sm">{t('hint')}</p>
+        <p className="text-muted-foreground text-sm">{t('lockedHint')}</p>
       </header>
 
       <PushDeviceSwitch storeId={storeId} />
@@ -185,8 +187,12 @@ function Preferences({
                         className="size-4 align-middle"
                         checked={row[channel]}
                         // In-app is how the notification exists at all: it cannot be turned off, but a
-                        // stored off can be turned back on
-                        disabled={channel === 'inApp' && row.inApp}
+                        // stored off can be turned back on. The same for the channels of the alerts that
+                        // cannot be turned off (the server refuses it as well)
+                        disabled={
+                          row[channel] &&
+                          (channel === 'inApp' || lockedChannelsOf(row.type).includes(channel))
+                        }
                         aria-label={t('cell', {
                           type: typeLabel(row.type),
                           channel: t(`channels.${channel}`)
