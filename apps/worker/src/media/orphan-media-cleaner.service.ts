@@ -13,7 +13,7 @@ import {
   WorkerLists
 } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
-import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
   EvidenceMediaPurposes,
@@ -597,7 +597,7 @@ export class OrphanMediaCleaner {
           await this.heavyQueue.add(
             JobNames.SCAN_FILE,
             { mediaId: row.id, ...owner },
-            { jobId: `${JobNames.SCAN_FILE}-${row.id}` }
+            scanFileJobOptions(row.id)
           )
           requeued += 1
         } else if (row.storeId !== null && row.createdAt.getTime() < dropBefore) {

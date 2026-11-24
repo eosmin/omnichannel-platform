@@ -9,7 +9,7 @@ import sharp from 'sharp'
 import { PrismaService } from '@platform/core/database'
 import { connectionUrls, workerRoleBoundInSuites } from '@platform/core/database-testing'
 import { JobNames, QueueNames } from '@platform/core/queues'
-import { AnimatedImage, ImageVariants, StorageKeys } from '@platform/core/storage'
+import { AnimatedImage, ImageVariants, StorageKeys, UploadLimits } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { dropJob } from '../testing/drop-job'
@@ -531,8 +531,28 @@ describe('MediaPipeline', () => {
       expect(await storage.head(media.key)).not.toBeNull()
     })
 
-    it('is given up on the last try: terminal row, file gone, error still raised', async () => {
+    it('keeps a young file pending on the last try: the file stays, the error is raised, and a later scan can still clean it', async () => {
+      const media = await pendingMedia('outage.txt', 'text/plain', Buffer.from('plain text'))
+
+      await expect(pipeline.scan(media.id, { storeId }, true)).rejects.toThrow('the daemon is down')
+
+      const row = await readMedia(media.id)
+      expect(row.status).toBe('pending')
+      expect(row.scannedAt).toBeNull()
+      expect(await storage.head(media.key)).not.toBeNull()
+
+      // The scanner is back: the sweep queues the scan again and the file is clean
+      jest.restoreAllMocks()
+      await pipeline.scan(media.id, { storeId }, false)
+      expect((await readMedia(media.id)).status).toBe('clean')
+    })
+
+    it('is given up on the last try once the row is older than the limit: terminal row, file gone, error still raised', async () => {
       const media = await pendingMedia('lost.txt', 'text/plain', Buffer.from('plain text'))
+      await owner.query(
+        `UPDATE media SET created_at = now() - make_interval(hours => $2) WHERE id = $1`,
+        [media.id, UploadLimits.SCAN_GIVE_UP_HOURS + 1]
+      )
 
       await expect(pipeline.scan(media.id, { storeId }, true)).rejects.toThrow('the daemon is down')
 
@@ -542,6 +562,19 @@ describe('MediaPipeline', () => {
       expect(await storage.head(media.key)).toBeNull()
       // Past its state: a later job does nothing, not even ask the daemon
       await expect(pipeline.scan(media.id, { storeId }, true)).resolves.toBeUndefined()
+    })
+
+    it('does not give up a row just under the limit', async () => {
+      const media = await pendingMedia('almost.txt', 'text/plain', Buffer.from('plain text'))
+      await owner.query(
+        `UPDATE media SET created_at = now() - make_interval(hours => $2) WHERE id = $1`,
+        [media.id, UploadLimits.SCAN_GIVE_UP_HOURS - 1]
+      )
+
+      await expect(pipeline.scan(media.id, { storeId }, true)).rejects.toThrow('the daemon is down')
+
+      expect((await readMedia(media.id)).status).toBe('pending')
+      expect(await storage.head(media.key)).not.toBeNull()
     })
   })
 

@@ -29,7 +29,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { dateToDay, dayToDate } from '@platform/core/finance'
-import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { MediaPurpose, sanitizeFilename, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -328,7 +328,7 @@ export class FinanceBankImportsService {
               .add(
                 JobNames.SCAN_FILE,
                 { mediaId, storeId },
-                { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+                scanFileJobOptions(mediaId)
               )
               .catch(() => undefined)
           )

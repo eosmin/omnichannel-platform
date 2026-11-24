@@ -11,7 +11,7 @@ jest.mock('@platform/core/url-safety', () => ({
 }))
 
 import { MediaStatus, OriginMediaSlots } from '@platform/core/domain'
-import { JobNames } from '@platform/core/queues'
+import { JobNames, scanFileJobOptions } from '@platform/core/queues'
 import { MediaPurpose } from '@platform/core/storage'
 import { PinnedFetchFailed, UnsafeUrlError } from '@platform/core/url-safety'
 
@@ -94,7 +94,7 @@ describe('OriginMediaFetcher', () => {
     expect(queue.add).toHaveBeenCalledWith(
       JobNames.SCAN_FILE,
       { mediaId: id, storeId: STORE },
-      { jobId: `${JobNames.SCAN_FILE}-${id}` }
+      scanFileJobOptions(id)
     )
   })
 

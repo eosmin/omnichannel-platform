@@ -7,7 +7,7 @@ import { CacheKeys } from '@platform/core/cache'
 import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
   AvatarProcessing,
@@ -203,7 +203,7 @@ export class AvatarUploadsService {
       this.heavyQueue.add(
         JobNames.SCAN_FILE,
         { mediaId, userId },
-        { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+        scanFileJobOptions(mediaId)
       )
     )
   }

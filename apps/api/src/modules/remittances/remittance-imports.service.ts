@@ -30,7 +30,7 @@ import {
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
-import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { RemittancesService } from '@platform/core/shipping'
 import { MediaPurpose, sanitizeFilename, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -229,7 +229,7 @@ export class RemittanceImportsService {
         .add(
           JobNames.SCAN_FILE,
           { mediaId, storeId },
-          { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+          scanFileJobOptions(mediaId)
         )
         .catch(() => undefined)
     )

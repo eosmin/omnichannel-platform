@@ -9,7 +9,7 @@ import pg from 'pg'
 import { CacheKeys } from '@platform/core/cache'
 import { JobContext, JobContextError, PrismaService } from '@platform/core/database'
 import { connectionUrls } from '@platform/core/database-testing'
-import { JobNames, QueueNames } from '@platform/core/queues'
+import { JobNames, QueueNames, ScanFileRetry } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import { STORES_ROOT, StorageKeys, UploadLimits, USERS_ROOT } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -470,6 +470,11 @@ describe('OrphanMediaCleaner', () => {
 
     const queued = await heavy.getJob(`${JobNames.SCAN_FILE}-${id}`)
     expect(queued?.data).toEqual({ mediaId: id, storeId })
+    // With the retry of every scan, so a sweep after an outage waits for the scanner as the first job did
+    expect(queued?.opts).toMatchObject({
+      attempts: ScanFileRetry.ATTEMPTS,
+      backoff: { type: 'exponential', delay: ScanFileRetry.BACKOFF_MS }
+    })
     await dropJob(queued)
   })
 

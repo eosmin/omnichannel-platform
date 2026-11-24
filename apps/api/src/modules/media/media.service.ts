@@ -15,7 +15,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { assertMediaServable } from '@platform/core/messaging'
-import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
   AllowedContentTypes,
@@ -419,7 +419,7 @@ export class MediaService {
       this.heavyQueue.add(
         JobNames.SCAN_FILE,
         { mediaId, storeId },
-        { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+        scanFileJobOptions(mediaId)
       )
     )
   }

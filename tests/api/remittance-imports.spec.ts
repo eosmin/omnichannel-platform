@@ -17,7 +17,7 @@ import {
   ShipmentStatus
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
-import { JobNames, QueueNames } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions } from '@platform/core/queues'
 import { MediaPurpose } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -339,7 +339,7 @@ describe('Importing the settlement file of a carrier (TDD_17 §4.15, Step 4.13 P
         {
           name: JobNames.SCAN_FILE,
           data: { mediaId: media.id, storeId: ctx.storeA.id },
-          opts: { jobId: `${JobNames.SCAN_FILE}-${media.id}` }
+          opts: scanFileJobOptions(media.id)
         }
       ])
       const [entry] = await waitForAuditEntries(owner, {

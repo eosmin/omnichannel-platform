@@ -24,6 +24,7 @@ import {
   type FetchInboundMediaJob,
   JobNames,
   QueueNames,
+  scanFileJobOptions,
   type ScanFileJob
 } from '@platform/core/queues'
 import {
@@ -373,7 +374,7 @@ export class InboundMediaFetcher {
     await this.heavyQueue.add(
       JobNames.SCAN_FILE,
       { mediaId, storeId },
-      { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
+      scanFileJobOptions(mediaId)
     )
   }
 }
