@@ -16,7 +16,7 @@ import { API_PREFIX } from '@platform/core/api'
 import { AUTHENTICATED_USER_RATE_LIMIT, authenticatedUserRateLimitOf } from '@platform/core/auth'
 import { LoggerModule } from '@platform/core/logger'
 import type { AuthenticatedRequest } from '@platform/core/logger'
-import { MetricsModule } from '@platform/core/metrics-module'
+import { MetricsModule, OPEN_METRICS_ACCESS } from '@platform/core/metrics-module'
 
 import { configureHttpApp } from './configure-http-app'
 import { HttpErrorsModule } from './http-errors.module'
@@ -54,7 +54,7 @@ describe('the general per-user budget, wired as a global guard after the authent
     const module = await Test.createTestingModule({
       imports: [
         LoggerModule.forRoot({ level: 'fatal', pretty: false }),
-        MetricsModule,
+        MetricsModule.forRoot(OPEN_METRICS_ACCESS),
         HttpErrorsModule
       ],
       controllers: [RoutesController],

@@ -389,4 +389,4 @@ export const NotificationResourceTypes = {
   CONVERSATION: 'conversation',
   MESSAGE: 'message'
 } as const
-export const NotificationParamKeys = { CUSTOMER: 'customer' } as const
+export const NotificationParamKeys = { CUSTOMER: 'customer', MEMBER: 'member' } as const

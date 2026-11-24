@@ -145,6 +145,9 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'compliance.dsrCancel': { none: COMPLIANCE },
   'compliance.dsrExport': { none: COMPLIANCE },
   'compliance.dsrVerify': { none: COMPLIANCE },
+  'compliance.dsrForm': { none: COMPLIANCE },
+  'compliance.dsrFormKey': { none: COMPLIANCE },
+  'compliance.dsrFormKeyRevoke': { none: COMPLIANCE },
   'compliance.consent': { none: COMPLIANCE },
   'compliance.cookieConsent': { none: COMPLIANCE },
   // Public routes

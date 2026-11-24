@@ -28,6 +28,8 @@ import {
   type DsrApproveBody,
   dsrApproveBodySchema,
   type DsrDecisionBody,
+  type DsrFormKeyBody,
+  dsrFormKeyBodySchema,
   dsrDecisionBodySchema,
   dsrIntakeBodySchema,
   type DsrIntakeBody,
@@ -43,6 +45,7 @@ import {
 } from './compliance.schemas'
 import { type ConsentList, ConsentService, type RecordedConsent } from './consent.service'
 import { type CookieConsentView, CookieConsentService } from './cookie-consent.service'
+import { type DsrFormView, DsrFormService } from './dsr-form.service'
 import { type DsrIntakeAnswer, DsrIntakeService } from './dsr-intake.service'
 import {
   type DsrRequestDetail,
@@ -227,5 +230,47 @@ export class DsrReviewController {
     @Req() req: AuthenticatedRequest
   ): Promise<DsrRequestView> {
     return this.review.cancel(store.id, requestId, body, actorOf(user, store, req))
+  }
+}
+
+// The key of the public form of the store in X-Store-Id (Step 7.2-H2b, C1a). Its own permission: replacing it breaks every link of the form
+// already published. The store is the one of the `TenantGuard`; a key of another store is never read or written.
+@Controller()
+export class DsrFormController {
+  constructor(private readonly form: DsrFormService) {}
+
+  @RequirePermissions(Permissions.CUSTOMERS_DSR_MANAGE_FORM)
+  @NoStore()
+  @Get(ApiRoutes.compliance.dsrForm)
+  get(@CurrentStore() store: ResolvedTenant['store']): Promise<DsrFormView> {
+    return this.form.get(store.id)
+  }
+
+  @RequirePermissions(Permissions.CUSTOMERS_DSR_MANAGE_FORM)
+  @NoStore()
+  @Post(ApiRoutes.compliance.dsrFormKey)
+  @HttpCode(HttpStatusCodes.OK)
+  makeKey(
+    @CurrentStore() store: ResolvedTenant['store'],
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(dsrFormKeyBodySchema)) body: DsrFormKeyBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<DsrFormView> {
+    return this.form.makeKey(store.id, body, actorOf(user, store, req))
+  }
+
+  // A POST and not a DELETE: the key to switch off travels in the body (the same compare and swap), and a body on a DELETE is dropped by
+  // some proxies
+  @RequirePermissions(Permissions.CUSTOMERS_DSR_MANAGE_FORM)
+  @NoStore()
+  @Post(ApiRoutes.compliance.dsrFormKeyRevoke)
+  @HttpCode(HttpStatusCodes.OK)
+  revoke(
+    @CurrentStore() store: ResolvedTenant['store'],
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(dsrFormKeyBodySchema)) body: DsrFormKeyBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<DsrFormView> {
+    return this.form.revoke(store.id, body, actorOf(user, store, req))
   }
 }

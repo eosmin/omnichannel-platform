@@ -3,7 +3,13 @@
 import { useTranslations } from 'next-intl'
 import { useCallback } from 'react'
 
-import { accountHolderOf, errorCodeOf, firstIssueOf, missingPermissionsOf } from './error-message'
+import {
+  accountHolderOf,
+  errorCodeOf,
+  errorDetailOf,
+  firstIssueOf,
+  missingPermissionsOf
+} from './error-message'
 
 // What the pieces below need of the translator, said loosely: the typed one of next-intl builds a union of
 // every message key that is too big to compare a computed key against
@@ -55,6 +61,10 @@ export function useErrorText(): (error: unknown) => string {
       }
       const holder = accountHolderOf(error)
       if (holder !== null) return t('settings.channels.accountInUseNamed', { storeName: holder })
+      // The number or the kind the api sent, when this page has a sentence for it (a conflict kind may have none yet)
+      const detail = errorDetailOf(error)
+      const detailKey = `errorDetails.${detail?.key ?? ''}` as 'errors.INTERNAL_ERROR'
+      if (detail !== null && t.has(detailKey)) return t(detailKey, detail.values)
       return textOfCode(t as unknown as Translate, errorCodeOf(error))
     },
     [t]

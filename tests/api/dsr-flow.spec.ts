@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import { EventEmitter2 } from '@nestjs/event-emitter'
 import type { Queue } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 import pg from 'pg'
@@ -10,6 +11,8 @@ import { hashToken } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { connectionUrls } from '@platform/core/database-testing'
 import { DsrType } from '@platform/core/domain'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 import type { SendEmailJob } from '@platform/core/queues'
 
 import { DsrVerifyService } from '../../apps/api/src/modules/compliance/dsr-verify.service'
@@ -30,6 +33,7 @@ describe('the public data request flow, tenancy against the database', () => {
   const dbs: PrismaService[] = []
   let worker: DsrIntakeWorker
   let verify: DsrVerifyService
+  const manualReviews: unknown[] = []
   let owner: pg.Client
   const runId = randomUUID().slice(0, 8)
   const mails: { data: Record<string, unknown> }[] = []
@@ -126,7 +130,16 @@ describe('the public data request flow, tenancy against the database', () => {
       CONFIG,
       { setContext: jest.fn(), info: jest.fn() } as unknown as PinoLogger
     )
-    verify = new DsrVerifyService(apiDb, audit as unknown as AuditService, CONFIG)
+    // The real bus on the real database: the event must leave after the commit, and only for a move that committed
+    const emitter = new EventEmitter2()
+    emitter.on(Events.DSR_MANUAL_REVIEW, (payload: unknown) => manualReviews.push(payload))
+    const events = new DomainEvents(
+      apiDb,
+      emitter,
+      { setContext: jest.fn(), error: jest.fn() } as unknown as PinoLogger,
+      { publish: jest.fn() } as never
+    )
+    verify = new DsrVerifyService(apiDb, audit as unknown as AuditService, events, CONFIG)
   })
 
   afterAll(async () => {
@@ -198,6 +211,8 @@ describe('the public data request flow, tenancy against the database', () => {
 
     expect((await requestsOf(storeA))[0]?.status).toBe('manual_review')
     expect((await requestsOf(storeB))[0]?.status).toBe('pending_verification')
+    // The reviewers of A are told once, with the ids of A only; nobody is told about B
+    expect(manualReviews).toEqual([{ storeId: storeA, requestId: a?.id }])
     const used = await owner.query<{ token_hash: string; used_at: Date | null }>(
       'SELECT token_hash, used_at FROM verification_tokens WHERE token_hash = ANY($1)',
       [[hashToken(tokenA), hashToken(tokenB)]]
@@ -208,5 +223,25 @@ describe('the public data request flow, tenancy against the database', () => {
     await expect(verify.verify({ token: tokenA })).rejects.toMatchObject({
       code: 'DSR_VERIFICATION_INVALID'
     })
+    expect(manualReviews).toHaveLength(1)
+  })
+
+  it('(c2) tells nobody when the move rolls back: a fresh token of a request that already left verification is refused and unspent', async () => {
+    const a = (await requestsOf(storeA))[0]
+    expect(a?.status).toBe('manual_review')
+    const before = manualReviews.length
+    const token = `C${'c'.repeat(42)}`
+    await insertToken(a?.id ?? '', token)
+
+    await expect(verify.verify({ token })).rejects.toMatchObject({
+      code: 'DSR_VERIFICATION_INVALID'
+    })
+
+    expect(manualReviews).toHaveLength(before)
+    const row = await owner.query<{ used_at: Date | null }>(
+      'SELECT used_at FROM verification_tokens WHERE token_hash = $1',
+      [hashToken(token)]
+    )
+    expect(row.rows[0]?.used_at).toBeNull()
   })
 })

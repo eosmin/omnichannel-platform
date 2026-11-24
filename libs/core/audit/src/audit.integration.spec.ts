@@ -8,7 +8,7 @@ import { AuditAction } from '@platform/core/audit'
 import { DatabaseModule, PrismaService } from '@platform/core/database'
 import { connectionUrls } from '@platform/core/database-testing'
 import { LoggerModule } from '@platform/core/logger'
-import { MetricsModule } from '@platform/core/metrics-module'
+import { MetricsModule, OPEN_METRICS_ACCESS } from '@platform/core/metrics-module'
 
 import { Audit } from './audit.decorator'
 import { AuditModule } from './audit.module'
@@ -84,7 +84,7 @@ describe('the audit trail, against the database', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
         LoggerModule.forRoot({ level: 'fatal', pretty: false }),
-        MetricsModule,
+        MetricsModule.forRoot(OPEN_METRICS_ACCESS),
         DatabaseModule.forRoot({ databaseUrl: urls.app, poolSize: 4 }),
         AuditModule
       ],

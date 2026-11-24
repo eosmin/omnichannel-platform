@@ -7,7 +7,7 @@ import { AuditAction } from '@platform/core/audit'
 import { DatabaseModule } from '@platform/core/database'
 import { connectionUrls } from '@platform/core/database-testing'
 import { LoggerModule } from '@platform/core/logger'
-import { MetricsModule } from '@platform/core/metrics-module'
+import { MetricsModule, OPEN_METRICS_ACCESS } from '@platform/core/metrics-module'
 
 import { AuditModule } from './audit.module'
 import { AuditService } from './audit.service'
@@ -39,7 +39,7 @@ describe('stopping the process with audit entries in flight', () => {
       const moduleRef = await Test.createTestingModule({
         imports: [
           LoggerModule.forRoot({ level: 'fatal', pretty: false }),
-          MetricsModule,
+          MetricsModule.forRoot(OPEN_METRICS_ACCESS),
           DatabaseModule.forRoot({ databaseUrl: urls.app, poolSize: 2 }),
           AuditModule
         ]

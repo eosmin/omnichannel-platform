@@ -694,7 +694,7 @@
     "DSR_VERIFICATION_INVALID": "La verificación de la solicitud de datos no es válida",
     "DSR_SUBJECT_CHANGED": "El cliente de esta solicitud cambió, por eso vuelve a revisión",
     "DSR_BLOCKED_BY_OPEN_WORK": "El cliente tiene pedidos, envíos, devoluciones, remesas o saldos abiertos, por eso todavía no se pueden borrar sus datos",
-    "DSR_EXECUTOR_UNAVAILABLE": "Todavía no se pueden aprobar solicitudes de borrado",
+    "DSR_EXECUTOR_UNAVAILABLE": "Esta solicitud no se puede aprobar todavía. Solo se puede rechazar",
     "DSR_NOT_REVIEWABLE": "La solicitud de datos no está en un estado que admita esta decisión",
     "EXPORT_EMPTY": "No hay archivos para descargar",
     "REPORT_LIMIT_REACHED": "Esta tienda ya tiene el máximo de reportes programados",
@@ -880,7 +880,15 @@
     "WIDGET_TOKEN_INVALID": "La sesión del Widget web no es válida",
     "CUSTOMER_IDENTITY_HAS_CONVERSATIONS": "Esta identidad tiene conversaciones y no se puede desvincular.",
     "ORG_STORE_HAS_DATA": "No se puede borrar una tienda que tiene datos.",
-    "ORG_STORE_IS_LAST": "No se puede borrar la última tienda de la organización."
+    "ORG_STORE_IS_LAST": "No se puede borrar la última tienda de la organización.",
+    "ORG_STORE_CURRENCY_NOT_BASE": "La contabilidad de esta organización se lleva en USD, así que la moneda de sus tiendas no se puede cambiar."
+  },
+  "errorDetails": {
+    "fileTooLarge": "El archivo pesa más de {megabytes} MB. Elige uno más pequeño",
+    "rateLimit": "Hay demasiadas solicitudes. Inténtalo de nuevo en {unit, select, minutes {{value, plural, one {# minuto} other {# minutos}}} other {{value, plural, one {# segundo} other {# segundos}}}}",
+    "conflicts": {
+      "chain_check_running": "Ya hay una revisión de la cadena en curso. Espera a que termine e inténtalo de nuevo"
+    }
   },
   "invitation": {
     "title": "Te invitaron",
@@ -896,13 +904,13 @@
     "unavailableTitle": "Esta invitación no está disponible"
   },
   "unsubscribe": {
-    "title": "Dejar de recibir avisos",
-    "heading": "¿Dejar de recibir estos avisos por correo?",
-    "body": "Dejarás de recibir por correo los avisos de notificaciones de tus tiendas. Los seguirás viendo dentro de la aplicación, y puedes volver a activarlos cuando quieras en tus preferencias de notificaciones.",
-    "confirm": "Dejar de recibirlos",
+    "title": "Dejar de recibir notificaciones",
+    "heading": "¿Dejar de recibir estas notificaciones por correo?",
+    "body": "Dejarás de recibir por correo las notificaciones de tus tiendas. Las seguirás viendo dentro de la aplicación, y puedes volver a activarlas cuando quieras en tus preferencias de notificaciones.",
+    "confirm": "Dejar de recibirlas",
     "working": "Guardando…",
     "doneTitle": "Listo",
-    "done": "Ya no recibirás avisos de notificaciones por correo.",
+    "done": "Ya no recibirás notificaciones por correo.",
     "invalid": "Este enlace está incompleto. Abre de nuevo el enlace del correo.",
     "failed": "No pudimos guardar el cambio. Revisa tu conexión e inténtalo de nuevo.",
     "tooMany": "Hubo demasiados intentos. Espera unos minutos e inténtalo de nuevo."
@@ -1058,13 +1066,15 @@
     "invitation": {
       "accepted": {
         "title": "Invitación aceptada",
-        "body": "Alguien aceptó tu invitación al equipo."
+        "body": "Alguien aceptó tu invitación al equipo.",
+        "bodyWithMember": "{member} aceptó tu invitación al equipo."
       }
     },
     "member": {
       "joined": {
         "title": "Nuevo miembro del equipo",
-        "body": "Un nuevo miembro se unió a la tienda."
+        "body": "Un nuevo miembro se unió a la tienda.",
+        "bodyWithMember": "{member} se unió a la tienda."
       }
     },
     "push": {
@@ -2251,6 +2261,7 @@
       "deletedByAgent": "{name} eliminó este mensaje",
       "deletedByOwner": "El dueño eliminó este mensaje",
       "deletedGeneric": "Este mensaje fue eliminado",
+      "hiddenFiles": "{count, plural, one {Un adjunto que no puedes abrir} other {# adjuntos que no puedes abrir}}",
       "ticks": {
         "queued": "Enviando",
         "sent": "Enviado",
@@ -3453,7 +3464,8 @@
           "export": "Exportar clientes",
           "flag_caution": "Marcar clientes con precaución",
           "erase": "Borrar los datos personales de clientes",
-          "dsr_review": "Revisar las solicitudes de datos de una persona"
+          "dsr_review": "Revisar las solicitudes de datos de una persona",
+          "dsr_manage_form": "Hacer, cambiar y apagar la clave del formulario público de solicitudes de datos"
         },
         "orders": {
           "view": "Ver pedidos",
@@ -5362,6 +5374,36 @@
       "saving": "Guardando…",
       "discard": "Descartar cambios",
       "saved": "Ajustes de seguridad guardados"
+    },
+    "dsrForm": {
+      "title": "Formulario público",
+      "intro": "La clave que la tienda da a su formulario público de solicitudes de datos. Quien tenga la dirección del formulario con esta clave puede enviar una solicitud; cada una la revisa una persona antes de hacer nada.",
+      "loading": "Cargando la clave…",
+      "retry": "Reintentar",
+      "none": "Esta tienda no tiene clave: no recibe solicitudes públicas.",
+      "make": "Crear la clave",
+      "keyLabel": "Clave del formulario",
+      "state": {
+        "open": "El formulario público está abierto: recibe solicitudes.",
+        "shut": "La clave existe, pero el formulario público todavía no recibe solicitudes: se abre cuando la plataforma lo habilita."
+      },
+      "replace": {
+        "action": "Cambiar la clave",
+        "title": "¿Cambiar la clave del formulario?",
+        "description": "La clave actual deja de funcionar de inmediato: toda dirección o página que la use dejará de recibir solicitudes hasta que la cambies por la nueva.",
+        "confirm": "Cambiar la clave"
+      },
+      "off": {
+        "action": "Apagar el formulario",
+        "title": "¿Apagar el formulario público?",
+        "description": "La tienda deja de recibir solicitudes públicas de datos. Las solicitudes que ya llegaron siguen en la cola. Puedes crear una clave nueva cuando quieras.",
+        "confirm": "Apagar el formulario"
+      },
+      "done": {
+        "make": "Clave creada.",
+        "replace": "Clave cambiada.",
+        "revoke": "Formulario apagado."
+      }
     }
   },
   "emptyStates": {

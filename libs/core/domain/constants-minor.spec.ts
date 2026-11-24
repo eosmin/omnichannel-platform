@@ -142,6 +142,8 @@ describe('DestructiveActionTiers', () => {
       'APPROVE_DSR_REQUEST',
       'REJECT_DSR_REQUEST',
       'CANCEL_DSR_ERASURE',
+      'ROTATE_DSR_FORM_KEY',
+      'REVOKE_DSR_FORM_KEY',
       'ROTATE_WEBHOOK_SECRET',
       'POST_MANUAL_ENTRY',
       'CLOSE_FISCAL_PERIOD',

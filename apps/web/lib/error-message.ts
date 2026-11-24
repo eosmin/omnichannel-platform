@@ -1,5 +1,5 @@
 import { ApiError } from '@platform/api-client'
-import { ClientErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes, RETRY_AFTER_METADATA_KEY } from '@platform/core/errors'
 
 // The code to show for an error: the api sends codes and the interface translates them (messages
 // `errors.<code>`, one for every code, which validate:translations enforces). Anything that is not an
@@ -52,6 +52,55 @@ export function firstIssueOf(error: unknown): FieldIssue | null {
     const [field = '', second] = path.split('.')
     const index = second !== undefined && /^\d+$/.test(second) ? Number(second) : null
     return { field, index }
+  }
+  return null
+}
+
+const BYTES_PER_MEGABYTE = 1024 * 1024
+const SECONDS_PER_MINUTE = 60
+// A conflict kind is a snake_case name the api keeps in a constant; anything else is not looked up as a message key
+const CONFLICT_KIND = /^[a-z][a-z0-9_]*$/
+
+// A number the api sent that is usable as a size or a wait: positive and finite
+const isPositive = (value: unknown): value is number =>
+  typeof value === 'number' && value > 0 && value < Infinity
+
+export interface ErrorDetail {
+  // A message key under `errorDetails` (the caller adds the group)
+  key: string
+  values?: Record<string, number | string>
+}
+
+// The sentence of an error that says more than its code does, when the api sent the number or the kind that makes it exact: the limit
+// of a file that is too large, how long to wait after too many requests, which conflict a 409 is. Null when it sent none, so the caller
+// shows the message of the code. `key` is a key under `errorDetails`; a conflict kind may have no sentence yet, so the caller checks it.
+export function errorDetailOf(error: unknown): ErrorDetail | null {
+  if (!(error instanceof ApiError)) return null
+  if (error.code === ClientErrorCodes.FILE_TOO_LARGE) {
+    const max = error.metadata['maxSizeBytes']
+    if (!isPositive(max)) return null
+    return {
+      key: 'fileTooLarge',
+      values: { megabytes: Math.round((max / BYTES_PER_MEGABYTE) * 10) / 10 }
+    }
+  }
+  if (error.code === ClientErrorCodes.RATE_LIMIT_EXCEEDED) {
+    const wait = error.metadata[RETRY_AFTER_METADATA_KEY]
+    if (!isPositive(wait)) return null
+    const minutes = wait > SECONDS_PER_MINUTE
+    return {
+      key: 'rateLimit',
+      values: {
+        value: Math.ceil(minutes ? wait / SECONDS_PER_MINUTE : wait),
+        unit: minutes ? 'minutes' : 'seconds'
+      }
+    }
+  }
+  if (error.code === ClientErrorCodes.RESOURCE_CONFLICT) {
+    const kind = error.metadata['conflict']
+    return typeof kind === 'string' && CONFLICT_KIND.test(kind)
+      ? { key: `conflicts.${kind}` }
+      : null
   }
   return null
 }

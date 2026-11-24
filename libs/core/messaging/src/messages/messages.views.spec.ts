@@ -1,3 +1,4 @@
+import { Permissions } from '@platform/core/auth'
 import {
   AuthorType,
   ContactCardLimits,
@@ -7,7 +8,7 @@ import {
   MessageType
 } from '@platform/core/domain'
 
-import { messageView, quotedView } from './messages.views'
+import { hideMediaMetadata, messageView, quotedView, withMediaVisibility } from './messages.views'
 
 const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   id: 'm1',
@@ -840,5 +841,44 @@ describe('messageView orderSummary', () => {
     ['a total that is not whole cents', { ...line, totalCents: 19.99 }]
   ])('is null for %s', (_name, metadata) => {
     expect(messageView(orderRow(metadata)).orderSummary).toBeNull()
+  })
+})
+
+describe('the metadata of a file for a reader who may not see files (BAN-R-meta)', () => {
+  const file = {
+    id: 'f1',
+    filename: 'cedula-de-ana.pdf',
+    contentType: 'application/pdf',
+    fileSize: 4096,
+    status: MediaStatus.CLEAN,
+    position: null,
+    deliveryStatus: null,
+    sendErrorCode: null,
+    caption: null,
+    channelMessageId: null
+  }
+  const withFile = () => messageView({ ...row(null), media: [file] })
+
+  it('takes out the name, the type and the size of each file, and keeps the rest', () => {
+    const hidden = hideMediaMetadata(withFile())
+    expect(hidden.media).toHaveLength(1)
+    expect(hidden.media[0]).toMatchObject({ id: 'f1', status: MediaStatus.CLEAN })
+    expect(hidden.media[0]?.filename).toBeNull()
+    expect(hidden.media[0]?.contentType).toBeNull()
+    expect(hidden.media[0]?.fileSize).toBeNull()
+    expect(JSON.stringify(hidden)).not.toContain('cedula')
+    expect(JSON.stringify(hidden)).not.toContain('pdf')
+  })
+
+  it('shows them to who holds media:view and hides them from who does not', () => {
+    const seen = withMediaVisibility(withFile(), [Permissions.MEDIA_VIEW])
+    expect(seen.media[0]?.filename).toBe('cedula-de-ana.pdf')
+    const blind = withMediaVisibility(withFile(), [Permissions.MESSAGES_VIEW])
+    expect(blind.media[0]?.filename).toBeNull()
+  })
+
+  it('leaves a message with no files as it is', () => {
+    const plain = messageView(row(null))
+    expect(hideMediaMetadata(plain)).toBe(plain)
   })
 })

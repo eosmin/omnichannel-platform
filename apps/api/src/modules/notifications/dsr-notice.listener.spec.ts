@@ -1,5 +1,9 @@
 import { Permissions } from '@platform/core/auth'
-import type { DsrAttentionPayload, DsrDeadlinePayload } from '@platform/core/events'
+import type {
+  DsrAttentionPayload,
+  DsrDeadlinePayload,
+  DsrManualReviewPayload
+} from '@platform/core/events'
 import { NotificationTypes } from '@platform/core/notifications'
 
 import { NotificationsEventsListener } from './notifications-events.listener'
@@ -53,7 +57,32 @@ const deadline: DsrDeadlinePayload = {
   daysLeft: 4
 }
 
+const verified: DsrManualReviewPayload = { storeId: STORE, requestId: REQUEST }
+
 describe('the notices of the data requests that need the reviewers', () => {
+  it('tells the reviewers, and only them, that a verified request waits for review', async () => {
+    const { listener, sent, asked } = build()
+
+    await listener.onDsrManualReview(verified)
+
+    expect(JSON.stringify(asked[0])).toContain(STORE)
+    expect(sent).toEqual([
+      expect.objectContaining({
+        storeId: STORE,
+        type: NotificationTypes.DSR_MANUAL_REVIEW,
+        params: {},
+        resourceId: REQUEST,
+        requiredPermission: Permissions.CUSTOMERS_DSR_REVIEW
+      })
+    ])
+  })
+
+  it('tells nobody when the verified request is of another store', async () => {
+    const { listener, sent } = build({ found: false })
+    await listener.onDsrManualReview(verified)
+    expect(sent).toEqual([])
+  })
+
   it('tells the people who review data requests, and only them, that a request is close to its deadline', async () => {
     const { listener, sent } = build()
 
