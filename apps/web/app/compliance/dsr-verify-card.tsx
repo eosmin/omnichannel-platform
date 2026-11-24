@@ -9,7 +9,7 @@ import {
   DSR_VERIFY_TOKEN_PATTERN,
   verifyDsrRequest
 } from '@platform/api-client'
-import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
+import { ClientErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 
 import { Button } from '../../components/ui/button'
 import { apiClient } from '../../lib/api'
@@ -56,8 +56,8 @@ export function DsrVerifyCard(): ReactElement {
           setStep('tooMany')
         } else if (
           error instanceof ApiError &&
-          (error.code === ErrorCodes.DSR_VERIFICATION_INVALID ||
-            error.code === ErrorCodes.VALIDATION_FAILED)
+          (error.code === ClientErrorCodes.DSR_VERIFICATION_INVALID ||
+            error.code === ClientErrorCodes.VALIDATION_FAILED)
         ) {
           // The token was spent or is not good (the api's one refusal, or a token it cannot read): the address no longer says anything useful,
           // and a second press would be refused again. Any other 400 (a gateway, say) is a failure the person may try again
