@@ -3,7 +3,7 @@ import { APP_GUARD } from '@nestjs/core'
 import { Test } from '@nestjs/testing'
 import { getStorageToken, ThrottlerModule, type ThrottlerStorage } from '@nestjs/throttler'
 
-import { ThrottlerNames } from '@platform/core/auth'
+import { RETRY_AFTER_METADATA_KEY, ThrottlerNames } from '@platform/core/auth'
 import { LoggerModule } from '@platform/core/logger'
 import { MetricsModule, OPEN_METRICS_ACCESS } from '@platform/core/metrics-module'
 
@@ -69,6 +69,20 @@ describe('ResilientThrottlerGuard', () => {
     for (let i = 0; i < 3; i += 1) statuses.push((await fetch(`${url}/api/v1/ping`)).status)
 
     expect(statuses).toEqual([200, 200, 429])
+  })
+
+  // H-11: a client that is refused has to be told how long to wait and what the limit is, in headers (a proxy or a script does not read bodies)
+  it('tells the refused client the limit, what is left and when it resets, in headers', async () => {
+    const refused = await fetch(`${url}/api/v1/ping`)
+
+    expect(refused.status).toBe(429)
+    expect(refused.headers.get('retry-after')).toBe('60')
+    expect(refused.headers.get('x-ratelimit-limit')).toBe('2')
+    expect(refused.headers.get('x-ratelimit-remaining')).toBe('0')
+    expect(refused.headers.get('x-ratelimit-reset')).toBe('60')
+    // The same wait is in the body, where the web reads it
+    const body = (await refused.json()) as { error: { metadata: Record<string, unknown> } }
+    expect(body.error.metadata[RETRY_AFTER_METADATA_KEY]).toBe(60)
   })
 
   it('lets the request through, without a 500, when the storage fails, and logs why', async () => {
