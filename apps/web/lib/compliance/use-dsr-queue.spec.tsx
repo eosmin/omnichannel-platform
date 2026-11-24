@@ -15,7 +15,7 @@ jest.mock('./dsr-requests', () => ({
   fetchDsrRequests: (): Promise<DsrRequestPageView> => mockFetch()
 }))
 
-const page: DsrRequestPageView = { items: [], hasMore: false, nextCursor: null }
+const page: DsrRequestPageView = { data: [], hasMore: false, nextCursor: null }
 
 function wrapperOf(client: QueryClient): (props: { children: ReactNode }) => ReactElement {
   return function Wrapper({ children }) {
@@ -42,7 +42,7 @@ describe('useDsrQueue', () => {
   })
 
   it('does not poll a queue that is already several pages long: a refetch reads every loaded page', async () => {
-    const more: DsrRequestPageView = { items: [], hasMore: true, nextCursor: 'c' }
+    const more: DsrRequestPageView = { data: [], hasMore: true, nextCursor: 'c' }
     mockFetch.mockResolvedValueOnce(more).mockResolvedValueOnce(more).mockResolvedValueOnce(more)
     mockFetch.mockResolvedValueOnce(more).mockResolvedValue(page)
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
