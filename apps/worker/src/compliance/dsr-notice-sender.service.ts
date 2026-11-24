@@ -11,6 +11,7 @@ import {
   DSR_EXPORT_WEB_PATH,
   type DsrConfig,
   dsrNoticeJob,
+  type DsrNoticeJob,
   dsrNoticeLocaleOf,
   DsrFailureCodes,
   DsrResultOutcomes,
@@ -156,7 +157,7 @@ export class DsrNoticeSender {
                   this.config.previousEncryptionKeyHex
                 )
           if (to === null) return 'unreadable' as const
-          await this.queueMail(
+          const job = await this.buildMail(
             tx,
             storeId,
             requestId,
@@ -172,6 +173,8 @@ export class DsrNoticeSender {
             // The tries are counted when the notice is queued, in the same write: a job that never reaches the processor is counted too
             data: { noticeQueuedAt: new Date(), noticeAttempts: { increment: 1 } }
           })
+          // Queued LAST: a write that failed above rolls back the token too, and no mail goes out with a link whose token is not stored
+          await this.emailQueue.add(job.name, job.data, job.opts)
           return 'queued' as const
         })
       )
@@ -191,7 +194,7 @@ export class DsrNoticeSender {
     }
   }
 
-  private async queueMail(
+  private async buildMail(
     tx: PrismaTransaction,
     storeId: string,
     requestId: string,
@@ -200,7 +203,7 @@ export class DsrNoticeSender {
     summary: unknown,
     requestLocale: string | null,
     fileExpiresAt: Date | null
-  ): Promise<void> {
+  ): Promise<DsrNoticeJob> {
     const store = await tx.store.findUnique({
       where: { id: storeId },
       select: { defaultLocale: true }
@@ -219,7 +222,7 @@ export class DsrNoticeSender {
       // An export that still holds its file brings the link that hands it over; one whose file is gone brings none (the mail then says so)
       ...(await this.downloadUrlOf(tx, requestId, requestType, fileExpiresAt))
     })
-    await this.emailQueue.add(job.name, job.data, job.opts)
+    return job
   }
 
   // The link that hands a person the file of their access or portability request: a NEW token of 256 bits each time the mail is queued (only its
@@ -235,6 +238,15 @@ export class DsrNoticeSender {
     const isExport =
       requestType === String(DsrType.ACCESS) || requestType === String(DsrType.PORTABILITY)
     if (!isExport || fileExpiresAt === null || fileExpiresAt.getTime() <= Date.now()) return {}
+    // A person who already downloaded the file gets no second live link from a mail asked for again: the reviewer decides to give another
+    const spent = await tx.verificationToken.count({
+      where: {
+        type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
+        subject: requestId,
+        usedAt: { not: null }
+      }
+    })
+    if (spent > 0) return {}
     await tx.verificationToken.deleteMany({
       where: {
         type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,

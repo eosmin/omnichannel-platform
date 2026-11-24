@@ -340,6 +340,8 @@ export const DsrResourceTypes = {
   REQUEST: 'data_subject_request',
   FORM_KEY: 'dsr_form_key'
 } as const
+// Who opened the file of an export, for the audit entry: the person with the link of their mail (a reviewer's own request has no such mark)
+export const DsrExportDownloadVia = { PERSON_LINK: 'person_link' } as const
 export const DsrSubjectTypes = { CUSTOMER: 'customer' } as const
 export const DsrRejectionReasons = {
   VERIFICATION_MAIL_NOT_QUEUED: 'verification_mail_not_queued',

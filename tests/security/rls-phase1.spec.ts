@@ -57,7 +57,9 @@ const RESOLVERS = [
   'resolve_carrier_connection(text)',
   // The public data request flow (Step 7.2-H1a, migration 20270125100000_dsr_flow)
   'resolve_dsr_store(text)',
-  'resolve_dsr_verification(text)'
+  'resolve_dsr_verification(text)',
+  // The public download of the file of a data request (Step 7.2-H2b-3, migration 20270130100000_dsr_export_download)
+  'resolve_dsr_export_download(text)'
 ] as const
 
 // A value for a NOT NULL column of a fixture row that the case does not care about

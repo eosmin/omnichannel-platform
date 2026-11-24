@@ -653,9 +653,6 @@
       "exportLink": "The file with your data is ready. It does not travel in this message: you download it from the page this link opens.",
       "exportLinkLabel": "Download the file with your data",
       "exportLinkOnce": "The link works once and stops working a few days after this message. Do not share it: whoever has it can download your data. If you did not ask for this, write to the store.",
-      "exportLink": "The file with your data is ready. It does not travel in this message: you download it from the page this link opens.",
-      "exportLinkLabel": "Download the file with your data",
-      "exportLinkOnce": "The link works once and stops working a few days after this message. Do not share it: whoever has it can download your data. If you did not ask for this, write to the store.",
       "footer": "This is an automatic message.",
       "types": {
         "access": "access to your data",
@@ -698,7 +695,6 @@
     "CUSTOMER_UNMERGE_WINDOW_EXPIRED": "The time to undo the merge is over",
     "DSR_ALREADY_COMPLETED": "The data request is already completed",
     "DSR_VERIFICATION_INVALID": "The verification of the data request is not valid",
-    "DSR_EXPORT_LINK_INVALID": "This link to your data file is not valid. It may have been used already or it expired",
     "DSR_EXPORT_LINK_INVALID": "This link to your data file is not valid. It may have been used already or it expired",
     "DSR_SUBJECT_CHANGED": "The customer of this request changed, so it goes back to review",
     "DSR_BLOCKED_BY_OPEN_WORK": "The customer has open orders, shipments, returns, remittances or balances, so the data cannot be erased yet",

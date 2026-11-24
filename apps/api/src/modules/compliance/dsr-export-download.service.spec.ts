@@ -27,6 +27,7 @@ function build(options: {
   request?: unknown
   enabled?: boolean
   signFails?: boolean
+  objectMissing?: boolean
 }) {
   const updateToken = jest.fn().mockResolvedValue({ count: options.claimed ?? 1 })
   const findRequest = jest
@@ -51,7 +52,10 @@ function build(options: {
     options.signFails === true
       ? jest.fn().mockRejectedValue(new Error('storage down'))
       : jest.fn().mockResolvedValue(SIGNED)
-  const storage = { downloadUrl } as unknown as StorageService
+  const head = jest
+    .fn()
+    .mockResolvedValue(options.objectMissing === true ? null : { contentLength: 10 })
+  const storage = { downloadUrl, head } as unknown as StorageService
   const service = new DsrExportDownloadService(prisma, audit, storage, {
     ...CONFIG,
     enabled: options.enabled ?? true
@@ -102,6 +106,7 @@ describe('DsrExportDownloadService', () => {
     ['the token is unknown, used or expired', { found: [] }],
     ['a second caller already claimed the token', { claimed: 0 }],
     ['the request has no file any more', { request: null }],
+    ['the object is gone from the bucket', { objectMissing: true }],
     ['the file has no key', { request: { resultKey: null, type: 'access' } }]
   ])(
     'answers the one uniform error when %s, signs nothing and audits nothing',

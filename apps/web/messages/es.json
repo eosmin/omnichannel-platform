@@ -653,9 +653,6 @@
       "exportLink": "El archivo con tus datos está listo. No viaja en este mensaje: lo descargas desde la página que abre este enlace.",
       "exportLinkLabel": "Descargar el archivo con mis datos",
       "exportLinkOnce": "El enlace funciona una sola vez y deja de funcionar pocos días después de este mensaje. No lo compartas: quien lo tenga puede descargar tus datos. Si no lo pediste, escribe a la tienda.",
-      "exportLink": "El archivo con tus datos está listo. No viaja en este mensaje: lo descargas desde la página que abre este enlace.",
-      "exportLinkLabel": "Descargar el archivo con mis datos",
-      "exportLinkOnce": "El enlace funciona una sola vez y deja de funcionar pocos días después de este mensaje. No lo compartas: quien lo tenga puede descargar tus datos. Si no lo pediste, escribe a la tienda.",
       "footer": "Este es un mensaje automático.",
       "types": {
         "access": "acceso a tus datos",
@@ -698,7 +695,6 @@
     "CUSTOMER_UNMERGE_WINDOW_EXPIRED": "Pasó el tiempo para deshacer la fusión",
     "DSR_ALREADY_COMPLETED": "La solicitud de datos ya está completada",
     "DSR_VERIFICATION_INVALID": "La verificación de la solicitud de datos no es válida",
-    "DSR_EXPORT_LINK_INVALID": "Este enlace al archivo de tus datos no es válido. Puede que ya se haya usado o que haya vencido",
     "DSR_EXPORT_LINK_INVALID": "Este enlace al archivo de tus datos no es válido. Puede que ya se haya usado o que haya vencido",
     "DSR_SUBJECT_CHANGED": "El cliente de esta solicitud cambió, por eso vuelve a revisión",
     "DSR_BLOCKED_BY_OPEN_WORK": "El cliente tiene pedidos, envíos, devoluciones, remesas o saldos abiertos, por eso todavía no se pueden borrar sus datos",

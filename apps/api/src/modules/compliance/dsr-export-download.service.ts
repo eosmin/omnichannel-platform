@@ -6,6 +6,7 @@ import {
   ComplianceConfig,
   DSR_CONFIG,
   type DsrConfig,
+  DsrExportDownloadVia,
   DsrResourceTypes
 } from '@platform/core/compliance'
 import { hashToken } from '@platform/core/crypto'
@@ -80,6 +81,9 @@ export class DsrExportDownloadService {
       })
       // The file went between the lookup and the claim: the token is not spent for a file that is not there (the throw rolls the claim back)
       if (request?.resultKey == null) throw invalidLink()
+      // The object is checked before the token is spent: a file the bucket no longer holds rolls the claim back (a lifecycle rule, a purge race)
+      if ((await this.storage.head(request.resultKey).catch(() => null)) === null)
+        throw invalidLink()
       const url = await this.storage.downloadUrl({
         key: request.resultKey,
         contentType: ExportContentTypes.ZIP,
@@ -98,7 +102,7 @@ export class DsrExportDownloadService {
       organizationId: found.organizationId,
       resourceType: DsrResourceTypes.REQUEST,
       resourceId: found.id,
-      metadata: { type: answer.type, via: 'person_link' }
+      metadata: { type: answer.type, via: DsrExportDownloadVia.PERSON_LINK }
     })
     return {
       url: answer.url,
