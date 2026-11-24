@@ -835,14 +835,20 @@ describe('JWT_SECRET and CREDENTIALS_ENCRYPTION_KEY are two different secrets (B
   })
 
   it('does not print the secret in the error', () => {
-    expect(() =>
+    let message = ''
+    try {
       parseEnv({
         ...deployed,
         NODE_ENV: 'production',
         JWT_SECRET: shared,
         CREDENTIALS_ENCRYPTION_KEY: shared
       })
-    ).not.toThrow(new RegExp(shared))
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error)
+    }
+    // It must throw (an empty message fails here) and never carry the value
+    expect(message).toMatch(/JWT_SECRET must not be the same value/)
+    expect(message).not.toContain(shared)
   })
 })
 
