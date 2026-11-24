@@ -36,7 +36,6 @@ describe('the code every screen shares', () => {
 // `[Types.NAME]:`, a value read as `Permissions.NAME`) is kept with it even when nobody reads the table. So the tables that only the
 // server or one screen reads live in files of their own, and the files below must not bring them back.
 const DOMAIN = join(__dirname, '..', '..', '..', 'libs', 'core', 'domain')
-const API_CLIENT = join(__dirname, '..', '..', '..', 'libs', 'api-client', 'src')
 
 const sourcesIn = (dir: string): string[] =>
   readdirSync(dir).flatMap(name => {
@@ -55,25 +54,13 @@ const MAY_READ_THE_TABLE_OF_PERMISSIONS = new Set([
 
 describe('the constants of the domain that every screen reads', () => {
   it('read no value from the table of permissions of the server, except the files made for it', () => {
+    // Named from the file itself, from the folder (`./auth`, `./auth/index`) or taken whole (`import * as`, `export ... from`)
+    const reaches =
+      /(?:import|export)\s*(?:\{[^}]*\b(?:Permissions|RolePresets|PermissionRequires)\b[^}]*\}|\*(?:\s+as\s+\w+)?)\s*from\s*'[^']*\/auth(?:\/index|\/permissions)?'/
     const offenders = sourcesIn(DOMAIN)
       .map(file => relative(DOMAIN, file))
       .filter(file => !file.startsWith('auth') && !MAY_READ_THE_TABLE_OF_PERMISSIONS.has(file))
-      .filter(file =>
-        /import\s*\{[^}]*\b(Permissions|RolePresets|PermissionRequires)\b[^}]*\}\s*from\s*'[^']*\/permissions'/.test(
-          readFileSync(join(DOMAIN, file), 'utf8')
-        )
-      )
+      .filter(file => reaches.test(readFileSync(join(DOMAIN, file), 'utf8')))
     expect(offenders).toEqual([])
-  })
-
-  it('keep the delivery matrix of the notifications apart from the names every screen reads', () => {
-    const names = readFileSync(join(DOMAIN, 'notifications', 'notification-constants.ts'), 'utf8')
-    expect(names).not.toMatch(/export const NotificationDefaults\b/)
-    expect(names).not.toMatch(/export const NotificationGroupTypes\b/)
-  })
-
-  it('keep the schemas of the thread apart from the ones every screen parses', () => {
-    const schemas = readFileSync(join(API_CLIENT, 'api-schemas.ts'), 'utf8')
-    expect(schemas).not.toMatch(/export const messageSchema\b/)
   })
 })

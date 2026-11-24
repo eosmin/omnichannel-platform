@@ -2,18 +2,16 @@ import { NotificationChannel } from '../index'
 
 import {
   isDailyDigestHour,
-  NotificationSeverity,
-  NotificationTypes,
-  notificationMessageKey
-} from './notification-constants'
-import {
   lockedChannelsOf,
+  NotificationLockedTypes,
   NotificationDefaults,
   NotificationGroups,
   NotificationGroupTypes,
-  NotificationLockedTypes,
-  NotificationTypesWithoutEmitter
-} from './notification-matrix'
+  NotificationSeverity,
+  NotificationTypes,
+  NotificationTypesWithoutEmitter,
+  notificationMessageKey
+} from './notification-constants'
 
 describe('NotificationDefaults', () => {
   it('has exactly one entry per notification type', () => {

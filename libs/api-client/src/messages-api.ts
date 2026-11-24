@@ -7,17 +7,15 @@ import type { ApiClient } from './api-client'
 import {
   type DeletedContentView,
   deletedContentSchema,
+  type MessagePageView,
+  messagePageSchema,
+  type MessageView,
+  messageSchema,
   type RevisionView,
   revisionListSchema,
   type SentMessage,
   sentMessageSchema
 } from './api-schemas'
-import {
-  type MessagePageView,
-  messagePageSchema,
-  type MessageView,
-  messageSchema
-} from './message-schemas'
 
 // What POST /messages takes for the two kinds an agent writes. The key makes a retry return the
 // message that exists instead of creating another one (the api answers 200 instead of 201).
