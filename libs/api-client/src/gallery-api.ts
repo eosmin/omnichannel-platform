@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesCustomers } from '@platform/core/api'
 import { GalleryTypes, type GalleryType } from '@platform/core/storage'
 
 import type { ApiClient } from './api-client'
@@ -69,7 +69,7 @@ export function fetchCustomerMedia(
     q: filter.q.trim(),
     cursor: cursor ?? undefined
   })
-  return client.request(`${ApiRoutes.customers.media(customerId)}${query}`, {
+  return client.request(`${ApiRoutesCustomers.media(customerId)}${query}`, {
     schema: galleryPageSchema,
     storeId,
     signal

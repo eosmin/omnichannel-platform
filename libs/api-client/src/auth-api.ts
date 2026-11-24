@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesAuth, ApiRoutesInvitations, ApiRoutesOrganizations } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 import {
@@ -15,7 +15,7 @@ import {
 
 // Same answer for any address, known or not: the page says "check your email" either way
 export function requestMagicLink(client: ApiClient, email: string): Promise<{ accepted: true }> {
-  return client.request(ApiRoutes.auth.magicLinkRequest, {
+  return client.request(ApiRoutesAuth.magicLinkRequest, {
     method: 'POST',
     body: { email },
     schema: acceptedSchema,
@@ -27,7 +27,7 @@ export function fetchAccountProfile(
   client: ApiClient,
   signal?: AbortSignal
 ): Promise<AccountProfile> {
-  return client.request(ApiRoutes.auth.me, { schema: accountProfileSchema, signal })
+  return client.request(ApiRoutesAuth.me, { schema: accountProfileSchema, signal })
 }
 
 // What the link of an invitation is for. Public: the token in the path is the credential
@@ -36,7 +36,7 @@ export function fetchInvitationPreview(
   token: string,
   signal?: AbortSignal
 ): Promise<InvitationPreview> {
-  return client.request(ApiRoutes.invitations.byToken(encodeURIComponent(token)), {
+  return client.request(ApiRoutesInvitations.byToken(encodeURIComponent(token)), {
     schema: invitationPreviewSchema,
     authenticated: false,
     signal
@@ -49,7 +49,7 @@ export function fetchOrganizationStores(
   storeId: string,
   signal?: AbortSignal
 ): Promise<StoreView[]> {
-  return client.request(ApiRoutes.organizations.stores, {
+  return client.request(ApiRoutesOrganizations.stores, {
     schema: z.array(storeViewSchema),
     storeId,
     signal

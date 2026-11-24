@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { API_PREFIX, ApiRoutes } from '@platform/core/api'
+import { API_PREFIX, ApiRoutesAuth, ApiRoutesInvitations } from '@platform/core/api'
 
 import { webEnv } from './env'
 
@@ -25,10 +25,10 @@ export const acceptedInvitationUpstreamSchema = z.object({
 })
 
 export const AuthUpstreamPaths = {
-  consume: ApiRoutes.auth.magicLinkConsume,
-  refresh: ApiRoutes.auth.refresh,
-  logout: ApiRoutes.auth.logout,
-  acceptInvitation: (token: string) => ApiRoutes.invitations.accept(encodeURIComponent(token))
+  consume: ApiRoutesAuth.magicLinkConsume,
+  refresh: ApiRoutesAuth.refresh,
+  logout: ApiRoutesAuth.logout,
+  acceptInvitation: (token: string) => ApiRoutesInvitations.accept(encodeURIComponent(token))
 } as const
 
 // The api counts its rate limits and shows the sessions by client, so it is told which client this

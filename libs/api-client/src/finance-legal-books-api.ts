@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesFinance } from '@platform/core/api'
 import type { LegalBookKind } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -97,7 +97,7 @@ export function fetchFinanceBookLayouts(
   storeId: string,
   signal?: AbortSignal
 ): Promise<FinanceBookLayoutView[]> {
-  return client.request(ApiRoutes.finance.bookLayouts.list, {
+  return client.request(ApiRoutesFinance.bookLayouts.list, {
     schema: z.array(layoutSchema),
     storeId,
     signal
@@ -111,7 +111,7 @@ export function fetchFinanceBook(
   signal?: AbortSignal
 ): Promise<FinanceBookView> {
   return client.request(
-    withQuery(ApiRoutes.finance.books.byKind(query.kind), { periodId: query.periodId }),
+    withQuery(ApiRoutesFinance.books.byKind(query.kind), { periodId: query.periodId }),
     { schema: bookSchema, storeId, signal }
   )
 }
@@ -123,7 +123,7 @@ export function fetchFinanceBookCsv(
   query: FinanceBookQuery
 ): Promise<string> {
   return client.request(
-    withQuery(ApiRoutes.finance.books.csvByKind(query.kind), { periodId: query.periodId }),
+    withQuery(ApiRoutesFinance.books.csvByKind(query.kind), { periodId: query.periodId }),
     { schema: csvSchema, responseType: 'text', storeId }
   )
 }
@@ -135,7 +135,7 @@ export function fetchFinanceFrozenBooks(
   periodId: string,
   signal?: AbortSignal
 ): Promise<FinanceFrozenBookView[]> {
-  return client.request(withQuery(ApiRoutes.finance.frozenBooks.list, { periodId }), {
+  return client.request(withQuery(ApiRoutesFinance.frozenBooks.list, { periodId }), {
     schema: z.array(frozenBookSchema),
     storeId,
     signal
@@ -148,7 +148,7 @@ export function fetchFinanceFrozenBook(
   id: string,
   signal?: AbortSignal
 ): Promise<FinanceBookView> {
-  return client.request(ApiRoutes.finance.frozenBooks.byId(id), {
+  return client.request(ApiRoutesFinance.frozenBooks.byId(id), {
     schema: bookSchema,
     storeId,
     signal

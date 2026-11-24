@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesNotifications } from '@platform/core/api'
 import { UNSUBSCRIBE_TOKEN_PARAM } from '@platform/core/notifications'
 
 import type { ApiClient } from './api-client'
@@ -13,7 +13,7 @@ export function unsubscribeFromNotificationEmails(
   token: string,
   signal?: AbortSignal
 ): Promise<undefined> {
-  return client.request(ApiRoutes.notifications.unsubscribe, {
+  return client.request(ApiRoutesNotifications.unsubscribe, {
     method: 'POST',
     body: { [UNSUBSCRIBE_TOKEN_PARAM]: token },
     schema: z.undefined(),

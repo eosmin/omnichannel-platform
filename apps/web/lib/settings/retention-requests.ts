@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesSettings } from '@platform/core/api'
 
 // Settings → Data retention: the four windows, in days, after which the nightly run deletes what a store keeps. Kept with
 // the page and not in `@platform/api-client`, whose barrel the inbox loads whole.
@@ -22,7 +22,7 @@ export function fetchRetention(
   storeId: string,
   signal?: AbortSignal
 ): Promise<RetentionView> {
-  return client.request(ApiRoutes.settings.retention, {
+  return client.request(ApiRoutesSettings.retention, {
     schema: retentionSchema,
     storeId,
     signal
@@ -34,7 +34,7 @@ export function saveRetention(
   storeId: string,
   input: RetentionInput
 ): Promise<RetentionView> {
-  return client.request(ApiRoutes.settings.retention, {
+  return client.request(ApiRoutesSettings.retention, {
     method: 'PUT',
     body: input,
     schema: retentionSchema,

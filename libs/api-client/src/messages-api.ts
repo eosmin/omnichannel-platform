@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesConversations, ApiRoutesMessages } from '@platform/core/api'
 import type { MessageType } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -56,7 +56,7 @@ export function sendMessage(
   storeId: string,
   input: SendMessageInput | SendMediaMessageInput
 ): Promise<SentMessage> {
-  return client.request(ApiRoutes.messages.create, {
+  return client.request(ApiRoutesMessages.create, {
     method: 'POST',
     body: input,
     schema: sentMessageSchema,
@@ -73,7 +73,7 @@ export function fetchMessagesPage(
   signal?: AbortSignal
 ): Promise<MessagePageView> {
   const query = cursor === null ? '' : `?${new URLSearchParams({ cursor }).toString()}`
-  return client.request(`${ApiRoutes.conversations.messages(conversationId)}${query}`, {
+  return client.request(`${ApiRoutesConversations.messages(conversationId)}${query}`, {
     schema: messagePageSchema,
     storeId,
     signal
@@ -96,7 +96,7 @@ export function sendTemplate(
   storeId: string,
   input: SendTemplateInput
 ): Promise<SentMessage> {
-  return client.request(ApiRoutes.messages.create, {
+  return client.request(ApiRoutesMessages.create, {
     method: 'POST',
     body: input,
     schema: sentMessageSchema,
@@ -110,7 +110,7 @@ export function resendMessage(
   storeId: string,
   messageId: string
 ): Promise<MessageView> {
-  return client.request(ApiRoutes.messages.resend(messageId), {
+  return client.request(ApiRoutesMessages.resend(messageId), {
     method: 'POST',
     schema: messageSchema,
     storeId
@@ -124,7 +124,7 @@ export function discardMessage(
   storeId: string,
   messageId: string
 ): Promise<void> {
-  return client.request(ApiRoutes.messages.discard(messageId), {
+  return client.request(ApiRoutesMessages.discard(messageId), {
     method: 'POST',
     schema: z.undefined(),
     storeId
@@ -138,7 +138,7 @@ export function resendCaption(
   storeId: string,
   messageId: string
 ): Promise<MessageView> {
-  return client.request(ApiRoutes.messages.resendCaption(messageId), {
+  return client.request(ApiRoutesMessages.resendCaption(messageId), {
     method: 'POST',
     schema: messageSchema,
     storeId
@@ -152,7 +152,7 @@ export function refetchFile(
   messageId: string,
   index: number
 ): Promise<MessageView> {
-  return client.request(ApiRoutes.messages.refetchFile(messageId, index), {
+  return client.request(ApiRoutesMessages.refetchFile(messageId, index), {
     method: 'POST',
     schema: messageSchema,
     storeId
@@ -168,7 +168,7 @@ export function reactToMessage(
   emoji: string | null,
   mediaId?: string
 ): Promise<void> {
-  return client.request(ApiRoutes.messages.reaction(messageId), {
+  return client.request(ApiRoutesMessages.reaction(messageId), {
     method: 'PUT',
     body: { emoji, ...(mediaId === undefined ? {} : { mediaId }) },
     schema: z.undefined(),
@@ -183,7 +183,7 @@ export function editMessage(
   messageId: string,
   input: { content: string; version?: number }
 ): Promise<MessageView> {
-  return client.request(ApiRoutes.messages.byId(messageId), {
+  return client.request(ApiRoutesMessages.byId(messageId), {
     method: 'PATCH',
     body: input,
     schema: messageSchema,
@@ -197,7 +197,7 @@ export function deleteMessage(
   storeId: string,
   messageId: string
 ): Promise<void> {
-  return client.request(ApiRoutes.messages.byId(messageId), {
+  return client.request(ApiRoutesMessages.byId(messageId), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -210,7 +210,7 @@ export function fetchDeletedContent(
   storeId: string,
   messageId: string
 ): Promise<DeletedContentView> {
-  return client.request(ApiRoutes.messages.deletedContent(messageId), {
+  return client.request(ApiRoutesMessages.deletedContent(messageId), {
     schema: deletedContentSchema,
     storeId
   })
@@ -222,7 +222,7 @@ export function fetchRevisions(
   messageId: string,
   signal?: AbortSignal
 ): Promise<RevisionView[]> {
-  return client.request(ApiRoutes.messages.revisions(messageId), {
+  return client.request(ApiRoutesMessages.revisions(messageId), {
     schema: revisionListSchema,
     storeId,
     signal

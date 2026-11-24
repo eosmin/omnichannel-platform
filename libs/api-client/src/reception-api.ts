@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesReturns } from '@platform/core/api'
 import {
   OrderReturnCondition,
   ReceptionBatchStatus,
@@ -113,7 +113,7 @@ export function fetchReceptionBatches(
   signal?: AbortSignal
 ): Promise<ReceptionBatchSummaryView[]> {
   const search = status === undefined ? '' : `?${new URLSearchParams({ status }).toString()}`
-  return client.request(`${ApiRoutes.returns.reception.batches}${search}`, {
+  return client.request(`${ApiRoutesReturns.reception.batches}${search}`, {
     schema: z.array(receptionBatchSummarySchema),
     storeId,
     signal
@@ -124,7 +124,7 @@ export function createReceptionBatch(
   client: ApiClient,
   storeId: string
 ): Promise<ReceptionBatchView> {
-  return client.request(ApiRoutes.returns.reception.batches, {
+  return client.request(ApiRoutesReturns.reception.batches, {
     method: 'POST',
     schema: receptionBatchSchema,
     storeId
@@ -137,7 +137,7 @@ export function fetchReceptionBatch(
   batchId: string,
   signal?: AbortSignal
 ): Promise<ReceptionBatchView> {
-  return client.request(ApiRoutes.returns.reception.batchById(batchId), {
+  return client.request(ApiRoutesReturns.reception.batchById(batchId), {
     schema: receptionBatchSchema,
     storeId,
     signal
@@ -152,7 +152,7 @@ export function scanReceptionCode(
   batchId: string,
   body: ScanCodeBody
 ): Promise<ScanResultView> {
-  return client.request(ApiRoutes.returns.reception.scan(batchId), {
+  return client.request(ApiRoutesReturns.reception.scan(batchId), {
     method: 'POST',
     body,
     schema: scanResultSchema,
@@ -167,7 +167,7 @@ export function updateReceptionItem(
   itemId: string,
   body: UpdateReceptionItemBody
 ): Promise<ReceptionItemView> {
-  return client.request(ApiRoutes.returns.reception.itemById(batchId, itemId), {
+  return client.request(ApiRoutesReturns.reception.itemById(batchId, itemId), {
     method: 'PATCH',
     body,
     schema: receptionItemSchema,
@@ -181,7 +181,7 @@ export function removeReceptionItem(
   batchId: string,
   itemId: string
 ): Promise<void> {
-  return client.request(ApiRoutes.returns.reception.itemById(batchId, itemId), {
+  return client.request(ApiRoutesReturns.reception.itemById(batchId, itemId), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -195,7 +195,7 @@ export function completeReceptionBatch(
   storeId: string,
   batchId: string
 ): Promise<ReceptionBatchView> {
-  return client.request(ApiRoutes.returns.reception.complete(batchId), {
+  return client.request(ApiRoutesReturns.reception.complete(batchId), {
     method: 'POST',
     schema: receptionBatchSchema,
     storeId

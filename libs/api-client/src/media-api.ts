@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesMedia } from '@platform/core/api'
 import { ImageVariants, MediaPurpose } from '@platform/core/storage'
 
 import type { ApiClient } from './api-client'
@@ -62,7 +62,7 @@ export function requestUploadUrl(
   file: UploadFileInfo,
   target: UploadTarget = MESSAGE_TARGET
 ): Promise<UploadUrlView> {
-  return client.request(ApiRoutes.media.uploadUrl, {
+  return client.request(ApiRoutesMedia.uploadUrl, {
     method: 'POST',
     body: { ...target, ...file },
     schema: uploadUrlSchema,
@@ -77,7 +77,7 @@ export function confirmUpload(
   input: UploadFileInfo & { mediaId: string; key: string },
   target: UploadTarget = MESSAGE_TARGET
 ): Promise<ConfirmedMediaView> {
-  return client.request(ApiRoutes.media.confirmUpload, {
+  return client.request(ApiRoutesMedia.confirmUpload, {
     method: 'POST',
     body: { ...target, ...input },
     schema: confirmedMediaSchema,
@@ -91,7 +91,7 @@ export function fetchMediaUrls(
   mediaId: string,
   signal?: AbortSignal
 ): Promise<MediaUrlsView> {
-  return client.request(ApiRoutes.media.byId(mediaId), {
+  return client.request(ApiRoutesMedia.byId(mediaId), {
     schema: mediaUrlsSchema,
     storeId,
     signal

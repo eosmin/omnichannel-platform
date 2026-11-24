@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesFinance } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 
@@ -116,7 +116,7 @@ export function fetchFinanceVat(
   query: FinanceRangeQuery,
   signal?: AbortSignal
 ): Promise<FinanceVatView> {
-  return client.request(rangeSearch(ApiRoutes.finance.reports.vat, query), {
+  return client.request(rangeSearch(ApiRoutesFinance.reports.vat, query), {
     schema: vatSchema,
     storeId,
     signal
@@ -129,7 +129,7 @@ export function fetchFinanceMargin(
   query: FinanceRangeQuery,
   signal?: AbortSignal
 ): Promise<FinanceMarginView> {
-  return client.request(rangeSearch(ApiRoutes.finance.reports.margin, query), {
+  return client.request(rangeSearch(ApiRoutesFinance.reports.margin, query), {
     schema: marginSchema,
     storeId,
     signal
@@ -141,7 +141,7 @@ export function fetchFinanceChainStatus(
   storeId: string,
   signal?: AbortSignal
 ): Promise<FinanceChainStatusView> {
-  return client.request(ApiRoutes.finance.reports.chainStatus, {
+  return client.request(ApiRoutesFinance.reports.chainStatus, {
     schema: chainStatusSchema,
     storeId,
     signal
@@ -154,7 +154,7 @@ export function fetchFinanceVatCsv(
   storeId: string,
   query: FinanceRangeQuery
 ): Promise<string> {
-  return client.request(rangeSearch(ApiRoutes.finance.reports.vatCsv, query), {
+  return client.request(rangeSearch(ApiRoutesFinance.reports.vatCsv, query), {
     schema: csvSchema,
     responseType: 'text',
     storeId
@@ -166,7 +166,7 @@ export function fetchFinanceMarginCsv(
   storeId: string,
   query: FinanceRangeQuery
 ): Promise<string> {
-  return client.request(rangeSearch(ApiRoutes.finance.reports.marginCsv, query), {
+  return client.request(rangeSearch(ApiRoutesFinance.reports.marginCsv, query), {
     schema: csvSchema,
     responseType: 'text',
     storeId

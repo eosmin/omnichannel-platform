@@ -1,8 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@platform/api-client'
-import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
-import { ClientErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes, RETRY_AFTER_METADATA_KEY } from '@platform/core/errors'
 
 const MAX_RETRIES = 2
 const STALE_TIME_MS = 30_000

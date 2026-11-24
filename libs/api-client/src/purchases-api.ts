@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import {
+  ApiRoutesPurchaseOrders,
+  ApiRoutesSupplierPaymentReturns,
+  ApiRoutesSupplierPayments,
+  ApiRoutesSuppliers
+} from '@platform/core/api'
 import {
   type closePurchaseOrderSchema,
   type createPurchaseOrderSchema,
@@ -209,7 +214,7 @@ export function fetchSupplierPage(
   if (params.cursor !== undefined && params.cursor !== null) search.set('cursor', params.cursor)
   if (params.q !== undefined && params.q !== '') search.set('q', params.q)
   if (params.includeInactive === true) search.set('includeInactive', 'true')
-  return client.request(withQuery(ApiRoutes.suppliers.list, search), {
+  return client.request(withQuery(ApiRoutesSuppliers.list, search), {
     schema: supplierPageSchema,
     storeId,
     signal
@@ -227,7 +232,7 @@ export async function fetchAllSuppliers(
   for (let pages = 0; pages < MAX_PAGES; pages += 1) {
     const page: SupplierPageView = await client.request(
       withQuery(
-        ApiRoutes.suppliers.list,
+        ApiRoutesSuppliers.list,
         new URLSearchParams({
           limit: String(PaginationLimits.MAX),
           includeInactive: 'true',
@@ -249,7 +254,7 @@ export function fetchSupplier(
   id: string,
   signal?: AbortSignal
 ): Promise<SupplierView> {
-  return client.request(ApiRoutes.suppliers.byId(enc(id)), {
+  return client.request(ApiRoutesSuppliers.byId(enc(id)), {
     schema: supplierSchema,
     storeId,
     signal
@@ -261,7 +266,7 @@ export function createSupplier(
   storeId: string,
   input: CreateSupplierInput
 ): Promise<SupplierView> {
-  return client.request(ApiRoutes.suppliers.create, {
+  return client.request(ApiRoutesSuppliers.create, {
     method: 'POST',
     body: input,
     schema: supplierSchema,
@@ -275,7 +280,7 @@ export function updateSupplier(
   id: string,
   input: UpdateSupplierInput
 ): Promise<SupplierView> {
-  return client.request(ApiRoutes.suppliers.update(enc(id)), {
+  return client.request(ApiRoutesSuppliers.update(enc(id)), {
     method: 'PATCH',
     body: input,
     schema: supplierSchema,
@@ -289,7 +294,7 @@ export function fetchSupplierBalance(
   id: string,
   signal?: AbortSignal
 ): Promise<SupplierBalanceView> {
-  return client.request(ApiRoutes.suppliers.balance(enc(id)), {
+  return client.request(ApiRoutesSuppliers.balance(enc(id)), {
     schema: balanceSchema,
     storeId,
     signal
@@ -307,7 +312,7 @@ export function fetchPayables(
     search.set('supplierId', params.supplierId)
   }
   if (params.overdueOnly === true) search.set('overdueOnly', 'true')
-  return client.request(withQuery(ApiRoutes.suppliers.payables, search), {
+  return client.request(withQuery(ApiRoutesSuppliers.payables, search), {
     schema: payablesSchema,
     storeId,
     signal
@@ -327,7 +332,7 @@ export function fetchSupplierPayments(
   cursor: string | null,
   signal?: AbortSignal
 ): Promise<SupplierPaymentPageView> {
-  return client.request(withQuery(ApiRoutes.suppliers.payments(enc(id)), paymentQuery(cursor)), {
+  return client.request(withQuery(ApiRoutesSuppliers.payments(enc(id)), paymentQuery(cursor)), {
     schema: paymentPageSchema,
     storeId,
     signal
@@ -340,7 +345,7 @@ export function recordSupplierPayment(
   supplierId: string,
   input: RecordSupplierPaymentInput
 ): Promise<SupplierPaymentView> {
-  return client.request(ApiRoutes.suppliers.recordPayment(enc(supplierId)), {
+  return client.request(ApiRoutesSuppliers.recordPayment(enc(supplierId)), {
     method: 'POST',
     body: input,
     schema: paymentSchema,
@@ -355,7 +360,7 @@ export function voidSupplierPayment(
   paymentId: string,
   input: VoidSupplierPaymentInput
 ): Promise<SupplierPaymentView> {
-  return client.request(ApiRoutes.supplierPayments.void(enc(paymentId)), {
+  return client.request(ApiRoutesSupplierPayments.void(enc(paymentId)), {
     method: 'POST',
     body: input,
     schema: paymentSchema,
@@ -371,7 +376,7 @@ export function fetchSupplierPaymentReturns(
   signal?: AbortSignal
 ): Promise<SupplierPaymentReturnPageView> {
   return client.request(
-    withQuery(ApiRoutes.supplierPayments.returns(enc(paymentId)), paymentQuery(cursor)),
+    withQuery(ApiRoutesSupplierPayments.returns(enc(paymentId)), paymentQuery(cursor)),
     { schema: paymentReturnPageSchema, storeId, signal }
   )
 }
@@ -382,7 +387,7 @@ export function recordSupplierPaymentReturn(
   paymentId: string,
   input: RecordPaymentReturnInput
 ): Promise<SupplierPaymentReturnView> {
-  return client.request(ApiRoutes.supplierPayments.returns(enc(paymentId)), {
+  return client.request(ApiRoutesSupplierPayments.returns(enc(paymentId)), {
     method: 'POST',
     body: input,
     schema: paymentReturnSchema,
@@ -397,7 +402,7 @@ export function voidSupplierPaymentReturn(
   returnId: string,
   input: VoidPaymentReturnInput
 ): Promise<SupplierPaymentReturnView> {
-  return client.request(ApiRoutes.supplierPaymentReturns.void(enc(returnId)), {
+  return client.request(ApiRoutesSupplierPaymentReturns.void(enc(returnId)), {
     method: 'POST',
     body: input,
     schema: paymentReturnSchema,
@@ -423,7 +428,7 @@ export function fetchPurchaseOrderPage(
   if (params.supplierId !== undefined && params.supplierId !== '') {
     search.set('supplierId', params.supplierId)
   }
-  return client.request(withQuery(ApiRoutes.purchaseOrders.list, search), {
+  return client.request(withQuery(ApiRoutesPurchaseOrders.list, search), {
     schema: orderPageSchema,
     storeId,
     signal
@@ -436,7 +441,7 @@ export function fetchPurchaseOrder(
   id: string,
   signal?: AbortSignal
 ): Promise<PurchaseOrderView> {
-  return client.request(ApiRoutes.purchaseOrders.byId(enc(id)), {
+  return client.request(ApiRoutesPurchaseOrders.byId(enc(id)), {
     schema: orderSchema,
     storeId,
     signal
@@ -448,7 +453,7 @@ export function createPurchaseOrder(
   storeId: string,
   input: CreatePurchaseOrderInput
 ): Promise<PurchaseOrderView> {
-  return client.request(ApiRoutes.purchaseOrders.create, {
+  return client.request(ApiRoutesPurchaseOrders.create, {
     method: 'POST',
     body: input,
     schema: orderSchema,
@@ -462,7 +467,7 @@ export function updatePurchaseOrder(
   id: string,
   input: UpdatePurchaseOrderInput
 ): Promise<PurchaseOrderView> {
-  return client.request(ApiRoutes.purchaseOrders.update(enc(id)), {
+  return client.request(ApiRoutesPurchaseOrders.update(enc(id)), {
     method: 'PATCH',
     body: input,
     schema: orderSchema,
@@ -476,7 +481,7 @@ export function orderPurchaseOrder(
   storeId: string,
   id: string
 ): Promise<PurchaseOrderView> {
-  return client.request(ApiRoutes.purchaseOrders.order(enc(id)), {
+  return client.request(ApiRoutesPurchaseOrders.order(enc(id)), {
     method: 'POST',
     schema: orderSchema,
     storeId
@@ -489,7 +494,7 @@ export function receivePurchaseOrder(
   id: string,
   input: ReceivePurchaseOrderInput
 ): Promise<PurchaseOrderView> {
-  return client.request(ApiRoutes.purchaseOrders.receive(enc(id)), {
+  return client.request(ApiRoutesPurchaseOrders.receive(enc(id)), {
     method: 'POST',
     body: input,
     schema: orderSchema,
@@ -503,7 +508,7 @@ export function closePurchaseOrder(
   id: string,
   input: ClosePurchaseOrderInput
 ): Promise<PurchaseOrderView> {
-  return client.request(ApiRoutes.purchaseOrders.close(enc(id)), {
+  return client.request(ApiRoutesPurchaseOrders.close(enc(id)), {
     method: 'POST',
     body: input,
     schema: orderSchema,
@@ -517,7 +522,7 @@ export function cancelPurchaseOrder(
   id: string,
   input: ClosePurchaseOrderInput
 ): Promise<PurchaseOrderView> {
-  return client.request(ApiRoutes.purchaseOrders.cancel(enc(id)), {
+  return client.request(ApiRoutesPurchaseOrders.cancel(enc(id)), {
     method: 'POST',
     body: input,
     schema: orderSchema,
@@ -533,7 +538,7 @@ export function fetchPurchaseOrderPayments(
   signal?: AbortSignal
 ): Promise<SupplierPaymentPageView> {
   return client.request(
-    withQuery(ApiRoutes.purchaseOrders.payments(enc(id)), paymentQuery(cursor)),
+    withQuery(ApiRoutesPurchaseOrders.payments(enc(id)), paymentQuery(cursor)),
     { schema: paymentPageSchema, storeId, signal }
   )
 }
@@ -544,7 +549,7 @@ export function recordPurchaseOrderPayment(
   orderId: string,
   input: RecordSupplierPaymentInput
 ): Promise<SupplierPaymentView> {
-  return client.request(ApiRoutes.purchaseOrders.recordPayment(enc(orderId)), {
+  return client.request(ApiRoutesPurchaseOrders.recordPayment(enc(orderId)), {
     method: 'POST',
     body: input,
     schema: paymentSchema,

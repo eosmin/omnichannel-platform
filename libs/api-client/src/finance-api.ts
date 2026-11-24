@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesFinance } from '@platform/core/api'
 import { PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -170,7 +170,7 @@ export function fetchFinanceSetup(
   storeId: string,
   signal?: AbortSignal
 ): Promise<FinanceSetupView> {
-  return client.request(ApiRoutes.finance.setup, { schema: setupStateSchema, storeId, signal })
+  return client.request(ApiRoutesFinance.setup, { schema: setupStateSchema, storeId, signal })
 }
 
 // Sets the books up once. The date is the first day events are posted from; the first day of this month when it is left out.
@@ -179,7 +179,7 @@ export function setUpFinance(
   storeId: string,
   input: { countryCode: string; accountingStartDate?: string }
 ): Promise<FinanceSetupView> {
-  return client.request(ApiRoutes.finance.setup, {
+  return client.request(ApiRoutesFinance.setup, {
     method: 'POST',
     body: input,
     schema: setupStateSchema,
@@ -192,7 +192,7 @@ export function fetchFinanceSettings(
   storeId: string,
   signal?: AbortSignal
 ): Promise<FinanceSettingsView> {
-  return client.request(ApiRoutes.finance.settings, { schema: settingsSchema, storeId, signal })
+  return client.request(ApiRoutesFinance.settings, { schema: settingsSchema, storeId, signal })
 }
 
 export interface UpdateFinanceSettingsInput {
@@ -207,7 +207,7 @@ export function updateFinanceSettings(
   storeId: string,
   input: UpdateFinanceSettingsInput
 ): Promise<FinanceSettingsView> {
-  return client.request(ApiRoutes.finance.settings, {
+  return client.request(ApiRoutesFinance.settings, {
     method: 'PATCH',
     body: input,
     schema: settingsSchema,
@@ -223,7 +223,7 @@ export function fetchAllFinanceAccounts(
   return allPages(cursor => {
     const search = new URLSearchParams({ limit: String(PaginationLimits.MAX) })
     if (cursor !== null) search.set('cursor', cursor)
-    return client.request(withQuery(ApiRoutes.finance.accounts.list, search), {
+    return client.request(withQuery(ApiRoutesFinance.accounts.list, search), {
       schema: accountPageSchema,
       storeId,
       signal
@@ -248,7 +248,7 @@ export function createFinanceAccount(
   storeId: string,
   input: CreateFinanceAccountInput
 ): Promise<FinanceAccountView> {
-  return client.request(ApiRoutes.finance.accounts.create, {
+  return client.request(ApiRoutesFinance.accounts.create, {
     method: 'POST',
     body: input,
     schema: accountSchema,
@@ -262,7 +262,7 @@ export function updateFinanceAccount(
   id: string,
   input: UpdateFinanceAccountInput
 ): Promise<FinanceAccountView> {
-  return client.request(ApiRoutes.finance.accounts.byId(encodeURIComponent(id)), {
+  return client.request(ApiRoutesFinance.accounts.byId(encodeURIComponent(id)), {
     method: 'PATCH',
     body: input,
     schema: accountSchema,
@@ -277,8 +277,8 @@ export function setFinanceAccountActive(
   active: boolean
 ): Promise<FinanceAccountView> {
   const route = active
-    ? ApiRoutes.finance.accounts.reactivate(encodeURIComponent(id))
-    : ApiRoutes.finance.accounts.deactivate(encodeURIComponent(id))
+    ? ApiRoutesFinance.accounts.reactivate(encodeURIComponent(id))
+    : ApiRoutesFinance.accounts.deactivate(encodeURIComponent(id))
   return client.request(route, { method: 'POST', schema: accountSchema, storeId })
 }
 
@@ -287,7 +287,7 @@ export function fetchFinanceAccountRoles(
   storeId: string,
   signal?: AbortSignal
 ): Promise<FinanceRoleMappingView[]> {
-  return client.request(ApiRoutes.finance.accountRoles.list, {
+  return client.request(ApiRoutesFinance.accountRoles.list, {
     schema: z.array(roleMappingSchema),
     storeId,
     signal
@@ -300,7 +300,7 @@ export function mapFinanceAccountRole(
   role: string,
   accountId: string
 ): Promise<FinanceRoleMappingView> {
-  return client.request(ApiRoutes.finance.accountRoles.byRole(encodeURIComponent(role)), {
+  return client.request(ApiRoutesFinance.accountRoles.byRole(encodeURIComponent(role)), {
     method: 'PUT',
     body: { accountId },
     schema: roleMappingSchema,
@@ -313,7 +313,7 @@ export function fetchFinancePaymentAccounts(
   storeId: string,
   signal?: AbortSignal
 ): Promise<FinancePaymentAccountView[]> {
-  return client.request(ApiRoutes.finance.paymentAccounts.list, {
+  return client.request(ApiRoutesFinance.paymentAccounts.list, {
     schema: z.array(paymentAccountSchema),
     storeId,
     signal
@@ -326,7 +326,7 @@ export function setFinancePaymentAccount(
   storeId: string,
   input: { paymentMethod: string; accountId: string; forStoreId: string | null }
 ): Promise<FinancePaymentAccountView> {
-  return client.request(ApiRoutes.finance.paymentAccounts.set, {
+  return client.request(ApiRoutesFinance.paymentAccounts.set, {
     method: 'PUT',
     body: {
       paymentMethod: input.paymentMethod,
@@ -344,7 +344,7 @@ export async function removeFinancePaymentAccount(
   storeId: string,
   id: string
 ): Promise<void> {
-  await client.request(ApiRoutes.finance.paymentAccounts.byId(encodeURIComponent(id)), {
+  await client.request(ApiRoutesFinance.paymentAccounts.byId(encodeURIComponent(id)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -356,7 +356,7 @@ export function fetchFinanceTaxRates(
   storeId: string,
   signal?: AbortSignal
 ): Promise<FinanceTaxRateView[]> {
-  return client.request(ApiRoutes.finance.taxRates.list, {
+  return client.request(ApiRoutesFinance.taxRates.list, {
     schema: z.array(taxRateSchema),
     storeId,
     signal
@@ -387,7 +387,7 @@ export function createFinanceTaxRate(
   storeId: string,
   input: CreateFinanceTaxRateInput
 ): Promise<FinanceTaxRateView> {
-  return client.request(ApiRoutes.finance.taxRates.create, {
+  return client.request(ApiRoutesFinance.taxRates.create, {
     method: 'POST',
     body: input,
     schema: taxRateSchema,
@@ -401,7 +401,7 @@ export function updateFinanceTaxRate(
   id: string,
   input: UpdateFinanceTaxRateInput
 ): Promise<FinanceTaxRateView> {
-  return client.request(ApiRoutes.finance.taxRates.byId(encodeURIComponent(id)), {
+  return client.request(ApiRoutesFinance.taxRates.byId(encodeURIComponent(id)), {
     method: 'PATCH',
     body: input,
     schema: taxRateSchema,
@@ -416,8 +416,8 @@ export function setFinanceTaxRateActive(
   active: boolean
 ): Promise<FinanceTaxRateView> {
   const route = active
-    ? ApiRoutes.finance.taxRates.reactivate(encodeURIComponent(id))
-    : ApiRoutes.finance.taxRates.deactivate(encodeURIComponent(id))
+    ? ApiRoutesFinance.taxRates.reactivate(encodeURIComponent(id))
+    : ApiRoutesFinance.taxRates.deactivate(encodeURIComponent(id))
   return client.request(route, { method: 'POST', schema: taxRateSchema, storeId })
 }
 
@@ -427,7 +427,7 @@ export function fetchFinanceStoreTaxSettings(
   storeId: string,
   signal?: AbortSignal
 ): Promise<FinanceStoreTaxSettingsView> {
-  return client.request(ApiRoutes.finance.storeTaxSettings, {
+  return client.request(ApiRoutesFinance.storeTaxSettings, {
     schema: storeTaxSettingsSchema,
     storeId,
     signal
@@ -439,7 +439,7 @@ export function updateFinanceStoreTaxSettings(
   storeId: string,
   input: { pricesIncludeTax: boolean; confirmPriceModeChange: true }
 ): Promise<FinanceStoreTaxSettingsView> {
-  return client.request(ApiRoutes.finance.storeTaxSettings, {
+  return client.request(ApiRoutesFinance.storeTaxSettings, {
     method: 'PATCH',
     body: input,
     schema: storeTaxSettingsSchema,
@@ -455,7 +455,7 @@ export function fetchAllFinancePeriods(
   return allPages(cursor => {
     const search = new URLSearchParams({ limit: String(PaginationLimits.MAX) })
     if (cursor !== null) search.set('cursor', cursor)
-    return client.request(withQuery(ApiRoutes.finance.periods.list, search), {
+    return client.request(withQuery(ApiRoutesFinance.periods.list, search), {
       schema: periodPageSchema,
       storeId,
       signal
@@ -469,7 +469,7 @@ export function openFinancePeriod(
   storeId: string,
   input: { year: number; month: number }
 ): Promise<FinancePeriodView> {
-  return client.request(ApiRoutes.finance.periods.open, {
+  return client.request(ApiRoutesFinance.periods.open, {
     method: 'POST',
     body: input,
     schema: periodSchema,
@@ -486,7 +486,7 @@ export async function fetchFinanceBalances(
 ): Promise<FinanceBalanceView[]> {
   const search = new URLSearchParams()
   if (periodId !== null) search.set('periodId', periodId)
-  const answer = await client.request(withQuery(ApiRoutes.finance.balances, search), {
+  const answer = await client.request(withQuery(ApiRoutesFinance.balances, search), {
     schema: balancesSchema,
     storeId,
     signal
@@ -502,7 +502,7 @@ export function fetchFinancePostingPage(
 ): Promise<FinancePostingPageView> {
   const search = new URLSearchParams({ limit: String(PaginationLimits.DEFAULT) })
   if (cursor !== null) search.set('cursor', cursor)
-  return client.request(withQuery(ApiRoutes.finance.postings, search), {
+  return client.request(withQuery(ApiRoutesFinance.postings, search), {
     schema: postingPageSchema,
     storeId,
     signal
@@ -514,7 +514,7 @@ export async function retryFinancePosting(
   storeId: string,
   id: string
 ): Promise<void> {
-  await client.request(ApiRoutes.finance.postingRetry(encodeURIComponent(id)), {
+  await client.request(ApiRoutesFinance.postingRetry(encodeURIComponent(id)), {
     method: 'POST',
     schema: retrySchema,
     storeId

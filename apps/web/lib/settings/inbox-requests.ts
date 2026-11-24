@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesSettings } from '@platform/core/api'
 
 // Settings → Inbox behavior: how resolving and reopening work in a store, and the one switch of the
 // store preferences that Step 3.1 reads. `requestCsat` is in the answer and is neither drawn nor sent:
@@ -23,7 +23,7 @@ export function fetchInboxSettings(
   storeId: string,
   signal?: AbortSignal
 ): Promise<InboxSettingsView> {
-  return client.request(ApiRoutes.settings.inbox, { schema: inboxSchema, storeId, signal })
+  return client.request(ApiRoutesSettings.inbox, { schema: inboxSchema, storeId, signal })
 }
 
 export function saveInboxSettings(
@@ -31,7 +31,7 @@ export function saveInboxSettings(
   storeId: string,
   input: InboxSettingsInput
 ): Promise<InboxSettingsView> {
-  return client.request(ApiRoutes.settings.inbox, {
+  return client.request(ApiRoutesSettings.inbox, {
     method: 'PATCH',
     body: input,
     schema: inboxSchema,

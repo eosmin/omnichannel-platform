@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesSettings } from '@platform/core/api'
 
 // Settings → Inventory (TDD_16 §4.10): the three switches of the store that the stock rules read. The api
 // takes only the keys that change (a PATCH), and a null threshold clears it.
@@ -19,7 +19,7 @@ export function fetchInventorySettings(
   storeId: string,
   signal?: AbortSignal
 ): Promise<InventorySettingsView> {
-  return client.request(ApiRoutes.settings.inventory, {
+  return client.request(ApiRoutesSettings.inventory, {
     schema: inventorySettingsSchema,
     storeId,
     signal
@@ -31,7 +31,7 @@ export function saveInventorySettings(
   storeId: string,
   input: InventorySettingsInput
 ): Promise<InventorySettingsView> {
-  return client.request(ApiRoutes.settings.inventory, {
+  return client.request(ApiRoutesSettings.inventory, {
     method: 'PATCH',
     body: input,
     schema: inventorySettingsSchema,

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesCustomers } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 
@@ -59,7 +59,7 @@ export function fetchCustomerOrders(
   if (cursor !== null) query.set('cursor', cursor)
   const text = query.toString()
   return client.request(
-    `${ApiRoutes.customers.orders(customerId)}${text === '' ? '' : `?${text}`}`,
+    `${ApiRoutesCustomers.orders(customerId)}${text === '' ? '' : `?${text}`}`,
     {
       schema: customerOrdersPageSchema,
       storeId,

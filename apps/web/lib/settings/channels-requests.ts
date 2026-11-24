@@ -6,7 +6,7 @@ import {
   channelOAuthDescriptorSchema,
   localizedTextSchema
 } from '@platform/api-client'
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesChannels, ApiRoutesPlugins } from '@platform/core/api'
 import { ChannelConnectFieldLimits } from '@platform/core/domain'
 import type { ChannelConnectionListState } from '@platform/core/domain'
 
@@ -155,7 +155,7 @@ export function fetchConnections(
 ): Promise<ChannelConnectionPageView> {
   const params = new URLSearchParams({ state })
   if (cursor !== null) params.set('cursor', cursor)
-  return client.request(`${ApiRoutes.channels.connections}?${params.toString()}`, {
+  return client.request(`${ApiRoutesChannels.connections}?${params.toString()}`, {
     schema: connectionPageSchema,
     storeId,
     signal
@@ -169,7 +169,7 @@ export function updateConnectionToken(
   connectionId: string,
   credentials: Record<string, unknown>
 ): Promise<ChannelConnectionView> {
-  return client.request(ApiRoutes.channels.updateToken(enc(connectionId)), {
+  return client.request(ApiRoutesChannels.updateToken(enc(connectionId)), {
     method: 'POST',
     body: { credentials },
     schema: connectionSchema,
@@ -184,7 +184,7 @@ export function renameConnection(
   connectionId: string,
   label: string | null
 ): Promise<ChannelConnectionView> {
-  return client.request(ApiRoutes.channels.label(enc(connectionId)), {
+  return client.request(ApiRoutesChannels.label(enc(connectionId)), {
     method: 'PUT',
     body: { label },
     schema: connectionSchema,
@@ -198,7 +198,7 @@ export function connectChannel(
   pluginId: string,
   credentials: Record<string, unknown>
 ): Promise<ChannelConnectionView> {
-  return client.request(ApiRoutes.channels.connect(enc(pluginId)), {
+  return client.request(ApiRoutesChannels.connect(enc(pluginId)), {
     method: 'POST',
     body: { credentials },
     schema: connectionSchema,
@@ -211,7 +211,7 @@ export function testConnection(
   storeId: string,
   connectionId: string
 ): Promise<ChannelTestView> {
-  return client.request(ApiRoutes.channels.test(enc(connectionId)), {
+  return client.request(ApiRoutesChannels.test(enc(connectionId)), {
     method: 'POST',
     schema: testResultSchema,
     storeId
@@ -223,7 +223,7 @@ export function disconnectConnection(
   storeId: string,
   connectionId: string
 ): Promise<ChannelConnectionView> {
-  return client.request(ApiRoutes.channels.disconnect(enc(connectionId)), {
+  return client.request(ApiRoutesChannels.disconnect(enc(connectionId)), {
     method: 'POST',
     schema: connectionSchema,
     storeId
@@ -240,7 +240,7 @@ export function fetchConnectionErrorDetail(
   connectionId: string,
   signal?: AbortSignal
 ): Promise<ChannelErrorDetailView> {
-  return client.request(ApiRoutes.channels.connectionErrorDetail(enc(connectionId)), {
+  return client.request(ApiRoutesChannels.connectionErrorDetail(enc(connectionId)), {
     schema: errorDetailSchema,
     storeId,
     signal
@@ -253,7 +253,7 @@ export function fetchWidget(
   connectionId: string,
   signal?: AbortSignal
 ): Promise<WidgetEmbedView> {
-  return client.request(ApiRoutes.channels.widgetEmbed(enc(connectionId)), {
+  return client.request(ApiRoutesChannels.widgetEmbed(enc(connectionId)), {
     schema: widgetSchema,
     storeId,
     signal
@@ -266,7 +266,7 @@ export function saveWidgetOrigins(
   connectionId: string,
   siteOrigins: string[]
 ): Promise<WidgetEmbedView> {
-  return client.request(ApiRoutes.channels.widgetOrigins(enc(connectionId)), {
+  return client.request(ApiRoutesChannels.widgetOrigins(enc(connectionId)), {
     method: 'PUT',
     body: { siteOrigins },
     schema: widgetSchema,
@@ -280,7 +280,7 @@ export function saveWidgetPreChat(
   connectionId: string,
   enabled: boolean
 ): Promise<WidgetEmbedView> {
-  return client.request(ApiRoutes.channels.widgetPreChat(enc(connectionId)), {
+  return client.request(ApiRoutesChannels.widgetPreChat(enc(connectionId)), {
     method: 'PUT',
     body: { enabled },
     schema: widgetSchema,
@@ -293,7 +293,7 @@ export function fetchPluginCatalog(
   storeId: string,
   signal?: AbortSignal
 ): Promise<PluginCatalogEntryView[]> {
-  return client.request(ApiRoutes.plugins.available, {
+  return client.request(ApiRoutesPlugins.available, {
     schema: z.array(catalogEntrySchema),
     storeId,
     signal
@@ -305,7 +305,7 @@ export function installPlugin(
   storeId: string,
   pluginId: string
 ): Promise<PluginCatalogEntryView> {
-  return client.request(ApiRoutes.plugins.install, {
+  return client.request(ApiRoutesPlugins.install, {
     method: 'POST',
     body: { pluginId },
     schema: catalogEntrySchema,
@@ -320,7 +320,7 @@ export function uninstallPlugin(
   // The word the owner typed: an integration plugin is revoked only with it (the api checks it again)
   confirmation?: string
 ): Promise<PluginCatalogEntryView> {
-  return client.request(ApiRoutes.plugins.revoke(enc(installationId)), {
+  return client.request(ApiRoutesPlugins.revoke(enc(installationId)), {
     method: 'POST',
     ...(confirmation === undefined ? {} : { body: { confirmation } }),
     schema: catalogEntrySchema,
@@ -357,7 +357,7 @@ export function startOAuthLogin(
   // The connection to repair, when the login is started from its card: the api keeps it with the state
   connectionId?: string
 ): Promise<{ authorizeUrl: string }> {
-  return client.request(ApiRoutes.channels.oauthStart(enc(pluginId)), {
+  return client.request(ApiRoutesChannels.oauthStart(enc(pluginId)), {
     method: 'POST',
     body: connectionId === undefined ? undefined : { connectionId },
     schema: startSchema,
@@ -371,7 +371,7 @@ export function fetchOAuthAssets(
   sessionId: string,
   signal?: AbortSignal
 ): Promise<OAuthAssetsView> {
-  return client.request(ApiRoutes.channels.oauthAssets(enc(sessionId)), {
+  return client.request(ApiRoutesChannels.oauthAssets(enc(sessionId)), {
     schema: assetsSchema,
     storeId,
     signal
@@ -384,7 +384,7 @@ export function completeOAuth(
   sessionId: string,
   assetId: string
 ): Promise<ChannelConnectionView> {
-  return client.request(ApiRoutes.channels.oauthComplete(enc(sessionId)), {
+  return client.request(ApiRoutesChannels.oauthComplete(enc(sessionId)), {
     method: 'POST',
     body: { assetId },
     schema: connectionSchema,
@@ -397,7 +397,7 @@ export function cancelOAuth(
   storeId: string,
   sessionId: string
 ): Promise<undefined> {
-  return client.request(ApiRoutes.channels.oauthSession(enc(sessionId)), {
+  return client.request(ApiRoutesChannels.oauthSession(enc(sessionId)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId

@@ -1,5 +1,5 @@
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesSettings } from '@platform/core/api'
 import {
   type SafetySettings,
   safetySettingsSchema,
@@ -17,7 +17,7 @@ export function fetchSafety(
   storeId: string,
   signal?: AbortSignal
 ): Promise<SafetyView> {
-  return client.request(ApiRoutes.settings.safety, {
+  return client.request(ApiRoutesSettings.safety, {
     schema: safetySettingsSchema,
     storeId,
     signal
@@ -30,7 +30,7 @@ export function saveSafety(
   storeId: string,
   input: SafetyInput
 ): Promise<SafetyView> {
-  return client.request(ApiRoutes.settings.safety, {
+  return client.request(ApiRoutesSettings.safety, {
     method: 'PUT',
     body: input,
     schema: safetySettingsSchema,

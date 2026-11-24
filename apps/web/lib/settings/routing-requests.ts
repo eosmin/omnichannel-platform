@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesSettings } from '@platform/core/api'
 import { RoutingActionTypes } from '@platform/core/domain'
 
 // Settings → Routing: what the api answers about the rules of a store. Kept with the page and not in
@@ -48,7 +48,7 @@ export function fetchRules(
   storeId: string,
   signal?: AbortSignal
 ): Promise<RuleView[]> {
-  return client.request(ApiRoutes.settings.routing, {
+  return client.request(ApiRoutesSettings.routing, {
     schema: z.array(ruleSchema),
     storeId,
     signal
@@ -60,7 +60,7 @@ export function createRule(
   storeId: string,
   input: RuleInput
 ): Promise<RuleView> {
-  return client.request(ApiRoutes.settings.routing, {
+  return client.request(ApiRoutesSettings.routing, {
     method: 'POST',
     body: input,
     schema: ruleSchema,
@@ -74,7 +74,7 @@ export function updateRule(
   ruleId: string,
   input: Partial<RuleInput>
 ): Promise<RuleView> {
-  return client.request(ApiRoutes.settings.routingRuleById(enc(ruleId)), {
+  return client.request(ApiRoutesSettings.routingRuleById(enc(ruleId)), {
     method: 'PATCH',
     body: input,
     schema: ruleSchema,
@@ -83,7 +83,7 @@ export function updateRule(
 }
 
 export function deleteRule(client: ApiClient, storeId: string, ruleId: string): Promise<undefined> {
-  return client.request(ApiRoutes.settings.routingRuleById(enc(ruleId)), {
+  return client.request(ApiRoutesSettings.routingRuleById(enc(ruleId)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -96,7 +96,7 @@ export function reorderRules(
   storeId: string,
   ruleIds: string[]
 ): Promise<RuleView[]> {
-  return client.request(ApiRoutes.settings.routingOrder, {
+  return client.request(ApiRoutesSettings.routingOrder, {
     method: 'PATCH',
     body: { ruleIds },
     schema: z.array(ruleSchema),

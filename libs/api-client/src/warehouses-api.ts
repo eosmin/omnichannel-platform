@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesWarehouses } from '@platform/core/api'
 import { PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -87,7 +87,7 @@ export function fetchWarehousePage(
   if (params.cursor !== undefined && params.cursor !== null) search.set('cursor', params.cursor)
   if (params.limit !== undefined) search.set('limit', String(params.limit))
   const text = search.toString()
-  return client.request(`${ApiRoutes.warehouses.list}${text === '' ? '' : `?${text}`}`, {
+  return client.request(`${ApiRoutesWarehouses.list}${text === '' ? '' : `?${text}`}`, {
     schema: warehousePageSchema,
     storeId,
     signal
@@ -124,7 +124,7 @@ export function createWarehouse(
   storeId: string,
   input: CreateWarehouseInput
 ): Promise<WarehouseDetailView> {
-  return client.request(ApiRoutes.warehouses.create, {
+  return client.request(ApiRoutesWarehouses.create, {
     method: 'POST',
     body: input,
     schema: warehouseDetailSchema,
@@ -138,7 +138,7 @@ export function updateWarehouse(
   id: string,
   input: UpdateWarehouseInput
 ): Promise<WarehouseDetailView> {
-  return client.request(ApiRoutes.warehouses.byId(encodeURIComponent(id)), {
+  return client.request(ApiRoutesWarehouses.byId(encodeURIComponent(id)), {
     method: 'PATCH',
     body: input,
     schema: warehouseDetailSchema,
@@ -152,7 +152,7 @@ export function replaceWarehouseStores(
   id: string,
   stores: readonly WarehouseStoreLinkInput[]
 ): Promise<WarehouseDetailView> {
-  return client.request(ApiRoutes.warehouses.stores(encodeURIComponent(id)), {
+  return client.request(ApiRoutesWarehouses.stores(encodeURIComponent(id)), {
     method: 'PUT',
     body: { stores },
     schema: warehouseDetailSchema,

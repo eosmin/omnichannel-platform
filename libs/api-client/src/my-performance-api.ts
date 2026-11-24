@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesAnalytics } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 
@@ -20,7 +20,7 @@ export function fetchMyPerformance(
   storeId: string,
   signal?: AbortSignal
 ): Promise<MyPerformanceView> {
-  return client.request(ApiRoutes.analytics.myPerformance, {
+  return client.request(ApiRoutesAnalytics.myPerformance, {
     schema: myPerformanceSchema,
     storeId,
     signal

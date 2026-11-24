@@ -1,4 +1,5 @@
 import { API_PREFIX } from './api-prefix'
+import * as routesModule from './api-routes'
 import { ApiRoutes, InfraRoutes } from './api-routes'
 
 type RouteValue = string | ((...args: string[]) => string) | { [key: string]: RouteValue }
@@ -27,6 +28,19 @@ describe('ApiRoutes', () => {
 
   it.each(routes)('%s never puts two parameters in a row', (_name, path) => {
     expect(path).not.toMatch(/\/:[A-Za-z0-9]+\/:[A-Za-z0-9]+/)
+  })
+
+  // The browser reads the constant of the area it draws, the server reads the joined `ApiRoutes`: they must be the same object
+  it.each(Object.entries(ApiRoutes))('joins the constant of the area %s', (area, value) => {
+    const named = `ApiRoutes${area.charAt(0).toUpperCase()}${area.slice(1)}`
+    expect((routesModule as Record<string, unknown>)[named]).toBe(value)
+  })
+
+  it('joins every constant of an area, none is left out', () => {
+    const joined = new Set<unknown>(Object.values(ApiRoutes))
+    const areas = Object.entries(routesModule).filter(([name]) => /^ApiRoutes[A-Z]/.test(name))
+    expect(areas.length).toBeGreaterThan(0)
+    expect(areas.filter(([, value]) => !joined.has(value)).map(([name]) => name)).toEqual([])
   })
 
   it('builds parameterised paths from placeholders', () => {

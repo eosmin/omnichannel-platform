@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesShipments } from '@platform/core/api'
 import { PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -69,7 +69,7 @@ export function fetchShipmentList(
     if (value !== undefined && value !== '') search.set(key, value)
   }
   if (filter.cursor !== undefined && filter.cursor !== null) search.set('cursor', filter.cursor)
-  return client.request(`${ApiRoutes.shipments.list}?${search.toString()}`, {
+  return client.request(`${ApiRoutesShipments.list}?${search.toString()}`, {
     schema: shipmentPageSchema,
     storeId,
     signal
@@ -97,7 +97,7 @@ export function fetchShipment(
   shipmentId: string,
   signal?: AbortSignal
 ): Promise<ShipmentDetailView> {
-  return client.request(ApiRoutes.shipments.byId(shipmentId), {
+  return client.request(ApiRoutesShipments.byId(shipmentId), {
     schema: shipmentDetailSchema,
     storeId,
     signal
@@ -111,7 +111,7 @@ export function cancelShipment(
   storeId: string,
   shipmentId: string
 ): Promise<ShipmentRowView> {
-  return client.request(ApiRoutes.shipments.cancel(shipmentId), {
+  return client.request(ApiRoutesShipments.cancel(shipmentId), {
     method: 'POST',
     schema: shipmentRowSchema,
     storeId
@@ -124,7 +124,7 @@ export function markShipmentVoided(
   storeId: string,
   shipmentId: string
 ): Promise<ShipmentRowView> {
-  return client.request(ApiRoutes.shipments.markVoided(shipmentId), {
+  return client.request(ApiRoutesShipments.markVoided(shipmentId), {
     method: 'POST',
     schema: shipmentRowSchema,
     storeId
@@ -140,7 +140,7 @@ export function checkShipmentWithCarrier(
   storeId: string,
   shipmentId: string
 ): Promise<ShipmentCheckResultView> {
-  return client.request(ApiRoutes.shipments.check(shipmentId), {
+  return client.request(ApiRoutesShipments.check(shipmentId), {
     method: 'POST',
     schema: checkResultSchema,
     storeId
@@ -155,7 +155,7 @@ export function setShipmentStatus(
   shipmentId: string,
   input: { status: string; guideNumber?: string; description?: string }
 ): Promise<ShipmentRowView> {
-  return client.request(ApiRoutes.shipments.status(shipmentId), {
+  return client.request(ApiRoutesShipments.status(shipmentId), {
     method: 'POST',
     body: input,
     schema: shipmentRowSchema,

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesOrderTemplates } from '@platform/core/api'
 import type { OrderMessageKindType, OrderMessageVariable } from '@platform/core/domain'
 import type { Locale } from '@platform/core/i18n'
 
@@ -62,7 +62,7 @@ export function fetchOrderTemplates(
   storeId: string,
   signal?: AbortSignal
 ): Promise<OrderTemplateView[]> {
-  return client.request(ApiRoutes.orderTemplates.list, {
+  return client.request(ApiRoutesOrderTemplates.list, {
     schema: orderTemplateListSchema,
     storeId,
     signal
@@ -76,7 +76,7 @@ export function putOrderTemplate(
   locale: Locale,
   input: PutOrderTemplateInput
 ): Promise<OrderTemplateView> {
-  return client.request(ApiRoutes.orderTemplates.byKindAndLocale(enc(kind), enc(locale)), {
+  return client.request(ApiRoutesOrderTemplates.byKindAndLocale(enc(kind), enc(locale)), {
     method: 'PUT',
     body: input,
     schema: orderTemplateSchema,
@@ -90,7 +90,7 @@ export function deleteOrderTemplate(
   kind: OrderMessageKindType,
   locale: Locale
 ): Promise<undefined> {
-  return client.request(ApiRoutes.orderTemplates.byKindAndLocale(enc(kind), enc(locale)), {
+  return client.request(ApiRoutesOrderTemplates.byKindAndLocale(enc(kind), enc(locale)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -105,7 +105,7 @@ export function previewOrderTemplate(
   locale: Locale,
   signal?: AbortSignal
 ): Promise<OrderTemplatePreviewView> {
-  return client.request(ApiRoutes.orderTemplates.preview, {
+  return client.request(ApiRoutesOrderTemplates.preview, {
     method: 'POST',
     body: { body, locale },
     schema: orderTemplatePreviewSchema,

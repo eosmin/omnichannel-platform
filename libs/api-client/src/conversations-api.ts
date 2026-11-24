@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import {
+  ApiRoutesChannels,
+  ApiRoutesConversations,
+  ApiRoutesMembers,
+  ApiRoutesSettings
+} from '@platform/core/api'
 import { type BulkActions, type ConversationStatus, PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -51,7 +56,7 @@ export function fetchConversationsPage(
   cursor: string | null,
   signal?: AbortSignal
 ): Promise<ConversationPageView> {
-  return client.request(`${ApiRoutes.conversations.list}${listQuery(filters, cursor)}`, {
+  return client.request(`${ApiRoutesConversations.list}${listQuery(filters, cursor)}`, {
     schema: conversationPageSchema,
     storeId,
     signal
@@ -65,7 +70,7 @@ export function fetchConversation(
   conversationId: string,
   signal?: AbortSignal
 ): Promise<ConversationDetailView> {
-  return client.request(ApiRoutes.conversations.byId(conversationId), {
+  return client.request(ApiRoutesConversations.byId(conversationId), {
     schema: conversationDetailSchema,
     storeId,
     signal
@@ -77,7 +82,7 @@ export function fetchConversationCounts(
   storeId: string,
   signal?: AbortSignal
 ): Promise<ConversationCountsView> {
-  return client.request(`${ApiRoutes.conversations.list}?countsOnly=true`, {
+  return client.request(`${ApiRoutesConversations.list}?countsOnly=true`, {
     schema: conversationCountsSchema,
     storeId,
     signal
@@ -89,7 +94,7 @@ export function fetchMemberDirectory(
   storeId: string,
   signal?: AbortSignal
 ): Promise<MemberDirectoryEntryView[]> {
-  return client.request(ApiRoutes.members.directory, {
+  return client.request(ApiRoutesMembers.directory, {
     schema: memberDirectorySchema,
     storeId,
     signal
@@ -112,7 +117,7 @@ export async function fetchChannelDirectory(
     const params = new URLSearchParams({ limit: String(PaginationLimits.MAX) })
     if (cursor !== null) params.set('cursor', cursor)
     const page: z.output<typeof channelDirectoryPageSchema> = await client.request(
-      `${ApiRoutes.channels.directory}?${params.toString()}`,
+      `${ApiRoutesChannels.directory}?${params.toString()}`,
       { schema: channelDirectoryPageSchema, storeId, signal }
     )
     found.push(...page.data)
@@ -129,7 +134,7 @@ export function fetchConversationOrigins(
   conversationId: string,
   signal?: AbortSignal
 ): Promise<ConversationOriginView[]> {
-  return client.request(ApiRoutes.conversations.origins(conversationId), {
+  return client.request(ApiRoutesConversations.origins(conversationId), {
     schema: conversationOriginListSchema,
     storeId,
     signal
@@ -143,7 +148,7 @@ export async function markConversationRead(
   storeId: string,
   conversationId: string
 ): Promise<void> {
-  await client.request(ApiRoutes.conversations.read(conversationId), {
+  await client.request(ApiRoutesConversations.read(conversationId), {
     method: 'POST',
     schema: z.unknown(),
     storeId
@@ -156,7 +161,7 @@ export function fetchMessagingWindow(
   conversationId: string,
   signal?: AbortSignal
 ): Promise<MessagingWindowView> {
-  return client.request(ApiRoutes.conversations.messagingWindow(conversationId), {
+  return client.request(ApiRoutesConversations.messagingWindow(conversationId), {
     schema: messagingWindowSchema,
     storeId,
     signal
@@ -172,7 +177,7 @@ export function fetchChannelTemplates(
   signal?: AbortSignal
 ): Promise<ChannelTemplateView[]> {
   const query = new URLSearchParams({ connectionId }).toString()
-  return client.request(`${ApiRoutes.channels.templates(pluginId)}?${query}`, {
+  return client.request(`${ApiRoutesChannels.templates(pluginId)}?${query}`, {
     schema: channelTemplateListSchema,
     storeId,
     signal
@@ -184,7 +189,7 @@ export function fetchTags(
   storeId: string,
   signal?: AbortSignal
 ): Promise<TagView[]> {
-  return client.request(ApiRoutes.settings.tags, { schema: tagListSchema, storeId, signal })
+  return client.request(ApiRoutesSettings.tags, { schema: tagListSchema, storeId, signal })
 }
 
 export function fetchSnippets(
@@ -192,7 +197,7 @@ export function fetchSnippets(
   storeId: string,
   signal?: AbortSignal
 ): Promise<SnippetView[]> {
-  return client.request(ApiRoutes.settings.snippets, {
+  return client.request(ApiRoutesSettings.snippets, {
     schema: snippetListSchema,
     storeId,
     signal
@@ -204,7 +209,7 @@ export function fetchInboxBehavior(
   storeId: string,
   signal?: AbortSignal
 ): Promise<InboxBehaviorView> {
-  return client.request(ApiRoutes.settings.inboxBehavior, {
+  return client.request(ApiRoutesSettings.inboxBehavior, {
     schema: inboxBehaviorSchema,
     storeId,
     signal
@@ -223,7 +228,7 @@ export function changeConversationStatus(
   // With RESOLVED only. The closing message is sent by the server once the time to undo is over.
   options: { resolutionReason?: string; closingSnippetId?: string; undoesResolution?: true } = {}
 ): Promise<ConversationDetailView> {
-  return client.request(ApiRoutes.conversations.status(conversationId), {
+  return client.request(ApiRoutesConversations.status(conversationId), {
     method: 'PATCH',
     body: { status, ...options },
     schema: conversationDetailSchema,
@@ -239,7 +244,7 @@ export function snoozeConversation(
   // What the agent wants to remember; the server trims it and limits it
   note?: string
 ): Promise<ConversationDetailView> {
-  return client.request(ApiRoutes.conversations.snooze(conversationId), {
+  return client.request(ApiRoutesConversations.snooze(conversationId), {
     method: 'POST',
     body: { until: until.toISOString(), ...(note === undefined ? {} : { note }) },
     schema: conversationDetailSchema,
@@ -254,7 +259,7 @@ export function assignConversation(
   conversationId: string,
   userId: string | null
 ): Promise<ConversationDetailView> {
-  return client.request(ApiRoutes.conversations.assign(conversationId), {
+  return client.request(ApiRoutesConversations.assign(conversationId), {
     method: 'PATCH',
     body: { userId },
     schema: conversationDetailSchema,
@@ -298,7 +303,7 @@ export function bulkConversations(
   operation: BulkOperation,
   target: BulkTarget
 ): Promise<BulkResultView> {
-  return client.request(ApiRoutes.conversations.bulk, {
+  return client.request(ApiRoutesConversations.bulk, {
     method: 'POST',
     body: { ...operation, ...target },
     schema: bulkResultSchema,

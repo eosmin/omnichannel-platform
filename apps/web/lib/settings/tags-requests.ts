@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesSettings } from '@platform/core/api'
 
 // Settings → Tags: what the api answers about the tags of a store. Kept with the page and not in
 // `@platform/api-client`, whose barrel the inbox loads whole.
@@ -28,7 +28,7 @@ export function fetchStoreTags(
   storeId: string,
   signal?: AbortSignal
 ): Promise<StoreTagView[]> {
-  return client.request(ApiRoutes.settings.tags, { schema: z.array(tagSchema), storeId, signal })
+  return client.request(ApiRoutesSettings.tags, { schema: z.array(tagSchema), storeId, signal })
 }
 
 export function createStoreTag(
@@ -38,7 +38,7 @@ export function createStoreTag(
 ): Promise<StoreTagView> {
   // The api refuses a null description on create: it is left out
   const { description, ...rest } = input
-  return client.request(ApiRoutes.settings.tags, {
+  return client.request(ApiRoutesSettings.tags, {
     method: 'POST',
     body: description === null ? rest : input,
     schema: tagSchema,
@@ -52,7 +52,7 @@ export function updateStoreTag(
   tagId: string,
   input: Partial<TagInput>
 ): Promise<StoreTagView> {
-  return client.request(ApiRoutes.settings.tagById(enc(tagId)), {
+  return client.request(ApiRoutesSettings.tagById(enc(tagId)), {
     method: 'PATCH',
     body: input,
     schema: tagSchema,
@@ -65,7 +65,7 @@ export function deleteStoreTag(
   storeId: string,
   tagId: string
 ): Promise<undefined> {
-  return client.request(ApiRoutes.settings.tagById(enc(tagId)), {
+  return client.request(ApiRoutesSettings.tagById(enc(tagId)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId

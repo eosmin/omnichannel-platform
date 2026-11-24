@@ -10,7 +10,11 @@ import { RETRY_AFTER_METADATA_KEY } from '@platform/core/errors'
 const SHARED = [
   'error-message.ts',
   'use-error-text.ts',
-  join('cookie-consent', 'use-choice-sync.ts')
+  join('cookie-consent', 'use-choice-sync.ts'),
+  // Every page builds its query client, and the team screens read the same key of the wait: from the barrel of the auth they kept
+  // `auth-constants.ts` (the profiles of the throttler, two Symbols) in the first load
+  'query-client.ts',
+  join('settings', 'team-errors.ts')
 ]
 const HEAVY_BARRELS = ['@platform/core/auth', '@platform/core/domain']
 
@@ -71,9 +75,43 @@ describe('the constants of the domain that every screen reads', () => {
       'NotificationGroups',
       'NotificationGroupTypes',
       'NotificationLockedTypes',
-      'NotificationTypesWithoutEmitter'
+      'NotificationTypesWithoutEmitter',
+      'NotificationChannelPreferenceKeys'
     ]) {
       expect(names).not.toMatch(new RegExp(`export const ${moved}\\b`))
     }
+    // `lockedChannelsOf` is a function, so it is not found with the `const` of the others
+    expect(names).not.toMatch(/export (?:async )?function lockedChannelsOf\b/)
+  })
+})
+
+// `ApiRoutes` is one object of about 15 KB minified: a bundler keeps all of it as soon as one route is read from it. The browser reads the
+// constant of the area it draws (`ApiRoutesOrders`); `ApiRoutes` joins them for the server and the specs.
+describe('the routes of the api in the browser', () => {
+  const ROOT = join(__dirname, '..', '..', '..')
+  const SKIPPED = new Set(['node_modules', '.next'])
+  const browserSourcesIn = (dir: string): string[] =>
+    readdirSync(dir).flatMap(name => {
+      const path = join(dir, name)
+      if (SKIPPED.has(name)) return []
+      if (statSync(path).isDirectory()) return browserSourcesIn(path)
+      return /\.tsx?$/.test(name) && !/\.spec\.tsx?$/.test(name) ? [path] : []
+    })
+  const readsTheWhole = /\bApiRoutes\b(?!\w)/
+
+  it('are read by area, never from the joined object', () => {
+    const offenders = [
+      ...browserSourcesIn(join(ROOT, 'libs', 'api-client', 'src')),
+      ...browserSourcesIn(join(ROOT, 'apps', 'web'))
+    ]
+      .filter(file =>
+        readsTheWhole.test(
+          readFileSync(file, 'utf8')
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/\/\/.*$/gm, '')
+        )
+      )
+      .map(file => relative(ROOT, file))
+    expect(offenders).toEqual([])
   })
 })

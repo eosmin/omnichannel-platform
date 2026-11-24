@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesFinance } from '@platform/core/api'
 import { PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -222,7 +222,7 @@ export function fetchBankProfiles(
   signal?: AbortSignal
 ): Promise<BankProfileView[]> {
   const search = new URLSearchParams({ accountId })
-  return client.request(`${ApiRoutes.finance.bank.profiles}?${search.toString()}`, {
+  return client.request(`${ApiRoutesFinance.bank.profiles}?${search.toString()}`, {
     schema: z.array(profileSchema),
     storeId,
     signal
@@ -234,7 +234,7 @@ export function createBankProfile(
   storeId: string,
   input: CreateBankProfileInput
 ): Promise<BankProfileView> {
-  return client.request(ApiRoutes.finance.bank.profiles, {
+  return client.request(ApiRoutesFinance.bank.profiles, {
     method: 'POST',
     body: input,
     schema: profileSchema,
@@ -248,7 +248,7 @@ export function updateBankProfile(
   id: string,
   input: UpdateBankProfileInput
 ): Promise<BankProfileView> {
-  return client.request(ApiRoutes.finance.bank.profileById(encode(id)), {
+  return client.request(ApiRoutesFinance.bank.profileById(encode(id)), {
     method: 'PATCH',
     body: input,
     schema: profileSchema,
@@ -261,7 +261,7 @@ export async function deleteBankProfile(
   storeId: string,
   id: string
 ): Promise<void> {
-  await client.request(ApiRoutes.finance.bank.profileById(encode(id)), {
+  await client.request(ApiRoutesFinance.bank.profileById(encode(id)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -275,7 +275,7 @@ export function previewBankProfile(
   input: { text: string; profile: BankPreviewReading },
   signal?: AbortSignal
 ): Promise<BankPreviewView> {
-  return client.request(ApiRoutes.finance.bank.profilePreview, {
+  return client.request(ApiRoutesFinance.bank.profilePreview, {
     method: 'POST',
     body: input,
     schema: previewSchema,
@@ -308,7 +308,7 @@ export function importBankStatement(
     search.set('closingOn', input.closing.on)
   }
   if (input.dateFormatConfirmed === true) search.set('dateFormatConfirmed', 'true')
-  return client.request(`${ApiRoutes.finance.bank.imports}?${search.toString()}`, {
+  return client.request(`${ApiRoutesFinance.bank.imports}?${search.toString()}`, {
     method: 'POST',
     fileBody: { bytes: input.bytes, contentType: input.contentType },
     schema: importSchema,
@@ -323,7 +323,7 @@ export function fetchBankImports(
   signal?: AbortSignal
 ): Promise<BankImportView[]> {
   const search = new URLSearchParams({ accountId, limit: String(PaginationLimits.MAX) })
-  return client.request(`${ApiRoutes.finance.bank.imports}?${search.toString()}`, {
+  return client.request(`${ApiRoutesFinance.bank.imports}?${search.toString()}`, {
     schema: z.array(importSchema),
     storeId,
     signal
@@ -336,7 +336,7 @@ export function fetchBankImport(
   importId: string,
   signal?: AbortSignal
 ): Promise<BankImportView> {
-  return client.request(ApiRoutes.finance.bank.importById(encode(importId)), {
+  return client.request(ApiRoutesFinance.bank.importById(encode(importId)), {
     schema: importSchema,
     storeId,
     signal
@@ -353,7 +353,7 @@ export function fetchBankLines(
   const search = new URLSearchParams({ filter: query.filter })
   if (query.after !== undefined && query.after !== null) search.set('after', String(query.after))
   return client.request(
-    `${ApiRoutes.finance.bank.importLines(encode(importId))}?${search.toString()}`,
+    `${ApiRoutesFinance.bank.importLines(encode(importId))}?${search.toString()}`,
     {
       schema: linePageSchema,
       storeId,
@@ -368,7 +368,7 @@ export function confirmExactBankLines(
   storeId: string,
   importId: string
 ): Promise<BankConfirmExactView> {
-  return client.request(ApiRoutes.finance.bank.confirmExact(encode(importId)), {
+  return client.request(ApiRoutesFinance.bank.confirmExact(encode(importId)), {
     method: 'POST',
     schema: confirmExactSchema,
     storeId
@@ -381,7 +381,7 @@ export function fetchBankDifference(
   importId: string,
   signal?: AbortSignal
 ): Promise<BankDifferenceView> {
-  return client.request(ApiRoutes.finance.bank.difference(encode(importId)), {
+  return client.request(ApiRoutesFinance.bank.difference(encode(importId)), {
     schema: differenceSchema,
     storeId,
     signal
@@ -395,7 +395,7 @@ export function confirmBankMatch(
   lineId: string,
   journalLineId: string
 ): Promise<BankLineView> {
-  return client.request(ApiRoutes.finance.bank.lineMatches(encode(lineId)), {
+  return client.request(ApiRoutesFinance.bank.lineMatches(encode(lineId)), {
     method: 'POST',
     body: { journalLineId },
     schema: lineSchema,
@@ -410,7 +410,7 @@ export function confirmBankGroup(
   lineId: string,
   journalLineIds: readonly string[]
 ): Promise<BankLineView> {
-  return client.request(ApiRoutes.finance.bank.lineGroupMatches(encode(lineId)), {
+  return client.request(ApiRoutesFinance.bank.lineGroupMatches(encode(lineId)), {
     method: 'POST',
     body: { journalLineIds },
     schema: lineSchema,
@@ -442,7 +442,7 @@ export function fetchBankBookCandidates(
   lineId: string,
   signal?: AbortSignal
 ): Promise<BankBookCandidatesView> {
-  return client.request(ApiRoutes.finance.bank.lineBookCandidates(encode(lineId)), {
+  return client.request(ApiRoutesFinance.bank.lineBookCandidates(encode(lineId)), {
     schema: bookCandidatesSchema,
     storeId,
     signal
@@ -456,7 +456,7 @@ export function rejectBankMatch(
   lineId: string,
   journalLineId: string
 ): Promise<BankLineView> {
-  return client.request(ApiRoutes.finance.bank.lineRejections(encode(lineId)), {
+  return client.request(ApiRoutesFinance.bank.lineRejections(encode(lineId)), {
     method: 'POST',
     body: { journalLineId },
     schema: lineSchema,
@@ -470,7 +470,7 @@ export function undoBankMatch(
   storeId: string,
   matchId: string
 ): Promise<BankLineView> {
-  return client.request(ApiRoutes.finance.bank.matchUndo(encode(matchId)), {
+  return client.request(ApiRoutesFinance.bank.matchUndo(encode(matchId)), {
     method: 'POST',
     schema: lineSchema,
     storeId
@@ -486,7 +486,7 @@ export function fetchBankRegisterDraft(
 ): Promise<BankRegisterDraftView> {
   // The memo is empty unless the person asks for the description of the line
   const search = options.useDescriptionAsMemo === true ? '?useDescriptionAsMemo=true' : ''
-  return client.request(`${ApiRoutes.finance.bank.lineRegisterDraft(encode(lineId))}${search}`, {
+  return client.request(`${ApiRoutesFinance.bank.lineRegisterDraft(encode(lineId))}${search}`, {
     schema: draftSchema,
     storeId,
     signal
@@ -504,7 +504,7 @@ export function fetchBankStatus(
     year: String(query.year),
     month: String(query.month)
   })
-  return client.request(`${ApiRoutes.finance.bank.status}?${search.toString()}`, {
+  return client.request(`${ApiRoutesFinance.bank.status}?${search.toString()}`, {
     schema: statusSchema,
     storeId,
     signal

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesFinance } from '@platform/core/api'
 import type { AgingKind } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -133,7 +133,7 @@ export function fetchFinanceIncomeStatement(
   query: FinanceFlowQuery,
   signal?: AbortSignal
 ): Promise<FinanceIncomeStatementView> {
-  return client.request(withQuery(ApiRoutes.finance.reports.incomeStatement, flowSearch(query)), {
+  return client.request(withQuery(ApiRoutesFinance.reports.incomeStatement, flowSearch(query)), {
     schema: incomeStatementSchema,
     storeId,
     signal
@@ -146,7 +146,7 @@ export function fetchFinanceBalanceSheet(
   query: FinanceBalanceSheetQuery,
   signal?: AbortSignal
 ): Promise<FinanceBalanceSheetView> {
-  return client.request(withQuery(ApiRoutes.finance.reports.balanceSheet, { asOf: query.asOf }), {
+  return client.request(withQuery(ApiRoutesFinance.reports.balanceSheet, { asOf: query.asOf }), {
     schema: balanceSheetSchema,
     storeId,
     signal
@@ -159,7 +159,7 @@ export function fetchFinanceCashFlow(
   query: FinanceFlowQuery,
   signal?: AbortSignal
 ): Promise<FinanceCashFlowView> {
-  return client.request(withQuery(ApiRoutes.finance.reports.cashFlow, flowSearch(query)), {
+  return client.request(withQuery(ApiRoutesFinance.reports.cashFlow, flowSearch(query)), {
     schema: cashFlowSchema,
     storeId,
     signal
@@ -173,7 +173,7 @@ export function fetchFinanceAging(
   signal?: AbortSignal
 ): Promise<FinanceAgingView> {
   return client.request(
-    withQuery(ApiRoutes.finance.reports.aging, { kind: query.kind, asOf: query.asOf }),
+    withQuery(ApiRoutesFinance.reports.aging, { kind: query.kind, asOf: query.asOf }),
     { schema: agingSchema, storeId, signal }
   )
 }
@@ -184,10 +184,11 @@ export function fetchFinanceIncomeStatementCsv(
   storeId: string,
   query: FinanceFlowQuery
 ): Promise<string> {
-  return client.request(
-    withQuery(ApiRoutes.finance.reports.incomeStatementCsv, flowSearch(query)),
-    { schema: csvSchema, responseType: 'text', storeId }
-  )
+  return client.request(withQuery(ApiRoutesFinance.reports.incomeStatementCsv, flowSearch(query)), {
+    schema: csvSchema,
+    responseType: 'text',
+    storeId
+  })
 }
 
 export function fetchFinanceBalanceSheetCsv(
@@ -195,10 +196,11 @@ export function fetchFinanceBalanceSheetCsv(
   storeId: string,
   query: FinanceBalanceSheetQuery
 ): Promise<string> {
-  return client.request(
-    withQuery(ApiRoutes.finance.reports.balanceSheetCsv, { asOf: query.asOf }),
-    { schema: csvSchema, responseType: 'text', storeId }
-  )
+  return client.request(withQuery(ApiRoutesFinance.reports.balanceSheetCsv, { asOf: query.asOf }), {
+    schema: csvSchema,
+    responseType: 'text',
+    storeId
+  })
 }
 
 export function fetchFinanceCashFlowCsv(
@@ -206,7 +208,7 @@ export function fetchFinanceCashFlowCsv(
   storeId: string,
   query: FinanceFlowQuery
 ): Promise<string> {
-  return client.request(withQuery(ApiRoutes.finance.reports.cashFlowCsv, flowSearch(query)), {
+  return client.request(withQuery(ApiRoutesFinance.reports.cashFlowCsv, flowSearch(query)), {
     schema: csvSchema,
     responseType: 'text',
     storeId
@@ -219,7 +221,7 @@ export function fetchFinanceAgingCsv(
   query: FinanceAgingQuery
 ): Promise<string> {
   return client.request(
-    withQuery(ApiRoutes.finance.reports.agingCsv, { kind: query.kind, asOf: query.asOf }),
+    withQuery(ApiRoutesFinance.reports.agingCsv, { kind: query.kind, asOf: query.asOf }),
     { schema: csvSchema, responseType: 'text', storeId }
   )
 }

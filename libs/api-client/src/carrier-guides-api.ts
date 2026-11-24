@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesCarriers } from '@platform/core/api'
 import type {
   GuidePolicyBody,
   RecordGuideAdjustmentBody,
@@ -105,7 +105,7 @@ export function fetchGuideBalance(
   id: string,
   signal?: AbortSignal
 ): Promise<GuideBalanceView> {
-  return client.request(ApiRoutes.carriers.guideBalance(enc(id)), {
+  return client.request(ApiRoutesCarriers.guideBalance(enc(id)), {
     schema: balanceSchema,
     storeId,
     signal
@@ -124,7 +124,7 @@ export function fetchGuideMovements(
   if (query.limit !== undefined) params.set('limit', String(query.limit))
   const text = params.toString()
   return client.request(
-    `${ApiRoutes.carriers.guideMovements(enc(id))}${text === '' ? '' : `?${text}`}`,
+    `${ApiRoutesCarriers.guideMovements(enc(id))}${text === '' ? '' : `?${text}`}`,
     { schema: movementPageSchema, storeId, signal }
   )
 }
@@ -135,7 +135,7 @@ export function recordGuidePurchase(
   id: string,
   body: RecordGuidePurchaseBody
 ): Promise<GuideMovementView> {
-  return client.request(ApiRoutes.carriers.guidePurchases(enc(id)), {
+  return client.request(ApiRoutesCarriers.guidePurchases(enc(id)), {
     method: 'POST',
     body,
     schema: movementSchema,
@@ -150,7 +150,7 @@ export function voidGuidePurchase(
   movementId: string,
   body: VoidGuidePurchaseBody
 ): Promise<GuideMovementView> {
-  return client.request(ApiRoutes.carriers.guidePurchaseVoid(enc(id), enc(movementId)), {
+  return client.request(ApiRoutesCarriers.guidePurchaseVoid(enc(id), enc(movementId)), {
     method: 'POST',
     body,
     schema: movementSchema,
@@ -164,7 +164,7 @@ export function recordGuideAdjustment(
   id: string,
   body: RecordGuideAdjustmentBody
 ): Promise<GuideMovementView> {
-  return client.request(ApiRoutes.carriers.guideAdjustments(enc(id)), {
+  return client.request(ApiRoutesCarriers.guideAdjustments(enc(id)), {
     method: 'POST',
     body,
     schema: movementSchema,
@@ -178,7 +178,7 @@ export function fetchGuidePolicy(
   id: string,
   signal?: AbortSignal
 ): Promise<GuidePolicyView> {
-  return client.request(ApiRoutes.carriers.guidePolicy(enc(id)), {
+  return client.request(ApiRoutesCarriers.guidePolicy(enc(id)), {
     schema: policySchema,
     storeId,
     signal
@@ -191,7 +191,7 @@ export function putGuidePolicy(
   id: string,
   body: GuidePolicyBody
 ): Promise<GuidePolicyView> {
-  return client.request(ApiRoutes.carriers.guidePolicy(enc(id)), {
+  return client.request(ApiRoutesCarriers.guidePolicy(enc(id)), {
     method: 'PUT',
     body,
     schema: policySchema,
@@ -205,7 +205,7 @@ export function fetchBenefit(
   id: string,
   signal?: AbortSignal
 ): Promise<BenefitView> {
-  return client.request(ApiRoutes.carriers.benefit(enc(id)), {
+  return client.request(ApiRoutesCarriers.benefit(enc(id)), {
     schema: benefitSchema,
     storeId,
     signal
@@ -218,7 +218,7 @@ export function fetchBenefitPeriods(
   id: string,
   signal?: AbortSignal
 ): Promise<BenefitPeriodView[]> {
-  return client.request(ApiRoutes.carriers.benefitPeriods(enc(id)), {
+  return client.request(ApiRoutesCarriers.benefitPeriods(enc(id)), {
     schema: z.array(periodSchema),
     storeId,
     signal

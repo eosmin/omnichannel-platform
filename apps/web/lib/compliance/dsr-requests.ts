@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesCompliance } from '@platform/core/api'
 import { DsrReviewLimits } from '@platform/core/domain'
 
 // Settings → Data requests: what the api answers about the data requests of a store (the review queue of Step 7.2-H1b and the closing
@@ -93,7 +93,7 @@ export function fetchDsrRequests(
 ): Promise<DsrRequestPageView> {
   const params = new URLSearchParams({ limit: String(DsrReviewLimits.PAGE_SIZE) })
   if (cursor !== null) params.set('cursor', cursor)
-  return client.request(`${ApiRoutes.compliance.dsr}?${params.toString()}`, {
+  return client.request(`${ApiRoutesCompliance.dsr}?${params.toString()}`, {
     schema: pageSchema,
     storeId,
     signal
@@ -106,7 +106,7 @@ export function fetchDsrRequest(
   id: string,
   signal?: AbortSignal
 ): Promise<DsrRequestDetailView> {
-  return client.request(ApiRoutes.compliance.dsrById(id), {
+  return client.request(ApiRoutesCompliance.dsrById(id), {
     schema: detailSchema,
     storeId,
     signal
@@ -120,7 +120,7 @@ export function approveDsrRequest(
   id: string,
   reason: string
 ): Promise<DsrRequestView> {
-  return client.request(ApiRoutes.compliance.dsrApprove(id), {
+  return client.request(ApiRoutesCompliance.dsrApprove(id), {
     method: 'POST',
     body: { confirm: true, reason },
     schema: requestSchema,
@@ -134,7 +134,7 @@ export function rejectDsrRequest(
   id: string,
   reason: string
 ): Promise<DsrRequestView> {
-  return client.request(ApiRoutes.compliance.dsrReject(id), {
+  return client.request(ApiRoutesCompliance.dsrReject(id), {
     method: 'POST',
     body: { reason },
     schema: requestSchema,
@@ -148,7 +148,7 @@ export function cancelDsrErasure(
   id: string,
   reason: string
 ): Promise<DsrRequestView> {
-  return client.request(ApiRoutes.compliance.dsrCancel(id), {
+  return client.request(ApiRoutesCompliance.dsrCancel(id), {
     method: 'POST',
     body: { reason },
     schema: requestSchema,
@@ -162,7 +162,7 @@ export function fetchDsrExportLink(
   storeId: string,
   id: string
 ): Promise<DsrExportLinkView> {
-  return client.request(ApiRoutes.compliance.dsrExport(id), {
+  return client.request(ApiRoutesCompliance.dsrExport(id), {
     schema: exportLinkSchema,
     storeId
   })

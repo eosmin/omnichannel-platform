@@ -5,7 +5,7 @@ import type {
   CreateReportBody,
   UpdateReportBody
 } from '@platform/core/analytics'
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesAnalytics } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 import { exportSchema, type ExportView } from './exports-api'
@@ -37,7 +37,7 @@ export function fetchReports(
   storeId: string,
   signal?: AbortSignal
 ): Promise<ReportView[]> {
-  return client.request(ApiRoutes.analytics.reports, {
+  return client.request(ApiRoutesAnalytics.reports, {
     schema: z.array(reportSchema),
     storeId,
     signal
@@ -49,7 +49,7 @@ export function createReport(
   storeId: string,
   input: CreateReportInput
 ): Promise<ReportView> {
-  return client.request(ApiRoutes.analytics.reports, {
+  return client.request(ApiRoutesAnalytics.reports, {
     method: 'POST',
     body: input,
     schema: reportSchema,
@@ -63,7 +63,7 @@ export function updateReport(
   id: string,
   input: UpdateReportInput
 ): Promise<ReportView> {
-  return client.request(ApiRoutes.analytics.reportById(id), {
+  return client.request(ApiRoutesAnalytics.reportById(id), {
     method: 'PATCH',
     body: input,
     schema: reportSchema,
@@ -72,7 +72,7 @@ export function updateReport(
 }
 
 export function deleteReport(client: ApiClient, storeId: string, id: string): Promise<undefined> {
-  return client.request(ApiRoutes.analytics.reportById(id), {
+  return client.request(ApiRoutesAnalytics.reportById(id), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -100,7 +100,7 @@ export function requestAnalyticsExport(
     to: request.to,
     format: request.format
   })
-  return client.request(`${ApiRoutes.analytics.export}?${params.toString()}`, {
+  return client.request(`${ApiRoutesAnalytics.export}?${params.toString()}`, {
     schema: exportSchema,
     storeId
   })

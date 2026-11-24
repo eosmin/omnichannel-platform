@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesInventory } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 
@@ -30,7 +30,7 @@ export function fetchStockSummary(
 ): Promise<StockSummaryView[]> {
   return client
     .request(
-      `${ApiRoutes.inventory.summary}?${new URLSearchParams({ productIds: productIds.join(',') }).toString()}`,
+      `${ApiRoutesInventory.summary}?${new URLSearchParams({ productIds: productIds.join(',') }).toString()}`,
       {
         schema: stockSummarySchema,
         storeId,

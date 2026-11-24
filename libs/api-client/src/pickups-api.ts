@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesPickups } from '@platform/core/api'
 import { PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -57,7 +57,7 @@ export function fetchPickups(
     if (value !== undefined && value !== '') search.set(key, value)
   }
   if (filter.cursor !== undefined && filter.cursor !== null) search.set('cursor', filter.cursor)
-  return client.request(`${ApiRoutes.pickups.list}?${search.toString()}`, {
+  return client.request(`${ApiRoutesPickups.list}?${search.toString()}`, {
     schema: pickupPageSchema,
     storeId,
     signal
@@ -80,7 +80,7 @@ export function addPickupShipments(
   pickupId: string,
   input: { shipmentIds: readonly string[]; confirmAfterCutoff?: boolean }
 ): Promise<PickupChangeView> {
-  return client.request(ApiRoutes.pickups.shipments(pickupId), {
+  return client.request(ApiRoutesPickups.shipments(pickupId), {
     method: 'POST',
     body: input,
     schema: pickupRequestSchema,
@@ -94,7 +94,7 @@ export function removePickupShipment(
   pickupId: string,
   shipmentId: string
 ): Promise<PickupView> {
-  return client.request(ApiRoutes.pickups.shipmentById(pickupId, shipmentId), {
+  return client.request(ApiRoutesPickups.shipmentById(pickupId, shipmentId), {
     method: 'DELETE',
     schema: pickupSchema,
     storeId
@@ -107,7 +107,7 @@ export function confirmPickup(
   storeId: string,
   pickupId: string
 ): Promise<PickupView> {
-  return client.request(ApiRoutes.pickups.confirm(pickupId), {
+  return client.request(ApiRoutesPickups.confirm(pickupId), {
     method: 'POST',
     schema: pickupSchema,
     storeId
@@ -119,7 +119,7 @@ export function cancelPickup(
   storeId: string,
   pickupId: string
 ): Promise<PickupView> {
-  return client.request(ApiRoutes.pickups.cancel(pickupId), {
+  return client.request(ApiRoutesPickups.cancel(pickupId), {
     method: 'POST',
     schema: pickupSchema,
     storeId
@@ -153,7 +153,7 @@ export function fetchPickupManifest(
   pickupId: string,
   signal?: AbortSignal
 ): Promise<PickupManifestView> {
-  return client.request(ApiRoutes.pickups.manifest(pickupId), {
+  return client.request(ApiRoutesPickups.manifest(pickupId), {
     schema: manifestSchema,
     storeId,
     signal

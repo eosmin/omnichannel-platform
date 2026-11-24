@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesOrganizations } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 import {
@@ -31,7 +31,7 @@ export function fetchOrganization(
   storeId: string,
   signal?: AbortSignal
 ): Promise<OrganizationView> {
-  return client.request(ApiRoutes.organizations.current, {
+  return client.request(ApiRoutesOrganizations.current, {
     schema: organizationViewSchema,
     storeId,
     signal
@@ -43,7 +43,7 @@ export function renameOrganization(
   storeId: string,
   name: string
 ): Promise<OrganizationView> {
-  return client.request(ApiRoutes.organizations.current, {
+  return client.request(ApiRoutesOrganizations.current, {
     method: 'PATCH',
     body: { name },
     schema: organizationViewSchema,
@@ -57,7 +57,7 @@ export function fetchOrganizationStore(
   id: string,
   signal?: AbortSignal
 ): Promise<StoreView> {
-  return client.request(ApiRoutes.organizations.storeById(encodeURIComponent(id)), {
+  return client.request(ApiRoutesOrganizations.storeById(encodeURIComponent(id)), {
     schema: storeViewSchema,
     storeId,
     signal
@@ -69,7 +69,7 @@ export function createOrganizationStore(
   storeId: string,
   input: CreateStoreInput
 ): Promise<StoreView> {
-  return client.request(ApiRoutes.organizations.stores, {
+  return client.request(ApiRoutesOrganizations.stores, {
     method: 'POST',
     body: input,
     schema: storeViewSchema,
@@ -83,7 +83,7 @@ export function updateOrganizationStore(
   id: string,
   patch: StorePatch
 ): Promise<StoreView> {
-  return client.request(ApiRoutes.organizations.storeById(encodeURIComponent(id)), {
+  return client.request(ApiRoutesOrganizations.storeById(encodeURIComponent(id)), {
     method: 'PATCH',
     body: patch,
     schema: storeViewSchema,
@@ -98,7 +98,7 @@ export function deleteOrganizationStore(
   id: string,
   confirmation: string
 ): Promise<void> {
-  return client.request(ApiRoutes.organizations.storeById(encodeURIComponent(id)), {
+  return client.request(ApiRoutesOrganizations.storeById(encodeURIComponent(id)), {
     method: 'DELETE',
     body: { confirmation },
     schema: z.undefined(),

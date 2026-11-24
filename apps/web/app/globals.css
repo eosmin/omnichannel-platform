@@ -94,6 +94,14 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* The ring of the browser on a link or a native checkbox or radio is drawn in `--ring` at 50 %, which is about 2:1
+     against the page (TXT-031, BAN-394). A focus indicator needs 3:1: these take the whole color of the ring, which is
+     above 3:1 on the light and on the dark page. An outline takes no room, so no layout moves. */
+  a:focus-visible,
+  input[type='checkbox']:focus-visible,
+  input[type='radio']:focus-visible {
+    outline-color: var(--ring);
+  }
   /* A fieldset is as wide as its longest word by default (`min-width: min-content`), so a long template name
      or a link inside one pushed a dialog sideways on a phone (MODAL-390). It takes the width it is given. */
   fieldset {

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutesSettings } from '@platform/core/api'
 import { InvitationEmailStatus, MembershipStatus } from '@platform/core/domain'
 
 // Settings → Team: what the api answers about the members, roles and invitations of a store. Kept with
@@ -56,7 +56,7 @@ export function fetchMembers(
   storeId: string,
   signal?: AbortSignal
 ): Promise<MemberView[]> {
-  return client.request(ApiRoutes.settings.members, {
+  return client.request(ApiRoutesSettings.members, {
     schema: z.array(memberSchema),
     storeId,
     signal
@@ -69,7 +69,7 @@ export function changeMemberRole(
   memberId: string,
   roleId: string
 ): Promise<MemberView> {
-  return client.request(ApiRoutes.settings.memberById(enc(memberId)), {
+  return client.request(ApiRoutesSettings.memberById(enc(memberId)), {
     method: 'PATCH',
     body: { roleId },
     schema: memberSchema,
@@ -82,7 +82,7 @@ export function removeMember(
   storeId: string,
   memberId: string
 ): Promise<undefined> {
-  return client.request(ApiRoutes.settings.memberById(enc(memberId)), {
+  return client.request(ApiRoutesSettings.memberById(enc(memberId)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -96,7 +96,7 @@ export function suspendMember(
   storeId: string,
   memberId: string
 ): Promise<MemberView> {
-  return client.request(ApiRoutes.settings.memberSuspend(enc(memberId)), {
+  return client.request(ApiRoutesSettings.memberSuspend(enc(memberId)), {
     method: 'POST',
     schema: memberSchema,
     storeId
@@ -109,7 +109,7 @@ export function reactivateMember(
   storeId: string,
   memberId: string
 ): Promise<MemberView> {
-  return client.request(ApiRoutes.settings.memberReactivate(enc(memberId)), {
+  return client.request(ApiRoutesSettings.memberReactivate(enc(memberId)), {
     method: 'POST',
     schema: memberSchema,
     storeId
@@ -121,7 +121,7 @@ export function fetchRoles(
   storeId: string,
   signal?: AbortSignal
 ): Promise<RoleView[]> {
-  return client.request(ApiRoutes.settings.roles, {
+  return client.request(ApiRoutesSettings.roles, {
     schema: z.array(roleSchema),
     storeId,
     signal
@@ -133,7 +133,7 @@ export function createRole(
   storeId: string,
   input: RoleInput
 ): Promise<RoleView> {
-  return client.request(ApiRoutes.settings.roles, {
+  return client.request(ApiRoutesSettings.roles, {
     method: 'POST',
     body: input,
     schema: roleSchema,
@@ -147,7 +147,7 @@ export function updateRole(
   roleId: string,
   input: Partial<RoleInput>
 ): Promise<RoleView> {
-  return client.request(ApiRoutes.settings.roleById(enc(roleId)), {
+  return client.request(ApiRoutesSettings.roleById(enc(roleId)), {
     method: 'PATCH',
     body: input,
     schema: roleSchema,
@@ -156,7 +156,7 @@ export function updateRole(
 }
 
 export function deleteRole(client: ApiClient, storeId: string, roleId: string): Promise<undefined> {
-  return client.request(ApiRoutes.settings.roleById(enc(roleId)), {
+  return client.request(ApiRoutesSettings.roleById(enc(roleId)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -168,7 +168,7 @@ export function fetchInvitations(
   storeId: string,
   signal?: AbortSignal
 ): Promise<InvitationView[]> {
-  return client.request(ApiRoutes.settings.invitations, {
+  return client.request(ApiRoutesSettings.invitations, {
     schema: z.array(invitationSchema),
     storeId,
     signal
@@ -181,7 +181,7 @@ export function inviteMember(
   storeId: string,
   input: { email: string; roleId: string }
 ): Promise<InvitationView> {
-  return client.request(ApiRoutes.settings.members, {
+  return client.request(ApiRoutesSettings.members, {
     method: 'POST',
     body: input,
     schema: invitationSchema,
@@ -194,7 +194,7 @@ export function resendInvitation(
   storeId: string,
   invitationId: string
 ): Promise<InvitationView> {
-  return client.request(ApiRoutes.settings.invitationResend(enc(invitationId)), {
+  return client.request(ApiRoutesSettings.invitationResend(enc(invitationId)), {
     method: 'POST',
     schema: invitationSchema,
     storeId
@@ -206,7 +206,7 @@ export function revokeInvitation(
   storeId: string,
   invitationId: string
 ): Promise<undefined> {
-  return client.request(ApiRoutes.settings.invitationById(enc(invitationId)), {
+  return client.request(ApiRoutesSettings.invitationById(enc(invitationId)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
