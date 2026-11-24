@@ -1,4 +1,3 @@
-import { Permissions, type Permission } from './auth/permissions'
 import { OrderStatus } from './status-enums'
 
 export const OrderMessageKind = {
@@ -290,16 +289,12 @@ export const OrderConflicts = {
   DELIVERED_BEFORE_ACCOUNTING_START: 'delivered_before_accounting_start'
 } as const
 
-// Who is told when the packing note changes on an order that is already confirmed: the members who may prepare or
-// ship orders of the store (the permissions are named in libs/core/domain/auth/permissions.ts)
+// When the packing note changes on an order that is already confirmed the warehouse is told. Who is told (the permissions) is
+// `PackingNoteNoticePermissions`, in a file of its own: a value read from `Permissions` at the top of this file would carry the whole
+// table of permissions to every page that reads any other constant here (see apps/web/lib/shared-chunk-imports.spec.ts)
 export const PackingNoteNotice = {
   // The statuses in which a change of the note warns the warehouse (a PENDING_CONFIRMATION order is not packed yet)
-  STATUSES: [OrderStatus.CONFIRMED, OrderStatus.PREPARING] as readonly OrderStatus[],
-  // The members told: whoever may move an order to PREPARING or SHIPPED by hand, and whoever makes its guide
-  PERMISSIONS: [
-    Permissions.ORDERS_CHANGE_STATUS,
-    Permissions.SHIPPING_MANAGE
-  ] as readonly Permission[]
+  STATUSES: [OrderStatus.CONFIRMED, OrderStatus.PREPARING] as readonly OrderStatus[]
 } as const
 
 // The lock that makes the orders of a store take turns while their stock is allocated (one scope, one order of locks:

@@ -1,4 +1,5 @@
 export * from './notification-constants'
+export * from './notification-matrix'
 export * from './quiet-hours'
 export * from './push-constants'
 export * from './web-push-config'

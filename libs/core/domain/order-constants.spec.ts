@@ -9,6 +9,7 @@ import {
   PackingNoteNotice,
   RecipientPhones
 } from './order-constants'
+import { PackingNoteNoticePermissions } from './order-notice-permissions'
 import { OrderStatus } from './status-enums'
 
 describe('formatPhoneList', () => {
@@ -58,7 +59,7 @@ describe('formatOrderNumber', () => {
 
 describe('the packing note notice', () => {
   it('goes to who may prepare or ship an order', () => {
-    expect([...PackingNoteNotice.PERMISSIONS]).toEqual([
+    expect([...PackingNoteNoticePermissions]).toEqual([
       Permissions.ORDERS_CHANGE_STATUS,
       Permissions.SHIPPING_MANAGE
     ])

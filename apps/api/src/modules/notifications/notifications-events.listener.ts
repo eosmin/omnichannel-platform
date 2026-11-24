@@ -31,7 +31,7 @@ import {
   MembershipStatus,
   OrderResourceTypes,
   OrderStatus,
-  PackingNoteNotice,
+  PackingNoteNoticePermissions,
   PaymentStatus,
   PLUGIN_INSTALLATION_RESOURCE_TYPE,
   PickupResourceTypes,
@@ -1068,7 +1068,7 @@ export class NotificationsEventsListener {
   async onPackingNoteChanged(payload: OrderEventPayload): Promise<void> {
     const { storeId, orderId, orderNumber, actor } = payload
     try {
-      const members = await this.membersWith(storeId, PackingNoteNotice.PERMISSIONS, actor.id)
+      const members = await this.membersWith(storeId, PackingNoteNoticePermissions, actor.id)
       // Told once per order while the earlier warning is unread: a note edited three times is one line in the center
       await this.notifications.sendToUsersOnce(members, {
         storeId,

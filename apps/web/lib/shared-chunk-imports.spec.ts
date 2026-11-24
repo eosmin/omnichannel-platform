@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
 
 import { RETRY_AFTER_METADATA_KEY } from '@platform/core/errors'
 
@@ -28,5 +28,52 @@ describe('the code every screen shares', () => {
   it('reads the key of the wait of a 429 from the errors, where it lives', () => {
     expect(RETRY_AFTER_METADATA_KEY).toBe('retryAfterSeconds')
     expect(importsOf('error-message.ts')).toContain('@platform/core/errors')
+  })
+})
+
+// What the shell and the orders screen read from the shared libraries travels with them in the first load, whole: a file of a library
+// is kept entire as soon as one name of it is read, and a table built at the top of the file from the names of another (a key written as
+// `[Types.NAME]:`, a value read as `Permissions.NAME`) is kept with it even when nobody reads the table. So the tables that only the
+// server or one screen reads live in files of their own, and the files below must not bring them back.
+const DOMAIN = join(__dirname, '..', '..', '..', 'libs', 'core', 'domain')
+const API_CLIENT = join(__dirname, '..', '..', '..', 'libs', 'api-client', 'src')
+
+const sourcesIn = (dir: string): string[] =>
+  readdirSync(dir).flatMap(name => {
+    const path = join(dir, name)
+    if (statSync(path).isDirectory()) return sourcesIn(path)
+    return path.endsWith('.ts') && !path.endsWith('.spec.ts') ? [path] : []
+  })
+
+// The table of permissions of the server (and its presets) is read only by these: the roles screen, the keys of the api and the
+// exports, none of which is part of the first load of the shell
+const MAY_READ_THE_TABLE_OF_PERMISSIONS = new Set([
+  'api-key-constants.ts',
+  join('exports', 'export-permissions.ts'),
+  'order-notice-permissions.ts'
+])
+
+describe('the constants of the domain that every screen reads', () => {
+  it('read no value from the table of permissions of the server, except the files made for it', () => {
+    const offenders = sourcesIn(DOMAIN)
+      .map(file => relative(DOMAIN, file))
+      .filter(file => !file.startsWith('auth') && !MAY_READ_THE_TABLE_OF_PERMISSIONS.has(file))
+      .filter(file =>
+        /import\s*\{[^}]*\b(Permissions|RolePresets|PermissionRequires)\b[^}]*\}\s*from\s*'[^']*\/permissions'/.test(
+          readFileSync(join(DOMAIN, file), 'utf8')
+        )
+      )
+    expect(offenders).toEqual([])
+  })
+
+  it('keep the delivery matrix of the notifications apart from the names every screen reads', () => {
+    const names = readFileSync(join(DOMAIN, 'notifications', 'notification-constants.ts'), 'utf8')
+    expect(names).not.toMatch(/export const NotificationDefaults\b/)
+    expect(names).not.toMatch(/export const NotificationGroupTypes\b/)
+  })
+
+  it('keep the schemas of the thread apart from the ones every screen parses', () => {
+    const schemas = readFileSync(join(API_CLIENT, 'api-schemas.ts'), 'utf8')
+    expect(schemas).not.toMatch(/export const messageSchema\b/)
   })
 })
