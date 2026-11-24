@@ -20,6 +20,7 @@ export const ClientPermissions = {
   CUSTOMERS_CREATE: 'customers:create',
   CUSTOMERS_DELETE: 'customers:delete',
   CUSTOMERS_EDIT: 'customers:edit',
+  CUSTOMERS_DSR_MANAGE_FORM: 'customers:dsr_manage_form',
   CUSTOMERS_DSR_REVIEW: 'customers:dsr_review',
   CUSTOMERS_ERASE: 'customers:erase',
   CUSTOMERS_EXPORT: 'customers:export',

@@ -18,6 +18,10 @@ export const ComplianceConfig = {
   DSR_DEADLINE_ALERT_DAY: 25,
   DSR_EXTENSION_DAYS: 60,
   DSR_VERIFICATION_TOKEN_DAYS: 7,
+  // The key a store gives to its public form: 128 random bits, 22 characters of base64url. It is public by design (it travels in the address of
+  // the form), so it is not a secret, but nobody guesses it. The audit log keeps only the last `DSR_FORM_KEY_HINT_LENGTH` characters
+  DSR_FORM_KEY_BYTES: 16,
+  DSR_FORM_KEY_HINT_LENGTH: 4,
   DSR_EXPORT_LINK_DAYS: 7,
   BREACH_NOTIFICATION_HOURS: 72,
   // Owner, 2026-11-22 (option C): an approved erasure waits 7 days, cancelable, before the sweep carries it out. Always read this constant
@@ -303,7 +307,10 @@ export const DSR_VERIFY_FRAGMENT_KEY = 'token'
 
 // What a data subject request is called where a text is needed (the kind of resource of an audit entry, who the request is about), and why
 // the flow itself closes a request. Never typed at a call site (rule 1).
-export const DsrResourceTypes = { REQUEST: 'data_subject_request' } as const
+export const DsrResourceTypes = {
+  REQUEST: 'data_subject_request',
+  FORM_KEY: 'dsr_form_key'
+} as const
 export const DsrSubjectTypes = { CUSTOMER: 'customer' } as const
 export const DsrRejectionReasons = {
   VERIFICATION_MAIL_NOT_QUEUED: 'verification_mail_not_queued',

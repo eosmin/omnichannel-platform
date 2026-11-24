@@ -265,6 +265,9 @@ export const QueryKeys = {
     list: (storeId: string) => ['dsr-requests', storeId, 'list'] as const,
     one: (storeId: string, id: string) => ['dsr-requests', storeId, 'one', id] as const
   },
+  dsrForm: {
+    one: (storeId: string) => ['dsr-form', storeId] as const
+  },
   auditLog: {
     all: (storeId: string) => ['audit-log', storeId] as const,
     list: (storeId: string, filter: object) => ['audit-log', storeId, 'list', filter] as const,
