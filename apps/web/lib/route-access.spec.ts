@@ -15,6 +15,14 @@ describe('accessFor', () => {
     expect(accessFor('/auth/refresh', false)).toBe(RouteAccess.ALLOW)
   })
 
+  it('lets a visitor with no session open the page that confirms a data request, and no page under it', () => {
+    expect(accessFor('/compliance/dsr/verify', false)).toBe(RouteAccess.ALLOW)
+    expect(accessFor('/compliance/dsr/verify', true)).toBe(RouteAccess.ALLOW)
+    expect(accessFor('/compliance/dsr/verify/other', false)).toBe(RouteAccess.TO_LOGIN)
+    expect(accessFor('/compliance/dsr', false)).toBe(RouteAccess.TO_LOGIN)
+    expect(accessFor('/compliance', false)).toBe(RouteAccess.TO_LOGIN)
+  })
+
   it('lets a visitor with no session open the page of the one-click unsubscribe, and no page under it', () => {
     expect(accessFor('/unsubscribe', false)).toBe(RouteAccess.ALLOW)
     expect(accessFor('/unsubscribe', true)).toBe(RouteAccess.ALLOW)

@@ -31,3 +31,22 @@ export function recordCookieConsent(
     signal
   })
 }
+
+// The confirmation of a public data request (Step 7.2-H1a route, C1b page). Public: no session and no store, so it never asks for a refresh.
+// The token is in the body, never in the URL of this request. One answer for every token that does not hold (unknown, used, expired, a request
+// that no longer waits, the flow off): the page cannot tell them apart and says so in one sentence
+export const dsrVerifyResultSchema = z.object({ verified: z.literal(true) })
+
+export function verifyDsrRequest(
+  client: ApiClient,
+  token: string,
+  signal?: AbortSignal
+): Promise<z.infer<typeof dsrVerifyResultSchema>> {
+  return client.request(ApiRoutes.compliance.dsrVerify, {
+    method: 'POST',
+    body: { token },
+    schema: dsrVerifyResultSchema,
+    authenticated: false,
+    signal
+  })
+}

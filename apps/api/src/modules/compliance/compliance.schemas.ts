@@ -8,6 +8,7 @@ import {
   dsrIntakeSchema
 } from '@platform/core/compliance'
 import {
+  DSR_VERIFY_TOKEN_PATTERN,
   DsrStatus,
   DsrType,
   lowercasedUuidSchema,
@@ -55,7 +56,7 @@ export type DsrIntakeBody = z.infer<typeof dsrIntakeBodySchema>
 
 // The token of the mail: 256 bits in base64url (43 characters)
 export const dsrVerifyBodySchema = z
-  .object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) })
+  .object({ token: z.string().regex(DSR_VERIFY_TOKEN_PATTERN) })
   .strict()
 export type DsrVerifyBody = z.infer<typeof dsrVerifyBodySchema>
 

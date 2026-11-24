@@ -1,4 +1,10 @@
-import { DsrNoticeStatuses, type DsrNoticeStatus, type RetentionField } from '@platform/core/domain'
+import {
+  AppPaths,
+  DSR_VERIFY_FRAGMENT_KEY,
+  DsrNoticeStatuses,
+  type DsrNoticeStatus,
+  type RetentionField
+} from '@platform/core/domain'
 
 // Whether the executor of approved erasures exists: the nightly sweep `dsr-erase-due` of Step 7.2-H2b-1. A function, not a bare constant read in
 // a condition. It lets an erasure be approved; it does NOT turn the public form on (that is `DSR_PUBLIC_INTAKE_ENABLED`, off by default and
@@ -321,8 +327,8 @@ export interface DsrConfig {
 
 // The page of the web app that confirms a data request, and the key of the fragment that carries the token (the browser never sends a fragment
 // to a server, so the token stays out of access logs)
-export const DSR_VERIFY_WEB_PATH = '/compliance/dsr/verify'
-export const DSR_VERIFY_FRAGMENT_KEY = 'token'
+export const DSR_VERIFY_WEB_PATH = AppPaths.dsrVerify
+export { DSR_VERIFY_FRAGMENT_KEY }
 
 // What a data subject request is called where a text is needed (the kind of resource of an audit entry, who the request is about), and why
 // the flow itself closes a request. Never typed at a call site (rule 1).

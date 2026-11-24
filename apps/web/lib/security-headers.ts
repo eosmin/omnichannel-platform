@@ -78,6 +78,8 @@ export function buildContentSecurityPolicy(options: ContentSecurityPolicyOptions
 // The path of that page. Written here and not read from `AppPaths`: `next.config.ts` loads this file before the aliases exist, so it cannot import
 // them (security-headers.spec.ts fixes that it is `AppPaths.unsubscribe`)
 export const UNSUBSCRIBE_PAGE_SOURCE = '/unsubscribe'
+// The page that confirms a public data request carries its token in the fragment too: the same headers (spec fixes it is `AppPaths.dsrVerify`)
+export const DSR_VERIFY_PAGE_SOURCE = '/compliance/dsr/verify'
 
 export const UNSUBSCRIBE_PAGE_HEADERS: ReadonlyArray<{ key: string; value: string }> = [
   { key: 'Referrer-Policy', value: 'no-referrer' },
