@@ -23,6 +23,12 @@ describe('accessFor', () => {
     expect(accessFor('/compliance', false)).toBe(RouteAccess.TO_LOGIN)
   })
 
+  it('lets a visitor with no session open the public form of data requests, and no page under it', () => {
+    expect(accessFor('/compliance/dsr/request', false)).toBe(RouteAccess.ALLOW)
+    expect(accessFor('/compliance/dsr/request', true)).toBe(RouteAccess.ALLOW)
+    expect(accessFor('/compliance/dsr/request/other', false)).toBe(RouteAccess.TO_LOGIN)
+  })
+
   it('lets a visitor with no session open the page of the one-click unsubscribe, and no page under it', () => {
     expect(accessFor('/unsubscribe', false)).toBe(RouteAccess.ALLOW)
     expect(accessFor('/unsubscribe', true)).toBe(RouteAccess.ALLOW)

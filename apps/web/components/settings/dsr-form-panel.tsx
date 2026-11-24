@@ -4,6 +4,7 @@ import { KeyRound, TriangleAlert } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type ReactElement } from 'react'
 
+import { AppPaths, DSR_REQUEST_FRAGMENT_KEY } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 
 import type { DsrFormChange } from '../../lib/compliance/use-dsr-form'
@@ -14,6 +15,13 @@ import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
+
+import { CopyButton } from './copy-button'
+
+// The address the store hands out: the key travels in the fragment, which a browser never sends to a server and never puts in a Referer
+function formAddress(key: string): string {
+  return `${window.location.origin}${AppPaths.dsrRequest}#${DSR_REQUEST_FRAGMENT_KEY}=${key}`
+}
 
 // Settings → Data requests → "Public form" (TDD_05 §10.2, Step 7.2-H2b, C1a): the key the store gives to the public form of data requests.
 // The api asks `customers:dsr_manage_form` for every call, and the panel draws nothing for who does not hold it. The key is public by design
@@ -98,6 +106,16 @@ export function DsrFormPanel(): ReactElement | null {
             <code className="bg-muted w-fit rounded px-2 py-1 font-mono text-sm break-all select-all">
               {key}
             </code>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-muted-foreground text-xs">{t('addressLabel')}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="bg-muted w-fit rounded px-2 py-1 font-mono text-sm break-all select-all">
+                {formAddress(key)}
+              </code>
+              <CopyButton text={formAddress(key)} label={t('addressLabel')} />
+            </div>
+            <p className="text-muted-foreground text-xs">{t('addressHint')}</p>
           </div>
           <p className="text-muted-foreground text-sm">
             {form.data?.open ? t('state.open') : t('state.shut')}

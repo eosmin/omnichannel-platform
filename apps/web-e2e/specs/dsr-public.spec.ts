@@ -47,3 +47,37 @@ test.describe('the page that confirms a data request', () => {
     expect(response?.headers()['x-robots-tag']).toBe('noindex, nofollow')
   })
 })
+
+test.describe('the public form of data requests', () => {
+  test('opens with no session, keeps the key out of the address after sending, and says one thing', async ({
+    page
+  }) => {
+    const response = await page.goto(`${AppPaths.dsrRequest}#key=${'k'.repeat(32)}`)
+
+    // A visitor with no session is not sent to the login: this page is public, and no Referer, cache or search engine keeps its address
+    await expect(page).toHaveURL(new RegExp(`${AppPaths.dsrRequest}#key=`))
+    expect(response?.headers()['referrer-policy']).toBe('no-referrer')
+    expect(response?.headers()['cache-control']).toBe('no-store')
+    expect(response?.headers()['x-robots-tag']).toBe('noindex, nofollow')
+    await expect(page.getByRole('heading', { name: en.dsrRequest.heading })).toBeVisible()
+
+    // An address that is not an address is not sent: the field says so and holds the focus
+    await page.getByLabel(en.dsrRequest.emailLabel).fill('not-an-address')
+    await page.getByRole('button', { name: en.dsrRequest.submit }).click()
+    await expect(page.getByRole('main').getByText(en.dsrRequest.emailInvalid)).toBeVisible()
+    await expect(page.getByLabel(en.dsrRequest.emailLabel)).toBeFocused()
+
+    // The flag is off here (CI) or on (the local run of the whole flow): either way the page says the same thing
+    await page.getByLabel(en.dsrRequest.emailLabel).fill('nobody@example.com')
+    await page.getByRole('button', { name: en.dsrRequest.submit }).click()
+    await expect(page.getByRole('main').getByRole('status')).toContainText(en.dsrRequest.sent)
+    expect(await page.evaluate(() => window.location.hash)).toBe('')
+  })
+
+  test('says the link is incomplete when the address carries no key', async ({ page }) => {
+    await page.goto(AppPaths.dsrRequest)
+
+    await expect(page.getByRole('main').getByRole('alert')).toHaveText(en.dsrRequest.incomplete)
+    await expect(page.getByRole('main').getByRole('button')).toHaveCount(0)
+  })
+})

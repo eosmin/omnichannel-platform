@@ -903,11 +903,33 @@
     "mismatchBody": "Iniciaste sesión como {current} y la invitación es para {invited}. Cierra la sesión y abre el enlace de nuevo.",
     "unavailableTitle": "Esta invitación no está disponible"
   },
+  "dsrRequest": {
+    "title": "Pide tus datos",
+    "heading": "Pide tus datos",
+    "body": "Dinos qué quieres y el correo que usaste con la tienda. Si pertenece a un cliente, enviamos un enlace a esa dirección para confirmar que la solicitud es tuya. No se hace nada hasta que lo abras y una persona revise la solicitud.",
+    "typeLabel": "¿Qué quieres pedir?",
+    "types": {
+      "access": "Una copia de mis datos",
+      "erasure": "Que borren mis datos",
+      "portability": "Mis datos en un archivo que pueda llevar a otro lado"
+    },
+    "emailLabel": "Tu correo electrónico",
+    "emailInvalid": "Escribe un correo válido.",
+    "submit": "Enviar solicitud",
+    "working": "Enviando…",
+    "retry": "Intentar de nuevo",
+    "sentTitle": "Solicitud recibida",
+    "sent": "Si este correo pertenece a un cliente de la tienda, enviamos un enlace para confirmar la solicitud. Ábrelo desde ese correo para terminar. Si no lo ves en unos minutos, revisa tu carpeta de spam.",
+    "incomplete": "Este enlace está incompleto. Pide a la tienda la dirección de su formulario y ábrela de nuevo.",
+    "failed": "No pudimos enviar la solicitud. Revisa tu conexión e inténtalo de nuevo. Lo que escribiste sigue aquí.",
+    "tooMany": "Hubo demasiados intentos. Espera un rato e inténtalo de nuevo."
+  },
   "dsrVerify": {
     "title": "Confirma tu solicitud de datos",
     "heading": "Confirma tu solicitud",
     "body": "Pulsa el botón para confirmar que hiciste esta solicitud y que este es tu correo. No pasa nada más al confirmar: la tienda revisa la solicitud y te escribe con su respuesta.",
     "confirm": "Confirmar mi solicitud",
+    "retry": "Intentar de nuevo",
     "working": "Confirmando…",
     "doneTitle": "Solicitud confirmada",
     "done": "Recibimos tu confirmación. La tienda revisará tu solicitud y te escribirá a este correo con su respuesta. Mientras tanto no se hace nada con tus datos.",
@@ -5395,6 +5417,8 @@
       "none": "Esta tienda no tiene clave: no recibe solicitudes públicas.",
       "make": "Crear la clave",
       "keyLabel": "Clave del formulario",
+      "addressLabel": "Dirección del formulario",
+      "addressHint": "La dirección del formulario público. Comparte este enlace: lleva la clave, así que al cambiar la clave deja de funcionar.",
       "state": {
         "open": "El formulario público está abierto: recibe solicitudes.",
         "shut": "La clave existe, pero el formulario público todavía no recibe solicitudes: se abre cuando la plataforma lo habilita."
