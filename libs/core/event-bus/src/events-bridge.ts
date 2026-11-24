@@ -6,7 +6,7 @@ import type { Redis } from 'ioredis'
 import { z } from 'zod'
 
 import { CacheKeys } from '@platform/core/cache'
-import { EVENTS_BRIDGE_CHANNEL, EVENTS_BRIDGE_CLAIM_SECONDS } from '@platform/core/events'
+import { eventsBridgeChannel, EVENTS_BRIDGE_CLAIM_SECONDS } from '@platform/core/events'
 import { REDIS_CLIENT } from '@platform/core/redis'
 
 import { bridgedPayload, isBridged } from './bridged-payloads'
@@ -20,6 +20,9 @@ export interface EventsBridgeOptions {
   // publish: the process (the worker) sends what it announces to the api instances. subscribe: the
   // process (the api) hears it and re-emits it in its own bus. Never both, so an event cannot loop.
   mode: EventsBridgeMode
+  // The prefix of the queues of this stack (`queuePrefixFor`): it names the channel, so that stacks
+  // that share one Redis do not hear each other's events
+  prefix: string
 }
 
 const envelopeSchema = z.object({
@@ -45,11 +48,15 @@ export class EventsBridge implements OnModuleInit, OnModuleDestroy {
     this.markSubscribed = resolve
   })
 
+  private readonly channel: string
+
   constructor(
     @Inject(EVENTS_BRIDGE_OPTIONS) private readonly options: EventsBridgeOptions,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly emitter: EventEmitter2
-  ) {}
+  ) {
+    this.channel = eventsBridgeChannel(options.prefix)
+  }
 
   // Best effort, like the rest of the realtime layer: the change is committed already. Only the
   // process that publishes (the worker) does anything: in the api it is a no-op, so that an event
@@ -65,9 +72,7 @@ export class EventsBridge implements OnModuleInit, OnModuleDestroy {
     }
     try {
       const message = JSON.stringify({ id: randomUUID(), event, payload: kept })
-      this.redis
-        .publish(EVENTS_BRIDGE_CHANNEL, message)
-        .catch((error: unknown) => this.lost(event, error))
+      this.redis.publish(this.channel, message).catch((error: unknown) => this.lost(event, error))
     } catch (error) {
       this.lost(event, error)
     }
@@ -86,7 +91,7 @@ export class EventsBridge implements OnModuleInit, OnModuleDestroy {
     // that is down at boot costs the worker events, not the start of the api.
     subscriber.on('ready', () => {
       subscriber
-        .subscribe(EVENTS_BRIDGE_CHANNEL)
+        .subscribe(this.channel)
         .then(() => this.markSubscribed())
         .catch((error: unknown) => {
           this.logger.error(

@@ -42,6 +42,15 @@ describe('the query client of the app', () => {
     expect(shouldRetry(2, plain)).toBe(false)
   })
 
+  it('treats an unreachable Redis like a busy database: one more try, after the wait it asks for', () => {
+    const down = new ApiError(503, ClientErrorCodes.DEPENDENCY_UNAVAILABLE, 'x', null, {
+      retryAfterSeconds: 5
+    })
+    expect(shouldRetry(0, down)).toBe(true)
+    expect(shouldRetry(1, down)).toBe(false)
+    expect(retryDelayOf(0, down)).toBe(5000)
+  })
+
   it('waits for the retry as long as the api asked, else the default growth', () => {
     const busy = (metadata: Record<string, unknown>): ApiError =>
       new ApiError(503, ClientErrorCodes.DATABASE_BUSY, 'busy', null, metadata)

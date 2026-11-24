@@ -297,6 +297,30 @@ describe('GlobalExceptionFilter, a database lock that was waited for too long', 
     expect(Sentry.captureException).not.toHaveBeenCalled()
   })
 
+  it('answers 503 DEPENDENCY_UNAVAILABLE when Redis cannot be reached, as a warning and not as an incident', () => {
+    for (const error of [
+      Object.assign(new Error('Reached the max retries per request limit (which is 1).'), {
+        name: 'MaxRetriesPerRequestError'
+      }),
+      new Error('Command timed out')
+    ]) {
+      const { response, warn } = run(error)
+
+      expect(response.status).toHaveBeenCalledWith(503)
+      expect(response.json).toHaveBeenCalledWith({
+        error: {
+          code: ErrorCodes.DEPENDENCY_UNAVAILABLE,
+          message: 'The service is not available right now, try again in a moment',
+          metadata: { retryAfterSeconds: 5 }
+        },
+        correlationId: 'c-9'
+      })
+      expect(response.setHeader).toHaveBeenCalledWith(HttpHeaders.RETRY_AFTER, '5')
+      expect(warn).toHaveBeenCalled()
+    }
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
   it('leaves any other database error as the 500 it is', () => {
     const { response } = run({
       code: 'P2010',

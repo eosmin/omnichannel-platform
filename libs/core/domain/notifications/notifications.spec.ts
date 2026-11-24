@@ -2,6 +2,8 @@ import { NotificationChannel } from '../index'
 
 import {
   isDailyDigestHour,
+  lockedChannelsOf,
+  NotificationLockedTypes,
   NotificationDefaults,
   NotificationGroups,
   NotificationGroupTypes,
@@ -195,5 +197,24 @@ describe('the packing note notice', () => {
     expect(notificationMessageKey(NotificationTypes.ORDER_PACKING_NOTE_CHANGED)).toBe(
       'notifications.order.packing_note_changed'
     )
+  })
+})
+
+describe('the alerts that cannot be turned off (BAN-325)', () => {
+  it('are exactly the broken chain of the books and the infected file', () => {
+    expect([...NotificationLockedTypes].sort()).toEqual(
+      [NotificationTypes.FINANCE_CHAIN_BROKEN, NotificationTypes.MEDIA_INFECTED].sort()
+    )
+  })
+
+  it('lock the factory channels of the type, and nothing of any other type', () => {
+    expect(lockedChannelsOf(NotificationTypes.FINANCE_CHAIN_BROKEN)).toEqual(['inApp', 'email'])
+    expect(lockedChannelsOf(NotificationTypes.MEDIA_INFECTED)).toEqual(['inApp', 'push'])
+    // The other critical alerts may be turned off
+    expect(lockedChannelsOf(NotificationTypes.DSR_DEADLINE_APPROACHING)).toEqual([])
+    expect(lockedChannelsOf(NotificationTypes.WEBHOOK_AUTO_DISABLED)).toEqual([])
+    for (const type of Object.values(NotificationTypes)) {
+      if (!NotificationLockedTypes.has(type)) expect(lockedChannelsOf(type)).toEqual([])
+    }
   })
 })

@@ -21,6 +21,7 @@ import {
   digestLinkKindOf,
   type DigestLinks,
   isDailyDigestHour,
+  lockedChannelsOf,
   NotificationDefaults,
   NotificationSettingsDefaults,
   UNSUBSCRIBE_LINKS,
@@ -472,6 +473,9 @@ export class EmailDigestService {
   }
 
   private emailStillWanted(row: DigestRow, choices: ReadonlyMap<string, boolean>): boolean {
+    // An alert that cannot be turned off keeps its email whatever a stored row says (BAN-325); the digest frequency Off, the global
+    // unsubscribe, is checked before and still wins: a person can always stop the emails
+    if (lockedChannelsOf(row.type).includes('email')) return true
     const chosen = choices.get(`${row.storeId}:${row.type}`)
     if (chosen !== undefined) return chosen
     const known = (

@@ -1,8 +1,11 @@
 import { Redis } from 'ioredis'
 
-import { EVENTS_BRIDGE_CHANNEL } from '@platform/core/events'
+import { eventsBridgeChannel } from '@platform/core/events'
 
-import { REDIS_URL } from '../../apps/api/src/testing/test-env'
+import { BRIDGE_PREFIX, REDIS_URL } from '../../apps/api/src/testing/test-env'
+
+export { BRIDGE_PREFIX }
+export const BRIDGE_CHANNEL = eventsBridgeChannel(BRIDGE_PREFIX)
 
 // An api left running (`node dist/apps/api/main.js`) listens to the same bridge channel as the test
 // apps, and the instance that claims an event first passes it on: if it is that one, the socket of
@@ -11,11 +14,11 @@ import { REDIS_URL } from '../../apps/api/src/testing/test-env'
 export async function assertNoOtherBridgeListener(): Promise<void> {
   const redis = new Redis(REDIS_URL)
   try {
-    const reply = await redis.pubsub('NUMSUB', EVENTS_BRIDGE_CHANNEL)
+    const reply = await redis.pubsub('NUMSUB', BRIDGE_CHANNEL)
     const listeners = Number(reply[1])
     if (listeners > 0) {
       throw new Error(
-        `${listeners} other process(es) listen to ${EVENTS_BRIDGE_CHANNEL} in this Redis, usually an api left running ` +
+        `${listeners} other process(es) listen to ${BRIDGE_CHANNEL} in this Redis, usually an api left running ` +
           `(dist/apps/api/main.js, nx serve api): they claim the events of the bridge and the sockets of the test never hear them. ` +
           `Close them and run again.`
       )

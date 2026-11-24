@@ -11,6 +11,7 @@ import {
   isBase64UrlOfBytes,
   isPushEndpoint,
   normalizePushEndpoint,
+  lockedChannelsOf,
   NotificationFilters,
   NotificationLimits,
   NotificationTypes,
@@ -33,13 +34,17 @@ export type MarkReadBody = z.output<typeof markReadBodySchema>
 
 const hourSchema = z.number().int().min(0).max(23)
 
-const typePreferenceSchema = z.strictObject({
-  type: z.enum(NotificationTypes),
-  inApp: z.boolean(),
-  push: z.boolean(),
-  email: z.boolean(),
-  sound: z.boolean()
-})
+const typePreferenceSchema = z
+  .strictObject({
+    type: z.enum(NotificationTypes),
+    inApp: z.boolean(),
+    push: z.boolean(),
+    email: z.boolean(),
+    sound: z.boolean()
+  })
+  .refine(row => lockedChannelsOf(row.type).every(channel => row[channel]), {
+    message: 'an alert that cannot be turned off keeps its channels on'
+  })
 
 const settingsPatchSchema = z.strictObject({
   quietHoursEnabled: z.boolean(),
