@@ -21,6 +21,7 @@ import {
   parseStoredChoice,
   writeChoice
 } from '../../lib/cookie-consent/cookie-choice'
+import { sameChoice, useChoiceSync } from '../../lib/cookie-consent/use-choice-sync'
 import { toast } from '../../lib/toast'
 import { Button } from '../ui/button'
 import {
@@ -93,6 +94,14 @@ export default function CookieConsentUi({ openPanelOnMount }: CookieConsentUiPro
     // A choice the api does not have yet: sent again, quietly
     if (stored !== null && !stored.synced) void send(stored, false)
   }, [send])
+
+  // Another tab answered while this one was in the background: the banner goes when this tab is looked at again
+  const syncChoice = useCallback(
+    (next: CookieChoice | null): void =>
+      setChoice(current => (sameChoice(current, next) ? current : next)),
+    []
+  )
+  useChoiceSync(syncChoice)
 
   useEffect(() => {
     const onOpen = (): void => setPanelOpen(true)

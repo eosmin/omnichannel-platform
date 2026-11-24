@@ -9,6 +9,7 @@ import {
   DSR_CONFIG,
   type DsrConfig,
   dsrNoticeJob,
+  dsrNoticeLocaleOf,
   DsrFailureCodes,
   DsrResultOutcomes,
   openDsrNotifyAddress
@@ -16,7 +17,7 @@ import {
 import { JobContext, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { DsrStatus, DsrType } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
-import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
+import type { Locale } from '@platform/core/i18n'
 import { QueueNames, type SendEmailJob } from '@platform/core/queues'
 
 import { DsrNoticeLedger } from './dsr-notice-ledger.service'
@@ -131,7 +132,12 @@ export class DsrNoticeSender {
           if (locked.length === 0) return 'nothing' as const
           const row = await tx.dataSubjectRequest.findFirstOrThrow({
             where: { id: requestId, storeId },
-            select: { type: true, notifyToEncrypted: true, retainedRecordsSummary: true }
+            select: {
+              type: true,
+              notifyToEncrypted: true,
+              noticeLocale: true,
+              retainedRecordsSummary: true
+            }
           })
           const sealed = row.notifyToEncrypted
           const to =
@@ -143,7 +149,15 @@ export class DsrNoticeSender {
                   this.config.previousEncryptionKeyHex
                 )
           if (to === null) return 'unreadable' as const
-          await this.queueMail(tx, storeId, requestId, row.type, to, row.retainedRecordsSummary)
+          await this.queueMail(
+            tx,
+            storeId,
+            requestId,
+            row.type,
+            to,
+            row.retainedRecordsSummary,
+            row.noticeLocale
+          )
           // The lease: a run that overlaps this one (or the next pass of the same one) sees a notice that is on its way and leaves it alone
           await tx.dataSubjectRequest.updateMany({
             where: { id: requestId, storeId },
@@ -175,14 +189,14 @@ export class DsrNoticeSender {
     requestId: string,
     requestType: string,
     to: string,
-    summary: unknown
+    summary: unknown,
+    requestLocale: string | null
   ): Promise<void> {
     const store = await tx.store.findUnique({
       where: { id: storeId },
       select: { defaultLocale: true }
     })
-    const locale: Locale =
-      SUPPORTED_LOCALES.find(candidate => candidate === store?.defaultLocale) ?? DEFAULT_LOCALE
+    const locale: Locale = dsrNoticeLocaleOf(requestLocale, store?.defaultLocale)
     const job = dsrNoticeJob({
       requestId,
       storeId,

@@ -25,7 +25,7 @@ const intake = {
   storeKey: 'k'.repeat(24),
   type: DsrType.ACCESS,
   email: ' Ana@Example.com ',
-  locale: 'es' as const
+  locale: 'en' as const
 }
 
 function build(options: {
@@ -87,6 +87,8 @@ describe('DsrIntakeWorker', () => {
     expect(JSON.stringify(data)).not.toContain('example.com')
     expect(data).not.toHaveProperty('subjectEmail')
     expect(Buffer.isBuffer(data.notifyToEncrypted)).toBe(true)
+    // The language of the form, kept so the closing mail goes in it
+    expect(data.noticeLocale).toBe('en')
     const token = argOf<{ data: { tokenHash: string; subject: string } }>(createToken, 0, 0).data
     expect(token.subject).toBe('req-1')
     const mail = argOf<SendEmailJob & { data: { url: string } }>(add, 0, 1)

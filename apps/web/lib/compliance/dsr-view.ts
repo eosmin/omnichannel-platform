@@ -130,3 +130,23 @@ export function reasonProblem(text: string): ReasonProblem | null {
   if (reason === '') return 'required'
   return reason.length > DsrReviewLimits.REASON_MAX_LENGTH ? 'tooLong' : null
 }
+
+// Which of the three lines about a decision the dialog draws. Each says one thing once: the request no longer fits the decision (`stale`),
+// the customer has open work (`blocked`), or the api refused (`refusal`). The refusal after someone decided first says the same as
+// `stale`, and the refusal for open work says the same as `blocked`, so the second of each pair is left out (PRI-078 showed both).
+export interface DecisionNotices {
+  stale: boolean
+  blocked: boolean
+  refusal: boolean
+}
+export function decisionNotices(input: {
+  allowed: boolean
+  blocked: boolean
+  refused: boolean
+}): DecisionNotices {
+  return {
+    stale: !input.allowed,
+    blocked: input.blocked && !input.refused,
+    refusal: input.refused && input.allowed
+  }
+}

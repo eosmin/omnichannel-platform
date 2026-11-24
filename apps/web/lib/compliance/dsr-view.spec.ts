@@ -16,6 +16,7 @@ import {
   DEADLINE_ALERT_DAYS_LEFT,
   daysLeft,
   daysOverdue,
+  decisionNotices,
   EMPTY_QUEUE_FILTER,
   filterRequests,
   isDeadlineAlert,
@@ -242,5 +243,36 @@ describe('the reason of a decision', () => {
   it('fits the limit of the api, and no more', () => {
     expect(reasonProblem('x'.repeat(DsrReviewLimits.REASON_MAX_LENGTH))).toBeNull()
     expect(reasonProblem('x'.repeat(DsrReviewLimits.REASON_MAX_LENGTH + 1))).toBe('tooLong')
+  })
+})
+
+describe('decisionNotices', () => {
+  it('says nothing while nothing is wrong', () => {
+    expect(decisionNotices({ allowed: true, blocked: false, refused: false })).toEqual({
+      stale: false,
+      blocked: false,
+      refusal: false
+    })
+  })
+
+  it('says the request changed once, not again as the refusal of the api', () => {
+    expect(decisionNotices({ allowed: false, blocked: false, refused: true })).toEqual({
+      stale: true,
+      blocked: false,
+      refusal: false
+    })
+  })
+
+  it('says the open work once: the line before the refusal is left out once the api has spoken', () => {
+    expect(decisionNotices({ allowed: true, blocked: true, refused: false }).blocked).toBe(true)
+    expect(decisionNotices({ allowed: true, blocked: true, refused: true })).toEqual({
+      stale: false,
+      blocked: false,
+      refusal: true
+    })
+  })
+
+  it('shows any other refusal', () => {
+    expect(decisionNotices({ allowed: true, blocked: false, refused: true }).refusal).toBe(true)
   })
 })
