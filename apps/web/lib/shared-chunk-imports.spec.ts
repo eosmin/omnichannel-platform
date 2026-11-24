@@ -63,4 +63,17 @@ describe('the constants of the domain that every screen reads', () => {
       .filter(file => reaches.test(readFileSync(join(DOMAIN, file), 'utf8')))
     expect(offenders).toEqual([])
   })
+
+  it('keep the delivery matrix of the notifications apart from the names every screen reads', () => {
+    const names = readFileSync(join(DOMAIN, 'notifications', 'notification-constants.ts'), 'utf8')
+    for (const moved of [
+      'NotificationDefaults',
+      'NotificationGroups',
+      'NotificationGroupTypes',
+      'NotificationLockedTypes',
+      'NotificationTypesWithoutEmitter'
+    ]) {
+      expect(names).not.toMatch(new RegExp(`export const ${moved}\\b`))
+    }
+  })
 })
