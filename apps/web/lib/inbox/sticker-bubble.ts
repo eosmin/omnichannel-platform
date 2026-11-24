@@ -30,6 +30,7 @@ export function drawsWithoutBubble(
           file =>
             file.status !== MediaStatus.INFECTED &&
             file.status !== MediaStatus.UNSCANNABLE &&
+            file.contentType !== null &&
             mediaMessageTypeOf(file.contentType) === MessageType.IMAGE
         ) &&
         message.unavailableFiles.length === 0)) &&

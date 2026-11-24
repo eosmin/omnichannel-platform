@@ -28,6 +28,7 @@ export function isRunImage(message: MessageView): boolean {
     message.media.length === 1 &&
     file !== undefined &&
     file.status === MediaStatus.CLEAN &&
+    file.contentType !== null &&
     mediaKindOf(message.type, file.contentType) === MessageType.IMAGE &&
     message.unavailableFiles.length === 0 &&
     (message.content === null || message.content.trim() === '') &&

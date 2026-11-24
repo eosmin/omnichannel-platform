@@ -3,7 +3,7 @@ import { AuthorType, MessageLimits, MessageType, placeTextOf } from '@platform/c
 
 import { type Viewer, viewerOf } from '../conversations/conversations.support'
 
-import type { MessageView } from './messages.views'
+import { hideMediaMetadata, type MessageView } from './messages.views'
 
 // A message that a plugin writes through its key (`POST /plugin-api/messages`, TDD_10 §6). The plugin is always on the
 // trace (`Message.authorPluginId`); who the message is FROM is its own choice, and `quiet` is a separate one:
@@ -48,10 +48,16 @@ export function cleanNickname(nickname: string | undefined | null): string | nul
 //     because it grants writing notes), never a file and never the id of the member of the team who wrote it;
 //   - the ids of the team that ride on the view (who reacted, who edited, who deleted, who was mentioned) are left out as well: a
 //     plugin learns no id of the team (`PluginRevisionView` leaves `editedById` out for the same reason).
-export function pluginMessageViewOf(message: MessageView, readsMessages: boolean): MessageView {
+export function pluginMessageViewOf(
+  message: MessageView,
+  readsMessages: boolean,
+  readsFiles = false
+): MessageView {
   const quote = message.replyTo
+  // The name, the type and the size of a file are read with `media:read`, as a person reads them with `media:view` (BAN-R-meta)
+  const shown = readsFiles ? message : hideMediaMetadata(message)
   return {
-    ...message,
+    ...shown,
     replyTo:
       // A quote of a message that was deleted says nothing: not that it was deleted, nor who wrote it (HC-216)
       quote === null || !readsMessages || quote.deleted

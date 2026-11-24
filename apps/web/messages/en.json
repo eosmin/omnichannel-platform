@@ -2249,6 +2249,7 @@
       "deletedByAgent": "{name} deleted this message",
       "deletedByOwner": "The owner deleted this message",
       "deletedGeneric": "This message was deleted",
+      "hiddenFiles": "{count, plural, one {An attachment you cannot open} other {# attachments you cannot open}}",
       "ticks": {
         "queued": "Sending",
         "sent": "Sent",
