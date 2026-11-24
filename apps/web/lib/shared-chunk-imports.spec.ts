@@ -10,7 +10,11 @@ import { RETRY_AFTER_METADATA_KEY } from '@platform/core/errors'
 const SHARED = [
   'error-message.ts',
   'use-error-text.ts',
-  join('cookie-consent', 'use-choice-sync.ts')
+  join('cookie-consent', 'use-choice-sync.ts'),
+  // Every page builds its query client, and the team screens read the same key of the wait: from the barrel of the auth they kept
+  // `auth-constants.ts` (the profiles of the throttler, two Symbols) in the first load
+  'query-client.ts',
+  join('settings', 'team-errors.ts')
 ]
 const HEAVY_BARRELS = ['@platform/core/auth', '@platform/core/domain']
 
@@ -71,9 +75,12 @@ describe('the constants of the domain that every screen reads', () => {
       'NotificationGroups',
       'NotificationGroupTypes',
       'NotificationLockedTypes',
-      'NotificationTypesWithoutEmitter'
+      'NotificationTypesWithoutEmitter',
+      'NotificationChannelPreferenceKeys'
     ]) {
       expect(names).not.toMatch(new RegExp(`export const ${moved}\\b`))
     }
+    // `lockedChannelsOf` is a function, so it is not found with the `const` of the others
+    expect(names).not.toMatch(/export (?:async )?function lockedChannelsOf\b/)
   })
 })

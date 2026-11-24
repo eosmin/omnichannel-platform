@@ -41,4 +41,28 @@ describe('the focus ring', () => {
     expect(source).toContain('focus-visible:ring-ring')
     expect(source).not.toMatch(/ring-ring\/\d+/)
   })
+
+  // The base layer draws every outline in the ring at 50 % (`* { outline-ring/50 }`), which is the ring of a native link, checkbox or
+  // radio, the controls that no component draws: about 2.06:1 (TXT-031, BAN-394). They take the whole color of the ring. An outline takes
+  // no room, so the rule must not touch the box.
+  describe('of a link and of a native checkbox or radio', () => {
+    const rule =
+      /a:focus-visible,\s*input\[type='checkbox'\]:focus-visible,\s*input\[type='radio'\]:focus-visible\s*\{([^}]*)\}/.exec(
+        css
+      )?.[1]
+
+    it('is drawn with the whole ring, not the half the base layer gives', () => {
+      expect(rule?.trim()).toBe('outline-color: var(--ring);')
+    })
+
+    it('does not move the layout', () => {
+      expect(rule).not.toMatch(/\b(?:width|height|padding|margin|border|outline-offset)\b/)
+    })
+
+    it('would not reach 3:1 at the half the base layer gives', () => {
+      // 50 % of the ring over white, mixed in linear light as an approximation: below the floor, which is what the rule above lifts
+      const mixed = 0.5 * luminanceOf(tokenIn(light, '--ring')) + 0.5 * luminanceOf(1)
+      expect(contrast(mixed, luminanceOf(1))).toBeLessThan(3)
+    })
+  })
 })

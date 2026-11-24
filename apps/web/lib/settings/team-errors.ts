@@ -1,6 +1,5 @@
 import { ApiError } from '@platform/api-client'
-import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
-import { ClientErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes, RETRY_AFTER_METADATA_KEY } from '@platform/core/errors'
 
 // How long a refused resend must wait, when the api says so: the cooldown of inviting answers 429 with
 // the wait in its metadata. Null for any other error, and for an answer with no usable number.
