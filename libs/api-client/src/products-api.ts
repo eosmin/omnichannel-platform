@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesProducts } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 
@@ -130,7 +130,7 @@ export function fetchProducts(
     cursor: params.cursor ?? undefined,
     limit: params.limit === undefined ? undefined : String(params.limit)
   })
-  return client.request(`${ApiRoutesProducts.list}${search}`, {
+  return client.request(`${ApiRoutes.products.list}${search}`, {
     schema: productPageSchema,
     storeId,
     signal
@@ -143,7 +143,7 @@ export function fetchProduct(
   productId: string,
   signal?: AbortSignal
 ): Promise<ProductDetailView> {
-  return client.request(ApiRoutesProducts.byId(productId), {
+  return client.request(ApiRoutes.products.byId(productId), {
     schema: productDetailSchema,
     storeId,
     signal
@@ -155,7 +155,7 @@ export function createProduct(
   storeId: string,
   input: ProductInput
 ): Promise<ProductDetailView> {
-  return client.request(ApiRoutesProducts.create, {
+  return client.request(ApiRoutes.products.create, {
     method: 'POST',
     body: input,
     schema: productDetailSchema,
@@ -169,7 +169,7 @@ export function updateProduct(
   productId: string,
   changes: ProductChanges
 ): Promise<ProductDetailView> {
-  return client.request(ApiRoutesProducts.byId(productId), {
+  return client.request(ApiRoutes.products.byId(productId), {
     method: 'PATCH',
     body: changes,
     schema: productDetailSchema,
@@ -183,7 +183,7 @@ export function deleteProduct(
   storeId: string,
   productId: string
 ): Promise<void> {
-  return client.request(ApiRoutesProducts.byId(productId), {
+  return client.request(ApiRoutes.products.byId(productId), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -196,7 +196,7 @@ export function fetchProductImages(
   productId: string,
   signal?: AbortSignal
 ): Promise<ProductImageView[]> {
-  return client.request(ApiRoutesProducts.images(productId), {
+  return client.request(ApiRoutes.products.images(productId), {
     schema: z.array(productImageSchema),
     storeId,
     signal
@@ -209,7 +209,7 @@ export function createVariant(
   productId: string,
   input: VariantInput
 ): Promise<ProductVariantView> {
-  return client.request(ApiRoutesProducts.variants(productId), {
+  return client.request(ApiRoutes.products.variants(productId), {
     method: 'POST',
     body: input,
     schema: variantSchema,
@@ -224,7 +224,7 @@ export function updateVariant(
   variantId: string,
   changes: VariantChanges
 ): Promise<ProductVariantView> {
-  return client.request(ApiRoutesProducts.variantById(productId, variantId), {
+  return client.request(ApiRoutes.products.variantById(productId, variantId), {
     method: 'PATCH',
     body: changes,
     schema: variantSchema,
@@ -238,7 +238,7 @@ export function deleteVariant(
   productId: string,
   variantId: string
 ): Promise<void> {
-  return client.request(ApiRoutesProducts.variantById(productId, variantId), {
+  return client.request(ApiRoutes.products.variantById(productId, variantId), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -280,7 +280,7 @@ export function searchProducts(
     limit: params.limit === undefined ? undefined : String(params.limit)
   })
   return client
-    .request(`${ApiRoutesProducts.search}${search}`, {
+    .request(`${ApiRoutes.products.search}${search}`, {
       schema: searchResultSchema,
       storeId,
       signal

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesOrders, ApiRoutesPickups, ApiRoutesShipments } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import { BulkLabelLimits, PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -48,7 +48,7 @@ export async function fetchShipmentsForOrders(
       const search = new URLSearchParams({ orderIds: ids, limit: String(PaginationLimits.MAX) })
       if (cursor !== null) search.set('cursor', cursor)
       const page: ShipmentPageView = await client.request(
-        `${ApiRoutesShipments.list}?${search.toString()}`,
+        `${ApiRoutes.shipments.list}?${search.toString()}`,
         { schema: shipmentPageSchema, storeId, signal }
       )
       data.push(...page.data)
@@ -97,7 +97,7 @@ export function startBulkLabels(
     locationsByConnection?: Record<string, { departmentId: string; municipalityId: string }>
   }
 ): Promise<BulkLabelJobView> {
-  return client.request(ApiRoutesShipments.bulk, {
+  return client.request(ApiRoutes.shipments.bulk, {
     method: 'POST',
     body: input,
     schema: bulkJobSchema,
@@ -111,7 +111,7 @@ export function fetchBulkLabelJob(
   jobId: string,
   signal?: AbortSignal
 ): Promise<BulkLabelJobView> {
-  return client.request(ApiRoutesShipments.bulkJob(jobId), {
+  return client.request(ApiRoutes.shipments.bulkJob(jobId), {
     schema: bulkJobSchema,
     storeId,
     signal
@@ -133,7 +133,7 @@ export function mergeLabels(
   storeId: string,
   shipmentIds: readonly string[]
 ): Promise<LabelMergeView> {
-  return client.request(ApiRoutesShipments.mergeLabels, {
+  return client.request(ApiRoutes.shipments.mergeLabels, {
     method: 'POST',
     body: { shipmentIds },
     schema: mergeSchema,
@@ -168,7 +168,7 @@ export function requestPickup(
     confirmAfterCutoff?: boolean
   }
 ): Promise<PickupRequestView> {
-  return client.request(ApiRoutesPickups.create, {
+  return client.request(ApiRoutes.pickups.create, {
     method: 'POST',
     body: input,
     schema: pickupRequestSchema,
@@ -197,7 +197,7 @@ export function previewOrderMessage(
   orderId: string,
   kind: string
 ): Promise<OrderMessagePreviewView> {
-  return client.request(`${ApiRoutesOrders.messages(orderId)}?preview=true`, {
+  return client.request(`${ApiRoutes.orders.messages(orderId)}?preview=true`, {
     method: 'POST',
     body: { kind },
     schema: messagePreviewSchema,
@@ -212,7 +212,7 @@ export function sendOrderMessage(
   orderId: string,
   input: { kind: string; idempotencyKey: string }
 ): Promise<OrderMessageOutcomeView> {
-  return client.request(ApiRoutesOrders.messages(orderId), {
+  return client.request(ApiRoutes.orders.messages(orderId), {
     method: 'POST',
     body: input,
     schema: messageOutcomeSchema,
@@ -256,7 +256,7 @@ export function fetchOrderMessages(
   const search = new URLSearchParams()
   if (cursor !== undefined) search.set('cursor', cursor)
   const query = search.size === 0 ? '' : `?${search.toString()}`
-  return client.request(`${ApiRoutesOrders.messages(orderId)}${query}`, {
+  return client.request(`${ApiRoutes.orders.messages(orderId)}${query}`, {
     schema: messageHistoryPageSchema,
     storeId,
     signal

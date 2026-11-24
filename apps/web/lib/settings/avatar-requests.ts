@@ -6,7 +6,7 @@ import {
   uploadUrlSchema,
   type UploadUrlView
 } from '@platform/api-client'
-import { ApiRoutesAccount } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 
 // The picture of the person: three steps like a file of a message, on routes that need no store
 // (and so no permission: a Viewer has a picture too). Attaching it is `updateOwnProfile`.
@@ -17,7 +17,7 @@ export function requestAvatarUploadUrl(
   client: ApiClient,
   file: UploadFileInfo
 ): Promise<UploadUrlView> {
-  return client.request(ApiRoutesAccount.avatarUploadUrl, {
+  return client.request(ApiRoutes.account.avatarUploadUrl, {
     method: 'POST',
     body: file,
     schema: uploadUrlSchema
@@ -28,7 +28,7 @@ export function confirmAvatarUpload(
   client: ApiClient,
   input: UploadFileInfo & { mediaId: string; key: string }
 ): Promise<ConfirmedAvatar> {
-  return client.request(ApiRoutesAccount.avatarConfirm, {
+  return client.request(ApiRoutes.account.avatarConfirm, {
     method: 'POST',
     body: input,
     schema: confirmedAvatarSchema

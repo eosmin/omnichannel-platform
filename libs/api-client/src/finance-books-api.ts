@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesFinance } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import { PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -126,7 +126,7 @@ export function fetchFinanceEntryPage(
   signal?: AbortSignal
 ): Promise<FinanceEntryPageView> {
   return client.request(
-    withQuery(ApiRoutesFinance.entries.list, searchOf({ ...filters }, cursor)),
+    withQuery(ApiRoutes.finance.entries.list, searchOf({ ...filters }, cursor)),
     {
       schema: entryPageSchema,
       storeId,
@@ -141,7 +141,7 @@ export function fetchFinanceEntry(
   id: string,
   signal?: AbortSignal
 ): Promise<FinanceEntryDetailView> {
-  return client.request(ApiRoutesFinance.entries.byId(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.finance.entries.byId(encodeURIComponent(id)), {
     schema: entryDetailSchema,
     storeId,
     signal
@@ -169,7 +169,7 @@ export function postManualFinanceEntry(
   storeId: string,
   input: ManualFinanceEntryInput
 ): Promise<FinanceEntryDetailView> {
-  return client.request(ApiRoutesFinance.entries.manual, {
+  return client.request(ApiRoutes.finance.entries.manual, {
     method: 'POST',
     body: input,
     schema: entryDetailSchema,
@@ -183,7 +183,7 @@ export function reverseFinanceEntry(
   id: string,
   input: { memo: string; entryDate?: string }
 ): Promise<FinanceEntryDetailView> {
-  return client.request(ApiRoutesFinance.entries.reverse(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.finance.entries.reverse(encodeURIComponent(id)), {
     method: 'POST',
     body: input,
     schema: entryDetailSchema,
@@ -199,7 +199,7 @@ export function fetchFinanceTransactionPage(
   signal?: AbortSignal
 ): Promise<FinanceTransactionPageView> {
   return client.request(
-    withQuery(ApiRoutesFinance.transactions.list, searchOf({ ...filters }, cursor)),
+    withQuery(ApiRoutes.finance.transactions.list, searchOf({ ...filters }, cursor)),
     { schema: transactionPageSchema, storeId, signal }
   )
 }
@@ -210,7 +210,7 @@ export function fetchFinanceTransaction(
   id: string,
   signal?: AbortSignal
 ): Promise<FinanceTransactionView> {
-  return client.request(ApiRoutesFinance.transactions.byId(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.finance.transactions.byId(encodeURIComponent(id)), {
     schema: transactionSchema,
     storeId,
     signal
@@ -240,7 +240,7 @@ export function recordFinanceTransaction(
   storeId: string,
   input: RecordFinanceTransactionInput
 ): Promise<FinanceTransactionView> {
-  return client.request(ApiRoutesFinance.transactions.record, {
+  return client.request(ApiRoutes.finance.transactions.record, {
     method: 'POST',
     body: input,
     schema: transactionSchema,
@@ -254,7 +254,7 @@ export function voidFinanceTransaction(
   id: string,
   reason: string
 ): Promise<FinanceTransactionView> {
-  return client.request(ApiRoutesFinance.transactions.void(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.finance.transactions.void(encodeURIComponent(id)), {
     method: 'POST',
     body: { reason },
     schema: transactionSchema,
@@ -269,7 +269,7 @@ export function replaceFinanceTransaction(
   id: string,
   input: { reason: string; replacement: RecordFinanceTransactionInput }
 ): Promise<FinanceTransactionView> {
-  return client.request(ApiRoutesFinance.transactions.replace(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.finance.transactions.replace(encodeURIComponent(id)), {
     method: 'POST',
     body: input,
     schema: transactionSchema,
@@ -284,7 +284,7 @@ export function attachFinanceTransactionDocument(
   id: string,
   mediaId: string
 ): Promise<FinanceTransactionView> {
-  return client.request(ApiRoutesFinance.transactions.document(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.finance.transactions.document(encodeURIComponent(id)), {
     method: 'POST',
     body: { mediaId },
     schema: transactionSchema,
@@ -299,7 +299,7 @@ export function fetchFinanceTransactionDocumentUrls(
   id: string,
   signal?: AbortSignal
 ): Promise<MediaUrlsView> {
-  return client.request(ApiRoutesFinance.transactions.document(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.finance.transactions.document(encodeURIComponent(id)), {
     schema: mediaUrlsSchema,
     storeId,
     signal

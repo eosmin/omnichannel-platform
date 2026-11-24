@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesTransfers } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import { PaginationLimits, TransferShortageAction, TransferStatus } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -110,7 +110,7 @@ export function fetchTransferPage(
   if (params.warehouseId !== undefined) search.set('warehouseId', params.warehouseId)
   if (params.cursor !== undefined && params.cursor !== null) search.set('cursor', params.cursor)
   search.set('limit', String(params.limit ?? PaginationLimits.DEFAULT))
-  return client.request(`${ApiRoutesTransfers.list}?${search.toString()}`, {
+  return client.request(`${ApiRoutes.transfers.list}?${search.toString()}`, {
     schema: pageSchema,
     storeId,
     signal
@@ -123,7 +123,7 @@ export function fetchTransfer(
   id: string,
   signal?: AbortSignal
 ): Promise<TransferView> {
-  return client.request(ApiRoutesTransfers.byId(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.transfers.byId(encodeURIComponent(id)), {
     schema: transferSchema,
     storeId,
     signal
@@ -135,7 +135,7 @@ export function createTransfer(
   storeId: string,
   input: CreateTransferInput
 ): Promise<TransferView> {
-  return client.request(ApiRoutesTransfers.create, {
+  return client.request(ApiRoutes.transfers.create, {
     method: 'POST',
     body: input,
     schema: transferSchema,
@@ -149,7 +149,7 @@ export function updateTransfer(
   id: string,
   input: UpdateTransferInput
 ): Promise<TransferView> {
-  return client.request(ApiRoutesTransfers.byId(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.transfers.byId(encodeURIComponent(id)), {
     method: 'PATCH',
     body: input,
     schema: transferSchema,
@@ -162,7 +162,7 @@ export function dispatchTransfer(
   storeId: string,
   id: string
 ): Promise<TransferView> {
-  return client.request(ApiRoutesTransfers.dispatch(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.transfers.dispatch(encodeURIComponent(id)), {
     method: 'POST',
     schema: transferSchema,
     storeId
@@ -175,7 +175,7 @@ export function receiveTransfer(
   id: string,
   input: ReceiveTransferInput
 ): Promise<TransferView> {
-  return client.request(ApiRoutesTransfers.receive(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.transfers.receive(encodeURIComponent(id)), {
     method: 'POST',
     body: input,
     schema: transferSchema,
@@ -189,7 +189,7 @@ export function closeTransfer(
   id: string,
   input: CloseTransferInput
 ): Promise<TransferView> {
-  return client.request(ApiRoutesTransfers.close(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.transfers.close(encodeURIComponent(id)), {
     method: 'POST',
     body: input,
     schema: transferSchema,
@@ -202,7 +202,7 @@ export function cancelTransfer(
   storeId: string,
   id: string
 ): Promise<TransferView> {
-  return client.request(ApiRoutesTransfers.cancel(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.transfers.cancel(encodeURIComponent(id)), {
     method: 'POST',
     schema: transferSchema,
     storeId

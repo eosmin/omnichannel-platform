@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesSearch } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import {
   SearchApiParams,
   SearchEntities,
@@ -107,7 +107,7 @@ export function searchGlobal(
   options: { passive?: boolean } = {}
 ): Promise<GlobalSearchView> {
   const params = { q, [SearchApiParams.PASSIVE]: options.passive === true ? 'true' : undefined }
-  return client.request(`${ApiRoutesSearch.global}${queryString(params)}`, {
+  return client.request(`${ApiRoutes.search.global}${queryString(params)}`, {
     schema: globalResultSchema,
     storeId,
     signal
@@ -120,7 +120,7 @@ export function searchMessages(
   params: { q: string; limit?: number; conversationId?: string },
   signal?: AbortSignal
 ): Promise<MessageSearchPageView> {
-  return client.request(`${ApiRoutesSearch.messages}${queryString(params)}`, {
+  return client.request(`${ApiRoutes.search.messages}${queryString(params)}`, {
     schema: messagesPageSchema,
     storeId,
     signal
@@ -133,7 +133,7 @@ export function searchCustomers(
   params: { q: string; limit?: number },
   signal?: AbortSignal
 ): Promise<CustomerSearchPageView> {
-  return client.request(`${ApiRoutesSearch.customers}${queryString(params)}`, {
+  return client.request(`${ApiRoutes.search.customers}${queryString(params)}`, {
     schema: customersPageSchema,
     storeId,
     signal
@@ -146,7 +146,7 @@ export function searchOrders(
   params: { q: string; limit?: number },
   signal?: AbortSignal
 ): Promise<OrderSearchPageView> {
-  return client.request(`${ApiRoutesSearch.orders}${queryString(params)}`, {
+  return client.request(`${ApiRoutes.search.orders}${queryString(params)}`, {
     schema: ordersPageSchema,
     storeId,
     signal
@@ -159,7 +159,7 @@ export function searchCatalog(
   params: { q: string; limit?: number },
   signal?: AbortSignal
 ): Promise<ProductSearchPageView> {
-  return client.request(`${ApiRoutesSearch.products}${queryString(params)}`, {
+  return client.request(`${ApiRoutes.search.products}${queryString(params)}`, {
     schema: productsPageSchema,
     storeId,
     signal
@@ -183,7 +183,7 @@ export function recordSearchClick(
   storeId: string,
   click: SearchClick
 ): Promise<undefined> {
-  return client.request(ApiRoutesSearch.clicks, {
+  return client.request(ApiRoutes.search.clicks, {
     method: 'POST',
     body: click,
     schema: z.undefined(),

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesFiscal } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import {
   FiscalDocumentKind,
   FiscalDocumentStatus,
@@ -211,7 +211,7 @@ export async function fetchFiscalSeries(
   storeId: string,
   signal?: AbortSignal
 ): Promise<FiscalSeriesView[]> {
-  const answer = await client.request(ApiRoutesFiscal.series, {
+  const answer = await client.request(ApiRoutes.fiscal.series, {
     schema: seriesEnvelopeSchema,
     storeId,
     ...(signal === undefined ? {} : { signal })
@@ -224,7 +224,7 @@ export async function fetchFiscalProviders(
   storeId: string,
   signal?: AbortSignal
 ): Promise<FiscalProviderView[]> {
-  const answer = await client.request(ApiRoutesFiscal.providers, {
+  const answer = await client.request(ApiRoutes.fiscal.providers, {
     schema: providersEnvelopeSchema,
     storeId,
     signal
@@ -238,7 +238,7 @@ export async function fetchFiscalIssuer(
   storeId: string,
   signal?: AbortSignal
 ): Promise<FiscalIssuerView | null> {
-  const answer = await client.request(ApiRoutesFiscal.issuer, {
+  const answer = await client.request(ApiRoutes.fiscal.issuer, {
     schema: issuerEnvelopeSchema,
     storeId,
     signal
@@ -251,7 +251,7 @@ export async function putFiscalIssuer(
   storeId: string,
   body: PutFiscalIssuerBody
 ): Promise<FiscalIssuerView> {
-  const answer = await client.request(ApiRoutesFiscal.issuer, {
+  const answer = await client.request(ApiRoutes.fiscal.issuer, {
     method: 'PUT',
     body,
     schema: savedIssuerEnvelopeSchema,
@@ -277,7 +277,7 @@ export function fetchFiscalDocumentPage(
   if (cursor !== null) search.set('cursor', cursor)
   const text = search.toString()
   return client.request(
-    text === '' ? ApiRoutesFiscal.documents.list : `${ApiRoutesFiscal.documents.list}?${text}`,
+    text === '' ? ApiRoutes.fiscal.documents.list : `${ApiRoutes.fiscal.documents.list}?${text}`,
     { schema: documentPageSchema, storeId, signal }
   )
 }
@@ -288,7 +288,7 @@ export async function fetchFiscalDocument(
   id: string,
   signal?: AbortSignal
 ): Promise<FiscalDocumentDetailView> {
-  const answer = await client.request(ApiRoutesFiscal.documents.byId(encodeURIComponent(id)), {
+  const answer = await client.request(ApiRoutes.fiscal.documents.byId(encodeURIComponent(id)), {
     schema: documentDetailEnvelopeSchema,
     storeId,
     signal
@@ -302,7 +302,7 @@ export async function patchFiscalReceiver(
   id: string,
   body: FiscalReceiverPatchBody
 ): Promise<FiscalDocumentView> {
-  const answer = await client.request(ApiRoutesFiscal.documents.receiver(encodeURIComponent(id)), {
+  const answer = await client.request(ApiRoutes.fiscal.documents.receiver(encodeURIComponent(id)), {
     method: 'PATCH',
     body,
     schema: documentEnvelopeSchema,
@@ -317,7 +317,7 @@ export async function retryFiscalDocument(
   storeId: string,
   id: string
 ): Promise<void> {
-  await client.request(ApiRoutesFiscal.documents.retry(encodeURIComponent(id)), {
+  await client.request(ApiRoutes.fiscal.documents.retry(encodeURIComponent(id)), {
     method: 'POST',
     schema: queuedEnvelopeSchema,
     storeId
@@ -331,7 +331,7 @@ export async function voidFiscalDocument(
   id: string,
   input: VoidFiscalDocumentBody
 ): Promise<FiscalDocumentView> {
-  const answer = await client.request(ApiRoutesFiscal.documents.void(encodeURIComponent(id)), {
+  const answer = await client.request(ApiRoutes.fiscal.documents.void(encodeURIComponent(id)), {
     method: 'POST',
     body: input,
     schema: documentEnvelopeSchema,
@@ -346,7 +346,7 @@ export async function replaceFiscalDocument(
   storeId: string,
   id: string
 ): Promise<FiscalDocumentView> {
-  const answer = await client.request(ApiRoutesFiscal.documents.replace(encodeURIComponent(id)), {
+  const answer = await client.request(ApiRoutes.fiscal.documents.replace(encodeURIComponent(id)), {
     method: 'POST',
     schema: documentEnvelopeSchema,
     storeId
@@ -368,7 +368,7 @@ export async function fetchFiscalEvidenceUrls(
   kind: FiscalEvidenceKind
 ): Promise<MediaUrlsView> {
   const answer = await client.request(
-    ApiRoutesFiscal.documents.evidence(encodeURIComponent(id), encodeURIComponent(kind)),
+    ApiRoutes.fiscal.documents.evidence(encodeURIComponent(id), encodeURIComponent(kind)),
     { schema: evidenceEnvelopeSchema, storeId }
   )
   return answer.data
@@ -382,7 +382,7 @@ export async function confirmFiscalIssuerChange(
   id: string,
   reason: string
 ): Promise<void> {
-  await client.request(ApiRoutesFiscal.documents.confirmIssuerChange(encodeURIComponent(id)), {
+  await client.request(ApiRoutes.fiscal.documents.confirmIssuerChange(encodeURIComponent(id)), {
     method: 'POST',
     body: { reason },
     schema: queuedEnvelopeSchema,

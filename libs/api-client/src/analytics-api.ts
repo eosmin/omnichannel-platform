@@ -6,7 +6,7 @@ import {
   type RolledUpMetric,
   type TimeGranularityType
 } from '@platform/core/analytics'
-import { ApiRoutesAnalytics } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import { SearchTrackedScopes } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -61,7 +61,7 @@ export function fetchMetrics(
   if (request.dimension !== undefined && request.dimension !== '') {
     params.set('dimension', request.dimension)
   }
-  return client.request(`${ApiRoutesAnalytics.metrics}?${params.toString()}`, {
+  return client.request(`${ApiRoutes.analytics.metrics}?${params.toString()}`, {
     schema: metricsResultSchema,
     storeId,
     signal
@@ -89,7 +89,7 @@ export function fetchSearchReport(
   days: number,
   signal?: AbortSignal
 ): Promise<SearchReportView> {
-  return client.request(`${ApiRoutesAnalytics.search}?days=${days}`, {
+  return client.request(`${ApiRoutes.analytics.search}?days=${days}`, {
     schema: searchReportSchema,
     storeId,
     signal

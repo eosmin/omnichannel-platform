@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesCustomers, ApiRoutesExports, ApiRoutesMedia } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import { GalleryTypes, type GalleryType } from '@platform/core/storage'
 
 import type { ApiClient } from './api-client'
@@ -30,7 +30,7 @@ export function requestMediaZip(
   input: { customerId: string; type: GalleryType; q: string }
 ): Promise<ExportView> {
   const q = input.q.trim()
-  return client.request(ApiRoutesMedia.downloadAll, {
+  return client.request(ApiRoutes.media.downloadAll, {
     method: 'POST',
     body: {
       customerId: input.customerId,
@@ -51,7 +51,7 @@ export function requestCustomersExport(
 ): Promise<ExportView> {
   const text = q.trim()
   const query = text === '' ? '' : `?${new URLSearchParams({ q: text }).toString()}`
-  return client.request(`${ApiRoutesCustomers.export}${query}`, {
+  return client.request(`${ApiRoutes.customers.export}${query}`, {
     schema: exportSchema,
     storeId
   })
@@ -84,7 +84,7 @@ export function fetchExports(
   if (cursor !== null) params.set('cursor', cursor)
   const text = params.toString()
   const query = text === '' ? '' : `?${text}`
-  return client.request(`${ApiRoutesExports.list}${query}`, {
+  return client.request(`${ApiRoutes.exports.list}${query}`, {
     schema: exportPageSchema,
     storeId,
     signal
@@ -104,7 +104,7 @@ export function fetchExportDownload(
   storeId: string,
   exportId: string
 ): Promise<ExportDownloadView> {
-  return client.request(ApiRoutesExports.download(exportId), {
+  return client.request(ApiRoutes.exports.download(exportId), {
     schema: exportDownloadSchema,
     storeId
   })

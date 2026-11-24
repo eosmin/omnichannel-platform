@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesNotifications } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import { DigestFrequency } from '@platform/core/domain'
 import type { NotificationFilter } from '@platform/core/notifications'
 
@@ -38,7 +38,7 @@ export function fetchNotifications(
 ): Promise<NotificationPageView> {
   const params = new URLSearchParams({ filter: input.filter })
   if (input.cursor !== null) params.set('cursor', input.cursor)
-  return client.request(`${ApiRoutesNotifications.list}?${params.toString()}`, {
+  return client.request(`${ApiRoutes.notifications.list}?${params.toString()}`, {
     schema: notificationPageSchema,
     storeId,
     signal
@@ -52,7 +52,7 @@ export async function fetchUnreadCount(
   storeId: string,
   signal?: AbortSignal
 ): Promise<number> {
-  const { count } = await client.request(ApiRoutesNotifications.unreadCount, {
+  const { count } = await client.request(ApiRoutes.notifications.unreadCount, {
     schema: countSchema,
     storeId,
     signal
@@ -67,7 +67,7 @@ export async function markNotificationsRead(
   storeId: string,
   ids: readonly string[]
 ): Promise<number> {
-  const { updated } = await client.request(ApiRoutesNotifications.markRead, {
+  const { updated } = await client.request(ApiRoutes.notifications.markRead, {
     method: 'POST',
     body: { ids },
     schema: updatedSchema,
@@ -80,7 +80,7 @@ export async function markAllNotificationsRead(
   client: ApiClient,
   storeId: string
 ): Promise<number> {
-  const { updated } = await client.request(ApiRoutesNotifications.markAllRead, {
+  const { updated } = await client.request(ApiRoutes.notifications.markAllRead, {
     method: 'POST',
     schema: updatedSchema,
     storeId
@@ -127,7 +127,7 @@ export function fetchNotificationPreferences(
   storeId: string,
   signal?: AbortSignal
 ): Promise<NotificationPreferencesView> {
-  return client.request(ApiRoutesNotifications.preferences, {
+  return client.request(ApiRoutes.notifications.preferences, {
     schema: notificationPreferencesSchema,
     storeId,
     signal
@@ -140,7 +140,7 @@ export function putNotificationPreferences(
   storeId: string,
   patch: NotificationPreferencesPatch
 ): Promise<NotificationPreferencesView> {
-  return client.request(ApiRoutesNotifications.preferences, {
+  return client.request(ApiRoutes.notifications.preferences, {
     method: 'PUT',
     body: patch,
     schema: notificationPreferencesSchema,

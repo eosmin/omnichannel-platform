@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesCounts, ApiRoutesWarehouses } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import {
   CountLimits,
   type CountLineFilter,
@@ -134,7 +134,7 @@ export function fetchCounts(
     status: params.status,
     warehouseId: params.warehouseId
   })
-  return client.request(`${ApiRoutesCounts.list}${search}`, {
+  return client.request(`${ApiRoutes.counts.list}${search}`, {
     schema: countPageSchema,
     storeId,
     signal
@@ -155,7 +155,7 @@ export function fetchCount(
     limit: params.limit === undefined ? undefined : String(params.limit),
     filter: params.filter
   })
-  return client.request(`${ApiRoutesCounts.byId(countId)}${search}`, {
+  return client.request(`${ApiRoutes.counts.byId(countId)}${search}`, {
     schema: countDetailSchema,
     storeId,
     signal
@@ -198,7 +198,7 @@ export function createCount(
   storeId: string,
   input: CreateCountInput
 ): Promise<CountView> {
-  return client.request(ApiRoutesCounts.create, {
+  return client.request(ApiRoutes.counts.create, {
     method: 'POST',
     body: input,
     schema: countSchema,
@@ -214,14 +214,14 @@ function transition(
 }
 
 // Draft → counting: the api makes the lines from the levels of the warehouse and snapshots what each holds
-export const startCount = transition(ApiRoutesCounts.start)
+export const startCount = transition(ApiRoutes.counts.start)
 // Counting → review: the approvers are told
-export const submitCount = transition(ApiRoutesCounts.submit)
+export const submitCount = transition(ApiRoutes.counts.submit)
 // Review → counting: the approver asks for a recount
-export const reopenCount = transition(ApiRoutesCounts.reopen)
+export const reopenCount = transition(ApiRoutes.counts.reopen)
 // Review → applied: the variance of each counted line becomes a stock movement, all or none
-export const applyCount = transition(ApiRoutesCounts.apply)
-export const cancelCount = transition(ApiRoutesCounts.cancel)
+export const applyCount = transition(ApiRoutes.counts.apply)
+export const cancelCount = transition(ApiRoutes.counts.cancel)
 
 // The quantities staff typed, a few rows at a time (counting only)
 export function updateCountLines(
@@ -230,7 +230,7 @@ export function updateCountLines(
   countId: string,
   lines: readonly CountLineEntry[]
 ): Promise<CountView> {
-  return client.request(ApiRoutesCounts.lines(countId), {
+  return client.request(ApiRoutes.counts.lines(countId), {
     method: 'PATCH',
     body: { lines },
     schema: countSchema,
@@ -250,7 +250,7 @@ export async function fetchCountWarehouses(
   let cursor: string | null = null
   for (let pages = 0; pages < MAX_WAREHOUSE_PAGES; pages += 1) {
     const page: z.output<typeof warehouseOptionPageSchema> = await client.request(
-      `${ApiRoutesWarehouses.list}${query({
+      `${ApiRoutes.warehouses.list}${query({
         limit: String(PaginationLimits.MAX),
         active: 'true',
         cursor: cursor ?? undefined

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesNotifications } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 
@@ -18,7 +18,7 @@ export function registerPushSubscription(
   storeId: string,
   registration: PushRegistration
 ): Promise<void> {
-  return client.request(ApiRoutesNotifications.pushSubscription, {
+  return client.request(ApiRoutes.notifications.pushSubscription, {
     method: 'POST',
     body: registration,
     schema: z.undefined(),
@@ -31,7 +31,7 @@ export function removePushSubscription(
   storeId: string,
   endpoint: string
 ): Promise<void> {
-  return client.request(ApiRoutesNotifications.pushSubscriptionRemove, {
+  return client.request(ApiRoutes.notifications.pushSubscriptionRemove, {
     method: 'POST',
     body: { endpoint },
     schema: z.undefined(),

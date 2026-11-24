@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutesPlugins } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 
 import { catalogEntrySchema } from './channels-requests'
 
@@ -107,7 +107,7 @@ export function fetchPluginConsent(
   pluginId: string,
   signal?: AbortSignal
 ): Promise<PluginConsentView> {
-  return client.request(ApiRoutesPlugins.consent(enc(pluginId)), {
+  return client.request(ApiRoutes.plugins.consent(enc(pluginId)), {
     schema: consentSchema,
     storeId,
     signal
@@ -120,7 +120,7 @@ export function fetchPluginDetail(
   pluginId: string,
   signal?: AbortSignal
 ): Promise<PluginDetailView> {
-  return client.request(ApiRoutesPlugins.byId(enc(pluginId)), {
+  return client.request(ApiRoutes.plugins.byId(enc(pluginId)), {
     schema: detailSchema,
     storeId,
     signal
@@ -133,7 +133,7 @@ export function registerPlugin(
   storeId: string,
   manifest: unknown
 ): Promise<RegisteredPluginView> {
-  return client.request(ApiRoutesPlugins.register, {
+  return client.request(ApiRoutes.plugins.register, {
     method: 'POST',
     body: manifest,
     schema: registeredSchema,
@@ -149,7 +149,7 @@ export function deletePlugin(
   pluginId: string,
   confirmation: string
 ): Promise<undefined> {
-  return client.request(ApiRoutesPlugins.byId(encodeURIComponent(pluginId)), {
+  return client.request(ApiRoutes.plugins.byId(encodeURIComponent(pluginId)), {
     method: 'DELETE',
     body: { confirmation },
     schema: z.undefined(),
@@ -164,7 +164,7 @@ export function installIntegrationPlugin(
   pluginId: string,
   scopes: readonly string[]
 ): Promise<PluginInstallResultView> {
-  return client.request(ApiRoutesPlugins.install, {
+  return client.request(ApiRoutes.plugins.install, {
     method: 'POST',
     body: { pluginId, scopes },
     schema: installedSchema,
@@ -177,7 +177,7 @@ export function reissueSetupCode(
   storeId: string,
   installationId: string
 ): Promise<PluginSetupOfferView> {
-  return client.request(ApiRoutesPlugins.setupCode(enc(installationId)), {
+  return client.request(ApiRoutes.plugins.setupCode(enc(installationId)), {
     method: 'POST',
     schema: setupOfferSchema,
     storeId
@@ -189,7 +189,7 @@ export function rotateCommandSecret(
   storeId: string,
   installationId: string
 ): Promise<RotatedCommandSecretView> {
-  return client.request(ApiRoutesPlugins.commandSecret(enc(installationId)), {
+  return client.request(ApiRoutes.plugins.commandSecret(enc(installationId)), {
     method: 'POST',
     schema: commandSecretSchema,
     storeId
@@ -202,7 +202,7 @@ export function rotatePluginApiKey(
   storeId: string,
   installationId: string
 ): Promise<RotatedPluginApiKeyView> {
-  return client.request(ApiRoutesPlugins.apiKey(enc(installationId)), {
+  return client.request(ApiRoutes.plugins.apiKey(enc(installationId)), {
     method: 'POST',
     schema: apiKeySchema,
     storeId

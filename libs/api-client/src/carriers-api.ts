@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesCarriers } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import { PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -197,7 +197,7 @@ export function fetchCarrierRegistry(
   storeId: string,
   signal?: AbortSignal
 ): Promise<CarrierRegistryEntryView[]> {
-  return client.request(ApiRoutesCarriers.registry, {
+  return client.request(ApiRoutes.carriers.registry, {
     schema: z.array(registryEntrySchema),
     storeId,
     signal
@@ -215,7 +215,7 @@ export async function fetchAllCarrierConnections(
     const params = new URLSearchParams({ limit: String(PaginationLimits.MAX) })
     if (cursor !== null) params.set('cursor', cursor)
     const page: CarrierConnectionPageView = await client.request(
-      `${ApiRoutesCarriers.list}?${params.toString()}`,
+      `${ApiRoutes.carriers.list}?${params.toString()}`,
       { schema: connectionPageSchema, storeId, signal }
     )
     found.push(...page.data)
@@ -230,7 +230,7 @@ export function connectCarrier(
   storeId: string,
   input: ConnectCarrierInput
 ): Promise<ConnectedCarrierView> {
-  return client.request(ApiRoutesCarriers.create, {
+  return client.request(ApiRoutes.carriers.create, {
     method: 'POST',
     body: input,
     schema: connectedSchema,
@@ -244,7 +244,7 @@ export function updateCarrier(
   id: string,
   input: UpdateCarrierInput
 ): Promise<CarrierConnectionView> {
-  return client.request(ApiRoutesCarriers.byId(enc(id)), {
+  return client.request(ApiRoutes.carriers.byId(enc(id)), {
     method: 'PATCH',
     body: input,
     schema: connectionSchema,
@@ -257,7 +257,7 @@ export function testCarrier(
   storeId: string,
   id: string
 ): Promise<CarrierTestResultView> {
-  return client.request(ApiRoutesCarriers.test(enc(id)), {
+  return client.request(ApiRoutes.carriers.test(enc(id)), {
     method: 'POST',
     schema: testResultSchema,
     storeId
@@ -270,7 +270,7 @@ export function rotateCarrierWebhookSecret(
   storeId: string,
   id: string
 ): Promise<{ webhookSecret: string }> {
-  return client.request(ApiRoutesCarriers.webhookSecret(enc(id)), {
+  return client.request(ApiRoutes.carriers.webhookSecret(enc(id)), {
     method: 'POST',
     schema: z.object({ webhookSecret: z.string() }),
     storeId
@@ -282,7 +282,7 @@ export function disconnectCarrier(
   storeId: string,
   id: string
 ): Promise<CarrierConnectionView> {
-  return client.request(ApiRoutesCarriers.disconnect(enc(id)), {
+  return client.request(ApiRoutes.carriers.disconnect(enc(id)), {
     method: 'POST',
     schema: connectionSchema,
     storeId
@@ -298,7 +298,7 @@ export function fetchStatusMappings(
 ): Promise<StatusMappingPageView> {
   const params = new URLSearchParams({ limit: String(PaginationLimits.MAX) })
   if (cursor !== null) params.set('cursor', cursor)
-  return client.request(`${ApiRoutesCarriers.statusMappings(enc(id))}?${params.toString()}`, {
+  return client.request(`${ApiRoutes.carriers.statusMappings(enc(id))}?${params.toString()}`, {
     schema: mappingPageSchema,
     storeId,
     signal
@@ -314,7 +314,7 @@ export function fetchUnmappedStatuses(
 ): Promise<UnmappedStatusPageView> {
   const params = new URLSearchParams({ limit: String(PaginationLimits.MAX) })
   if (cursor !== null) params.set('cursor', cursor)
-  return client.request(`${ApiRoutesCarriers.unmappedStatuses(enc(id))}?${params.toString()}`, {
+  return client.request(`${ApiRoutes.carriers.unmappedStatuses(enc(id))}?${params.toString()}`, {
     schema: unmappedPageSchema,
     storeId,
     signal
@@ -329,7 +329,7 @@ export function putStatusMapping(
   providerCode: string,
   status: string | null
 ): Promise<StatusMappingView> {
-  return client.request(ApiRoutesCarriers.statusMappingByCode(enc(id), enc(providerCode)), {
+  return client.request(ApiRoutes.carriers.statusMappingByCode(enc(id), enc(providerCode)), {
     method: 'PUT',
     body: { status },
     schema: mappingSchema,
@@ -344,7 +344,7 @@ export function removeStatusMapping(
   id: string,
   providerCode: string
 ): Promise<void> {
-  return client.request(ApiRoutesCarriers.statusMappingByCode(enc(id), enc(providerCode)), {
+  return client.request(ApiRoutes.carriers.statusMappingByCode(enc(id), enc(providerCode)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -364,7 +364,7 @@ export function fetchCarrierLocations(
   if (query.parentId !== undefined) params.set('parentId', query.parentId)
   if (query.search !== undefined && query.search.trim() !== '') params.set('search', query.search)
   const suffix = params.size === 0 ? '' : `?${params.toString()}`
-  return client.request(`${ApiRoutesCarriers.locations(enc(id))}${suffix}`, {
+  return client.request(`${ApiRoutes.carriers.locations(enc(id))}${suffix}`, {
     schema: z.array(locationSchema),
     storeId,
     signal
@@ -378,7 +378,7 @@ export function fetchCarrierStatusCatalog(
   id: string,
   signal?: AbortSignal
 ): Promise<CarrierStatusCatalogEntryView[]> {
-  return client.request(ApiRoutesCarriers.statusCatalog(enc(id)), {
+  return client.request(ApiRoutes.carriers.statusCatalog(enc(id)), {
     schema: z.array(statusCatalogEntrySchema),
     storeId,
     signal

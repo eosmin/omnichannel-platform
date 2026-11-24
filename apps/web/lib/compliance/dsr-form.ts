@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutesCompliance } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 
 // Settings → Data requests → the public form: the key the store gave to its form of data requests (Step 7.2-H2b, C1a). Kept with the page
 // like `dsr-requests.ts`, and not in `@platform/api-client`, whose barrel the inbox loads whole.
@@ -21,7 +21,7 @@ export function fetchDsrForm(
   storeId: string,
   signal?: AbortSignal
 ): Promise<DsrFormView> {
-  return client.request(ApiRoutesCompliance.dsrForm, { schema: formSchema, storeId, signal })
+  return client.request(ApiRoutes.compliance.dsrForm, { schema: formSchema, storeId, signal })
 }
 
 // Makes the first key (`current` null) or replaces the one the screen showed: the api changes it only if the store still holds `current`,
@@ -31,7 +31,7 @@ export function makeDsrFormKey(
   storeId: string,
   current: string | null
 ): Promise<DsrFormView> {
-  return client.request(ApiRoutesCompliance.dsrFormKey, {
+  return client.request(ApiRoutes.compliance.dsrFormKey, {
     method: 'POST',
     body: { current },
     schema: formSchema,
@@ -44,7 +44,7 @@ export function revokeDsrFormKey(
   storeId: string,
   current: string | null
 ): Promise<DsrFormView> {
-  return client.request(ApiRoutesCompliance.dsrFormKeyRevoke, {
+  return client.request(ApiRoutes.compliance.dsrFormKeyRevoke, {
     method: 'POST',
     body: { current },
     schema: formSchema,

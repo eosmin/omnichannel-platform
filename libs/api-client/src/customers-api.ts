@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesCustomers } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import type { CustomerTimelineType, MergeableField, MergeFieldSource } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -46,7 +46,7 @@ export function fetchCustomer(
   customerId: string,
   signal?: AbortSignal
 ): Promise<CustomerDetailView> {
-  return client.request(ApiRoutesCustomers.byId(customerId), {
+  return client.request(ApiRoutes.customers.byId(customerId), {
     schema: customerDetailSchema,
     storeId,
     signal
@@ -63,7 +63,7 @@ export function fetchCustomerTimeline(
   signal?: AbortSignal
 ): Promise<CustomerTimelinePageView> {
   const query = pageQuery({ type, cursor: cursor ?? undefined })
-  return client.request(`${ApiRoutesCustomers.timeline(customerId)}${query}`, {
+  return client.request(`${ApiRoutes.customers.timeline(customerId)}${query}`, {
     schema: customerTimelinePageSchema,
     storeId,
     signal
@@ -79,7 +79,7 @@ export function fetchCustomerConversations(
   signal?: AbortSignal
 ): Promise<ConversationPageView> {
   const query = pageQuery({ limit: String(limit) })
-  return client.request(`${ApiRoutesCustomers.conversations(customerId)}${query}`, {
+  return client.request(`${ApiRoutes.customers.conversations(customerId)}${query}`, {
     schema: conversationPageSchema,
     storeId,
     signal
@@ -97,7 +97,7 @@ export function fetchCustomers(
     q: params.q === undefined || params.q === '' ? undefined : params.q,
     cursor: params.cursor ?? undefined
   })
-  return client.request(`${ApiRoutesCustomers.list}${query}`, {
+  return client.request(`${ApiRoutes.customers.list}${query}`, {
     schema: customerListPageSchema,
     storeId,
     signal
@@ -116,7 +116,7 @@ export function createCustomer(
   storeId: string,
   input: CustomerCreateInput
 ): Promise<CreatedCustomerView> {
-  return client.request(ApiRoutesCustomers.list, {
+  return client.request(ApiRoutes.customers.list, {
     method: 'POST',
     body: input,
     schema: createdCustomerSchema,
@@ -137,7 +137,7 @@ export function updateCustomer(
   customerId: string,
   changes: CustomerChanges
 ): Promise<CustomerDetailView> {
-  return client.request(ApiRoutesCustomers.byId(customerId), {
+  return client.request(ApiRoutes.customers.byId(customerId), {
     method: 'PATCH',
     body: changes,
     schema: customerDetailSchema,
@@ -151,7 +151,7 @@ export function createCustomerNote(
   customerId: string,
   content: string
 ): Promise<CustomerNoteView> {
-  return client.request(ApiRoutesCustomers.notes(customerId), {
+  return client.request(ApiRoutes.customers.notes(customerId), {
     method: 'POST',
     body: { content },
     schema: customerNoteSchema,
@@ -165,7 +165,7 @@ export function deleteCustomerNote(
   customerId: string,
   noteId: string
 ): Promise<void> {
-  return client.request(ApiRoutesCustomers.noteById(customerId, noteId), {
+  return client.request(ApiRoutes.customers.noteById(customerId, noteId), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -202,7 +202,7 @@ export function createCustomerAddress(
   customerId: string,
   address: CustomerAddressInput
 ): Promise<CustomerAddressView> {
-  return client.request(ApiRoutesCustomers.addresses(customerId), {
+  return client.request(ApiRoutes.customers.addresses(customerId), {
     method: 'POST',
     body: address,
     schema: customerAddressSchema,
@@ -217,7 +217,7 @@ export function updateCustomerAddress(
   addressId: string,
   changes: CustomerAddressChanges
 ): Promise<CustomerAddressView> {
-  return client.request(ApiRoutesCustomers.addressById(customerId, addressId), {
+  return client.request(ApiRoutes.customers.addressById(customerId, addressId), {
     method: 'PATCH',
     body: changes,
     schema: customerAddressSchema,
@@ -231,7 +231,7 @@ export function deleteCustomerAddress(
   customerId: string,
   addressId: string
 ): Promise<void> {
-  return client.request(ApiRoutesCustomers.addressById(customerId, addressId), {
+  return client.request(ApiRoutes.customers.addressById(customerId, addressId), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -245,7 +245,7 @@ export function attachCustomerTag(
   customerId: string,
   tagId: string
 ): Promise<TagView[]> {
-  return client.request(ApiRoutesCustomers.tags(customerId), {
+  return client.request(ApiRoutes.customers.tags(customerId), {
     method: 'POST',
     body: { tagId },
     schema: customerTagListSchema,
@@ -259,7 +259,7 @@ export function detachCustomerTag(
   customerId: string,
   tagId: string
 ): Promise<void> {
-  return client.request(ApiRoutesCustomers.tagById(customerId, tagId), {
+  return client.request(ApiRoutes.customers.tagById(customerId, tagId), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -273,7 +273,7 @@ export function setCustomerCaution(
   customerId: string,
   reason: string
 ): Promise<CustomerCautionView> {
-  return client.request(ApiRoutesCustomers.caution(customerId), {
+  return client.request(ApiRoutes.customers.caution(customerId), {
     method: 'PUT',
     body: { reason },
     schema: customerCautionSchema,
@@ -286,7 +286,7 @@ export function clearCustomerCaution(
   storeId: string,
   customerId: string
 ): Promise<CustomerCautionView> {
-  return client.request(ApiRoutesCustomers.caution(customerId), {
+  return client.request(ApiRoutes.customers.caution(customerId), {
     method: 'DELETE',
     schema: customerCautionSchema,
     storeId
@@ -299,7 +299,7 @@ export function eraseCustomer(
   storeId: string,
   customerId: string
 ): Promise<CustomerErasureView> {
-  return client.request(ApiRoutesCustomers.erasure(customerId), {
+  return client.request(ApiRoutes.customers.erasure(customerId), {
     method: 'POST',
     schema: customerErasureSchema,
     storeId
@@ -315,7 +315,7 @@ export function fetchCustomerMergePreview(
   signal?: AbortSignal
 ): Promise<CustomerMergePreviewView> {
   const query = pageQuery({ absorbedId })
-  return client.request(`${ApiRoutesCustomers.mergePreview(survivorId)}${query}`, {
+  return client.request(`${ApiRoutes.customers.mergePreview(survivorId)}${query}`, {
     schema: customerMergePreviewSchema,
     storeId,
     signal
@@ -333,7 +333,7 @@ export function mergeCustomers(
   absorbedId: string,
   fieldChoices: MergeFieldChoices
 ): Promise<CustomerDetailView> {
-  return client.request(ApiRoutesCustomers.merge(survivorId), {
+  return client.request(ApiRoutes.customers.merge(survivorId), {
     method: 'POST',
     body: { absorbedId, fieldChoices },
     schema: customerDetailSchema,
@@ -348,7 +348,7 @@ export function unmergeCustomers(
   survivorId: string,
   mergeId: string
 ): Promise<CustomerDetailView> {
-  return client.request(ApiRoutesCustomers.unmerge(survivorId), {
+  return client.request(ApiRoutes.customers.unmerge(survivorId), {
     method: 'POST',
     body: { mergeId },
     schema: customerDetailSchema,
@@ -368,7 +368,7 @@ export function linkCustomerIdentity(
   customerId: string,
   identity: CustomerIdentityInput
 ): Promise<CustomerIdentityView> {
-  return client.request(ApiRoutesCustomers.identities(customerId), {
+  return client.request(ApiRoutes.customers.identities(customerId), {
     method: 'POST',
     body: identity,
     schema: customerIdentitySchema,
@@ -382,7 +382,7 @@ export function unlinkCustomerIdentity(
   customerId: string,
   identityId: string
 ): Promise<void> {
-  return client.request(ApiRoutesCustomers.identityById(customerId, identityId), {
+  return client.request(ApiRoutes.customers.identityById(customerId, identityId), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId

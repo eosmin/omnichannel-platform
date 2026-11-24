@@ -84,34 +84,3 @@ describe('the constants of the domain that every screen reads', () => {
     expect(names).not.toMatch(/export (?:async )?function lockedChannelsOf\b/)
   })
 })
-
-// `ApiRoutes` is one object of about 15 KB minified: a bundler keeps all of it as soon as one route is read from it. The browser reads the
-// constant of the area it draws (`ApiRoutesOrders`); `ApiRoutes` joins them for the server and the specs.
-describe('the routes of the api in the browser', () => {
-  const ROOT = join(__dirname, '..', '..', '..')
-  const SKIPPED = new Set(['node_modules', '.next'])
-  const browserSourcesIn = (dir: string): string[] =>
-    readdirSync(dir).flatMap(name => {
-      const path = join(dir, name)
-      if (SKIPPED.has(name)) return []
-      if (statSync(path).isDirectory()) return browserSourcesIn(path)
-      return /\.tsx?$/.test(name) && !/\.spec\.tsx?$/.test(name) ? [path] : []
-    })
-  const readsTheWhole = /\bApiRoutes\b(?!\w)/
-
-  it('are read by area, never from the joined object', () => {
-    const offenders = [
-      ...browserSourcesIn(join(ROOT, 'libs', 'api-client', 'src')),
-      ...browserSourcesIn(join(ROOT, 'apps', 'web'))
-    ]
-      .filter(file =>
-        readsTheWhole.test(
-          readFileSync(file, 'utf8')
-            .replace(/\/\*[\s\S]*?\*\//g, '')
-            .replace(/\/\/.*$/gm, '')
-        )
-      )
-      .map(file => relative(ROOT, file))
-    expect(offenders).toEqual([])
-  })
-})

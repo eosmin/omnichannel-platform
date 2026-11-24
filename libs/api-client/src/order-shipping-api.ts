@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesShipments } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import type { CreateShipmentBody } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -50,7 +50,7 @@ export function fetchOrderShipments(
 ): Promise<OrderShipmentView[]> {
   const search = new URLSearchParams({ orderId, limit: String(ORDER_SHIPMENTS_LIMIT) })
   return client
-    .request(`${ApiRoutesShipments.list}?${search.toString()}`, {
+    .request(`${ApiRoutes.shipments.list}?${search.toString()}`, {
       schema: orderShipmentPageSchema,
       storeId,
       signal
@@ -65,7 +65,7 @@ export function createOrderShipment(
   orderId: string,
   body: CreateShipmentBody
 ): Promise<OrderShipmentView> {
-  return client.request(ApiRoutesShipments.forOrder(orderId), {
+  return client.request(ApiRoutes.shipments.forOrder(orderId), {
     method: 'POST',
     body,
     schema: orderShipmentSchema,
@@ -79,7 +79,7 @@ export function cancelOrderShipment(
   storeId: string,
   shipmentId: string
 ): Promise<OrderShipmentView> {
-  return client.request(ApiRoutesShipments.cancel(shipmentId), {
+  return client.request(ApiRoutes.shipments.cancel(shipmentId), {
     method: 'POST',
     schema: orderShipmentSchema,
     storeId
@@ -92,7 +92,7 @@ export function markOrderShipmentVoided(
   storeId: string,
   shipmentId: string
 ): Promise<OrderShipmentView> {
-  return client.request(ApiRoutesShipments.markVoided(shipmentId), {
+  return client.request(ApiRoutes.shipments.markVoided(shipmentId), {
     method: 'POST',
     schema: orderShipmentSchema,
     storeId
@@ -108,7 +108,7 @@ export function fetchShipmentLabelLink(
   storeId: string,
   shipmentId: string
 ): Promise<ShipmentLabelLinkView> {
-  return client.request(ApiRoutesShipments.label(shipmentId), {
+  return client.request(ApiRoutes.shipments.label(shipmentId), {
     schema: labelLinkSchema,
     storeId
   })

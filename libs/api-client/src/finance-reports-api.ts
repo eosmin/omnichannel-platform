@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesFinance } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 import { type FinancePeriodView, periodSchema } from './finance-api'
@@ -99,7 +99,7 @@ export function closeFinancePeriod(
   storeId: string,
   periodId: string
 ): Promise<FinancePeriodView> {
-  return client.request(ApiRoutesFinance.periods.close(encodeURIComponent(periodId)), {
+  return client.request(ApiRoutes.finance.periods.close(encodeURIComponent(periodId)), {
     method: 'POST',
     schema: periodSchema,
     storeId
@@ -113,7 +113,7 @@ export function reopenFinancePeriod(
   periodId: string,
   input: { reason: string }
 ): Promise<FinancePeriodView> {
-  return client.request(ApiRoutesFinance.periods.reopen(encodeURIComponent(periodId)), {
+  return client.request(ApiRoutes.finance.periods.reopen(encodeURIComponent(periodId)), {
     method: 'POST',
     body: input,
     schema: periodSchema,
@@ -128,7 +128,7 @@ export function fetchFinanceTrialBalance(
   signal?: AbortSignal
 ): Promise<FinanceTrialBalanceView> {
   return client.request(
-    withQuery(ApiRoutesFinance.reports.trialBalance, new URLSearchParams({ periodId })),
+    withQuery(ApiRoutes.finance.reports.trialBalance, new URLSearchParams({ periodId })),
     { schema: trialBalanceSchema, storeId, signal }
   )
 }
@@ -151,7 +151,7 @@ export function fetchFinanceLedger(
   if (query.from !== null) search.set('from', query.from)
   if (query.to !== null) search.set('to', query.to)
   if (query.cursor !== null) search.set('cursor', query.cursor)
-  return client.request(withQuery(ApiRoutesFinance.reports.ledger, search), {
+  return client.request(withQuery(ApiRoutes.finance.reports.ledger, search), {
     schema: ledgerSchema,
     storeId,
     signal
@@ -164,7 +164,7 @@ export function fetchFinanceTrialBalanceCsv(
   periodId: string
 ): Promise<string> {
   return client.request(
-    withQuery(ApiRoutesFinance.reports.trialBalanceCsv, new URLSearchParams({ periodId })),
+    withQuery(ApiRoutes.finance.reports.trialBalanceCsv, new URLSearchParams({ periodId })),
     { schema: csvSchema, responseType: 'text', storeId }
   )
 }
@@ -174,11 +174,14 @@ export function fetchFinanceLedgerCsv(
   storeId: string,
   input: { accountId: string; from: string; to: string }
 ): Promise<string> {
-  return client.request(withQuery(ApiRoutesFinance.reports.ledgerCsv, new URLSearchParams(input)), {
-    schema: csvSchema,
-    responseType: 'text',
-    storeId
-  })
+  return client.request(
+    withQuery(ApiRoutes.finance.reports.ledgerCsv, new URLSearchParams(input)),
+    {
+      schema: csvSchema,
+      responseType: 'text',
+      storeId
+    }
+  )
 }
 
 export function fetchFinanceJournalCsv(
@@ -187,7 +190,7 @@ export function fetchFinanceJournalCsv(
   input: { from: string; to: string }
 ): Promise<string> {
   return client.request(
-    withQuery(ApiRoutesFinance.reports.journalCsv, new URLSearchParams(input)),
+    withQuery(ApiRoutes.finance.reports.journalCsv, new URLSearchParams(input)),
     { schema: csvSchema, responseType: 'text', storeId }
   )
 }
@@ -197,7 +200,7 @@ export function verifyFinanceChain(
   client: ApiClient,
   storeId: string
 ): Promise<FinanceChainVerificationView> {
-  return client.request(ApiRoutesFinance.reports.verifyChain, {
+  return client.request(ApiRoutes.finance.reports.verifyChain, {
     method: 'POST',
     schema: chainSchema,
     storeId

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesPluginWidgets } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import {
   PluginBridgeMessages,
   type PluginBridgeRequest,
@@ -71,7 +71,7 @@ export function fetchPluginWidgets(
   storeId: string,
   signal?: AbortSignal
 ): Promise<PluginWidgetView[]> {
-  return client.request(ApiRoutesPluginWidgets.list, {
+  return client.request(ApiRoutes.pluginWidgets.list, {
     schema: z.array(widgetSchema),
     storeId,
     signal
@@ -83,7 +83,7 @@ export function fetchPluginWidgetSettings(
   storeId: string,
   signal?: AbortSignal
 ): Promise<PluginWidgetSettingsView[]> {
-  return client.request(ApiRoutesPluginWidgets.settings, {
+  return client.request(ApiRoutes.pluginWidgets.settings, {
     schema: z.array(widgetSettingsSchema),
     storeId,
     signal
@@ -97,7 +97,7 @@ export function setPluginWidgetVisible(
   widgetId: string,
   visible: boolean
 ): Promise<PluginWidgetSettingsView> {
-  return client.request(ApiRoutesPluginWidgets.visibility(enc(installationId), enc(widgetId)), {
+  return client.request(ApiRoutes.pluginWidgets.visibility(enc(installationId), enc(widgetId)), {
     method: 'PUT',
     body: { visible },
     schema: widgetSettingsSchema,
@@ -112,7 +112,7 @@ export function openPluginWidgetSession(
   conversationId: string,
   widgetId: string
 ): Promise<PluginWidgetSessionView> {
-  return client.request(ApiRoutesPluginWidgets.sessions, {
+  return client.request(ApiRoutes.pluginWidgets.sessions, {
     method: 'POST',
     body: { installationId, conversationId, widgetId },
     schema: sessionSchema,
@@ -128,7 +128,7 @@ export async function callPluginWidgetBridge(
   token: string,
   request: PluginBridgeRequest
 ): Promise<PluginBridgeResponse> {
-  const answer = await client.request(ApiRoutesPluginWidgets.bridge, {
+  const answer = await client.request(ApiRoutes.pluginWidgets.bridge, {
     method: 'POST',
     body: { token, request },
     schema: bridgeDataSchema,

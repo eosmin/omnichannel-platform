@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesCompliance } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import { COOKIE_POLICY_VERSION, type ChoosableCookieCategory } from '@platform/core/cookie-consent'
 import { DsrType } from '@platform/core/domain'
 import type { Locale } from '@platform/core/i18n'
@@ -25,7 +25,7 @@ export function recordCookieConsent(
   choice: CookieConsentChoice,
   signal?: AbortSignal
 ): Promise<CookieConsentResult> {
-  return client.request(ApiRoutesCompliance.cookieConsent, {
+  return client.request(ApiRoutes.compliance.cookieConsent, {
     method: 'POST',
     body: { ...choice, policyVersion: COOKIE_POLICY_VERSION },
     schema: cookieConsentResultSchema,
@@ -44,7 +44,7 @@ export function verifyDsrRequest(
   token: string,
   signal?: AbortSignal
 ): Promise<z.infer<typeof dsrVerifyResultSchema>> {
-  return client.request(ApiRoutesCompliance.dsrVerify, {
+  return client.request(ApiRoutes.compliance.dsrVerify, {
     method: 'POST',
     body: { token },
     schema: dsrVerifyResultSchema,
@@ -75,7 +75,7 @@ export function submitDsrRequest(
   input: DsrRequestInput,
   signal?: AbortSignal
 ): Promise<z.infer<typeof dsrRequestResultSchema>> {
-  return client.request(ApiRoutesCompliance.dsr, {
+  return client.request(ApiRoutes.compliance.dsr, {
     method: 'POST',
     body: input,
     schema: dsrRequestResultSchema,

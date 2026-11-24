@@ -1,5 +1,5 @@
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutesSettings } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import {
   type StorePreferences,
   storePreferencesSchema,
@@ -17,7 +17,7 @@ export function fetchPreferences(
   storeId: string,
   signal?: AbortSignal
 ): Promise<PreferencesView> {
-  return client.request(ApiRoutesSettings.preferences, {
+  return client.request(ApiRoutes.settings.preferences, {
     schema: storePreferencesSchema,
     storeId,
     signal
@@ -30,7 +30,7 @@ export function savePreferences(
   storeId: string,
   input: PreferencesInput
 ): Promise<PreferencesView> {
-  return client.request(ApiRoutesSettings.preferences, {
+  return client.request(ApiRoutes.settings.preferences, {
     method: 'PUT',
     body: input,
     schema: storePreferencesSchema,

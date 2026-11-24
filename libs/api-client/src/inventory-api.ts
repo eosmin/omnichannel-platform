@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesInventory, ApiRoutesProducts, ApiRoutesWarehouses } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import {
   type InventoryLevelSort,
   type InventoryMovementType,
@@ -150,7 +150,7 @@ export function fetchProductInventory(
   productId: string,
   signal?: AbortSignal
 ): Promise<ProductInventoryView> {
-  return client.request(ApiRoutesProducts.inventory(productId), {
+  return client.request(ApiRoutes.products.inventory(productId), {
     schema: productInventorySchema,
     storeId,
     signal
@@ -172,7 +172,7 @@ export function fetchStockLevels(
     cursor: params.cursor ?? undefined,
     limit: params.limit === undefined ? undefined : String(params.limit)
   })
-  return client.request(`${ApiRoutesInventory.levels}${search}`, {
+  return client.request(`${ApiRoutes.inventory.levels}${search}`, {
     schema: levelPageSchema,
     storeId,
     signal
@@ -193,7 +193,7 @@ export function fetchKardex(
     cursor: params.cursor ?? undefined,
     limit: params.limit === undefined ? undefined : String(params.limit)
   })
-  return client.request(`${ApiRoutesInventory.kardex}${search}`, {
+  return client.request(`${ApiRoutes.inventory.kardex}${search}`, {
     schema: movementPageSchema,
     storeId,
     signal
@@ -205,7 +205,7 @@ export function createStockAdjustment(
   storeId: string,
   input: StockAdjustmentInput
 ): Promise<StockAdjustmentView> {
-  return client.request(ApiRoutesInventory.adjustments, {
+  return client.request(ApiRoutes.inventory.adjustments, {
     method: 'POST',
     body: input,
     schema: adjustmentSchema,
@@ -224,7 +224,7 @@ export async function fetchWarehousesOfStore(
   let cursor: string | null = null
   for (let pages = 0; pages < MAX_WAREHOUSE_PAGES; pages += 1) {
     const page: z.output<typeof warehousePageSchema> = await client.request(
-      `${ApiRoutesWarehouses.list}${query({
+      `${ApiRoutes.warehouses.list}${query({
         limit: String(PaginationLimits.MAX),
         active: 'true',
         cursor: cursor ?? undefined

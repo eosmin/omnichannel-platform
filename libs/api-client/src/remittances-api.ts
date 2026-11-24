@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesRemittances } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import {
   type AddRemittanceLinesBody,
   type ConfirmRemittanceBody,
@@ -210,7 +210,7 @@ export function fetchRemittances(
   if (params.connectionId !== undefined) search.set('connectionId', params.connectionId)
   if (params.cursor !== undefined && params.cursor !== null) search.set('cursor', params.cursor)
   search.set('limit', String(params.limit ?? PaginationLimits.DEFAULT))
-  return client.request(`${ApiRoutesRemittances.list}?${search.toString()}`, {
+  return client.request(`${ApiRoutes.remittances.list}?${search.toString()}`, {
     schema: remittancePageSchema,
     storeId,
     signal
@@ -226,7 +226,7 @@ export function fetchRemittancePending(
 ): Promise<PendingConnectionView[]> {
   const query =
     connectionId === undefined ? '' : `?${new URLSearchParams({ connectionId }).toString()}`
-  return client.request(`${ApiRoutesRemittances.pending}${query}`, {
+  return client.request(`${ApiRoutes.remittances.pending}${query}`, {
     schema: pendingSchema,
     storeId,
     signal
@@ -239,7 +239,7 @@ export function fetchRemittance(
   id: string,
   signal?: AbortSignal
 ): Promise<RemittanceDetailView> {
-  return client.request(ApiRoutesRemittances.byId(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.remittances.byId(encodeURIComponent(id)), {
     schema: remittanceDetailSchema,
     storeId,
     signal
@@ -259,7 +259,7 @@ export function createRemittance(
   storeId: string,
   input: CreateRemittanceInput
 ): Promise<RemittanceDetailView> {
-  return client.request(ApiRoutesRemittances.list, {
+  return client.request(ApiRoutes.remittances.list, {
     method: 'POST',
     body: input,
     schema: remittanceDetailSchema,
@@ -273,7 +273,7 @@ export async function discardRemittance(
   storeId: string,
   id: string
 ): Promise<void> {
-  await client.request(ApiRoutesRemittances.byId(encodeURIComponent(id)), {
+  await client.request(ApiRoutes.remittances.byId(encodeURIComponent(id)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -286,7 +286,7 @@ export function addRemittanceLines(
   id: string,
   input: AddRemittanceLinesBody
 ): Promise<RemittanceDetailView> {
-  return client.request(ApiRoutesRemittances.lines(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.remittances.lines(encodeURIComponent(id)), {
     method: 'POST',
     body: input,
     schema: remittanceDetailSchema,
@@ -302,7 +302,7 @@ export function updateRemittanceLine(
   input: UpdateRemittanceLineBody
 ): Promise<RemittanceDetailView> {
   return client.request(
-    ApiRoutesRemittances.lineById(encodeURIComponent(id), encodeURIComponent(lineId)),
+    ApiRoutes.remittances.lineById(encodeURIComponent(id), encodeURIComponent(lineId)),
     { method: 'PATCH', body: input, schema: remittanceDetailSchema, storeId }
   )
 }
@@ -313,7 +313,7 @@ export function confirmRemittance(
   id: string,
   input: ConfirmRemittanceBody
 ): Promise<RemittanceDetailView> {
-  return client.request(ApiRoutesRemittances.confirm(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.remittances.confirm(encodeURIComponent(id)), {
     method: 'POST',
     body: input,
     schema: remittanceDetailSchema,
@@ -327,7 +327,7 @@ export function voidRemittance(
   id: string,
   input: VoidRemittanceBody
 ): Promise<RemittanceDetailView> {
-  return client.request(ApiRoutesRemittances.void(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.remittances.void(encodeURIComponent(id)), {
     method: 'POST',
     body: input,
     schema: remittanceDetailSchema,
@@ -343,7 +343,7 @@ export function fetchRemittanceImportProfiles(
 ): Promise<RemittanceImportProfileView[]> {
   const query =
     connectionId === undefined ? '' : `?${new URLSearchParams({ connectionId }).toString()}`
-  return client.request(`${ApiRoutesRemittances.importProfiles}${query}`, {
+  return client.request(`${ApiRoutes.remittances.importProfiles}${query}`, {
     schema: profilesSchema,
     storeId,
     signal
@@ -355,7 +355,7 @@ export function createRemittanceImportProfile(
   storeId: string,
   input: CreateRemittanceImportProfileBody
 ): Promise<RemittanceImportProfileView> {
-  return client.request(ApiRoutesRemittances.importProfiles, {
+  return client.request(ApiRoutes.remittances.importProfiles, {
     method: 'POST',
     body: input,
     schema: profileSchema,
@@ -369,7 +369,7 @@ export function updateRemittanceImportProfile(
   id: string,
   input: UpdateRemittanceImportProfileBody
 ): Promise<RemittanceImportProfileView> {
-  return client.request(ApiRoutesRemittances.importProfileById(encodeURIComponent(id)), {
+  return client.request(ApiRoutes.remittances.importProfileById(encodeURIComponent(id)), {
     method: 'PATCH',
     body: input,
     schema: profileSchema,
@@ -382,7 +382,7 @@ export async function deleteRemittanceImportProfile(
   storeId: string,
   id: string
 ): Promise<void> {
-  await client.request(ApiRoutesRemittances.importProfileById(encodeURIComponent(id)), {
+  await client.request(ApiRoutes.remittances.importProfileById(encodeURIComponent(id)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -396,7 +396,7 @@ export function previewRemittanceImport(
   input: RemittanceImportPreviewBody,
   signal?: AbortSignal
 ): Promise<ImportPreviewView> {
-  return client.request(ApiRoutesRemittances.importPreview, {
+  return client.request(ApiRoutes.remittances.importPreview, {
     method: 'POST',
     body: input,
     schema: previewSchema,
@@ -416,7 +416,7 @@ export function importRemittanceFile(
     connectionId: input.connectionId,
     profileId: input.profileId
   })
-  return client.request(`${ApiRoutesRemittances.imports}?${query.toString()}`, {
+  return client.request(`${ApiRoutes.remittances.imports}?${query.toString()}`, {
     method: 'POST',
     textBody: { text: input.text, contentType: input.contentType },
     schema: remittanceDetailSchema,

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutesSettings } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import type { WebhookStatus } from '@platform/core/domain'
 
 // Settings → Webhooks: what the api answers about the webhooks of a store and their delivery log. Kept with the page and
@@ -63,7 +63,7 @@ export function fetchWebhooks(
   storeId: string,
   signal?: AbortSignal
 ): Promise<WebhookView[]> {
-  return client.request(ApiRoutesSettings.webhooks, {
+  return client.request(ApiRoutes.settings.webhooks, {
     schema: z.array(webhookSchema),
     storeId,
     signal
@@ -75,7 +75,7 @@ export function createWebhook(
   storeId: string,
   input: CreateWebhookInput
 ): Promise<WebhookWithSecretView> {
-  return client.request(ApiRoutesSettings.webhooks, {
+  return client.request(ApiRoutes.settings.webhooks, {
     method: 'POST',
     body: input,
     schema: webhookWithSecretSchema,
@@ -89,7 +89,7 @@ export function updateWebhook(
   webhookId: string,
   input: UpdateWebhookInput
 ): Promise<WebhookView> {
-  return client.request(ApiRoutesSettings.webhookById(enc(webhookId)), {
+  return client.request(ApiRoutes.settings.webhookById(enc(webhookId)), {
     method: 'PATCH',
     body: input,
     schema: webhookSchema,
@@ -102,7 +102,7 @@ export function deleteWebhook(
   storeId: string,
   webhookId: string
 ): Promise<undefined> {
-  return client.request(ApiRoutesSettings.webhookById(enc(webhookId)), {
+  return client.request(ApiRoutes.settings.webhookById(enc(webhookId)), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId
@@ -115,7 +115,7 @@ export function rotateWebhookSecret(
   storeId: string,
   webhookId: string
 ): Promise<WebhookWithSecretView> {
-  return client.request(ApiRoutesSettings.webhookSecret(enc(webhookId)), {
+  return client.request(ApiRoutes.settings.webhookSecret(enc(webhookId)), {
     method: 'POST',
     schema: webhookWithSecretSchema,
     storeId
@@ -134,7 +134,7 @@ export function fetchWebhookDeliveries(
   if (options.outcome !== 'all') query.set('success', String(options.outcome === 'succeeded'))
   const text = query.toString()
   const suffix = text === '' ? '' : `?${text}`
-  return client.request(`${ApiRoutesSettings.webhookDeliveries(enc(webhookId))}${suffix}`, {
+  return client.request(`${ApiRoutes.settings.webhookDeliveries(enc(webhookId))}${suffix}`, {
     schema: deliveryPageSchema,
     storeId,
     signal

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
-import { ApiRoutesSettings } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 
 // Settings → API keys: what the api answers about the keys of a store. Kept with the page and not in `@platform/api-client`,
 // whose barrel the inbox loads whole. A status this page does not know stays as the text it came as.
@@ -36,7 +36,7 @@ export function fetchApiKeys(
   storeId: string,
   signal?: AbortSignal
 ): Promise<ApiKeyView[]> {
-  return client.request(ApiRoutesSettings.apiKeys, {
+  return client.request(ApiRoutes.settings.apiKeys, {
     schema: z.array(apiKeySchema),
     storeId,
     signal
@@ -48,7 +48,7 @@ export function createApiKey(
   storeId: string,
   input: CreateApiKeyInput
 ): Promise<ApiKeyWithTokenView> {
-  return client.request(ApiRoutesSettings.apiKeys, {
+  return client.request(ApiRoutes.settings.apiKeys, {
     method: 'POST',
     body: input,
     schema: apiKeyWithTokenSchema,
@@ -62,7 +62,7 @@ export function revokeApiKey(
   storeId: string,
   keyId: string
 ): Promise<ApiKeyView> {
-  return client.request(ApiRoutesSettings.apiKeyById(encodeURIComponent(keyId)), {
+  return client.request(ApiRoutes.settings.apiKeyById(encodeURIComponent(keyId)), {
     method: 'DELETE',
     schema: apiKeySchema,
     storeId

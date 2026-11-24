@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesOrganizations } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 import { type ExportView, exportSchema } from './exports-api'
@@ -56,7 +56,7 @@ export function fetchAuditLog(
   cursor: string | null,
   signal?: AbortSignal
 ): Promise<AuditLogPageView> {
-  return client.request(`${ApiRoutesOrganizations.auditLog}${filterQuery(filter, cursor)}`, {
+  return client.request(`${ApiRoutes.organizations.auditLog}${filterQuery(filter, cursor)}`, {
     schema: auditLogPageSchema,
     storeId,
     signal
@@ -72,11 +72,14 @@ export function fetchAuditLogEntry(
   at?: string
 ): Promise<AuditLogEntryView> {
   const query = at === undefined ? '' : `?${new URLSearchParams({ at }).toString()}`
-  return client.request(`${ApiRoutesOrganizations.auditLogEntry(encodeURIComponent(id))}${query}`, {
-    schema: auditLogEntrySchema,
-    storeId,
-    signal
-  })
+  return client.request(
+    `${ApiRoutes.organizations.auditLogEntry(encodeURIComponent(id))}${query}`,
+    {
+      schema: auditLogEntrySchema,
+      storeId,
+      signal
+    }
+  )
 }
 
 // "Export CSV": queues the file for the filters the screen shows and answers (202) with its row. With no `before` the api
@@ -87,7 +90,7 @@ export function requestAuditLogExport(
   storeId: string,
   filter: AuditLogFilter
 ): Promise<ExportView> {
-  return client.request(`${ApiRoutesOrganizations.auditLogExport}${filterQuery(filter, null)}`, {
+  return client.request(`${ApiRoutes.organizations.auditLogExport}${filterQuery(filter, null)}`, {
     schema: exportSchema,
     storeId
   })

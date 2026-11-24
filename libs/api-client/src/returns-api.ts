@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesReturns, ApiRoutesSettings } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import {
   type ApproveReturnBody,
   type CompleteReturnBody,
@@ -92,7 +92,7 @@ export function fetchReturns(
     createdFrom: params.createdFrom,
     createdTo: params.createdTo
   })
-  return client.request(`${ApiRoutesReturns.list}${search}`, {
+  return client.request(`${ApiRoutes.returns.list}${search}`, {
     schema: returnPageSchema,
     storeId,
     signal
@@ -105,7 +105,7 @@ export function fetchReturn(
   returnId: string,
   signal?: AbortSignal
 ): Promise<ReturnView> {
-  return client.request(ApiRoutesReturns.byId(returnId), {
+  return client.request(ApiRoutes.returns.byId(returnId), {
     schema: returnSchema,
     storeId,
     signal
@@ -117,7 +117,7 @@ export function createReturn(
   storeId: string,
   input: CreateReturnBody
 ): Promise<ReturnView> {
-  return client.request(ApiRoutesReturns.create, {
+  return client.request(ApiRoutes.returns.create, {
     method: 'POST',
     body: input,
     schema: returnSchema,
@@ -147,7 +147,7 @@ export function approveReturn(
   returnId: string,
   body: ApproveReturnBody = {}
 ): Promise<ReturnView> {
-  return client.request(ApiRoutesReturns.approve(returnId), {
+  return client.request(ApiRoutes.returns.approve(returnId), {
     method: 'POST',
     body,
     schema: returnSchema,
@@ -155,13 +155,13 @@ export function approveReturn(
   })
 }
 // Approved → in transit: the goods are on their way back (the people who receive them are told)
-export const markReturnInTransit = move(ApiRoutesReturns.inTransit)
-export const rejectReturn = moveWith<ReturnDecisionBody>(ApiRoutesReturns.reject)
-export const cancelReturn = moveWith<ReturnDecisionBody>(ApiRoutesReturns.cancel)
+export const markReturnInTransit = move(ApiRoutes.returns.inTransit)
+export const rejectReturn = moveWith<ReturnDecisionBody>(ApiRoutes.returns.reject)
+export const cancelReturn = moveWith<ReturnDecisionBody>(ApiRoutes.returns.cancel)
 // Approved or in transit → received: the condition of every line, and the stock moves with it
-export const receiveReturn = moveWith<ReceiveReturnBody>(ApiRoutesReturns.receive)
+export const receiveReturn = moveWith<ReceiveReturnBody>(ApiRoutes.returns.receive)
 // Received → completed: a refund records the money given back by hand
-export const completeReturn = moveWith<CompleteReturnBody>(ApiRoutesReturns.complete)
+export const completeReturn = moveWith<CompleteReturnBody>(ApiRoutes.returns.complete)
 
 // The guide of the way back, as much of it as the return screen needs (the guide has its own screen and routes, Step 4.14)
 export const returnShipmentSchema = z.object({
@@ -185,7 +185,7 @@ export function createReturnShipment(
   returnId: string,
   body: CreateReturnShipmentBody
 ): Promise<ReturnShipmentView> {
-  return client.request(ApiRoutesReturns.returnShipment(returnId), {
+  return client.request(ApiRoutes.returns.returnShipment(returnId), {
     method: 'POST',
     body,
     schema: returnShipmentSchema,
@@ -202,7 +202,7 @@ export function fetchReturnSettings(
   storeId: string,
   signal?: AbortSignal
 ): Promise<ReturnSettingsView> {
-  return client.request(ApiRoutesSettings.returns, {
+  return client.request(ApiRoutes.settings.returns, {
     schema: returnSettingsSchema,
     storeId,
     signal
@@ -214,7 +214,7 @@ export function updateReturnSettings(
   storeId: string,
   body: { returnShippingPayer?: ShippingPayer }
 ): Promise<ReturnSettingsView> {
-  return client.request(ApiRoutesSettings.returns, {
+  return client.request(ApiRoutes.settings.returns, {
     method: 'PATCH',
     body,
     schema: returnSettingsSchema,

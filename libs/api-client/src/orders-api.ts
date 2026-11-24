@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesOrders, ApiRoutesSettings } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import type {
   ChangeOrderStatusInput,
   CreateOrderInput,
@@ -175,7 +175,7 @@ export function fetchOrders(
   params: OrderListParams,
   signal?: AbortSignal
 ): Promise<OrderPageView> {
-  return client.request(`${ApiRoutesOrders.list}${query({ ...params })}`, {
+  return client.request(`${ApiRoutes.orders.list}${query({ ...params })}`, {
     schema: orderPageSchema,
     storeId,
     signal
@@ -188,7 +188,7 @@ export function fetchOrder(
   orderId: string,
   signal?: AbortSignal
 ): Promise<OrderDetailView> {
-  return client.request(ApiRoutesOrders.byId(orderId), {
+  return client.request(ApiRoutes.orders.byId(orderId), {
     schema: orderDetailSchema,
     storeId,
     signal
@@ -202,7 +202,7 @@ export function requestOrdersExport(
   storeId: string,
   filter: OrderListFilter
 ): Promise<ExportView> {
-  return client.request(`${ApiRoutesOrders.export}${query({ ...filter })}`, {
+  return client.request(`${ApiRoutes.orders.export}${query({ ...filter })}`, {
     schema: exportSchema,
     storeId
   })
@@ -213,7 +213,7 @@ export function createOrder(
   storeId: string,
   input: CreateOrderInput
 ): Promise<CreatedOrderView> {
-  return client.request(ApiRoutesOrders.create, {
+  return client.request(ApiRoutes.orders.create, {
     method: 'POST',
     body: input,
     schema: createdOrderSchema,
@@ -227,7 +227,7 @@ export function updateOrder(
   orderId: string,
   changes: UpdateOrderInput
 ): Promise<OrderDetailView> {
-  return client.request(ApiRoutesOrders.byId(orderId), {
+  return client.request(ApiRoutes.orders.byId(orderId), {
     method: 'PATCH',
     body: changes,
     schema: orderDetailSchema,
@@ -241,7 +241,7 @@ export function changeOrderStatus(
   orderId: string,
   input: ChangeOrderStatusInput
 ): Promise<OrderDetailView> {
-  return client.request(ApiRoutesOrders.status(orderId), {
+  return client.request(ApiRoutes.orders.status(orderId), {
     method: 'POST',
     body: input,
     schema: orderDetailSchema,
@@ -256,7 +256,7 @@ export function confirmOrder(
   orderId: string,
   via: string
 ): Promise<OrderDetailView> {
-  return client.request(ApiRoutesOrders.confirm(orderId), {
+  return client.request(ApiRoutes.orders.confirm(orderId), {
     method: 'POST',
     body: { via },
     schema: orderDetailSchema,
@@ -277,7 +277,7 @@ export function confirmOrdersBulk(
   ids: readonly string[],
   via: string
 ): Promise<BulkConfirmResult> {
-  return client.request(ApiRoutesOrders.confirmBulk, {
+  return client.request(ApiRoutes.orders.confirmBulk, {
     method: 'POST',
     body: { ids, via },
     schema: bulkConfirmSchema,
@@ -342,7 +342,7 @@ export function getOrderCopy(
   storeId: string,
   orderId: string
 ): Promise<OrderCopyView> {
-  return client.request(ApiRoutesOrders.copy(orderId), { schema: orderCopySchema, storeId })
+  return client.request(ApiRoutes.orders.copy(orderId), { schema: orderCopySchema, storeId })
 }
 
 export function cancelOrder(
@@ -353,7 +353,7 @@ export function cancelOrder(
   // The "Notify customer" box: left out, the `autoSend` of the cancellation template decides
   notifyCustomer?: boolean
 ): Promise<OrderDetailView> {
-  return client.request(ApiRoutesOrders.cancel(orderId), {
+  return client.request(ApiRoutes.orders.cancel(orderId), {
     method: 'POST',
     body: { cancellationReason, ...(notifyCustomer === undefined ? {} : { notifyCustomer }) },
     schema: orderDetailSchema,
@@ -368,7 +368,7 @@ export function recordOrderPayment(
   orderId: string,
   input: RecordOrderPaymentInput
 ): Promise<OrderDetailView> {
-  return client.request(ApiRoutesOrders.payment(orderId), {
+  return client.request(ApiRoutes.orders.payment(orderId), {
     method: 'POST',
     body: input,
     schema: orderDetailSchema,
@@ -386,8 +386,8 @@ export function decideOrderPrice(
 ): Promise<OrderDetailView> {
   const path =
     decision === 'approve'
-      ? ApiRoutesOrders.priceApprovalApprove(orderId)
-      : ApiRoutesOrders.priceApprovalReject(orderId)
+      ? ApiRoutes.orders.priceApprovalApprove(orderId)
+      : ApiRoutes.orders.priceApprovalReject(orderId)
   return client.request(path, {
     method: 'POST',
     body: reason === undefined ? {} : { reason },
@@ -412,7 +412,7 @@ export async function fetchOrderPreferences(
   storeId: string,
   signal?: AbortSignal
 ): Promise<OrderPreferencesView> {
-  const view = await client.request(ApiRoutesSettings.preferences, {
+  const view = await client.request(ApiRoutes.settings.preferences, {
     schema: orderPreferencesSchema,
     storeId,
     signal

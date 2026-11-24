@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ApiRoutesAccount, ApiRoutesAuth } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 import {
@@ -29,11 +29,11 @@ export interface AccountPreferencesPatch {
 }
 
 export function fetchOwnProfile(client: ApiClient, signal?: AbortSignal): Promise<OwnProfile> {
-  return client.request(ApiRoutesAccount.profile, { schema: ownProfileSchema, signal })
+  return client.request(ApiRoutes.account.profile, { schema: ownProfileSchema, signal })
 }
 
 export function updateOwnProfile(client: ApiClient, patch: ProfilePatch): Promise<OwnProfile> {
-  return client.request(ApiRoutesAccount.profile, {
+  return client.request(ApiRoutes.account.profile, {
     method: 'PATCH',
     body: patch,
     schema: ownProfileSchema
@@ -44,7 +44,7 @@ export function fetchAccountPreferences(
   client: ApiClient,
   signal?: AbortSignal
 ): Promise<AccountPreferences> {
-  return client.request(ApiRoutesAccount.preferences, {
+  return client.request(ApiRoutes.account.preferences, {
     schema: accountPreferencesSchema,
     signal
   })
@@ -54,7 +54,7 @@ export function updateAccountPreferences(
   client: ApiClient,
   patch: AccountPreferencesPatch
 ): Promise<AccountPreferences> {
-  return client.request(ApiRoutesAccount.preferences, {
+  return client.request(ApiRoutes.account.preferences, {
     method: 'PATCH',
     body: patch,
     schema: accountPreferencesSchema
@@ -65,14 +65,14 @@ export function fetchActiveSessions(
   client: ApiClient,
   signal?: AbortSignal
 ): Promise<ActiveSession[]> {
-  return client.request(ApiRoutesAuth.sessions, {
+  return client.request(ApiRoutes.auth.sessions, {
     schema: z.array(activeSessionSchema),
     signal
   })
 }
 
 export function revokeSession(client: ApiClient, sessionId: string): Promise<void> {
-  return client.request(ApiRoutesAuth.sessionById(encodeURIComponent(sessionId)), {
+  return client.request(ApiRoutes.auth.sessionById(encodeURIComponent(sessionId)), {
     method: 'DELETE',
     schema: z.undefined()
   })

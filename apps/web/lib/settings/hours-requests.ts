@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { type ApiClient, ApiError } from '@platform/api-client'
-import { ApiRoutesSettings } from '@platform/core/api'
+import { ApiRoutes } from '@platform/core/api'
 import { BUSINESS_HOURS_TIMEZONE_METADATA_KEY } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 
@@ -35,7 +35,7 @@ export function fetchBusinessHours(
   storeId: string,
   signal?: AbortSignal
 ): Promise<BusinessHoursView> {
-  return client.request(ApiRoutesSettings.businessHours, { schema: hoursSchema, storeId, signal })
+  return client.request(ApiRoutes.settings.businessHours, { schema: hoursSchema, storeId, signal })
 }
 
 // What the page starts from: the saved hours (null for a store that has none) and the time zone the
@@ -68,7 +68,7 @@ export function saveBusinessHours(
   storeId: string,
   hours: BusinessHoursView
 ): Promise<BusinessHoursView> {
-  return client.request(ApiRoutesSettings.businessHours, {
+  return client.request(ApiRoutes.settings.businessHours, {
     method: 'PUT',
     body: hours,
     schema: hoursSchema,
