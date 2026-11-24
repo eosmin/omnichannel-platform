@@ -10,6 +10,7 @@ import { ErrorCodes } from '@platform/core/errors'
 
 import { TenantContextService } from '../../apps/api/src/modules/tenancy'
 import { createRole, createTag } from '../builders'
+import { createFinanceFixture, purgeFinance } from '../builders/finance'
 import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -421,6 +422,95 @@ describe('Organizations and stores', () => {
 
       expect(unknown.status).toBe(404)
       expect(notAnId.status).toBe(400)
+    })
+  })
+
+  // FIN-700: the books are in USD only (TDD_18 §2.8), so a store of an organization that has books keeps the base currency
+  describe('the currency of a store whose organization keeps books', () => {
+    const withBooks = async (work: () => Promise<void>): Promise<void> => {
+      try {
+        await createFinanceFixture(owner, ctx.orgA.id)
+        await work()
+      } finally {
+        await purgeFinance(owner, [ctx.orgA.id])
+      }
+    }
+    const currencyOf = async (id: string): Promise<string> =>
+      (await owner.store.findUniqueOrThrow({ where: { id }, select: { currency: true } })).currency
+
+    it('refuses a currency that is not the base currency of the books, and keeps the one it had', async () => {
+      const store = await createStore()
+      await withBooks(async () => {
+        const response = await asAdmin()
+          .patch(ApiRoutes.organizations.storeById(store.id))
+          .send({ currency: 'JPY' })
+
+        expect(response.status).toBe(409)
+        expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.ORG_STORE_CURRENCY_NOT_BASE)
+        expect(await currencyOf(store.id)).toBe(store.currency)
+      })
+    })
+
+    it('refuses it together with other fields, and changes none of them', async () => {
+      const store = await createStore()
+      await withBooks(async () => {
+        const response = await asAdmin()
+          .patch(ApiRoutes.organizations.storeById(store.id))
+          .send({ name: `${store.name} renamed`, currency: 'KWD' })
+
+        expect(response.status).toBe(409)
+        expect(await nameOf(store.id)).toBe(store.name)
+      })
+    })
+
+    it('accepts the base currency, and a change that does not touch the currency', async () => {
+      const store = await createStore()
+      await withBooks(async () => {
+        const same = await asAdmin()
+          .patch(ApiRoutes.organizations.storeById(store.id))
+          .send({ currency: 'USD' })
+        const rename = await asAdmin()
+          .patch(ApiRoutes.organizations.storeById(store.id))
+          .send({ name: `${store.name} renamed` })
+
+        expect(same.status).toBe(200)
+        expect(rename.status).toBe(200)
+      })
+    })
+
+    it('refuses to create a store in another currency, and creates one in the base currency', async () => {
+      await withBooks(async () => {
+        const refused = await asAdmin()
+          .post(ApiRoutes.organizations.stores)
+          .send({ name: nextName(), currency: 'JPY' })
+        const created = await asAdmin()
+          .post(ApiRoutes.organizations.stores)
+          .send({ name: nextName(), currency: 'USD' })
+
+        expect(refused.status).toBe(409)
+        expect((refused.body as ErrorBody).error.code).toBe(ErrorCodes.ORG_STORE_CURRENCY_NOT_BASE)
+        expect(created.status).toBe(201)
+      })
+    })
+
+    it('answers 404 to a store the caller does not manage, whatever the currency of the body', async () => {
+      await withBooks(async () => {
+        const response = await asAdmin()
+          .patch(ApiRoutes.organizations.storeById(randomUUID()))
+          .send({ currency: 'JPY' })
+
+        expect(response.status).toBe(404)
+      })
+    })
+
+    it('still lets an organization without books change the currency of a store', async () => {
+      const store = await createStore()
+
+      const response = await asAdmin()
+        .patch(ApiRoutes.organizations.storeById(store.id))
+        .send({ currency: 'GTQ' })
+
+      expect(response.status).toBe(200)
     })
   })
 

@@ -878,7 +878,8 @@
     "WIDGET_TOKEN_INVALID": "La sesión del Widget web no es válida",
     "CUSTOMER_IDENTITY_HAS_CONVERSATIONS": "Esta identidad tiene conversaciones y no se puede desvincular.",
     "ORG_STORE_HAS_DATA": "No se puede borrar una tienda que tiene datos.",
-    "ORG_STORE_IS_LAST": "No se puede borrar la última tienda de la organización."
+    "ORG_STORE_IS_LAST": "No se puede borrar la última tienda de la organización.",
+    "ORG_STORE_CURRENCY_NOT_BASE": "La contabilidad de esta organización se lleva en USD, así que la moneda de sus tiendas no se puede cambiar."
   },
   "invitation": {
     "title": "Te invitaron",
