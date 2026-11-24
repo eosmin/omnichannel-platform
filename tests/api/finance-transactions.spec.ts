@@ -4,8 +4,8 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { Permissions } from '@platform/core/auth'
-import type { OwnerClient } from '@platform/core/database-testing'
+import { Permissions, RoleNames } from '@platform/core/auth'
+import { ensureMembership, type OwnerClient } from '@platform/core/database-testing'
 import {
   FinanceConflicts,
   FinanceCountryCodes,
@@ -243,6 +243,13 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
     })
 
     it('carries the store it belongs to on every line, and refuses a store of another organization', async () => {
+      // The person is a member of the second store too (SEG-228: the store a transaction is charged to is one they can open)
+      await ensureMembership(owner, {
+        userId: ctx.adminA.id,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA2.id,
+        roleId: ctx.roleIds[RoleNames.ADMIN]
+      })
       const body = await registered(expense({ storeId: ctx.storeA2.id }))
       const lines = await owner.journalLine.findMany({ where: { entryId: body.entryId } })
       const foreign = await record(expense({ storeId: ctx.storeB.id }))
