@@ -3,6 +3,7 @@
 export {
   AppPaths,
   DSR_VERIFY_FRAGMENT_KEY,
+  DSR_VERIFY_TOKEN_PATTERN,
   StoreSettingsSections,
   type StoreSettingsSection
 } from '@platform/core/domain'

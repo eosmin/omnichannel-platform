@@ -51,7 +51,7 @@ describe('the page that confirms a data request', () => {
     expect(document.activeElement?.textContent).toBe('doneTitle')
   })
 
-  it.each(['', '#', '#other=1', '#token='])(
+  it.each(['', '#', '#other=1', '#token=', '#token=abc', `#token=${'+'.repeat(43)}`])(
     'has no button and sends nothing when the address carries no token (%j)',
     hash => {
       openWith(hash)
@@ -77,6 +77,16 @@ describe('the page that confirms a data request', () => {
     expect(screen.queryByRole('button')).toBeNull()
     expect(window.location.hash).toBe('')
     expect(mockVerify).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the button and the token for a 400 that is not the refusal of the api (a gateway)', async () => {
+    openWith(`#token=${TOKEN}`)
+    mockVerify.mockRejectedValueOnce(new ApiError(400, 'BAD_GATEWAY_REQUEST', 'rejected upstream'))
+    render(<DsrVerifyCard />)
+    fireEvent.click(screen.getByRole('button', { name: 'confirm' }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('failed'))
+    expect(screen.getByRole('button', { name: 'confirm' })).toBeTruthy()
+    expect(window.location.hash).toBe(`#token=${TOKEN}`)
   })
 
   it('says so and keeps the button when the server could not be reached, and when it asks to wait', async () => {

@@ -3,8 +3,13 @@
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useEffect, useRef, useState } from 'react'
 
-import { ApiError, DSR_VERIFY_FRAGMENT_KEY, verifyDsrRequest } from '@platform/api-client'
-import { HttpStatusCodes } from '@platform/core/errors'
+import {
+  ApiError,
+  DSR_VERIFY_FRAGMENT_KEY,
+  DSR_VERIFY_TOKEN_PATTERN,
+  verifyDsrRequest
+} from '@platform/api-client'
+import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 
 import { Button } from '../../components/ui/button'
 import { apiClient } from '../../lib/api'
@@ -20,12 +25,17 @@ export function DsrVerifyCard(): ReactElement {
   const t = useTranslations('dsrVerify')
   const [step, setStep] = useState<Step>('ask')
   const [token, setToken] = useState<string | null>(null)
+  // The fragment is read after the first render (the server has none): until then the page shows no button, so a link with no token never
+  // flashes one that does nothing
+  const [read, setRead] = useState(false)
   const heading = useRef<HTMLHeadingElement>(null)
 
   useEffect(() => {
     const found = new URLSearchParams(window.location.hash.slice(1)).get(DSR_VERIFY_FRAGMENT_KEY)
-    setToken(found)
-    if (found === null || found === '') setStep('invalid')
+    const usable = found !== null && DSR_VERIFY_TOKEN_PATTERN.test(found) ? found : null
+    setToken(usable)
+    if (usable === null) setStep('invalid')
+    setRead(true)
   }, [])
 
   // The result is announced to a screen reader, and the focus goes to it: the button that was pressed is gone
@@ -44,8 +54,13 @@ export function DsrVerifyCard(): ReactElement {
       (error: unknown) => {
         if (error instanceof ApiError && error.status === HttpStatusCodes.TOO_MANY_REQUESTS) {
           setStep('tooMany')
-        } else if (error instanceof ApiError && error.status === HttpStatusCodes.BAD_REQUEST) {
-          // The token was spent or is not good: the address no longer says anything useful, and a second press would be refused again
+        } else if (
+          error instanceof ApiError &&
+          (error.code === ErrorCodes.DSR_VERIFICATION_INVALID ||
+            error.code === ErrorCodes.VALIDATION_FAILED)
+        ) {
+          // The token was spent or is not good (the api's one refusal, or a token it cannot read): the address no longer says anything useful,
+          // and a second press would be refused again. Any other 400 (a gateway, say) is a failure the person may try again
           window.history.replaceState(null, '', window.location.pathname)
           setToken(null)
           setStep('invalid')
@@ -75,7 +90,7 @@ export function DsrVerifyCard(): ReactElement {
           {t(step)}
         </p>
       ) : null}
-      {step === 'invalid' ? null : (
+      {!read || step === 'invalid' ? null : (
         <Button type="button" onClick={confirm} disabled={step === 'working'}>
           {step === 'working' ? t('working') : t('confirm')}
         </Button>

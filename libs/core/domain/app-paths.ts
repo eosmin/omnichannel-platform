@@ -29,6 +29,8 @@ export type StoreSettingsSection =
 
 // The key of the fragment that carries the token of the verification mail of a data request (`#token=...`)
 export const DSR_VERIFY_FRAGMENT_KEY = 'token'
+// What that token looks like: 256 bits in base64url (43 characters). The api checks it, and the page does not send what cannot be one
+export const DSR_VERIFY_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/
 
 export const AppPaths = {
   home: '/', // Has no content: it goes to the store used last, or to the login
