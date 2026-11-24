@@ -116,7 +116,7 @@ describe('the data of a data export: files and fiscal data', () => {
   it('refuses, and does not cut, an export with more files or more bytes than one export may hold', async () => {
     const one = media({})
     const { tx } = fakeTx({ media: [one] })
-    const count = jest.replaceProperty(ComplianceConfig, 'DSR_EXPORT_MAX_FILES', 0)
+    const count = jest.replaceProperty(ComplianceConfig, 'DSR_EXPORT_MAX_FILES', 0 as never)
     await expect(
       collectDsrExport(tx, STORE, ['c1'], deps({ [one.key]: 1 }, {}))
     ).rejects.toBeInstanceOf(DsrExportTooLargeError)
