@@ -57,7 +57,12 @@ export const ComplianceConfig = {
   // the request is marked, and an erasure (whose sealed address is the only way to reach the person) is queued again on the next nights, this
   // many times in all, before it is given up and the address is cleared
   DSR_NOTICE_MAX_ATTEMPTS: 3,
-  // A closing mail that was queued is not queued again for this long (the mail job spends its three attempts in minutes)
+  // The mail job of a closing notice is tried again for about half an hour, so a mail server that is down for ten minutes still gets it
+  // (exponential from 30 s: the six waits add up to 31 min 30 s). A rejected or expired request has no sealed address, so this is its only
+  // chance. It must stay under DSR_NOTICE_LEASE_MS
+  DSR_NOTICE_MAIL_ATTEMPTS: 7,
+  DSR_NOTICE_MAIL_BACKOFF_MS: 30_000,
+  // A closing mail that was queued is not queued again for this long (the mail job spends its attempts within it)
   DSR_NOTICE_LEASE_MS: 60 * 60 * 1000,
   // A notice that was queued and neither confirmed nor failed after this long was lost with its job (a stalled job, a payload the processor
   // refused, a queue that lost it): it is given up, visibly, instead of waiting for ever

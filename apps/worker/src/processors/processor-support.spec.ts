@@ -21,6 +21,7 @@ interface Harness {
   processed: jest.Mock
   observe: jest.Mock
   logError: jest.Mock
+  logInfo: jest.Mock
 }
 
 function build(): Harness {
@@ -29,14 +30,15 @@ function build(): Harness {
   const processed = jest.fn()
   const observe = jest.fn()
   const logError = jest.fn()
+  const logInfo = jest.fn()
   const support = new ProcessorSupport(
     { get: () => ({ add: deadLetterAdd }) } as unknown as QueuesRegistry,
     { inc: processed } as unknown as Counter<string>,
     { inc: failed } as unknown as Counter<string>,
     { observe } as unknown as Histogram<string>,
-    { setContext: jest.fn(), info: jest.fn(), error: logError } as unknown as PinoLogger
+    { setContext: jest.fn(), info: logInfo, error: logError } as unknown as PinoLogger
   )
-  return { support, deadLetterAdd, failed, processed, observe, logError }
+  return { support, deadLetterAdd, failed, processed, observe, logError, logInfo }
 }
 
 // The part of a BullMQ job that the support reads
@@ -51,6 +53,27 @@ function jobOf(attemptsMade: number, attempts: number): Job {
 }
 
 describe('ProcessorSupport', () => {
+  describe('stale', () => {
+    it('says once, with ids and the reason only, that a job was dropped, and counts no failure', () => {
+      const { support, logInfo, failed } = build()
+
+      support.stale(QueueNames.AUTH_EMAIL, jobOf(2, 7), 'the magic link is no longer live')
+
+      expect(logInfo).toHaveBeenCalledTimes(1)
+      expect(logInfo).toHaveBeenCalledWith(
+        {
+          queue: QueueNames.AUTH_EMAIL,
+          jobId: '7',
+          job: JobNames.SEND_EMAIL,
+          reason: 'the magic link is no longer live'
+        },
+        'a job was dropped as stale'
+      )
+      expect(JSON.stringify(logInfo.mock.calls)).not.toContain('person@example.com')
+      expect(failed).not.toHaveBeenCalled()
+    })
+  })
+
   describe('failedAttempt', () => {
     it('counts the failed attempt and keeps the job out of the dead-letter queue while it will be retried', async () => {
       const { support, deadLetterAdd, failed } = build()

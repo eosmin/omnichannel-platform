@@ -4,7 +4,12 @@ import { ZodError } from 'zod'
 import type { EmailService } from '@platform/core/email'
 import { Locales } from '@platform/core/i18n'
 import type { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
-import { EmailTemplates, JobNames, type RequestMagicLinkJob } from '@platform/core/queues'
+import {
+  AuthEmailQueue,
+  EmailTemplates,
+  JobNames,
+  type RequestMagicLinkJob
+} from '@platform/core/queues'
 
 import { AuthEmailProcessor } from './auth-email.processor'
 import type { ProcessorSupport } from './processor-support'
@@ -20,16 +25,18 @@ const emailJob = {
 function build() {
   const email = { send: jest.fn((_data: unknown) => Promise.resolve()) }
   const magicLinks = {
-    issue: jest.fn((_email: string, _correlationId?: string) => Promise.resolve())
+    issue: jest.fn((_email: string, _correlationId?: string) => Promise.resolve()),
+    remainingValidityMs: jest.fn((_url: string) => Promise.resolve(0))
   }
+  const support = { stale: jest.fn((_queue: string, _job: unknown, _reason: string) => undefined) }
   const processor = new AuthEmailProcessor(
-    {} as ProcessorSupport,
+    support as unknown as ProcessorSupport,
     email as unknown as EmailService,
     magicLinks as unknown as MagicLinkIssuer
   )
   const handle = (job: unknown) =>
     (processor as unknown as { handle(job: unknown): Promise<void> }).handle(job)
-  return { email, magicLinks, handle }
+  return { email, magicLinks, support, handle }
 }
 
 describe('AuthEmailProcessor', () => {
@@ -65,7 +72,7 @@ describe('AuthEmailProcessor', () => {
 
   it('sends the email of the link the issuer wrote', async () => {
     const { email, magicLinks, handle } = build()
-    await handle({ name: JobNames.SEND_EMAIL, data: emailJob })
+    await handle({ name: JobNames.SEND_EMAIL, data: emailJob, attemptsMade: 0 })
 
     expect(email.send).toHaveBeenCalledWith(emailJob)
     expect(magicLinks.issue).not.toHaveBeenCalled()
@@ -75,9 +82,9 @@ describe('AuthEmailProcessor', () => {
     const { email, handle } = build()
     email.send.mockRejectedValueOnce(new ZodError([]))
 
-    await expect(handle({ name: JobNames.SEND_EMAIL, data: emailJob })).rejects.toThrow(
-      UnrecoverableError
-    )
+    await expect(
+      handle({ name: JobNames.SEND_EMAIL, data: emailJob, attemptsMade: 0 })
+    ).rejects.toThrow(UnrecoverableError)
   })
 
   it('refuses a job it has no name for, and never reads an invitation delivery as an email', async () => {
@@ -89,5 +96,80 @@ describe('AuthEmailProcessor', () => {
 
     expect(email.send).not.toHaveBeenCalled()
     expect(magicLinks.issue).not.toHaveBeenCalled()
+  })
+
+  describe('a link mail that is tried again', () => {
+    const link = {
+      ...emailJob,
+      data: { url: 'https://app.example.com/m#token=T', expiresInMinutes: 15 }
+    }
+
+    it('is not checked on its first attempt: the job is as fresh as the link', async () => {
+      const { email, magicLinks, handle } = build()
+
+      await handle({ name: JobNames.SEND_EMAIL, data: link, attemptsMade: 0 })
+
+      expect(magicLinks.remainingValidityMs).not.toHaveBeenCalled()
+      expect(email.send).toHaveBeenCalledWith(link)
+    })
+
+    it('is sent with the time that is left, not the time it said when it was queued', async () => {
+      const { email, magicLinks, handle } = build()
+      magicLinks.remainingValidityMs.mockResolvedValueOnce(4 * 60_000 + 30_000)
+
+      await handle({ name: JobNames.SEND_EMAIL, data: link, attemptsMade: 3 })
+
+      expect(magicLinks.remainingValidityMs).toHaveBeenCalledWith(link.data.url)
+      expect(email.send).toHaveBeenCalledWith({
+        ...link,
+        data: { ...link.data, expiresInMinutes: 4 }
+      })
+    })
+
+    it.each([0, AuthEmailQueue.MIN_LINK_VALIDITY_MS - 1])(
+      'is dropped, not failed, when the link has %s ms left (used, replaced or about to expire)',
+      async left => {
+        const { email, magicLinks, support, handle } = build()
+        magicLinks.remainingValidityMs.mockResolvedValueOnce(left)
+
+        await expect(
+          handle({ name: JobNames.SEND_EMAIL, data: link, attemptsMade: 2 })
+        ).resolves.toBeUndefined()
+
+        expect(email.send).not.toHaveBeenCalled()
+        expect(support.stale).toHaveBeenCalledTimes(1)
+        // The reason is all the note carries of the job: it names no link and no address
+        expect(support.stale.mock.calls[0]?.[2]).toBe('the magic link is no longer live')
+      }
+    )
+
+    it('is sent when the link has exactly the minimum left', async () => {
+      const { email, magicLinks, handle } = build()
+      magicLinks.remainingValidityMs.mockResolvedValueOnce(AuthEmailQueue.MIN_LINK_VALIDITY_MS)
+
+      await handle({ name: JobNames.SEND_EMAIL, data: link, attemptsMade: 1 })
+
+      expect(email.send).toHaveBeenCalledTimes(1)
+    })
+
+    it('is dropped when it carries no url to check', async () => {
+      const { email, magicLinks, support, handle } = build()
+
+      await handle({ name: JobNames.SEND_EMAIL, data: emailJob, attemptsMade: 1 })
+
+      expect(email.send).not.toHaveBeenCalled()
+      expect(magicLinks.remainingValidityMs).not.toHaveBeenCalled()
+      expect(support.stale).toHaveBeenCalledTimes(1)
+    })
+
+    it('leaves a retry of another template alone', async () => {
+      const { email, magicLinks, handle } = build()
+      const other = { ...emailJob, template: EmailTemplates.INVITATION }
+
+      await handle({ name: JobNames.SEND_EMAIL, data: other, attemptsMade: 4 })
+
+      expect(magicLinks.remainingValidityMs).not.toHaveBeenCalled()
+      expect(email.send).toHaveBeenCalledWith(other)
+    })
   })
 })

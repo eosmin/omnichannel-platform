@@ -6,7 +6,7 @@ import { EmailTemplates } from '../queues/email-templates'
 import { type SendEmailJob } from '../queues/job-types'
 import { dsrResultMailJobId, JobNames } from '../queues/queue-names'
 
-import type { DsrResultOutcome } from './compliance-constants'
+import { ComplianceConfig, type DsrResultOutcome } from './compliance-constants'
 
 // The closing mail of a data request, as the job the mail queue takes (Step 7.2-H2b-2). One builder for every flow that ends a request (the
 // review queue, the expiry sweep, the erasure sweep), so the job always carries the ids the mail processor needs to confirm it on the request
@@ -49,7 +49,10 @@ export function dsrNoticeJob(input: DsrNoticeInput): DsrNoticeJob {
       jobId: dsrResultMailJobId(input.requestId),
       removeOnComplete: true,
       // The job holds the address in the clear: gone as soon as it is sent or fails. The request carries the outcome (`notice_failed_at`)
-      removeOnFail: true
+      removeOnFail: true,
+      // Long enough for a mail server that is down for a few minutes (the default of the queue gives up in six seconds)
+      attempts: ComplianceConfig.DSR_NOTICE_MAIL_ATTEMPTS,
+      backoff: { type: 'exponential', delay: ComplianceConfig.DSR_NOTICE_MAIL_BACKOFF_MS }
     }
   }
 }

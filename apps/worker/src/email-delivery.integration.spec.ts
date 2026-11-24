@@ -125,6 +125,24 @@ describe('SEND_EMAIL', () => {
     expect(await waitForMessages(to)).toHaveLength(1)
   }, 30_000)
 
+  it('retries the mail of a magic link on the queue of its own and delivers it once, with the time left', async () => {
+    const send = test.email.send.bind(test.email)
+    let calls = 0
+    jest.spyOn(test.email, 'send').mockImplementation(async job => {
+      calls += 1
+      if (calls === 1) throw new Error('provider down')
+      await send(job)
+    })
+
+    await test.queue(QueueNames.AUTH_EMAIL).add(JobNames.SEND_EMAIL, magicLinkJob(to))
+
+    // The retry waits for the first step of the backoff of this queue (15 s); the stand-in of the issuer says the link is whole
+    await waitForMessages(to, 1, 40_000)
+    await sleep(500)
+    expect(calls).toBe(2)
+    expect(await waitForMessages(to)).toHaveLength(1)
+  }, 60_000)
+
   it('moves a job that spent its attempts to the dead-letter queue, keeping the failed job', async () => {
     jest.spyOn(test.email, 'send').mockRejectedValue(new Error('provider down'))
     const queue = test.queue(QueueNames.EMAIL)

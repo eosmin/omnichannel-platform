@@ -13,7 +13,7 @@ interface Row {
   email_valid: boolean
 }
 
-function build(row?: Row) {
+function build(row?: Row, liveUntil?: Date) {
   const calls: string[] = []
   const created: { data: Record<string, unknown> }[] = []
   const tx = {
@@ -33,8 +33,12 @@ function build(row?: Row) {
       })
     }
   }
+  const findFirst = jest.fn((_args: unknown) =>
+    Promise.resolve(liveUntil === undefined ? null : { expiresAt: liveUntil })
+  )
   const prisma = {
     client: {
+      verificationToken: { findFirst },
       $queryRaw: jest.fn(() => {
         calls.push('lookup')
         return Promise.resolve(row === undefined ? [] : [row])
@@ -60,7 +64,7 @@ function build(row?: Row) {
     { frontendUrl: 'https://app.example.com' },
     { setContext: jest.fn(), info }
   )
-  return { issuer, calls, created, queue, tx, info }
+  return { issuer, calls, created, queue, tx, info, findFirst }
 }
 
 const KNOWN: Row = { id: 'u1', email: 'Person@Example.com', locale: 'en', email_valid: true }
@@ -146,5 +150,44 @@ describe('MagicLinkIssuer', () => {
       { known: row !== undefined },
       'magic link requested: nothing to send'
     )
+  })
+
+  describe('remainingValidityMs, for a link mail that is tried again', () => {
+    const URL_OF = `https://app.example.com/auth/magic#token=abc_DEF-123`
+
+    it('asks for the live token of that hash: unused, a magic link, not expired', async () => {
+      const { issuer, findFirst } = build(KNOWN, new Date(Date.now() + 5 * 60_000))
+
+      const left = await issuer.remainingValidityMs(URL_OF)
+
+      expect(left).toBeGreaterThan(4 * 60_000)
+      expect(left).toBeLessThanOrEqual(5 * 60_000)
+      expect(findFirst).toHaveBeenCalledWith({
+        where: {
+          tokenHash: hashToken('abc_DEF-123'),
+          type: 'magic_link',
+          usedAt: null,
+          expiresAt: { gt: expect.any(Date) as Date }
+        },
+        select: { expiresAt: true }
+      })
+    })
+
+    it('is zero when no live token matches: it was used, replaced by a newer request or expired', async () => {
+      const { issuer } = build(KNOWN)
+
+      await expect(issuer.remainingValidityMs(URL_OF)).resolves.toBe(0)
+    })
+
+    it.each([
+      'https://app.example.com/auth/magic',
+      'https://app.example.com/x#token=',
+      'not a url'
+    ])('is zero, without asking the database, for a url with no token: %s', async url => {
+      const { issuer, findFirst } = build(KNOWN, new Date(Date.now() + 60_000))
+
+      await expect(issuer.remainingValidityMs(url)).resolves.toBe(0)
+      expect(findFirst).not.toHaveBeenCalled()
+    })
   })
 })
