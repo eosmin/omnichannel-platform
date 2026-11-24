@@ -31,6 +31,25 @@ describe('unsubscribe token', () => {
     expect(token).not.toMatch(/[@%\s]/)
   })
 
+  it('accepts only the canonical spelling of the mac: upper case is a second token for the same act (BAJ-MAC)', () => {
+    let tried = 0
+    for (let index = 0; index < 20; index += 1) {
+      const token = signUnsubscribeToken(KEY, 'ne', `${USER}${index}`)
+      const [version, scope, id, mac] = token.split('.') as [string, string, string, string]
+      expect(verifyUnsubscribeToken(KEY, token)).not.toBeNull()
+      // A mac with no letter in it has no upper-case spelling
+      if (mac.toUpperCase() === mac) continue
+      tried += 1
+      const upper = [version, scope, id, mac.toUpperCase()].join('.')
+      const mixed = [version, scope, id, `${mac.slice(0, 32)}${mac.slice(32).toUpperCase()}`].join(
+        '.'
+      )
+      expect(verifyUnsubscribeToken(KEY, upper)).toBeNull()
+      expect(verifyUnsubscribeToken(KEY, mixed)).toBeNull()
+    }
+    expect(tried).toBeGreaterThan(0)
+  })
+
   it('refuses a token made under another key', () => {
     const token = signUnsubscribeToken(OTHER_KEY, 'ne', USER)
     expect(verifyUnsubscribeToken(KEY, token)).toBeNull()

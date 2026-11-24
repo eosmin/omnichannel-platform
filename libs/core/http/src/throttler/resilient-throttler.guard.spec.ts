@@ -5,7 +5,7 @@ import { getStorageToken, ThrottlerModule, type ThrottlerStorage } from '@nestjs
 
 import { ThrottlerNames } from '@platform/core/auth'
 import { LoggerModule } from '@platform/core/logger'
-import { MetricsModule } from '@platform/core/metrics-module'
+import { MetricsModule, OPEN_METRICS_ACCESS } from '@platform/core/metrics-module'
 
 import { configureHttpApp } from '../configure-http-app'
 import { HttpErrorsModule } from '../http-errors.module'
@@ -46,7 +46,7 @@ describe('ResilientThrottlerGuard', () => {
     const module = await Test.createTestingModule({
       imports: [
         LoggerModule.forRoot({ level: 'fatal', pretty: false }),
-        MetricsModule,
+        MetricsModule.forRoot(OPEN_METRICS_ACCESS),
         HttpErrorsModule,
         ThrottlerModule.forRoot({
           throttlers: [{ name: ThrottlerNames.DEFAULT, ttl: 60_000, limit: 2 }],

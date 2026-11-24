@@ -20,6 +20,7 @@ import type { Actor } from '../tenancy'
 
 import type { MapRoleBody, SetPaymentAccountBody, UpdateSettingsBody } from './finance.schemas'
 import {
+  assertMemberOfStores,
   lockChart,
   lockSettingsRow,
   netBalanceCents,
@@ -227,9 +228,8 @@ export class FinanceSettingsService {
       await lockChart(tx, organizationId)
       await requireSettings(tx, organizationId)
       if (storeId !== null) {
-        // A store of another organization is a store that does not exist
-        const store = await tx.store.count({ where: { id: storeId, organizationId } })
-        if (store === 0) throw resourceNotFound('store')
+        // A store of another organization is a store that does not exist; a sibling the person is not a member of answers the same
+        await assertMemberOfStores(tx, organizationId, actor.userId, [storeId])
       }
       const expectedTypes = AccountTypesOfPaymentMethod[body.paymentMethod as PaymentMethod] as
         readonly AccountType[] | undefined
@@ -298,6 +298,8 @@ export class FinanceSettingsService {
           conflict: FinanceConflicts.DEFAULT_PAYMENT_ACCOUNT
         })
       }
+      // Taking away the choice of a store is a write to that store (SEG-228): a sibling the person cannot open answers 404
+      await assertMemberOfStores(tx, organizationId, actor.userId, [row.storeId])
       await tx.paymentMethodAccount.delete({ where: { id: row.id } })
       return row
     })

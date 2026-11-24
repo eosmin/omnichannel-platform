@@ -153,6 +153,13 @@ export const envSchema = z
       value => (value === '' ? undefined : value),
       z.string().min(32).optional()
     ),
+    // The bearer token a scraper of `GET /metrics` must carry (B5). A deployed environment that sets none answers 404 on that route (closed
+    // by default: the figures name routes, queues and processes); a laptop or a test run may leave it out and the route stays open there.
+    // At least 32 characters, a value of its own (checked below, and the value is never printed). Generate with `openssl rand -hex 32`.
+    METRICS_BEARER_TOKEN: z.preprocess(
+      value => (value === '' ? undefined : value),
+      z.string().min(32).optional()
+    ),
     // Written as "15m" or "7d", read by the code in seconds
     JWT_EXPIRES_IN: duration('15m'),
     REFRESH_TOKEN_EXPIRES_IN: duration('7d'),
@@ -517,6 +524,40 @@ export const envSchema = z
         message: 'JWT_SECRET is the .env.example placeholder',
         path: ['JWT_SECRET'],
         input: env.JWT_SECRET
+      })
+    }
+    if (
+      env.METRICS_BEARER_TOKEN !== undefined &&
+      (env.METRICS_BEARER_TOKEN.startsWith(PLACEHOLDER_JWT_SECRET_PREFIX) ||
+        [
+          env.JWT_SECRET,
+          env.CREDENTIALS_ENCRYPTION_KEY,
+          env.CREDENTIALS_ENCRYPTION_KEY_PREVIOUS,
+          env.CONSENT_HASH_KEY,
+          env.UNSUBSCRIBE_TOKEN_KEY,
+          env.UNSUBSCRIBE_TOKEN_KEY_PREVIOUS
+        ].some(
+          other =>
+            other !== undefined && other.toLowerCase() === env.METRICS_BEARER_TOKEN?.toLowerCase()
+        ))
+    ) {
+      ctx.issues.push({
+        code: 'custom',
+        message:
+          'METRICS_BEARER_TOKEN must be a value of its own: not a key that signs, hashes or encrypts anything else (JWT_SECRET, CREDENTIALS_ENCRYPTION_KEY and its previous, CONSENT_HASH_KEY, UNSUBSCRIBE_TOKEN_KEY and its previous), not the placeholder',
+        path: ['METRICS_BEARER_TOKEN'],
+        // Never the value: it is a secret, and an issue travels in error objects and ends in logs
+        input: undefined
+      })
+    }
+    if (env.JWT_SECRET.toLowerCase() === env.CREDENTIALS_ENCRYPTION_KEY.toLowerCase()) {
+      // One secret that signs sessions and also encrypts credentials: a leak of either opens both
+      ctx.issues.push({
+        code: 'custom',
+        message: 'JWT_SECRET must not be the same value as CREDENTIALS_ENCRYPTION_KEY',
+        path: ['JWT_SECRET'],
+        // Never the value: it is a secret, and an issue travels in error objects and ends in logs
+        input: undefined
       })
     }
     if (PLACEHOLDER_ENCRYPTION_KEY.test(env.CREDENTIALS_ENCRYPTION_KEY)) {

@@ -6,6 +6,7 @@ import { MetricNames } from '@platform/core/metrics'
 
 import { MetricDefinitions } from './metric-definitions'
 import { InjectMetric } from './metric-tokens'
+import { type MetricsAccess, metricsAccessOf, OPEN_METRICS_ACCESS } from './metrics-access'
 import { DEFAULT_METRICS_PREFIX, MetricsModule } from './metrics.module'
 import { useHttpMetrics } from './use-http-metrics'
 
@@ -66,7 +67,7 @@ describe('MetricsModule', () => {
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
-      imports: [MetricsModule],
+      imports: [MetricsModule.forRoot(OPEN_METRICS_ACCESS)],
       controllers: [ProbeController]
     }).compile()
     app = module.createNestApplication()
@@ -118,5 +119,79 @@ describe('MetricsModule', () => {
       'http_requests_total{method="GET",route="unmatched",status_code="404"} 1'
     )
     expect(body).not.toContain('route="/metrics"')
+  })
+})
+
+describe('GET /metrics access (B5)', () => {
+  async function serve(access: MetricsAccess): Promise<{ app: INestApplication; url: string }> {
+    const module = await Test.createTestingModule({
+      imports: [MetricsModule.forRoot(access)]
+    }).compile()
+    const app = module.createNestApplication()
+    await app.listen(0)
+    return { app, url: `${await app.getUrl()}/metrics` }
+  }
+  const TOKEN = 't'.repeat(40)
+
+  it('is closed with a 404 in a deployed environment that has no token', async () => {
+    const { app, url } = await serve(metricsAccessOf({ deployed: true, bearerToken: undefined }))
+    try {
+      expect((await fetch(url)).status).toBe(404)
+      expect((await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } })).status).toBe(404)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('answers only the right bearer token when one is set', async () => {
+    const { app, url } = await serve(metricsAccessOf({ deployed: true, bearerToken: TOKEN }))
+    try {
+      expect((await fetch(url)).status).toBe(401)
+      expect((await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}x` } })).status).toBe(
+        401
+      )
+      expect(
+        (await fetch(url, { headers: { Authorization: `Bearer ${TOKEN.toUpperCase()}` } })).status
+      ).toBe(401)
+      expect((await fetch(url, { headers: { Authorization: TOKEN } })).status).toBe(401)
+      expect((await fetch(url, { headers: { Authorization: `Basic ${TOKEN}` } })).status).toBe(401)
+      const ok = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } })
+      expect(ok.status).toBe(200)
+      expect(await ok.text()).toContain(`${DEFAULT_METRICS_PREFIX}process_cpu_user_seconds_total`)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('checks the token outside a deployed environment too, once one is set', async () => {
+    const { app, url } = await serve(metricsAccessOf({ deployed: false, bearerToken: TOKEN }))
+    try {
+      expect((await fetch(url)).status).toBe(401)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('stays open on a laptop with no token', async () => {
+    const { app, url } = await serve(metricsAccessOf({ deployed: false, bearerToken: undefined }))
+    try {
+      expect((await fetch(url)).status).toBe(200)
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('accepts the scheme in any case, and refuses a module that forgot its access', async () => {
+    const { app, url } = await serve(metricsAccessOf({ deployed: true, bearerToken: TOKEN }))
+    try {
+      const lower = await fetch(url, { headers: { Authorization: `bearer ${TOKEN}` } })
+      expect(lower.status).toBe(200)
+    } finally {
+      await app.close()
+    }
+    // No `forRoot`: the controller has no access to read, so the app does not start (it never serves the figures open)
+    await expect(Test.createTestingModule({ imports: [MetricsModule] }).compile()).rejects.toThrow(
+      /METRICS_ACCESS/
+    )
   })
 })

@@ -1,4 +1,5 @@
 export * from './metric-definitions'
 export * from './metric-tokens'
+export * from './metrics-access'
 export * from './metrics.module'
 export * from './use-http-metrics'

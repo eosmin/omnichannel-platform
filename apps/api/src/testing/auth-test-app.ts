@@ -26,7 +26,7 @@ import {
 } from '@platform/core/http'
 import { LoggerModule } from '@platform/core/logger'
 import { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
-import { MetricsModule } from '@platform/core/metrics-module'
+import { MetricsModule, OPEN_METRICS_ACCESS } from '@platform/core/metrics-module'
 import { DIGEST_LINKS } from '@platform/core/notifications'
 import {
   JobNames,
@@ -99,7 +99,7 @@ export async function startAuthTestApp(
   const moduleRef = await Test.createTestingModule({
     imports: [
       LoggerModule.forRoot({ level: 'fatal', pretty: false }),
-      MetricsModule,
+      MetricsModule.forRoot(OPEN_METRICS_ACCESS),
       DatabaseModule.forRoot({ databaseUrl: urls.app, poolSize: 6 }),
       RedisModule.forRoot({ url: REDIS_URL }),
       // The picture of an account is a file in the bucket
