@@ -530,6 +530,19 @@ describe('the photos inside a docx and an xlsx', () => {
       }
     })
 
+    it('cleans a photo whose only extra is a segment the header read does not see (telemetry in APP6)', async () => {
+      const plain = await base().jpeg().toBuffer()
+      const payload = Buffer.from('GoPro lat=4.5 lon=-74.08', 'latin1')
+      const telemetry = Buffer.concat([Buffer.from([0xff, 0xe6, 0, payload.length + 2]), payload])
+      const dirty = Buffer.concat([plain.subarray(0, 2), telemetry, plain.subarray(2)])
+      const input = pkg({ 'docProps/core.xml': CORE, 'word/media/a.jpeg': dirty })
+
+      const { parts, keptParts } = await partsOf(input)
+
+      expect(keptParts).toBe(0)
+      expect(Buffer.from(parts['word/media/a.jpeg'] as Uint8Array).includes('GoPro')).toBe(false)
+    })
+
     it('cuts the container when the picture cannot be decoded but can be walked', async () => {
       // Valid segments, scan data that is garbage: the decoder refuses it, the walk of the segments does not
       const jpeg = await geotaggedJpeg()

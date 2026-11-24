@@ -250,8 +250,26 @@ export const AnimatedImageCleaning = {
   WEBP_DROPPED_CHUNKS: ['EXIF', 'XMP '],
   WEBP_FLAG_EXIF: 0x08,
   WEBP_FLAG_XMP: 0x04,
-  // The PNG chunks that hold text, a program or a date: they are not needed to draw it
-  PNG_DROPPED_CHUNKS: ['eXIf', 'tEXt', 'zTXt', 'iTXt', 'tIME']
+  // The PNG chunks that stay: the critical ones, the colour and the transparency, the background, the resolution and the animation. Every other
+  // chunk goes (text, EXIF, time, and any private or ancillary chunk a program or a camera put there): the cut is a list of what stays
+  PNG_KEPT_CHUNKS: [
+    'IHDR',
+    'PLTE',
+    'IDAT',
+    'IEND',
+    'tRNS',
+    'gAMA',
+    'cHRM',
+    'sRGB',
+    'iCCP',
+    'cICP',
+    'sBIT',
+    'pHYs',
+    'bKGD',
+    'acTL',
+    'fcTL',
+    'fdAT'
+  ]
 } as const
 
 // What is cut out of a PDF, a docx and an xlsx on upload (`document-sanitizer.ts`, Step 7.1): the author, the program and the dates of the

@@ -5,6 +5,7 @@ import { ImageSanitizing } from '@platform/core/storage'
 import {
   carriesMetadata,
   cutMetadataInContainer,
+  holdsMoreThanItNeeds,
   ImageNotSanitizable,
   isSanitizedType,
   sanitizeImage,
@@ -366,6 +367,51 @@ describe('cutMetadataInContainer', () => {
     await expect(
       cutMetadataInContainer(Buffer.concat([photo, Buffer.alloc(16)]), 'image/jpeg')
     ).resolves.toBeDefined()
+  })
+
+  it('does not let a jpeg keep an application segment it does not need: the telemetry of a camera of action, a manifest', async () => {
+    const photo = await (await twoColours()).jpeg().toBuffer()
+    const segment = (marker: number, text: string): Buffer => {
+      const payload = Buffer.from(text, 'latin1')
+      return Buffer.concat([Buffer.from([0xff, marker, 0, payload.length + 2]), payload])
+    }
+    const extras = Buffer.concat([
+      segment(0xe6, 'GoPro lat=4.5 lon=-74.08'),
+      segment(0xeb, 'JUMBF c2pa')
+    ])
+    const dirty = Buffer.concat([photo.subarray(0, 2), extras, photo.subarray(2)])
+    expect(dirty.includes('GoPro')).toBe(true)
+
+    const cut = await cutMetadataInContainer(dirty, 'image/jpeg')
+
+    expect(cut).toBeDefined()
+    expect((cut as Buffer).includes('GoPro')).toBe(false)
+    expect((cut as Buffer).includes('JUMBF')).toBe(false)
+    expect(await pixel(cut as Buffer, 2, 2)).toEqual(await pixel(photo, 2, 2))
+    expect(holdsMoreThanItNeeds(dirty, 'image/jpeg')).toBe(true)
+    expect(holdsMoreThanItNeeds(photo, 'image/jpeg')).toBe(false)
+  })
+
+  it('does not let a png keep a chunk that is not on its list: a private chunk with a position goes, the picture and its colour stay', async () => {
+    const photo = await (await twoColours()).png().toBuffer()
+    const text = Buffer.from('lat=4.5 lon=-74.08')
+    const chunk = Buffer.concat([
+      Buffer.from([0, 0, 0, text.length]),
+      Buffer.from('prVt'),
+      text,
+      Buffer.alloc(4)
+    ])
+    const at = photo.indexOf('IDAT') - 4
+    const dirty = Buffer.concat([photo.subarray(0, at), chunk, photo.subarray(at)])
+    expect(holdsMoreThanItNeeds(dirty, 'image/png')).toBe(true)
+    expect(holdsMoreThanItNeeds(photo, 'image/png')).toBe(false)
+
+    const cut = await cutMetadataInContainer(dirty, 'image/png')
+
+    expect(cut).toBeDefined()
+    expect((cut as Buffer).includes('prVt')).toBe(false)
+    expect(await pixel(cut as Buffer, 2, 2)).toEqual(await pixel(photo, 2, 2))
+    expect(await pixel(cut as Buffer, 15, 2)).toEqual(await pixel(photo, 15, 2))
   })
 
   it('has nothing to give back for a type it does not cut, or for bytes it cannot walk', async () => {

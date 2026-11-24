@@ -16,7 +16,7 @@ import {
   pngChunkTypes
 } from './animated-image-cleaner'
 import { isEnvironmentError } from './environment-error'
-import { cutJpegMetadata, jpegHasDataAfterEnd } from './jpeg-metadata-cutter'
+import { cutJpegMetadata, jpegCarriesMetadata, jpegHasDataAfterEnd } from './jpeg-metadata-cutter'
 
 // The picture cannot be decoded, is not what it says it is, has too many pixels, does not fit the file
 // limit once cleaned, or came out of the encoder with metadata still in it. It is refused: the
@@ -61,6 +61,8 @@ export async function cutMetadataInContainer(
     if (format === 'jpeg') {
       if (jpegHasDataAfterEnd(input)) return undefined
       cut = Buffer.from(cutJpegMetadata(input) ?? input)
+      // The read back that sharp gives sees EXIF, XMP and IPTC only: the walk of the segments sees what else stays
+      if (jpegCarriesMetadata(cut)) return undefined
     } else {
       cut = cleanAnimation(input, format)
     }
@@ -69,6 +71,17 @@ export async function cutMetadataInContainer(
     if (isEnvironmentError(error)) throw error
     return undefined
   }
+}
+
+// Whether a picture holds a segment or a chunk that drawing it does not need and that the header read of `carriesMetadata` does not see (the
+// telemetry of a camera of action in a jpeg, a private chunk of a png): the cut would drop it, so a photo that holds one is taken for cleaning
+export function holdsMoreThanItNeeds(body: Buffer, contentType: string): boolean {
+  if (contentType === 'image/jpeg') return jpegCarriesMetadata(body)
+  if (contentType === 'image/png') {
+    const kept = AnimatedImageCleaning.PNG_KEPT_CHUNKS as readonly string[]
+    return pngChunkTypes(body).some(type => !kept.includes(type))
+  }
+  return false
 }
 
 // Whether a type is re-encoded: the caller asks before it reads the file
@@ -91,8 +104,8 @@ async function checkCleanedAnimation(
 ): Promise<void> {
   if (format === 'png') {
     const types = pngChunkTypes(after)
-    const dropped = AnimatedImageCleaning.PNG_DROPPED_CHUNKS as readonly string[]
-    if (types.some(type => dropped.includes(type)) || !types.includes('acTL')) {
+    const kept = AnimatedImageCleaning.PNG_KEPT_CHUNKS as readonly string[]
+    if (types.some(type => !kept.includes(type)) || !types.includes('acTL')) {
       throw new ImageNotSanitizable('the cleaned animation is not what it should be')
     }
     return

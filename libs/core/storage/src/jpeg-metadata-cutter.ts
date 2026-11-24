@@ -1,7 +1,9 @@
 // A JPEG is a list of segments: `FF <marker>` and, for most, two bytes of length (that count themselves) and the payload, until the start of the
 // scan (`FFDA`), after which comes the image data and the end (`FFD9`). The metadata of a photograph lives in segments of their own: EXIF and
 // XMP in `APP1` (where the position, the camera and the time are), the Photoshop and IPTC block in `APP13`, and the free text of a comment in
-// `COM`. Cutting those segments out leaves every other byte as it was, so the picture is the same pixels, the same colour space and the same
+// `COM`; a camera of action, a drone or a C2PA signer writes more (telemetry with the position in `APP6`, a manifest in `APP11`), so the cut is a
+// LIST OF WHAT STAYS and not of what goes: the structural markers and the three application segments that drawing needs (JFIF, the colour
+// profile, Adobe's colour transform) stay, every other application segment and every comment goes. Cutting those segments out leaves every other byte as it was, so the picture is the same pixels, the same colour space and the same
 // size: what a PDF that embeds the file with its `DCTDecode` filter needs, because the image dictionary of the PDF (colour space, width,
 // height, decode array) describes the bytes of the JPEG and a new encoding would have to rewrite it. The JPEG of a docx or an xlsx is cleaned
 // by the cleaner of pictures instead (`image-sanitizer.ts`), which decodes and encodes it again.
@@ -9,19 +11,32 @@ const MARKER_PREFIX = 0xff
 const SOI = 0xd8
 const EOI = 0xd9
 const SOS = 0xda
-const APP1 = 0xe1
-const APP3 = 0xe3
-const APP10 = 0xea
-const APP12 = 0xec
-const APP13 = 0xed
+const APP0 = 0xe0
+const APP2 = 0xe2
+const APP14 = 0xee
+const APP_FIRST = 0xe0
+const APP_LAST = 0xef
 const COM = 0xfe
+const ICC_IDENTIFIER = 'ICC_PROFILE\0'
+const ADOBE_IDENTIFIER = 'Adobe'
 const TEM = 0x01
 const RST_FIRST = 0xd0
 const RST_LAST = 0xd7
 const SEGMENT_HEADER_BYTES = 2
 const LENGTH_BYTES = 2
 
-const CUT_MARKERS: ReadonlySet<number> = new Set([APP1, APP3, APP10, APP12, APP13, COM])
+// Whether a segment is one that stays: not an application segment or a comment, or one of the three that drawing needs and that is what it
+// says it is (the colour profile and Adobe's transform are told by the first bytes of their payload; an `APP2` that is a multi-picture index
+// or a FlashPix extension is not a colour profile)
+function staysInPicture(jpeg: Uint8Array, marker: number, start: number, end: number): boolean {
+  if (marker === COM) return false
+  if (marker < APP_FIRST || marker > APP_LAST) return true
+  const payload = Buffer.from(jpeg.subarray(start + SEGMENT_HEADER_BYTES + LENGTH_BYTES, end))
+  if (marker === APP0) return true
+  if (marker === APP2) return payload.toString('latin1').startsWith(ICC_IDENTIFIER)
+  if (marker === APP14) return payload.toString('latin1').startsWith(ADOBE_IDENTIFIER)
+  return false
+}
 
 // Markers that have no length and no payload
 const isStandalone = (marker: number): boolean =>
@@ -51,7 +66,7 @@ function metadataSpans(jpeg: Uint8Array): [number, number][] | undefined {
     const length = ((jpeg[at + 2] as number) << 8) | (jpeg[at + 3] as number)
     const end = at + SEGMENT_HEADER_BYTES + length
     if (length < LENGTH_BYTES || end > jpeg.length) return undefined
-    if (CUT_MARKERS.has(marker)) spans.push([at, end])
+    if (!staysInPicture(jpeg, marker, at, end)) spans.push([at, end])
     at = end
   }
   return undefined

@@ -22,7 +22,12 @@ import {
 } from '@platform/core/storage'
 
 import { isEnvironmentError } from './environment-error'
-import { carriesMetadata, cutMetadataInContainer, sanitizeImage } from './image-sanitizer'
+import {
+  carriesMetadata,
+  cutMetadataInContainer,
+  holdsMoreThanItNeeds,
+  sanitizeImage
+} from './image-sanitizer'
 import { cutJpegMetadata, jpegCarriesMetadata } from './jpeg-metadata-cutter'
 
 export { isEnvironmentError }
@@ -399,7 +404,7 @@ async function cleanPhotos(
     if (type === undefined) continue
     const photo = Buffer.from(data.buffer, data.byteOffset, data.byteLength)
     try {
-      if (!(await carriesMetadata(photo))) continue
+      if (!(await carriesMetadata(photo)) && !holdsMoreThanItNeeds(photo, type)) continue
       if (Date.now() >= deadline) {
         await cutOrKeep(path, photo, type)
         continue
