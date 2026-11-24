@@ -1,7 +1,7 @@
 import type { DefaultJobOptions } from 'bullmq'
 
 import { CustomerProfileFetch, OutboundLimits } from '@platform/core/domain'
-import { QueueNames, type QueueName } from '@platform/core/queues'
+import { AuthEmailQueue, QueueNames, type QueueName } from '@platform/core/queues'
 
 const base: DefaultJobOptions = {
   removeOnComplete: { count: 1000, age: 24 * 3600 },
@@ -33,8 +33,8 @@ export const QueueJobOptions: Record<QueueName, DefaultJobOptions> = {
     ...base,
     removeOnComplete: true,
     removeOnFail: true,
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 2000 }
+    attempts: AuthEmailQueue.RETRY_ATTEMPTS,
+    backoff: { type: 'exponential', delay: AuthEmailQueue.RETRY_BASE_MS }
   },
   [QueueNames.EMAIL]: { ...base, attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
   [QueueNames.WEBHOOKS]: { ...base, attempts: 5, backoff: { type: 'exponential', delay: 1000 } },

@@ -3,7 +3,12 @@ import { Locales } from '@platform/core/i18n'
 import { EmailTemplates } from '../queues/email-templates'
 import { dsrResultMailJobId, JobNames } from '../queues/queue-names'
 
-import { DsrResultOutcomes, dsrNoticeStatusOf, DsrNoticeStatuses } from './compliance-constants'
+import {
+  ComplianceConfig,
+  DsrResultOutcomes,
+  dsrNoticeStatusOf,
+  DsrNoticeStatuses
+} from './compliance-constants'
 import { dsrNoticeJob } from './dsr-notice'
 
 const REQUEST = '0b9d6d88-9a1d-4c4a-9a31-5a2f2d3a6f10'
@@ -37,8 +42,18 @@ describe('the closing mail of a data request', () => {
     expect(job.opts).toEqual({
       jobId: dsrResultMailJobId(REQUEST),
       removeOnComplete: true,
-      removeOnFail: true
+      removeOnFail: true,
+      attempts: ComplianceConfig.DSR_NOTICE_MAIL_ATTEMPTS,
+      backoff: { type: 'exponential', delay: ComplianceConfig.DSR_NOTICE_MAIL_BACKOFF_MS }
     })
+  })
+
+  it('is tried again for ten minutes at least, and for less than the lease that keeps the sweep from queueing it twice', () => {
+    let waited = 0
+    for (let failure = 1; failure < ComplianceConfig.DSR_NOTICE_MAIL_ATTEMPTS; failure += 1)
+      waited += ComplianceConfig.DSR_NOTICE_MAIL_BACKOFF_MS * 2 ** (failure - 1)
+    expect(waited).toBeGreaterThanOrEqual(10 * 60_000)
+    expect(waited).toBeLessThan(ComplianceConfig.DSR_NOTICE_LEASE_MS)
   })
 
   it('leaves the count of retained orders out of a notice that has none', () => {

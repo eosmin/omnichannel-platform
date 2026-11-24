@@ -7,6 +7,8 @@ import { EmailTemplates } from '@platform/core/queues'
 import {
   type InvitationEmail,
   invitationEmailStatusOf,
+  InvitationOutbox,
+  invitationRetryDelayMs,
   openInvitationEmail,
   sealInvitationEmail
 } from './invitation-outbox'
@@ -52,18 +54,48 @@ describe('the outbox of an invitation email', () => {
     expect(openInvitationEmail(cipher, legacy, here)).toEqual(email)
   })
 
-  it('calls failed only an email that used up its attempts, and never one that is still held', () => {
-    const none = { emailSentAt: null, emailAttempts: 0 }
-    expect(invitationEmailStatusOf({ ...none, waiting: true })).toBe(InvitationEmailStatus.PENDING)
-    expect(invitationEmailStatusOf({ waiting: true, emailSentAt: null, emailAttempts: 12 })).toBe(
-      InvitationEmailStatus.PENDING
-    )
-    expect(
-      invitationEmailStatusOf({ waiting: false, emailSentAt: new Date(), emailAttempts: 3 })
-    ).toBe(InvitationEmailStatus.SENT)
+  it('waits at most ten minutes between attempts, so an invitation is delivered soon after the provider is back', () => {
+    expect(invitationRetryDelayMs(1)).toBe(InvitationOutbox.RETRY_BASE_MS)
+    for (let made = 1; made <= InvitationOutbox.MAX_ATTEMPTS; made += 1)
+      expect(invitationRetryDelayMs(made)).toBeLessThanOrEqual(10 * 60_000)
+    let span = 0
+    for (let made = 1; made < InvitationOutbox.MAX_ATTEMPTS; made += 1)
+      span += invitationRetryDelayMs(made)
+    // The token stays sealed for hours, not days: the cap on the wait must not lengthen what the attempts cover
+    expect(span).toBeGreaterThanOrEqual(5 * 3_600_000)
+    expect(span).toBeLessThanOrEqual(6 * 3_600_000)
+  })
+
+  it('still calls failed a row that gave up under the old limit of twelve attempts', () => {
+    expect(InvitationOutbox.FAILED_FROM_ATTEMPTS).toBe(12)
     expect(invitationEmailStatusOf({ waiting: false, emailSentAt: null, emailAttempts: 12 })).toBe(
       InvitationEmailStatus.FAILED
     )
+    expect(invitationEmailStatusOf({ waiting: false, emailSentAt: null, emailAttempts: 11 })).toBe(
+      InvitationEmailStatus.NOT_SENT
+    )
+  })
+
+  it('calls failed only an email that used up its attempts, and never one that is still held', () => {
+    const none = { emailSentAt: null, emailAttempts: 0 }
+    expect(invitationEmailStatusOf({ ...none, waiting: true })).toBe(InvitationEmailStatus.PENDING)
+    expect(
+      invitationEmailStatusOf({
+        waiting: true,
+        emailSentAt: null,
+        emailAttempts: InvitationOutbox.MAX_ATTEMPTS
+      })
+    ).toBe(InvitationEmailStatus.PENDING)
+    expect(
+      invitationEmailStatusOf({ waiting: false, emailSentAt: new Date(), emailAttempts: 3 })
+    ).toBe(InvitationEmailStatus.SENT)
+    expect(
+      invitationEmailStatusOf({
+        waiting: false,
+        emailSentAt: null,
+        emailAttempts: InvitationOutbox.MAX_ATTEMPTS
+      })
+    ).toBe(InvitationEmailStatus.FAILED)
     // An invitation from before the outbox, or one cleared by its expiry: not a failure, and not "sent" either
     expect(invitationEmailStatusOf({ ...none, waiting: false })).toBe(
       InvitationEmailStatus.NOT_SENT

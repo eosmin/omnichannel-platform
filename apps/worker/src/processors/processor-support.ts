@@ -66,6 +66,12 @@ export class ProcessorSupport {
     )
   }
 
+  // A job that no longer has anything to do (its link died while it waited for the provider): it is done, said once, with a reason that
+  // names no address and no link
+  stale(queue: QueueName, job: Job, reason: string): void {
+    this.logger.info({ queue, jobId: job.id, job: job.name, reason }, 'a job was dropped as stale')
+  }
+
   completed(queue: QueueName, job: Job): void {
     this.processed.inc({ queue, job: job.name })
   }

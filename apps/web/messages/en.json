@@ -3656,7 +3656,7 @@
         "expires": "Expires {date}",
         "expired": "Expired {date}",
         "emailStatus": {
-          "pending": "Email on its way",
+          "pending": "Email not confirmed yet. If it could not be delivered, it is tried again on its own.",
           "sent": "Email sent",
           "failed": "The email could not be delivered. Resend the invitation.",
           "failedNoAction": "The email could not be delivered. Someone who can invite must resend it."

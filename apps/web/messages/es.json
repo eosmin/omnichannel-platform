@@ -3656,7 +3656,7 @@
         "expires": "Expira el {date}",
         "expired": "Expiró el {date}",
         "emailStatus": {
-          "pending": "Correo en camino",
+          "pending": "Correo sin confirmar aún. Si no se pudo entregar, se vuelve a intentar solo.",
           "sent": "Correo enviado",
           "failed": "No se pudo entregar el correo. Reenvía la invitación.",
           "failedNoAction": "No se pudo entregar el correo. Alguien con permiso para invitar debe reenviarla."
