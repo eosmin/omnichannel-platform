@@ -6,7 +6,7 @@ import type { Queue } from 'bullmq'
 
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { MediaStatus, ShipmentLimits } from '@platform/core/domain'
-import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { MediaPurpose, sanitizeFilename, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -95,7 +95,7 @@ export class ShipmentLabels {
       this.heavyQueue.add(
         JobNames.SCAN_FILE,
         { mediaId: label.mediaId, storeId: label.storeId },
-        { jobId: `${JobNames.SCAN_FILE}-${label.mediaId}` }
+        scanFileJobOptions(label.mediaId)
       )
     )
   }

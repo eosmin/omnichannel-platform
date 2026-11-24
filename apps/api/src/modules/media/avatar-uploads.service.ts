@@ -7,7 +7,7 @@ import { CacheKeys } from '@platform/core/cache'
 import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
   AvatarProcessing,
@@ -200,11 +200,7 @@ export class AvatarUploadsService {
   private async queueScan(userId: string, mediaId: string): Promise<void> {
     // After the REAL commit: the scan reads the row of the avatar that this request wrote
     await this.prisma.afterCommitStep(this.prisma.client, () =>
-      this.heavyQueue.add(
-        JobNames.SCAN_FILE,
-        { mediaId, userId },
-        { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
-      )
+      this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId, userId }, scanFileJobOptions(mediaId))
     )
   }
 

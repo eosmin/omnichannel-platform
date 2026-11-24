@@ -2,6 +2,7 @@ import { lookup } from 'node:dns/promises'
 import type * as DnsPromises from 'node:dns/promises'
 import { Readable } from 'node:stream'
 
+import { scanFileJobOptions } from '@platform/core/queues'
 import { UnsafeMediaLinkError, PluginError } from '@platform/plugins/sdk'
 
 // The lookup of a host is the real one unless a case says otherwise: a case can then prove it was not called
@@ -143,7 +144,7 @@ describe('InboundMediaFetcher', () => {
     expect(queue.add).toHaveBeenCalledWith(
       'scan-file',
       { mediaId, storeId: STORE },
-      { jobId: `scan-file-${mediaId}` }
+      scanFileJobOptions(mediaId)
     )
   })
 
@@ -621,7 +622,7 @@ describe('InboundMediaFetcher', () => {
       expect(queue.add).toHaveBeenCalledWith(
         'scan-file',
         { mediaId: CHOSEN, storeId: STORE },
-        { jobId: `scan-file-${CHOSEN}` }
+        scanFileJobOptions(CHOSEN)
       )
     })
 

@@ -30,7 +30,7 @@ import {
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
-import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { RemittancesService } from '@platform/core/shipping'
 import { MediaPurpose, sanitizeFilename, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -226,11 +226,7 @@ export class RemittanceImportsService {
     // files, so a queue that is down does not fail an import that was made (as before: the failure is swallowed where it happens)
     await this.prisma.afterCommitStep(this.prisma.client, () =>
       this.heavyQueue
-        .add(
-          JobNames.SCAN_FILE,
-          { mediaId, storeId },
-          { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
-        )
+        .add(JobNames.SCAN_FILE, { mediaId, storeId }, scanFileJobOptions(mediaId))
         .catch(() => undefined)
     )
   }

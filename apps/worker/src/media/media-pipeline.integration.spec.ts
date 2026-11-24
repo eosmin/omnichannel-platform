@@ -9,7 +9,7 @@ import sharp from 'sharp'
 import { PrismaService } from '@platform/core/database'
 import { connectionUrls, workerRoleBoundInSuites } from '@platform/core/database-testing'
 import { JobNames, QueueNames } from '@platform/core/queues'
-import { AnimatedImage, ImageVariants, StorageKeys } from '@platform/core/storage'
+import { AnimatedImage, ImageVariants, StorageKeys, UploadLimits } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { dropJob } from '../testing/drop-job'
@@ -50,6 +50,10 @@ describe('MediaPipeline', () => {
 
   // Reads the row the way the owner of the database sees it, never through the connection of the worker: with the policies enforced
   // that one sees a row only inside the context of its store, and what is checked here is the row, not the context
+  // The marks kept in `scan_result`, as plain values
+  const marks = (row: MediaRow): Record<string, unknown> =>
+    (row.scanResult ?? {}) as Record<string, unknown>
+
   async function readMedia(id: string): Promise<MediaRow> {
     const { rows } = await owner.query<MediaRow>(
       `SELECT status, key, filename, store_id AS "storeId", content_type AS "contentType", file_size AS "fileSize", variants,
@@ -531,17 +535,81 @@ describe('MediaPipeline', () => {
       expect(await storage.head(media.key)).not.toBeNull()
     })
 
-    it('is given up on the last try: terminal row, file gone, error still raised', async () => {
+    const failingFor = (hours: number): string =>
+      JSON.stringify({ unavailableSince: new Date(Date.now() - hours * 3_600_000).toISOString() })
+
+    it('keeps a file pending on the first last try, notes when the scanner began to fail, and a later scan can still clean it', async () => {
+      const media = await pendingMedia('outage.txt', 'text/plain', Buffer.from('plain text'))
+
+      await expect(pipeline.scan(media.id, { storeId }, true)).rejects.toThrow('the daemon is down')
+
+      const row = await readMedia(media.id)
+      expect(row.status).toBe('pending')
+      expect(row.scannedAt).toBeNull()
+      expect(await storage.head(media.key)).not.toBeNull()
+      expect(Date.now() - Date.parse(String(marks(row)['unavailableSince']))).toBeLessThan(60_000)
+
+      // The scanner is back: the sweep queues the scan again and the file is clean
+      jest.restoreAllMocks()
+      await pipeline.scan(media.id, { storeId }, false)
+      expect((await readMedia(media.id)).status).toBe('clean')
+    })
+
+    it('does not give up a row that is old but whose scanner only now began to fail (its first job was lost)', async () => {
+      const media = await pendingMedia('old.txt', 'text/plain', Buffer.from('plain text'))
+      await owner.query(
+        `UPDATE media SET created_at = now() - make_interval(hours => $2) WHERE id = $1`,
+        [media.id, UploadLimits.SCAN_GIVE_UP_HOURS + 20]
+      )
+
+      await expect(pipeline.scan(media.id, { storeId }, true)).rejects.toThrow('the daemon is down')
+
+      expect((await readMedia(media.id)).status).toBe('pending')
+      expect(await storage.head(media.key)).not.toBeNull()
+    })
+
+    it('is given up on the last try once the scanner has been failing for longer than the limit: terminal row, file gone, error still raised', async () => {
       const media = await pendingMedia('lost.txt', 'text/plain', Buffer.from('plain text'))
+      await owner.query(`UPDATE media SET scan_result = $2::jsonb WHERE id = $1`, [
+        media.id,
+        failingFor(UploadLimits.SCAN_GIVE_UP_HOURS + 1)
+      ])
 
       await expect(pipeline.scan(media.id, { storeId }, true)).rejects.toThrow('the daemon is down')
 
       const row = await readMedia(media.id)
       expect(row.status).toBe('unscannable')
-      expect(row.scannedAt).not.toBeNull()
       expect(await storage.head(media.key)).toBeNull()
+
       // Past its state: a later job does nothing, not even ask the daemon
       await expect(pipeline.scan(media.id, { storeId }, true)).resolves.toBeUndefined()
+    })
+
+    it('does not give up a row whose scanner has been failing for just under the limit', async () => {
+      const media = await pendingMedia('almost.txt', 'text/plain', Buffer.from('plain text'))
+      await owner.query(`UPDATE media SET scan_result = $2::jsonb WHERE id = $1`, [
+        media.id,
+        failingFor(UploadLimits.SCAN_GIVE_UP_HOURS - 1)
+      ])
+
+      await expect(pipeline.scan(media.id, { storeId }, true)).rejects.toThrow('the daemon is down')
+
+      expect((await readMedia(media.id)).status).toBe('pending')
+      expect(await storage.head(media.key)).not.toBeNull()
+    })
+
+    it('keeps the other marks of the row when it notes the first failure', async () => {
+      const media = await pendingMedia('marked.txt', 'text/plain', Buffer.from('plain text'))
+      await owner.query(
+        `UPDATE media SET scan_result = '{"sanitized": true}'::jsonb WHERE id = $1`,
+        [media.id]
+      )
+
+      await expect(pipeline.scan(media.id, { storeId }, true)).rejects.toThrow('the daemon is down')
+
+      const row = await readMedia(media.id)
+      expect(marks(row)['sanitized']).toBe(true)
+      expect(typeof marks(row)['unavailableSince']).toBe('string')
     })
   })
 

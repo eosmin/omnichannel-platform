@@ -22,7 +22,7 @@ import {
   SealedValueKind
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
-import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { MediaPurpose, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -237,7 +237,8 @@ export class FiscalEvidenceService {
   // Scanned like any file: nobody is given a link before it is clean. The job of a file has one id, so asking again never makes two; a
   // finished job keeps its id and would swallow the new one, so it is removed first.
   private async queueScan(storeId: string, mediaId: string): Promise<void> {
-    const jobId = `${JobNames.SCAN_FILE}-${mediaId}`
+    const options = scanFileJobOptions(mediaId)
+    const jobId = options.jobId
     // After the REAL commit: the scan reads the row of the file. The failure is swallowed where it happens
     await this.prisma.afterCommitStep(this.prisma.client, async () => {
       try {
@@ -245,7 +246,7 @@ export class FiscalEvidenceService {
         if (old !== undefined && ((await old.isCompleted()) || (await old.isFailed()))) {
           await old.remove()
         }
-        await this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId, storeId }, { jobId })
+        await this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId, storeId }, options)
       } catch (error) {
         // A queue that blinks leaves a pending file: asked for again, it is queued again (the sweep of Step 4B.8 does it too)
         this.logger.warn(

@@ -13,7 +13,7 @@ import {
   WorkerLists
 } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
-import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
   EvidenceMediaPurposes,
@@ -508,7 +508,7 @@ export class OrphanMediaCleaner {
     return deleted
   }
 
-  // A row whose scan gave up for good is `unscannable`, not `pending`, so it is not queued again here.
+  // A row whose scan gave up for good (the scanner failed for `SCAN_GIVE_UP_HOURS`) is `unscannable`, not `pending`, so it is not queued again here; until then a pending row is.
   // A row still pending long after it was made lost its scan job (Redis was down, the job expired):
   // queue it again under the same id. If the file is not there, no scan can ever finish: the row goes
   // once it is past the TTL (before that a confirmation may be mid-way).
@@ -597,7 +597,7 @@ export class OrphanMediaCleaner {
           await this.heavyQueue.add(
             JobNames.SCAN_FILE,
             { mediaId: row.id, ...owner },
-            { jobId: `${JobNames.SCAN_FILE}-${row.id}` }
+            scanFileJobOptions(row.id)
           )
           requeued += 1
         } else if (row.storeId !== null && row.createdAt.getTime() < dropBefore) {

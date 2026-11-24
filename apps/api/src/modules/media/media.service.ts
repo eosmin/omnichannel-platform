@@ -15,7 +15,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { assertMediaServable } from '@platform/core/messaging'
-import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
   AllowedContentTypes,
@@ -416,11 +416,7 @@ export class MediaService {
   private async queueScan(storeId: string, mediaId: string): Promise<void> {
     // After the REAL commit: the scan reads the row of the file that this request wrote
     await this.prisma.afterCommitStep(this.prisma.client, () =>
-      this.heavyQueue.add(
-        JobNames.SCAN_FILE,
-        { mediaId, storeId },
-        { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
-      )
+      this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId, storeId }, scanFileJobOptions(mediaId))
     )
   }
 

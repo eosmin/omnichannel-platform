@@ -4,7 +4,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import type { PrismaService } from '@platform/core/database'
 import type { DomainEvents } from '@platform/core/event-bus'
 import type { ProcessImageJob } from '@platform/core/queues'
-import { MediaPurpose } from '@platform/core/storage'
+import { MediaPurpose, UploadLimits } from '@platform/core/storage'
 import type { StorageService } from '@platform/core/storage-module'
 
 import type { ClamavClient } from './clamav.client'
@@ -13,7 +13,7 @@ import { InlineDocumentCleaner } from './testing/inline-document-cleaner'
 
 // HC-122: the scan never deletes the file of a financial document (a receipt, a bank statement)
 describe('MediaPipeline and financial evidence', () => {
-  const row = (purpose: string, contentType: string) => ({
+  const row = (purpose: string, contentType: string, scanResult: unknown = null) => ({
     id: 'media-1',
     storeId: null,
     key: 'stores/s/finance/k.pdf',
@@ -21,18 +21,26 @@ describe('MediaPipeline and financial evidence', () => {
     purpose,
     status: 'pending',
     processedAt: null,
-    scanResult: null,
+    scanResult,
     messageId: null,
     origin: null
   })
 
-  function build(purpose: string, scan: jest.Mock, contentType = 'application/pdf') {
+  function build(
+    purpose: string,
+    scan: jest.Mock,
+    contentType = 'application/pdf',
+    scanResult: unknown = null
+  ) {
     const updateMany = jest
       .fn<Promise<{ count: number }>, [unknown]>()
       .mockResolvedValue({ count: 1 })
     const prisma = {
       client: {
-        media: { findUnique: jest.fn().mockResolvedValue(row(purpose, contentType)), updateMany }
+        media: {
+          findUnique: jest.fn().mockResolvedValue(row(purpose, contentType, scanResult)),
+          updateMany
+        }
       },
       transaction: jest.fn()
     }
@@ -74,6 +82,26 @@ describe('MediaPipeline and financial evidence', () => {
     expect(logger.error).toHaveBeenCalled()
   })
 
+  // The scanner has been failing for longer than the limit that gives up any other file: financial evidence is still never given up
+  it.each(evidence)(
+    'keeps the file of %s when the scanner has been failing for longer than the limit',
+    async purpose => {
+      const failingSince = new Date(Date.now() - (UploadLimits.SCAN_GIVE_UP_HOURS + 1) * 3_600_000)
+      const { pipeline, storage, updateMany, logger } = build(
+        purpose,
+        jest.fn().mockRejectedValue(new Error('the daemon is down')),
+        'application/pdf',
+        { unavailableSince: failingSince.toISOString() }
+      )
+      await expect(pipeline.scan('media-1', { storeId: 'store-1' }, true)).rejects.toThrow(
+        'the daemon is down'
+      )
+      expect(storage.delete).not.toHaveBeenCalled()
+      expect(updateMany).not.toHaveBeenCalled()
+      expect(logger.error).toHaveBeenCalled()
+    }
+  )
+
   it.each(evidence)('keeps the file of %s as a quarantine when it is infected', async purpose => {
     const { pipeline, storage, updateMany, logger } = build(
       purpose,
@@ -110,9 +138,13 @@ describe('MediaPipeline and financial evidence', () => {
   })
 
   it('still gives up a file that is not evidence', async () => {
+    // The scanner has been failing for longer than the limit: the first failure was noted on the row by an earlier job
+    const failingSince = new Date(Date.now() - (UploadLimits.SCAN_GIVE_UP_HOURS + 1) * 3_600_000)
     const { pipeline, storage, updateMany } = build(
       MediaPurpose.MESSAGE,
-      jest.fn().mockRejectedValue(new Error('down'))
+      jest.fn().mockRejectedValue(new Error('down')),
+      'application/pdf',
+      { unavailableSince: failingSince.toISOString() }
     )
     await expect(pipeline.scan('media-1', { storeId: 'store-1' }, true)).rejects.toThrow('down')
     expect(updateMany).toHaveBeenCalled()
