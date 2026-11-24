@@ -18,6 +18,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { MULTI_FILE_SEND_ENABLED } from '@platform/core/http'
+import { AvSanitizing } from '@platform/core/storage'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability, PluginScopes } from '@platform/plugins/sdk'
 
@@ -26,6 +27,7 @@ import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { scanResultOf } from '../helpers/media-scan'
 
 const OK = 200
 const CREATED = 201
@@ -728,7 +730,12 @@ describe('The messages of the plugin API', () => {
     const file = (
       uploadedBy: string,
       storeId = ctx.storeA.id,
-      extra: { contentType?: string; fileSize?: number; status?: string } = {}
+      extra: {
+        contentType?: string
+        fileSize?: number
+        status?: string
+        scanResult?: Record<string, unknown>
+      } = {}
     ) => {
       const id = randomUUID()
       return owner.media.create({
@@ -739,6 +746,8 @@ describe('The messages of the plugin API', () => {
           key: `stores/${storeId}/messages/${id}/photo.png`,
           filename: 'photo.png',
           contentType: extra.contentType ?? 'image/png',
+          ...scanResultOf(extra.contentType ?? 'image/png'),
+          ...(extra.scanResult === undefined ? {} : { scanResult: extra.scanResult as never }),
           fileSize: extra.fileSize ?? 10,
           status: extra.status ?? 'clean',
           uploadedBy
@@ -815,6 +824,24 @@ describe('The messages of the plugin API', () => {
       const own = await file(fullUploader)
       expect((await post(image(id, [own.id, ofOther.id]))).status).toBe(NOT_FOUND)
       expect((await attached(own.id)).messageId).toBeNull()
+      expect(await owner.message.count({ where: { conversationId: id } })).toBe(0)
+    })
+
+    it('does not send a file the scan kept with its metadata: 409, no message, and the whole album is refused with it', async () => {
+      const { id } = await conversation()
+      const kept = await file(fullUploader, ctx.storeA.id, {
+        scanResult: { [AvSanitizing.OUTCOME_KEY]: AvSanitizing.Untouched.NOT_CLEANABLE }
+      })
+      const clean = await file(fullUploader)
+
+      for (const mediaIds of [[kept.id], [clean.id, kept.id]]) {
+        const response = await post(image(id, mediaIds))
+
+        expect(response.status).toBe(CONFLICT)
+        expect(response.body).toMatchObject({ error: { code: ErrorCodes.FILE_UNAVAILABLE } })
+      }
+      expect((await attached(kept.id)).messageId).toBeNull()
+      expect((await attached(clean.id)).messageId).toBeNull()
       expect(await owner.message.count({ where: { conversationId: id } })).toBe(0)
     })
 

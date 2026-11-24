@@ -34,7 +34,8 @@ import {
   lockConversationForWrite,
   MessagingWindowService,
   publishMessageChanged,
-  templateMetadataSchema
+  templateMetadataSchema,
+  isReadyToSend
 } from '@platform/core/messaging'
 import type { SendOutboundMessageJob } from '@platform/core/queues'
 import { isOutboundMediaType } from '@platform/core/storage'
@@ -498,6 +499,21 @@ export class OutboundSender {
     return null
   }
 
+  // Read again when the bytes or the link are asked for: still clean, and not marked as kept with its metadata
+  private async stillSendable(
+    storeId: string,
+    messageId: string,
+    fileId: string
+  ): Promise<boolean> {
+    const row = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.media.findFirst({
+        where: { id: fileId, storeId, messageId },
+        select: { status: true, contentType: true, scanResult: true }
+      })
+    )
+    return row !== null && row.status === String(MediaStatus.CLEAN) && isReadyToSend(row)
+  }
+
   // The files of a media message in the order the agent gave, each with its own state and a way to open its
   // bytes. A message sent before each file had a state has one file with none: it counts as queued.
   private async filesOf(storeId: string, messageId: string): Promise<AttachmentToSend[]> {
@@ -510,6 +526,7 @@ export class OutboundSender {
           filename: true,
           contentType: true,
           status: true,
+          scanResult: true,
           fileSize: true,
           position: true,
           deliveryStatus: true,
@@ -528,7 +545,8 @@ export class OutboundSender {
       filename: file.filename,
       // The size recorded when the file was checked: a plugin holds the upload to it
       size: file.fileSize,
-      isClean: file.status === String(MediaStatus.CLEAN),
+      // Clean, and not kept with its metadata (a video the scan could not clean ends clean, marked): that one is not sent
+      isClean: file.status === String(MediaStatus.CLEAN) && isReadyToSend(file),
       // Taken by the provider: sent, or already delivered or read by a receipt
       wasSent: SENT_STATES.includes(file.deliveryStatus ?? ''),
       // Failed on an earlier attempt of this send: it waits for the agent to send it again
@@ -542,12 +560,7 @@ export class OutboundSender {
       open: async () => {
         // Checked again at the moment the bytes are read: a file marked infected or deleted since the
         // message was picked up must not be uploaded to anybody
-        const stillClean = await this.jobContext.forStore(storeId, () =>
-          this.prisma.client.media.count({
-            where: { id: file.id, storeId, messageId, status: MediaStatus.CLEAN }
-          })
-        )
-        if (stillClean !== 1) {
+        if (!(await this.stillSendable(storeId, messageId, file.id))) {
           throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
         }
         const stream = await this.storage.stream(file.key)
@@ -559,12 +572,7 @@ export class OutboundSender {
       // Made only when a plugin asks for it, and checked as `open` is: a file marked infected or deleted since the message was
       // picked up gets no address. The life of the link is the plugin's ask, never longer than the one the storage allows.
       sign: async (ttlSeconds: number) => {
-        const stillClean = await this.jobContext.forStore(storeId, () =>
-          this.prisma.client.media.count({
-            where: { id: file.id, storeId, messageId, status: MediaStatus.CLEAN }
-          })
-        )
-        if (stillClean !== 1) {
+        if (!(await this.stillSendable(storeId, messageId, file.id))) {
           throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
             retryable: false,
             refused: true
