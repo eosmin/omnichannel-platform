@@ -47,7 +47,14 @@ export async function startWorkerTestApp(): Promise<WorkerTestApp> {
       EmailProcessor,
       AuthEmailProcessor,
       // Looking an address up needs the database, which this app does not have
-      { provide: MagicLinkIssuer, useValue: { issue: () => Promise.resolve() } },
+      // A retry of a magic link mail asks how long the link has left (`AuthEmailProcessor.stillUseful`): the stand-in says a whole link is left
+      {
+        provide: MagicLinkIssuer,
+        useValue: {
+          issue: () => Promise.resolve(),
+          remainingValidityMs: () => Promise.resolve(15 * 60_000)
+        }
+      },
       // Nor does the delivery of invitation emails, which reads the outbox of a row (its own spec covers it)
       { provide: InvitationEmailDelivery, useValue: { deliver: () => Promise.resolve('skipped') } },
       // Nor the ledger of the closing notice of a data request, which writes the request (its own specs cover it)
