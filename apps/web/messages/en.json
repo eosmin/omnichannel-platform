@@ -901,6 +901,18 @@
     "mismatchBody": "You are signed in as {current}, and the invitation is for {invited}. Sign out and open the link again.",
     "unavailableTitle": "This invitation is not available"
   },
+  "dsrVerify": {
+    "title": "Confirm your data request",
+    "heading": "Confirm your request",
+    "body": "Press the button to confirm that you made this request and that this is your email. Nothing else happens when you confirm: the store reviews the request and writes to you with its answer.",
+    "confirm": "Confirm my request",
+    "working": "Confirming…",
+    "doneTitle": "Request confirmed",
+    "done": "We received your confirmation. The store will review your request and write to you at this address with its answer. Until then nothing is done with your data.",
+    "invalid": "This link is not valid. It may have expired or already been used, or it is incomplete. If you still want to make the request, send it again from the form of the store.",
+    "failed": "We could not confirm the request. Check your connection and try again.",
+    "tooMany": "There were too many attempts. Wait a few minutes and try again."
+  },
   "unsubscribe": {
     "title": "Stop notification emails",
     "heading": "Stop getting these notification emails?",

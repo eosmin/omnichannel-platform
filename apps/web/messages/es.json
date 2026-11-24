@@ -901,6 +901,18 @@
     "mismatchBody": "Iniciaste sesión como {current} y la invitación es para {invited}. Cierra la sesión y abre el enlace de nuevo.",
     "unavailableTitle": "Esta invitación no está disponible"
   },
+  "dsrVerify": {
+    "title": "Confirma tu solicitud de datos",
+    "heading": "Confirma tu solicitud",
+    "body": "Pulsa el botón para confirmar que hiciste esta solicitud y que este es tu correo. No pasa nada más al confirmar: la tienda revisa la solicitud y te escribe con su respuesta.",
+    "confirm": "Confirmar mi solicitud",
+    "working": "Confirmando…",
+    "doneTitle": "Solicitud confirmada",
+    "done": "Recibimos tu confirmación. La tienda revisará tu solicitud y te escribirá a este correo con su respuesta. Mientras tanto no se hace nada con tus datos.",
+    "invalid": "Este enlace no es válido. Puede haber vencido, ya haberse usado o estar incompleto. Si todavía quieres hacer la solicitud, envíala de nuevo desde el formulario de la tienda.",
+    "failed": "No pudimos confirmar la solicitud. Revisa tu conexión e inténtalo de nuevo.",
+    "tooMany": "Hubo demasiados intentos. Espera unos minutos e inténtalo de nuevo."
+  },
   "unsubscribe": {
     "title": "Dejar de recibir notificaciones",
     "heading": "¿Dejar de recibir estas notificaciones por correo?",

@@ -38,6 +38,7 @@ const TITLE_OF_PAGE: Record<string, string> = {
   'login/verify/page.tsx': 'loginVerify',
   'invitations/[token]/page.tsx': 'invitation',
   'unsubscribe/page.tsx': 'unsubscribe',
+  'compliance/dsr/verify/page.tsx': 'dsrVerify',
   'no-access/page.tsx': 'noAccess',
   'not-found.tsx': 'notFound',
   's/[storeId]/inbox/page.tsx': 'inbox',

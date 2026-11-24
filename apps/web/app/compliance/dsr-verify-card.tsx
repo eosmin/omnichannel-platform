@@ -1,0 +1,85 @@
+'use client'
+
+import { useTranslations } from 'next-intl'
+import { type ReactElement, useEffect, useRef, useState } from 'react'
+
+import { ApiError, DSR_VERIFY_FRAGMENT_KEY, verifyDsrRequest } from '@platform/api-client'
+import { HttpStatusCodes } from '@platform/core/errors'
+
+import { Button } from '../../components/ui/button'
+import { apiClient } from '../../lib/api'
+
+type Step = 'ask' | 'working' | 'done' | 'invalid' | 'failed' | 'tooMany'
+
+// The token is in the fragment of the address (#token=...), which the browser never sends to a server and never puts in a Referer. It is read
+// when the person presses the button and taken out of the address bar and the history once it was used. NOTHING happens on opening the page:
+// a mail scanner or an antivirus that opens the link must not spend the one use of the token, so the confirmation is a POST that only this
+// button sends. What the page says does not depend on why a token does not hold (unknown, used, expired, a request that was closed): the api
+// answers all of them alike, and so does the page.
+export function DsrVerifyCard(): ReactElement {
+  const t = useTranslations('dsrVerify')
+  const [step, setStep] = useState<Step>('ask')
+  const [token, setToken] = useState<string | null>(null)
+  const heading = useRef<HTMLHeadingElement>(null)
+
+  useEffect(() => {
+    const found = new URLSearchParams(window.location.hash.slice(1)).get(DSR_VERIFY_FRAGMENT_KEY)
+    setToken(found)
+    if (found === null || found === '') setStep('invalid')
+  }, [])
+
+  // The result is announced to a screen reader, and the focus goes to it: the button that was pressed is gone
+  useEffect(() => {
+    if (step === 'done') heading.current?.focus()
+  }, [step])
+
+  const confirm = (): void => {
+    if (token === null) return
+    setStep('working')
+    verifyDsrRequest(apiClient, token).then(
+      () => {
+        window.history.replaceState(null, '', window.location.pathname)
+        setStep('done')
+      },
+      (error: unknown) => {
+        if (error instanceof ApiError && error.status === HttpStatusCodes.TOO_MANY_REQUESTS) {
+          setStep('tooMany')
+        } else if (error instanceof ApiError && error.status === HttpStatusCodes.BAD_REQUEST) {
+          // The token was spent or is not good: the address no longer says anything useful, and a second press would be refused again
+          window.history.replaceState(null, '', window.location.pathname)
+          setToken(null)
+          setStep('invalid')
+        } else {
+          setStep('failed')
+        }
+      }
+    )
+  }
+
+  if (step === 'done') {
+    return (
+      <div className="flex flex-col gap-4" role="status">
+        <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
+          {t('doneTitle')}
+        </h1>
+        <p className="text-muted-foreground">{t('done')}</p>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <h1 className="text-2xl font-semibold">{t('heading')}</h1>
+      <p className="text-muted-foreground">{t('body')}</p>
+      {step === 'invalid' || step === 'failed' || step === 'tooMany' ? (
+        <p role="alert" className="text-destructive">
+          {t(step)}
+        </p>
+      ) : null}
+      {step === 'invalid' ? null : (
+        <Button type="button" onClick={confirm} disabled={step === 'working'}>
+          {step === 'working' ? t('working') : t('confirm')}
+        </Button>
+      )}
+    </div>
+  )
+}

@@ -2,6 +2,7 @@ import { AppPaths } from '@platform/core/domain'
 
 import {
   buildContentSecurityPolicy,
+  DSR_VERIFY_PAGE_SOURCE,
   STATIC_SECURITY_HEADERS,
   UNSUBSCRIBE_PAGE_SOURCE
 } from './security-headers'
@@ -141,6 +142,12 @@ describe('buildContentSecurityPolicy', () => {
 describe('UNSUBSCRIBE_PAGE_SOURCE', () => {
   it('is the path of the page of the one-click unsubscribe', () => {
     expect(UNSUBSCRIBE_PAGE_SOURCE).toBe(AppPaths.unsubscribe)
+  })
+})
+
+describe('DSR_VERIFY_PAGE_SOURCE', () => {
+  it('is the path of the page that confirms a data request', () => {
+    expect(DSR_VERIFY_PAGE_SOURCE).toBe(AppPaths.dsrVerify)
   })
 })
 
