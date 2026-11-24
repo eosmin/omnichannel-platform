@@ -1,5 +1,3 @@
-import type { Server } from 'node:http'
-
 import { type NestApplicationOptions, type Type } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import type { NestExpressApplication } from '@nestjs/platform-express'
@@ -30,7 +28,7 @@ export async function startHttpApp(
   // The worker shares this boot and gets the same CORS answer; no browser calls it, so it is unused there
   await configureHttpApp(app, { webOrigin: new URL(env.FRONTEND_URL).origin })
   // A client that stalls halfway through a request does not hold a socket for Node's default of about 5 minutes
-  applyServerTimeouts(app.getHttpServer() as Server)
+  applyServerTimeouts(app.getHttpServer())
   app.enableShutdownHooks()
   await app.listen(env.PORT)
   return app
