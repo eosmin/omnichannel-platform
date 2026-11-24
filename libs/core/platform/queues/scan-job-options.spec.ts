@@ -44,15 +44,31 @@ describe('every producer of a scan job', () => {
       return /\.ts$/.test(name) && !/\.spec\.ts$/.test(name) ? [path] : []
     })
 
-  it('takes its options from scanFileJobOptions', () => {
+  const producersOf = (text: string): string[] =>
+    [...text.matchAll(/add\(\s*JobNames\.SCAN_FILE\b/g)].map(match =>
+      text.slice(match.index, match.index + 300)
+    )
+
+  it('takes its options from scanFileJobOptions, in every call', () => {
     const offenders = [join(root, 'apps'), join(root, 'libs')]
       .flatMap(sources)
+      .filter(path => !path.endsWith('scan-job-options.ts'))
       .filter(path => {
         const text = readFileSync(path, 'utf8')
-        return /add\(\s*JobNames\.SCAN_FILE/.test(text) && !text.includes('scanFileJobOptions(')
-          ? !path.endsWith('scan-job-options.ts')
-          : false
+        // The options come from the function, in the call or through a variable that holds its result
+        const held = text.includes('options = scanFileJobOptions(')
+        return producersOf(text).some(
+          call => !call.includes('scanFileJobOptions(') && !(held && /,\s*options\s*\)/.test(call))
+        )
       })
+    expect(offenders.map(path => path.replace(root, ''))).toEqual([])
+  })
+
+  it('names no scan job id by hand outside scanFileJobOptions', () => {
+    const offenders = [join(root, 'apps'), join(root, 'libs')]
+      .flatMap(sources)
+      .filter(path => !path.endsWith('scan-job-options.ts'))
+      .filter(path => /jobId:\s*`\$\{JobNames\.SCAN_FILE\}/.test(readFileSync(path, 'utf8')))
     expect(offenders.map(path => path.replace(root, ''))).toEqual([])
   })
 })

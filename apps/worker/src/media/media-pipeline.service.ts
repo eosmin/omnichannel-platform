@@ -96,8 +96,8 @@ export class MediaPipeline {
     this.logger.warn({ mediaId, job }, 'a media job found no row for its media and did nothing')
   }
 
-  // `lastAttempt` is true on the last try the job has: a scan that still has no verdict then is given
-  // up for good (see `giveUp`), instead of being queued again by the hourly cleanup for ever.
+  // `lastAttempt` is true on the last try the job has: a scan that still has no verdict then is noted on the row, and given up for
+  // good (see `giveUp`) only once the scanner has been failing for `SCAN_GIVE_UP_HOURS`; until then the sweep queues it again.
   async scan(mediaId: string, scope: MediaScope, lastAttempt = false): Promise<void> {
     const media = await this.within(scope, () =>
       this.prisma.client.media.findUnique({ where: { id: mediaId } })
@@ -476,7 +476,7 @@ export class MediaPipeline {
     if (marked.count === 0) return
     this.logger.warn({ mediaId: media.id, storeId: media.storeId, ...details }, message)
     // The team is told first (it never throws). A delete that fails leaves the original in the bucket,
-    // unserved: the hourly cleanup deletes the file of an unscannable row.
+    // unserved: the hourly cleanup deletes the file of an unscannable row (a row is that only after the scanner has failed for `SCAN_GIVE_UP_HOURS`).
     await this.announce(media, Events.MEDIA_UNSCANNABLE, scope)
     // A receipt that cannot be decoded is still the evidence of a transaction: it stays, unserved
     if (isEvidenceMedia(media.purpose)) return
@@ -492,7 +492,7 @@ export class MediaPipeline {
 
   // The daemon gave no verdict on any try of this job. A scanner that is down is the platform's fault, not the file's, so the file is not
   // lost for it: the row stays `pending` (never served, never sent) and the file stays in the bucket, and the sweep of stuck scans queues
-  // the scan again, until the row is `SCAN_GIVE_UP_HOURS` old. Only then does the row go to a terminal state the cleanup does not look at,
+  // the scan again, until the scanner has been failing for `SCAN_GIVE_UP_HOURS` (counted from the first job that ended with no verdict). Only then does the row go to a terminal state the cleanup does not look at,
   // and the file leaves the bucket: it was never scanned, so it is never served. The row is written first (the gate), as for an infected
   // file. The error of the scan still propagates, so the job ends as failed and goes to the dead-letter queue.
   private async giveUp(
@@ -501,7 +501,7 @@ export class MediaPipeline {
       key: string
       storeId: string | null
       purpose: string
-      createdAt: Date
+      scanResult: unknown
     },
     scope: MediaScope
   ): Promise<void> {
@@ -515,8 +515,32 @@ export class MediaPipeline {
       )
       return
     }
-    const giveUpAt = media.createdAt.getTime() + UploadLimits.SCAN_GIVE_UP_HOURS * HOUR_MS
-    if (Date.now() < giveUpAt) {
+    // The clock is the scanner's, not the row's: a row that is old because its first job was lost has not been failing for that long. The
+    // first time a job ends with no verdict the moment is written on the row; the file is given up only when a later job, at least
+    // `SCAN_GIVE_UP_HOURS` after, ends with no verdict again
+    const since = unavailableSince(media.scanResult)
+    if (since === null) {
+      await this.within(scope, () =>
+        this.prisma.client.media.updateMany({
+          where: { id: media.id, status: MediaStatus.PENDING },
+          data: {
+            scanResult: {
+              ...scalarMarks(media.scanResult),
+              unavailableSince: new Date().toISOString()
+            }
+          }
+        })
+      ).catch((error: unknown) => {
+        this.logger.warn(
+          { mediaId: media.id, errorName: errorName(error) },
+          'the first failed scan of a file could not be noted'
+        )
+      })
+    }
+    if (
+      since === null ||
+      Date.now() < since.getTime() + UploadLimits.SCAN_GIVE_UP_HOURS * HOUR_MS
+    ) {
       this.logger.error(
         { mediaId: media.id, storeId: media.storeId },
         'a file could not be scanned: kept pending and the scan will be tried again'
@@ -847,4 +871,25 @@ class ImageNotEncoded extends Error {
   constructor(readonly reason: unknown) {
     super('the image could not be encoded')
   }
+}
+
+// When the scan of a file first ended with no verdict, as `giveUp` wrote it on the row; null when it never did
+function unavailableSince(scanResult: unknown): Date | null {
+  if (typeof scanResult !== 'object' || scanResult === null) return null
+  const value = (scanResult as { unavailableSince?: unknown }).unavailableSince
+  if (typeof value !== 'string') return null
+  const at = new Date(value)
+  return Number.isNaN(at.getTime()) ? null : at
+}
+
+// The marks other steps keep in `Media.scanResult` (all of them plain values), so a note on the row does not erase them
+function scalarMarks(scanResult: unknown): Record<string, string | number | boolean> {
+  const marks: Record<string, string | number | boolean> = {}
+  if (typeof scanResult !== 'object' || scanResult === null) return marks
+  for (const [key, value] of Object.entries(scanResult)) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      marks[key] = value
+    }
+  }
+  return marks
 }

@@ -29,7 +29,8 @@ export const UploadLimits = {
   // A row still `pending` after this long was never scanned (its job was lost): the scan is queued again
   STUCK_SCAN_MINUTES: 30,
   // A scan that gets no verdict (the scanner is down) keeps the file, pending and never served, and is tried again by the queue and then
-  // by the sweep of stuck scans, until the row is this old: only then is the file given up (`unscannable`) and deleted
+  // by the sweep of stuck scans, until the scanner has been failing for this long (counted from the first job that ended with no verdict,
+  // noted on the row): only then is the file given up (`unscannable`) and deleted
   SCAN_GIVE_UP_HOURS: 6,
   // A file an agent uploaded and confirmed for a message and never sent is dropped (row and objects) after this long
   UNSENT_MESSAGE_FILE_TTL_HOURS: 48
