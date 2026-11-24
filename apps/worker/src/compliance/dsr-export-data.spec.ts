@@ -1,65 +1,208 @@
-import { createHash } from 'node:crypto'
-
-import { unzipSync } from 'fflate'
-
 import { ComplianceConfig } from '@platform/core/compliance'
+import type { PrismaTransaction } from '@platform/core/database'
 
-import { DsrExportTooLargeError, zipDsrExport } from './dsr-export-data'
+import { collectDsrExport, DsrExportTooLargeError } from './dsr-export-data'
 
-const files = (names: string[]) =>
-  names.map(name => ({ name, json: [{ name, value: `data of ${name}` }] }))
-const read = (zip: Buffer): Record<string, string> =>
-  Object.fromEntries(
-    Object.entries(unzipSync(new Uint8Array(zip))).map(([name, bytes]) => [
-      name,
-      Buffer.from(bytes).toString('utf8')
-    ])
-  )
+const STORE = 'store-1'
+const SEALED = new Uint8Array([1, 2, 3])
+type Args = { where: Record<string, unknown> }
 
-describe('the ZIP of a data export', () => {
-  const generatedAt = new Date('2026-11-22T12:00:00.000Z')
-
-  it('holds every file and a manifest whose hashes are those of the files, and says what is not included', async () => {
-    const zip = await zipDsrExport(
-      { files: files(['customers.json', 'orders.json']), counts: { customers: 1, orders: 3 } },
-      { type: 'access', generatedAt }
-    )
-
-    const content = read(zip)
-    expect(Object.keys(content).sort()).toEqual(['customers.json', 'manifest.json', 'orders.json'])
-    const manifest = JSON.parse(content['manifest.json'] ?? '') as {
-      type: string
-      generatedAt: string
-      counts: Record<string, number>
-      files: { name: string; sha256: string }[]
-      notIncluded: string[]
+// A transaction that answers each table from a list and remembers the filter it was asked with
+function fakeTx(tables: Record<string, unknown[]>): {
+  tx: PrismaTransaction
+  asked: Record<string, Args>
+} {
+  const asked: Record<string, Args> = {}
+  const tx = new Proxy(
+    {},
+    {
+      get: (_target, table: string) => ({
+        findMany: (args: Args) => {
+          asked[table] = args
+          return Promise.resolve(tables[table] ?? [])
+        }
+      })
     }
-    expect(manifest).toMatchObject({
-      type: 'access',
-      generatedAt: generatedAt.toISOString(),
-      counts: { customers: 1, orders: 3 }
+  ) as unknown as PrismaTransaction
+  return { tx, asked }
+}
+const media = (over: Record<string, unknown>) => ({
+  customerId: 'c1',
+  filename: 'receipt.png',
+  contentType: 'image/png',
+  fileSize: 10,
+  status: 'clean',
+  key: `stores/${STORE}/messages/m1/receipt.png`,
+  createdAt: new Date('2026-01-01T00:00:00Z'),
+  ...over
+})
+const deps = (present: Record<string, number>, opened: Record<string, unknown> | Error) => ({
+  head: (key: string) =>
+    Promise.resolve(present[key] === undefined ? null : { contentLength: present[key] }),
+  open: () => {
+    if (opened instanceof Error) throw opened
+    return opened
+  }
+})
+
+describe('the data of a data export: files and fiscal data', () => {
+  it('asks for the files and the fiscal data by store AND by the customers of the request, nothing else', async () => {
+    const { tx, asked } = fakeTx({})
+
+    await collectDsrExport(tx, STORE, ['c1', 'c2'], deps({}, {}))
+
+    expect(asked['media']?.where).toEqual({ storeId: STORE, customerId: { in: ['c1', 'c2'] } })
+    expect(asked['customerFiscalData']?.where).toEqual({
+      storeId: STORE,
+      customerId: { in: ['c1', 'c2'] }
     })
-    for (const file of manifest.files) {
-      const hash = createHash('sha256')
-        .update(content[file.name] ?? '', 'utf8')
-        .digest('hex')
-      expect(file.sha256).toBe(hash)
-    }
-    expect(manifest.notIncluded.join(' ')).toMatch(/internal notes/)
+    expect(asked['fiscalDocument']?.where).toEqual({
+      storeId: STORE,
+      order: { storeId: STORE, customerId: { in: ['c1', 'c2'] } }
+    })
   })
 
-  it('refuses text past the byte limit instead of cutting it', async () => {
-    const big = 'x'.repeat(1024 * 1024)
-    const rows = Array.from(
-      { length: Math.ceil(ComplianceConfig.DSR_EXPORT_MAX_BYTES / big.length) + 1 },
-      () => big
+  it('packs only the files that were scanned clean, from the folder of this store, that the bucket still has', async () => {
+    const own = media({})
+    const infected = media({
+      filename: 'bad.exe',
+      status: 'infected',
+      key: `stores/${STORE}/messages/m2/bad.exe`
+    })
+    const pending = media({
+      filename: 'new.png',
+      status: 'pending',
+      key: `stores/${STORE}/messages/m3/new.png`
+    })
+    const foreign = media({ filename: 'x.png', key: 'stores/other-store/messages/m4/x.png' })
+    const gone = media({ filename: 'gone.png', key: `stores/${STORE}/messages/m5/gone.png` })
+    const { tx } = fakeTx({ media: [own, infected, pending, foreign, gone] })
+
+    const content = await collectDsrExport(
+      tx,
+      STORE,
+      ['c1'],
+      deps({ [own.key]: 2048, [infected.key]: 1, [pending.key]: 1, [foreign.key]: 1 }, {})
     )
 
+    expect(content.attachments).toEqual([
+      { entry: 'files/0000-receipt.png', key: own.key, size: 2048 }
+    ])
+    const listed = content.files.find(file => file.name === 'files.json')?.json as {
+      filename: string
+      included: boolean
+      reason?: string
+    }[]
+    expect(listed.map(row => [row.filename, row.included, row.reason])).toEqual([
+      ['receipt.png', true, undefined],
+      ['bad.exe', false, 'not_scanned_clean'],
+      ['new.png', false, 'not_scanned_clean'],
+      ['x.png', false, 'not_scanned_clean'],
+      ['gone.png', false, 'not_available']
+    ])
+    // The key of the bucket is never written into the export
+    expect(JSON.stringify(content.files)).not.toContain('stores/')
+    expect(content.counts).toMatchObject({ files: 5, filesIncluded: 1 })
+  })
+
+  it('refuses, and does not cut, an export with more files or more bytes than one export may hold', async () => {
+    const one = media({})
+    const { tx } = fakeTx({ media: [one] })
+    const count = jest.replaceProperty(ComplianceConfig, 'DSR_EXPORT_MAX_FILES', 0)
     await expect(
-      zipDsrExport(
-        { files: [{ name: 'messages.json', json: rows }], counts: {} },
-        { type: 'access', generatedAt }
-      )
+      collectDsrExport(tx, STORE, ['c1'], deps({ [one.key]: 1 }, {}))
     ).rejects.toBeInstanceOf(DsrExportTooLargeError)
+    count.restore()
+
+    const bytes = jest.replaceProperty(ComplianceConfig, 'DSR_EXPORT_MAX_ZIP_BYTES', 10)
+    await expect(
+      collectDsrExport(tx, STORE, ['c1'], deps({ [one.key]: 11 }, {}))
+    ).rejects.toBeInstanceOf(DsrExportTooLargeError)
+    bytes.restore()
+  })
+
+  it('gives the person their fiscal record opened, field by field, and nothing the provider or the authority holds', async () => {
+    const { tx } = fakeTx({
+      customerFiscalData: [{ customerId: 'c1', dataEncrypted: SEALED, updatedAt: new Date(0) }],
+      fiscalDocument: [
+        {
+          kind: 'sale',
+          documentType: 'invoice',
+          status: 'accepted',
+          externalNumber: 'N-1',
+          sequenceNumber: 7,
+          correlative: 7,
+          currency: 'USD',
+          totalCents: 1130,
+          taxCents: 130,
+          issuedAt: new Date(0),
+          voidedAt: null,
+          createdAt: new Date(0),
+          linesSnapshot: {
+            lines: [
+              {
+                description: 'Shirt',
+                quantity: 1,
+                unitPriceCents: 1000,
+                taxCents: 130,
+                totalCents: 1130,
+                costCents: 400,
+                internal: 'SECRET'
+              }
+            ]
+          },
+          receiverEncrypted: SEALED,
+          order: { customerId: 'c1', orderNumber: 'ORD-1' }
+        }
+      ]
+    })
+
+    const content = await collectDsrExport(
+      tx,
+      STORE,
+      ['c1'],
+      deps(
+        {},
+        {
+          name: 'Ana Perez',
+          taxId: '0614-000000-000-0',
+          address: { city: 'San Salvador', note: 42 },
+          email: 'x@example.com',
+          apiKey: 'SECRET-KEY',
+          unknownFutureField: 'SECRET'
+        }
+      )
+    )
+
+    const text = JSON.stringify(content.files)
+    expect(text).toContain('Ana Perez')
+    expect(text).toContain('0614-000000-000-0')
+    expect(text).toContain('San Salvador')
+    expect(text).toContain('Shirt')
+    expect(text).not.toContain('SECRET')
+    expect(text).not.toContain('x@example.com')
+    expect(text).not.toContain('costCents')
+    expect(content.counts).toMatchObject({ fiscalData: 1, fiscalDocuments: 1, fiscalUnreadable: 0 })
+  })
+
+  it('says that a sealed value could not be opened instead of leaving it out or failing the export', async () => {
+    const { tx } = fakeTx({
+      customerFiscalData: [{ customerId: 'c1', dataEncrypted: SEALED, updatedAt: new Date(0) }]
+    })
+
+    const content = await collectDsrExport(
+      tx,
+      STORE,
+      ['c1'],
+      deps({}, new Error('key_mismatch SECRET'))
+    )
+
+    const rows = content.files.find(file => file.name === 'fiscal-data.json')?.json as {
+      readable: boolean
+    }[]
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.readable).toBe(false)
+    expect(JSON.stringify(content.files)).not.toContain('SECRET')
+    expect(content.counts['fiscalUnreadable']).toBe(1)
   })
 })

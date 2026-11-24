@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common'
 import { CustomerErasureService, DsrOpenWorkService } from '@platform/core/customer-erasure'
 import {
   CompliancePlatformModule,
+  CryptoPlatformModule,
   DigestPlatformModule,
   QueuesPlatformModule
 } from '@platform/core/http'
@@ -17,7 +18,12 @@ import { DsrNoticeSender } from './dsr-notice-sender.service'
 
 // The public data request flow, worker side (Step 7.2-H1): the intake of a request and the sweep that closes the ones never confirmed. The database, the logger and the audit come from the platform modules of the worker.
 @Module({
-  imports: [QueuesPlatformModule, DigestPlatformModule, CompliancePlatformModule],
+  imports: [
+    QueuesPlatformModule,
+    DigestPlatformModule,
+    CompliancePlatformModule,
+    CryptoPlatformModule
+  ],
   providers: [
     DsrIntakeWorker,
     DsrExpireSweeper,
