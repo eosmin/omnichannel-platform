@@ -638,6 +638,9 @@ export const ApiRoutes = {
     dsrCancel: (id: string) => `/compliance/dsr/${id}/cancel`,
     dsrExport: (id: string) => `/compliance/dsr/${id}/export`, // The signed link to the file of a finished access or portability request
     dsrVerify: '/compliance/dsr/verify', // Public, token in body
+    dsrForm: '/compliance/dsr-form', // The public form of the store: its key and whether it is on (customers:dsr_manage_form)
+    dsrFormKey: '/compliance/dsr-form/key', // POST makes the first key or replaces the one the screen showed
+    dsrFormKeyRevoke: '/compliance/dsr-form/key/revoke', // POST switches the form off
     consent: '/compliance/consent',
     cookieConsent: '/compliance/cookie-consent'
   },
