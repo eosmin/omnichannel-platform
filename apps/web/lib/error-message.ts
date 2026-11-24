@@ -62,6 +62,10 @@ const SECONDS_PER_MINUTE = 60
 // A conflict kind is a snake_case name the api keeps in a constant; anything else is not looked up as a message key
 const CONFLICT_KIND = /^[a-z][a-z0-9_]*$/
 
+// A number the api sent that is usable as a size or a wait: positive and finite
+const isPositive = (value: unknown): value is number =>
+  typeof value === 'number' && value > 0 && value < Infinity
+
 export interface ErrorDetail {
   // A message key of `errorDetails`
   key: string
@@ -75,7 +79,7 @@ export function errorDetailOf(error: unknown): ErrorDetail | null {
   if (!(error instanceof ApiError)) return null
   if (error.code === ClientErrorCodes.FILE_TOO_LARGE) {
     const max = error.metadata['maxSizeBytes']
-    if (typeof max !== 'number' || !Number.isFinite(max) || max <= 0) return null
+    if (!isPositive(max)) return null
     return {
       key: 'errorDetails.fileTooLarge',
       values: { megabytes: Math.round((max / BYTES_PER_MEGABYTE) * 10) / 10 }
@@ -83,7 +87,7 @@ export function errorDetailOf(error: unknown): ErrorDetail | null {
   }
   if (error.code === ClientErrorCodes.RATE_LIMIT_EXCEEDED) {
     const wait = error.metadata[RETRY_AFTER_METADATA_KEY]
-    if (typeof wait !== 'number' || !Number.isFinite(wait) || wait <= 0) return null
+    if (!isPositive(wait)) return null
     return wait <= SECONDS_PER_MINUTE
       ? { key: 'errorDetails.rateLimitSeconds', values: { seconds: Math.ceil(wait) } }
       : {

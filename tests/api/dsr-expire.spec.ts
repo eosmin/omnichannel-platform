@@ -32,7 +32,7 @@ describe('the sweep of data requests whose verification expired', () => {
   const storeA = `store-exp-a-${runId}`
   const storeB = `store-exp-b-${runId}`
   const customerA = `cust-exp-a-${runId}`
-  const mails: { to: string; data: Record<string, unknown> }[] = []
+  const mails: { to: string; locale: string; data: Record<string, unknown> }[] = []
   let failNextMail = false
   const audit = { log: jest.fn() }
   const email = (name: string): string => `exp-${runId}-${name}@example.com`
@@ -42,11 +42,12 @@ describe('the sweep of data requests whose verification expired', () => {
     store: string,
     status: string,
     to: string,
-    token: 'expired' | 'live' | 'used' | 'none'
+    token: 'expired' | 'live' | 'used' | 'none',
+    noticeLocale: string | null = null
   ): Promise<void> {
     await owner.query(
-      `INSERT INTO data_subject_requests (id, organization_id, store_id, type, status, subject_type, subject_email_hash, notify_to_encrypted, subject_customer_ids, deadline_at)
-       VALUES ($1, $2, $3, 'erasure', $4, 'customer', $5, $6, ARRAY[$7]::text[], now() + interval '30 days')`,
+      `INSERT INTO data_subject_requests (id, organization_id, store_id, type, status, subject_type, subject_email_hash, notify_to_encrypted, subject_customer_ids, deadline_at, notice_locale)
+       VALUES ($1, $2, $3, 'erasure', $4, 'customer', $5, $6, ARRAY[$7]::text[], now() + interval '30 days', $8)`,
       [
         id,
         org,
@@ -54,7 +55,8 @@ describe('the sweep of data requests whose verification expired', () => {
         status,
         dsrEmailHash(to, CONFIG.hashKey),
         encrypt(to, parseEncryptionKey(CONFIG.encryptionKeyHex)),
-        customerA
+        customerA,
+        noticeLocale
       ]
     )
     if (token === 'none') return
@@ -106,7 +108,7 @@ describe('the sweep of data requests whose verification expired', () => {
           failNextMail = false
           return Promise.reject(new Error('queue is down'))
         }
-        mails.push({ to: [data.to].flat().join(','), data: data.data })
+        mails.push({ to: [data.to].flat().join(','), locale: data.locale, data: data.data })
         return Promise.resolve()
       }
     }
@@ -201,6 +203,24 @@ describe('the sweep of data requests whose verification expired', () => {
     // The audit entries hold ids and the kind
     expect(audit.log).toHaveBeenCalledTimes(4)
     expect(JSON.stringify(audit.log.mock.calls)).not.toContain('@example.com')
+  })
+
+  it('writes the mail in the language the person chose, and in the language of the store when none was chosen', async () => {
+    const chosen = `req-locale-chosen-${runId}`
+    const unset = `req-locale-unset-${runId}`
+    const unknown = `req-locale-unknown-${runId}`
+    // Store A speaks Spanish by default, store B English: a chosen language wins over both, a missing or unsupported one falls to the store
+    await insertRequest(chosen, storeA, 'pending_verification', email('lc'), 'expired', 'en')
+    await insertRequest(unset, storeB, 'pending_verification', email('lu'), 'expired', null)
+    await insertRequest(unknown, storeA, 'pending_verification', email('lk'), 'expired', 'xx')
+
+    const report = await sweeper.run()
+
+    expect(report).toEqual({ expired: 3, failed: 0 })
+    const localeOf = (name: string) => mails.find(mail => mail.to === email(name))?.locale
+    expect(localeOf('lc')).toBe('en')
+    expect(localeOf('lu')).toBe('en')
+    expect(localeOf('lk')).toBe('es')
   })
 
   it('does nothing the second time: a closed request is not closed again and the person is not mailed twice', async () => {
