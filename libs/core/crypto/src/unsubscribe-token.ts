@@ -19,7 +19,9 @@ const MAC_LABEL = 'notification-unsubscribe-token:v1'
 const DERIVED_KEY_LABEL = 'notification-unsubscribe-key:v1'
 // An id is a cuid or a uuid: letters, digits and dashes, short. Anything else is refused before any mac is computed
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
-const MAC_HEX_LENGTH = 64
+// Only the canonical form of the mac: 64 lower-case hex digits. `Buffer.from(hex)` takes upper case too, and a second spelling of the same token
+// would be a second token for the per-token limit (BAJ-MAC)
+const MAC_PATTERN = /^[0-9a-f]{64}$/
 
 export function unsubscribeKeyOf(input: {
   jwtSecret: string
@@ -54,10 +56,11 @@ export function verifyUnsubscribeToken(
   const [version, scope, id, mac] = parts as [string, string, string, string]
   if (version !== VERSION) return null
   if (!Object.values<string>(UnsubscribeScopes).includes(scope)) return null
-  if (!ID_PATTERN.test(id) || mac.length !== MAC_HEX_LENGTH) return null
+  if (!ID_PATTERN.test(id) || !MAC_PATTERN.test(mac)) return null
   const expected = Buffer.from(macOf(key, scope, id), 'hex')
   const given = Buffer.from(mac, 'hex')
-  // A mac that is not hex decodes shorter: the length check keeps `timingSafeEqual` from throwing
+  // MAC_PATTERN already fixed the shape (64 lower-case hex digits), so both buffers are 32 bytes; the length check keeps `timingSafeEqual`
+  // from throwing if that pattern is ever loosened
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null
   return { scope: scope as UnsubscribeScope, id }
 }

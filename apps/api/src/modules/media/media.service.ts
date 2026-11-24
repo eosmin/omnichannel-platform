@@ -284,7 +284,7 @@ export class MediaService {
     held: readonly Permission[] | null
   ): Promise<MediaUrls> {
     const media = await this.find(storeId, mediaId)
-    if (media === null) throw resourceNotFound('Media not found')
+    if (media === null) throw resourceNotFound('Media')
     refuseUnlessMayRead(media.purpose, held)
     assertMediaServable(media.status)
 

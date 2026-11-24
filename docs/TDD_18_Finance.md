@@ -74,7 +74,7 @@ total) except stored balances, which are `BigInt` because a sum of cents passes 
 | Resource | Scope column | Visible to |
 |---|---|---|
 | `FinanceSettings`, `LedgerAccount`, `AccountRoleMapping`, `PaymentMethodAccount`, `TaxRate`, `FiscalPeriod` | `organizationId` | members of any store of the organization holding the permission |
-| `JournalEntry`, `JournalLine`, `AccountPeriodBalance`, `FinanceTransaction` | `organizationId` (lines also carry `storeId` as a **dimension**, nullable) | same |
+| `JournalEntry`, `JournalLine`, `AccountPeriodBalance`, `FinanceTransaction` | `organizationId` (lines also carry `storeId` as a **dimension**, nullable) | same to read; **to write, the store named as the dimension must be one the person is an active member of** (owner, 2026-11-24, SEG-228): a transaction, a line of a manual entry or the account of a payment method (`PUT /finance/payment-accounts` with a `storeId`) that names a sibling store the person cannot open is a 404, the same answer as a store of another organization. Reading stays organization-wide: the dimension filters a report, it never widens or narrows what a person may read |
 | `Supplier`, `PurchaseOrder`, `PurchaseReceipt`, `SupplierPayment` | `organizationId` | same |
 | `PurchaseOrderLine`, `PurchaseReceiptLine` | `organizationId` + `storeId` (the product's store) | only members of that store see the lines of that store, as `StockTransferLine` in `TDD_16` |
 | `BankStatementImport`, `BankStatementLine`, `ReconciliationMatch`, `BankImportProfile` | `organizationId` | same |

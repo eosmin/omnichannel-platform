@@ -8,7 +8,7 @@ import { EmailModule, EmailService } from '@platform/core/email'
 import { Locales } from '@platform/core/i18n'
 import { LoggerModule } from '@platform/core/logger'
 import { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
-import { MetricsModule } from '@platform/core/metrics-module'
+import { MetricsModule, OPEN_METRICS_ACCESS } from '@platform/core/metrics-module'
 import { EmailTemplates, type QueueName, type SendEmailJob } from '@platform/core/queues'
 import { QueueJobOptions, QueuesModule } from '@platform/core/queues-module'
 import { RedisModule } from '@platform/core/redis'
@@ -37,7 +37,7 @@ export async function startWorkerTestApp(): Promise<WorkerTestApp> {
   const moduleRef = await Test.createTestingModule({
     imports: [
       LoggerModule.forRoot({ level: 'fatal', pretty: false }),
-      MetricsModule,
+      MetricsModule.forRoot(OPEN_METRICS_ACCESS),
       RedisModule.forRoot({ url: REDIS_URL }),
       QueuesModule.forRoot({ redisUrl: REDIS_URL, prefix }),
       EmailModule.forRoot({ from: 'Platform <noreply@platform.local>', smtpUrl: SMTP_URL })
