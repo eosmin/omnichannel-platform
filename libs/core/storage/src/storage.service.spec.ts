@@ -3,7 +3,7 @@ import https from 'node:https'
 import net from 'node:net'
 import { Readable } from 'node:stream'
 
-import type { S3Client } from '@aws-sdk/client-s3'
+import { AbortMultipartUploadCommand, type S3Client } from '@aws-sdk/client-s3'
 
 import { createS3Client } from './storage.module'
 import { StorageService } from './storage.service'
@@ -354,6 +354,47 @@ describe('StorageService signing is local', () => {
         .putStream('k', body, 'application/zip')
         .catch((error: unknown) => error)
       expect(caught).toBe(marker)
+    })
+
+    // The fake client of the cases above has no `config`, which the uploader reads before it begins a multipart upload, so none of them
+    // ever begins one; this client has it, so the upload is begun and the parts leave before the body fails, and an abort that is never
+    // sent would leave the parts in the bucket
+    it('sends the abort of a multipart upload that was begun, with its id, when the body fails later', async () => {
+      const send = jest.fn().mockResolvedValue({ UploadId: 'u', ETag: '"e"' })
+      const marker = new Marker('too large')
+      const body = Readable.from(
+        (async function* () {
+          for (let part = 0; part < 3; part += 1) {
+            yield Buffer.alloc(6 * 1024 * 1024, 1)
+            await new Promise(resolve => setTimeout(resolve, 20))
+          }
+          throw marker
+        })()
+      )
+
+      const client = {
+        send,
+        destroy: jest.fn(),
+        config: {
+          requestChecksumCalculation: () => Promise.resolve('WHEN_REQUIRED'),
+          requestHandler: {}
+        }
+      }
+
+      const caught = await new StorageService(client as unknown as S3Client, 'bucket')
+        .putStream('k', body, 'application/zip')
+        .catch((error: unknown) => error)
+
+      expect(caught).toBe(marker)
+      const aborts = send.mock.calls
+        .map(([command]) => command as unknown)
+        .filter(command => command instanceof AbortMultipartUploadCommand)
+      expect(aborts).toHaveLength(1)
+      expect((aborts[0] as AbortMultipartUploadCommand).input).toMatchObject({
+        Bucket: 'bucket',
+        Key: 'k',
+        UploadId: 'u'
+      })
     })
   })
 })
