@@ -3,7 +3,13 @@
 import { useTranslations } from 'next-intl'
 import { useCallback } from 'react'
 
-import { accountHolderOf, errorCodeOf, firstIssueOf, missingPermissionsOf } from './error-message'
+import {
+  accountHolderOf,
+  errorCodeOf,
+  firstIssueOf,
+  missingPermissionsOf,
+  rateLimitWaitOf
+} from './error-message'
 
 // What the pieces below need of the translator, said loosely: the typed one of next-intl builds a union of
 // every message key that is too big to compare a computed key against
@@ -52,6 +58,11 @@ export function useErrorText(): (error: unknown) => string {
             ? t('validation.check', { field })
             : t('validation.checkLine', { field, line: issue.index + 1 })
         }
+      }
+      const wait = rateLimitWaitOf(error)
+      if (wait !== null) {
+        const key = `rateLimit.wait${wait.unit === 'seconds' ? 'Seconds' : wait.unit === 'minutes' ? 'Minutes' : 'Hours'}`
+        return t(key as 'errors.INTERNAL_ERROR', { value: wait.value })
       }
       const holder = accountHolderOf(error)
       if (holder !== null) return t('settings.channels.accountInUseNamed', { storeName: holder })

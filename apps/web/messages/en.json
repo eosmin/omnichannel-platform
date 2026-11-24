@@ -5368,6 +5368,11 @@
       "body": "Ask an administrator to grant the required permission."
     }
   },
+  "rateLimit": {
+    "waitSeconds": "Too many requests. Try again in {value, plural, one {# second} other {# seconds}}",
+    "waitMinutes": "Too many requests. Try again in {value, plural, one {# minute} other {# minutes}}",
+    "waitHours": "Too many requests. Try again in {value, plural, one {# hour} other {# hours}}"
+  },
   "permissionDenied": {
     "named": "You do not have the permission \"{permission}\" for this. Ask an administrator to give it to you.",
     "oneOf": "You need one of these permissions for this: {permissions}. Ask an administrator to give you one."

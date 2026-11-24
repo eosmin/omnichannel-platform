@@ -22,6 +22,8 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 
+import { BodyParserErrorTypes } from './body-parser-error-types'
+
 const GENERIC_MESSAGE = 'An unexpected error occurred'
 const RATE_LIMIT_MESSAGE = 'Too many requests'
 const DATABASE_BUSY_MESSAGE = 'The service is busy, try again in a moment'
@@ -83,9 +85,27 @@ const PARSER_TYPE_FAMILIES = ['entity.', 'encoding.', 'charset.', 'request.', 's
 const CLIENT_ERROR_FLOOR = 400
 const SERVER_ERROR_FLOOR = 500
 
+// A compressed body that cannot be inflated reaches us as the raw error of the decompressor (Z_DATA_ERROR and Z_BUF_ERROR of zlib,
+// the ERR_* codes of brotli, the ZSTD_error_* ones of zstd) that body-parser marks with a 400 and `expose`, with no `type`. A decompressor
+// error is told by what none of the others has: a string `code` and a numeric `errno` on an Error that carries a 400 for the client. A
+// system error (ENOENT, ECONNRESET) has an errno too, but never the 400 and the `expose` of the parser.
+function isCorruptEncoding(exception: Record<string, unknown>): boolean {
+  const { status, type, expose, code, errno } = exception
+  return (
+    status === HttpStatusCodes.BAD_REQUEST &&
+    expose === true &&
+    type === undefined &&
+    typeof code === 'string' &&
+    typeof errno === 'number'
+  )
+}
+
 export function bodyParserRefusal(exception: unknown): BodyParserRefusal | undefined {
   if (!(exception instanceof Error) || !isRecord(exception)) return undefined
   const { status, type, expose } = exception
+  if (isCorruptEncoding(exception)) {
+    return { status: HttpStatusCodes.BAD_REQUEST, type: BodyParserErrorTypes.CORRUPT_ENCODING }
+  }
   if (typeof type !== 'string' || typeof status !== 'number' || expose !== true) return undefined
   if (!PARSER_TYPE_FAMILIES.some(family => type.startsWith(family))) return undefined
   if (status < CLIENT_ERROR_FLOOR || status >= SERVER_ERROR_FLOOR) return undefined

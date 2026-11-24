@@ -5368,6 +5368,11 @@
       "body": "Pide a un administrador que te dé el permiso necesario."
     }
   },
+  "rateLimit": {
+    "waitSeconds": "Hay demasiadas solicitudes. Inténtalo de nuevo en {value, plural, one {# segundo} other {# segundos}}",
+    "waitMinutes": "Hay demasiadas solicitudes. Inténtalo de nuevo en {value, plural, one {# minuto} other {# minutos}}",
+    "waitHours": "Hay demasiadas solicitudes. Inténtalo de nuevo en {value, plural, one {# hora} other {# horas}}"
+  },
   "permissionDenied": {
     "named": "No tienes el permiso «{permission}» para esto. Pide a un administrador que te lo dé.",
     "oneOf": "Necesitas uno de estos permisos para esto: {permissions}. Pide a un administrador que te dé uno."

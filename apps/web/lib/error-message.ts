@@ -1,4 +1,5 @@
 import { ApiError } from '@platform/api-client'
+import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { ClientErrorCodes } from '@platform/core/errors'
 
 // The code to show for an error: the api sends codes and the interface translates them (messages
@@ -54,4 +55,26 @@ export function firstIssueOf(error: unknown): FieldIssue | null {
     return { field, index }
   }
   return null
+}
+
+export interface RateLimitWait {
+  unit: 'seconds' | 'minutes' | 'hours'
+  value: number
+}
+
+const SECONDS_PER_MINUTE = 60
+const SECONDS_PER_HOUR = 3600
+
+// How long a refusal by rate limit asks to wait, in the unit a person reads (seconds under a minute, minutes under an hour, then
+// hours), rounded up so that nobody is told to come back too soon. Null for any other error, and for an answer with no usable number.
+export function rateLimitWaitOf(error: unknown): RateLimitWait | null {
+  if (!(error instanceof ApiError) || error.code !== ClientErrorCodes.RATE_LIMIT_EXCEEDED)
+    return null
+  const seconds = error.metadata[RETRY_AFTER_METADATA_KEY]
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) return null
+  const whole = Math.ceil(seconds)
+  if (whole < SECONDS_PER_MINUTE) return { unit: 'seconds', value: whole }
+  if (whole < SECONDS_PER_HOUR)
+    return { unit: 'minutes', value: Math.ceil(whole / SECONDS_PER_MINUTE) }
+  return { unit: 'hours', value: Math.ceil(whole / SECONDS_PER_HOUR) }
 }
