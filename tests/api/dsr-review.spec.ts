@@ -113,6 +113,7 @@ describe('The review queue of the data requests', () => {
     status?: string
     requestedBy?: string
     erasureDueAt?: Date
+    noticeLocale?: string
   }): Promise<string> {
     const row = await owner.dataSubjectRequest.create({
       data: {
@@ -124,6 +125,7 @@ describe('The review queue of the data requests', () => {
         subjectEmailHash: dsrEmailHash(input.email, config.hashKey),
         subjectCustomerIds: input.customerIds,
         notifyToEncrypted: encrypt(input.email, parseEncryptionKey(config.encryptionKeyHex)),
+        ...(input.noticeLocale === undefined ? {} : { noticeLocale: input.noticeLocale }),
         ...(input.requestedBy === undefined ? {} : { requestedBy: input.requestedBy }),
         ...(input.erasureDueAt === undefined ? {} : { erasureDueAt: input.erasureDueAt }),
         verifiedAt: new Date(),
@@ -136,7 +138,13 @@ describe('The review queue of the data requests', () => {
 
   // A fresh person of store A with a request in review
   async function inReview(
-    overrides: { type?: string; status?: string; requestedBy?: string; erasureDueAt?: Date } = {}
+    overrides: {
+      type?: string
+      status?: string
+      requestedBy?: string
+      erasureDueAt?: Date
+      noticeLocale?: string
+    } = {}
   ): Promise<{ id: string; customerId: string; email: string }> {
     const email = addressOf('ana')
     const customerId = await customerWith(ctx.storeA.id, email)
@@ -556,6 +564,23 @@ describe('The review queue of the data requests', () => {
       expect(JSON.stringify({ ...mail, to: null })).not.toContain(email)
       // Nothing confirmed it yet: the mail is on its way, and the request does not say it was told
       expect((response.body as { noticeStatus?: string }).noticeStatus).toBe('pending')
+    })
+
+    // DSR-LOCALE: the notice went in the language of the store, not in the one the person asked in
+    it('writes the closing mail in the language the person asked in, and in the language of the store when the request kept none', async () => {
+      const store = await owner.store.findUniqueOrThrow({
+        where: { id: ctx.storeA.id },
+        select: { defaultLocale: true }
+      })
+      const asked = store.defaultLocale === 'en' ? 'es' : 'en'
+      const own = await inReview({ noticeLocale: asked })
+      const none = await inReview()
+
+      expect((await reject(own.id)).status).toBe(OK)
+      expect((await reject(none.id)).status).toBe(OK)
+
+      expect(emailsOf(app).to(own.email)[0]?.locale).toBe(asked)
+      expect(emailsOf(app).to(none.email)[0]?.locale).toBe(store.defaultLocale)
     })
 
     it('cancels nothing that is not an approved erasure still inside its grace period', async () => {

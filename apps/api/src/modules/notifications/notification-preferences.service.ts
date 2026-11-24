@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@platform/core/database'
 import { DigestFrequency, NotificationChannel } from '@platform/core/domain'
 import {
+  lockedChannelsOf,
   NotificationDefaults,
   NotificationSettingsDefaults,
   type NotificationType,
@@ -52,6 +53,16 @@ function defaultsOf(type: NotificationType): ChannelPreference {
   }
 }
 
+// A locked type (BAN-325) is delivered by its factory channels whatever a stored row says: a row written before the lock, or by a
+// path that did not check, cannot switch it off
+function withLocks(type: NotificationType, choice: ChannelPreference): ChannelPreference {
+  const locked = lockedChannelsOf(type)
+  if (locked.length === 0) return choice
+  const result = { ...choice }
+  for (const key of locked) result[key] = true
+  return result
+}
+
 // What a person chose for the notifications they get (TDD_06 §9): per type and store, and the settings
 // that are theirs in every store. A choice never made falls back to the defaults.
 @Injectable()
@@ -67,7 +78,7 @@ export class NotificationPreferencesService {
       where: { userId_storeId_type: { userId, storeId, type } },
       select: { inApp: true, push: true, email: true, sound: true }
     })
-    return row ?? defaultsOf(type)
+    return withLocks(type, row ?? defaultsOf(type))
   }
 
   async settingsOf(userId: string): Promise<NotificationSettingsView> {
@@ -100,6 +111,7 @@ export class NotificationPreferencesService {
       userIds.map(userId => [userId, defaultsOf(type)])
     )
     for (const { userId, ...choice } of rows) channels.set(userId, choice)
+    for (const [userId, choice] of channels) channels.set(userId, withLocks(type, choice))
     const settings = new Map<string, NotificationSettingsView>(
       userIds.map(userId => [userId, { ...NotificationSettingsDefaults }])
     )
@@ -143,7 +155,7 @@ export class NotificationPreferencesService {
       types: Object.values(NotificationTypes).map(type => ({
         type,
         severity: NotificationDefaults[type].severity,
-        ...(chosen.get(type) ?? defaultsOf(type))
+        ...withLocks(type, chosen.get(type) ?? defaultsOf(type))
       })),
       settings
     }

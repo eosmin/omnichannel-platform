@@ -1,12 +1,14 @@
 import type { Queue } from 'bullmq'
+import { strToU8, zipSync } from 'fflate'
 import type { PinoLogger } from 'nestjs-pino'
 import { PDFDocument } from 'pdf-lib'
+import sharp from 'sharp'
 
 import type { PrismaService } from '@platform/core/database'
 import { sanitizeDocumentInline } from '@platform/core/document-sanitizer'
 import type { DomainEvents } from '@platform/core/event-bus'
 import type { ProcessImageJob } from '@platform/core/queues'
-import { DocumentSanitizing, MediaPurpose } from '@platform/core/storage'
+import { DocumentSanitizing, MediaPurpose, MediaRejectionReasons } from '@platform/core/storage'
 import type { StorageService } from '@platform/core/storage-module'
 
 import type { ClamavClient } from './clamav.client'
@@ -24,7 +26,12 @@ describe('MediaPipeline and the properties of a document', () => {
     return Buffer.from(await doc.save({ useObjectStreams: false }))
   }
 
-  function build(purpose: string, scanResult: unknown = null) {
+  function build(
+    purpose: string,
+    scanResult: unknown = null,
+    uploadedBy: string | null = null,
+    contentType = 'application/pdf'
+  ) {
     const updateMany = jest
       .fn<Promise<{ count: number }>, [unknown]>()
       .mockResolvedValue({ count: 1 })
@@ -35,7 +42,8 @@ describe('MediaPipeline and the properties of a document', () => {
             id: 'media-1',
             storeId: null,
             key: 'stores/s/doc.pdf',
-            contentType: 'application/pdf',
+            contentType,
+            uploadedBy,
             purpose,
             status: 'pending',
             processedAt: null,
@@ -161,5 +169,82 @@ describe('MediaPipeline and the properties of a document', () => {
       expect.stringContaining('kept as it came')
     )
     expect(updateMany.mock.calls.at(-1)?.[0]).toMatchObject({ data: { status: 'clean' } })
+  })
+
+  // A docx with a position inside a photo that no cleaner can walk (a jpeg cut short): the document cannot be made clean
+  async function docxWithUncleanablePhoto(withProperties = true): Promise<Buffer> {
+    const geotagged = await sharp({
+      create: { width: 32, height: 24, channels: 3, background: { r: 200, g: 30, b: 30 } }
+    })
+      .withMetadata({ exif: { IFD3: { GPSLatitudeRef: 'N', GPSLatitude: '4/1 30/1 0/1' } } })
+      .jpeg()
+      .toBuffer()
+    return Buffer.from(
+      zipSync({
+        '[Content_Types].xml': strToU8('<Types/>'),
+        '_rels/.rels': strToU8('<Relationships/>'),
+        ...(withProperties
+          ? {
+              'docProps/core.xml': strToU8(
+                `<cp:coreProperties><dc:creator>${AUTHOR}</dc:creator></cp:coreProperties>`
+              )
+            }
+          : {}),
+        'word/document.xml': strToU8('<w:document>text</w:document>'),
+        'word/media/image1.jpeg': geotagged.subarray(0, 40)
+      })
+    )
+  }
+
+  describe('a document that keeps a part with its metadata', () => {
+    const DOCX = DocumentSanitizing.DOCX_CONTENT_TYPE
+
+    it('does not let an agent upload leave: it is refused as unscannable, never written, and deleted', async () => {
+      const { pipeline, storage, updateMany } = build(MediaPurpose.MESSAGE, null, 'agent-1', DOCX)
+      storage.read.mockResolvedValue(await docxWithUncleanablePhoto())
+
+      await pipeline.scan('media-1', { storeId: 'store-1' })
+
+      expect(storage.put).not.toHaveBeenCalled()
+      expect(updateMany.mock.calls.at(-1)?.[0]).toMatchObject({
+        data: {
+          status: 'unscannable',
+          scanResult: { reason: MediaRejectionReasons.DOCUMENT_NOT_CLEANABLE }
+        }
+      })
+      expect(JSON.stringify(updateMany.mock.calls)).not.toContain('"status":"clean"')
+      expect(storage.delete).toHaveBeenCalledWith('stores/s/doc.pdf')
+    })
+
+    it('refuses an agent upload whose properties were already clean: the photo alone makes it unfit to leave', async () => {
+      const { pipeline, storage, updateMany } = build(MediaPurpose.MESSAGE, null, 'agent-1', DOCX)
+      storage.read.mockResolvedValue(await docxWithUncleanablePhoto(false))
+
+      await pipeline.scan('media-1', { storeId: 'store-1' })
+
+      expect(storage.put).not.toHaveBeenCalled()
+      expect(updateMany.mock.calls.at(-1)?.[0]).toMatchObject({
+        data: { status: 'unscannable' }
+      })
+    })
+
+    it('keeps what a customer sent, as it was cleaned, and logs the parts it could not clean', async () => {
+      const { pipeline, storage, updateMany, logger } = build(
+        MediaPurpose.MESSAGE,
+        null,
+        null,
+        DOCX
+      )
+      storage.read.mockResolvedValue(await docxWithUncleanablePhoto())
+
+      await pipeline.scan('media-1', { storeId: 'store-1' })
+
+      expect(storage.put).toHaveBeenCalledTimes(1)
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ keptParts: 1 }),
+        expect.stringContaining('could not be')
+      )
+      expect(updateMany.mock.calls.at(-1)?.[0]).toMatchObject({ data: { status: 'clean' } })
+    })
   })
 })

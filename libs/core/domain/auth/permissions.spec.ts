@@ -44,6 +44,13 @@ describe('RolePresets', () => {
     }
   })
 
+  it('gives the key of the public data request form to the Admin and to no other preset', () => {
+    expect(RolePresets[RoleNames.ADMIN]).toContain(Permissions.CUSTOMERS_DSR_MANAGE_FORM)
+    for (const role of [RoleNames.SUPERVISOR, RoleNames.AGENT, RoleNames.VIEWER]) {
+      expect(RolePresets[role]).not.toContain(Permissions.CUSTOMERS_DSR_MANAGE_FORM)
+    }
+  })
+
   it('keeps the Viewer read only', () => {
     for (const permission of RolePresets[RoleNames.VIEWER]) {
       expect(permission).toMatch(/:view$/)

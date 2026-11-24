@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto'
+import { randomInt, randomUUID } from 'node:crypto'
+import { Readable } from 'node:stream'
 
 import type { INestApplication } from '@nestjs/common'
 import type { Queue } from 'bullmq'
@@ -13,7 +14,7 @@ import {
   dsrEmailHash,
   dsrNoticeStatusOf
 } from '@platform/core/compliance'
-import { encrypt, parseEncryptionKey } from '@platform/core/crypto'
+import { CredentialCipher, encrypt, parseEncryptionKey } from '@platform/core/crypto'
 import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
@@ -22,13 +23,14 @@ import {
   DAY_MS,
   DsrStatus,
   DsrType,
+  MediaStatus,
   MessageType,
   OrderStatus
 } from '@platform/core/domain'
 import type { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { dsrResultMailJobId, type SendEmailJob } from '@platform/core/queues'
-import { StorageKeys } from '@platform/core/storage'
+import { MediaPurpose, StorageKeys } from '@platform/core/storage'
 import type { StorageService } from '@platform/core/storage-module'
 
 import { collectDsrExport } from '../../apps/worker/src/compliance/dsr-export-data'
@@ -73,6 +75,7 @@ describe('the export of the data requests of access and portability', () => {
   let prisma: ReturnType<typeof createGuardedWorkerPrisma>
   let jobContext: JobContext
   let ledger: DsrNoticeLedger
+  const cipher = new CredentialCipher(parseEncryptionKey(CONFIG.encryptionKeyHex))
   const objects = new Map<string, Buffer>()
   const deleted: string[] = []
   const mails: Call[] = []
@@ -91,13 +94,23 @@ describe('the export of the data requests of access and portability', () => {
     prisma = createGuardedWorkerPrisma()
     realAudit = new AuditService(prisma, logger as unknown as PinoLogger)
     const storage = {
-      put: (key: string, body: Buffer) => {
-        if (failPut)
-          return Promise.reject(new Error(`the bucket said no for ${prefix}@example.com`))
-        objects.set(key, body)
-        return Promise.resolve()
+      putStream: async (key: string, body: Readable) => {
+        if (failPut) {
+          body.destroy()
+          throw new Error(`the bucket said no for ${prefix}@example.com`)
+        }
+        const chunks: Buffer[] = []
+        for await (const chunk of body) chunks.push(chunk as Buffer)
+        objects.set(key, Buffer.concat(chunks))
       },
-      head: (key: string) => Promise.resolve(objects.has(key) ? { size: 1 } : null),
+      stream: (key: string) => {
+        const object = objects.get(key)
+        return Promise.resolve(object === undefined ? null : Readable.from([object]))
+      },
+      head: (key: string) => {
+        const object = objects.get(key)
+        return Promise.resolve(object === undefined ? null : { contentLength: object.length })
+      },
       delete: (key: string) => {
         deleted.push(key)
         objects.delete(key)
@@ -138,6 +151,7 @@ describe('the export of the data requests of access and portability', () => {
       events,
       storage,
       sender,
+      cipher,
       CONFIG,
       logger as unknown as PinoLogger
     )
@@ -394,6 +408,195 @@ describe('the export of the data requests of access and portability', () => {
     expect((await rowOf(withFile)).exportAttempts).toBe(0)
   })
 
+  const rawFilesOf = (id: string): Record<string, Buffer> => {
+    const zip = objects.get(StorageKeys.dsrExport(id))
+    if (zip === undefined) throw new Error('no export')
+    return Object.fromEntries(
+      Object.entries(unzipSync(new Uint8Array(zip))).map(([name, bytes]) => [
+        name,
+        Buffer.from(bytes)
+      ])
+    )
+  }
+  const textOf = (files: Record<string, Buffer>, name: string): string =>
+    (files[name] ?? Buffer.alloc(0)).toString('utf8')
+
+  // A file a person sent in a chat: a row of the store and the bytes in the (fake) bucket
+  async function fileOf(
+    storeId: string,
+    customerId: string,
+    filename: string,
+    bytes: Buffer,
+    status: string = MediaStatus.CLEAN,
+    inBucket = true
+  ): Promise<string> {
+    const id = randomUUID()
+    const key = StorageKeys.message(storeId, id, filename)
+    await owner.media.create({
+      data: {
+        id,
+        storeId,
+        customerId,
+        purpose: MediaPurpose.MESSAGE,
+        key,
+        filename,
+        contentType: 'image/png',
+        fileSize: bytes.length,
+        status
+      }
+    })
+    if (inBucket) objects.set(key, bytes)
+    return key
+  }
+  // A fiscal document of an order, with the receiver sealed as the app seals it
+  async function fiscalDocumentOf(
+    storeId: string,
+    orderId: string,
+    receiver: Record<string, unknown>
+  ): Promise<void> {
+    await owner.fiscalDocument.create({
+      data: {
+        organizationId: ctx.orgA.id,
+        storeId,
+        orderId,
+        sequenceNumber: randomInt(1_000_000, 2_000_000_000),
+        documentType: 'invoice',
+        status: 'accepted',
+        providerId: 'simulator',
+        environment: 'sandbox',
+        issuerSnapshot: { legalName: 'SECRET issuer' },
+        linesSnapshot: { lines: [{ description: 'Blue shirt', quantity: 1, totalCents: 1130 }] },
+        receiverEncrypted: new Uint8Array(cipher.seal(receiver)),
+        builtPayloadEncrypted: new Uint8Array(cipher.seal({ payload: 'SECRET payload' })),
+        providerData: { token: 'SECRET provider data' },
+        response: { sello: 'SECRET authority answer' },
+        voidReason: 'SECRET internal reason',
+        totalCents: 1130,
+        taxCents: 130
+      }
+    })
+  }
+
+  it('puts the files of the person and their fiscal data in the ZIP, and the files and fiscal data of nobody else', async () => {
+    const mine = await personOfStoreA('files')
+    const bystander = await personOfStoreA('bystander-files')
+    const sibling = await customerWith(ctx.storeA2.id, mine.email, 'Ana of the sibling store')
+    const photo = Buffer.from([137, 80, 78, 71, 0, 1, 2, 3, 255, 254])
+    await fileOf(ctx.storeA.id, mine.customerId, 'receipt.png', photo)
+    await fileOf(
+      ctx.storeA.id,
+      mine.customerId,
+      'virus.png',
+      Buffer.from('INFECTED-BYTES'),
+      MediaStatus.INFECTED
+    )
+    await fileOf(
+      ctx.storeA.id,
+      mine.customerId,
+      'waiting.png',
+      Buffer.from('UNSCANNED-BYTES'),
+      MediaStatus.PENDING
+    )
+    await fileOf(
+      ctx.storeA.id,
+      mine.customerId,
+      'lost.png',
+      Buffer.from('x'),
+      MediaStatus.CLEAN,
+      false
+    )
+    await fileOf(ctx.storeA.id, bystander.customerId, 'theirs.png', Buffer.from('BYSTANDER-BYTES'))
+    await fileOf(ctx.storeA2.id, sibling, 'sibling.png', Buffer.from('SIBLING-BYTES'))
+    await owner.customerFiscalData.create({
+      data: {
+        storeId: ctx.storeA.id,
+        customerId: mine.customerId,
+        dataEncrypted: new Uint8Array(
+          cipher.seal({ name: 'Ana Fiscal SA', taxId: 'NIT-ANA-1', internalFlag: 'SECRET-flag' })
+        )
+      }
+    })
+    await owner.customerFiscalData.create({
+      data: {
+        storeId: ctx.storeA.id,
+        customerId: bystander.customerId,
+        dataEncrypted: new Uint8Array(cipher.seal({ name: 'Bystander SA', taxId: 'NIT-BYSTANDER' }))
+      }
+    })
+    await fiscalDocumentOf(ctx.storeA.id, mine.orderId, {
+      name: 'Ana Receiver',
+      taxId: 'NIT-ANA-2'
+    })
+    await fiscalDocumentOf(ctx.storeA.id, bystander.orderId, {
+      name: 'Bystander Receiver',
+      taxId: 'NIT-BYSTANDER-2'
+    })
+    const id = await approvedExport({ customerIds: [mine.customerId], email: mine.email })
+
+    await runner.run()
+
+    const files = rawFilesOf(id)
+    const entries = Object.keys(files).filter(name => name.startsWith('files/'))
+    expect(entries).toHaveLength(1)
+    expect(files[entries[0] ?? '']?.equals(photo)).toBe(true)
+    const everything = Object.values(files)
+      .map(file => file.toString('latin1'))
+      .join('\n')
+    for (const secret of [
+      'INFECTED-BYTES',
+      'UNSCANNED-BYTES',
+      'BYSTANDER',
+      'SIBLING-BYTES',
+      'SECRET',
+      'stores/'
+    ]) {
+      expect(everything).not.toContain(secret)
+    }
+    // What is left out of the ZIP is listed, with the reason
+    const listed = JSON.parse(textOf(files, 'files.json')) as {
+      filename: string
+      included: boolean
+      reason?: string
+    }[]
+    expect(listed.map(row => [row.filename, row.included, row.reason ?? null]).sort()).toEqual(
+      [
+        ['receipt.png', true, null],
+        ['virus.png', false, 'not_scanned_clean'],
+        ['waiting.png', false, 'not_scanned_clean'],
+        ['lost.png', false, 'not_available']
+      ].sort()
+    )
+    // Their fiscal record and the document issued to them, opened for them
+    expect(textOf(files, 'fiscal-data.json')).toContain('NIT-ANA-1')
+    expect(textOf(files, 'fiscal-documents.json')).toContain('NIT-ANA-2')
+    expect(textOf(files, 'fiscal-documents.json')).toContain('Blue shirt')
+    const manifest = JSON.parse(textOf(files, 'manifest.json')) as {
+      files: { name: string; sha256: string }[]
+      counts: Record<string, number>
+    }
+    expect(manifest.files.map(file => file.name)).toEqual(
+      expect.arrayContaining(['fiscal-data.json', 'fiscal-documents.json', entries[0] ?? ''])
+    )
+    expect(manifest.counts).toMatchObject({ filesIncluded: 1, fiscalData: 1, fiscalDocuments: 1 })
+    expect((await rowOf(id)).status).toBe(DsrStatus.COMPLETED)
+  })
+
+  it('goes back to review, leaving no half ZIP in the bucket, when the files pass the size of one export', async () => {
+    const mine = await personOfStoreA('heavy')
+    await fileOf(ctx.storeA.id, mine.customerId, 'heavy.png', Buffer.alloc(5 * 1024, 9))
+    const id = await approvedExport({ customerIds: [mine.customerId], email: mine.email })
+    jest.replaceProperty(ComplianceConfig, 'DSR_EXPORT_MAX_ZIP_BYTES', 1024)
+
+    await runner.run()
+
+    expect(await rowOf(id)).toMatchObject({
+      status: DsrStatus.MANUAL_REVIEW,
+      exportFailureCode: 'export_too_large',
+      resultKey: null
+    })
+    expect(objects.has(StorageKeys.dsrExport(id))).toBe(false)
+  })
+
   it('exports once and counts one try when two runs happen at the same time', async () => {
     const mine = await personOfStoreA('twice')
     const id = await approvedExport({ customerIds: [mine.customerId], email: mine.email })
@@ -570,7 +773,10 @@ describe('the export of the data requests of access and portability', () => {
 
     const content = await jobContext.forStore(ctx.storeA.id, () =>
       prisma.transaction(tx =>
-        collectDsrExport(tx, ctx.storeA.id, [mine.customerId, foreign, sibling])
+        collectDsrExport(tx, ctx.storeA.id, [mine.customerId, foreign, sibling], {
+          head: () => Promise.resolve(null),
+          open: sealed => cipher.openRotating(sealed).credentials
+        })
       )
     )
 

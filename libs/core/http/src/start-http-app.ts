@@ -6,6 +6,7 @@ import * as Sentry from '@sentry/nestjs'
 import { env } from '@platform/core/config/env'
 
 import { configureHttpApp } from './configure-http-app'
+import { applyServerTimeouts } from './server-timeouts'
 
 export interface HttpAppOptions extends Pick<NestApplicationOptions, 'rawBody'> {
   // Runs once the app is created and before it is configured and started: for what has to be set
@@ -16,7 +17,7 @@ export interface HttpAppOptions extends Pick<NestApplicationOptions, 'rawBody'> 
 export async function startHttpApp(
   rootModule: Type<unknown>,
   { beforeInit, ...options }: HttpAppOptions = {}
-): Promise<void> {
+): Promise<NestExpressApplication> {
   const app = await NestFactory.create<NestExpressApplication>(rootModule, {
     ...options,
     bufferLogs: true
@@ -26,8 +27,11 @@ export async function startHttpApp(
   beforeInit?.(app)
   // The worker shares this boot and gets the same CORS answer; no browser calls it, so it is unused there
   await configureHttpApp(app, { webOrigin: new URL(env.FRONTEND_URL).origin })
+  // A client that stalls halfway through a request does not hold a socket for Node's default of about 5 minutes
+  applyServerTimeouts(app.getHttpServer())
   app.enableShutdownHooks()
   await app.listen(env.PORT)
+  return app
 }
 
 const FLUSH_TIMEOUT_MS = 2000

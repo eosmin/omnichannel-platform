@@ -10,6 +10,7 @@
       "title": "Notifications",
       "forStore": "Your choices for {store}.",
       "storePicker": "Store",
+      "lockedHint": "A broken chain of the books and an infected file always reach you: their switches stay on.",
       "hint": "Every notification is kept in your list. These switches only choose how each one reaches you: a live alert while you work, a push to your devices, an email, or a sound.",
       "noStore": "You do not belong to any store yet.",
       "loading": "Loading…",
@@ -693,7 +694,7 @@
     "DSR_VERIFICATION_INVALID": "The verification of the data request is not valid",
     "DSR_SUBJECT_CHANGED": "The customer of this request changed, so it goes back to review",
     "DSR_BLOCKED_BY_OPEN_WORK": "The customer has open orders, shipments, returns, remittances or balances, so the data cannot be erased yet",
-    "DSR_EXECUTOR_UNAVAILABLE": "Erasure requests cannot be approved yet",
+    "DSR_EXECUTOR_UNAVAILABLE": "This request cannot be approved yet. It can only be rejected",
     "DSR_NOT_REVIEWABLE": "The data request is not in a state that takes this decision",
     "EXPORT_EMPTY": "There are no files to download",
     "REPORT_LIMIT_REACHED": "This store already has the maximum number of scheduled reports",
@@ -704,6 +705,7 @@
     "EXTERNAL_SERVICE_ERROR": "An external service failed. Try again later",
     "EXTERNAL_SERVICE_TIMEOUT": "An external service took too long. Try again later",
     "DATABASE_BUSY": "The service is busy. Try again in a moment",
+    "DEPENDENCY_UNAVAILABLE": "The service is not available right now. Try again in a moment",
     "FILE_INFECTED": "The file was rejected because it is not safe",
     "FILE_KEY_OUT_OF_SCOPE": "That file does not belong to this store",
     "FILE_NOT_READY": "The file is still being processed",
@@ -878,7 +880,15 @@
     "WIDGET_TOKEN_INVALID": "The widget session is not valid",
     "CUSTOMER_IDENTITY_HAS_CONVERSATIONS": "This identity has conversations and cannot be unlinked.",
     "ORG_STORE_HAS_DATA": "A store that has data cannot be deleted.",
-    "ORG_STORE_IS_LAST": "The last store of an organization cannot be deleted."
+    "ORG_STORE_IS_LAST": "The last store of an organization cannot be deleted.",
+    "ORG_STORE_CURRENCY_NOT_BASE": "The books of this organization are kept in USD, so the currency of its stores cannot change."
+  },
+  "errorDetails": {
+    "fileTooLarge": "The file is larger than {megabytes} MB. Choose a smaller one",
+    "rateLimit": "Too many requests. Try again in {unit, select, minutes {{value, plural, one {# minute} other {# minutes}}} other {{value, plural, one {# second} other {# seconds}}}}",
+    "conflicts": {
+      "chain_check_running": "A check of the chain is already running. Wait for it to finish and try again"
+    }
   },
   "invitation": {
     "title": "You are invited",
@@ -892,6 +902,40 @@
     "mismatchTitle": "This invitation is for another address",
     "mismatchBody": "You are signed in as {current}, and the invitation is for {invited}. Sign out and open the link again.",
     "unavailableTitle": "This invitation is not available"
+  },
+  "dsrRequest": {
+    "title": "Ask for your data",
+    "heading": "Ask for your data",
+    "body": "Tell us what you want and the email address you used with the store. If it belongs to a customer, we send a link to that address to confirm that the request is yours. Nothing is done until you open it and a person reviews the request.",
+    "typeLabel": "What do you want to ask for?",
+    "types": {
+      "access": "A copy of my data",
+      "erasure": "Delete my data",
+      "portability": "My data in a file I can move"
+    },
+    "emailLabel": "Your email address",
+    "emailInvalid": "Enter a valid email address.",
+    "submit": "Send request",
+    "working": "Sending…",
+    "retry": "Try again",
+    "sentTitle": "Request received",
+    "sent": "If this address belongs to a customer of the store, we sent a link to confirm the request. Open it from that email to finish. If you do not see it in a few minutes, check your spam folder.",
+    "incomplete": "This link is incomplete. Ask the store for its form address and open it again.",
+    "failed": "We could not send the request. Check your connection and try again. What you typed is still here.",
+    "tooMany": "There were too many attempts. Wait a while and try again."
+  },
+  "dsrVerify": {
+    "title": "Confirm your data request",
+    "heading": "Confirm your request",
+    "body": "Press the button to confirm that you made this request and that this is your email. Nothing else happens when you confirm: the store reviews the request and writes to you with its answer.",
+    "confirm": "Confirm my request",
+    "retry": "Try again",
+    "working": "Confirming…",
+    "doneTitle": "Request confirmed",
+    "done": "We received your confirmation. The store will review your request and write to you at this address with its answer. Until then nothing is done with your data.",
+    "invalid": "This link is not valid. It may have expired or already been used, or it is incomplete. If you still want to make the request, send it again from the form of the store.",
+    "failed": "We could not confirm the request. Check your connection and try again.",
+    "tooMany": "There were too many attempts. Wait a few minutes and try again."
   },
   "unsubscribe": {
     "title": "Stop notification emails",
@@ -1056,13 +1100,15 @@
     "invitation": {
       "accepted": {
         "title": "Invitation accepted",
-        "body": "Someone accepted your invitation to the team."
+        "body": "Someone accepted your invitation to the team.",
+        "bodyWithMember": "{member} accepted your invitation to the team."
       }
     },
     "member": {
       "joined": {
         "title": "New team member",
-        "body": "A new member joined the store."
+        "body": "A new member joined the store.",
+        "bodyWithMember": "{member} joined the store."
       }
     },
     "push": {
@@ -2249,6 +2295,7 @@
       "deletedByAgent": "{name} deleted this message",
       "deletedByOwner": "The owner deleted this message",
       "deletedGeneric": "This message was deleted",
+      "hiddenFiles": "{count, plural, one {An attachment you cannot open} other {# attachments you cannot open}}",
       "ticks": {
         "queued": "Sending",
         "sent": "Sent",
@@ -3451,7 +3498,8 @@
           "export": "Export customers",
           "flag_caution": "Flag customers with caution",
           "erase": "Erase the personal data of customers",
-          "dsr_review": "Review the requests for the data of a person"
+          "dsr_review": "Review the requests for the data of a person",
+          "dsr_manage_form": "Make, change and switch off the key of the public data request form"
         },
         "orders": {
           "view": "View orders",
@@ -3656,7 +3704,7 @@
         "expires": "Expires {date}",
         "expired": "Expired {date}",
         "emailStatus": {
-          "pending": "Email on its way",
+          "pending": "Email not confirmed yet. If it could not be delivered, it is tried again on its own.",
           "sent": "Email sent",
           "failed": "The email could not be delivered. Resend the invitation.",
           "failedNoAction": "The email could not be delivered. Someone who can invite must resend it."
@@ -5360,6 +5408,38 @@
       "saving": "Saving…",
       "discard": "Discard changes",
       "saved": "Safety settings saved"
+    },
+    "dsrForm": {
+      "title": "Public form",
+      "intro": "The key the store gives to its public form of data requests. Anyone with the address of the form that carries this key can send a request; a person reviews each one before anything is done.",
+      "loading": "Loading the key…",
+      "retry": "Try again",
+      "none": "This store has no key: it takes no public requests.",
+      "make": "Create the key",
+      "keyLabel": "Form key",
+      "addressLabel": "Form address",
+      "addressHint": "The address of the public form. Share this link: it carries the key, so changing the key stops it from working.",
+      "state": {
+        "open": "The public form is open: it takes requests.",
+        "shut": "The key exists, but the public form does not take requests yet: it opens when the platform enables it."
+      },
+      "replace": {
+        "action": "Change the key",
+        "title": "Change the key of the form?",
+        "description": "The current key stops working at once: every address or page that uses it stops taking requests until you swap in the new one.",
+        "confirm": "Change the key"
+      },
+      "off": {
+        "action": "Switch the form off",
+        "title": "Switch off the public form?",
+        "description": "The store stops taking public data requests. The requests that already arrived stay in the queue. You can create a new key whenever you want.",
+        "confirm": "Switch the form off"
+      },
+      "done": {
+        "make": "Key created.",
+        "replace": "Key changed.",
+        "revoke": "Form switched off."
+      }
     }
   },
   "emptyStates": {

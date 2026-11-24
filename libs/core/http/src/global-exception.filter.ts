@@ -15,15 +15,21 @@ import {
   HttpHeaders,
   HttpStatusCodes,
   isLockTimeoutError,
+  isRedisUnavailableError,
   isTransactionWaitError,
-  PlatformException
+  PlatformException,
+  REDIS_RETRY_AFTER_SECONDS
 } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 
+import { BodyParserErrorTypes } from './body-parser-error-types'
+
 const GENERIC_MESSAGE = 'An unexpected error occurred'
 const RATE_LIMIT_MESSAGE = 'Too many requests'
+const DEPENDENCY_UNAVAILABLE_MESSAGE =
+  'The service is not available right now, try again in a moment'
 const DATABASE_BUSY_MESSAGE = 'The service is busy, try again in a moment'
 // Nest writes the class in front of the message of some errors ("ThrottlerException: Too Many
 // Requests"): a name of ours that the client has no use for
@@ -83,9 +89,27 @@ const PARSER_TYPE_FAMILIES = ['entity.', 'encoding.', 'charset.', 'request.', 's
 const CLIENT_ERROR_FLOOR = 400
 const SERVER_ERROR_FLOOR = 500
 
+// A compressed body that cannot be inflated reaches us as the raw error of the decompressor (Z_DATA_ERROR and Z_BUF_ERROR of zlib,
+// the ERR_* codes of brotli, the ZSTD_error_* ones of zstd) that body-parser marks with a 400 and `expose`, with no `type`. A decompressor
+// error is told by what none of the others has: a string `code` and a numeric `errno` on an Error that carries a 400 for the client. A
+// system error (ENOENT, ECONNRESET) has an errno too, but never the 400 and the `expose` of the parser.
+function isCorruptEncoding(exception: Record<string, unknown>): boolean {
+  const { status, type, expose, code, errno } = exception
+  return (
+    status === HttpStatusCodes.BAD_REQUEST &&
+    expose === true &&
+    type === undefined &&
+    typeof code === 'string' &&
+    typeof errno === 'number'
+  )
+}
+
 export function bodyParserRefusal(exception: unknown): BodyParserRefusal | undefined {
   if (!(exception instanceof Error) || !isRecord(exception)) return undefined
   const { status, type, expose } = exception
+  if (isCorruptEncoding(exception)) {
+    return { status: HttpStatusCodes.BAD_REQUEST, type: BodyParserErrorTypes.CORRUPT_ENCODING }
+  }
   if (typeof type !== 'string' || typeof status !== 'number' || expose !== true) return undefined
   if (!PARSER_TYPE_FAMILIES.some(family => type.startsWith(family))) return undefined
   if (status < CLIENT_ERROR_FLOOR || status >= SERVER_ERROR_FLOOR) return undefined
@@ -196,6 +220,27 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           code: ErrorCodes.DATABASE_BUSY,
           message: DATABASE_BUSY_MESSAGE,
           metadata: { [RETRY_AFTER_METADATA_KEY]: ApiLockTimeout.RETRY_AFTER_SECONDS }
+        },
+        correlationId
+      })
+      return
+    }
+
+    // Redis could not be reached (it is down, or stuck past the half second a command is given): the caller is asked to come
+    // back, as for a lock. A warning, not a page: the health probe and the alert on Redis already say it, and a 500 per
+    // request would bury them. Nothing of the error is shown, and what it says does not depend on who asked (a data request for
+    // an address that exists answers like one that does not).
+    if (isRedisUnavailableError(exception)) {
+      const { name, code } = exception as { name?: unknown; code?: unknown }
+      this.logger.warn(
+        { route: this.routeOf(request), errorName: name, errorCode: code },
+        'a request could not reach Redis'
+      )
+      this.send(response, HttpStatusCodes.SERVICE_UNAVAILABLE, {
+        error: {
+          code: ErrorCodes.DEPENDENCY_UNAVAILABLE,
+          message: DEPENDENCY_UNAVAILABLE_MESSAGE,
+          metadata: { [RETRY_AFTER_METADATA_KEY]: REDIS_RETRY_AFTER_SECONDS }
         },
         correlationId
       })

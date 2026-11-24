@@ -3,6 +3,8 @@ import type { DsrConfig } from '@platform/core/compliance'
 import { hashToken } from '@platform/core/crypto'
 import type { PrismaService } from '@platform/core/database'
 import { ErrorCodes } from '@platform/core/errors'
+import type { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 
 import { DsrVerifyService } from './dsr-verify.service'
 
@@ -32,11 +34,13 @@ function build(options: { found?: unknown; claimed?: number; moved?: number; ena
   const prisma = { client, tenantTransaction } as unknown as PrismaService
   const log = jest.fn()
   const audit = { log } as unknown as AuditService
-  const service = new DsrVerifyService(prisma, audit, {
+  const publish = jest.fn()
+  const events = { publish } as unknown as DomainEvents
+  const service = new DsrVerifyService(prisma, audit, events, {
     ...CONFIG,
     enabled: options.enabled ?? true
   })
-  return { service, client, updateToken, updateRequest, log, tenantTransaction }
+  return { service, client, updateToken, updateRequest, log, tenantTransaction, publish }
 }
 
 const invalid = { code: ErrorCodes.DSR_VERIFICATION_INVALID }
@@ -61,15 +65,26 @@ describe('DsrVerifyService', () => {
     expect(JSON.stringify(argOf<unknown>(log, 0, 0))).not.toContain(TOKEN)
   })
 
+  it('tells the reviewers in the move that took the request to manual review, with ids only', async () => {
+    const { service, client, publish } = build({})
+    await service.verify({ token: TOKEN })
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(publish).toHaveBeenCalledWith(client, Events.DSR_MANUAL_REVIEW, {
+      storeId: 'store-1',
+      requestId: 'req-1'
+    })
+  })
+
   it.each([
     ['the flow is off', { enabled: false }],
     ['the token is unknown, used or expired', { found: [] }],
     ['a second caller already claimed the token', { claimed: 0 }],
     ['the request no longer waits', { moved: 0 }]
   ])('answers the one uniform error when %s, and audits nothing', async (_name, options) => {
-    const { service, log } = build(options)
+    const { service, log, publish } = build(options)
     await expect(service.verify({ token: TOKEN })).rejects.toMatchObject(invalid)
     expect(log).not.toHaveBeenCalled()
+    expect(publish).not.toHaveBeenCalled()
   })
 
   it('does not even look the token up when the flow is off', async () => {

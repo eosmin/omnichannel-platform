@@ -1,10 +1,15 @@
-import { Locales } from '@platform/core/i18n'
+import { DEFAULT_LOCALE, Locales } from '@platform/core/i18n'
 
 import { EmailTemplates } from '../queues/email-templates'
 import { dsrResultMailJobId, JobNames } from '../queues/queue-names'
 
-import { DsrResultOutcomes, dsrNoticeStatusOf, DsrNoticeStatuses } from './compliance-constants'
-import { dsrNoticeJob } from './dsr-notice'
+import {
+  ComplianceConfig,
+  DsrResultOutcomes,
+  dsrNoticeStatusOf,
+  DsrNoticeStatuses
+} from './compliance-constants'
+import { dsrNoticeJob, dsrNoticeLocaleOf } from './dsr-notice'
 
 const REQUEST = '0b9d6d88-9a1d-4c4a-9a31-5a2f2d3a6f10'
 const STORE = '1c0e7c20-6a0b-4f6e-8f3a-3b6f9a5a2f11'
@@ -37,8 +42,18 @@ describe('the closing mail of a data request', () => {
     expect(job.opts).toEqual({
       jobId: dsrResultMailJobId(REQUEST),
       removeOnComplete: true,
-      removeOnFail: true
+      removeOnFail: true,
+      attempts: ComplianceConfig.DSR_NOTICE_MAIL_ATTEMPTS,
+      backoff: { type: 'exponential', delay: ComplianceConfig.DSR_NOTICE_MAIL_BACKOFF_MS }
     })
+  })
+
+  it('is tried again for ten minutes at least, and for less than the lease that keeps the sweep from queueing it twice', () => {
+    let waited = 0
+    for (let failure = 1; failure < ComplianceConfig.DSR_NOTICE_MAIL_ATTEMPTS; failure += 1)
+      waited += ComplianceConfig.DSR_NOTICE_MAIL_BACKOFF_MS * 2 ** (failure - 1)
+    expect(waited).toBeGreaterThanOrEqual(10 * 60_000)
+    expect(waited).toBeLessThan(ComplianceConfig.DSR_NOTICE_LEASE_MS)
   })
 
   it('leaves the count of retained orders out of a notice that has none', () => {
@@ -84,5 +99,23 @@ describe('where the closing notice of a request stands', () => {
     ['none: there was never an address to tell', none, DsrNoticeStatuses.NONE]
   ])('%s', (_name, row, expected) => {
     expect(dsrNoticeStatusOf(row)).toBe(expected)
+  })
+})
+
+describe('the language of the closing mail', () => {
+  it('is the one the person asked in, even when the store writes in another', () => {
+    expect(dsrNoticeLocaleOf(Locales.EN, Locales.ES)).toBe(Locales.EN)
+    expect(dsrNoticeLocaleOf(Locales.ES, Locales.EN)).toBe(Locales.ES)
+  })
+
+  it('is the language of the store for a request that kept none', () => {
+    expect(dsrNoticeLocaleOf(null, Locales.EN)).toBe(Locales.EN)
+    expect(dsrNoticeLocaleOf(undefined, Locales.EN)).toBe(Locales.EN)
+  })
+
+  it('skips a code that is not a supported language, and ends on the default of the platform', () => {
+    expect(dsrNoticeLocaleOf('xx', Locales.EN)).toBe(Locales.EN)
+    expect(dsrNoticeLocaleOf(null, 'xx')).toBe(DEFAULT_LOCALE)
+    expect(dsrNoticeLocaleOf(null, null)).toBe(DEFAULT_LOCALE)
   })
 })

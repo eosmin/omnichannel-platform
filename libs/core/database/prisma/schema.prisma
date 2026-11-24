@@ -1779,6 +1779,7 @@ model DataSubjectRequest {
   erasureAttempts        Int       @default(0) @map("erasure_attempts") // Tries of the sweep that carries the erasure out; written before each try
   erasureAttemptedAt     DateTime? @map("erasure_attempted_at") // The last try: the lease a second sweep respects
   erasureFailureCode     String?   @map("erasure_failure_code") // Name of the error of the last failed try, never its message
+  noticeLocale           String?   @map("notice_locale") // The language the person asked in (a code of SUPPORTED_LOCALES): the closing mail goes in it; NULL keeps the store default
   noticeAttempts         Int       @default(0) @map("notice_attempts") // Times the closing mail of an ended request ran out of attempts
   noticeQueuedAt         DateTime? @map("notice_queued_at") // The closing mail was queued: a second run does not queue it again within the lease
   noticeSentAt           DateTime? @map("notice_sent_at") // The mail processor confirmed the closing mail

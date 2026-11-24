@@ -93,6 +93,24 @@ export class MagicLinkIssuer {
     this.logger.info({ userId: user.id }, 'magic link sent')
   }
 
+  // How long the link of a mail that is being tried again can still be used: 0 when it was used, replaced by a newer request (asking again voids
+  // the older links), expired or is not a link of ours. Reads the token from the fragment of the url, so the mail the person gets says what the
+  // server knows, not what it knew when the job was queued
+  async remainingValidityMs(url: string): Promise<number> {
+    const token = tokenOf(url)
+    if (token === null) return 0
+    const row = await this.prisma.client.verificationToken.findFirst({
+      where: {
+        tokenHash: hashToken(token),
+        type: VerificationTokenType.MAGIC_LINK,
+        usedAt: null,
+        expiresAt: { gt: new Date() }
+      },
+      select: { expiresAt: true }
+    })
+    return row === null ? 0 : Math.max(row.expiresAt.getTime() - Date.now(), 0)
+  }
+
   // An exact comparison of lower-cased addresses, because the seed stores the address as it was
   // written. Not `equals` with mode 'insensitive': Prisma turns that into ILIKE, where "%" and "_"
   // are wildcards, and a request for "_____@example.com" would reach a real account whose address
@@ -114,6 +132,16 @@ export class MagicLinkIssuer {
     const url = new URL(MAGIC_LINK_WEB_PATH, this.links.frontendUrl)
     url.hash = `${MAGIC_LINK_FRAGMENT_KEY}=${token}`
     return url.toString()
+  }
+}
+
+function tokenOf(url: string): string | null {
+  try {
+    const hash = new URL(url).hash.replace(/^#/, '')
+    const token = new URLSearchParams(hash).get(MAGIC_LINK_FRAGMENT_KEY)
+    return token === null || token === '' ? null : token
+  } catch {
+    return null
   }
 }
 

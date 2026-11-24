@@ -15,6 +15,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { scanResultOf } from '../helpers/media-scan'
 
 const CREATED = 201
 const OK = 200
@@ -260,6 +261,7 @@ describe.each([
             key: `stores/${ctx.storeA.id}/messages/${id}/a.ogg`,
             filename: 'a.ogg',
             contentType: 'audio/ogg',
+            ...scanResultOf('audio/ogg'),
             fileSize: 10,
             status: 'clean',
             uploadedBy: ctx.agentA.id

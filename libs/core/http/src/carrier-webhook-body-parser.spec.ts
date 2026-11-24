@@ -8,7 +8,7 @@ import type { Request } from 'express'
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { LoggerModule } from '@platform/core/logger'
-import { MetricsModule } from '@platform/core/metrics-module'
+import { MetricsModule, OPEN_METRICS_ACCESS } from '@platform/core/metrics-module'
 
 import { carrierWebhookBodyParser } from './carrier-webhook-body-parser'
 import { configureHttpApp } from './configure-http-app'
@@ -36,7 +36,7 @@ describe('the body parser of the webhook of a carrier', () => {
     const module = await Test.createTestingModule({
       imports: [
         LoggerModule.forRoot({ level: 'fatal', pretty: false }),
-        MetricsModule,
+        MetricsModule.forRoot(OPEN_METRICS_ACCESS),
         HttpErrorsModule
       ],
       controllers: [EchoController]

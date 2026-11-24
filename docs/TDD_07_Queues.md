@@ -15,7 +15,9 @@ Ten queues, separated by priority and failure characteristics. The ninth, `custo
 (Step 2.8, PR 1c-2), reads the name and photo of a customer from the channel with 5 at a time,
 3 attempts and exp 60s: a provider that answers slowly fills it and delays no message.
 The tenth, `auth-email` (Step 7.3-S9), carries the magic link (its lookup job and the email it sends)
-with 10 at a time and 3 attempts exp 2s, so a burst of digests or invitations never delays a login.
+with 10 at a time and 7 attempts exp 15s (the waits add up to 15 min 45 s, the life of a magic link: a mail server that is down for ten
+minutes still gets the link; a retry is sent only while the link is live, with the time that is left), so a burst of digests or
+invitations never delays a login.
 It shares the email provider with `email`: the limiters add up to the provider's 100 a second
 (30 for `auth-email`, 70 for `email`; `EmailProviderBudget`), and the dead-letter copy of its jobs keeps no data.
 A slow analytics job must never delay a password reset email, and an autonomous chatbot

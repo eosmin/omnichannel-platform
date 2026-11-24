@@ -98,6 +98,8 @@ export class DsrIntakeWorker {
             subjectCustomerIds: customers.map(customer => customer.id),
             // Where the closing notice goes: sealed, and set to NULL when the request ends (the address is never kept in the clear)
             notifyToEncrypted: encrypt(email, parseEncryptionKey(this.config.encryptionKeyHex)),
+            // The language of the form: the closing mail goes in it, as the verification mail does
+            noticeLocale: intake.locale,
             deadlineAt: new Date(now + ComplianceConfig.DSR_RESPONSE_DEADLINE_DAYS * DAY_MS)
           },
           select: { id: true }

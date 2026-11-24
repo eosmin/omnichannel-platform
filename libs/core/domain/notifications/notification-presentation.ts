@@ -69,7 +69,12 @@ export function reasonNameOf(
 }
 
 export type BodyVariant =
-  'bodyRepeated' | 'bodyWithPeople' | 'bodyWithCustomer' | 'bodyWithProduct' | 'body'
+  | 'bodyRepeated'
+  | 'bodyWithPeople'
+  | 'bodyWithCustomer'
+  | 'bodyWithProduct'
+  | 'bodyWithMember'
+  | 'body'
 
 // Which text of a notification to show. A notification that carries who and whose (a mention) says
 // both, and one that carries only whose (the unassigned queue) names the customer, where the type has
@@ -101,6 +106,17 @@ export function bodyVariantOf(
     hasVariant('bodyWithProduct')
   ) {
     return 'bodyWithProduct'
+  }
+  // A person who joined the team (it carries their name): the bell says who, where the type has a text for it
+  const hasMember = typeof params['member'] === 'string' && params['member'].trim() !== ''
+  if (
+    !('author' in params) &&
+    !hasCustomer &&
+    !hasProduct &&
+    hasMember &&
+    hasVariant('bodyWithMember')
+  ) {
+    return 'bodyWithMember'
   }
   return 'body'
 }

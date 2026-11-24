@@ -5,6 +5,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import type { Redis } from 'ioredis'
 
+import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
 import {
   ComplianceConfig,
@@ -64,7 +65,10 @@ export class DsrIntakeService {
       throw new PlatformException(
         ErrorCodes.RATE_LIMIT_EXCEEDED,
         'too many requests',
-        HttpStatusCodes.TOO_MANY_REQUESTS
+        HttpStatusCodes.TOO_MANY_REQUESTS,
+        // At most a day: the counters last a day from their first count. Not the exact time, so that the answer is the same
+        // for the address and for the store (a 429 says nothing about which of them was over)
+        { [RETRY_AFTER_METADATA_KEY]: SECONDS_PER_DAY }
       )
     }
 

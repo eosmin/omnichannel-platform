@@ -10,6 +10,7 @@ import {
   DSR_CONFIG,
   type DsrConfig,
   dsrNoticeJob,
+  dsrNoticeLocaleOf,
   DsrFailureCodes,
   DsrRejectionReasons,
   DsrResultOutcomes,
@@ -21,7 +22,7 @@ import { DsrStatus, VerificationTokenType } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
+import type { Locale } from '@platform/core/i18n'
 import { QueueNames, type SendEmailJob } from '@platform/core/queues'
 
 import { inEachStoreStrict } from '../schedulers/store-sweep'
@@ -130,7 +131,7 @@ export class DsrExpireSweeper {
       if (locked.length === 0) return null
       const row = await tx.dataSubjectRequest.findFirstOrThrow({
         where: { id: requestId, storeId },
-        select: { type: true, organizationId: true, notifyToEncrypted: true }
+        select: { type: true, organizationId: true, notifyToEncrypted: true, noticeLocale: true }
       })
       const done = await tx.dataSubjectRequest.updateMany({
         where: { id: requestId, storeId, status: DsrStatus.PENDING_VERIFICATION },
@@ -180,8 +181,7 @@ export class DsrExpireSweeper {
           where: { id: storeId },
           select: { defaultLocale: true }
         })
-        const locale: Locale =
-          SUPPORTED_LOCALES.find(candidate => candidate === store?.defaultLocale) ?? DEFAULT_LOCALE
+        const locale: Locale = dsrNoticeLocaleOf(row.noticeLocale, store?.defaultLocale)
         const job = dsrNoticeJob({
           requestId,
           storeId,

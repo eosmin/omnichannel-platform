@@ -36,6 +36,7 @@ import {
   viewerOf
 } from '@platform/core/messaging'
 import { JobNames, QueueNames } from '@platform/core/queues'
+import { AvSanitizing } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import {
@@ -67,6 +68,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { scanResultOf } from '../helpers/media-scan'
 import { queueOf } from '../helpers/queue'
 import { inStoreContext, transactionInContext } from '../helpers/tenant-context'
 import { createGuardedWorkerPrisma } from '../helpers/worker-db'
@@ -1581,6 +1583,7 @@ describe('Replies on their way to a channel', () => {
         uploadedBy?: string
         fileSize?: number
         position?: number
+        scanResult?: Record<string, unknown>
       } = {}
     ) => {
       const id = randomUUID()
@@ -1597,6 +1600,8 @@ describe('Replies on their way to a channel', () => {
           ...(over.position === undefined
             ? {}
             : { position: over.position, deliveryStatus: 'queued' }),
+          ...scanResultOf(over.contentType ?? 'image/png'),
+          ...(over.scanResult === undefined ? {} : { scanResult: over.scanResult as never }),
           ...(over.messageId === undefined ? {} : { messageId: over.messageId }),
           ...(over.uploadedBy === undefined ? {} : { uploadedBy: over.uploadedBy })
         },
@@ -1759,6 +1764,48 @@ describe('Replies on their way to a channel', () => {
       })
     })
 
+    it('refuses the bytes and the link to a plugin when the file got the kept mark after the message was picked up', async () => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      const file = await fileOf(reply.storeId, { messageId: reply.id })
+      const outcomes: Record<string, unknown> = {}
+      duringMediaSend = async params => {
+        // A sweep or a rescan marks the row between the pick-up of the job and the read of the bytes
+        await owner.media.update({
+          where: { id: file.id },
+          data: { scanResult: { [AvSanitizing.OUTCOME_KEY]: AvSanitizing.Untouched.NOT_CLEANABLE } }
+        })
+        outcomes.open = await params.openFile().then(
+          () => 'opened',
+          (error: unknown) => error
+        )
+        outcomes.sign = await (params.signedUrl?.(60) ?? Promise.resolve('no sign')).then(
+          () => 'signed',
+          (error: unknown) => error
+        )
+      }
+
+      await sender.send(job(reply), false)
+
+      expect(outcomes.open).toBeInstanceOf(PluginError)
+      expect(outcomes.sign).toBeInstanceOf(PluginError)
+    })
+
+    it('fails, and never opens, a file the scan kept as it came with its metadata', async () => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      await fileOf(reply.storeId, {
+        messageId: reply.id,
+        scanResult: { [AvSanitizing.OUTCOME_KEY]: AvSanitizing.Refusals.COVER_KEPT }
+      })
+
+      await sender.send(job(reply), false)
+
+      expect(sentMedia).toHaveLength(0)
+      expect(await stored(reply.id)).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        deliveryError: ErrorCodes.FILE_UNAVAILABLE
+      })
+    })
+
     it('fails a message that lost its file', async () => {
       const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.DOCUMENT })
 
@@ -1881,6 +1928,64 @@ describe('Replies on their way to a channel', () => {
         await attempt(used.id).expect(CONFLICT)
       })
 
+      it('refuses a clean file the scan kept as it came, with its metadata, and lets a cleaned one go', async () => {
+        const conversation = await conversationOnMediaChannel()
+        const keptMark = (reason: string) => ({
+          [AvSanitizing.OUTCOME_KEY]: reason,
+          [AvSanitizing.CLEANING_VERSION_KEY]: AvSanitizing.CLEANING_VERSION
+        })
+        const attempt = (id: string) =>
+          post({
+            type: MessageType.IMAGE,
+            conversationId: conversation.id,
+            mediaIds: [id],
+            idempotencyKey: randomUUID()
+          })
+        for (const reason of [
+          AvSanitizing.Refusals.COVER_KEPT,
+          AvSanitizing.Outcomes.AV_UNAVAILABLE
+        ]) {
+          const kept = await fileOf(ctx.storeA.id, {
+            uploadedBy: ctx.agentA.id,
+            scanResult: keptMark(reason)
+          })
+          expect((await attempt(kept.id).expect(CONFLICT)).body).toMatchObject({
+            error: { code: ErrorCodes.FILE_UNAVAILABLE }
+          })
+          expect(
+            await owner.message.count({
+              where: { storeId: ctx.storeA.id, media: { some: { id: kept.id } } }
+            })
+          ).toBe(0)
+        }
+        const cleaned = await fileOf(ctx.storeA.id, {
+          uploadedBy: ctx.agentA.id,
+          scanResult: {
+            sanitized: true,
+            [AvSanitizing.CLEANING_VERSION_KEY]: AvSanitizing.CLEANING_VERSION
+          }
+        })
+        await attempt(cleaned.id).expect(CREATED)
+      })
+
+      it('refuses a video or audio file with no mark of the cleaning, as one kept as it came', async () => {
+        const conversation = await conversationOnMediaChannel()
+        for (const contentType of ['video/mp4', 'audio/ogg']) {
+          const unmarked = await fileOf(ctx.storeA.id, { uploadedBy: ctx.agentA.id, contentType })
+          await owner.media.update({ where: { id: unmarked.id }, data: { scanResult: {} } })
+          expect(
+            (
+              await post({
+                type: MessageType.IMAGE,
+                conversationId: conversation.id,
+                mediaIds: [unmarked.id],
+                idempotencyKey: randomUUID()
+              }).expect(CONFLICT)
+            ).body
+          ).toMatchObject({ error: { code: ErrorCodes.FILE_UNAVAILABLE } })
+        }
+      })
+
       it('refuses a file that is not of the type of the message', async () => {
         const conversation = await conversationOnMediaChannel()
         const pdf = await fileOf(ctx.storeA.id, {
@@ -1994,6 +2099,7 @@ describe('Replies on their way to a channel', () => {
             key: `stores/${reply.storeId}/messages/${id}/p.png`,
             filename: 'p.png',
             contentType,
+            ...scanResultOf(contentType),
             fileSize: 10,
             status: 'clean',
             position,
@@ -2604,6 +2710,7 @@ describe('Replies on their way to a channel', () => {
         uploadedBy?: string
         fileSize?: number
         position?: number
+        scanResult?: Record<string, unknown>
       } = {}
     ) => {
       const id = randomUUID()
@@ -2621,6 +2728,8 @@ describe('Replies on their way to a channel', () => {
           ...(over.position === undefined
             ? {}
             : { position: over.position, deliveryStatus: DeliveryStatus.QUEUED }),
+          ...scanResultOf(over.contentType ?? 'image/png'),
+          ...(over.scanResult === undefined ? {} : { scanResult: over.scanResult as never }),
           ...(over.messageId === undefined ? {} : { messageId: over.messageId }),
           ...(over.uploadedBy === undefined ? {} : { uploadedBy: over.uploadedBy })
         },

@@ -1,11 +1,17 @@
+import { Writable } from 'node:stream'
+
 import type { Counter, Histogram } from '@prometheus-io/client'
 import { type Job, UnrecoverableError } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
+import { pino } from 'pino'
 
+import { EmailDeliveryError } from '@platform/core/email'
+import { REDACTED_PATHS } from '@platform/core/logger'
 import { JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
 import type { QueuesRegistry } from '@platform/core/queues-module'
 
 import { JobRejectedError } from './job-rejected.error'
+import { MailJobFailedError } from './mail-job-failure'
 import { ProcessorSupport } from './processor-support'
 
 interface Harness {
@@ -15,6 +21,7 @@ interface Harness {
   processed: jest.Mock
   observe: jest.Mock
   logError: jest.Mock
+  logInfo: jest.Mock
 }
 
 function build(): Harness {
@@ -23,14 +30,15 @@ function build(): Harness {
   const processed = jest.fn()
   const observe = jest.fn()
   const logError = jest.fn()
+  const logInfo = jest.fn()
   const support = new ProcessorSupport(
     { get: () => ({ add: deadLetterAdd }) } as unknown as QueuesRegistry,
     { inc: processed } as unknown as Counter<string>,
     { inc: failed } as unknown as Counter<string>,
     { observe } as unknown as Histogram<string>,
-    { setContext: jest.fn(), info: jest.fn(), error: logError } as unknown as PinoLogger
+    { setContext: jest.fn(), info: logInfo, error: logError } as unknown as PinoLogger
   )
-  return { support, deadLetterAdd, failed, processed, observe, logError }
+  return { support, deadLetterAdd, failed, processed, observe, logError, logInfo }
 }
 
 // The part of a BullMQ job that the support reads
@@ -45,6 +53,27 @@ function jobOf(attemptsMade: number, attempts: number): Job {
 }
 
 describe('ProcessorSupport', () => {
+  describe('stale', () => {
+    it('says once, with ids and the reason only, that a job was dropped, and counts no failure', () => {
+      const { support, logInfo, failed } = build()
+
+      support.stale(QueueNames.AUTH_EMAIL, jobOf(2, 7), 'the magic link is no longer live')
+
+      expect(logInfo).toHaveBeenCalledTimes(1)
+      expect(logInfo).toHaveBeenCalledWith(
+        {
+          queue: QueueNames.AUTH_EMAIL,
+          jobId: '7',
+          job: JobNames.SEND_EMAIL,
+          reason: 'the magic link is no longer live'
+        },
+        'a job was dropped as stale'
+      )
+      expect(JSON.stringify(logInfo.mock.calls)).not.toContain('person@example.com')
+      expect(failed).not.toHaveBeenCalled()
+    })
+  })
+
   describe('failedAttempt', () => {
     it('counts the failed attempt and keeps the job out of the dead-letter queue while it will be retried', async () => {
       const { support, deadLetterAdd, failed } = build()
@@ -244,5 +273,144 @@ describe('ProcessorSupport', () => {
     support.completed(QueueNames.EMAIL, jobOf(1, 3))
 
     expect(processed).toHaveBeenCalledWith({ queue: 'email', job: JobNames.SEND_EMAIL })
+  })
+
+  // What a mail provider says about a refusal can hold the address it was given. The log, the dead-letter copy and the failure that the queue
+  // keeps for a job of mail must hold the name and the code of the error and nothing else. Run with the real pino and the redaction of the app.
+  describe('the error of a job that sends mail', () => {
+    const ADDRESS = 'victim.person@example.com'
+    const smtp = Object.assign(new Error(`550 5.1.1 <${ADDRESS}>: Recipient address rejected`), {
+      code: 'EENVELOPE',
+      response: `550 5.1.1 <${ADDRESS}>: Recipient address rejected`,
+      rejected: [ADDRESS],
+      envelope: { from: 'noreply@platform.local', to: [ADDRESS] }
+    })
+    const resend = new Error(
+      `resend rejected the email: validation_error (422) Invalid to: ${ADDRESS}`
+    )
+
+    function withRealLogger(): {
+      support: ProcessorSupport
+      written: () => string
+      add: jest.Mock
+    } {
+      let written = ''
+      const stream = new Writable({
+        write(chunk: Buffer, _encoding, done) {
+          written += chunk.toString()
+          done()
+        }
+      })
+      const real = pino({ redact: { paths: [...REDACTED_PATHS], remove: true } }, stream)
+      const add = jest.fn().mockResolvedValue(undefined)
+      const support = new ProcessorSupport(
+        { get: () => ({ add }) } as unknown as QueuesRegistry,
+        { inc: jest.fn() } as unknown as Counter<string>,
+        { inc: jest.fn() } as unknown as Counter<string>,
+        { observe: jest.fn() } as unknown as Histogram<string>,
+        {
+          setContext: jest.fn(),
+          info: (data: object, message: string) => real.info(data, message),
+          error: (data: object, message: string) => real.error(data, message)
+        } as unknown as PinoLogger
+      )
+      return { support, written: () => written, add }
+    }
+
+    it.each([
+      ['an SMTP error', smtp, QueueNames.AUTH_EMAIL],
+      ['a Resend error', resend, QueueNames.AUTH_EMAIL],
+      ['an SMTP error', smtp, QueueNames.EMAIL],
+      ['a Resend error', resend, QueueNames.EMAIL]
+    ])(
+      'keeps the address of %s on %s out of the log and the dead letter',
+      async (_name, error, queue) => {
+        const { support, written, add } = withRealLogger()
+
+        await support.failedAttempt(queue, jobOf(3, 3), error)
+
+        expect(written()).not.toContain(ADDRESS)
+        expect(written()).toContain('"errorName":"Error"')
+        expect(JSON.stringify(add.mock.calls)).not.toContain(ADDRESS)
+        expect(add).toHaveBeenCalledWith(
+          JobNames.EXHAUSTED,
+          expect.objectContaining({ error: 'Error' })
+        )
+      }
+    )
+
+    it('keeps the address out of a job that is of the mail kind on any queue', async () => {
+      const { support, written, add } = withRealLogger()
+
+      await support.failedAttempt(QueueNames.WEBHOOKS, jobOf(3, 3), smtp)
+
+      expect(written()).not.toContain(ADDRESS)
+      expect(JSON.stringify(add.mock.calls)).not.toContain(ADDRESS)
+    })
+
+    it.each([
+      ['an invitation job on the email queue', QueueNames.EMAIL, JobNames.DELIVER_INVITATION_EMAIL],
+      ['a job of a name nobody knows on auth-email', QueueNames.AUTH_EMAIL, 'a-name-nobody-knows']
+    ])(
+      'decides by the queue when the name of the job is not one of mail: %s',
+      async (_name, queue, name) => {
+        const { support, written, add } = withRealLogger()
+        const job = { ...jobOf(3, 3), name }
+
+        await support.failedAttempt(queue, job as unknown as Job, smtp)
+
+        expect(written()).not.toContain(ADDRESS)
+        expect(JSON.stringify(add.mock.calls)).not.toContain(ADDRESS)
+      }
+    )
+
+    it.each([QueueNames.EMAIL, QueueNames.AUTH_EMAIL])(
+      'keeps the address out when the job is gone (a stalled job) on %s',
+      async queue => {
+        const { support, written } = withRealLogger()
+
+        await support.failedAttempt(queue, undefined, smtp)
+
+        expect(written()).not.toContain(ADDRESS)
+      }
+    )
+
+    it('passes the fixed text of a failure of the lookup of an address, which holds no address', async () => {
+      const { support, add } = withRealLogger()
+      const error = new MailJobFailedError('PrismaClientKnownRequestError')
+
+      await support.failedAttempt(QueueNames.AUTH_EMAIL, jobOf(3, 3), error)
+
+      expect(add).toHaveBeenCalledWith(
+        JobNames.EXHAUSTED,
+        expect.objectContaining({ error: 'the mail job failed: PrismaClientKnownRequestError' })
+      )
+    })
+
+    it('says what the provider refused by name and code when the error is one of ours', async () => {
+      const { support, written, add } = withRealLogger()
+      const error = new EmailDeliveryError('validation_error', 422)
+
+      await support.failedAttempt(QueueNames.EMAIL, jobOf(3, 3), error)
+
+      expect(written()).toContain('"errorName":"EmailDeliveryError"')
+      expect(add).toHaveBeenCalledWith(
+        JobNames.EXHAUSTED,
+        expect.objectContaining({ error: error.message })
+      )
+    })
+
+    it('keeps the full error in the log of a job that holds no address', async () => {
+      const { support, written } = withRealLogger()
+      const job = { ...jobOf(1, 3), name: JobNames.PROCESS_IMAGE }
+
+      await support.failedAttempt(
+        QueueNames.HEAVY_PROCESSING,
+        job as unknown as Job,
+        new Error('sharp died')
+      )
+
+      expect(written()).toContain('sharp died')
+    })
   })
 })

@@ -159,6 +159,7 @@ describe('the sweep of the data erasures that are due', () => {
     erasureDueAt?: Date | null
     attempts?: number
     attemptedAt?: Date | null
+    noticeLocale?: string | null
   }): Promise<string> {
     const row = await owner.dataSubjectRequest.create({
       data: {
@@ -176,7 +177,8 @@ describe('the sweep of the data erasures that are due', () => {
         erasureDueAt:
           input.erasureDueAt === undefined ? new Date(Date.now() - HOUR_MS) : input.erasureDueAt,
         erasureAttempts: input.attempts ?? 0,
-        erasureAttemptedAt: input.attemptedAt ?? null
+        erasureAttemptedAt: input.attemptedAt ?? null,
+        noticeLocale: input.noticeLocale ?? null
       },
       select: { id: true }
     })
@@ -377,6 +379,35 @@ describe('the sweep of the data erasures that are due', () => {
       status: DsrStatus.CANCELLED,
       erasureAttempts: 0
     })
+  })
+
+  it('writes the closing mail in the language the person asked in, and in the language of the store when none was kept', async () => {
+    // The store speaks Spanish: a request that asked in English must get English, one with no language (or one this build does not
+    // speak) must fall to the store, never to the default of the build
+    const store = await owner.store.findUniqueOrThrow({
+      where: { id: ctx.storeA.id },
+      select: { defaultLocale: true }
+    })
+    await owner.store.update({ where: { id: ctx.storeA.id }, data: { defaultLocale: 'es' } })
+    try {
+      const asked = await requestOfStoreA([addressOf('lang-en')], { noticeLocale: 'en' })
+      const unset = await requestOfStoreA([addressOf('lang-null')], { noticeLocale: null })
+      const unknown = await requestOfStoreA([addressOf('lang-xx')], { noticeLocale: 'xx' })
+
+      const report = await sweeper.run()
+
+      expect(report.failed).toBe(0)
+      const localeOf = (request: { id: string }) =>
+        mails.find(mail => mail.options.jobId === dsrResultMailJobId(request.id))?.data.locale
+      expect(localeOf(asked)).toBe('en')
+      expect(localeOf(unset)).toBe('es')
+      expect(localeOf(unknown)).toBe('es')
+    } finally {
+      await owner.store.update({
+        where: { id: ctx.storeA.id },
+        data: { defaultLocale: store.defaultLocale }
+      })
+    }
   })
 
   it('erases once and counts one try when two sweeps run at the same time', async () => {

@@ -7,7 +7,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { UnsubscribeTokenThrottle } from '@platform/core/auth'
+import { RETRY_AFTER_METADATA_KEY, UnsubscribeTokenThrottle } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
 import { UnsubscribeScopes, verifyUnsubscribeTokenUnderKeys } from '@platform/core/crypto'
 import { JobContext, JobContextGoneError, PrismaService } from '@platform/core/database'
@@ -18,6 +18,11 @@ import { InjectMetric } from '@platform/core/metrics-module'
 import { UNSUBSCRIBE_VERIFICATION_KEYS } from '@platform/core/notifications'
 import { REDIS_CLIENT } from '@platform/core/redis'
 
+// Whole seconds, at least one (Redis answers 0 or a negative for a window that is ending or a key it cannot time)
+function retryAfterSeconds(leftMs: number): number {
+  return Math.max(Math.ceil(leftMs / 1000), 1)
+}
+
 // Why a request did not switch anything off, for the metric. Never part of the answer: every one of them is the same 204.
 export const UnsubscribeRejections = {
   NO_TOKEN: 'no_token',
@@ -26,11 +31,11 @@ export const UnsubscribeRejections = {
   RATE_LIMITED: 'rate_limited'
 } as const
 
-// Counts one more and answers the count, starting the window with the first
+// Counts one more, starting the window with the first, and answers the count and the milliseconds left of the window
 const COUNT_SCRIPT = `
 local n = redis.call('INCR', KEYS[1])
 if n == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
-return n
+return { n, redis.call('PTTL', KEYS[1]) }
 `
 
 // The one-click unsubscribe of the notification emails (Step 7.3, B6b-3b2b). PUBLIC (owner decision of 2026-11-23, recorded in IMPLEMENTATION_PLAN.md): the
@@ -118,15 +123,20 @@ export class NotificationUnsubscribeService {
   private async countAgainstLimit(token: string): Promise<void> {
     // The hash of the token, never the token: a key of Redis travels in dumps and monitors
     const key = CacheKeys.unsubscribe.tokenWindow(createHash('sha256').update(token).digest('hex'))
-    const count = Number(
-      await this.redis.eval(COUNT_SCRIPT, 1, key, String(UnsubscribeTokenThrottle.ttlMs))
-    )
-    if (count > UnsubscribeTokenThrottle.limit) {
+    const [count, leftMs] = (await this.redis.eval(
+      COUNT_SCRIPT,
+      1,
+      key,
+      String(UnsubscribeTokenThrottle.ttlMs)
+    )) as [number, number]
+    if (Number(count) > UnsubscribeTokenThrottle.limit) {
       this.rejected.inc({ reason: UnsubscribeRejections.RATE_LIMITED })
       throw new PlatformException(
         ErrorCodes.RATE_LIMIT_EXCEEDED,
         'too many requests',
-        HttpStatusCodes.TOO_MANY_REQUESTS
+        HttpStatusCodes.TOO_MANY_REQUESTS,
+        // When the window ends
+        { [RETRY_AFTER_METADATA_KEY]: retryAfterSeconds(Number(leftMs)) }
       )
     }
   }

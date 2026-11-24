@@ -27,6 +27,17 @@ export const StoreSettingsSections = {
 export type StoreSettingsSection =
   (typeof StoreSettingsSections)[keyof typeof StoreSettingsSections]
 
+// The key of the fragment that carries the token of the verification mail of a data request (`#token=...`)
+export const DSR_VERIFY_FRAGMENT_KEY = 'token'
+// What that token looks like: 256 bits in base64url (43 characters). The api checks it, and the page does not send what cannot be one
+export const DSR_VERIFY_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/
+
+// The key of the fragment that carries the key of the store in the address of the public form of data requests (`#key=...`)
+export const DSR_REQUEST_FRAGMENT_KEY = 'key'
+// What the api accepts as a store key (`dsrIntakeSchema`): the form does not send what cannot be one
+export const DSR_REQUEST_KEY_MIN_LENGTH = 16
+export const DSR_REQUEST_KEY_MAX_LENGTH = 128
+
 export const AppPaths = {
   home: '/', // Has no content: it goes to the store used last, or to the login
   login: '/login',
@@ -36,6 +47,10 @@ export const AppPaths = {
   // The page of the one-click unsubscribe of the notification emails: public, the signed token travels in the fragment (`#t=...`), which a
   // browser never sends to a server and never puts in a Referer
   unsubscribe: '/unsubscribe',
+  // The page that confirms a public data request (the link of the verification mail): public, the token travels in the fragment
+  dsrVerify: '/compliance/dsr/verify',
+  // The public form of data requests: public, the key of the store travels in the fragment (`#key=...`), so no log and no Referer holds it
+  dsrRequest: '/compliance/dsr/request',
   store: {
     inbox: (storeId: string) => `/s/${storeId}/inbox`,
     conversation: (storeId: string, conversationId: string) =>

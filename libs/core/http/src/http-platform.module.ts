@@ -3,9 +3,11 @@ import { type DynamicModule, Module } from '@nestjs/common'
 import { AppRoles } from '@platform/core/config'
 import { env } from '@platform/core/config/env'
 import { DatabaseModule } from '@platform/core/database'
+import { isDeployedEnvironment } from '@platform/core/env-rules'
 import { EventBusModule, EventsBridgeModes } from '@platform/core/event-bus'
 import { LoggerModule } from '@platform/core/logger'
-import { MetricsModule } from '@platform/core/metrics-module'
+import { MetricsModule, metricsAccessOf } from '@platform/core/metrics-module'
+import { queuePrefixFor } from '@platform/core/queues-module'
 import { RedisModule } from '@platform/core/redis'
 
 import { AuthPlatformModule } from './auth-platform.module'
@@ -48,7 +50,12 @@ export class HttpPlatformModule {
           pretty: env.NODE_ENV === 'development',
           redactedKeys: options.redactedKeys ?? []
         }),
-        MetricsModule,
+        MetricsModule.forRoot(
+          metricsAccessOf({
+            deployed: isDeployedEnvironment(env.NODE_ENV),
+            bearerToken: env.METRICS_BEARER_TOKEN
+          })
+        ),
         DatabaseModule.forRoot({
           databaseUrl: env.DATABASE_URL,
           replicaUrl: env.DATABASE_REPLICA_URL,
@@ -59,7 +66,10 @@ export class HttpPlatformModule {
           requireContext: isRequireContextOn()
         }),
         // The worker has no sockets: what it announces goes to the api instances through Redis
-        EventBusModule.forRoot({ mode: BRIDGE_MODES[env.APP_ROLE] }),
+        EventBusModule.forRoot({
+          mode: BRIDGE_MODES[env.APP_ROLE],
+          prefix: queuePrefixFor(env.DATABASE_URL, env.QUEUE_PREFIX)
+        }),
         RedisModule.forRoot({ url: env.REDIS_URL }),
         StoragePlatformModule,
         MagicLinkLimitPlatformModule,

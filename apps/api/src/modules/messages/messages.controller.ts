@@ -42,7 +42,8 @@ import {
   type ReactToMessageBody,
   reactToMessageSchema,
   type MessageView,
-  viewerOf
+  viewerOf,
+  withMediaVisibility
 } from '@platform/core/messaging'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability } from '@platform/plugins/sdk'
@@ -101,7 +102,7 @@ export class MessagesController {
       )
       if (replayed !== null) {
         res.status(HttpStatusCodes.OK)
-        return replayed
+        return withMediaVisibility(replayed, held)
       }
       rendered = await this.templates.render(store.id, body, viewer)
     }
@@ -118,7 +119,7 @@ export class MessagesController {
       )
     )
     if (!created) res.status(HttpStatusCodes.OK)
-    return message
+    return withMediaVisibility(message, held)
   }
 
   // "Send again" on a reply that failed. The same message goes back to the channel, and the answer is
@@ -127,13 +128,16 @@ export class MessagesController {
   @NoStore()
   @Post(ApiRoutes.messages.resend(':id'))
   @HttpCode(HttpStatusCodes.OK)
-  resend(
+  async resend(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string
   ): Promise<MessageView> {
-    return this.messages.resend(store.id, messageId, viewerOf(user.id, held))
+    return withMediaVisibility(
+      await this.messages.resend(store.id, messageId, viewerOf(user.id, held)),
+      held
+    )
   }
 
   // "Discard" on a reply that failed for good and never reached the customer: it disappears from the thread
@@ -172,13 +176,16 @@ export class MessagesController {
   @NoStore()
   @Post(ApiRoutes.messages.resendCaption(':id'))
   @HttpCode(HttpStatusCodes.OK)
-  resendCaption(
+  async resendCaption(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string
   ): Promise<MessageView> {
-    return this.messages.resendCaption(store.id, messageId, viewerOf(user.id, held))
+    return withMediaVisibility(
+      await this.messages.resendCaption(store.id, messageId, viewerOf(user.id, held)),
+      held
+    )
   }
 
   // "Download it again" on a file of the customer that was lost. The worker fetches it from the provider
@@ -187,14 +194,17 @@ export class MessagesController {
   @NoStore()
   @Post(ApiRoutes.messages.refetchFile(':id', ':index'))
   @HttpCode(HttpStatusCodes.OK)
-  refetchFile(
+  async refetchFile(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
     @Param('index', new ZodValidationPipe(fileIndexSchema)) index: number
   ): Promise<MessageView> {
-    return this.refetches.refetch(store.id, messageId, index, viewerOf(user.id, held))
+    return withMediaVisibility(
+      await this.refetches.refetch(store.id, messageId, index, viewerOf(user.id, held)),
+      held
+    )
   }
 
   // The reaction of the caller to a message: `{ emoji }` sets it, `{ emoji: null }` takes it back. The
@@ -227,20 +237,23 @@ export class MessagesController {
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @NoStore()
   @Patch(ApiRoutes.messages.byId(':id'))
-  edit(
+  async edit(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
     @Body(new ZodValidationPipe(editMessageSchema)) body: EditMessageBody
   ): Promise<MessageView> {
-    return this.changes.edit(
-      store.id,
-      messageId,
-      body,
-      viewerOf(user.id, held),
-      channel => this.registry.hasCapability(channel, ChannelCapability.EDIT_MESSAGE),
-      channel => this.registry.limitsOf(channel)
+    return withMediaVisibility(
+      await this.changes.edit(
+        store.id,
+        messageId,
+        body,
+        viewerOf(user.id, held),
+        channel => this.registry.hasCapability(channel, ChannelCapability.EDIT_MESSAGE),
+        channel => this.registry.limitsOf(channel)
+      ),
+      held
     )
   }
 
@@ -291,13 +304,14 @@ export class MessagesController {
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW)
   @NoStore()
   @Get(ApiRoutes.conversations.messages(':id'))
-  list(
+  async list(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', new ZodValidationPipe(uuidSchema)) conversationId: string,
     @Query(new ZodValidationPipe(listMessagesQuerySchema)) query: ListMessagesQuery
   ): Promise<CursorPage<MessageView>> {
-    return this.messages.list(store.id, conversationId, query, viewerOf(user.id, held))
+    const page = await this.messages.list(store.id, conversationId, query, viewerOf(user.id, held))
+    return { ...page, data: page.data.map(message => withMediaVisibility(message, held)) }
   }
 }

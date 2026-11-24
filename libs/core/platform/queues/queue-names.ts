@@ -28,7 +28,14 @@ export const EmailQueue = {
 export const AuthEmailQueue = {
   CONCURRENCY: 10,
   LIMIT_MAX: EmailProviderBudget.AUTH_SHARE_PER_SECOND,
-  LIMIT_DURATION_MS: 1000
+  LIMIT_DURATION_MS: 1000,
+  // A link that could not be mailed is tried again for as long as the link lives: exponential from 15 s, the six waits add up to 15 min 45 s,
+  // a little over the 15 minutes of a magic link (MAGIC_LINK_TTL_MINUTES). A mail provider that is down for ten minutes gets the link
+  // on the first try after it is back, and nothing is sent after the link died
+  RETRY_ATTEMPTS: 7,
+  RETRY_BASE_MS: 15_000,
+  // A retry whose link has less validity than this left is not sent: the mail would say a time the person cannot use
+  MIN_LINK_VALIDITY_MS: 2 * 60_000
 } as const
 
 export type QueueName = (typeof QueueNames)[keyof typeof QueueNames]

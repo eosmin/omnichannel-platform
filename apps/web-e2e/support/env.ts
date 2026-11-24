@@ -36,6 +36,9 @@ if (shard !== undefined && (shard.total < 1 || shard.current < 1 || shard.curren
 // on a laptop it is usually `pnpm dev`, connected to the development database (playwright.shared.ts)
 export const reuseExistingServers = !isCi && process.env['E2E_REUSE_SERVERS'] === '1'
 
+// The whole public flow of a data request (specs/dsr-public-flow.spec.ts) runs only when the api and the worker of the run have the public intake on
+export const dsrPublicIntakeOn = process.env['DSR_PUBLIC_INTAKE_ENABLED'] === 'true'
+
 // The suite signs in as the same few people dozens of times, and waiting for the real limit of magic links (five a
 // minute per address) was half of its time, so the api that the specs' config starts is told to accept more
 // (E2E_MAGIC_LINK_LIMIT, which only NODE_ENV=test accepts; the code of the limiter is untouched). The config that

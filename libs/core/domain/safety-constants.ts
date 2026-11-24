@@ -51,6 +51,8 @@ export const DestructiveActionTiers = {
   APPROVE_DSR_REQUEST: HIGH, // Settings → Data requests; an approved erasure is carried out after its grace period and cannot be undone, an approved export hands a person's data to the team
   REJECT_DSR_REQUEST: HIGH, // Settings → Data requests; the request ends for good and the person is told by mail that it was refused
   CANCEL_DSR_ERASURE: HIGH, // Settings → Data requests; the approved erasure ends for good and the person is told by mail that it will not be carried out
+  ROTATE_DSR_FORM_KEY: HIGH, // Settings → Data requests; the old key stops at once, so every link or page that carries it stops taking requests
+  REVOKE_DSR_FORM_KEY: HIGH, // Settings → Data requests; the public form of the store stops taking requests
   DELETE_WEBHOOK: HIGH, // Settings → Webhooks; the endpoint stops receiving events and its delivery log goes with it
   ROTATE_WEBHOOK_SECRET: HIGH, // Settings → Webhooks; the old secret stops working at once, so the receiver must be updated right after
 

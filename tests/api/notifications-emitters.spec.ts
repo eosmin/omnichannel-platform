@@ -698,6 +698,12 @@ describe('Notification emitters (QA Q2)', () => {
         actionPath: AppPaths.store.settings(ctx.storeA.id, StoreSettingsSections.TEAM),
         resourceId: joiner.id
       })
+      // TXT-P3c: the bell says who joined (the name is the user's own, cleaned like any name that goes into a text)
+      const joinerRow = await owner.user.findUniqueOrThrow({
+        where: { id: joiner.id },
+        select: { name: true }
+      })
+      expect(accepted[0]?.params).toEqual({ member: joinerRow.name })
       const members = await idsOf(NotificationTypes.MEMBER_JOINED)
       expect(members).toContain(manager.id)
       // Nobody is told twice, and nobody about themselves

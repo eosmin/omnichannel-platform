@@ -1,6 +1,7 @@
 import type { Queue } from 'bullmq'
 import type { Redis } from 'ioredis'
 
+import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { type DsrConfig, openDsrIntake } from '@platform/core/compliance'
 import { ErrorCodes } from '@platform/core/errors'
 import type { DsrIntakeJob } from '@platform/core/queues'
@@ -76,7 +77,9 @@ describe('DsrIntakeService', () => {
     async (_name, counts) => {
       const { service, add } = build(CONFIG, counts)
       await expect(service.submit(body)).rejects.toMatchObject({
-        code: ErrorCodes.RATE_LIMIT_EXCEEDED
+        code: ErrorCodes.RATE_LIMIT_EXCEEDED,
+        // H-11: how long to wait, at most (the counters last one day from their first count)
+        metadata: { [RETRY_AFTER_METADATA_KEY]: 86_400 }
       })
       expect(add).not.toHaveBeenCalled()
     }

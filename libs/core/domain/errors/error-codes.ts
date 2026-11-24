@@ -110,6 +110,8 @@ export const ErrorCodes = {
   // A store with rows in its tables, and the last store of an organization, are not deleted (409)
   ORG_STORE_HAS_DATA: 'ORG_STORE_HAS_DATA',
   ORG_STORE_IS_LAST: 'ORG_STORE_IS_LAST',
+  // The books are in one currency (TDD_18 §2.8): a store of an organization that keeps books does not take another (409)
+  ORG_STORE_CURRENCY_NOT_BASE: 'ORG_STORE_CURRENCY_NOT_BASE',
 
   // Inventory (TDD_16 §3)
   INSUFFICIENT_INVENTORY: 'INSUFFICIENT_INVENTORY',
@@ -318,6 +320,9 @@ export const ErrorCodes = {
 
   // The database kept a request waiting for a lock longer than the api allows (ApiLockTimeout): try again
   DATABASE_BUSY: 'DATABASE_BUSY',
+
+  // Redis, which a request needs, could not be reached or did not answer in time: try again (503, never a 500)
+  DEPENDENCY_UNAVAILABLE: 'DEPENDENCY_UNAVAILABLE',
 
   // The browser could not reach the api: raised by the api client when no answer came, never by the api
   NETWORK_UNAVAILABLE: 'NETWORK_UNAVAILABLE',

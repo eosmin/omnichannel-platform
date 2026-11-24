@@ -522,9 +522,10 @@ export const messageSchema = z.object({
   media: z.array(
     z.object({
       id: z.string(),
-      filename: z.string(),
-      contentType: z.string(),
-      fileSize: z.number(),
+      // Null for a reader who may not see files (`media:view`): the server takes the name, the type and the size out (BAN-R-meta)
+      filename: z.string().nullable(),
+      contentType: z.string().nullable(),
+      fileSize: z.number().nullable(),
       // A status of a newer server is a file still being processed, not a thread that fails to draw
       status: z.enum(MediaStatus).catch(MediaStatus.PENDING),
       // Of a reply with several files: the place of the file in the message and how it stands (`queued`,

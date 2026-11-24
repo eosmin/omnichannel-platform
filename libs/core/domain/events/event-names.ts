@@ -224,15 +224,24 @@ export const Events = {
   // one whose closing notice never reached the person. The api tells the reviewers
   DSR_DEADLINE_APPROACHING: 'dsr.deadline_approaching',
   DSR_RETURNED_TO_REVIEW: 'dsr.returned_to_review',
+  // The api itself: a request whose person proved their mailbox waits for a reviewer (not bridged; it is born in the api)
+  DSR_MANUAL_REVIEW: 'dsr.manual_review',
   DSR_NOTICE_FAILED: 'dsr.notice_failed'
 } as const
 
 // How long the first api instance to take an event of the bridge holds it
 export const EVENTS_BRIDGE_CLAIM_SECONDS = 60
 
-// The Redis channel that carries the domain events of the worker to the api instances, which are the
-// only processes that hold sockets
+// The base name of the Redis channel that carries the domain events of the worker to the api
+// instances, which are the only processes that hold sockets. Never subscribe to it bare: Redis
+// pub/sub has no key prefix, so two stacks on one Redis would hear each other's events (each event
+// then arrived once per stack). The real channel is `eventsBridgeChannel(prefix)`, with the same
+// prefix as the queues.
 export const EVENTS_BRIDGE_CHANNEL = 'platform:events-bridge'
+
+export function eventsBridgeChannel(prefix: string): string {
+  return `${prefix}:${EVENTS_BRIDGE_CHANNEL}`
+}
 
 export type EventName = (typeof Events)[keyof typeof Events]
 

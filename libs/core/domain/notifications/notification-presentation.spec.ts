@@ -46,6 +46,16 @@ describe('bodyVariantOf', () => {
     expect(bodyVariantOf({ ...params, customer: 'Lucia' }, 1, all)).toBe('bodyWithCustomer')
   })
 
+  it('names the person who joined the team, where the text exists', () => {
+    expect(bodyVariantOf({ member: 'Ana' }, 1, all)).toBe('bodyWithMember')
+    expect(bodyVariantOf({ member: 'Ana' }, 1, none)).toBe('body')
+    expect(bodyVariantOf({ member: '  ' }, 1, all)).toBe('body')
+    expect(bodyVariantOf({ member: 7 }, 1, all)).toBe('body')
+    // A customer, an author or a product keeps their texts: the member text is not theirs
+    expect(bodyVariantOf({ member: 'Ana', customer: 'Lucia' }, 1, all)).toBe('bodyWithCustomer')
+    expect(bodyVariantOf({ member: 'Ana', author: 'Bo' }, 1, all)).toBe('body')
+  })
+
   it('does not name a customer that is empty or not a text', () => {
     expect(bodyVariantOf({ customer: '' }, 1, all)).toBe('body')
     expect(bodyVariantOf({ customer: '  ' }, 1, all)).toBe('body')

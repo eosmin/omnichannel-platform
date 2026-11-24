@@ -395,6 +395,20 @@ describe('EmailDigestService', () => {
         })
       })
 
+      it('still mails an alert that cannot be turned off, whatever a stored choice says (BAN-325)', async () => {
+        findNotifications.mockResolvedValue([
+          row('n1', { type: NotificationTypes.FINANCE_CHAIN_BROKEN, actionPath: null }),
+          row('n2', { type: NotificationTypes.WEBHOOK_AUTO_DISABLED, actionPath: null })
+        ])
+        findPreferences.mockResolvedValue([
+          { storeId: 's1', type: NotificationTypes.FINANCE_CHAIN_BROKEN, email: false },
+          { storeId: 's1', type: NotificationTypes.WEBHOOK_AUTO_DISABLED, email: false }
+        ])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+        // The locked one goes out; the other critical alert, switched off, does not
+        expect(sentItems()).toHaveLength(1)
+      })
+
       it('sends no email at all when every type was switched off, but still clears the marks', async () => {
         findNotifications.mockResolvedValue([row('n1')])
         findPreferences.mockResolvedValue([

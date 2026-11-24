@@ -7,6 +7,8 @@ import { hashToken } from '@platform/core/crypto'
 import { contextOf, PrismaService, resolveDsrVerification } from '@platform/core/database'
 import { DsrStatus, VerificationTokenType } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 
 import type { DsrVerifyBody } from './compliance.schemas'
 
@@ -30,6 +32,7 @@ export class DsrVerifyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly events: DomainEvents,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig
   ) {}
 
@@ -62,6 +65,11 @@ export class DsrVerifyService {
       })
       // Not waiting any more: the token is not spent for a request that cannot take it
       if (request.count !== 1) throw invalidToken()
+      // Told in the same transaction that moved it: a rollback tells nobody, and a second click (claimed.count 0) never gets here
+      this.events.publish(this.prisma.client, Events.DSR_MANUAL_REVIEW, {
+        storeId: found.storeId,
+        requestId: found.id
+      })
       return true
     })
     if (!moved) throw invalidToken()

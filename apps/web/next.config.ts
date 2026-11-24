@@ -4,6 +4,8 @@ import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
 
 import {
+  DSR_REQUEST_PAGE_SOURCE,
+  DSR_VERIFY_PAGE_SOURCE,
   STATIC_SECURITY_HEADERS,
   UNSUBSCRIBE_PAGE_HEADERS,
   UNSUBSCRIBE_PAGE_SOURCE
@@ -19,11 +21,13 @@ const nextConfig: NextConfig = {
   // Next.js would answer every dynamic page with `X-Powered-By: Next.js`, naming the framework
   poweredByHeader: false,
   // The Content-Security-Policy is set per request in proxy.ts, because it carries a nonce
-  // The second rule overrides the same keys of the first for the page of the one-click unsubscribe only
+  // The second rule overrides the same keys of the first for the pages that carry a token in their fragment only (the one-click unsubscribe and the confirmation of a data request)
   headers: () =>
     Promise.resolve([
       { source: '/(.*)', headers: [...STATIC_SECURITY_HEADERS] },
-      { source: UNSUBSCRIBE_PAGE_SOURCE, headers: [...UNSUBSCRIBE_PAGE_HEADERS] }
+      { source: UNSUBSCRIBE_PAGE_SOURCE, headers: [...UNSUBSCRIBE_PAGE_HEADERS] },
+      { source: DSR_VERIFY_PAGE_SOURCE, headers: [...UNSUBSCRIBE_PAGE_HEADERS] },
+      { source: DSR_REQUEST_PAGE_SOURCE, headers: [...UNSUBSCRIBE_PAGE_HEADERS] }
     ])
 }
 

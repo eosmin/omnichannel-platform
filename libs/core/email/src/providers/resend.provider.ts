@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 
+import { EmailDeliveryError, EmailDeliveryFallback } from '../email-delivery-error'
 import type { EmailProvider, SendEmailOptions } from '../email-provider'
 
 export class ResendProvider implements EmailProvider {
@@ -28,9 +29,8 @@ export class ResendProvider implements EmailProvider {
     // The SDK returns failures as values. Throwing lets the queue retry (a 5xx or a rate limit) and,
     // once the attempts are spent, send the job to the dead-letter queue.
     if (error !== null) {
-      throw new Error(
-        `resend rejected the email: ${error.name} (${error.statusCode ?? 'network'}) ${error.message}`
-      )
+      // Its name and status only: its text can hold the address the mail was sent to
+      throw new EmailDeliveryError(error.name, error.statusCode ?? EmailDeliveryFallback.NO_STATUS)
     }
     return { providerMessageId: data.id }
   }

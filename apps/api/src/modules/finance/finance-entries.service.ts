@@ -25,7 +25,7 @@ import type {
   ManualEntryBody,
   ReverseEntryBody
 } from './finance.schemas'
-import { dayDate } from './finance.support'
+import { assertMemberOfStores, dayDate } from './finance.support'
 import {
   type BalanceView,
   balanceView,
@@ -135,6 +135,13 @@ export class FinanceEntriesService {
     body: ManualEntryBody,
     actor: Actor
   ): Promise<EntryDetailView> {
+    // The store a line charges is one the person is a member of (SEG-228); the ledger checks that it belongs to the organization
+    await assertMemberOfStores(
+      this.prisma.client,
+      organizationId,
+      actor.userId,
+      body.lines.flatMap(line => (line.storeId === undefined ? [] : [line.storeId]))
+    )
     const posted = await this.ledger.post({
       organizationId,
       entryDate: body.entryDate,

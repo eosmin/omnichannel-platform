@@ -55,3 +55,15 @@ export const magicLinkTokenIn = (text: string): string =>
 
 export const invitationTokenIn = (text: string): string =>
   captured(text, /\/invitations\/([A-Za-z0-9_-]+)/, 'invitation link')
+
+// The link of the verification mail of a public data request (/compliance/dsr/verify#token=...): the token sits in the fragment too
+export const dsrVerifyTokenIn = (text: string): string =>
+  captured(text, /\/compliance\/dsr\/verify#token=([A-Za-z0-9_-]{43})/, 'data request link')
+
+// How many emails wait for the address. For "no email came": the caller waits as long as the worker needs to send one and then counts
+export async function emailCountTo(to: string): Promise<number> {
+  const found = searchSchema.parse(
+    await (await fetch(searchUrl(to), { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })).json()
+  )
+  return found.messages.length
+}

@@ -15,6 +15,10 @@ function isPublic(pathname: string): boolean {
     pathname === AppPaths.magicLink ||
     // The one-click unsubscribe of the notification emails: the person has no session when they open the link of an email
     pathname === AppPaths.unsubscribe ||
+    // The page that confirms a public data request: the person comes from the link of the verification mail and has no account
+    pathname === AppPaths.dsrVerify ||
+    // The public form of data requests: whoever has the address of a store fills it in, with no account
+    pathname === AppPaths.dsrRequest ||
     pathname.startsWith(INVITATIONS_PREFIX) ||
     pathname.startsWith(SESSION_HANDLERS_PREFIX)
   )

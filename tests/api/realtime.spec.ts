@@ -20,7 +20,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { EventsBridge } from '@platform/core/event-bus'
-import { Events, EVENTS_BRIDGE_CHANNEL } from '@platform/core/events'
+import { Events } from '@platform/core/events'
 import {
   PresenceStatus,
   RealtimeEvents,
@@ -40,7 +40,11 @@ import { TenantContextService } from '../../apps/api/src/modules/tenancy'
 import { createConversationOf, createRole } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
-import { assertNoOtherBridgeListener } from '../helpers/bridge-listeners'
+import {
+  assertNoOtherBridgeListener,
+  BRIDGE_CHANNEL,
+  BRIDGE_PREFIX
+} from '../helpers/bridge-listeners'
 import {
   createActor as createActorRaw,
   seedTestContext,
@@ -200,10 +204,10 @@ describe('The realtime gateway', () => {
 
   // What the worker has: a bridge that publishes (it holds no connection of its own)
   const workerBridge = (): EventsBridge =>
-    new EventsBridge({ mode: 'publish' }, redis, app.get(EventEmitter2))
+    new EventsBridge({ mode: 'publish', prefix: BRIDGE_PREFIX }, redis, app.get(EventEmitter2))
   // A message on the channel of the bridge as anyone with access to Redis could write it
   const rawPublish = (event: string, payload: unknown): Promise<number> =>
-    redis.publish(EVENTS_BRIDGE_CHANNEL, JSON.stringify({ id: randomUUID(), event, payload }))
+    redis.publish(BRIDGE_CHANNEL, JSON.stringify({ id: randomUUID(), event, payload }))
 
   const asAdmin = () => api(app, ctx.adminA, ctx.storeA)
   const asAgent = () => api(app, ctx.agentA, ctx.storeA)
@@ -1282,7 +1286,7 @@ describe('The realtime gateway', () => {
       const agent = await asA(ctx.agentA)
       const { id } = await mk()
       await redis.publish(
-        EVENTS_BRIDGE_CHANNEL,
+        BRIDGE_CHANNEL,
         JSON.stringify({ id: randomUUID(), event: 'constructor', payload: {} })
       )
       const worker = workerBridge()
@@ -1317,7 +1321,7 @@ describe('The realtime gateway', () => {
       const { id } = await mk()
 
       await redis.publish(
-        EVENTS_BRIDGE_CHANNEL,
+        BRIDGE_CHANNEL,
         JSON.stringify({
           id: randomUUID(),
           event: Events.CONVERSATION_READ,
@@ -1415,7 +1419,7 @@ describe('The realtime gateway', () => {
       const heardOnChannel: string[] = []
       const listener = redis.duplicate()
       listener.on('message', (_channel: string, message: string) => heardOnChannel.push(message))
-      await listener.subscribe(EVENTS_BRIDGE_CHANNEL)
+      await listener.subscribe(BRIDGE_CHANNEL)
       const worker = workerBridge()
 
       try {
@@ -1947,7 +1951,7 @@ describe('The realtime gateway', () => {
         await rawPublish(Events.CONVERSATION_ASSIGNED, { storeId: ctx.storeA.id })
         await rawPublish('not.an.event', { storeId: ctx.storeA.id })
         await rawPublish('constructor', {})
-        await redis.publish(EVENTS_BRIDGE_CHANNEL, 'not json')
+        await redis.publish(BRIDGE_CHANNEL, 'not json')
         await rawPublish(Events.CONVERSATION_READ, {
           storeId: ctx.storeA.id,
           conversationId: id,
@@ -1979,7 +1983,7 @@ describe('The realtime gateway', () => {
         visibility: { hidden: false, assignedTo: null }
       })
       worker.publish('not.an.event', { storeId: ctx.storeA.id })
-      await redis.publish(EVENTS_BRIDGE_CHANNEL, 'not json')
+      await redis.publish(BRIDGE_CHANNEL, 'not json')
       await until(() => agent.of(RealtimeEvents.CONVERSATION_READ).length >= 1)
       await sleep(SETTLE_MS)
 

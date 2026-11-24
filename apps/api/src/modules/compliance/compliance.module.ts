@@ -8,11 +8,13 @@ import { TenancyModule } from '../tenancy'
 import {
   ConsentController,
   CookieConsentController,
+  DsrFormController,
   DsrPublicController,
   DsrReviewController
 } from './compliance.controller'
 import { ConsentService } from './consent.service'
 import { CookieConsentService } from './cookie-consent.service'
+import { DsrFormService } from './dsr-form.service'
 import { DsrIntakeService } from './dsr-intake.service'
 import { DSR_EXECUTOR_PROBE, dsrExecutorProbe, DsrReviewService } from './dsr-review.service'
 import { DsrVerifyService } from './dsr-verify.service'
@@ -24,6 +26,7 @@ import { DsrVerifyService } from './dsr-verify.service'
   controllers: [
     ConsentController,
     CookieConsentController,
+    DsrFormController,
     DsrPublicController,
     DsrReviewController
   ],
@@ -31,6 +34,7 @@ import { DsrVerifyService } from './dsr-verify.service'
     ConsentService,
     CookieConsentService,
     DsrIntakeService,
+    DsrFormService,
     DsrOpenWorkService,
     DsrReviewService,
     DsrVerifyService,
