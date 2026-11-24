@@ -29,6 +29,11 @@ import {
   rejectDsrRequest
 } from './dsr-requests'
 
+// How often the open queue is read again while the page is in view: a request that is verified or that ends elsewhere (the person's
+// mail, a sweep, another reviewer) changes the list with nobody on this screen to see it (PRI-076). A hidden tab does not poll.
+export const DSR_QUEUE_REFRESH_MS = 30_000
+export const DSR_QUEUE_POLL_MAX_PAGES = 3
+
 // The whole queue, newest first. The banners and the marks count every request, so the pages are read one after the other until the
 // api says there are no more (up to MAX_AUTO_PAGES of 100; a store with more asks for the rest by hand).
 export function useDsrQueue(
@@ -44,7 +49,13 @@ export function useDsrQueue(
     queryKey: QueryKeys.dsr.list(storeId),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) => fetchDsrRequests(apiClient, storeId, pageParam, signal),
-    getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined)
+    getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
+    // Only a queue that fits a few pages is polled: a refetch reads every loaded page, one after the other
+    refetchInterval: query =>
+      (query.state.data?.pages.length ?? 0) <= DSR_QUEUE_POLL_MAX_PAGES
+        ? DSR_QUEUE_REFRESH_MS
+        : false,
+    refetchOnWindowFocus: true
   })
   const { hasNextPage, isFetchingNextPage, isError, fetchNextPage } = query
   const loaded = query.data?.pages.length ?? 0

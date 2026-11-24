@@ -2,7 +2,7 @@
 
 import { Clock, MailX, Undo2 } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
-import { type ReactElement, useMemo, useState } from 'react'
+import { type ReactElement, type ReactNode, useMemo, useState } from 'react'
 
 import { DsrStatus, DsrType } from '@platform/core/domain'
 
@@ -39,7 +39,7 @@ const TYPES = Object.values(DsrType)
 // queue is read (a store has few), so the banners and the marks count every request and never only the ones a filter shows. What needs
 // a person is said at the top, in words and not only in colour: a request near its legal deadline, an approved erasure the sweep gave
 // back, and above all a closing notice whose sending could not be confirmed (a right of the data subject).
-export function DsrQueuePanel(): ReactElement {
+export function DsrQueuePanel({ children }: { children?: ReactNode }): ReactElement {
   const t = useTranslations('settings.dataRequests')
   const { storeId } = useStore()
   const queue = useDsrQueue(storeId)
@@ -56,6 +56,9 @@ export function DsrQueuePanel(): ReactElement {
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
         <p className="text-muted-foreground text-sm">{t('intro')}</p>
       </header>
+
+      {/* What sits under the page title and above the queue (the key of the public form): the h1 is the first heading of the page */}
+      {children}
 
       {attention.noticeFailed.length > 0 ? (
         <div

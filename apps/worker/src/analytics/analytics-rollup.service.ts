@@ -137,7 +137,7 @@ export class AnalyticsRollupService {
     add(AnalyticsMetrics.ORDERS_CREATED, orders.count, orders.count)
     // Money is kept in whole units of the currency (19.99) and read that way by the dashboard, the metrics of the plugins and every
     // file: the only place where cents become units is here (MetricUnits.CURRENCY)
-    add(AnalyticsMetrics.ORDERS_REVENUE, orders.totalCents / CENTS_PER_UNIT, orders.count)
+    add(AnalyticsMetrics.ORDERS_REVENUE, orders.totalCents / CENTS_PER_UNIT, orders.revenueCount)
     addTime(AnalyticsMetrics.FIRST_RESPONSE_TIME, firstResponse)
     addTime(AnalyticsMetrics.FIRST_AUTOMATED_RESPONSE_TIME, firstAutomated)
     addTime(AnalyticsMetrics.RESOLUTION_TIME, resolution)
@@ -339,10 +339,18 @@ export class AnalyticsRollupService {
 
   // A cancelled order is not revenue
   private async orderTotals(tx: PrismaTransaction, storeId: string, start: Date, end: Date) {
-    const [row] = await tx.$queryRaw<{ count: number; total: number }[]>`
-      SELECT COUNT(*)::int AS count, COALESCE(SUM(total_cents), 0)::float8 AS total FROM orders
+    // A sum of cents is one currency: the revenue adds up only the orders in the currency of the store (FIN-700b). The count is of every order
+    const [row] = await tx.$queryRaw<{ count: number; total: number; revenue_count: number }[]>`
+      SELECT COUNT(*)::int AS count,
+        COALESCE(SUM(total_cents) FILTER (WHERE currency = (SELECT currency FROM stores WHERE id = ${storeId})), 0)::float8 AS total,
+        (COUNT(*) FILTER (WHERE currency = (SELECT currency FROM stores WHERE id = ${storeId})))::int AS revenue_count
+      FROM orders
       WHERE store_id = ${storeId} AND created_at >= ${start.toISOString()}::timestamp AND created_at < ${end.toISOString()}::timestamp
         AND status <> ${OrderStatus.CANCELLED}`
-    return { count: row?.count ?? 0, totalCents: row?.total ?? 0 }
+    return {
+      count: row?.count ?? 0,
+      totalCents: row?.total ?? 0,
+      revenueCount: row?.revenue_count ?? 0
+    }
   }
 }

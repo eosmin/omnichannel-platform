@@ -800,3 +800,99 @@ describe('UNSUBSCRIBE_TOKEN_KEY_PREVIOUS, the key before a rotation (Step 7.3, B
     )
   })
 })
+
+describe('JWT_SECRET and CREDENTIALS_ENCRYPTION_KEY are two different secrets (B5)', () => {
+  const deployed: Record<string, string> = {
+    ...validEnv,
+    RESEND_API_KEY: 're_key',
+    FRONTEND_URL: 'https://app.example.com',
+    WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
+    TRUST_PROXY_HOPS: '1'
+  }
+  const shared = 'b'.repeat(64)
+
+  it.each(['staging', 'production'])('refuses one value for both in %s', nodeEnv => {
+    expect(() => parseEnv({ ...deployed, NODE_ENV: nodeEnv })).not.toThrow()
+    expect(() =>
+      parseEnv({
+        ...deployed,
+        NODE_ENV: nodeEnv,
+        JWT_SECRET: shared,
+        CREDENTIALS_ENCRYPTION_KEY: shared
+      })
+    ).toThrow(/JWT_SECRET must not be the same value as CREDENTIALS_ENCRYPTION_KEY/)
+  })
+
+  it('compares the hexadecimal key without regard to case', () => {
+    expect(() =>
+      parseEnv({
+        ...deployed,
+        NODE_ENV: 'production',
+        JWT_SECRET: shared.toUpperCase(),
+        CREDENTIALS_ENCRYPTION_KEY: shared
+      })
+    ).toThrow(/JWT_SECRET must not be the same value/)
+  })
+
+  it('does not print the secret in the error', () => {
+    let message = ''
+    try {
+      parseEnv({
+        ...deployed,
+        NODE_ENV: 'production',
+        JWT_SECRET: shared,
+        CREDENTIALS_ENCRYPTION_KEY: shared
+      })
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error)
+    }
+    // It must throw (an empty message fails here) and never carry the value
+    expect(message).toMatch(/JWT_SECRET must not be the same value/)
+    expect(message).not.toContain(shared)
+  })
+})
+
+describe('METRICS_BEARER_TOKEN, the token of the scraper of /metrics (B5)', () => {
+  const TOKEN = 'm'.repeat(40)
+
+  it('may be left out, and an empty value counts as left out', () => {
+    expect(parseEnv(validEnv).METRICS_BEARER_TOKEN).toBeUndefined()
+    expect(parseEnv({ ...validEnv, METRICS_BEARER_TOKEN: '' }).METRICS_BEARER_TOKEN).toBeUndefined()
+  })
+
+  it('is kept as given, and a short one is refused', () => {
+    expect(parseEnv({ ...validEnv, METRICS_BEARER_TOKEN: TOKEN }).METRICS_BEARER_TOKEN).toBe(TOKEN)
+    expect(() => parseEnv({ ...validEnv, METRICS_BEARER_TOKEN: 'short' })).toThrow(
+      /METRICS_BEARER_TOKEN/
+    )
+  })
+
+  it('is refused in a deployed environment when it is the signing secret, the encryption key or the placeholder', () => {
+    const deployed: Record<string, string> = {
+      ...validEnv,
+      NODE_ENV: 'production',
+      RESEND_API_KEY: 're_key',
+      FRONTEND_URL: 'https://app.example.com',
+      WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
+      TRUST_PROXY_HOPS: '1'
+    }
+    expect(() => parseEnv({ ...deployed, METRICS_BEARER_TOKEN: TOKEN })).not.toThrow()
+    const others = {
+      CREDENTIALS_ENCRYPTION_KEY_PREVIOUS: 'c'.repeat(64),
+      UNSUBSCRIBE_TOKEN_KEY_PREVIOUS: 'p'.repeat(40)
+    }
+    for (const value of [
+      deployed['JWT_SECRET'] ?? '',
+      deployed['CREDENTIALS_ENCRYPTION_KEY'] ?? '',
+      deployed['CONSENT_HASH_KEY'] ?? '',
+      deployed['UNSUBSCRIBE_TOKEN_KEY'] ?? '',
+      others.CREDENTIALS_ENCRYPTION_KEY_PREVIOUS,
+      others.UNSUBSCRIBE_TOKEN_KEY_PREVIOUS,
+      `change-me-${'x'.repeat(30)}`
+    ]) {
+      expect(() => parseEnv({ ...deployed, ...others, METRICS_BEARER_TOKEN: value })).toThrow(
+        /METRICS_BEARER_TOKEN must be a value of its own/
+      )
+    }
+  })
+})

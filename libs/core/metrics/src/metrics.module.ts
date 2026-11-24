@@ -1,4 +1,4 @@
-import { Global, Module, type Provider } from '@nestjs/common'
+import { type DynamicModule, Global, Module, type Provider } from '@nestjs/common'
 import { Counter, collectDefaultMetrics, Gauge, Histogram, Registry } from '@prometheus-io/client'
 
 import { type MetricName } from '@platform/core/metrics'
@@ -6,6 +6,7 @@ import { type MetricName } from '@platform/core/metrics'
 import { HttpMetricsMiddleware } from './http-metrics.middleware'
 import { MetricDefinitions, type MetricDefinition } from './metric-definitions'
 import { getMetricToken, METRICS_REGISTRY } from './metric-tokens'
+import { METRICS_ACCESS, type MetricsAccess } from './metrics-access'
 import { MetricsController } from './metrics.controller'
 
 // Every process metric (CPU, memory, event loop) carries this prefix
@@ -58,4 +59,9 @@ const metricProviders: Provider[] = (
     ...metricProviders.map(provider => (provider as { provide: string }).provide)
   ]
 })
-export class MetricsModule {}
+export class MetricsModule {
+  // With the access the environment decides (the apps); the plain module is open, for the tests of a service
+  static forRoot(access: MetricsAccess): DynamicModule {
+    return { module: MetricsModule, providers: [{ provide: METRICS_ACCESS, useValue: access }] }
+  }
+}

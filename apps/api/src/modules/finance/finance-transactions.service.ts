@@ -45,7 +45,12 @@ import type {
   ReplaceTransactionBody,
   VoidTransactionBody
 } from './finance.schemas'
-import { dayDate, lockScope, requireTransactionPermission } from './finance.support'
+import {
+  assertMemberOfStores,
+  dayDate,
+  lockScope,
+  requireTransactionPermission
+} from './finance.support'
 import {
   TRANSACTION_SELECT,
   type TransactionPage,
@@ -265,6 +270,10 @@ export class FinanceTransactionsService {
     actor: Actor,
     replaces: string | null
   ): Promise<Recorded> {
+    // Before the replay too: a person who lost the store since must not read back what was charged to it (SEG-228)
+    if (body.storeId !== undefined) {
+      await assertMemberOfStores(tx, organizationId, actor.userId, [body.storeId])
+    }
     const found = await this.byClientKey(tx, organizationId, body.idempotencyKey)
     if (found !== null) {
       if (!this.sameRequest(found, body, replaces)) {
@@ -370,11 +379,9 @@ export class FinanceTransactionsService {
     )
     if (new Set(ids).size !== facts.size) throw resourceNotFound('ledger account')
     if (body.storeId !== undefined) {
-      const store = await tx.store.findFirst({
-        where: { id: body.storeId, organizationId },
-        select: { id: true }
-      })
-      if (store === null) throw resourceNotFound('store')
+      // Membership was checked in `recordIn`, before the replay; here the store must also exist in the organization
+      const store = await tx.store.count({ where: { id: body.storeId, organizationId } })
+      if (store === 0) throw resourceNotFound('store')
     }
     let taxRate: TransactionTaxRate | null = null
     let taxRateActive = true

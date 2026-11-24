@@ -31,8 +31,13 @@ export function PermissionDenied({
       ? [tAll(itemKey as 'errors.INTERNAL_ERROR')]
       : []
   })
+  // One name is the one permission that is missing, said as such; "one of these" is for a list of two or more
   const oneOf =
-    names.length > 0 ? tAll('permissionDenied.oneOf', { permissions: format.list(names) }) : null
+    names.length > 1
+      ? tAll('permissionDenied.oneOf', { permissions: format.list(names) })
+      : names.length === 1
+        ? tAll('permissionDenied.named', { permission: names[0] ?? '' })
+        : null
   const key = permission === undefined ? null : permissionNameKey(permission)
   const named =
     key !== null && tAll.has(key as 'errors.INTERNAL_ERROR')

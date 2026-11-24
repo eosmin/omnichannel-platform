@@ -7,6 +7,7 @@ import type { MessageView } from '@platform/api-client'
 
 import { hasAnyAction, type MessageActions } from '../../lib/inbox/message-actions'
 import { messageTimeOptions } from '../../lib/inbox/message-time'
+import { isViewableFile } from '../../lib/inbox/viewable-file'
 import { viewerItemsOfRun } from '../../lib/inbox/viewer-items'
 
 import { LazyImageSetViewer } from './image-set-viewer-lazy'
@@ -64,7 +65,7 @@ export function ImageRun({
               className="group focus-visible:ring-ring flex min-w-0 scroll-mt-16 flex-col gap-0.5 rounded-md outline-none focus-visible:ring-2"
             >
               <div className="relative">
-                {file === undefined ? null : (
+                {file === undefined || !isViewableFile(file) ? null : (
                   <RunImage file={file} onOpen={() => setOpenId(message.id)} />
                 )}
                 <time

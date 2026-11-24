@@ -18,6 +18,7 @@ import {
   PlatformException
 } from '@platform/core/errors'
 
+import { lockChart } from '../finance/finance.support'
 import { type Actor, isPermission, missingPermissions, TenantContextService } from '../tenancy'
 
 import type {
@@ -163,6 +164,7 @@ export class OrganizationsService {
     }
     const store = await this.writing(() =>
       this.prisma.transaction(async tx => {
+        await this.assertCurrencyIsTheBooks(tx, organizationId, body.currency)
         const created = await tx.store.create({
           data: {
             organizationId,
@@ -206,9 +208,15 @@ export class OrganizationsService {
     actor: Actor
   ): Promise<StoreView> {
     const changes = definedOnly(body)
-    const { count } = await this.prisma.client.store.updateMany({
-      where: { id: storeId, organizationId, ...managedBy(actor.userId) },
-      data: changes
+    const { count } = await this.prisma.transaction(async tx => {
+      // The update first: a store the caller does not manage is a 404 whatever the body says. The answer of the guard rolls the update back
+      const updated = await tx.store.updateMany({
+        where: { id: storeId, organizationId, ...managedBy(actor.userId) },
+        data: changes
+      })
+      if (updated.count > 0)
+        await this.assertCurrencyIsTheBooks(tx, organizationId, changes.currency)
+      return updated
     })
     if (count === 0) throw resourceNotFound('store')
     // The name of the store is part of what the guards cache
@@ -217,6 +225,29 @@ export class OrganizationsService {
       fields: Object.keys(changes)
     })
     return this.getStore(organizationId, storeId, actor)
+  }
+
+  // The books are in one currency (TDD_18 §2.8): orders and entries keep their amounts as they are, with no scale by exponent, so a
+  // store of an organization that keeps books takes no other currency than the base one of the books (FIN-700)
+  private async assertCurrencyIsTheBooks(
+    db: PrismaTransaction,
+    organizationId: string,
+    currency: string | undefined
+  ): Promise<void> {
+    if (currency === undefined) return
+    // The same lock as the setup of the books: the setup and this change take turns, so the books never meet a store in another currency
+    await lockChart(db, organizationId)
+    const books = await db.financeSettings.findUnique({
+      where: { organizationId },
+      select: { baseCurrency: true }
+    })
+    if (books === null || books.baseCurrency === currency) return
+    throw new PlatformException(
+      ErrorCodes.ORG_STORE_CURRENCY_NOT_BASE,
+      'the books of the organization are kept in another currency',
+      HttpStatusCodes.CONFLICT,
+      { baseCurrency: books.baseCurrency }
+    )
   }
 
   // The last store of an organization stays: with none, nobody could sign in to it. A store that

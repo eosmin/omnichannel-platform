@@ -33,8 +33,8 @@ import {
   NotificationTypes
 } from '@platform/core/notifications'
 
-import { customerNameOf } from './notification-params'
-import { NotificationsService } from './notifications.service'
+import { customerNameOf, textForParams } from './notification-params'
+import { type NotificationParams, NotificationsService } from './notifications.service'
 
 // The notifications that go to a group or to someone other than the owner of a conversation: the
 // queue of the team, a reply that did not go out, a new member, a channel that went down. Ids only in
@@ -212,6 +212,14 @@ export class NotificationsInboxListener {
       })
       if (joined === 0) return
       const actionPath = AppPaths.store.settings(storeId, StoreSettingsSections.TEAM)
+      // Who joined, so the bell says it; left out when the name is empty, and the plain text then reads right
+      const joiner = await this.prisma.client.user.findUnique({
+        where: { id: userId },
+        select: { name: true }
+      })
+      const name = joiner === null ? null : textForParams(joiner.name)
+      const params: NotificationParams =
+        name === null ? {} : { [NotificationParamKeys.MEMBER]: name }
       const inviter = await this.prisma.client.membership.count({
         where: { userId: invitedBy, storeId, status: MembershipStatus.ACTIVE, revokedAt: null }
       })
@@ -220,6 +228,7 @@ export class NotificationsInboxListener {
           userId: invitedBy,
           storeId,
           type: NotificationTypes.INVITATION_ACCEPTED,
+          params,
           resourceType: 'user',
           resourceId: userId,
           actionPath
@@ -228,6 +237,7 @@ export class NotificationsInboxListener {
       await this.notifications.sendToStore({
         storeId,
         type: NotificationTypes.MEMBER_JOINED,
+        params,
         resourceType: 'user',
         resourceId: userId,
         actionPath,

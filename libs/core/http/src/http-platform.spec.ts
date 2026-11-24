@@ -15,7 +15,7 @@ import type { Response } from 'express'
 import { PrismaService } from '@platform/core/database'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
 import { LoggerModule } from '@platform/core/logger'
-import { MetricsModule } from '@platform/core/metrics-module'
+import { MetricsModule, OPEN_METRICS_ACCESS } from '@platform/core/metrics-module'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -115,7 +115,7 @@ describe('the HTTP platform', () => {
     const module = await Test.createTestingModule({
       imports: [
         LoggerModule.forRoot({ level: 'fatal', pretty: false }),
-        MetricsModule,
+        MetricsModule.forRoot(OPEN_METRICS_ACCESS),
         FakeDatabaseModule,
         FakeRedisModule,
         FakeStorageModule,

@@ -1,6 +1,6 @@
 import { ApiError } from '@platform/api-client'
 
-import { errorCodeOf, rateLimitWaitOf } from './error-message'
+import { errorCodeOf, errorDetailOf } from './error-message'
 
 describe('errorCodeOf', () => {
   it('keeps the code of an api error', () => {
@@ -14,31 +14,64 @@ describe('errorCodeOf', () => {
   })
 })
 
-// H-11: a refusal by rate limit says how long to wait, and the page shows it in the unit a person reads
-describe('rateLimitWaitOf', () => {
-  const limited = (seconds: unknown): ApiError =>
-    new ApiError(429, 'RATE_LIMIT_EXCEEDED', 'x', null, { retryAfterSeconds: seconds })
-
-  it.each([
-    [1, { unit: 'seconds', value: 1 }],
-    [45, { unit: 'seconds', value: 45 }],
-    [59.2, { unit: 'minutes', value: 1 }],
-    [60, { unit: 'minutes', value: 1 }],
-    [421, { unit: 'minutes', value: 8 }],
-    [3599, { unit: 'minutes', value: 60 }],
-    [3600, { unit: 'hours', value: 1 }],
-    [86_400, { unit: 'hours', value: 24 }]
-  ])('reads %s seconds as %j', (seconds, wait) => {
-    expect(rateLimitWaitOf(limited(seconds))).toEqual(wait)
+describe('errorDetailOf', () => {
+  it('names the limit of a file that is too large, in megabytes', () => {
+    const error = new ApiError(400, 'FILE_TOO_LARGE', 'x', null, { maxSizeBytes: 10 * 1024 * 1024 })
+    expect(errorDetailOf(error)).toEqual({
+      key: 'fileTooLarge',
+      values: { megabytes: 10 }
+    })
   })
 
-  it('has no wait for an error that does not say one, or is not a rate limit', () => {
-    expect(rateLimitWaitOf(limited(undefined))).toBeNull()
-    expect(rateLimitWaitOf(limited(0))).toBeNull()
-    expect(rateLimitWaitOf(limited('soon'))).toBeNull()
+  it('rounds a limit that is not a whole number of megabytes up to one decimal', () => {
+    const error = new ApiError(400, 'FILE_TOO_LARGE', 'x', null, {
+      maxSizeBytes: 1.5 * 1024 * 1024
+    })
+    expect(errorDetailOf(error)).toEqual({
+      key: 'fileTooLarge',
+      values: { megabytes: 1.5 }
+    })
+  })
+
+  it.each([undefined, 0, -1, '10', Number.NaN])('has no detail for a limit of %j', limit => {
+    const error = new ApiError(400, 'FILE_TOO_LARGE', 'x', null, { maxSizeBytes: limit })
+    expect(errorDetailOf(error)).toBeNull()
+  })
+
+  it('names the wait of a refusal for too many requests, in seconds up to a minute and in minutes after', () => {
+    const wait = (seconds: number): unknown =>
+      errorDetailOf(
+        new ApiError(429, 'RATE_LIMIT_EXCEEDED', 'x', null, { retryAfterSeconds: seconds })
+      )
+    expect(wait(30)).toEqual({ key: 'rateLimit', values: { value: 30, unit: 'seconds' } })
+    expect(wait(60)).toEqual({ key: 'rateLimit', values: { value: 60, unit: 'seconds' } })
+    expect(wait(61)).toEqual({ key: 'rateLimit', values: { value: 2, unit: 'minutes' } })
+    expect(wait(900)).toEqual({ key: 'rateLimit', values: { value: 15, unit: 'minutes' } })
+  })
+
+  it.each([undefined, 0, -5, '30'])('has no detail for a wait of %j', seconds => {
+    const error = new ApiError(429, 'RATE_LIMIT_EXCEEDED', 'x', null, {
+      retryAfterSeconds: seconds
+    })
+    expect(errorDetailOf(error)).toBeNull()
+  })
+
+  it('names the kind of a conflict, so a check that is running is not told to reload', () => {
+    const error = new ApiError(409, 'RESOURCE_CONFLICT', 'x', null, {
+      conflict: 'chain_check_running'
+    })
+    expect(errorDetailOf(error)).toEqual({ key: 'conflicts.chain_check_running' })
+  })
+
+  it.each([undefined, '', 7, 'has space'])('has no detail for a conflict of %j', conflict => {
+    const error = new ApiError(409, 'RESOURCE_CONFLICT', 'x', null, { conflict })
+    expect(errorDetailOf(error)).toBeNull()
+  })
+
+  it('has none for other codes or other errors', () => {
     expect(
-      rateLimitWaitOf(new ApiError(400, 'VALIDATION_FAILED', 'x', null, { retryAfterSeconds: 5 }))
+      errorDetailOf(new ApiError(400, 'VALIDATION_FAILED', 'x', null, { maxSizeBytes: 5 }))
     ).toBeNull()
-    expect(rateLimitWaitOf(new TypeError('boom'))).toBeNull()
+    expect(errorDetailOf(new TypeError('boom'))).toBeNull()
   })
 })

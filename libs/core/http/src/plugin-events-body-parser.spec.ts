@@ -9,7 +9,7 @@ import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { PLUGIN_API_KEY_TOKEN_PREFIX, RemoteChannelApiLimits } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { LoggerModule } from '@platform/core/logger'
-import { MetricsModule } from '@platform/core/metrics-module'
+import { MetricsModule, OPEN_METRICS_ACCESS } from '@platform/core/metrics-module'
 
 import { configureHttpApp } from './configure-http-app'
 import { HttpErrorsModule } from './http-errors.module'
@@ -43,7 +43,7 @@ describe('the body parser of POST /plugin-api/channel/events', () => {
     const module = await Test.createTestingModule({
       imports: [
         LoggerModule.forRoot({ level: 'fatal', pretty: false }),
-        MetricsModule,
+        MetricsModule.forRoot(OPEN_METRICS_ACCESS),
         HttpErrorsModule
       ],
       controllers: [EchoController]
@@ -155,7 +155,7 @@ describe('the body parser of POST /plugin-api/channel/events with the limit of t
     const module = await Test.createTestingModule({
       imports: [
         LoggerModule.forRoot({ level: 'fatal', pretty: false }),
-        MetricsModule,
+        MetricsModule.forRoot(OPEN_METRICS_ACCESS),
         HttpErrorsModule
       ],
       controllers: [EchoController],

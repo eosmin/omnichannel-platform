@@ -14,6 +14,7 @@ import {
   DsrRejectionReasons,
   type DsrResultOutcome,
   dsrNoticeJob,
+  dsrNoticeLocaleOf,
   DsrFailureCodes,
   dsrNoticeStatusOf,
   DsrResultOutcomes,
@@ -32,7 +33,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { ExportContentTypes } from '@platform/core/exports'
-import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
+import type { Locale } from '@platform/core/i18n'
 import { QueueNames, type SendEmailJob } from '@platform/core/queues'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -85,6 +86,7 @@ const SELECT = {
   subjectCustomerIds: true,
   subjectEmailHash: true,
   notifyToEncrypted: true,
+  noticeLocale: true,
   approvals: true,
   notes: true
 } as const
@@ -511,8 +513,7 @@ export class DsrReviewService {
       where: { id: storeId },
       select: { defaultLocale: true }
     })
-    const locale: Locale =
-      SUPPORTED_LOCALES.find(candidate => candidate === store?.defaultLocale) ?? DEFAULT_LOCALE
+    const locale: Locale = dsrNoticeLocaleOf(row.noticeLocale, store?.defaultLocale)
     const job = dsrNoticeJob({
       requestId: row.id,
       storeId,
