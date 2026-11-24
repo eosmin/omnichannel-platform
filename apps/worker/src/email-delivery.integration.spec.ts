@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import { EMAIL_PROVIDER, type EmailProvider } from '@platform/core/email'
 import { Locales } from '@platform/core/i18n'
 import { EmailTemplates, JobNames, QueueNames } from '@platform/core/queues'
 
@@ -142,11 +143,39 @@ describe('SEND_EMAIL', () => {
       originalQueue: QueueNames.EMAIL,
       originalJobName: JobNames.SEND_EMAIL,
       originalJobId: job.id,
-      error: 'provider down'
+      error: 'Error' // The queue keeps the name of a failed job of mail, never its text (it can hold the address)
     })
     const failed = await queue.getJob(job.id ?? '') // Stays here: Bull Board retries it in place
     expect(await failed?.getState()).toBe('failed')
     expect(failed?.attemptsMade).toBe(3)
+  }, 40_000)
+
+  it('keeps the address of a refused mail out of the dead letter and out of what the queue keeps of the failed job', async () => {
+    const refusal = Object.assign(new Error(`550 5.1.1 <${to}>: Recipient address rejected`), {
+      code: 'EENVELOPE',
+      response: `550 5.1.1 <${to}>: Recipient address rejected`,
+      rejected: [to]
+    })
+    // The provider refuses, not the service: the real EmailService is what turns the refusal into an error with no address
+    jest
+      .spyOn(test.app.get<EmailProvider>(EMAIL_PROVIDER, { strict: false }), 'send')
+      .mockRejectedValue(refusal)
+    const queue = test.queue(QueueNames.EMAIL)
+    const job = await queue.add(JobNames.SEND_EMAIL, magicLinkJob(to))
+    const deadLetter = test.queue(QueueNames.DEAD_LETTER)
+
+    const deadline = Date.now() + 25_000
+    while ((await deadLetter.getJobCounts('waiting')).waiting === 0) {
+      if (Date.now() > deadline) throw new Error('the job never reached the dead-letter queue')
+      await sleep(250)
+    }
+
+    const [exhausted] = await deadLetter.getJobs(['waiting'])
+    const failed = await queue.getJob(job.id ?? '')
+    expect(JSON.stringify(exhausted?.data)).not.toContain(to)
+    expect((exhausted?.data as { error: string } | undefined)?.error).toContain('EENVELOPE')
+    expect(failed?.failedReason ?? '').not.toContain(to)
+    expect((failed?.stacktrace ?? []).join('\n')).not.toContain(to)
   }, 40_000)
 
   it('does not retry a payload the template rejects, and sends it to the dead letter at once', async () => {

@@ -3,6 +3,8 @@ import type { Counter, Histogram } from '@prometheus-io/client'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
+import { EmailDeliveryError } from '@platform/core/email'
+import { errorName } from '@platform/core/errors'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import {
@@ -16,16 +18,30 @@ import {
 import { QueuesRegistry } from '@platform/core/queues-module'
 
 import { JobRejectedError } from './job-rejected.error'
+import { MailJobFailedError } from './mail-job-failure'
 
 const MS_PER_SECOND = 1000
 
 // Jobs whose data is an address typed by whoever asked, account or not, or an email with its text and its links (a data subject request's
 // verification link holds a token): the dead-letter copy keeps the name, the id and the error, never the data. Neither is replayed from the
 // dead-letter queue (nothing reads `originalData` back; TDD_07 §4's replay is not built and must not replay these).
+// The queues whose jobs are mail: whatever their name, an error of theirs may hold the address
+const MAIL_QUEUES: ReadonlySet<string> = new Set([QueueNames.AUTH_EMAIL, QueueNames.EMAIL])
+
 const REDACTED_JOBS: ReadonlySet<string> = new Set([
   JobNames.REQUEST_MAGIC_LINK,
   JobNames.SEND_EMAIL
 ])
+
+// What can be said of the failure of a job that carries an address: the text of an error we made ourselves to be safe (a job refused on entry, a
+// mail the provider did not take), and for any other the name of what was thrown
+function safeFailureText(error: Error): string {
+  return error instanceof JobRejectedError ||
+    error instanceof EmailDeliveryError ||
+    error instanceof MailJobFailedError
+    ? error.message
+    : errorName(error)
+}
 
 // What every processor shares (TDD_07 §1.5): structured logging, the queue metrics and the route to
 // the dead-letter queue once the attempts are spent.
@@ -72,10 +88,21 @@ export class ProcessorSupport {
 
   async failedAttempt(queue: QueueName, job: Job | undefined, error: Error): Promise<void> {
     this.failed.inc({ queue, job: job?.name ?? 'unknown' })
-    this.logger.error(
-      { queue, jobId: job?.id, attempt: job?.attemptsMade, err: error },
-      'job failed'
-    )
+    // A job that sends mail holds an address, and what a provider says about a refusal can hold it too: its failure is the name and what is
+    // safe to say about it, never the error itself (its message, stack and properties would reach the log and the dead-letter queue)
+    const carriesAddress =
+      MAIL_QUEUES.has(queue) || (job !== undefined && REDACTED_JOBS.has(job.name))
+    if (carriesAddress) {
+      this.logger.error(
+        { queue, jobId: job?.id, attempt: job?.attemptsMade, errorName: errorName(error) },
+        'job failed'
+      )
+    } else {
+      this.logger.error(
+        { queue, jobId: job?.id, attempt: job?.attemptsMade, err: error },
+        'job failed'
+      )
+    }
     if (job === undefined || !isFinalFailure(job, error)) return
 
     const exhausted: DeadLetterJob = {
@@ -90,7 +117,7 @@ export class ProcessorSupport {
         error instanceof JobRejectedError
           ? null
           : job.data,
-      error: error.message,
+      error: carriesAddress ? safeFailureText(error) : error.message,
       failedAt: new Date().toISOString()
     }
     try {
