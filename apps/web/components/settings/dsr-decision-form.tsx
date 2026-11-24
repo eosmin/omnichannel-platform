@@ -14,7 +14,13 @@ import {
 import { ClientErrorCodes } from '@platform/core/errors'
 
 import type { DsrRequestDetailView } from '../../lib/compliance/dsr-requests'
-import { canApprove, canCancel, canReject, reasonProblem } from '../../lib/compliance/dsr-view'
+import {
+  canApprove,
+  canCancel,
+  canReject,
+  decisionNotices,
+  reasonProblem
+} from '../../lib/compliance/dsr-view'
 import { useDsrDecision } from '../../lib/compliance/use-dsr'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
@@ -89,6 +95,11 @@ export function DsrDecisionForm({
       : decision === DsrDecisions.REJECT
         ? canReject(request)
         : canCancel(request, new Date())
+  const notices = decisionNotices({
+    allowed,
+    blocked,
+    refusalCode: refusal === null ? null : refusal instanceof ApiError ? refusal.code : ''
+  })
   const needsConfirm = decision === DsrDecisions.APPROVE
   // The kind of effects the dialog lists: an erasure and an export say different things
   const kind: DecisionKind =
@@ -167,12 +178,12 @@ export function DsrDecisionForm({
         ) : null}
       </div>
 
-      {allowed ? null : (
+      {notices.stale ? (
         <p role="alert" className="text-destructive text-sm">
           {t('stale')}
         </p>
-      )}
-      {blocked ? (
+      ) : null}
+      {notices.blocked ? (
         <p role="alert" className="text-destructive text-sm">
           {t('blocked')}
         </p>
@@ -223,7 +234,7 @@ export function DsrDecisionForm({
         </div>
       ) : null}
 
-      {refusal === null ? null : (
+      {refusal === null || !notices.refusal ? null : (
         <div role="alert" className="text-destructive text-sm">
           <p>{errorText(refusal)}</p>
           {counts.length === 0 ? null : (

@@ -60,7 +60,7 @@ export function SearchBox(): ReactElement | null {
           aria-keyshortcuts={Shortcuts.list.FOCUS_SEARCH}
           placeholder={t('placeholder')}
           autoComplete="off"
-          className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border bg-transparent pr-3 pl-8 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
+          className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring h-9 w-full rounded-md border bg-transparent pr-3 pl-8 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
         />
       </form>
     </>

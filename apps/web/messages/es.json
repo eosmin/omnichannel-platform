@@ -693,7 +693,7 @@
     "DSR_VERIFICATION_INVALID": "La verificación de la solicitud de datos no es válida",
     "DSR_SUBJECT_CHANGED": "El cliente de esta solicitud cambió, por eso vuelve a revisión",
     "DSR_BLOCKED_BY_OPEN_WORK": "El cliente tiene pedidos, envíos, devoluciones, remesas o saldos abiertos, por eso todavía no se pueden borrar sus datos",
-    "DSR_EXECUTOR_UNAVAILABLE": "Todavía no se pueden aprobar solicitudes de borrado",
+    "DSR_EXECUTOR_UNAVAILABLE": "Esta solicitud no se puede aprobar todavía. Solo se puede rechazar",
     "DSR_NOT_REVIEWABLE": "La solicitud de datos no está en un estado que admita esta decisión",
     "EXPORT_EMPTY": "No hay archivos para descargar",
     "REPORT_LIMIT_REACHED": "Esta tienda ya tiene el máximo de reportes programados",
@@ -881,6 +881,13 @@
     "ORG_STORE_IS_LAST": "No se puede borrar la última tienda de la organización.",
     "ORG_STORE_CURRENCY_NOT_BASE": "La contabilidad de esta organización se lleva en USD, así que la moneda de sus tiendas no se puede cambiar."
   },
+  "errorDetails": {
+    "fileTooLarge": "El archivo pesa más de {megabytes} MB. Elige uno más pequeño",
+    "rateLimit": "Hay demasiadas solicitudes. Inténtalo de nuevo en {unit, select, minutes {{value, plural, one {# minuto} other {# minutos}}} other {{value, plural, one {# segundo} other {# segundos}}}}",
+    "conflicts": {
+      "chain_check_running": "Ya hay una revisión de la cadena en curso. Espera a que termine e inténtalo de nuevo"
+    }
+  },
   "invitation": {
     "title": "Te invitaron",
     "body": "{inviter} te invitó a unirte a {store} como {role}.",
@@ -895,13 +902,13 @@
     "unavailableTitle": "Esta invitación no está disponible"
   },
   "unsubscribe": {
-    "title": "Dejar de recibir avisos",
-    "heading": "¿Dejar de recibir estos avisos por correo?",
-    "body": "Dejarás de recibir por correo los avisos de notificaciones de tus tiendas. Los seguirás viendo dentro de la aplicación, y puedes volver a activarlos cuando quieras en tus preferencias de notificaciones.",
-    "confirm": "Dejar de recibirlos",
+    "title": "Dejar de recibir notificaciones",
+    "heading": "¿Dejar de recibir estas notificaciones por correo?",
+    "body": "Dejarás de recibir por correo las notificaciones de tus tiendas. Las seguirás viendo dentro de la aplicación, y puedes volver a activarlas cuando quieras en tus preferencias de notificaciones.",
+    "confirm": "Dejar de recibirlas",
     "working": "Guardando…",
     "doneTitle": "Listo",
-    "done": "Ya no recibirás avisos de notificaciones por correo.",
+    "done": "Ya no recibirás notificaciones por correo.",
     "invalid": "Este enlace está incompleto. Abre de nuevo el enlace del correo.",
     "failed": "No pudimos guardar el cambio. Revisa tu conexión e inténtalo de nuevo.",
     "tooMany": "Hubo demasiados intentos. Espera unos minutos e inténtalo de nuevo."
@@ -1057,13 +1064,15 @@
     "invitation": {
       "accepted": {
         "title": "Invitación aceptada",
-        "body": "Alguien aceptó tu invitación al equipo."
+        "body": "Alguien aceptó tu invitación al equipo.",
+        "bodyWithMember": "{member} aceptó tu invitación al equipo."
       }
     },
     "member": {
       "joined": {
         "title": "Nuevo miembro del equipo",
-        "body": "Un nuevo miembro se unió a la tienda."
+        "body": "Un nuevo miembro se unió a la tienda.",
+        "bodyWithMember": "{member} se unió a la tienda."
       }
     },
     "push": {

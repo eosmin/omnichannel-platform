@@ -1,6 +1,6 @@
 import type { JobsOptions } from 'bullmq'
 
-import type { Locale } from '@platform/core/i18n'
+import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
 
 import { EmailTemplates } from '../queues/email-templates'
 import { type SendEmailJob } from '../queues/job-types'
@@ -52,4 +52,15 @@ export function dsrNoticeJob(input: DsrNoticeInput): DsrNoticeJob {
       removeOnFail: true
     }
   }
+}
+
+// The language of the closing mail: the one the person asked in (kept on the request), else the default language of the store, else the
+// default of the platform. A code that is not a supported language (a row written by a newer version) falls through to the next.
+export function dsrNoticeLocaleOf(
+  requestLocale: string | null | undefined,
+  storeLocale: string | null | undefined
+): Locale {
+  const supported = (value: string | null | undefined): Locale | undefined =>
+    SUPPORTED_LOCALES.find(candidate => candidate === value)
+  return supported(requestLocale) ?? supported(storeLocale) ?? DEFAULT_LOCALE
 }

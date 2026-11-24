@@ -693,7 +693,7 @@
     "DSR_VERIFICATION_INVALID": "The verification of the data request is not valid",
     "DSR_SUBJECT_CHANGED": "The customer of this request changed, so it goes back to review",
     "DSR_BLOCKED_BY_OPEN_WORK": "The customer has open orders, shipments, returns, remittances or balances, so the data cannot be erased yet",
-    "DSR_EXECUTOR_UNAVAILABLE": "Erasure requests cannot be approved yet",
+    "DSR_EXECUTOR_UNAVAILABLE": "This request cannot be approved yet. It can only be rejected",
     "DSR_NOT_REVIEWABLE": "The data request is not in a state that takes this decision",
     "EXPORT_EMPTY": "There are no files to download",
     "REPORT_LIMIT_REACHED": "This store already has the maximum number of scheduled reports",
@@ -881,6 +881,13 @@
     "ORG_STORE_IS_LAST": "The last store of an organization cannot be deleted.",
     "ORG_STORE_CURRENCY_NOT_BASE": "The books of this organization are kept in USD, so the currency of its stores cannot change."
   },
+  "errorDetails": {
+    "fileTooLarge": "The file is larger than {megabytes} MB. Choose a smaller one",
+    "rateLimit": "Too many requests. Try again in {unit, select, minutes {{value, plural, one {# minute} other {# minutes}}} other {{value, plural, one {# second} other {# seconds}}}}",
+    "conflicts": {
+      "chain_check_running": "A check of the chain is already running. Wait for it to finish and try again"
+    }
+  },
   "invitation": {
     "title": "You are invited",
     "body": "{inviter} invited you to join {store} as {role}.",
@@ -1057,13 +1064,15 @@
     "invitation": {
       "accepted": {
         "title": "Invitation accepted",
-        "body": "Someone accepted your invitation to the team."
+        "body": "Someone accepted your invitation to the team.",
+        "bodyWithMember": "{member} accepted your invitation to the team."
       }
     },
     "member": {
       "joined": {
         "title": "New team member",
-        "body": "A new member joined the store."
+        "body": "A new member joined the store.",
+        "bodyWithMember": "{member} joined the store."
       }
     },
     "push": {

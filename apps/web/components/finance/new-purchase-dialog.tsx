@@ -7,6 +7,7 @@ import { type FormEvent, type ReactElement, useEffect, useState } from 'react'
 import { AppPaths } from '@platform/api-client'
 import { PurchaseLimits } from '@platform/core/domain'
 
+import { permissionRefusalOf } from '../../lib/finance/load-failure'
 import {
   createOrderInputOf,
   emptyOrderHeaderDraft,
@@ -110,6 +111,8 @@ function NewPurchaseForm({
   const problemText = (field: OrderHeaderField): string | null =>
     wrong === field ? t(`problems.${field}`) : null
   const failed = suppliers.isError || warehouses.isError
+  // A role without a permission to read one of the lists is told which, as retrying cannot help it
+  const refusedRead = permissionRefusalOf([suppliers.error, warehouses.error])
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-3" aria-label={t('formLabel')}>
@@ -163,7 +166,7 @@ function NewPurchaseForm({
       />
       {failed ? (
         <p role="alert" className="text-destructive text-sm">
-          {t('loadFailed')}
+          {refusedRead === null ? t('loadFailed') : errorText(refusedRead)}
         </p>
       ) : null}
       {refusal === null ? null : (

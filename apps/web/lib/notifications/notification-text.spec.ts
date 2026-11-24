@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { badgeLabel, notificationTextKeys, safeActionPath } from './notification-text'
 
 describe('notificationTextKeys with people', () => {
@@ -135,5 +138,39 @@ describe('safeActionPath', () => {
     ['a tab after the query mark', '/?\t//evil.test']
   ])('refuses %s', (_name, path) => {
     expect(safeActionPath(path)).toBeNull()
+  })
+})
+
+describe('notificationTextKeys with the person who joined (TXT-P3c)', () => {
+  const messages = (locale: 'es' | 'en'): unknown =>
+    JSON.parse(readFileSync(resolve(__dirname, `../../messages/${locale}.json`), 'utf8'))
+  const hasIn =
+    (locale: 'es' | 'en') =>
+    (key: string): boolean => {
+      let node = messages(locale) as Record<string, unknown> | string | undefined
+      for (const part of key.split('.')) {
+        if (typeof node !== 'object' || node === null) return false
+        node = node[part] as Record<string, unknown> | string | undefined
+      }
+      return typeof node === 'string'
+    }
+
+  it.each([
+    ['notifications.invitation.accepted', 'es'],
+    ['notifications.invitation.accepted', 'en'],
+    ['notifications.member.joined', 'es'],
+    ['notifications.member.joined', 'en']
+  ] as const)(
+    'says who joined in %s (%s) once the notification carries the name',
+    (key, locale) => {
+      const keys = notificationTextKeys(key, hasIn(locale), { member: 'Ana' })
+      expect(keys.body).toBe(`${key}.bodyWithMember`)
+    }
+  )
+
+  it('keeps the plain text of a notification saved without the name', () => {
+    expect(notificationTextKeys('notifications.invitation.accepted', hasIn('es'), {}).body).toBe(
+      'notifications.invitation.accepted.body'
+    )
   })
 })
