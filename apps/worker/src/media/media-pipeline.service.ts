@@ -251,6 +251,8 @@ export class MediaPipeline {
       key: string
       contentType: string
       storeId: string | null
+      purpose: string
+      uploadedBy: string | null
       scanResult: unknown
     },
     scope: MediaScope
@@ -275,6 +277,18 @@ export class MediaPipeline {
     }
     // Written only now, with bytes that were made and read back; a failure of the bucket leaves the original and the queue retries. A
     // document that is clean already (a retry after the write whose row update failed) only gets its row made true and marked
+    // A document an agent uploaded (it is on its way OUT) that keeps a part with its metadata (a photo with its position that no cleaner could
+    // walk) must not leave: it is refused like a picture that cannot be cleaned, and the partly cleaned file is not even written. What a
+    // customer sent is theirs and is kept as it was cleaned, logged below
+    if (cleaned.kind === 'sanitized' && cleaned.keptParts > 0 && media.uploadedBy !== null) {
+      await this.refuseUnscannable(
+        media,
+        { reason: MediaRejectionReasons.DOCUMENT_NOT_CLEANABLE, keptParts: cleaned.keptParts },
+        'a document an agent uploaded kept parts with their metadata and was refused',
+        scope
+      )
+      return false
+    }
     const body = cleaned.kind === 'sanitized' ? cleaned.body : original
     if (cleaned.kind === 'sanitized') {
       await this.storage.put(media.key, body, media.contentType)
@@ -433,26 +447,34 @@ export class MediaPipeline {
     error: ImageNotSanitizable,
     scope: MediaScope
   ): Promise<void> {
+    await this.refuseUnscannable(
+      media,
+      { reason: MediaRejectionReasons.IMAGE_NOT_SANITIZABLE, errorName: errorName(error.reason) },
+      'a picture could not be cleaned of its metadata and was refused',
+      scope
+    )
+  }
+
+  // Ends a pending file as `unscannable` with its reason (the gate: it is never served, sent or attached), tells the team, and deletes the
+  // file (a financial document stays, unserved). `details` go to the log with the ids, never the name of the file.
+  private async refuseUnscannable(
+    media: { id: string; key: string; storeId: string | null; purpose: string },
+    details: { reason: string } & Record<string, unknown>,
+    message: string,
+    scope: MediaScope
+  ): Promise<void> {
     const marked = await this.within(scope, () =>
       this.prisma.client.media.updateMany({
         where: { id: media.id, status: MediaStatus.PENDING },
         data: {
           status: MediaStatus.UNSCANNABLE,
-          scanResult: { reason: MediaRejectionReasons.IMAGE_NOT_SANITIZABLE },
+          scanResult: { reason: details.reason },
           scannedAt: new Date()
         }
       })
     )
     if (marked.count === 0) return
-    this.logger.warn(
-      {
-        mediaId: media.id,
-        storeId: media.storeId,
-        reason: MediaRejectionReasons.IMAGE_NOT_SANITIZABLE,
-        errorName: errorName(error.reason)
-      },
-      'a picture could not be cleaned of its metadata and was refused'
-    )
+    this.logger.warn({ mediaId: media.id, storeId: media.storeId, ...details }, message)
     // The team is told first (it never throws). A delete that fails leaves the original in the bucket,
     // unserved: the hourly cleanup deletes the file of an unscannable row.
     await this.announce(media, Events.MEDIA_UNSCANNABLE, scope)
@@ -463,7 +485,7 @@ export class MediaPipeline {
     } catch (deleteError) {
       this.logger.warn(
         { mediaId: media.id, errorName: errorName(deleteError) },
-        'a refused picture was not deleted'
+        'a refused file was not deleted'
       )
     }
   }

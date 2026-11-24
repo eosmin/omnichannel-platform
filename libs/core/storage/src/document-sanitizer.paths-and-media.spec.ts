@@ -5,6 +5,7 @@ import sharp from 'sharp'
 import { DocumentSanitizing } from '@platform/core/storage'
 
 import { sanitizeDocumentInline } from './document-sanitizer'
+import { jpegCarriesMetadata } from './jpeg-metadata-cutter'
 
 // Step 7.3, `office-user-paths-and-embedded-media`: the paths of the author's machine in a docx or an xlsx, and the photos inside a docx, an
 // xlsx and a PDF. The documents are built here, with the paths and the position of a made-up person.
@@ -425,33 +426,139 @@ describe('the photos inside a docx and an xlsx', () => {
     ).toBeUndefined()
   })
 
-  it('stops cleaning photos when the time of the document is spent, and keeps the rest as it came', async () => {
-    const geotagged = await geotaggedJpeg()
-    const input = pkg({
-      // A property to clean, so that the document is rewritten and the count of what was kept can be read
-      'docProps/core.xml': CORE,
-      'word/media/a.jpeg': geotagged,
-      'word/media/b.jpeg': geotagged,
-      'word/media/c.jpeg': geotagged
-    })
-    // The first reading of the clock sets the deadline; every later one is past it
-    const now = jest.spyOn(Date, 'now')
-    let reads = 0
-    now.mockImplementation(() => {
-      reads += 1
-      return reads === 1 ? 0 : DocumentSanitizing.EMBEDDED_IMAGES_BUDGET_MS + 1
-    })
-    try {
-      const { parts, keptParts } = await partsOf(input)
-      expect(keptParts).toBe(3)
-      for (const name of ['a', 'b', 'c']) {
-        expect(Buffer.from(parts[`word/media/${name}.jpeg`] as Uint8Array).equals(geotagged)).toBe(
-          true
-        )
-      }
-    } finally {
-      now.mockRestore()
+  describe('a photo that the decoder does not reach', () => {
+    // The first reading of the clock sets the deadline; every later one is past it, so every photo is out of budget
+    const spendTheBudget = (): jest.SpyInstance => {
+      let reads = 0
+      return jest.spyOn(Date, 'now').mockImplementation(() => {
+        reads += 1
+        return reads === 1 ? 0 : DocumentSanitizing.EMBEDDED_IMAGES_BUDGET_MS + 1
+      })
     }
+    const pixelsOf = (body: Uint8Array): Promise<Buffer> =>
+      sharp(Buffer.from(body)).raw().toBuffer()
+    const geotaggedPng = (): Promise<Buffer> => base().withMetadata({ exif: GPS }).png().toBuffer()
+    const geotaggedWebp = (): Promise<Buffer> =>
+      base().withMetadata({ exif: GPS }).webp().toBuffer()
+
+    it.each([
+      ['jpeg', geotaggedJpeg],
+      ['png', geotaggedPng],
+      ['webp', geotaggedWebp]
+    ])(
+      'cuts the %s in its container when the time is spent: no metadata, same pixels, nothing kept',
+      async (_format, make) => {
+        const photo = await make()
+        const input = pkg({
+          // A property to clean, so that the document is rewritten
+          'docProps/core.xml': CORE,
+          'word/media/a.img': photo,
+          'word/media/b.img': photo,
+          'word/media/c.img': photo
+        })
+        const now = spendTheBudget()
+        try {
+          const { parts, keptParts } = await partsOf(input)
+          expect(keptParts).toBe(0)
+          for (const name of ['a', 'b', 'c']) {
+            const cleaned = parts[`word/media/${name}.img`] as Uint8Array
+            const header = await sharp(Buffer.from(cleaned)).metadata()
+            expect([header.exif, header.xmp, header.iptc]).toEqual([
+              undefined,
+              undefined,
+              undefined
+            ])
+            expect(Buffer.from(cleaned).equals(photo)).toBe(false)
+            expect((await pixelsOf(cleaned)).equals(await pixelsOf(photo))).toBe(true)
+          }
+        } finally {
+          now.mockRestore()
+        }
+      }
+    )
+
+    it('does not decode a single picture to cut it when the time is spent', async () => {
+      const input = pkg({ 'docProps/core.xml': CORE, 'word/media/a.jpeg': await geotaggedJpeg() })
+      const now = spendTheBudget()
+      const decoded = jest.spyOn(sharp.prototype, 'toBuffer')
+      try {
+        await partsOf(input)
+        expect(decoded).not.toHaveBeenCalled()
+      } finally {
+        decoded.mockRestore()
+        now.mockRestore()
+      }
+    })
+
+    it('counts the photo that the container cut cannot clean, and leaves it as it came', async () => {
+      // A jpeg whose position segment runs past the end of the file: it cannot be walked, so it cannot be cut
+      const truncated = (await geotaggedJpeg()).subarray(0, 40)
+      const input = pkg({ 'docProps/core.xml': CORE, 'word/media/a.jpeg': truncated })
+      const now = spendTheBudget()
+      try {
+        const { parts, keptParts } = await partsOf(input)
+        expect(keptParts).toBe(1)
+        expect(Buffer.from(parts['word/media/a.jpeg'] as Uint8Array).equals(truncated)).toBe(true)
+      } finally {
+        now.mockRestore()
+      }
+    })
+
+    it('counts a kept photo even when nothing else in the package needed cleaning (no properties to rewrite)', async () => {
+      // No docProps: the text is clean, so the only thing the cleaning meets is the photo it cannot walk
+      const truncated = (await geotaggedJpeg()).subarray(0, 40)
+      const input = pkg({ 'word/media/a.jpeg': truncated })
+      const now = spendTheBudget()
+      try {
+        const { keptParts } = await partsOf(input)
+        expect(keptParts).toBe(1)
+      } finally {
+        now.mockRestore()
+      }
+    })
+
+    it('keeps and counts a jpeg that holds data after its end, which the cut would leave', async () => {
+      const trailer = Buffer.concat([await geotaggedJpeg(), await geotaggedJpeg()])
+      const input = pkg({ 'docProps/core.xml': CORE, 'word/media/a.jpeg': trailer })
+      const now = spendTheBudget()
+      try {
+        const { parts, keptParts } = await partsOf(input)
+        expect(keptParts).toBe(1)
+        expect(Buffer.from(parts['word/media/a.jpeg'] as Uint8Array).equals(trailer)).toBe(true)
+      } finally {
+        now.mockRestore()
+      }
+    })
+
+    it('cleans a photo whose only extra is a segment the header read does not see (telemetry in APP6)', async () => {
+      const plain = await base().jpeg().toBuffer()
+      const payload = Buffer.from('GoPro lat=4.5 lon=-74.08', 'latin1')
+      const telemetry = Buffer.concat([Buffer.from([0xff, 0xe6, 0, payload.length + 2]), payload])
+      const dirty = Buffer.concat([plain.subarray(0, 2), telemetry, plain.subarray(2)])
+      const input = pkg({ 'docProps/core.xml': CORE, 'word/media/a.jpeg': dirty })
+
+      const { parts, keptParts } = await partsOf(input)
+
+      expect(keptParts).toBe(0)
+      expect(Buffer.from(parts['word/media/a.jpeg'] as Uint8Array).includes('GoPro')).toBe(false)
+    })
+
+    it('cuts the container when the picture cannot be decoded but can be walked', async () => {
+      // Valid segments, scan data that is garbage: the decoder refuses it, the walk of the segments does not
+      const jpeg = await geotaggedJpeg()
+      const scan = jpeg.indexOf(Buffer.from([0xff, 0xda]))
+      const broken = Buffer.concat([
+        jpeg.subarray(0, scan + 12),
+        Buffer.alloc(8, 0x55),
+        Buffer.from([0xff, 0xd9])
+      ])
+      await expect(sharp(broken).raw().toBuffer()).rejects.toThrow()
+      const { parts, keptParts } = await partsOf(
+        pkg({ 'docProps/core.xml': CORE, 'word/media/a.jpeg': broken })
+      )
+      expect(keptParts).toBe(0)
+      expect(jpegCarriesMetadata(parts['word/media/a.jpeg'] as Uint8Array)).toBe(false)
+    })
   })
 })
 

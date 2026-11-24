@@ -56,6 +56,35 @@ describe('cutJpegMetadata', () => {
     expect(Buffer.from(clean as Uint8Array).includes('secret')).toBe(false)
   })
 
+  it('cuts every application segment that drawing does not need, not only the ones it knew by name', () => {
+    // The telemetry of a camera of action (APP6), the manifest of a signer (APP11), and the others a program may write
+    const telemetry = segment(0xe6, ascii('GoPro telemetry lat=4.5 lon=-74.08 secret'))
+    const manifest = segment(0xeb, ascii('JUMBF c2pa secret'))
+    const rest = [0xe4, 0xe5, 0xe7, 0xe8, 0xe9, 0xef].map(marker =>
+      segment(marker, ascii('secret position'))
+    )
+    const multiPicture = segment(0xe2, ascii('MPF\0secret index'))
+    const notAdobe = segment(0xee, ascii('Ducky secret'))
+    const dirty = jpeg(
+      JFIF,
+      telemetry,
+      ICC,
+      manifest,
+      ...rest,
+      multiPicture,
+      notAdobe,
+      ADOBE,
+      FRAME,
+      SCAN
+    )
+
+    const clean = cutJpegMetadata(dirty)
+
+    expect(clean).toEqual(jpeg(JFIF, ICC, ADOBE, FRAME, SCAN))
+    expect(jpegCarriesMetadata(dirty)).toBe(true)
+    expect(jpegCarriesMetadata(clean as Uint8Array)).toBe(false)
+  })
+
   it('knows what it would cut and what it would not', () => {
     expect(jpegCarriesMetadata(jpeg(JFIF, EXIF, FRAME, SCAN))).toBe(true)
     expect(jpegCarriesMetadata(jpeg(JFIF, PHOTOSHOP, FRAME, SCAN))).toBe(true)

@@ -148,7 +148,8 @@ export function cleanWebp(input: Buffer): Buffer {
 }
 
 // ---- PNG -------------------------------------------------------------------------------------------------------------------------
-// The text, EXIF and time chunks are dropped; every other chunk, with its own CRC, is copied as it is, so the animation chunks stay.
+// Only the chunks of `PNG_KEPT_CHUNKS` stay (the picture, its colour, its transparency, its animation), each with its own CRC as it is; every
+// other chunk is dropped, the ones that hold text, EXIF or a date and any that a program invented.
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const PNG_CHUNK_OVERHEAD_BYTES = 12 // Length, type and CRC
@@ -165,7 +166,7 @@ export function cleanPng(input: Buffer): Buffer {
     const type = input.toString('latin1', cursor + 4, cursor + 8)
     const end = cursor + PNG_CHUNK_OVERHEAD_BYTES + length
     if (end > input.length) return fail('png chunk runs past the end')
-    if (!AnimatedImageCleaning.PNG_DROPPED_CHUNKS.some(dropped => dropped === type)) {
+    if (AnimatedImageCleaning.PNG_KEPT_CHUNKS.some(kept => kept === type)) {
       out.push(input.subarray(cursor, end))
     }
     cursor = end
