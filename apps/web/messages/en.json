@@ -882,8 +882,7 @@
   },
   "errorDetails": {
     "fileTooLarge": "The file is larger than {megabytes} MB. Choose a smaller one",
-    "rateLimitSeconds": "Too many requests. Try again in {seconds, plural, one {# second} other {# seconds}}",
-    "rateLimitMinutes": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}",
+    "rateLimit": "Too many requests. Try again in {unit, select, minutes {{value, plural, one {# minute} other {# minutes}}} other {{value, plural, one {# second} other {# seconds}}}}",
     "conflicts": {
       "chain_check_running": "A check of the chain is already running. Wait for it to finish and try again"
     }

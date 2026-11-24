@@ -63,9 +63,8 @@ export function useErrorText(): (error: unknown) => string {
       if (holder !== null) return t('settings.channels.accountInUseNamed', { storeName: holder })
       // The number or the kind the api sent, when this page has a sentence for it (a conflict kind may have none yet)
       const detail = errorDetailOf(error)
-      if (detail !== null && t.has(detail.key as 'errors.INTERNAL_ERROR')) {
-        return t(detail.key as 'errors.INTERNAL_ERROR', detail.values)
-      }
+      const detailKey = `errorDetails.${detail?.key ?? ''}` as 'errors.INTERNAL_ERROR'
+      if (detail !== null && t.has(detailKey)) return t(detailKey, detail.values)
       return textOfCode(t as unknown as Translate, errorCodeOf(error))
     },
     [t]
