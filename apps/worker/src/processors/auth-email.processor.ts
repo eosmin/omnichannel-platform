@@ -17,7 +17,7 @@ import {
 
 import { BaseProcessor } from './base.processor'
 import { JobRejectedError } from './job-rejected.error'
-import { issueMagicLinkSafely } from './mail-job-failure'
+import { issueMagicLinkSafely, onlyTheNameOfAFailure } from './mail-job-failure'
 import { ProcessorSupport } from './processor-support'
 
 // The worker half of the magic link, on a queue of its own (Step 7.3-S9): the lookup of the address and the email that follows. It shares
@@ -39,7 +39,12 @@ export class AuthEmailProcessor extends BaseProcessor<RequestMagicLinkJob | Send
     this.notes = support
   }
 
-  protected async handle(job: Job<RequestMagicLinkJob | SendEmailJob>): Promise<void> {
+  protected handle(job: Job<RequestMagicLinkJob | SendEmailJob>): Promise<void> {
+    // Whatever this processor does not control (the database, a template) leaves the job as the name of the failure, never as its text
+    return onlyTheNameOfAFailure(() => this.route(job))
+  }
+
+  private async route(job: Job<RequestMagicLinkJob | SendEmailJob>): Promise<void> {
     switch (job.name) {
       case JobNames.REQUEST_MAGIC_LINK: {
         const parsed = requestMagicLinkJobSchema.safeParse(job.data)
