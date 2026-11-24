@@ -83,3 +83,10 @@ export const listDsrQuerySchema = z
   })
   .strict()
 export type ListDsrQuery = z.infer<typeof listDsrQuerySchema>
+
+// The key of the public form (Step 7.2-H2b, C1a). `current` is the key the screen was showing (null when it showed none): the change is made
+// only if the store still holds that one, so two admins who press at once do not replace each other's key without knowing.
+export const dsrFormKeyBodySchema = z
+  .object({ current: z.string().min(16).max(128).nullable() })
+  .strict()
+export type DsrFormKeyBody = z.infer<typeof dsrFormKeyBodySchema>

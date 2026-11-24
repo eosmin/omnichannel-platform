@@ -15,14 +15,16 @@ export interface ViewerItem {
 
 interface ViewerFile {
   id: string
-  filename: string
-  contentType: string
+  filename: string | null
+  contentType: string | null
   status: string
   position: number | null
   caption: string | null
 }
 
+// A file whose type is hidden from the reader (no `media:view`) is not a picture they can walk
 const isWalkable = (file: ViewerFile, messageType: string): boolean =>
+  file.contentType !== null &&
   file.status === String(MediaStatus.CLEAN) &&
   mediaKindOf(messageType, file.contentType) === MessageType.IMAGE
 
@@ -44,7 +46,7 @@ export function viewerItemsOf(files: readonly ViewerFile[], messageType: string)
     .map(({ file, number }) => ({
       key: file.id,
       mediaId: file.id,
-      filename: file.filename,
+      filename: file.filename ?? '',
       caption: captionOf(file),
       number
     }))
@@ -63,7 +65,7 @@ export function viewerItemsOfRun(
           {
             key: message.id,
             mediaId: file.id,
-            filename: file.filename,
+            filename: file.filename ?? '',
             caption: captionOf(file),
             number: at + 1
           }

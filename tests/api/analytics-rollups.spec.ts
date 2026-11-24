@@ -271,6 +271,28 @@ describe('The rollups of analytics', () => {
       })
     })
 
+    it('adds up the revenue of the orders in the currency of the store only, and still counts every order (FIN-700b)', async () => {
+      const { id: storeId } = await aStoreWithAMember()
+      const own = await createOrder(owner, { storeId })
+      const foreign = await createOrder(owner, { storeId })
+      await owner.order.update({ where: { id: own.id }, data: { createdAt: at(5) } })
+      await owner.order.update({
+        where: { id: foreign.id },
+        data: { createdAt: at(6), currency: 'JPY' }
+      })
+
+      await rollups.rollup(RollupGranularities.HOURLY, storeId, HOUR)
+
+      expect(await hourlyValue(storeId, AnalyticsMetrics.ORDERS_CREATED)).toEqual({
+        value: 2,
+        count: 2
+      })
+      expect(await hourlyValue(storeId, AnalyticsMetrics.ORDERS_REVENUE)).toEqual({
+        value: 19.99,
+        count: 1
+      })
+    })
+
     it('writes no row at all for an hour with nothing in it, and clears what an earlier run wrote', async () => {
       const { id: storeId } = await aStore()
       const row = await conversation(storeId, { createdAt: at(10), resolvedAt: at(20) })

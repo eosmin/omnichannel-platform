@@ -23,6 +23,7 @@ import {
 } from '../../lib/inbox/media-state'
 import type { MessageActions } from '../../lib/inbox/message-actions'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
+import type { ViewableFile } from '../../lib/inbox/viewable-file'
 import { viewerItemsOf } from '../../lib/inbox/viewer-items'
 import { formatBytes } from '../../lib/media/attachment-rules'
 import { useMediaUrlReads, useMediaUrls } from '../../lib/media/use-media-urls'
@@ -66,7 +67,7 @@ const AudioPlayer = dynamic(() => import('./audio-player'), {
   )
 })
 
-type MediaFile = MessageView['media'][number]
+type MediaFile = ViewableFile
 type UnavailableFile = MessageView['unavailableFiles'][number]
 
 // The files of a message, each in the state its scan is in. The signed links are asked from the api

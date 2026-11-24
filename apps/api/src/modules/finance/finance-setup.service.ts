@@ -8,6 +8,7 @@ import { inSavepoint, isUniqueViolation, PrismaService } from '@platform/core/da
 import {
   AccountRole,
   FinanceConflicts,
+  FinanceCurrency,
   FinanceLimits,
   FinanceResourceTypes
 } from '@platform/core/domain'
@@ -89,6 +90,20 @@ export class FinanceSetupService {
           throw resourceConflict('the books of the organization are set up already', {
             conflict: FinanceConflicts.ALREADY_SET_UP
           })
+        }
+        // The books are in one currency (FIN-700): a store in another one would post its orders as if they were in it. The stores are read
+        // under the same lock the currency of a store takes, so a store cannot change currency between this read and the books
+        const other = await tx.store.findFirst({
+          where: { organizationId, currency: { not: FinanceCurrency } },
+          select: { id: true }
+        })
+        if (other !== null) {
+          throw new PlatformException(
+            ErrorCodes.ORG_STORE_CURRENCY_NOT_BASE,
+            'a store of the organization is in a currency other than the one of the books',
+            HttpStatusCodes.CONFLICT,
+            { baseCurrency: FinanceCurrency, storeId: other.id }
+          )
         }
         await tx.financeSettings.create({
           data: {
