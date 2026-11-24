@@ -247,32 +247,43 @@ describe('the reason of a decision', () => {
 })
 
 describe('decisionNotices', () => {
+  const base = { allowed: true, blocked: false, refusalCode: null }
+
   it('says nothing while nothing is wrong', () => {
-    expect(decisionNotices({ allowed: true, blocked: false, refused: false })).toEqual({
-      stale: false,
-      blocked: false,
-      refusal: false
-    })
+    expect(decisionNotices(base)).toEqual({ stale: false, blocked: false, refusal: false })
   })
 
-  it('says the request changed once, not again as the refusal of the api', () => {
-    expect(decisionNotices({ allowed: false, blocked: false, refused: true })).toEqual({
-      stale: true,
-      blocked: false,
-      refusal: false
-    })
-  })
+  it.each(['DSR_NOT_REVIEWABLE', 'DSR_ALREADY_COMPLETED'])(
+    'says the request changed once: the refusal %s is not drawn again',
+    code => {
+      expect(decisionNotices({ ...base, allowed: false, refusalCode: code })).toEqual({
+        stale: true,
+        blocked: false,
+        refusal: false
+      })
+    }
+  )
 
-  it('says the open work once: the line before the refusal is left out once the api has spoken', () => {
-    expect(decisionNotices({ allowed: true, blocked: true, refused: false }).blocked).toBe(true)
-    expect(decisionNotices({ allowed: true, blocked: true, refused: true })).toEqual({
+  it.each(['RATE_LIMIT_EXCEEDED', 'PERMISSION_DENIED', 'INTERNAL_ERROR', ''])(
+    'still shows %s when the request also changed: only the refusals that repeat a line are dropped',
+    code => {
+      expect(decisionNotices({ ...base, allowed: false, refusalCode: code })).toEqual({
+        stale: true,
+        blocked: false,
+        refusal: true
+      })
+    }
+  )
+
+  it('says the open work once: the line before is left out only for the refusal about open work', () => {
+    expect(decisionNotices({ ...base, blocked: true }).blocked).toBe(true)
+    expect(
+      decisionNotices({ ...base, blocked: true, refusalCode: 'DSR_BLOCKED_BY_OPEN_WORK' })
+    ).toEqual({ stale: false, blocked: false, refusal: true })
+    expect(decisionNotices({ ...base, blocked: true, refusalCode: 'INTERNAL_ERROR' })).toEqual({
       stale: false,
-      blocked: false,
+      blocked: true,
       refusal: true
     })
-  })
-
-  it('shows any other refusal', () => {
-    expect(decisionNotices({ allowed: true, blocked: false, refused: true }).refusal).toBe(true)
   })
 })

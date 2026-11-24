@@ -9,6 +9,7 @@ import {
   DsrStatus,
   DsrType
 } from '@platform/core/domain'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import type { DsrRequestView, DsrSummary } from './dsr-requests'
 
@@ -132,21 +133,30 @@ export function reasonProblem(text: string): ReasonProblem | null {
 }
 
 // Which of the three lines about a decision the dialog draws. Each says one thing once: the request no longer fits the decision (`stale`),
-// the customer has open work (`blocked`), or the api refused (`refusal`). The refusal after someone decided first says the same as
-// `stale`, and the refusal for open work says the same as `blocked`, so the second of each pair is left out (PRI-078 showed both).
+// the customer has open work (`blocked`), or the api refused (`refusal`). Only the refusals that say the same as another line are left
+// out: "not reviewable" or "already completed" repeat `stale`, and "blocked by open work" repeats `blocked` (PRI-078 showed both). Any
+// other refusal (a permission, a limit, a server error) is always shown.
 export interface DecisionNotices {
   stale: boolean
   blocked: boolean
   refusal: boolean
 }
+const REPEATS_STALE: readonly string[] = [
+  ClientErrorCodes.DSR_NOT_REVIEWABLE,
+  ClientErrorCodes.DSR_ALREADY_COMPLETED
+]
 export function decisionNotices(input: {
   allowed: boolean
   blocked: boolean
-  refused: boolean
+  // The code of the refusal of the api, or null when there was none
+  refusalCode: string | null
 }): DecisionNotices {
+  const code = input.refusalCode
+  const repeatsStale = code !== null && !input.allowed && REPEATS_STALE.includes(code)
+  const repeatsBlocked = code === ClientErrorCodes.DSR_BLOCKED_BY_OPEN_WORK
   return {
     stale: !input.allowed,
-    blocked: input.blocked && !input.refused,
-    refusal: input.refused && input.allowed
+    blocked: input.blocked && !repeatsBlocked,
+    refusal: code !== null && !repeatsStale
   }
 }

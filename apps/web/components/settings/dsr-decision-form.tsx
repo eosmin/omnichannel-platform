@@ -95,7 +95,11 @@ export function DsrDecisionForm({
       : decision === DsrDecisions.REJECT
         ? canReject(request)
         : canCancel(request, new Date())
-  const notices = decisionNotices({ allowed, blocked, refused: refusal !== null })
+  const notices = decisionNotices({
+    allowed,
+    blocked,
+    refusalCode: refusal === null ? null : refusal instanceof ApiError ? refusal.code : ''
+  })
   const needsConfirm = decision === DsrDecisions.APPROVE
   // The kind of effects the dialog lists: an erasure and an export say different things
   const kind: DecisionKind =
