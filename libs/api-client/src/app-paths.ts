@@ -2,6 +2,9 @@
 // notification); the web keeps importing them from here.
 export {
   AppPaths,
+  DSR_REQUEST_FRAGMENT_KEY,
+  DSR_REQUEST_KEY_MAX_LENGTH,
+  DSR_REQUEST_KEY_MIN_LENGTH,
   DSR_VERIFY_FRAGMENT_KEY,
   DSR_VERIFY_TOKEN_PATTERN,
   StoreSettingsSections,

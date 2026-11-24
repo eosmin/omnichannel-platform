@@ -903,11 +903,33 @@
     "mismatchBody": "You are signed in as {current}, and the invitation is for {invited}. Sign out and open the link again.",
     "unavailableTitle": "This invitation is not available"
   },
+  "dsrRequest": {
+    "title": "Ask for your data",
+    "heading": "Ask for your data",
+    "body": "Tell us what you want and the email address you used with the store. If it belongs to a customer, we send a link to that address to confirm that the request is yours. Nothing is done until you open it and a person reviews the request.",
+    "typeLabel": "What do you want to ask for?",
+    "types": {
+      "access": "A copy of my data",
+      "erasure": "Delete my data",
+      "portability": "My data in a file I can move"
+    },
+    "emailLabel": "Your email address",
+    "emailInvalid": "Enter a valid email address.",
+    "submit": "Send request",
+    "working": "Sending…",
+    "retry": "Try again",
+    "sentTitle": "Request received",
+    "sent": "If this address belongs to a customer of the store, we sent a link to confirm the request. Open it from that email to finish. If you do not see it in a few minutes, check your spam folder.",
+    "incomplete": "This link is incomplete. Ask the store for its form address and open it again.",
+    "failed": "We could not send the request. Check your connection and try again. What you typed is still here.",
+    "tooMany": "There were too many attempts. Wait a while and try again."
+  },
   "dsrVerify": {
     "title": "Confirm your data request",
     "heading": "Confirm your request",
     "body": "Press the button to confirm that you made this request and that this is your email. Nothing else happens when you confirm: the store reviews the request and writes to you with its answer.",
     "confirm": "Confirm my request",
+    "retry": "Try again",
     "working": "Confirming…",
     "doneTitle": "Request confirmed",
     "done": "We received your confirmation. The store will review your request and write to you at this address with its answer. Until then nothing is done with your data.",
@@ -5395,6 +5417,8 @@
       "none": "This store has no key: it takes no public requests.",
       "make": "Create the key",
       "keyLabel": "Form key",
+      "addressLabel": "Form address",
+      "addressHint": "The address of the public form. Share this link: it carries the key, so changing the key stops it from working.",
       "state": {
         "open": "The public form is open: it takes requests.",
         "shut": "The key exists, but the public form does not take requests yet: it opens when the platform enables it."

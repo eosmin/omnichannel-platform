@@ -85,8 +85,25 @@ describe('the page that confirms a data request', () => {
     render(<DsrVerifyCard />)
     fireEvent.click(screen.getByRole('button', { name: 'confirm' }))
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('failed'))
-    expect(screen.getByRole('button', { name: 'confirm' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'retry' })).toBeTruthy()
     expect(window.location.hash).toBe(`#token=${TOKEN}`)
+    // The focus goes to the message that says what happened
+    expect(document.activeElement?.textContent).toBe('failed')
+  })
+
+  it('ignores a second press while it works and keeps the button in the tab order (aria-disabled, never disabled)', async () => {
+    openWith(`#token=${TOKEN}`)
+    let finish: (value: { verified: true }) => void = () => undefined
+    mockVerify.mockReturnValueOnce(new Promise(resolve => (finish = resolve)))
+    render(<DsrVerifyCard />)
+    fireEvent.click(screen.getByRole('button', { name: 'confirm' }))
+    const working = screen.getByRole('button', { name: 'working' })
+    expect(working.getAttribute('aria-disabled')).toBe('true')
+    expect(working.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(working)
+    expect(mockVerify).toHaveBeenCalledTimes(1)
+    finish({ verified: true })
+    await waitFor(() => expect(screen.getByText('done')).toBeTruthy())
   })
 
   it('says so and keeps the button when the server could not be reached, and when it asks to wait', async () => {
@@ -97,9 +114,10 @@ describe('the page that confirms a data request', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('failed'))
 
     mockVerify.mockRejectedValueOnce(new ApiError(429, 'RATE_LIMIT_EXCEEDED', 'slow'))
-    fireEvent.click(screen.getByRole('button', { name: 'confirm' }))
+    fireEvent.click(screen.getByRole('button', { name: 'retry' }))
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('tooMany'))
-    expect(screen.getByRole('button', { name: 'confirm' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'retry' })).toBeTruthy()
+    expect(document.activeElement?.textContent).toBe('tooMany')
     // The token stays in the address while the person can still try again
     expect(window.location.hash).toBe(`#token=${TOKEN}`)
   })

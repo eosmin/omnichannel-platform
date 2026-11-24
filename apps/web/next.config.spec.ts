@@ -16,6 +16,19 @@ describe('the Next.js config', () => {
     expect(rules.indexOf(rule as (typeof rules)[number])).toBeGreaterThan(0)
   })
 
+  it('sends no Referer and keeps nothing in a cache for the public form of data requests (the key of the store is in the fragment)', async () => {
+    const rules = (await nextConfig.headers?.()) ?? []
+    const rule = rules.find(candidate => candidate.source === '/compliance/dsr/request')
+    expect(rule?.headers).toEqual(
+      expect.arrayContaining([
+        { key: 'Referrer-Policy', value: 'no-referrer' },
+        { key: 'Cache-Control', value: 'no-store' },
+        { key: 'X-Robots-Tag', value: 'noindex, nofollow' }
+      ])
+    )
+    expect(rules.indexOf(rule as (typeof rules)[number])).toBeGreaterThan(0)
+  })
+
   it('sends no Referer and keeps nothing in a cache for the page that confirms a data request (its token is in the fragment)', async () => {
     const rules = (await nextConfig.headers?.()) ?? []
     const rule = rules.find(candidate => candidate.source === '/compliance/dsr/verify')

@@ -12,6 +12,7 @@ export const PageTitles = {
   invitation: ['invitation.title'],
   unsubscribe: ['unsubscribe.title'],
   dsrVerify: ['dsrVerify.title'],
+  dsrRequest: ['dsrRequest.title'],
   noAccess: ['noAccess.title'],
   notFound: ['notFound.title'],
   inbox: ['shell.nav.inbox'],

@@ -29,6 +29,7 @@ export function DsrVerifyCard(): ReactElement {
   // flashes one that does nothing
   const [read, setRead] = useState(false)
   const heading = useRef<HTMLHeadingElement>(null)
+  const alert = useRef<HTMLParagraphElement>(null)
 
   useEffect(() => {
     const found = new URLSearchParams(window.location.hash.slice(1)).get(DSR_VERIFY_FRAGMENT_KEY)
@@ -38,13 +39,16 @@ export function DsrVerifyCard(): ReactElement {
     setRead(true)
   }, [])
 
-  // The result is announced to a screen reader, and the focus goes to it: the button that was pressed is gone
+  // The result is announced to a screen reader, and the focus goes to it: the button that was pressed is gone. After a failure the button stays,
+  // and the focus goes to the message so it is read out and the keyboard is not left on a control that changed its label
   useEffect(() => {
     if (step === 'done') heading.current?.focus()
+    else if (step === 'failed' || step === 'tooMany') alert.current?.focus()
   }, [step])
 
   const confirm = (): void => {
-    if (token === null) return
+    // `aria-disabled` and not `disabled` while it works (a disabled button throws the keyboard focus away), so a second press is ignored here
+    if (token === null || step === 'working') return
     setStep('working')
     verifyDsrRequest(apiClient, token).then(
       () => {
@@ -86,13 +90,27 @@ export function DsrVerifyCard(): ReactElement {
       <h1 className="text-2xl font-semibold">{t('heading')}</h1>
       <p className="text-muted-foreground">{t('body')}</p>
       {step === 'invalid' || step === 'failed' || step === 'tooMany' ? (
-        <p role="alert" className="text-destructive">
+        <p
+          ref={alert}
+          tabIndex={step === 'invalid' ? undefined : -1}
+          role="alert"
+          className="text-destructive outline-none"
+        >
           {t(step)}
         </p>
       ) : null}
       {!read || step === 'invalid' ? null : (
-        <Button type="button" onClick={confirm} disabled={step === 'working'}>
-          {step === 'working' ? t('working') : t('confirm')}
+        <Button
+          type="button"
+          onClick={confirm}
+          aria-disabled={step === 'working'}
+          className={step === 'working' ? 'opacity-70' : ''}
+        >
+          {step === 'working'
+            ? t('working')
+            : step === 'failed' || step === 'tooMany'
+              ? t('retry')
+              : t('confirm')}
         </Button>
       )}
     </div>
