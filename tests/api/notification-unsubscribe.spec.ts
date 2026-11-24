@@ -9,7 +9,11 @@ import supertest from 'supertest'
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { UnsubscribeThrottle, UnsubscribeTokenThrottle } from '@platform/core/auth'
+import {
+  RETRY_AFTER_METADATA_KEY,
+  UnsubscribeThrottle,
+  UnsubscribeTokenThrottle
+} from '@platform/core/auth'
 import { signUnsubscribeToken, UnsubscribeScopes } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -294,6 +298,13 @@ describe('The one-click unsubscribe of the notification emails', () => {
       expect((refused.body as { error: { code: string } }).error.code).toBe(
         ErrorCodes.RATE_LIMIT_EXCEEDED
       )
+      // H-11: the refusal says how long to wait, in the body and in the header, never longer than the window
+      const wait = (refused.body as { error: { metadata: Record<string, number> } }).error.metadata[
+        RETRY_AFTER_METADATA_KEY
+      ]
+      expect(wait).toBeGreaterThan(0)
+      expect(wait).toBeLessThanOrEqual(UnsubscribeTokenThrottle.ttlMs / 1000)
+      expect(refused.headers['retry-after']).toBe(String(wait))
     })
 
     it('a good token is counted the same: it too is cut after its tries', async () => {

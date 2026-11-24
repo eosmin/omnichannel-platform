@@ -1,3 +1,5 @@
+import * as zlib from 'node:zlib'
+
 import { type ArgumentsHost, BadRequestException, HttpException } from '@nestjs/common'
 import { ThrottlerException } from '@nestjs/throttler'
 import type { Counter } from '@prometheus-io/client'
@@ -6,6 +8,7 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { ErrorCodes, HttpHeaders, PlatformException } from '@platform/core/errors'
 
+import { BodyParserErrorTypes } from './body-parser-error-types'
 import {
   bodyParserRefusal,
   checksOf,
@@ -127,6 +130,55 @@ describe('bodyParserRefusal', () => {
   })
 })
 
+// What body-parser (2.x) hands over for a compressed body it cannot inflate: the raw error of zlib, brotli or zstd with a 400 and
+// `expose` put on it, and no `type`. The real errors are made here, not typed by hand, so that a change of Node shows.
+function inflateFailure(encoding: 'gzip' | 'deflate' | 'br' | 'zstd', body: Buffer): Error {
+  const inflate = {
+    gzip: zlib.gunzipSync,
+    deflate: zlib.inflateSync,
+    br: zlib.brotliDecompressSync,
+    zstd: zlib.zstdDecompressSync
+  }[encoding]
+  try {
+    inflate(body)
+  } catch (error) {
+    // Jest runs the spec in its own realm, where the Error of Node's core is not an `Error` of ours: the real message, code and errno
+    // are copied onto one of ours
+    const { message, code, errno } = error as Error & { code: string; errno: number }
+    return Object.assign(new Error(message), { code, errno, status: 400, expose: true })
+  }
+  throw new Error('the body was inflated')
+}
+
+describe('bodyParserRefusal, a compressed body that is corrupt or empty', () => {
+  const encodings = ['gzip', 'deflate', 'br', 'zstd'] as const
+  const bodies = { empty: Buffer.alloc(0), garbage: Buffer.from('garbagegarbage') }
+
+  it.each(
+    encodings.flatMap(encoding => Object.keys(bodies).map(kind => [encoding, kind] as const))
+  )('recognises the failure of %s with a %s body as a refusal of the client', (encoding, kind) => {
+    const refusal = bodyParserRefusal(inflateFailure(encoding, bodies[kind as keyof typeof bodies]))
+    expect(refusal).toEqual({ status: 400, type: BodyParserErrorTypes.CORRUPT_ENCODING })
+  })
+
+  it('does not take a server failure or a plain error for a corrupt body', () => {
+    const failure = inflateFailure('gzip', bodies.garbage)
+    expect(bodyParserRefusal(Object.assign(failure, { status: 500 }))).toBeUndefined()
+    expect(
+      bodyParserRefusal(Object.assign(failure, { status: 400, expose: false }))
+    ).toBeUndefined()
+    expect(
+      bodyParserRefusal(Object.assign(new Error('x'), { status: 400, expose: true }))
+    ).toBeUndefined()
+    // A code with no errno is not a zlib error
+    expect(
+      bodyParserRefusal(
+        Object.assign(new Error('x'), { status: 400, expose: true, code: 'ENOENT' })
+      )
+    ).toBeUndefined()
+  })
+})
+
 describe('GlobalExceptionFilter, a body the parser refused', () => {
   beforeEach(() => jest.mocked(Sentry.captureException).mockClear())
 
@@ -163,6 +215,15 @@ describe('GlobalExceptionFilter, a body the parser refused', () => {
     expect(JSON.stringify(warn.mock.calls)).not.toContain(secret)
     expect(JSON.stringify(warn.mock.calls)).not.toContain('tok3n')
     expect(JSON.stringify(response.json.mock.calls)).not.toContain(secret)
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it('answers 400 at warn level, without a report, for a corrupt gzip body on a public route', () => {
+    const { response, warn } = run(inflateFailure('gzip', Buffer.alloc(0)))
+    expect(response.status).toHaveBeenCalledWith(400)
+    const body = response.json.mock.calls[0]?.[0] as { error: { code: string } }
+    expect(body.error.code).toBe(ErrorCodes.VALIDATION_FAILED)
+    expect(warn).toHaveBeenCalledTimes(1)
     expect(Sentry.captureException).not.toHaveBeenCalled()
   })
 
