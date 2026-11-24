@@ -175,6 +175,11 @@ export interface DsrAttentionPayload {
   type: string
   reason: string
 }
+// Ids only: no name, no address
+export interface DsrManualReviewPayload {
+  storeId: string
+  requestId: string
+}
 export interface DsrDeadlinePayload {
   storeId: string
   requestId: string
@@ -701,6 +706,7 @@ export interface DomainEventPayloads {
   [Events.REMITTANCE_OVERDUE]: RemittanceOverduePayload
   [Events.DSR_DEADLINE_APPROACHING]: DsrDeadlinePayload
   [Events.DSR_RETURNED_TO_REVIEW]: DsrAttentionPayload
+  [Events.DSR_MANUAL_REVIEW]: DsrManualReviewPayload
   [Events.DSR_NOTICE_FAILED]: DsrAttentionPayload
   [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload

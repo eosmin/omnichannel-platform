@@ -54,6 +54,7 @@ import {
   type CarrierStatusUnmappedPayload,
   type DsrAttentionPayload,
   type DsrDeadlinePayload,
+  type DsrManualReviewPayload,
   type RemittanceOverduePayload,
   type WebhookAutoDisabledPayload,
   type CountSubmittedPayload,
@@ -417,6 +418,18 @@ export class NotificationsEventsListener {
       payload.storeId,
       payload.requestId,
       { days: payload.daysLeft }
+    )
+  }
+
+  // The person proved their mailbox and the request waits for a reviewer. Raised once, inside the move that took it to manual review
+  @OnEvent(Events.DSR_MANUAL_REVIEW)
+  @InEventStore()
+  async onDsrManualReview(payload: DsrManualReviewPayload): Promise<void> {
+    await this.notifyDsrReviewers(
+      NotificationTypes.DSR_MANUAL_REVIEW,
+      payload.storeId,
+      payload.requestId,
+      {}
     )
   }
 
