@@ -3,6 +3,7 @@ import type { Counter } from '@prometheus-io/client'
 import { Locales } from '@platform/core/i18n'
 import { EmailTemplates, type SendEmailJob } from '@platform/core/queues'
 
+import { EmailDeliveryError, EmailDeliveryFallback } from './email-delivery-error'
 import type { EmailProvider, SendEmailOptions } from './email-provider'
 import { EmailService } from './email.service'
 import { TemplateRenderer } from './template-renderer'
@@ -87,9 +88,81 @@ describe('EmailService', () => {
     expect(send.mock.calls[0]?.[0].attachments?.[0]?.content.toString()).toBe('hello')
   })
 
-  it('rethrows a provider failure so the queue retries, without counting it as an email sent', async () => {
+  it('throws a provider failure so the queue retries, without counting it as an email sent', async () => {
     const { service, inc } = build(() => Promise.reject(new Error('provider down')))
-    await expect(service.send(job)).rejects.toThrow('provider down')
+    await expect(service.send(job)).rejects.toBeInstanceOf(EmailDeliveryError)
     expect(inc).not.toHaveBeenCalled()
+  })
+
+  // What a provider says about a refusal can hold the address it was given: the error that leaves the service holds the name and the code only
+  describe('an error of the provider that carries the address', () => {
+    const ADDRESS = 'victim.person@example.com'
+    const smtp = Object.assign(new Error(`550 5.1.1 <${ADDRESS}>: Recipient address rejected`), {
+      code: 'EENVELOPE',
+      response: `550 5.1.1 <${ADDRESS}>: Recipient address rejected`,
+      rejected: [ADDRESS],
+      envelope: { from: 'noreply@platform.local', to: [ADDRESS] }
+    })
+
+    async function thrownBy(error: Error): Promise<EmailDeliveryError> {
+      const { service } = build(() => Promise.reject(error))
+      const thrown: unknown = await service.send(job).then(
+        () => null,
+        (failure: unknown) => failure
+      )
+      if (!(thrown instanceof EmailDeliveryError)) throw new Error('not an EmailDeliveryError')
+      return thrown
+    }
+
+    it('keeps the address out of the message, the stack, the properties and the cause', async () => {
+      const thrown = await thrownBy(smtp)
+
+      expect(thrown.message).not.toContain(ADDRESS)
+      expect(thrown.stack ?? '').not.toContain(ADDRESS)
+      expect(JSON.stringify(thrown, Object.getOwnPropertyNames(thrown))).not.toContain(ADDRESS)
+      expect(thrown.cause).toBeUndefined()
+    })
+
+    it('says what failed by the name and the code of the error, which are safe', async () => {
+      const thrown = await thrownBy(smtp)
+
+      expect(thrown.kind).toBe('Error')
+      expect(thrown.providerCode).toBe('EENVELOPE')
+      expect(thrown.message).toContain('EENVELOPE')
+    })
+
+    it('does not trust a name or a code that is not a plain token', async () => {
+      const odd = Object.assign(new Error('x'), {
+        name: `Bad ${ADDRESS}`,
+        code: `550 ${ADDRESS}`
+      })
+
+      const thrown = await thrownBy(odd)
+
+      expect(JSON.stringify(thrown, Object.getOwnPropertyNames(thrown))).not.toContain(ADDRESS)
+      expect(thrown.kind).toBe(EmailDeliveryFallback.KIND)
+      expect(thrown.providerCode).toBeNull()
+    })
+
+    it('lets an error the provider already made safe pass as it is', async () => {
+      const safe = new EmailDeliveryError('validation_error', 422)
+      const { service } = build(() => Promise.reject(safe))
+
+      await expect(service.send(job)).rejects.toBe(safe)
+    })
+  })
+
+  it('does not turn a template that the data does not fit into a delivery error', async () => {
+    const { service } = build(() => Promise.resolve({ providerMessageId: 'id-1' }))
+
+    const thrown: unknown = await service
+      .send({ ...job, data: { url: 'javascript:alert(1)', expiresInMinutes: 15 } })
+      .then(
+        () => null,
+        (failure: unknown) => failure
+      )
+
+    expect(thrown).toBeInstanceOf(Error)
+    expect(thrown).not.toBeInstanceOf(EmailDeliveryError)
   })
 })

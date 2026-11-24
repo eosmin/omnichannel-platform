@@ -16,6 +16,7 @@ import {
 
 import { BaseProcessor } from './base.processor'
 import { JobRejectedError } from './job-rejected.error'
+import { issueMagicLinkSafely } from './mail-job-failure'
 import { ProcessorSupport } from './processor-support'
 
 // The worker half of the magic link, on a queue of its own (Step 7.3-S9): the lookup of the address and the email that follows. It shares
@@ -39,7 +40,7 @@ export class AuthEmailProcessor extends BaseProcessor<RequestMagicLinkJob | Send
         const parsed = requestMagicLinkJobSchema.safeParse(job.data)
         if (!parsed.success)
           throw new JobRejectedError('the magic link job does not fit its schema')
-        await this.magicLinks.issue(parsed.data.email, parsed.data.correlationId)
+        await issueMagicLinkSafely(this.magicLinks, parsed.data.email, parsed.data.correlationId)
         return
       }
       case JobNames.SEND_EMAIL: {

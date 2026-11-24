@@ -24,6 +24,7 @@ import { InvitationEmailDelivery } from '../invitations/invitation-email-deliver
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
 import { JobRejectedError } from './job-rejected.error'
+import { issueMagicLinkSafely } from './mail-job-failure'
 import { ProcessorSupport } from './processor-support'
 
 // The provider's rate limit is shared with the auth-email queue: the two limits add up to it (EmailProviderBudget)
@@ -56,7 +57,7 @@ export class EmailProcessor extends BaseProcessor<
         const parsed = requestMagicLinkJobSchema.safeParse(job.data)
         if (!parsed.success)
           throw new JobRejectedError('the magic link job does not fit its schema')
-        await this.magicLinks.issue(parsed.data.email, parsed.data.correlationId)
+        await issueMagicLinkSafely(this.magicLinks, parsed.data.email, parsed.data.correlationId)
         return
       }
       case JobNames.DELIVER_INVITATION_EMAIL: {
