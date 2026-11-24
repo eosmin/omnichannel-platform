@@ -53,8 +53,12 @@ export function streamDsrZip(
     }
   })
   // One failure ends the whole stream, whichever part it came from
+  const open: Readable[] = []
   const fail = (error: Error): void => {
     output.destroy(error)
+    // The typings of yazl call its output a web stream; it is a Node stream
+    ;(zip.outputStream as unknown as Readable).destroy()
+    for (const stream of open) stream.destroy()
   }
   zip.outputStream.on('error', fail)
 
@@ -71,16 +75,24 @@ export function streamDsrZip(
       if (body === null) throw new Error('a file of the export is not in the bucket')
       const hash = createHash('sha256')
       let bytes = 0
-      for await (const chunk of body) {
-        const part = chunk as Buffer
-        hash.update(part)
-        bytes += part.length
-        yield part
+      try {
+        for await (const chunk of body) {
+          const part = chunk as Buffer
+          hash.update(part)
+          bytes += part.length
+          yield part
+        }
+      } finally {
+        body.destroy()
       }
+      // A body that ended early (a dropped connection, an object replaced after the size was read) is a hole, not a smaller file
+      if (bytes !== attachment.size)
+        throw new Error('a file of the export is not the size the bucket reported')
       entries.set(attachment.entry, { sha256: hash.digest('hex'), bytes })
     }
     const file = Readable.from(read(), { objectMode: false })
     file.on('error', fail)
+    open.push(file)
     zip.addReadStream(file, attachment.entry)
   }
   function* manifest(): Generator<Buffer> {

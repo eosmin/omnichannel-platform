@@ -1,7 +1,7 @@
-import { ComplianceConfig, DsrFailureCodes } from '@platform/core/compliance'
+import { ComplianceConfig, DsrExportFileReasons, DsrFailureCodes } from '@platform/core/compliance'
 import type { PrismaTransaction } from '@platform/core/database'
 import { AuthorType, MediaStatus, MessageType } from '@platform/core/domain'
-import { STORES_ROOT } from '@platform/core/storage'
+import { MediaPurpose, STORES_ROOT } from '@platform/core/storage'
 
 // What the export of an access or portability request holds (TDD_05 §10.1, Step 7.2-H2b-2): the data of the customers the request names, and
 // nothing of anybody else. Every read is filtered by the store AND by the ids of the customers; the fields are named one by one (a `select`,
@@ -49,6 +49,8 @@ export const DSR_EXPORT_EXCLUDED = [
 // receiver gets tomorrow is not exported by default)
 const FISCAL_TEXT_FIELDS = [
   'name',
+  'email',
+  'phone',
   'taxId',
   'registrationId',
   'taxpayerType',
@@ -85,6 +87,23 @@ function fiscalRecordOf(opened: Record<string, unknown>): Record<string, unknown
     if (Object.keys(parts).length > 0) record['address'] = parts
   }
   return record
+}
+
+// What the snapshot says besides the lines (shipping, discount, whether the prices carry the tax), the fields named one by one
+function totalsOf(snapshot: unknown): Record<string, number | boolean | null> {
+  const parts = (typeof snapshot === 'object' && snapshot !== null ? snapshot : {}) as Record<
+    string,
+    unknown
+  >
+  const amount = (key: string): number | null =>
+    typeof parts[key] === 'number' ? parts[key] : null
+  return {
+    shippingCents: amount('shippingCents'),
+    shippingTaxCents: amount('shippingTaxCents'),
+    discountCents: amount('discountCents'),
+    pricesIncludeTax:
+      typeof parts['pricesIncludeTax'] === 'boolean' ? parts['pricesIncludeTax'] : null
+  }
 }
 
 // The lines of a document as the person was invoiced them: the fields named one by one from the snapshot (it is JSON that came back as unknown)
@@ -261,7 +280,25 @@ export async function collectDsrExport(
   )
   const files = within(
     await tx.media.findMany({
-      where: { storeId, customerId: { in: ids } },
+      where: {
+        storeId,
+        customerId: { in: ids },
+        purpose: MediaPurpose.MESSAGE,
+        // The same rule as the messages: a file of a note of the team, a system line, or a message that was deleted or thrown away is not
+        // the person's data (a file with no message, the gallery of the customer, is)
+        OR: [
+          { messageId: null },
+          {
+            message: {
+              type: {
+                notIn: [MessageType.INTERNAL_NOTE, MessageType.SYSTEM, MessageType.ORDER_SUMMARY]
+              },
+              deletedAt: null,
+              discardedAt: null
+            }
+          }
+        ]
+      },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: limit() + 1,
       select: {
@@ -323,8 +360,12 @@ export async function collectDsrExport(
       fileSize: file.fileSize,
       createdAt: file.createdAt
     }
-    if (file.status !== String(MediaStatus.CLEAN) || !file.key.startsWith(folder)) {
-      fileRows.push({ ...base, included: false, reason: 'not_scanned_clean' })
+    if (file.status !== String(MediaStatus.CLEAN)) {
+      fileRows.push({ ...base, included: false, reason: DsrExportFileReasons.NOT_SCANNED_CLEAN })
+      continue
+    }
+    if (!file.key.startsWith(folder)) {
+      fileRows.push({ ...base, included: false, reason: DsrExportFileReasons.OUTSIDE_STORE })
       continue
     }
     if (attachments.length >= ComplianceConfig.DSR_EXPORT_MAX_FILES) {
@@ -332,7 +373,7 @@ export async function collectDsrExport(
     }
     const head = await deps.head(file.key)
     if (head === null) {
-      fileRows.push({ ...base, included: false, reason: 'not_available' })
+      fileRows.push({ ...base, included: false, reason: DsrExportFileReasons.NOT_AVAILABLE })
       continue
     }
     const entry = dsrFileEntryName(index, file.filename)
@@ -383,6 +424,7 @@ export async function collectDsrExport(
       voidedAt: doc.voidedAt,
       createdAt: doc.createdAt,
       lines: linesOf(doc.linesSnapshot),
+      ...totalsOf(doc.linesSnapshot),
       receiverReadable: receiver !== null,
       receiver
     }

@@ -77,6 +77,14 @@ export const ComplianceConfig = {
   DSR_EXPORT_BATCH: 10
 } as const
 
+// Why a file of the person is listed in the export but its bytes are not in the ZIP (`files.json`, field `reason`; read by the person, so
+// they are fixed codes)
+export const DsrExportFileReasons = {
+  NOT_SCANNED_CLEAN: 'not_scanned_clean',
+  NOT_AVAILABLE: 'not_available',
+  OUTSIDE_STORE: 'outside_store'
+} as const
+
 // Where the closing notice of an ended request stands (what the review queue shows, derived from the row, never stored as a word):
 // `none` = there is no address to tell (a request made by a team member with no mail), `pending` = the address is sealed and the mail not
 // confirmed, `sent` = the mail processor confirmed it, `failed` = the person was NEVER told (the mail failed all its attempts, or the

@@ -51,7 +51,15 @@ describe('the data of a data export: files and fiscal data', () => {
 
     await collectDsrExport(tx, STORE, ['c1', 'c2'], deps({}, {}))
 
-    expect(asked['media']?.where).toEqual({ storeId: STORE, customerId: { in: ['c1', 'c2'] } })
+    expect(asked['media']?.where).toMatchObject({
+      storeId: STORE,
+      customerId: { in: ['c1', 'c2'] },
+      purpose: 'message'
+    })
+    // The files of a note of the team, a system line, or a deleted or discarded message are not the person's data
+    expect(JSON.stringify(asked['media']?.where)).toMatch(
+      /"messageId":null.*"notIn":\["INTERNAL_NOTE","SYSTEM","ORDER_SUMMARY"\].*"deletedAt":null,"discardedAt":null/
+    )
     expect(asked['customerFiscalData']?.where).toEqual({
       storeId: STORE,
       customerId: { in: ['c1', 'c2'] }
@@ -97,7 +105,7 @@ describe('the data of a data export: files and fiscal data', () => {
       ['receipt.png', true, undefined],
       ['bad.exe', false, 'not_scanned_clean'],
       ['new.png', false, 'not_scanned_clean'],
-      ['x.png', false, 'not_scanned_clean'],
+      ['x.png', false, 'outside_store'],
       ['gone.png', false, 'not_available']
     ])
     // The key of the bucket is never written into the export
@@ -180,7 +188,8 @@ describe('the data of a data export: files and fiscal data', () => {
     expect(text).toContain('San Salvador')
     expect(text).toContain('Shirt')
     expect(text).not.toContain('SECRET')
-    expect(text).not.toContain('x@example.com')
+    expect(text).toContain('x@example.com')
+    expect(text).toContain('shippingCents')
     expect(text).not.toContain('costCents')
     expect(content.counts).toMatchObject({ fiscalData: 1, fiscalDocuments: 1, fiscalUnreadable: 0 })
   })

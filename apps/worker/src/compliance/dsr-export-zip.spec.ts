@@ -114,12 +114,12 @@ describe('the streamed ZIP of a data export', () => {
 
   it('stops at the byte limit of the whole ZIP while it streams, instead of cutting the file or holding it', async () => {
     const limit = jest.replaceProperty(ComplianceConfig, 'DSR_EXPORT_MAX_ZIP_BYTES', 64 * 1024)
-    // Random bytes do not compress: the ZIP is as big as the file. The declared size is not the limit: the bytes read are
+    // Random bytes do not compress: the ZIP is as big as the file. The limit is on the bytes that come out of the ZIP
     const body = randomBytes(256 * 1024)
     const input: DsrExportContent = {
       files: [text('customers.json')],
       counts: {},
-      attachments: [{ entry: dsrFileEntryName(0, 'big.bin'), key: 'k', size: 10 }]
+      attachments: [{ entry: dsrFileEntryName(0, 'big.bin'), key: 'k', size: body.length }]
     }
 
     await expect(
@@ -147,6 +147,23 @@ describe('the streamed ZIP of a data export', () => {
         )
       )
     ).rejects.toThrow()
+  })
+
+  it('fails when a file ends short of the size the bucket reported, instead of shipping a smaller file', async () => {
+    const short: DsrExportContent = {
+      ...content(),
+      attachments: [
+        {
+          entry: dsrFileEntryName(0, 'a.png'),
+          key: 'stores/s1/m/1/receipt.png',
+          size: bytesA.length + 1
+        }
+      ]
+    }
+
+    await expect(
+      drain(streamDsrZip(short, { type: 'access', generatedAt }, sourceOf(objects)))
+    ).rejects.toThrow('not the size')
   })
 
   it('refuses text past the byte limit instead of cutting it', () => {
