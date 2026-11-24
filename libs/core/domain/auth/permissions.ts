@@ -32,6 +32,9 @@ export const Permissions = {
   CUSTOMERS_ERASE: 'customers:erase',
   // Review and decide the data subject requests of the store (Step 7.2-H, TDD_05 §10.2): approving an erasure request erases
   CUSTOMERS_DSR_REVIEW: 'customers:dsr_review',
+  // Make, change and switch off the key of the public form of data requests of the store (Step 7.2-H2b, C1a): whoever rotates it breaks
+  // every link already published, so it is its own permission and only the Admin preset holds it
+  CUSTOMERS_DSR_MANAGE_FORM: 'customers:dsr_manage_form',
 
   // Orders
   ORDERS_VIEW: 'orders:view',

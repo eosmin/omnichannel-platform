@@ -2249,6 +2249,7 @@
       "deletedByAgent": "{name} eliminó este mensaje",
       "deletedByOwner": "El dueño eliminó este mensaje",
       "deletedGeneric": "Este mensaje fue eliminado",
+      "hiddenFiles": "{count, plural, one {Un adjunto que no puedes abrir} other {# adjuntos que no puedes abrir}}",
       "ticks": {
         "queued": "Enviando",
         "sent": "Enviado",
@@ -3451,7 +3452,8 @@
           "export": "Exportar clientes",
           "flag_caution": "Marcar clientes con precaución",
           "erase": "Borrar los datos personales de clientes",
-          "dsr_review": "Revisar las solicitudes de datos de una persona"
+          "dsr_review": "Revisar las solicitudes de datos de una persona",
+          "dsr_manage_form": "Hacer, cambiar y apagar la clave del formulario público de solicitudes de datos"
         },
         "orders": {
           "view": "Ver pedidos",
@@ -5360,6 +5362,36 @@
       "saving": "Guardando…",
       "discard": "Descartar cambios",
       "saved": "Ajustes de seguridad guardados"
+    },
+    "dsrForm": {
+      "title": "Formulario público",
+      "intro": "La clave que la tienda da a su formulario público de solicitudes de datos. Quien tenga la dirección del formulario con esta clave puede enviar una solicitud; cada una la revisa una persona antes de hacer nada.",
+      "loading": "Cargando la clave…",
+      "retry": "Reintentar",
+      "none": "Esta tienda no tiene clave: no recibe solicitudes públicas.",
+      "make": "Crear la clave",
+      "keyLabel": "Clave del formulario",
+      "state": {
+        "open": "El formulario público está abierto: recibe solicitudes.",
+        "shut": "La clave existe, pero el formulario público todavía no recibe solicitudes: se abre cuando la plataforma lo habilita."
+      },
+      "replace": {
+        "action": "Cambiar la clave",
+        "title": "¿Cambiar la clave del formulario?",
+        "description": "La clave actual deja de funcionar de inmediato: toda dirección o página que la use dejará de recibir solicitudes hasta que la cambies por la nueva.",
+        "confirm": "Cambiar la clave"
+      },
+      "off": {
+        "action": "Apagar el formulario",
+        "title": "¿Apagar el formulario público?",
+        "description": "La tienda deja de recibir solicitudes públicas de datos. Las solicitudes que ya llegaron siguen en la cola. Puedes crear una clave nueva cuando quieras.",
+        "confirm": "Apagar el formulario"
+      },
+      "done": {
+        "make": "Clave creada.",
+        "replace": "Clave cambiada.",
+        "revoke": "Formulario apagado."
+      }
     }
   },
   "emptyStates": {
