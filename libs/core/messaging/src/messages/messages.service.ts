@@ -63,7 +63,7 @@ import {
   requireTextFits,
   unsupportedKind
 } from './caption-rules'
-import { assertMediaServable } from './media-guard'
+import { assertMediaSendable } from './media-guard'
 import { encodeMessageCursor } from './message-cursor'
 import type { CreateMessageBody, ListMessagesQuery } from './messages.schemas'
 import {
@@ -788,14 +788,21 @@ export class MessagesService {
         purpose: MediaPurpose.MESSAGE,
         uploadedBy: uploaderId
       },
-      select: { id: true, status: true, contentType: true, messageId: true, fileSize: true }
+      select: {
+        id: true,
+        status: true,
+        scanResult: true,
+        contentType: true,
+        messageId: true,
+        fileSize: true
+      }
     })
     // Another store's file, another member's upload and a file that does not exist are one answer
     if (rows.length !== body.mediaIds.length) throw resourceNotFound('media')
     for (const row of rows) {
       if (row.messageId !== null)
         throw resourceConflict('the file is already attached to a message')
-      assertMediaServable(row.status)
+      assertMediaSendable(row)
       if (mediaMessageTypeOf(row.contentType) !== body.type) {
         throw invalidInput('the file is not of the type of the message')
       }
