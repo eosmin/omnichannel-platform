@@ -27,7 +27,7 @@ interface Fixture {
   query: pg.Client['query']
 }
 
-describe('row-level security, public data requests: resolve_dsr_store and resolve_dsr_verification', () => {
+describe('row-level security, public data requests: resolve_dsr_store, resolve_dsr_verification and resolve_dsr_export_download', () => {
   const raw = new pg.Client({ connectionString: connectionUrls().owner })
 
   beforeAll(async () => {

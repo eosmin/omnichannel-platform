@@ -173,7 +173,7 @@ export class DsrNoticeSender {
             // The tries are counted when the notice is queued, in the same write: a job that never reaches the processor is counted too
             data: { noticeQueuedAt: new Date(), noticeAttempts: { increment: 1 } }
           })
-          // Queued LAST: a write that failed above rolls back the token too, and no mail goes out with a link whose token is not stored
+          // Queued last: a write that failed above rolls the token back before any mail is queued. A failure of the COMMIT itself, after the add, can still leave a mail whose token is not stored (owner 7.7, debt in the plan)
           await this.emailQueue.add(job.name, job.data, job.opts)
           return 'queued' as const
         })
@@ -226,8 +226,10 @@ export class DsrNoticeSender {
   }
 
   // The link that hands a person the file of their access or portability request: a NEW token of 256 bits each time the mail is queued (only its
-  // hash is stored), valid until the file is kept until. The tokens of earlier mails of the same request that were never used are removed first, so
-  // one link is live at a time. It goes in the same transaction as the queueing: a notice that is not queued leaves no token behind. The token
+  // hash is stored), valid until the file is kept until. The tokens of earlier mails of the same request are KEPT until they
+  // expire: the mail job has a fixed id, so a job still in flight when the notice is asked for again keeps its own (older) link and BullMQ drops the
+  // new add; replacing the token would leave that job with a dead link. The notice is queued at most `DSR_NOTICE_MAX_ATTEMPTS` times, so that
+  // many links can be live, and the first download spends the request (see below). A notice that fails before the queueing leaves no token behind. The token
   // goes in the fragment of the page, which a browser never sends to a server.
   private async downloadUrlOf(
     tx: PrismaTransaction,
@@ -247,13 +249,6 @@ export class DsrNoticeSender {
       }
     })
     if (spent > 0) return {}
-    await tx.verificationToken.deleteMany({
-      where: {
-        type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
-        subject: requestId,
-        usedAt: null
-      }
-    })
     const token = generateToken()
     await tx.verificationToken.create({
       data: {

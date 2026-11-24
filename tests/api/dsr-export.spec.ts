@@ -394,7 +394,7 @@ describe('the export of the data requests of access and portability', () => {
     expect(dsrNoticeStatusOf(await rowOf(id))).toBe('sent')
   })
 
-  it('gives a new link when the notice is asked for again, and leaves only the newest one live', async () => {
+  it('gives a new link when the notice is asked for again, and keeps the earlier one live for a job still in flight', async () => {
     const mine = await personOfStoreA('again')
     const id = await approvedExport({ customerIds: [mine.customerId], email: mine.email })
     await runner.run()
@@ -410,8 +410,13 @@ describe('the export of the data requests of access and portability', () => {
 
     const toThem = mails.filter(mail => [mail.data.to].flat().includes(mine.email))
     expect(toThem).toHaveLength(1)
-    const stored = await owner.verificationToken.findMany({ where: { subject: id } })
-    expect(stored).toHaveLength(1)
+    // The mail job has a fixed id, so one still in flight keeps its own link: the earlier token is not replaced
+    const stored = await owner.verificationToken.findMany({
+      where: { subject: id },
+      orderBy: { createdAt: 'desc' }
+    })
+    expect(stored).toHaveLength(2)
+    expect(stored.map(row => row.tokenHash)).toContain(first.tokenHash)
     expect(stored[0]?.tokenHash).not.toBe(first.tokenHash)
     const url = (toThem[0]?.data.data as { downloadUrl: string }).downloadUrl
     const token = new URLSearchParams(new URL(url).hash.slice(1)).get('token') ?? ''

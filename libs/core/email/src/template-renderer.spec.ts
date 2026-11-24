@@ -466,10 +466,18 @@ describe('TemplateRenderer, the closing mail of an access request', () => {
         downloadUrl: 'javascript:alert(1)'
       })
     ).rejects.toThrow()
-    const erased = await renderer.render(EmailTemplates.DSR_RESULT, Locales.EN, {
-      outcome: 'completed',
-      requestType: 'erasure'
-    })
-    expect(erased.text).not.toContain('works once')
+    // A link given to a kind or an outcome that has no file shows nowhere
+    for (const other of [
+      { outcome: 'completed', requestType: 'erasure' },
+      { outcome: 'rejected', requestType: 'access' },
+      { outcome: 'expired', requestType: 'portability' }
+    ]) {
+      const email = await renderer.render(EmailTemplates.DSR_RESULT, Locales.EN, {
+        ...other,
+        downloadUrl: link
+      })
+      expect(email.text).not.toContain('works once')
+      expect(email.html).not.toContain(link)
+    }
   })
 })

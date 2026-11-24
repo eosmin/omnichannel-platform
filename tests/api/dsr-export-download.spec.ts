@@ -14,6 +14,7 @@ import { encrypt, generateToken, hashToken, parseEncryptionKey } from '@platform
 import type { OwnerClient } from '@platform/core/database-testing'
 import { DAY_MS, DsrStatus, DsrType, VerificationTokenType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { StorageService } from '@platform/core/storage-module'
 
 import { createCustomer } from '../builders'
 import { createTestApp } from '../helpers/app'
@@ -43,6 +44,7 @@ describe('The public download of the file of a data request', () => {
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
+  let storage: StorageService
   // The tokens point at a request by a plain text id (no foreign key), so the cleanup of the prefix does not reach them
   const requestIds: string[] = []
 
@@ -51,12 +53,19 @@ describe('The public download of the file of a data request', () => {
     // The flow is off by default in the test environment; this suite is about what happens when it is on
     app = await createTestApp([], builder => builder.overrideProvider(DSR_CONFIG).useValue(ON))
     ctx = await seedTestContext(owner, app, prefix)
+    storage = app.get(StorageService, { strict: false })
   })
   afterAll(async () => {
     await owner.verificationToken.deleteMany({ where: { subject: { in: requestIds } } })
     await cleanUp(owner, prefix)
     await app.close()
     await owner.$disconnect()
+  })
+
+  // The bucket holds the file of every request this suite makes: the service looks for the object before it spends a token
+  beforeEach(() => {
+    jest.restoreAllMocks()
+    jest.spyOn(storage, 'head').mockResolvedValue({ contentLength: 10 } as never)
   })
 
   const post = (token: unknown) =>
@@ -167,53 +176,95 @@ describe('The public download of the file of a data request', () => {
   })
 
   it.each([
-    ['an expired token', () => finished({ tokenExpiresAt: new Date(Date.now() - 1000) })],
-    ['a token already used', () => finished({ used: true })],
+    ['an expired token', () => finished({ tokenExpiresAt: new Date(Date.now() - 1000) }), false],
+    ['a token already used', () => finished({ used: true }), true],
     [
       'the token of the verification mail',
-      () => finished({ tokenType: VerificationTokenType.DSR_VERIFICATION })
+      () => finished({ tokenType: VerificationTokenType.DSR_VERIFICATION }),
+      false
     ],
-    ['a request that is not completed', () => finished({ status: DsrStatus.IN_PROGRESS })],
-    ['an erasure', () => finished({ type: DsrType.ERASURE })],
-    ['a file that was purged', () => finished({ key: null })],
-    ['a file past its date', () => finished({ expiresAt: new Date(Date.now() - 1000) })]
-  ])('answers the one same error for %s, signs nothing and spends nothing', async (_name, make) => {
-    const unknown = await post(generateToken())
-    const { id, token } = await make()
+    ['a request that is not completed', () => finished({ status: DsrStatus.IN_PROGRESS }), false],
+    ['an erasure', () => finished({ type: DsrType.ERASURE }), false],
+    ['a file that was purged', () => finished({ key: null }), false],
+    ['a file past its date', () => finished({ expiresAt: new Date(Date.now() - 1000) }), false]
+  ])(
+    'answers the one same error for %s, signs nothing and spends nothing',
+    async (_name, make, wasUsed) => {
+      const unknown = await post(generateToken())
+      const { id, token } = await make()
 
-    const response = await post(token)
+      const response = await post(token)
 
-    expect(response.status).toBe(BAD_REQUEST)
-    expect(response.body).toEqual(unknown.body)
-    expect(
-      await owner.auditLog.count({
-        where: { action: AuditAction.DSR_EXPORT_DOWNLOADED, resourceId: id }
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(response.body).toEqual(unknown.body)
+      expect(
+        await owner.auditLog.count({
+          where: { action: AuditAction.DSR_EXPORT_DOWNLOADED, resourceId: id }
+        })
+      ).toBe(0)
+      const row = await owner.verificationToken.findFirstOrThrow({
+        where: { tokenHash: hashToken(token) }
       })
-    ).toBe(0)
-    const row = await owner.verificationToken.findFirstOrThrow({
-      where: { tokenHash: hashToken(token) }
-    })
-    // A token that was already used keeps its date; every other one is left as it was
-    expect(row.usedAt === null).toBe(_name !== 'a token already used')
-  })
+      // A token that was already used keeps its date; every other one is left as it was
+      expect(row.usedAt === null).toBe(!wasUsed)
+    }
+  )
 
-  it('opens the file of the request the token names and no other, even in another store or organization', async () => {
+  it('opens only the request its token names: the tokens of a sibling store and of another organization stay unspent', async () => {
     const mine = await finished()
     const sibling = await finished({ storeId: ctx.storeA2.id })
     const foreign = await finished({ storeId: ctx.storeB.id, organizationId: ctx.orgB.id })
 
-    // Each token opens its own request (the audit names it), and a token never opens the request of its neighbour
-    for (const one of [mine, sibling, foreign]) {
-      expect((await post(one.token)).status).toBe(OK)
-      await waitForAuditEntries(owner, {
-        action: AuditAction.DSR_EXPORT_DOWNLOADED,
-        resourceId: one.id
-      })
-    }
-    const tokens = await owner.verificationToken.findMany({
-      where: { subject: { in: [mine.id, sibling.id, foreign.id] }, usedAt: { not: null } }
+    expect((await post(mine.token)).status).toBe(OK)
+    await waitForAuditEntries(owner, {
+      action: AuditAction.DSR_EXPORT_DOWNLOADED,
+      resourceId: mine.id
     })
-    expect(tokens).toHaveLength(3)
+
+    for (const other of [sibling, foreign]) {
+      const row = await owner.verificationToken.findFirstOrThrow({
+        where: { tokenHash: hashToken(other.token) }
+      })
+      expect(row.usedAt).toBeNull()
+      expect(
+        await owner.auditLog.count({
+          where: { action: AuditAction.DSR_EXPORT_DOWNLOADED, resourceId: other.id }
+        })
+      ).toBe(0)
+    }
+    // Each one then opens its own file
+    expect((await post(sibling.token)).status).toBe(OK)
+    expect((await post(foreign.token)).status).toBe(OK)
+  })
+
+  it('does not spend the token when the bucket no longer holds the file, and the person can try again', async () => {
+    const { token } = await finished()
+    const head = jest.spyOn(storage, 'head').mockResolvedValueOnce(null)
+
+    const gone = await post(token)
+
+    expect(gone.status).toBe(BAD_REQUEST)
+    expect((gone.body as ErrorBody).error?.code).toBe(ErrorCodes.DSR_EXPORT_LINK_INVALID)
+    const row = await owner.verificationToken.findFirstOrThrow({
+      where: { tokenHash: hashToken(token) }
+    })
+    expect(row.usedAt).toBeNull()
+    expect(head).toHaveBeenCalledTimes(1)
+    expect((await post(token)).status).toBe(OK)
+  })
+
+  it('does not spend the token when the link cannot be signed', async () => {
+    const { token } = await finished()
+    jest.spyOn(storage, 'downloadUrl').mockRejectedValueOnce(new Error('signer down'))
+
+    const failed = await post(token)
+
+    expect(failed.status).toBeGreaterThanOrEqual(500)
+    const row = await owner.verificationToken.findFirstOrThrow({
+      where: { tokenHash: hashToken(token) }
+    })
+    expect(row.usedAt).toBeNull()
+    expect((await post(token)).status).toBe(OK)
   })
 
   it.each([
