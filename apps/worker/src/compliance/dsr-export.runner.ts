@@ -12,6 +12,7 @@ import {
   DsrResourceTypes,
   LegalBases
 } from '@platform/core/compliance'
+import { CredentialCipher } from '@platform/core/crypto'
 import { checkDsrSubject } from '@platform/core/customer-erasure'
 import {
   JobContext,
@@ -29,7 +30,8 @@ import { StorageService } from '@platform/core/storage-module'
 
 import { allStoreIds } from '../schedulers/store-sweep'
 
-import { collectDsrExport, DsrExportTooLargeError, zipDsrExport } from './dsr-export-data'
+import { collectDsrExport, DsrExportTooLargeError } from './dsr-export-data'
+import { streamDsrZip } from './dsr-export-zip'
 import { DsrNoticeSender } from './dsr-notice-sender.service'
 
 // rls-context: the stores are listed from `stores`; every read and write of a request and of a customer runs inside JobContext.forStore
@@ -64,6 +66,7 @@ export class DsrExportRunner {
     private readonly events: DomainEvents,
     private readonly storage: StorageService,
     private readonly notices: DsrNoticeSender,
+    private readonly cipher: CredentialCipher,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig,
     private readonly logger: PinoLogger
   ) {
@@ -198,7 +201,7 @@ export class DsrExportRunner {
       const outcome = await this.jobContext.forStore(
         storeId,
         () => this.build(storeId, requestId, now),
-        { timeout: ComplianceConfig.DSR_ERASE_TRANSACTION_TIMEOUT_MS }
+        { timeout: ComplianceConfig.DSR_EXPORT_TRANSACTION_TIMEOUT_MS }
       )
       if (outcome === 'skipped') {
         report.skipped += 1
@@ -276,11 +279,20 @@ export class DsrExportRunner {
         )
         return 'returned'
       }
-      const content = await collectDsrExport(tx, storeId, row.subjectCustomerIds)
-      const zip = await zipDsrExport(content, { type: row.type, generatedAt: now })
+      const content = await collectDsrExport(tx, storeId, row.subjectCustomerIds, {
+        head: key => this.storage.head(key),
+        // The fiscal values are sealed with the credentials key (the one being rotated included)
+        open: sealed => this.cipher.openRotating(sealed).credentials
+      })
       const key = StorageKeys.dsrExport(requestId)
-      // The object first, the row after: a death in between leaves an object the next try overwrites (same key) and a request still in progress
-      await this.storage.put(key, zip, ExportContentTypes.ZIP)
+      // The ZIP goes to the bucket as it is made: the files are never held whole. The object first, the row after: a death in between leaves an
+      // object the next try overwrites (same key) and a request still in progress
+      const zip = streamDsrZip(
+        content,
+        { type: row.type, generatedAt: now },
+        { stream: fileKey => this.storage.stream(fileKey) }
+      )
+      await this.storage.putStream(key, zip.stream, ExportContentTypes.ZIP)
       const done = await tx.dataSubjectRequest.updateMany({
         where: { id: requestId, storeId, status: DsrStatus.IN_PROGRESS, resultKey: null },
         data: {
@@ -302,7 +314,7 @@ export class DsrExportRunner {
         resourceType: DsrResourceTypes.REQUEST,
         resourceId: requestId,
         // Ids and counts: never the data, never an address
-        metadata: { type: row.type, counts: content.counts, bytes: zip.length }
+        metadata: { type: row.type, counts: content.counts, bytes: zip.written() }
       })
       return 'exported'
     })

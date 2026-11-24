@@ -69,10 +69,24 @@ export const ComplianceConfig = {
   DSR_EXPORT_LEASE_MS: 60 * 60 * 1000,
   DSR_EXPORT_MAX_ROWS_PER_KIND: 20_000,
   DSR_EXPORT_MAX_BYTES: 64 * 1024 * 1024,
+  // The files of the person (what they sent in a chat) go in the same ZIP, read as a stream and never held whole: no more than this many, and
+  // the whole ZIP (text and files) no more than this many bytes. Past either the request goes back to review (the reviewer arranges the copy)
+  DSR_EXPORT_MAX_FILES: 1_000,
+  DSR_EXPORT_MAX_ZIP_BYTES: 512 * 1024 * 1024,
+  // The transaction of an export holds the lock of the request while the ZIP is streamed to the bucket
+  DSR_EXPORT_TRANSACTION_TIMEOUT_MS: 15 * 60 * 1000,
   DSR_EXPORT_DOWNLOAD_URL_SECONDS: 5 * 60,
   DSR_EXPORT_FILENAME: 'data-export.zip',
   // Requests the export sweep and the purge of expired exports take per store and per run
   DSR_EXPORT_BATCH: 10
+} as const
+
+// Why a file of the person is listed in the export but its bytes are not in the ZIP (`files.json`, field `reason`; read by the person, so
+// they are fixed codes)
+export const DsrExportFileReasons = {
+  NOT_SCANNED_CLEAN: 'not_scanned_clean',
+  NOT_AVAILABLE: 'not_available',
+  OUTSIDE_STORE: 'outside_store'
 } as const
 
 // Where the closing notice of an ended request stands (what the review queue shows, derived from the row, never stored as a word):
