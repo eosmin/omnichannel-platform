@@ -82,6 +82,26 @@ describe('MediaPipeline and financial evidence', () => {
     expect(logger.error).toHaveBeenCalled()
   })
 
+  // The scanner has been failing for longer than the limit that gives up any other file: financial evidence is still never given up
+  it.each(evidence)(
+    'keeps the file of %s when the scanner has been failing for longer than the limit',
+    async purpose => {
+      const failingSince = new Date(Date.now() - (UploadLimits.SCAN_GIVE_UP_HOURS + 1) * 3_600_000)
+      const { pipeline, storage, updateMany, logger } = build(
+        purpose,
+        jest.fn().mockRejectedValue(new Error('the daemon is down')),
+        'application/pdf',
+        { unavailableSince: failingSince.toISOString() }
+      )
+      await expect(pipeline.scan('media-1', { storeId: 'store-1' }, true)).rejects.toThrow(
+        'the daemon is down'
+      )
+      expect(storage.delete).not.toHaveBeenCalled()
+      expect(updateMany).not.toHaveBeenCalled()
+      expect(logger.error).toHaveBeenCalled()
+    }
+  )
+
   it.each(evidence)('keeps the file of %s as a quarantine when it is infected', async purpose => {
     const { pipeline, storage, updateMany, logger } = build(
       purpose,
