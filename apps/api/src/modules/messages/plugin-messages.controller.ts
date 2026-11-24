@@ -471,7 +471,11 @@ export class PluginMessagesController {
 
   // The message a write answers, held to what the key may read (`pluginMessageViewOf`)
   private quoted(installation: PluginCaller, message: MessageView): MessageView {
-    return pluginMessageViewOf(message, installation.scopes.includes(PluginScopes.MESSAGES_READ))
+    return pluginMessageViewOf(
+      message,
+      installation.scopes.includes(PluginScopes.MESSAGES_READ),
+      installation.scopes.includes(PluginScopes.MEDIA_READ)
+    )
   }
 
   // The trail of what a plugin did: the actor is the platform (nobody is signed in), the plugin and its installation are on the

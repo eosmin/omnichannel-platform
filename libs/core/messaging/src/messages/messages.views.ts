@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { Permissions } from '@platform/core/auth'
 import type {
   AuthorType,
   CaptionState,
@@ -164,9 +165,11 @@ const providerTypeSchema = z.object({
 // `GET /media/:id` when the bubble is drawn, and only once `status` is `clean`.
 export interface MessageMediaView {
   id: string
-  filename: string
-  contentType: string
-  fileSize: number
+  // The name, the type and the size of a file are null for a reader who may not see files (`media:view`, BAN-R-meta): what a
+  // customer calls a file can be sensitive, and the type and the size say what it is. The id, the state and the caption stay.
+  filename: string | null
+  contentType: string | null
+  fileSize: number | null
   status: MediaStatus
   // The place of the file in a message an agent sent, from 0; null for a file the customer sent
   position: number | null
@@ -637,3 +640,25 @@ const authorOrNull = (text: string | null, what: string): AuthorType | null =>
 
 const deliveryOrNull = (text: string | null, what: string): DeliveryStatus | null =>
   text === null ? null : enumValueOf(DeliveryStatuses, text, what)
+
+// The message as a reader who may not see files gets it: the name, the type and the size of each file are taken out (BAN-R-meta, owner
+// decision 2026-11-24). Asked of every route that answers a message to a person, and of the plugin ones unless the key holds
+// `media:read` (`pluginMessageViewOf`). The coarse `type` of the message (image, document, audio...) and the caption stay: what is
+// hidden is the name, the exact type and the size of the file, not that an attachment exists.
+export function hideMediaMetadata(message: MessageView): MessageView {
+  if (message.media.length === 0) return message
+  return {
+    ...message,
+    media: message.media.map(file => ({
+      ...file,
+      filename: null,
+      contentType: null,
+      fileSize: null
+    }))
+  }
+}
+
+// `hideMediaMetadata` for whoever does not hold `media:view`
+export function withMediaVisibility(message: MessageView, held: readonly string[]): MessageView {
+  return held.includes(Permissions.MEDIA_VIEW) ? message : hideMediaMetadata(message)
+}
