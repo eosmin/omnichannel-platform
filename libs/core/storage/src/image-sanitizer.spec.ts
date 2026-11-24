@@ -4,6 +4,8 @@ import { ImageSanitizing } from '@platform/core/storage'
 
 import {
   carriesMetadata,
+  cutMetadataInContainer,
+  holdsMoreThanItNeeds,
   ImageNotSanitizable,
   isSanitizedType,
   sanitizeImage,
@@ -317,5 +319,109 @@ describe('the decodes in flight (memory of the cleaning)', () => {
       if (result.kind !== 'sanitized') throw new Error('expected a sanitized picture')
       await expect(carriesMetadata(result.body)).resolves.toBe(false)
     }
+  })
+})
+
+describe('cutMetadataInContainer', () => {
+  const tagged = async (format: 'jpeg' | 'png' | 'webp'): Promise<Buffer> =>
+    (await twoColours()).withMetadata({ exif: PHONE_EXIF })[format]().toBuffer()
+
+  it.each(['jpeg', 'png', 'webp'] as const)(
+    'takes the position out of a %s without touching a pixel',
+    async format => {
+      const photo = await tagged(format)
+      await expect(carriesMetadata(photo)).resolves.toBe(true)
+
+      const cut = await cutMetadataInContainer(photo, `image/${format}`)
+
+      expect(cut).toBeDefined()
+      await expect(carriesMetadata(cut as Buffer)).resolves.toBe(false)
+      expect(await pixel(cut as Buffer, 2, 2)).toEqual(await pixel(photo, 2, 2))
+      expect((cut as Buffer).length).toBeLessThan(photo.length)
+    }
+  )
+
+  it('gives a picture with nothing to cut back as it came', async () => {
+    const clean = await (await twoColours()).jpeg().toBuffer()
+    const png = await (await twoColours()).png().toBuffer()
+    expect((await cutMetadataInContainer(clean, 'image/jpeg'))?.equals(clean)).toBe(true)
+    expect((await cutMetadataInContainer(png, 'image/png'))?.equals(png)).toBe(true)
+  })
+
+  it('leaves a picture held turned by its orientation to the re-encoding: the cut would drop the tag and not turn it', async () => {
+    const turned = await (
+      await twoColours()
+    )
+      .withMetadata({ orientation: 6, exif: PHONE_EXIF })
+      .jpeg()
+      .toBuffer()
+    await expect(cutMetadataInContainer(turned, 'image/jpeg')).resolves.toBeUndefined()
+  })
+
+  it('leaves a jpeg that holds a second picture after its end: its header does not describe that one', async () => {
+    const photo = await tagged('jpeg')
+    await expect(
+      cutMetadataInContainer(Buffer.concat([photo, photo]), 'image/jpeg')
+    ).resolves.toBeUndefined()
+    // Zero padding is not data
+    await expect(
+      cutMetadataInContainer(Buffer.concat([photo, Buffer.alloc(16)]), 'image/jpeg')
+    ).resolves.toBeDefined()
+  })
+
+  it('does not let a jpeg keep an application segment it does not need: the telemetry of a camera of action, a manifest', async () => {
+    const photo = await (await twoColours()).jpeg().toBuffer()
+    const segment = (marker: number, text: string): Buffer => {
+      const payload = Buffer.from(text, 'latin1')
+      return Buffer.concat([Buffer.from([0xff, marker, 0, payload.length + 2]), payload])
+    }
+    const extras = Buffer.concat([
+      segment(0xe6, 'GoPro lat=4.5 lon=-74.08'),
+      segment(0xeb, 'JUMBF c2pa')
+    ])
+    const dirty = Buffer.concat([photo.subarray(0, 2), extras, photo.subarray(2)])
+    expect(dirty.includes('GoPro')).toBe(true)
+
+    const cut = await cutMetadataInContainer(dirty, 'image/jpeg')
+
+    expect(cut).toBeDefined()
+    expect((cut as Buffer).includes('GoPro')).toBe(false)
+    expect((cut as Buffer).includes('JUMBF')).toBe(false)
+    expect(await pixel(cut as Buffer, 2, 2)).toEqual(await pixel(photo, 2, 2))
+    expect(holdsMoreThanItNeeds(dirty, 'image/jpeg')).toBe(true)
+    expect(holdsMoreThanItNeeds(photo, 'image/jpeg')).toBe(false)
+  })
+
+  it('does not let a png keep a chunk that is not on its list: a private chunk with a position goes, the picture and its colour stay', async () => {
+    const photo = await (await twoColours()).png().toBuffer()
+    const text = Buffer.from('lat=4.5 lon=-74.08')
+    const chunk = Buffer.concat([
+      Buffer.from([0, 0, 0, text.length]),
+      Buffer.from('prVt'),
+      text,
+      Buffer.alloc(4)
+    ])
+    const at = photo.indexOf('IDAT') - 4
+    const dirty = Buffer.concat([photo.subarray(0, at), chunk, photo.subarray(at)])
+    expect(holdsMoreThanItNeeds(dirty, 'image/png')).toBe(true)
+    expect(holdsMoreThanItNeeds(photo, 'image/png')).toBe(false)
+
+    const cut = await cutMetadataInContainer(dirty, 'image/png')
+
+    expect(cut).toBeDefined()
+    expect((cut as Buffer).includes('prVt')).toBe(false)
+    expect(await pixel(cut as Buffer, 2, 2)).toEqual(await pixel(photo, 2, 2))
+    expect(await pixel(cut as Buffer, 15, 2)).toEqual(await pixel(photo, 15, 2))
+  })
+
+  it('has nothing to give back for a type it does not cut, or for bytes it cannot walk', async () => {
+    const photo = await tagged('jpeg')
+    await expect(cutMetadataInContainer(photo, 'image/bmp')).resolves.toBeUndefined()
+    await expect(
+      cutMetadataInContainer(photo.subarray(0, 40), 'image/jpeg')
+    ).resolves.toBeUndefined()
+    await expect(
+      cutMetadataInContainer(Buffer.from('not a png'), 'image/png')
+    ).resolves.toBeUndefined()
   })
 })
