@@ -642,6 +642,7 @@ describe('The web widget', () => {
         position: number
         caption: string
         onMessage: string
+        scanResult: object
       }> = {}
     ): Promise<{ messageId: string; mediaId: string }> {
       clock += 1
@@ -676,6 +677,7 @@ describe('The web widget', () => {
           contentType: over.contentType ?? 'image/png',
           fileSize: 2048,
           status: over.status ?? MediaStatus.CLEAN,
+          ...(over.scanResult === undefined ? {} : { scanResult: over.scanResult }),
           ...(over.position === undefined ? {} : { position: over.position }),
           ...(over.caption === undefined ? {} : { caption: over.caption })
         },
@@ -833,6 +835,36 @@ describe('The web widget', () => {
         const response = await download(s.token, file.mediaId).expect(NOT_FOUND)
         expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
       }
+    })
+
+    it('does not give a video or audio file the cleaning of metadata has not reached, or kept as it came, and gives the one it cleaned', async () => {
+      const s = await stage()
+      const video = { type: MessageType.VIDEO, contentType: 'video/mp4', filename: 'clip.mp4' }
+      const unmarked = await messageWithFile(s, { ...video })
+      const kept = await messageWithFile(s, { ...video, scanResult: { avCleaning: 'untouched' } })
+      const cleaned = await messageWithFile(s, {
+        ...video,
+        content: 'mira',
+        scanResult: { sanitized: true }
+      })
+
+      for (const file of [unmarked, kept]) {
+        const response = await download(s.token, file.mediaId).expect(NOT_FOUND)
+        expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
+      }
+      // What the visitor sent themselves goes back to them as it is
+      const own = await messageWithFile(s, {
+        ...video,
+        authorType: AuthorType.CUSTOMER,
+        scanResult: { avCleaning: 'untouched' }
+      })
+      await download(s.token, cleaned.mediaId).expect(OK)
+      await download(s.token, own.mediaId).expect(OK)
+      const history = await enter(s.siteKey, s.visitorId)
+      expect(history.messages.flatMap(m => m.attachments.map(a => a.id))).toEqual([
+        cleaned.mediaId,
+        own.mediaId
+      ])
     })
 
     it('keeps the window of the history for messages it can show: pending files do not push older ones out', async () => {

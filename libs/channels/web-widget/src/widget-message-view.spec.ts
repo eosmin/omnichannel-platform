@@ -5,7 +5,15 @@ const file = (id: string, position: number | null) => ({
   filename: `${id}.png`,
   contentType: 'image/png',
   fileSize: 3,
-  position
+  position,
+  scanResult: null as unknown
+})
+
+const video = (id: string, position: number | null, scanResult: unknown) => ({
+  ...file(id, position),
+  filename: `${id}.mp4`,
+  contentType: 'video/mp4',
+  scanResult
 })
 
 const row = (media: ReturnType<typeof file>[], content: string | null = null) => ({
@@ -44,7 +52,52 @@ describe('widgetMessageView', () => {
   })
 })
 
+describe('a file the platform could not clean of its metadata', () => {
+  it('is not given to the visitor when a video was kept as it came', () => {
+    const kept = video('v', 0, { avCleaning: 'untouched' })
+
+    expect(widgetMessageView(row([kept], 'hola'))?.attachments).toEqual([])
+  })
+
+  it('is not given to the visitor when a video has no mark of the cleaning', () => {
+    expect(widgetMessageView(row([video('v', 0, null)], 'hola'))?.attachments).toEqual([])
+    expect(widgetMessageView(row([video('v', 0, { viruses: [] })], 'hola'))?.attachments).toEqual(
+      []
+    )
+  })
+
+  it('is given when the video carries the mark of the cleaning', () => {
+    const view = widgetMessageView(row([video('v', 0, { sanitized: true })], 'hola'))
+
+    expect(view?.attachments.map(a => a.id)).toEqual(['v'])
+  })
+
+  it('is given back to the visitor who sent it', () => {
+    const own = {
+      ...row([video('v', 0, { avCleaning: 'untouched' })], 'hola'),
+      authorType: 'customer'
+    }
+
+    expect(widgetMessageView(own)?.attachments.map(a => a.id)).toEqual(['v'])
+  })
+
+  it('leaves a message of only such files with nothing to show', () => {
+    expect(widgetMessageView(row([video('v', 0, null)]))).toBeNull()
+  })
+
+  it('does not show the text under another file when the first one is hidden', () => {
+    const view = widgetMessageView(row([video('v', 0, null), file('b', 1)], 'uno'))
+
+    expect(view?.content).toBe('')
+    expect(view?.attachments.map(a => a.id)).toEqual(['b'])
+  })
+})
+
 describe('WIDGET_FILES_SELECT', () => {
+  it('reads what the rule of the files that may leave needs', () => {
+    expect(WIDGET_FILES_SELECT.select).toMatchObject({ contentType: true, scanResult: true })
+  })
+
   it('asks the database for the place of each file, in the order the agent chose, and no text', () => {
     expect(WIDGET_FILES_SELECT.select).toMatchObject({ position: true })
     expect(WIDGET_FILES_SELECT.select).not.toHaveProperty('caption')

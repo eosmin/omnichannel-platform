@@ -8,6 +8,7 @@ import {
   type WidgetAuthor,
   WidgetAuthors
 } from '@platform/core/domain'
+import { isReadyToSend } from '@platform/core/media-guard'
 import { MediaPurpose } from '@platform/core/storage'
 
 // A file of a message as the visitor sees it. The link is never here: it is asked from the download
@@ -41,7 +42,9 @@ export const WIDGET_VISIBLE_TYPES = [
 ] as const
 
 // The files of a message that a visitor may be given: a file of the message itself (not the picture of
-// an ad) that the scan found clean
+// an ad) that the scan found clean. A video or audio file the cleaning of metadata has not reached, or kept
+// as it came, is clean for the scan but not ready to leave: the query reads `contentType` and `scanResult`
+// for it and `widgetFilesOf` / `isFileForVisitor` apply `isReadyToSend`, the rule of the channels.
 export const WIDGET_FILES_SELECT = {
   where: { purpose: MediaPurpose.MESSAGE, status: MediaStatus.CLEAN },
   select: {
@@ -49,7 +52,8 @@ export const WIDGET_FILES_SELECT = {
     filename: true,
     contentType: true,
     fileSize: true,
-    position: true
+    position: true,
+    scanResult: true
   },
   // The order the agent chose (`position`, a message from before it last), then the upload
   orderBy: [
@@ -114,23 +118,35 @@ interface MessageRow {
     contentType: string
     fileSize: number
     position: number | null
+    scanResult: unknown
   }[]
+}
+
+// Whether a file may be given to the visitor. What a team member sent is held to the rule of what is sent to a customer through any
+// channel (`isReadyToSend`: a video or audio file must carry the mark of the cleaning of its metadata). What the visitor sent
+// themselves goes back to them as it is: they hold those bytes already, and nobody else receives them from here.
+export function isFileForVisitor(
+  file: { contentType: string; scanResult: unknown },
+  authorType: string
+): boolean {
+  return authorType === String(AuthorType.CUSTOMER) || isReadyToSend(file)
 }
 
 // A message with neither text nor a file the visitor can have yet (a file still being scanned, or an
 // infected one) has nothing to show
 export function widgetMessageView(row: MessageRow): WidgetMessageView | null {
-  if (row.content === null && row.media.length === 0) return null
+  const media = row.media.filter(file => isFileForVisitor(file, row.authorType))
+  if (row.content === null && media.length === 0) return null
   // The text of a message is the text under its first file. When that file is not given to the visitor
   // (still scanned, or infected), the text is not shown under another file or beside the rest.
-  const placed = row.media.some(file => file.position !== null)
-  const firstHidden = placed && !row.media.some(file => file.position === 0)
+  const placed = media.some(file => file.position !== null)
+  const firstHidden = placed && !media.some(file => file.position === 0)
   return {
     id: row.id,
     from:
       row.authorType === String(AuthorType.CUSTOMER) ? WidgetAuthors.VISITOR : WidgetAuthors.TEAM,
     content: firstHidden ? '' : (row.content ?? ''),
-    attachments: row.media.map(file => ({
+    attachments: media.map(file => ({
       id: file.id,
       filename: file.filename,
       contentType: file.contentType,

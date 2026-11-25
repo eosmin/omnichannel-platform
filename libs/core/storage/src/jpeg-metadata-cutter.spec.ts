@@ -1,4 +1,4 @@
-import { cutJpegMetadata, jpegCarriesMetadata } from './jpeg-metadata-cutter'
+import { cutJpegMetadata, jpegCarriesMetadata, jpegHasDataAfterEnd } from './jpeg-metadata-cutter'
 
 const segment = (marker: number, payload: number[]): number[] => {
   const length = payload.length + 2
@@ -12,18 +12,13 @@ const JFIF = segment(0xe0, ascii('JFIF\0'))
 const ICC = segment(0xe2, ascii('ICC_PROFILE\0'))
 const ADOBE = segment(0xee, ascii('Adobe'))
 const FRAME = segment(0xc0, [8, 0, 1, 0, 1, 1, 1, 0x11, 0])
-// The scan header, then the entropy data (which may hold `FF 00` and bytes that look like a marker of metadata)
-const SCAN = [
-  ...segment(0xda, [1, 1, 0, 0, 0x3f, 0]),
-  0x12,
-  0xff,
-  0x00,
-  0xff,
-  0xe1,
-  0x34,
-  0xff,
-  0xd0
-]
+// The scan header, then the entropy data: a stuffed `FF 00`, bytes that look like a marker of metadata only because the `FF` before them
+// is stuffed (`FF 00 E1 34`), and a restart marker (`FF D0`), none of which ends the scan
+const SCAN_HEADER = segment(0xda, [1, 1, 0, 0, 0x3f, 0])
+const SCAN = [...SCAN_HEADER, 0x12, 0xff, 0x00, 0xff, 0x00, 0xe1, 0x34, 0xff, 0xd0, 0x56]
+const PROGRESSIVE_FRAME = segment(0xc2, [8, 0, 1, 0, 1, 1, 1, 0x11, 0])
+const SECOND_SCAN = [...segment(0xda, [1, 1, 0, 1, 0x3f, 1]), 0x77, 0xff, 0x00, 0x78]
+const TABLE = segment(0xc4, [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xd9])
 const EXIF = segment(0xe1, ascii('Exif\0\0GPS-secret'))
 const XMP = segment(0xe1, ascii('http://ns.adobe.com/xap/1.0/\0<x:xmpmeta/>'))
 const PHOTOSHOP = segment(0xed, ascii('Photoshop 3.0\0IPTC-secret'))
@@ -33,6 +28,83 @@ const COMMENT = segment(0xfe, ascii('shot at the home of Ana'))
 
 const jpeg = (...parts: number[][]): Uint8Array =>
   Uint8Array.from([...SOI, ...parts.flat(), ...EOI])
+
+describe('cutJpegMetadata, a file of several scans', () => {
+  it('cuts a segment of metadata that sits between two scans of a progressive file', () => {
+    const dirty = jpeg(JFIF, PROGRESSIVE_FRAME, SCAN, EXIF, TABLE, SECOND_SCAN)
+
+    expect(jpegCarriesMetadata(dirty)).toBe(true)
+    const clean = cutJpegMetadata(dirty) as Uint8Array
+    expect(clean).toEqual(jpeg(JFIF, PROGRESSIVE_FRAME, SCAN, TABLE, SECOND_SCAN))
+    expect(Buffer.from(clean).includes('secret')).toBe(false)
+    expect(jpegCarriesMetadata(clean)).toBe(false)
+  })
+
+  it('cuts the comment and the XMP that follow the last scan header too', () => {
+    const dirty = jpeg(JFIF, PROGRESSIVE_FRAME, SCAN, XMP, COMMENT, SECOND_SCAN)
+
+    expect(cutJpegMetadata(dirty)).toEqual(jpeg(JFIF, PROGRESSIVE_FRAME, SCAN, SECOND_SCAN))
+  })
+
+  it('does not take a stuffed or restart byte of the data of a scan for a marker', () => {
+    const clean = jpeg(JFIF, PROGRESSIVE_FRAME, SCAN, TABLE, SECOND_SCAN)
+
+    expect(cutJpegMetadata(clean)).toBeUndefined()
+    expect(jpegCarriesMetadata(clean)).toBe(false)
+  })
+
+  it('still cuts what comes before a scan of a file that stops inside it, and does not vouch for the file', () => {
+    // A truncated upload, or an encoder that left out the `FFD9`: the segments before the scan are cut as they always were
+    const truncated = Uint8Array.from([...SOI, ...EXIF, ...JFIF, ...FRAME, ...SCAN])
+
+    expect(jpegCarriesMetadata(truncated)).toBe(true)
+    expect(cutJpegMetadata(truncated)).toEqual(
+      Uint8Array.from([...SOI, ...JFIF, ...FRAME, ...SCAN])
+    )
+    expect(jpegHasDataAfterEnd(truncated)).toBe(true)
+  })
+
+  it.each([
+    ['a stray marker with no length', [0xff, 0x12, 0xff, 0xff]],
+    ['a length that passes the end', [0xff, 0xe1, 0xff, 0xff, 1]],
+    ['a length that cannot hold itself', [0xff, 0xe1, 0x00, 0x01]]
+  ])('keeps cutting what comes before the first scan when %s follows the scan', (_name, junk) => {
+    // The file does not walk to its end, but the GPS that sits before the scan must still go: it was cut before the walk went past the scan
+    const gps = segment(0xe1, ascii('Exif\0\0GPS-secret'))
+    const damaged = Uint8Array.from([...SOI, ...gps, ...JFIF, ...FRAME, ...SCAN, ...junk, ...EOI])
+
+    expect(jpegCarriesMetadata(damaged)).toBe(true)
+    const cut = cutJpegMetadata(damaged) as Uint8Array
+    expect(Buffer.from(cut).includes('GPS')).toBe(false)
+    expect(jpegHasDataAfterEnd(damaged)).toBe(true)
+  })
+
+  it('does not take the bytes of a table for the end of the image', () => {
+    // `FF D9` inside the table is data: the data after the end is looked for after the real end only
+    const jpegWithTable = jpeg(JFIF, PROGRESSIVE_FRAME, SCAN, TABLE, SECOND_SCAN)
+
+    expect(jpegHasDataAfterEnd(jpegWithTable)).toBe(false)
+    expect(jpegHasDataAfterEnd(Uint8Array.from([...jpegWithTable, 0, 0]))).toBe(false)
+    expect(jpegHasDataAfterEnd(Uint8Array.from([...jpegWithTable, 1]))).toBe(true)
+  })
+})
+
+describe('cutJpegMetadata, the first segment of the application', () => {
+  it('cuts the extension JFXX of the JFIF header, which carries a thumbnail', () => {
+    const jfxx = segment(0xe0, [...ascii('JFXX\0'), 0x10, ...ascii('thumbnail with secret EXIF')])
+    const dirty = jpeg(JFIF, jfxx, FRAME, SCAN)
+
+    expect(jpegCarriesMetadata(dirty)).toBe(true)
+    expect(cutJpegMetadata(dirty)).toEqual(jpeg(JFIF, FRAME, SCAN))
+  })
+
+  it('cuts an APP0 that is not a JFIF header, whatever it says', () => {
+    const other = segment(0xe0, ascii('Ocad secret'))
+
+    expect(cutJpegMetadata(jpeg(other, JFIF, FRAME, SCAN))).toEqual(jpeg(JFIF, FRAME, SCAN))
+    expect(jpegCarriesMetadata(jpeg(JFIF, FRAME, SCAN))).toBe(false)
+  })
+})
 
 describe('cutJpegMetadata', () => {
   it('cuts the EXIF, the XMP, the Photoshop block and the comments, and nothing else', () => {
