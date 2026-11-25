@@ -685,15 +685,19 @@ describe('The fiscal documents (Step 4B.7)', () => {
           const rejectedAt = row.rejectedAt as Date
           const at = (hours: number): Date => new Date(rejectedAt.getTime() + hours * HOUR_MS)
 
-          expect(await documents.warnRejectionDeadlines(ctx.orgA.id, at(11))).toBe(0)
-          expect(seen).toEqual([])
+          // Other tests of the suite leave refused documents in the same organization: what counts is this document's own notices
+          const mine = (): FiscalRetransmitDeadlinePayload[] =>
+            seen.filter(payload => payload.documentId === documentId)
 
-          expect(await documents.warnRejectionDeadlines(ctx.orgA.id, at(13))).toBe(1)
-          expect(seen).toEqual([expect.objectContaining({ documentId, expired: false })])
+          await documents.warnRejectionDeadlines(ctx.orgA.id, at(11))
+          expect(mine()).toEqual([])
+
+          await documents.warnRejectionDeadlines(ctx.orgA.id, at(13))
+          expect(mine()).toEqual([expect.objectContaining({ documentId, expired: false })])
           // Once for each refusal: the daily check asking again says nothing, not even after the window is over
-          expect(await documents.warnRejectionDeadlines(ctx.orgA.id, at(14))).toBe(0)
-          expect(await documents.warnRejectionDeadlines(ctx.orgA.id, at(30))).toBe(0)
-          expect(seen).toHaveLength(1)
+          await documents.warnRejectionDeadlines(ctx.orgA.id, at(14))
+          await documents.warnRejectionDeadlines(ctx.orgA.id, at(30))
+          expect(mine()).toHaveLength(1)
         } finally {
           emitter.off(Events.FISCAL_RETRANSMIT_DEADLINE, listener)
         }
@@ -703,7 +707,8 @@ describe('The fiscal documents (Step 4B.7)', () => {
         const documentId = await refused()
         const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
         const over = new Date((row.rejectedAt as Date).getTime() + 25 * HOUR_MS)
-        expect(await documents.warnRejectionDeadlines(ctx.orgA.id, over)).toBe(1)
+        // Other refused documents of the organization may be told too: this one's own mark is what counts
+        expect(await documents.warnRejectionDeadlines(ctx.orgA.id, over)).toBeGreaterThanOrEqual(1)
         expect(
           (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } }))
             .rejectionWarnedAt
