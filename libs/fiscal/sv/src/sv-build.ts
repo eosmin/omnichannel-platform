@@ -24,6 +24,7 @@ import {
   SvCurrency,
   SvDebitableDocuments,
   SvDefaultPaymentForm,
+  SvDefaultRemissionTitle,
   SvDeferredTerm,
   SvDocumentTypes,
   type SvDocumentType,
@@ -48,6 +49,7 @@ import {
   issuerProblems,
   lacks,
   missingForBusiness,
+  missingForRemission,
   validEmail,
   validPhone
 } from './sv-parties'
@@ -79,6 +81,7 @@ interface Item {
 export function resolveDocumentType(input: FiscalTypeInput): SvDocumentType {
   if (input.kind === FiscalDocumentKind.CREDIT_NOTE) return SvDocumentTypes.CREDIT_NOTE
   if (input.kind === FiscalDocumentKind.DEBIT_NOTE) return SvDocumentTypes.DEBIT_NOTE
+  if (input.kind === FiscalDocumentKind.REMISSION_NOTE) return SvDocumentTypes.REMISSION_NOTE
   return lacks(input.receiver.registrationId) ? SvDocumentTypes.INVOICE : SvDocumentTypes.TAX_CREDIT
 }
 
@@ -302,6 +305,17 @@ function businessReceiver(
     : { tipoDocumento: identity.type, numDocumento: identity.number, ...common }
 }
 
+// The receiver of a remission note: the person the goods are sent to, by any identity document, with the activity and the address the schema
+// asks for, and the title the goods are sent under (CAT-025). No registration number is needed: it goes as null when there is none.
+function remissionReceiver(receiver: FiscalReceiver): Record<string, unknown> {
+  const business = businessReceiver(receiver, 'tipoDocumento')
+  return {
+    ...business,
+    nrc: registrationDigits(receiver.registrationId),
+    bienTitulo: SvDefaultRemissionTitle
+  }
+}
+
 // The unit of an item (CAT-014): a service, and an item of kind 4 (charges that do not touch the base), are always 99 "other"
 // (Normativa DTE v2.0, Anexo II, page 64, field 85); a good takes the unit of the order when the catalog knows it
 function unitOf(unit: number, kind: number): number {
@@ -517,6 +531,8 @@ function netBody(
   // A credit note and a debit note share the body; the debit note also has the electronic payment number in its summary
   const credit = isNote(type)
   const debit = type === SvDocumentTypes.DEBIT_NOTE
+  // A remission note has the lines of the tax credit document and the summary of the schema of its own: no payment, no condition
+  const remission = type === SvDocumentTypes.REMISSION_NOTE
   const cuerpo = net.map((row, index) => {
     const { item } = row
     const taxed = item.treatment === 'taxed'
@@ -538,7 +554,9 @@ function netBody(
       tributos: taxed ? [SvVat.CODE] : null,
       ...(credit
         ? { noGravado: 0, ivaPerci: 0, totalIva: dollars(item.taxCents), ivaRete: 0 }
-        : { psv: 0, noGravado: 0 })
+        : remission
+          ? {}
+          : { psv: 0, noGravado: 0 })
     }
   })
   const totalNoSuj = netOf('notSubject')
@@ -547,9 +565,10 @@ function netBody(
   const montoTotal = subTotalVentas + input.taxCents
   // A credit note or a debit note says only the condition: what it gives back or charges is not a payment, so the payments of the order are
   // not read
-  const how = credit
-    ? { pagos: [], condicion: conditionOf(input, montoTotal) }
-    : payments(input, montoTotal)
+  const how =
+    credit || remission
+      ? { pagos: [], condicion: conditionOf(input, montoTotal) }
+      : payments(input, montoTotal)
   const tributos =
     totalGravada > 0
       ? [{ codigo: SvVat.CODE, descripcion: SvVat.DESCRIPTION, valor: dollars(input.taxCents) }]
@@ -563,27 +582,8 @@ function netBody(
       )
     )
   )
-  const resumen: Record<string, unknown> = credit
+  const resumen: Record<string, unknown> = remission
     ? {
-        totalNoSuj: dollars(totalNoSuj),
-        totalExenta: dollars(totalExenta),
-        totalGravada: dollars(totalGravada),
-        subTotalVentas: dollars(subTotalVentas),
-        totalDescu,
-        tributos,
-        montoTotalOperacion: dollars(montoTotal),
-        ivaPerci: 0,
-        totalIva: dollars(input.taxCents),
-        ivaRete: 0,
-        totalNoGravado: 0,
-        totalPagar: dollars(montoTotal),
-        totalLetras: amountInWords(montoTotal),
-        condicionOperacion: how.condicion,
-        ...(debit ? { numPagoElectronico: null } : {}),
-        observaciones: null,
-        codigoRetencionMH: null
-      }
-    : {
         totalNoSuj: dollars(totalNoSuj),
         totalExenta: dollars(totalExenta),
         totalGravada: dollars(totalGravada),
@@ -595,23 +595,59 @@ function netBody(
         totalDescu,
         tributos,
         subTotal: dollars(subTotalVentas),
-        ivaPerci: 0,
-        ivaRete: 0,
         montoTotalOperacion: dollars(montoTotal),
-        totalNoGravado: 0,
-        totalPagar: dollars(montoTotal),
         totalLetras: amountInWords(montoTotal),
-        saldoFavor: 0,
-        condicionOperacion: how.condicion,
-        pagos: how.pagos,
-        numPagoElectronico: null,
         observaciones: null
       }
+    : credit
+      ? {
+          totalNoSuj: dollars(totalNoSuj),
+          totalExenta: dollars(totalExenta),
+          totalGravada: dollars(totalGravada),
+          subTotalVentas: dollars(subTotalVentas),
+          totalDescu,
+          tributos,
+          montoTotalOperacion: dollars(montoTotal),
+          ivaPerci: 0,
+          totalIva: dollars(input.taxCents),
+          ivaRete: 0,
+          totalNoGravado: 0,
+          totalPagar: dollars(montoTotal),
+          totalLetras: amountInWords(montoTotal),
+          condicionOperacion: how.condicion,
+          ...(debit ? { numPagoElectronico: null } : {}),
+          observaciones: null,
+          codigoRetencionMH: null
+        }
+      : {
+          totalNoSuj: dollars(totalNoSuj),
+          totalExenta: dollars(totalExenta),
+          totalGravada: dollars(totalGravada),
+          subTotalVentas: dollars(subTotalVentas),
+          descuNoSuj: 0,
+          descuExenta: 0,
+          descuGravada: 0,
+          porcentajeDescuento: 0,
+          totalDescu,
+          tributos,
+          subTotal: dollars(subTotalVentas),
+          ivaPerci: 0,
+          ivaRete: 0,
+          montoTotalOperacion: dollars(montoTotal),
+          totalNoGravado: 0,
+          totalPagar: dollars(montoTotal),
+          totalLetras: amountInWords(montoTotal),
+          saldoFavor: 0,
+          condicionOperacion: how.condicion,
+          pagos: how.pagos,
+          numPagoElectronico: null,
+          observaciones: null
+        }
   return {
     cuerpoDocumento: cuerpo,
     resumen,
     ventaTercero: null,
-    ...(credit ? { apendice: null } : { otrosDocumentos: null, apendice: null })
+    ...(credit || remission ? { apendice: null } : { otrosDocumentos: null, apendice: null })
   }
 }
 
@@ -648,7 +684,11 @@ function relatedDocument(
 export function buildDocument(input: FiscalBuildInput): BuiltDocument {
   const type = resolveDocumentType(input)
   const missing: FiscalReceiverField[] =
-    type === SvDocumentTypes.INVOICE ? [] : missingForBusiness(input.receiver)
+    type === SvDocumentTypes.INVOICE
+      ? []
+      : type === SvDocumentTypes.REMISSION_NOTE
+        ? missingForRemission(input.receiver)
+        : missingForBusiness(input.receiver)
   // A receiver that lacks what the type needs is not built into a document nobody could send: core refuses it for a person to fix
   if (missing.length > 0) return { documentType: type, payload: {}, missingReceiverFields: missing }
   const items = itemsOf(input)
@@ -675,6 +715,18 @@ export function buildDocument(input: FiscalBuildInput): BuiltDocument {
         ...base,
         documentoRelacionado: null,
         receptor: businessReceiver(input.receiver, 'nit'),
+        ...netBody(type, input, items, null)
+      },
+      missingReceiverFields: []
+    }
+  }
+  if (type === SvDocumentTypes.REMISSION_NOTE) {
+    return {
+      documentType: type,
+      payload: {
+        ...base,
+        documentoRelacionado: null,
+        receptor: remissionReceiver(input.receiver),
         ...netBody(type, input, items, null)
       },
       missingReceiverFields: []

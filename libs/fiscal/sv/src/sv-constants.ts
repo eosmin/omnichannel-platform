@@ -86,16 +86,18 @@ export const SvEnabledEnvironments: readonly FiscalEnvironment[] = [FiscalEnviro
 export const SvDocumentTypes = {
   INVOICE: '01',
   TAX_CREDIT: '03',
+  REMISSION_NOTE: '04',
   CREDIT_NOTE: '05',
   DEBIT_NOTE: '06'
 } as const
 export type SvDocumentType = (typeof SvDocumentTypes)[keyof typeof SvDocumentTypes]
 
 // The version of the JSON schema of each document (the folders of svfe-json-schemas: factura v2, comprobante de crédito fiscal v4, nota de
-// crédito v4, nota de débito v4)
+// crédito v4, nota de débito v4, nota de remisión v4)
 export const SvSchemaVersions: Readonly<Record<SvDocumentType, number>> = {
   [SvDocumentTypes.INVOICE]: 2,
   [SvDocumentTypes.TAX_CREDIT]: 4,
+  [SvDocumentTypes.REMISSION_NOTE]: 4,
   [SvDocumentTypes.CREDIT_NOTE]: 4,
   [SvDocumentTypes.DEBIT_NOTE]: 4
 }
@@ -273,6 +275,9 @@ export const SvInvalidationDeadlineRules: Readonly<
 > = {
   [SvDocumentTypes.INVOICE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_MONTHS, amount: 3 },
   [SvDocumentTypes.TAX_CREDIT]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 },
+  // Anexo V, field 47, rule 4: the remission note (NRE) is invalidated within four calendar days after its seal (the Manual Funcional
+  // says the tenth business day of the next month for it too, the same contradiction as above: the stricter window is used)
+  [SvDocumentTypes.REMISSION_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 4 },
   [SvDocumentTypes.CREDIT_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 },
   [SvDocumentTypes.DEBIT_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 }
 }
@@ -290,6 +295,7 @@ export const SvInvalidationWithoutReplacement: readonly SvDocumentType[] = [
 export const SvInvalidationAllowed: Readonly<Record<SvDocumentType, boolean>> = {
   [SvDocumentTypes.INVOICE]: true,
   [SvDocumentTypes.TAX_CREDIT]: true,
+  [SvDocumentTypes.REMISSION_NOTE]: true,
   [SvDocumentTypes.CREDIT_NOTE]: true,
   [SvDocumentTypes.DEBIT_NOTE]: true
 }
@@ -331,6 +337,19 @@ export const SvCreditableDocuments: readonly SvDocumentType[] = [SvDocumentTypes
 // same taxpayer, and an invoice to a final consumer is not one). It is its own list, apart from the credit note's, so that one may change
 // without the other.
 export const SvDebitableDocuments: readonly SvDocumentType[] = [SvDocumentTypes.TAX_CREDIT]
+
+// CAT-025: the title the goods of a remission note are sent under (the `bienTitulo` of its receiver). **[ACCOUNTANT]** Which title a dispatch
+// to a buyer whose sale document is made on delivery carries is the accountant's to say; "transfer" is used until then, because the note
+// backs the movement of the goods and no sale is declared by it. Change `SvDefaultRemissionTitle` to adopt another.
+export const SvRemissionTitles = {
+  DEPOSIT: '01',
+  OWNERSHIP: '02',
+  CONSIGNMENT: '03',
+  TRANSFER: '04',
+  OTHER: '05'
+} as const
+export type SvRemissionTitle = (typeof SvRemissionTitles)[keyof typeof SvRemissionTitles]
+export const SvDefaultRemissionTitle: SvRemissionTitle = SvRemissionTitles.TRANSFER
 
 // The names of the keys of the address a customer or the issuer keeps in this provider (the address of core is a record of text keyed by
 // the provider's own names): the codes of the catalogs of the authority and a free line.
