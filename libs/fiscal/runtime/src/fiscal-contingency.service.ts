@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
@@ -26,6 +26,7 @@ import {
   FiscalContingencyLimits,
   FiscalContingencyOrigin,
   FiscalContingencyEndedBy,
+  FiscalContingencyProbeFingerprintLabel,
   FiscalContingencyProbeKeySuffix,
   FiscalContingencyProbeResult,
   FiscalContingencyReportOutcome,
@@ -460,6 +461,8 @@ export class FiscalContingencyService {
       })
       return held
     })
+    // Whatever probe it may still have goes with it
+    await this.stopProbe(id)
     this.audit.log({
       action: AuditAction.FISCAL_CONTINGENCY_ABANDONED,
       actor: { userId: actor.userId },
@@ -1018,16 +1021,17 @@ export class FiscalContingencyService {
     }
     // Credentials the authority refused are not sent again while the issuer holds the same ones: three wrong logins lock the user of the
     // authority. The signal is the credentials themselves (and whose they are), not the row of the issuer (it changes with every document, the
-    // correlative) nor the sealed bytes (a new seal of the same credentials, a rotation of the key, changes them).
-    const fingerprint = createHash('sha256')
-      .update(
-        JSON.stringify([
-          issuer.taxId,
-          issuer.environment,
-          Object.entries(credentials).sort(([left], [right]) => left.localeCompare(right))
-        ])
-      )
-      .digest('hex')
+    // correlative) nor the sealed bytes (a new seal of the same credentials changes them). What is kept is a KEYED fingerprint (HMAC with a key
+    // derived from the key that seals), never a hash anyone could test guesses of the password against. A rotation of the key changes it: the
+    // cost is one more login with the same refused credentials.
+    const fingerprint = this.cipher.fingerprint(
+      FiscalContingencyProbeFingerprintLabel,
+      JSON.stringify([
+        issuer.taxId,
+        issuer.environment,
+        Object.entries(credentials).sort(([left], [right]) => left.localeCompare(right))
+      ])
+    )
     if (row.probeHaltedFingerprint !== null) {
       if (row.probeHaltedFingerprint === fingerprint) return FiscalContingencyProbeResult.HALTED
       await this.unit(organizationId, () =>

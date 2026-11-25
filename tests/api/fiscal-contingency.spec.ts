@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 
@@ -1019,7 +1021,21 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
         FiscalContingencyProbeResult.HALTED
       )
       expect(control.probes).toBe(1)
-      expect((await contingencyRow(opened.id)).probeHaltedFingerprint).not.toBeNull()
+      const halted = (await contingencyRow(opened.id)).probeHaltedFingerprint
+      expect(halted).toMatch(/^[0-9a-f]{64}$/)
+      // Keyed: not the plain hash of the NIT, the environment and the credentials, which a guess of the password could be tested against
+      const issuerRow = await owner.fiscalIssuer.findUniqueOrThrow({
+        where: { organizationId: ctx.orgA.id }
+      })
+      const plain = JSON.stringify([
+        issuerRow.taxId,
+        issuerRow.environment,
+        [['signingKey', 'not-a-real-signing-key-1234567890']]
+      ])
+      expect(halted).not.toBe(createHash('sha256').update(plain).digest('hex'))
+      expect(JSON.stringify(await contingencyRow(opened.id))).not.toContain(
+        'not-a-real-signing-key'
+      )
       // The person is told once, not on every probe
       expect(
         alerts.filter(alert => alert.kind === FiscalContingencyAlertKind.PROBE_HALTED)

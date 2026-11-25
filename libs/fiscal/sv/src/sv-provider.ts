@@ -26,6 +26,7 @@ import type {
 
 import { ACTIVITIES } from './catalogs/activities'
 import { IDENTITY_DOCUMENTS } from './catalogs/identity-documents'
+import { svAnnexes } from './sv-annexes'
 import { SvAuthenticator } from './sv-auth'
 import { buildDocument, resolveDocumentType } from './sv-build'
 import {
@@ -259,6 +260,9 @@ export class SvProvider implements FiscalDocumentProvider {
   probeAuthority(ctx: ProviderContext): Promise<FiscalAuthorityProbeOutcome> {
     return probeAuthority(this.deps, ctx)
   }
+
+  // The annexes of the monthly VAT return (F-07)
+  readonly annexes = svAnnexes
 
   represent(doc: StoredFiscalDocument): FiscalRepresentation | null {
     return representDocument(doc)

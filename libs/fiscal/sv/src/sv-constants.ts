@@ -495,3 +495,57 @@ export const SvRepresentation = {
     '15': 'Comprobante de donación'
   }
 } as const satisfies Record<string, unknown>
+
+// The annexes of the monthly VAT return (Formulario F-07) as the Ministerio de Hacienda loads them: "Manual de Anexos del Formulario de IVA
+// F-07", version 14 (January 2025), public. The page of each rule is cited where it is used (`sv-annexes.ts`).
+export const SvAnnexIds = {
+  // Anexo 1: sales to taxpayers (03, 05, 06)
+  SALES_TAXPAYERS: 'sales-taxpayers',
+  // Anexo 2: sales to final consumers (01), one row for each day and type
+  SALES_CONSUMERS: 'sales-consumers',
+  // Anexo of voided documents ("Documentos Emitidos Anulados y Extraviados": the voided ones only, a DTE has no lost ones)
+  VOIDED: 'voided'
+} as const
+
+export const SvAnnex = {
+  // Column B "clase de documento": 4 is the electronic document
+  DOCUMENT_CLASS_DTE: '4',
+  // The cell a field that does not apply to a document grouped by day holds (manual V14, p.12-13)
+  NOT_APPLICABLE: 'N/A',
+  // The last column of the sales annexes: the number of the annex (manual V14, p.8 and p.14)
+  NUMBER_TAXPAYERS: '1',
+  NUMBER_CONSUMERS: '2',
+  // The columns of rent (R and S of the annex 1, U and V of the annex 2) exist from this period; before it they hold "0" (p.5 and p.11)
+  RENT_COLUMNS_FROM: '2025-01',
+  RENT_NOT_APPLICABLE: '0',
+  // "Tipo de operación (Renta)": 1 taxed, 2 not taxed or exempt, 4 mixed (p.7). **[ACCOUNTANT]** which one a sale is, and the type of income
+  // below, are the accountant's; this is the reading by the amounts of the document, and the type of income of a shop that sells goods
+  OPERATION_TAXED: '1',
+  OPERATION_NOT_TAXED: '2',
+  OPERATION_MIXED: '4',
+  INCOME_COMMERCIAL: '3',
+  // Voided: "tipo de detalle" D is a DTE that was invalidated (p.60-62); desde/hasta and the preprinted range are 0 in a DTE
+  DETAIL_DTE_INVALIDATED: 'D',
+  ZERO: '0',
+  // The extension and the separator of the file: a CSV with semicolons, with no header (p.3-6)
+  SEPARATOR: ';',
+  LINE_END: '\r\n',
+  FILE_EXTENSION: 'csv',
+  // The provider's own file name: the annex and the month
+  FILE_PREFIX: 'f07',
+  // Column A of the voided annex: the control number with its dashes (p.60-62; the manual contradicts itself, see `sv-annexes.ts`)
+  VOIDED_CONTROL_NUMBER_WITH_DASHES: true,
+  // A voided document is written in the annex of consumers of the month of its invalidation when it was issued at most this many periods
+  // before (article 111 of the Tax Code, manual p.11)
+  VOID_MAX_PERIODS_BACK: 3,
+  // The seal of reception has 40 characters (p.61)
+  SEAL_LENGTH: 40,
+  GENERATION_CODE_LENGTH: 36
+} as const
+
+export const SvAnnexErrors = {
+  // A document of the month has no seal yet (made in contingency and not reported): the annex waits for it
+  UNSEALED: 'annex_document_unsealed',
+  // A figure of a document is not a whole number of cents, or a field the file needs is missing or unreadable
+  UNREADABLE: 'annex_document_unreadable'
+} as const

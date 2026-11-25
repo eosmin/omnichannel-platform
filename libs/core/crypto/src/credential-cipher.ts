@@ -1,3 +1,5 @@
+import { createHmac, hkdfSync } from 'node:crypto'
+
 import { z } from 'zod'
 
 import { DecryptionError, DecryptionFailure, decrypt, encrypt, failureOf } from './aes-gcm'
@@ -10,6 +12,9 @@ export type Credentials = z.output<typeof credentialsSchema>
 // Which key of the cipher opened a value: the one that seals today, or the one that was replaced (a rotation of the key, Step 7.3-S11b)
 export const SealedWith = { CURRENT: 'current', PREVIOUS: 'previous' } as const
 export type SealedWith = (typeof SealedWith)[keyof typeof SealedWith]
+
+const MAC_SALT = 'platform:credential-cipher:mac:v1'
+const MAC_KEY_BYTES = 32
 
 export class CredentialCipher {
   // `previousKey` is held only while a rotation is finished: it opens what the key before sealed, it never seals
@@ -80,6 +85,15 @@ export class CredentialCipher {
   // A text that must open with the current key alone (the check of a value that was sealed again)
   openText(sealed: Uint8Array, aad?: string): string {
     return decrypt(sealed, this.key, aad)
+  }
+
+  // A keyed fingerprint of a text, to tell whether a secret is the same one without keeping anything it can be guessed from: HMAC-SHA256
+  // with a key derived (HKDF-SHA256) from the key that seals, under a label of its own, so the sealing key itself is never the MAC key and
+  // two uses never share a key. It is stable while the key is; a rotation of the key changes every fingerprint (the cost is one more
+  // attempt wherever a fingerprint is compared). Only the current key is used.
+  fingerprint(label: string, text: string): string {
+    const macKey = Buffer.from(hkdfSync('sha256', this.key, MAC_SALT, label, MAC_KEY_BYTES))
+    return createHmac('sha256', macKey).update(text).digest('hex')
   }
 
   private parse(text: string): Credentials {
