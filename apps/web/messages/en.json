@@ -746,6 +746,7 @@
     "FINANCE_CLOSE_NOT_ENDED": "The period has not ended yet: a month is not closed before its last day",
     "FINANCE_BALANCE_MISMATCHES": "The balances of the period do not match: it is an incident, it is not closed over",
     "FINANCE_PERIOD_NOT_CLOSED": "The period is not closed",
+    "SUPPLIER_TAX_ID_INVALID": "The tax ID of the supplier does not have the shape the country of the fiscal issuer uses",
     "FINANCE_PERIOD_ALREADY_CLOSED": "The period is closed already",
     "FINANCE_PERIOD_NOT_FUTURE": "Only a period that has not started can be deleted",
     "FINANCE_PERIOD_HAS_ACTIVITY": "The period has entries, balances or books and cannot be deleted",
@@ -7449,7 +7450,7 @@
         "fields": {
           "name": "Name",
           "taxId": "Tax ID (NIT or NRC)",
-          "taxIdHint": "Written as the supplier's document shows it. Nothing is checked about its shape.",
+          "taxIdHint": "Written as the supplier's document shows it. It is checked for the shape the country of the fiscal issuer uses, not for whether the number exists.",
           "contactName": "Contact person",
           "email": "Email",
           "phone": "Phone",

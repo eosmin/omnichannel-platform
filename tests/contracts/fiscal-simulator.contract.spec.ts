@@ -47,4 +47,10 @@ describe('the simulator checks the fiscal data of a customer by its one rule', (
     expect(provider.validateReceiver({ ...receiver, taxId: '1234' })).toEqual([])
     expect(provider.validateReceiver({ ...receiver, taxId: null })).toEqual([])
   })
+
+  it('holds the same rule for the tax id of a party that is not a receiver', () => {
+    const provider = simulatorProvider()
+    expect(provider.validatePartyTaxId('12 34')).toBe(false)
+    expect(provider.validatePartyTaxId('1234')).toBe(true)
+  })
 })

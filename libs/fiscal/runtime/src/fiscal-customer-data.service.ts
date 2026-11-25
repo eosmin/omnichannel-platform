@@ -122,7 +122,7 @@ export class FiscalCustomerDataService {
         await tx.customerFiscalData.deleteMany({ where: { storeId, customerId } })
         return { kind: row === null ? ('unchanged' as const) : ('cleared' as const), kept: false }
       }
-      await this.check(tx, organizationId, receiverOf(stored))
+      await this.check(tx, organizationId, receiverOf(stored), current)
       const sealed = new Uint8Array(this.cipher.seal(stored))
       if (row === null) {
         await tx.customerFiscalData.create({
@@ -183,7 +183,8 @@ export class FiscalCustomerDataService {
   private async check(
     tx: Pick<PrismaService['client'], 'fiscalIssuer'>,
     organizationId: string,
-    receiver: FiscalReceiver
+    receiver: FiscalReceiver,
+    current: FiscalReceiver
   ): Promise<void> {
     const issuer = await tx.fiscalIssuer.findUnique({
       where: { organizationId },
@@ -208,6 +209,12 @@ export class FiscalCustomerDataService {
         HttpStatusCodes.CONFLICT
       )
     }
+    // A tax id the person did not change is not judged again: a rule added to a provider later (the check digit of a national id) must not
+    // refuse the edit of an address on data that was saved before it
+    const idKept =
+      receiver.taxId === current.taxId &&
+      (receiver.documentType ?? null) === (current.documentType ?? null)
+    problems = idKept ? problems.filter(problem => problem.field !== 'taxId') : problems
     if (problems.length === 0) return
     throw new PlatformException(
       ErrorCodes.FISCAL_CUSTOMER_DATA_INVALID,

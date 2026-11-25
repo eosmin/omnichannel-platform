@@ -10,6 +10,8 @@ import {
   AccountType,
   FinanceConflicts,
   FinanceCountryCodes,
+  FiscalEnvironment,
+  FiscalIssueOn,
   JournalEntryType,
   NormalSide,
   PartyType,
@@ -17,6 +19,7 @@ import {
   PurchaseOrderStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { SIMULATOR_PROVIDER_ID } from '@platform/fiscal/simulator'
 
 import { createProduct } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
@@ -207,6 +210,48 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
   }
 
   describe('suppliers', () => {
+    it('holds the shape of the tax id the fiscal provider uses when one is written, and leaves a saved one alone (FIN-212)', async () => {
+      // Before the organization has an issuer there is no provider: anything is kept (the simulator's rule is no spaces)
+      const early = await supplier({ name: 'Shape early', taxId: 'ZQ 11 22' })
+      const issuer = await asAdminA()
+        .put(ApiRoutes.fiscal.issuer)
+        .send({
+          providerId: SIMULATOR_PROVIDER_ID,
+          legalName: 'Zq Issuer',
+          taxId: 'ZQ-ISSUER',
+          address: { line1: 'x' },
+          environment: FiscalEnvironment.SANDBOX,
+          issueOn: FiscalIssueOn.DELIVERED,
+          credentials: { signingKey: 'not-a-real-signing-key-1234567890' }
+        })
+      expect(issuer.status).toBe(OK)
+
+      const refused = await asAdminA()
+        .post(ApiRoutes.suppliers.create)
+        .send({ name: 'Shape refused', taxId: 'ZQ 33 44' })
+      expect(refused.status).toBe(BAD_REQUEST)
+      expect(errorOf(refused).code).toBe(ErrorCodes.SUPPLIER_TAX_ID_INVALID)
+      expect(JSON.stringify(refused.body)).not.toContain('ZQ 33 44')
+      const kept = await supplier({ name: 'Shape kept', taxId: 'ZQ-33-44' })
+
+      const bad = await asAdminA()
+        .patch(ApiRoutes.suppliers.update(kept.id))
+        .send({ taxId: 'ZQ 55 66' })
+      expect(bad.status).toBe(BAD_REQUEST)
+      expect(errorOf(bad).code).toBe(ErrorCodes.SUPPLIER_TAX_ID_INVALID)
+      const cleared = await asAdminA()
+        .patch(ApiRoutes.suppliers.update(kept.id))
+        .send({ taxId: null })
+      expect(cleared.status).toBe(OK)
+
+      // A supplier saved before the rule keeps its tax id and can still be edited; only a tax id that changes is checked
+      const renamed = await asAdminA()
+        .patch(ApiRoutes.suppliers.update(early.id))
+        .send({ name: 'Shape early 2', taxId: 'ZQ 11 22' })
+      expect(renamed.status).toBe(OK)
+      expect((renamed.body as { taxId: string }).taxId).toBe('ZQ 11 22')
+    })
+
     it('creates, reads, renames and switches one off, and refuses a name taken ignoring case', async () => {
       const created = await supplier({ name: 'Distribuidora Uno', taxId: '0614-010101-101-1' })
       const taken = await asAdminA()

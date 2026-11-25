@@ -18,6 +18,7 @@ import {
 } from '@platform/core/errors'
 import { PurchaseRule } from '@platform/core/finance'
 import { escapeLike } from '@platform/core/messaging'
+import { FiscalPartyTaxIdService } from '@platform/fiscal/runtime'
 
 import { encodeCursor } from '../customers/list-cursor'
 import { lockChart, lockScope, usableAccount } from '../finance/finance.support'
@@ -48,7 +49,8 @@ const nameInUse = (): PlatformException =>
 export class SuppliersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly partyTaxIds: FiscalPartyTaxIdService
   ) {}
 
   async list(organizationId: string, query: ListSuppliersQuery): Promise<SupplierPage> {
@@ -108,6 +110,7 @@ export class SuppliersService {
             conflict: PurchaseConflicts.SUPPLIER_LIMIT
           })
         }
+        await this.requireValidTaxId(tx, organizationId, body.taxId)
         await this.requireFreeName(tx, organizationId, body.name, null)
         if (body.defaultPayableAccountId !== undefined) {
           await this.requirePayableAccount(tx, organizationId, body.defaultPayableAccountId)
@@ -160,6 +163,9 @@ export class SuppliersService {
         if (body.name !== undefined) {
           await this.requireFreeName(tx, organizationId, body.name, id)
         }
+        // Only a tax id that changes is checked: a supplier saved before the rule keeps the one it has
+        if (body.taxId !== current.taxId)
+          await this.requireValidTaxId(tx, organizationId, body.taxId)
         // The payable account is fixed once the supplier has a bill or a payment: its payments would post to another account than its bills
         if (
           body.defaultPayableAccountId !== undefined &&
@@ -225,6 +231,22 @@ export class SuppliersService {
       if (isUniqueViolation(error)) throw nameInUse()
       throw error
     }
+  }
+
+  // The tax id of a supplier has the shape the provider of the organization's issuer uses (FIN-212). Written only: no row already saved is
+  // read back through this check. An organization with no issuer has no provider, so nothing is checked until it has one.
+  private async requireValidTaxId(
+    tx: PrismaTransaction,
+    organizationId: string,
+    taxId: string | null | undefined
+  ): Promise<void> {
+    if (taxId === null || taxId === undefined) return
+    if (await this.partyTaxIds.isPlausible(tx, organizationId, taxId)) return
+    throw new PlatformException(
+      ErrorCodes.SUPPLIER_TAX_ID_INVALID,
+      'the tax id of the supplier does not have the shape of the country of the fiscal provider',
+      HttpStatusCodes.BAD_REQUEST
+    )
   }
 
   private async requireFreeName(

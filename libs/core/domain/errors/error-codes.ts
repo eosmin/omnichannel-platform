@@ -290,6 +290,8 @@ export const ErrorCodes = {
   PURCHASE_ORDER_INVALID_STATUS_TRANSITION: 'PURCHASE_ORDER_INVALID_STATUS_TRANSITION',
   PURCHASE_RECEIPT_EXCEEDS_ORDER: 'PURCHASE_RECEIPT_EXCEEDS_ORDER',
   SUPPLIER_HAS_HISTORY: 'SUPPLIER_HAS_HISTORY',
+  // The tax id of a supplier does not have the shape of the country of the books (FIN-212)
+  SUPPLIER_TAX_ID_INVALID: 'SUPPLIER_TAX_ID_INVALID',
   // An entry that a bank statement was reconciled with is not reversed (or its transaction voided) until the match is taken back
   FINANCE_ENTRY_RECONCILED: 'FINANCE_ENTRY_RECONCILED',
   // Fiscal documents (TDD_18 §8): an accepted document never changes; a state the document cannot move from; the
