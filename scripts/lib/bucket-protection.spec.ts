@@ -519,14 +519,16 @@ describe('rules of somebody else under the legacy id', () => {
     Transitions: [{ Days: 90, StorageClass: 'GLACIER' }]
   }
 
-  it.each([
-    ['a prefix', { ...theirs, Transitions: undefined }],
+  const cases: Array<[string, LifecycleRule]> = [
+    ['a prefix', { ID: legacyId, Status: 'Enabled', Filter: { Prefix: 'invoices/' } }],
     ['a transition', { ...theirs, Filter: { Prefix: '' } }],
     [
       'an expiration of current objects',
       { ID: legacyId, Status: 'Enabled', Filter: {}, Expiration: { Days: 30 } }
     ]
-  ])('keeps it on apply and on revert when it has %s', async (_name, rule) => {
+  ]
+
+  it.each(cases)('keeps it on apply and on revert when it has %s', async (_name, rule) => {
     const fake = new FakeS3({ versioning: 'Enabled', rules: [structuredClone(rule)] })
     await run(fake, options())
     expect(fake.rules?.map(entry => entry.ID)).toEqual([legacyId, MANAGED_RULE_ID])
