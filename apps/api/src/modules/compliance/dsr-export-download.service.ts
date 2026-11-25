@@ -68,6 +68,16 @@ export class DsrExportDownloadService {
         data: { usedAt: new Date() }
       })
       if (claimed.count !== 1) return null
+      // The first download spends every link of the request: the tokens of earlier mails that were never used (a notice asked for again) cannot
+      // hand the file over a second time
+      await this.prisma.client.verificationToken.updateMany({
+        where: {
+          type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
+          subject: found.id,
+          usedAt: null
+        },
+        data: { usedAt: new Date() }
+      })
       const request = await this.prisma.client.dataSubjectRequest.findFirst({
         where: {
           id: found.id,

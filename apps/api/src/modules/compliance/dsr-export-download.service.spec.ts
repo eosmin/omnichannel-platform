@@ -101,6 +101,16 @@ describe('DsrExportDownloadService', () => {
     expect(entry).toContain('"system":true')
   })
 
+  it('spends the other live links of the same request in the same transaction, so a second mail cannot hand the file over again', async () => {
+    const { service, updateToken } = build({})
+    await service.download({ token: TOKEN })
+    expect(updateToken).toHaveBeenCalledTimes(2)
+    expect(argOf<unknown>(updateToken, 1, 0)).toMatchObject({
+      where: { type: 'dsr_export_download', subject: 'req-1', usedAt: null },
+      data: { usedAt: expect.any(Date) as Date }
+    })
+  })
+
   it.each([
     ['the flow is off', { enabled: false }],
     ['the token is unknown, used or expired', { found: [] }],

@@ -113,7 +113,11 @@ describe('order lifecycle', () => {
 describe('single-owner MVP trims', () => {
   it('has no AI author and logs in by magic link only', () => {
     expect(Object.values(AuthorType)).not.toContain('ai_agent')
-    expect(Object.values(VerificationTokenType)).toEqual(['magic_link', 'dsr_verification'])
+    expect(Object.values(VerificationTokenType)).toEqual([
+      'magic_link',
+      'dsr_verification',
+      'dsr_export_download'
+    ])
   })
 })
 

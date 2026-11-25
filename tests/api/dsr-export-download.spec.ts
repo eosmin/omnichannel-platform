@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
+import { DsrExportDownloadThrottle, ThrottlerNames } from '@platform/core/auth'
 import {
   ComplianceConfig,
   DSR_CONFIG,
@@ -16,6 +17,7 @@ import { DAY_MS, DsrStatus, DsrType, VerificationTokenType } from '@platform/cor
 import { ErrorCodes } from '@platform/core/errors'
 import { StorageService } from '@platform/core/storage-module'
 
+import { DsrPublicController } from '../../apps/api/src/modules/compliance/compliance.controller'
 import { createCustomer } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -33,7 +35,22 @@ const ON: DsrConfig = {
 }
 
 interface ErrorBody {
-  error?: { code?: string }
+  error?: { code?: string; message?: string }
+}
+
+// The same answer for every refusal: the status, the code and the message. The body also carries the id of the request (`correlationId`), which
+// differs on every call by design, so it is the one field left out of the comparison.
+function expectSameAnswer(
+  actual: { status: number; body: unknown },
+  expected: { status: number; body: unknown }
+): void {
+  expect(actual.status).toBe(expected.status)
+  const a = (actual.body as ErrorBody).error
+  const b = (expected.body as ErrorBody).error
+  expect(a?.code).toBe(ErrorCodes.DSR_EXPORT_LINK_INVALID)
+  expect(a?.code).toBe(b?.code)
+  expect(a?.message).toBeDefined()
+  expect(a?.message).toBe(b?.message)
 }
 
 // Step 7.2-H2b-3: the PUBLIC download of the file of an access or portability request, through the real app and the real database, as the api
@@ -148,6 +165,25 @@ describe('The public download of the file of a data request', () => {
     expect(JSON.stringify(entry)).not.toContain('signature')
   })
 
+  it('spends the other live links of the same request with the first download', async () => {
+    const { id, token } = await finished()
+    const second = generateToken()
+    await owner.verificationToken.create({
+      data: {
+        type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
+        tokenHash: hashToken(second),
+        subject: id,
+        expiresAt: new Date(Date.now() + DAY_MS)
+      }
+    })
+
+    expect((await post(token)).status).toBe(OK)
+
+    const other = await post(second)
+    expect(other.status).toBe(BAD_REQUEST)
+    expect((other.body as ErrorBody).error?.code).toBe(ErrorCodes.DSR_EXPORT_LINK_INVALID)
+  })
+
   it('opens it for a portability request too', async () => {
     const { token } = await finished({ type: DsrType.PORTABILITY })
     expect((await post(token)).status).toBe(OK)
@@ -163,7 +199,7 @@ describe('The public download of the file of a data request', () => {
     expect(again.status).toBe(BAD_REQUEST)
     expect(unknown.status).toBe(BAD_REQUEST)
     expect((again.body as ErrorBody).error?.code).toBe(ErrorCodes.DSR_EXPORT_LINK_INVALID)
-    expect(again.body).toEqual(unknown.body)
+    expectSameAnswer(again, unknown)
   })
 
   it('lets exactly one of several calls at the same time through', async () => {
@@ -196,7 +232,7 @@ describe('The public download of the file of a data request', () => {
       const response = await post(token)
 
       expect(response.status).toBe(BAD_REQUEST)
-      expect(response.body).toEqual(unknown.body)
+      expectSameAnswer(response, unknown)
       expect(
         await owner.auditLog.count({
           where: { action: AuditAction.DSR_EXPORT_DOWNLOADED, resourceId: id }
@@ -275,6 +311,18 @@ describe('The public download of the file of a data request', () => {
   ])('refuses %s before looking anything up', async (_name, token) => {
     const response = await post(token)
     expect(response.status).toBe(BAD_REQUEST)
+  })
+
+  it('is rate limited per address with the profile of its own', () => {
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- read for its decorator metadata, never called
+    const handler = DsrPublicController.prototype.download
+    const name = ThrottlerNames.DEFAULT
+    expect(Reflect.getMetadata(`THROTTLER:LIMIT${name}`, handler)).toBe(
+      DsrExportDownloadThrottle.limit
+    )
+    expect(Reflect.getMetadata(`THROTTLER:TTL${name}`, handler)).toBe(
+      DsrExportDownloadThrottle.ttlMs
+    )
   })
 
   it('takes the token from the body only: a token in the path or the query opens nothing', async () => {

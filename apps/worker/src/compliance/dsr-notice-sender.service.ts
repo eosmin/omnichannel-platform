@@ -7,8 +7,6 @@ import { z } from 'zod'
 import {
   ComplianceConfig,
   DSR_CONFIG,
-  DSR_EXPORT_FRAGMENT_KEY,
-  DSR_EXPORT_WEB_PATH,
   type DsrConfig,
   dsrNoticeJob,
   type DsrNoticeJob,
@@ -17,14 +15,14 @@ import {
   DsrResultOutcomes,
   openDsrNotifyAddress
 } from '@platform/core/compliance'
-import { generateToken, hashToken } from '@platform/core/crypto'
 import { JobContext, PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { DsrStatus, DsrType, VerificationTokenType } from '@platform/core/domain'
+import { DsrStatus, DsrType } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import type { Locale } from '@platform/core/i18n'
 import { DIGEST_LINKS, type DigestLinks } from '@platform/core/notifications'
 import { QueueNames, type SendEmailJob } from '@platform/core/queues'
 
+import { dsrExportLinkOf } from './dsr-export-link'
 import { DsrNoticeLedger } from './dsr-notice-ledger.service'
 
 // rls-context: every read and write of a request runs inside JobContext.forStore
@@ -220,47 +218,14 @@ export class DsrNoticeSender {
         ? { retainedOrders: retainedOrdersOf(summary) }
         : {}),
       // An export that still holds its file brings the link that hands it over; one whose file is gone brings none (the mail then says so)
-      ...(await this.downloadUrlOf(tx, requestId, requestType, fileExpiresAt))
+      ...(await dsrExportLinkOf(tx, {
+        requestId,
+        requestType,
+        fileExpiresAt,
+        frontendUrl: this.links.frontendUrl
+      }))
     })
     return job
-  }
-
-  // The link that hands a person the file of their access or portability request: a NEW token of 256 bits each time the mail is queued (only its
-  // hash is stored), valid until the file is kept until. The tokens of earlier mails of the same request are KEPT until they
-  // expire: the mail job has a fixed id, so a job still in flight when the notice is asked for again keeps its own (older) link and BullMQ drops the
-  // new add; replacing the token would leave that job with a dead link. The notice is queued at most `DSR_NOTICE_MAX_ATTEMPTS` times, so that
-  // many links can be live, and the first download spends the request (see below). A notice that fails before the queueing leaves no token behind. The token
-  // goes in the fragment of the page, which a browser never sends to a server.
-  private async downloadUrlOf(
-    tx: PrismaTransaction,
-    requestId: string,
-    requestType: string,
-    fileExpiresAt: Date | null
-  ): Promise<{ downloadUrl?: string }> {
-    const isExport =
-      requestType === String(DsrType.ACCESS) || requestType === String(DsrType.PORTABILITY)
-    if (!isExport || fileExpiresAt === null || fileExpiresAt.getTime() <= Date.now()) return {}
-    // A person who already downloaded the file gets no second live link from a mail asked for again: the reviewer decides to give another
-    const spent = await tx.verificationToken.count({
-      where: {
-        type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
-        subject: requestId,
-        usedAt: { not: null }
-      }
-    })
-    if (spent > 0) return {}
-    const token = generateToken()
-    await tx.verificationToken.create({
-      data: {
-        type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
-        tokenHash: hashToken(token),
-        subject: requestId,
-        expiresAt: fileExpiresAt
-      }
-    })
-    const url = new URL(DSR_EXPORT_WEB_PATH, this.links.frontendUrl)
-    url.hash = `${DSR_EXPORT_FRAGMENT_KEY}=${token}`
-    return { downloadUrl: url.toString() }
   }
 }
 
