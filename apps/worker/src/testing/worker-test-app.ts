@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { Queue } from 'bullmq'
 
+import { CredentialCipher, parseEncryptionKey } from '@platform/core/crypto'
 import { EmailModule, EmailService } from '@platform/core/email'
 import { Locales } from '@platform/core/i18n'
 import { LoggerModule } from '@platform/core/logger'
@@ -32,6 +33,8 @@ export interface WorkerTestApp {
 
 // The email path of the worker with real Redis and Mailpit, under its own key prefix so that a
 // worker running on the same Redis (pnpm dev) cannot take the jobs of the test.
+export const TEST_MAIL_CIPHER = new CredentialCipher(parseEncryptionKey('e'.repeat(64)))
+
 export async function startWorkerTestApp(): Promise<WorkerTestApp> {
   const prefix = `it-${randomUUID().slice(0, 8)}`
   const moduleRef = await Test.createTestingModule({
@@ -44,6 +47,8 @@ export async function startWorkerTestApp(): Promise<WorkerTestApp> {
     ],
     providers: [
       ProcessorSupport,
+      // The key that seals the mails of a data request (a fixed key of the test, never one of an environment)
+      { provide: CredentialCipher, useValue: TEST_MAIL_CIPHER },
       EmailProcessor,
       AuthEmailProcessor,
       // Looking an address up needs the database, which this app does not have

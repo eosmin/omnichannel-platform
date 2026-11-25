@@ -23,9 +23,11 @@ import {
   dsrExecutorAvailable,
   hasOpenWork
 } from '@platform/core/compliance'
+import { CredentialCipher } from '@platform/core/crypto'
 import { checkDsrSubject, DsrOpenWorkService } from '@platform/core/customer-erasure'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { DAY_MS, type DsrRequestViewContract, DsrStatus, DsrType } from '@platform/core/domain'
+import { type SealedMailJobData, sealMailJob } from '@platform/core/email'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -167,7 +169,9 @@ export class DsrReviewService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly openWork: DsrOpenWorkService,
-    @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
+    @InjectQueue(QueueNames.EMAIL)
+    private readonly emailQueue: Queue<SendEmailJob | SealedMailJobData>,
+    private readonly cipher: CredentialCipher,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig,
     @Inject(DSR_EXECUTOR_PROBE) private readonly executorAvailable: DsrExecutorProbe,
     private readonly storage: StorageService,
@@ -522,7 +526,7 @@ export class DsrReviewService {
       outcome,
       requestType: row.type
     })
-    await this.emailQueue.add(job.name, job.data, job.opts)
+    await this.emailQueue.add(job.name, sealMailJob(this.cipher, job.data), job.opts)
     await tx.dataSubjectRequest.updateMany({
       where: { id: row.id, storeId },
       data: { noticeQueuedAt: new Date(), noticeAttempts: { increment: 1 } }

@@ -27,6 +27,7 @@ import {
   MessageType,
   OrderStatus
 } from '@platform/core/domain'
+import type { SealedMailJobData } from '@platform/core/email'
 import type { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { dsrResultMailJobId, type SendEmailJob } from '@platform/core/queues'
@@ -47,6 +48,7 @@ import {
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { mailOf, testMailCipher } from '../helpers/mail-seal'
 import { createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const CONFIG: DsrConfig = {
@@ -119,7 +121,7 @@ describe('the export of the data requests of access and portability', () => {
     } as unknown as StorageService
     const mailQueue = {
       add: (name: string, data: SendEmailJob, options: { jobId?: string }) => {
-        mails.push({ name, data, options })
+        mails.push({ name, data: mailOf(data), options })
         return Promise.resolve()
       }
     }
@@ -140,7 +142,8 @@ describe('the export of the data requests of access and portability', () => {
       prisma,
       jobContext,
       ledger,
-      mailQueue as unknown as Queue<SendEmailJob>,
+      mailQueue as unknown as Queue<SendEmailJob | SealedMailJobData>,
+      testMailCipher(),
       CONFIG,
       { frontendUrl: 'http://web.test' },
       logger as unknown as PinoLogger

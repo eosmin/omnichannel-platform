@@ -19,9 +19,16 @@ import {
   normalizeDsrEmail,
   openDsrIntake
 } from '@platform/core/compliance'
-import { generateToken, hashToken, encrypt, parseEncryptionKey } from '@platform/core/crypto'
+import {
+  CredentialCipher,
+  generateToken,
+  hashToken,
+  encrypt,
+  parseEncryptionKey
+} from '@platform/core/crypto'
 import { JobContext, PrismaService, resolveDsrStore } from '@platform/core/database'
 import { DAY_MS, DsrStatus, VerificationTokenType } from '@platform/core/domain'
+import { type SealedMailJobData, sealMailJob } from '@platform/core/email'
 import { DIGEST_LINKS, type DigestLinks } from '@platform/core/notifications'
 import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
 
@@ -42,7 +49,9 @@ export class DsrIntakeWorker {
     private readonly prisma: PrismaService,
     private readonly jobContext: JobContext,
     private readonly audit: AuditService,
-    @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
+    @InjectQueue(QueueNames.EMAIL)
+    private readonly emailQueue: Queue<SendEmailJob | SealedMailJobData>,
+    private readonly cipher: CredentialCipher,
     @Inject(DIGEST_LINKS) private readonly links: DigestLinks,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig,
     private readonly logger: PinoLogger
@@ -159,7 +168,7 @@ export class DsrIntakeWorker {
   private async queueMail(email: string, token: string, intake: DsrIntake): Promise<void> {
     await this.emailQueue.add(
       JobNames.SEND_EMAIL,
-      {
+      sealMailJob(this.cipher, {
         template: EmailTemplates.DSR_VERIFICATION,
         to: email,
         locale: intake.locale,
@@ -169,8 +178,8 @@ export class DsrIntakeWorker {
           requestType: intake.type
         },
         tags: { template: EmailTemplates.DSR_VERIFICATION }
-      },
-      // The job holds the raw token and the address: gone as soon as it is sent, and an hour after a failure
+      }),
+      // The job is sealed (the raw token and the address are not in Redis in the clear): gone as soon as it is sent, and an hour after a failure
       {
         removeOnComplete: true,
         removeOnFail: { age: ComplianceConfig.DSR_INTAKE_JOB_TTL_MS / 1000 }

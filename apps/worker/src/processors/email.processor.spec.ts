@@ -2,7 +2,8 @@ import { type Job, UnrecoverableError } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 import { ZodError } from 'zod'
 
-import { EmailDeliveryError, type EmailService } from '@platform/core/email'
+import { CredentialCipher, parseEncryptionKey } from '@platform/core/crypto'
+import { EmailDeliveryError, type EmailService, sealMailJob } from '@platform/core/email'
 import { Locales } from '@platform/core/i18n'
 import type { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import { EmailTemplates, JobNames, type RequestMagicLinkJob } from '@platform/core/queues'
@@ -13,6 +14,7 @@ import type { InvitationEmailDelivery } from '../invitations/invitation-email-de
 import { EmailProcessor } from './email.processor'
 import type { ProcessorSupport } from './processor-support'
 
+const cipher = new CredentialCipher(parseEncryptionKey('c'.repeat(64)))
 const ID = '0b9d6d88-9a1d-4c4a-9a31-5a2f2d3a6f10'
 const emailJob = {
   template: EmailTemplates.MAGIC_LINK,
@@ -37,6 +39,7 @@ function build() {
     magicLinks as unknown as MagicLinkIssuer,
     invitations as unknown as InvitationEmailDelivery,
     notices as unknown as DsrNoticeLedger,
+    cipher,
     logger as unknown as PinoLogger
   )
   const handle = (job: unknown) =>
@@ -212,5 +215,82 @@ describe('EmailProcessor, a failure that is not the provider', () => {
 
     expect((thrown as Error).message).toBe('the mail job failed: PrismaClientKnownRequestError')
     expect(JSON.stringify(thrown, Object.getOwnPropertyNames(thrown))).not.toContain(ADDRESS)
+  })
+})
+
+describe('EmailProcessor, a sealed mail of a data request', () => {
+  const dsrMail = {
+    template: EmailTemplates.DSR_RESULT,
+    to: 'ana@example.com',
+    locale: Locales.ES,
+    data: { downloadUrl: 'https://app.example.com/x#token=secret-token' },
+    tags: { template: EmailTemplates.DSR_RESULT },
+    dsrNotice: { requestId: ID, storeId: ID }
+  }
+  const sealedJob = (data: unknown) =>
+    ({ name: JobNames.SEND_EMAIL, attemptsMade: 0, opts: { attempts: 3 }, data }) as unknown as Job
+
+  it('opens the job, sends the mail as it was and confirms the notice', async () => {
+    const { email, notices, handle } = build()
+
+    await handle(sealedJob(sealMailJob(cipher, dsrMail)))
+
+    expect(email.send).toHaveBeenCalledWith(dsrMail)
+    expect(notices.sent).toHaveBeenCalledWith(ID, ID)
+  })
+
+  it('still serves a job queued in the clear before the deploy', async () => {
+    const { email, handle } = build()
+
+    await handle(sealedJob(dsrMail))
+
+    expect(email.send).toHaveBeenCalledWith(dsrMail)
+  })
+
+  it.each([
+    [
+      'altered',
+      (job: { sealed: string }) => ({
+        ...job,
+        sealed: Buffer.from(job.sealed, 'base64').fill(1, 20, 24).toString('base64')
+      })
+    ],
+    [
+      'moved to another request',
+      (job: object) => ({ ...job, dsrNotice: { requestId: 'other', storeId: ID } })
+    ],
+    [
+      'moved to another template',
+      (job: object) => ({ ...job, template: EmailTemplates.MAGIC_LINK })
+    ]
+  ])(
+    'refuses a job that was %s without sending or quoting it, and marks the request',
+    async (_n, tamper) => {
+      const { email, notices, handle } = build()
+      const job = tamper(sealMailJob(cipher, dsrMail))
+
+      const error: unknown = await handle(sealedJob(job)).catch((caught: unknown) => caught)
+
+      expect(error).toBeInstanceOf(UnrecoverableError)
+      expect(String((error as Error).message)).not.toMatch(/example\.com|secret-token/)
+      expect(email.send).not.toHaveBeenCalled()
+      expect(notices.sent).not.toHaveBeenCalled()
+    }
+  )
+
+  it('fails closed with a job sealed under another key, naming nothing of it, and marks the request', async () => {
+    const { email, notices, logger, handle } = build()
+    const other = new CredentialCipher(parseEncryptionKey('d'.repeat(64)))
+
+    const error: unknown = await handle(sealedJob(sealMailJob(other, dsrMail))).catch(
+      (caught: unknown) => caught
+    )
+
+    expect(error).toBeInstanceOf(UnrecoverableError)
+    expect(JSON.stringify([(error as Error).message, logger.error.mock.calls])).not.toMatch(
+      /example\.com|secret-token/
+    )
+    expect(email.send).not.toHaveBeenCalled()
+    expect(notices.failed).toHaveBeenCalledWith(ID, ID, 'mail_failed')
   })
 })

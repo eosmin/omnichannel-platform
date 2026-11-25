@@ -931,6 +931,26 @@
     "failed": "No pudimos enviar la solicitud. Revisa tu conexión e inténtalo de nuevo. Lo que escribiste sigue aquí.",
     "tooMany": "Hubo demasiados intentos. Espera un rato e inténtalo de nuevo."
   },
+  "dsrExport": {
+    "title": "Descarga tus datos",
+    "heading": "Descarga tus datos",
+    "body": "Pulsa el botón para descargar el archivo con los datos que la tienda guarda sobre ti. Este enlace funciona una sola vez y es solo para ti: no lo compartas. La descarga empieza de inmediato y su dirección funciona unos minutos.",
+    "download": "Descargar mis datos",
+    "retry": "Intentar de nuevo",
+    "working": "Preparando el archivo…",
+    "doneTitle": "Tu descarga está lista",
+    "done": "La descarga debería empezar sola. Si no empieza, usa el enlace de abajo. El enlace deja de funcionar en unos minutos y esta página no puede darte el archivo otra vez.",
+    "again": "Descargar el archivo",
+    "passwordLabel": "Contraseña del archivo",
+    "passwordHint": "El archivo está protegido con esta contraseña. Cópiala y guárdala ahora: se muestra una sola vez y esta página no puede mostrarla de nuevo.",
+    "copy": "Copiar contraseña",
+    "copied": "Contraseña copiada",
+    "copyFailed": "No pudimos copiarla. Selecciona la contraseña y cópiala a mano.",
+    "expired": "El enlace de descarga de arriba dejó de funcionar. Si ya guardaste el archivo, la contraseña todavía lo abre; si no, pide a la tienda que te envíe el archivo de nuevo.",
+    "invalid": "Este enlace no es válido. Puede haber vencido, ya haberse usado o estar incompleto. Si todavía necesitas tus datos, pide a la tienda que te los envíe de nuevo.",
+    "failed": "No pudimos preparar el archivo. Revisa tu conexión e inténtalo de nuevo.",
+    "tooMany": "Hubo demasiados intentos. Espera unos minutos e inténtalo de nuevo."
+  },
   "dsrVerify": {
     "title": "Confirma tu solicitud de datos",
     "heading": "Confirma tu solicitud",
