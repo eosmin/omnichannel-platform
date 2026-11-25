@@ -724,6 +724,7 @@ export interface DomainEventPayloads {
   [Events.FISCAL_DOCUMENT_REJECTED]: FiscalDocumentRejectedPayload
   [Events.FISCAL_DOCUMENT_STUCK]: FiscalDocumentStuckPayload
   [Events.FISCAL_RETRANSMIT_DEADLINE]: FiscalRetransmitDeadlinePayload
+  [Events.FISCAL_VOID_RETRANSMIT_DEADLINE]: FiscalRetransmitDeadlinePayload
   [Events.FISCAL_ENTRY_MISMATCH]: FiscalEntryMismatchPayload
   [Events.FISCAL_CONTINGENCY_ALERT]: FiscalContingencyAlertPayload
   [Events.FINANCE_PERIOD_CLOSED]: FinancePeriodPayload

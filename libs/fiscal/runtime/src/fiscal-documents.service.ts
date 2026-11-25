@@ -1907,13 +1907,19 @@ export class FiscalDocumentsService {
             data: invalidation ? { voidRejectionWarnedAt: now } : { rejectionWarnedAt: now }
           })
           if (marked.count === 0) continue
-          this.events.publish(tx, Events.FISCAL_RETRANSMIT_DEADLINE, {
-            organizationId,
-            storeId: doc.storeId,
-            documentId: doc.id,
-            orderId: doc.orderId,
-            expired: deadline.state === FiscalRejectionDeadlineState.EXPIRED
-          })
+          this.events.publish(
+            tx,
+            invalidation
+              ? Events.FISCAL_VOID_RETRANSMIT_DEADLINE
+              : Events.FISCAL_RETRANSMIT_DEADLINE,
+            {
+              organizationId,
+              storeId: doc.storeId,
+              documentId: doc.id,
+              orderId: doc.orderId,
+              expired: deadline.state === FiscalRejectionDeadlineState.EXPIRED
+            }
+          )
           warned.push(doc.id)
         }
         return { read: found.length, warned }
@@ -3083,10 +3089,16 @@ export class FiscalDocumentsService {
         })
       )
     } catch (error) {
-      this.logger.warn(
-        { documentId: id, err: errorName(error) },
-        'the claim of an invalidation was not released'
-      )
+      // A refusal whose moment was not kept leaves no 24-hour window and no warning: that is a deadline lost, not only a claim left to expire
+      const fields = { documentId: id, err: errorName(error) }
+      if (refusedAt === undefined) {
+        this.logger.warn(fields, 'the claim of an invalidation was not released')
+      } else {
+        this.logger.error(
+          fields,
+          'the refusal of an invalidation was not kept: its 24-hour window has no start'
+        )
+      }
     }
   }
 

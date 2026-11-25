@@ -77,6 +77,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+DROP INDEX IF EXISTS fiscal_documents_void_rejection_unwarned_idx;
 ALTER TABLE fiscal_documents DROP CONSTRAINT IF EXISTS fiscal_documents_void_rejection_chk;
 ALTER TABLE fiscal_documents DROP COLUMN IF EXISTS void_rejection_warned_at, DROP COLUMN IF EXISTS void_rejected_at;
 COMMIT;

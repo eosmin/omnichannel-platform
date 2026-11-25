@@ -58,6 +58,8 @@ export const NotificationTypes = {
   FISCAL_DOCUMENT_STUCK: 'fiscal.document_stuck',
   // The window (24 hours) to correct and send again a document the authority refused is closing or over (D14)
   FISCAL_RETRANSMIT_DEADLINE: 'fiscal.retransmit_deadline',
+  // The same for an invalidation the authority refused (D14b): a type of its own, because a notice is told once for each document and type
+  FISCAL_VOID_RETRANSMIT_DEADLINE: 'fiscal.void_retransmit_deadline',
   // A sale document disagrees with its entry of the books: only a person can say which one is right (TDD_18 §11, Step 4B.8b-2b)
   FISCAL_ENTRY_MISMATCH: 'fiscal.entry_mismatch',
   // A contingency of the issuer: opened by the lifecycle, its event not accepted, its window closing (Step 4B.7c-7)

@@ -1321,7 +1321,7 @@ describe('The fiscal documents (Step 4B.7)', () => {
         const listener = (payload: FiscalRetransmitDeadlinePayload): void => {
           seen.push(payload)
         }
-        emitter.on(Events.FISCAL_RETRANSMIT_DEADLINE, listener)
+        emitter.on(Events.FISCAL_VOID_RETRANSMIT_DEADLINE, listener)
         try {
           const documentId = await accepted()
           await refuse(documentId, true)
@@ -1345,7 +1345,7 @@ describe('The fiscal documents (Step 4B.7)', () => {
           expect(mine()).toHaveLength(2)
           expect(mine()[1]?.expired).toBe(true)
         } finally {
-          emitter.off(Events.FISCAL_RETRANSMIT_DEADLINE, listener)
+          emitter.off(Events.FISCAL_VOID_RETRANSMIT_DEADLINE, listener)
         }
       })
 

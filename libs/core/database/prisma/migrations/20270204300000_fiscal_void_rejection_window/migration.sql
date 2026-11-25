@@ -6,6 +6,10 @@
 -- AlterTable
 ALTER TABLE "fiscal_documents" ADD COLUMN "void_rejected_at" TIMESTAMP(3), ADD COLUMN "void_rejection_warned_at" TIMESTAMP(3);
 
+-- The hourly look finds the few refusals that wait for their warning without reading the accepted documents of the organization
+CREATE INDEX "fiscal_documents_void_rejection_unwarned_idx" ON "fiscal_documents"("organization_id", "void_rejected_at")
+  WHERE "void_rejected_at" IS NOT NULL AND "void_rejection_warned_at" IS NULL;
+
 -- The mark of a warning needs the moment of a refusal, and neither belongs to a document that is not accepted: a voided document holds none
 ALTER TABLE "fiscal_documents" ADD CONSTRAINT "fiscal_documents_void_rejection_chk"
   CHECK (("void_rejection_warned_at" IS NULL OR "void_rejected_at" IS NOT NULL)
