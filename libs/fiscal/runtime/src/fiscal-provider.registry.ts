@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 
-import { FiscalPendingDocumentType } from '@platform/core/domain'
+import { FiscalContingencyLimits, FiscalPendingDocumentType } from '@platform/core/domain'
 import type { FiscalDocumentProvider, FiscalProviderManifest } from '@platform/fiscal/sdk'
 
 export const FISCAL_PROVIDERS = Symbol('FISCAL_PROVIDERS')
@@ -55,6 +55,8 @@ export class FiscalProviderRegistry {
           mode.reasons.length === 0 ||
           !mode.reasons.includes(mode.authorityDownReason) ||
           !(mode.transmitWithinHours > 0) ||
+          // The retries of a released document cover this many hours at most
+          mode.transmitWithinHours > FiscalContingencyLimits.RELEASED_RETRY_HOURS ||
           (mode.reportWithinHours !== undefined &&
             !(Number.isFinite(mode.reportWithinHours) && mode.reportWithinHours > 0)) ||
           (mode.technicalReportAfterDays !== undefined &&

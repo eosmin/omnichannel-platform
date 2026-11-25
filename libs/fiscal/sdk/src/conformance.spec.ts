@@ -262,6 +262,27 @@ describe('the conformance run', () => {
     expect(none.steps[1]).toMatchObject({ outcome: ConformanceOutcome.SKIPPED })
   })
 
+  it('makes a debit note of the document the provider accepted, the way it makes a credit note, and skips it when there is none', async () => {
+    const note: ConformanceStep = {
+      kind: 'debit_note',
+      id: 'D1',
+      tags: ['d'],
+      bucket: null,
+      parent: 'S1',
+      input: input(9, { kind: FiscalDocumentKind.DEBIT_NOTE })
+    }
+    const ok = await runConformance([sale(1), note], options(provider()))
+    expect(ok.steps.map(step => step.outcome)).toEqual([
+      ConformanceOutcome.ACCEPTED,
+      ConformanceOutcome.ACCEPTED
+    ])
+    const orphan = await runConformance([note], options(provider()))
+    expect(orphan.steps[0]).toMatchObject({
+      outcome: ConformanceOutcome.SKIPPED,
+      code: 'parent_missing'
+    })
+  })
+
   it('invalidates an accepted document and counts it, and says when the provider refused', async () => {
     const step = (target: string): ConformanceStep => ({
       kind: 'void',

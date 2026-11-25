@@ -237,6 +237,8 @@ export function buildLegalBook(
 // provider or the type is not one this deployment knows: the sale is then counted apart, not guessed. **[ACCOUNTANT]** confirms the rule.
 export interface DocumentTypeDeclaration {
   readonly creditNote?: boolean
+  // A debit note charges more on a sale document: it is listed like the document of a sale to its receiver, never apart
+  readonly debitNote?: boolean
   readonly requiredReceiverFields: readonly string[]
 }
 

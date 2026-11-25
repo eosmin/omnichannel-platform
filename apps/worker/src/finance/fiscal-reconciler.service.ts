@@ -11,6 +11,7 @@ import {
   FiscalLimits,
   FiscalSweepKind,
   fiscalJobOptions,
+  fiscalReleasedJobOptions,
   FiscalSweepLimits
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
@@ -147,6 +148,7 @@ export class FiscalReconciler {
       }
     }
     failures.push(...(await this.checkContingencies(organizationId, now)))
+    failures.push(...(await this.warnRejections(organizationId, now)))
     this.publish(organizationId, remaining)
     if (report.truncated) {
       this.logger.warn({ organizationId }, 'the check of the fiscal documents stopped at its cap')
@@ -192,6 +194,17 @@ export class FiscalReconciler {
     return failures
   }
 
+  // A document the authority refused is corrected and sent again within 24 hours (D14): the person is told once when that window is closing
+  // or over. A failure is returned, never thrown, so the rest of the check goes on.
+  private async warnRejections(organizationId: string, now: Date): Promise<unknown[]> {
+    try {
+      await this.documents.warnRejectionDeadlines(organizationId, now)
+      return []
+    } catch (error) {
+      return [error]
+    }
+  }
+
   private publish(organizationId: string, found: Record<FiscalSweepKind, number>): void {
     for (const kind of Object.values(FiscalSweepKind)) {
       this.findings.set({ organization_id: organizationId, kind }, found[kind])
@@ -227,7 +240,7 @@ export class FiscalReconciler {
       return 'queued'
     }
     // A document left in the queue: the same job again (a job that still waits has the same id and is not added twice)
-    await this.enqueue(organizationId, item.id, item.submission ?? 1)
+    await this.enqueue(organizationId, item.id, item.submission ?? 1, item.released === true)
     return 'queued'
   }
 
@@ -236,7 +249,8 @@ export class FiscalReconciler {
   private async enqueue(
     organizationId: string,
     documentId: string,
-    submission: number
+    submission: number,
+    released = false
   ): Promise<void> {
     const jobId = submitFiscalDocumentJobId(documentId, submission)
     // A job that failed stays a week and would drop the new one with the same id: the failed one goes
@@ -245,7 +259,7 @@ export class FiscalReconciler {
     await this.queue.add(
       JobNames.SUBMIT_FISCAL_DOCUMENT,
       { organizationId, documentId },
-      { ...fiscalJobOptions(), jobId }
+      { ...(released ? fiscalReleasedJobOptions() : fiscalJobOptions()), jobId }
     )
   }
 

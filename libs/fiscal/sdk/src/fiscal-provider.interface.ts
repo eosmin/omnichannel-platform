@@ -27,6 +27,9 @@ export interface FiscalDocumentTypeDeclaration {
   // A document of this type cancels (part of) another one: it is the type of the credit note of a return, which `build` picks when it is
   // told the document is one (`FiscalBuildInput.kind`)
   readonly creditNote?: boolean
+  // A document of this type charges more on another one: it is the type of the debit note, which `build` picks when it is told the document
+  // is one (`FiscalBuildInput.kind`). Never both this and `creditNote`.
+  readonly debitNote?: boolean
 }
 
 export type FiscalReceiverField =
@@ -272,10 +275,10 @@ export interface FiscalCreditedDocument {
 }
 
 export interface FiscalBuildInput {
-  // The sale, or the credit note of a return: the provider picks the type of document by its own rule (a credit note has the type its
-  // manifest marks as `creditNote`)
+  // The sale, the credit note of a return or a debit note: the provider picks the type of document by its own rule (a credit note has the
+  // type its manifest marks as `creditNote`, a debit note the one it marks as `debitNote`)
   readonly kind: FiscalDocumentKind
-  // Set for a credit note, null for the document of a sale
+  // Set for a credit note or a debit note, null for the document of a sale
   readonly credited: FiscalCreditedDocument | null
   // The correlative of the organization (the order the documents were made in). Never the number a legal document carries unless the
   // provider declares no scope of its own: see `correlative`.

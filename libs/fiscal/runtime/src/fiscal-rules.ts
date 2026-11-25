@@ -5,9 +5,11 @@ import {
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalDocumentStatusTransitions,
-  FiscalLimits,
   FiscalOperationCondition,
+  FiscalRejectionDeadlineState,
+  fiscalSubmitMaxAttempts,
   FiscalRejectionReasons,
+  FiscalRejectionRetry,
   type FiscalEnvironment,
   maskReceiverName,
   maskReceiverTaxId,
@@ -41,9 +43,38 @@ export const receiverEditable = (status: FiscalDocumentStatus, attempts: number)
 export const retryable = (status: FiscalDocumentStatus): boolean =>
   status === FiscalDocumentStatus.REJECTED || status === FiscalDocumentStatus.QUEUED
 
+// The window to correct and send again a document the authority refused, counted from the moment the refusal was communicated. A document
+// that was not refused by the authority (`rejectedAt` null: refused by core before it was sent, or not refused) has no window. The clock is
+// the caller's, so the same document reads the same at any instant that is given.
+export interface FiscalRejectionDeadline {
+  endsAt: Date
+  state: FiscalRejectionDeadlineState
+}
+
+export function rejectionDeadline(
+  rejectedAt: Date | null,
+  now: Date
+): FiscalRejectionDeadline | null {
+  if (rejectedAt === null) return null
+  const endsAt = new Date(rejectedAt.getTime() + FiscalRejectionRetry.WINDOW_MS)
+  const left = endsAt.getTime() - now.getTime()
+  const state =
+    left <= 0
+      ? FiscalRejectionDeadlineState.EXPIRED
+      : left <= FiscalRejectionRetry.WARN_BEFORE_MS
+        ? FiscalRejectionDeadlineState.CLOSING
+        : FiscalRejectionDeadlineState.OPEN
+  return { endsAt, state }
+}
+
 // A document that stays in the queue after every attempt of its job was spent: it needs a person (a retry), nothing will move it by itself
-export const isStuck = (status: FiscalDocumentStatus, attempts: number): boolean =>
-  status === FiscalDocumentStatus.QUEUED && attempts >= FiscalLimits.MAX_ATTEMPTS
+// (one kept in a contingency has the attempts of the whole window of its lot, so it is stuck later than an ordinary one)
+export const isStuck = (
+  status: FiscalDocumentStatus,
+  attempts: number,
+  inContingency = false
+): boolean =>
+  status === FiscalDocumentStatus.QUEUED && attempts >= fiscalSubmitMaxAttempts(inContingency)
 
 // What the state of a document allows a person to do with it. The screen draws its buttons from this and the api decides again on every
 // call (the rules of the calls are the ones in `FiscalDocumentsService`); the permission to do it is the route's, not this function's.

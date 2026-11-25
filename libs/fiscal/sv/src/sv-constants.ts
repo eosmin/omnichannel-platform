@@ -86,16 +86,18 @@ export const SvEnabledEnvironments: readonly FiscalEnvironment[] = [FiscalEnviro
 export const SvDocumentTypes = {
   INVOICE: '01',
   TAX_CREDIT: '03',
-  CREDIT_NOTE: '05'
+  CREDIT_NOTE: '05',
+  DEBIT_NOTE: '06'
 } as const
 export type SvDocumentType = (typeof SvDocumentTypes)[keyof typeof SvDocumentTypes]
 
 // The version of the JSON schema of each document (the folders of svfe-json-schemas: factura v2, comprobante de crédito fiscal v4, nota de
-// crédito v4)
+// crédito v4, nota de débito v4)
 export const SvSchemaVersions: Readonly<Record<SvDocumentType, number>> = {
   [SvDocumentTypes.INVOICE]: 2,
   [SvDocumentTypes.TAX_CREDIT]: 4,
-  [SvDocumentTypes.CREDIT_NOTE]: 4
+  [SvDocumentTypes.CREDIT_NOTE]: 4,
+  [SvDocumentTypes.DEBIT_NOTE]: 4
 }
 
 // CAT-003 (the billing model) and CAT-004 (the kind of transmission). Normal transmission is the previous model (the document is sent
@@ -197,8 +199,8 @@ export const SvDefaultPaymentForm = '01'
 // CAT-007: how the document a credit note names was generated (1 on paper, 2 electronic): ours are electronic
 export const SvGenerationType = { ELECTRONIC: 2 } as const
 
-// What this provider keeps in `providerData` of an accepted document, for the documents that name it (a credit note) and for its
-// invalidation. Step 4B.7c-3 writes them when the authority accepts the document; `build` of a credit note reads them.
+// What this provider keeps in `providerData` of an accepted document, for the documents that name it (a credit or debit note) and for its
+// invalidation. Step 4B.7c-3 writes them when the authority accepts the document; `build` of a credit or debit note reads them.
 export const SvProviderDataKeys = {
   GENERATION_CODE: 'generationCode',
   CONTROL_NUMBER: 'controlNumber',
@@ -263,9 +265,9 @@ export interface SvInvalidationDeadlineRule {
 
 // The window of each type, counted from the SEAL (not from the date of the document). **[ACCOUNTANT / AUTHORITY]** The Normativa
 // contradicts itself for a tax credit document and a credit note: the body (cuadro 6, and the Manual Funcional) says the tenth business
-// day of the month after the seal, and the Anexo V (field 47, rule 2) says one day after the seal, which is what the reception platform is
-// said to apply. A late invalidation is a fine, so the STRICTER window, one calendar day after the seal, is used until the authority
-// answers the consultation sent to it (B4). To adopt the body's rule, change these two lines to
+// day of the month after the seal, and the Anexo V (field 47, rule 2: CCFE, CRE, NCE and NDE) says one day after the seal, which is what
+// the reception platform is said to apply. A late invalidation is a fine, so the STRICTER window, one calendar day after the seal, is used
+// until the authority answers the consultation sent to it (B4). To adopt the body's rule, change these three lines to
 // `{ unit: BUSINESS_DAY_OF_NEXT_MONTH, amount: 10 }` and list the holidays in `SvHolidays`; nothing else changes. An invoice is three
 // calendar months after the seal in both texts.
 export const SvInvalidationDeadlineRules: Readonly<
@@ -273,10 +275,12 @@ export const SvInvalidationDeadlineRules: Readonly<
 > = {
   [SvDocumentTypes.INVOICE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_MONTHS, amount: 3 },
   [SvDocumentTypes.TAX_CREDIT]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 },
-  [SvDocumentTypes.CREDIT_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 }
+  [SvDocumentTypes.CREDIT_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 },
+  [SvDocumentTypes.DEBIT_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 }
 }
 
-// The types whose invalidation names no replacement document whatever the kind (Anexo V, field 48: null for a credit note)
+// The types whose invalidation names no replacement document whatever the kind (Anexo V, field 48: null for 05, 08, 16, 17 and 18). The
+// debit note (06) is not among them: it names one like a tax credit document.
 export const SvInvalidationWithoutReplacement: readonly SvDocumentType[] = [
   SvDocumentTypes.CREDIT_NOTE
 ]
@@ -288,7 +292,8 @@ export const SvInvalidationWithoutReplacement: readonly SvDocumentType[] = [
 export const SvInvalidationAllowed: Readonly<Record<SvDocumentType, boolean>> = {
   [SvDocumentTypes.INVOICE]: true,
   [SvDocumentTypes.TAX_CREDIT]: true,
-  [SvDocumentTypes.CREDIT_NOTE]: true
+  [SvDocumentTypes.CREDIT_NOTE]: true,
+  [SvDocumentTypes.DEBIT_NOTE]: true
 }
 
 // The deadlines are checked before anything is sent (a refusal with a code of ours, the authority is not troubled); switch this off to leave
@@ -323,6 +328,11 @@ export const SvVoidRefusals = {
 // an invoice to a final consumer (the invalidation within three months is the other way): until the accountant says, only the tax credit
 // document is credited, and asking for a credit note of an invoice stops with a clear error. Add `INVOICE` here to allow it.
 export const SvCreditableDocuments: readonly SvDocumentType[] = [SvDocumentTypes.TAX_CREDIT]
+
+// The documents a debit note may add to: the tax credit document only, the taxpayer's document (a debit note names a document of the
+// same taxpayer, and an invoice to a final consumer is not one). It is its own list, apart from the credit note's, so that one may change
+// without the other.
+export const SvDebitableDocuments: readonly SvDocumentType[] = [SvDocumentTypes.TAX_CREDIT]
 
 // The names of the keys of the address a customer or the issuer keeps in this provider (the address of core is a record of text keyed by
 // the provider's own names): the codes of the catalogs of the authority and a free line.

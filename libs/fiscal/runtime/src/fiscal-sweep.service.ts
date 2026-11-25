@@ -28,6 +28,8 @@ export interface FiscalFinding {
   orderId: string
   // STALLED_DOCUMENT: the submission the job is asked again for
   submission?: number
+  // STALLED_DOCUMENT: the document was kept in a contingency and released, so its job is the one of a released document
+  released?: boolean
   status?: FiscalDocumentStatus
   // ENTRY_MISMATCH: what differs
   fields?: FiscalEntryMismatchField[]
@@ -208,7 +210,7 @@ export class FiscalSweepService {
         NOT: { contingency: { status: { not: FiscalContingencyStatus.REPORTED } } },
         ...(cursor === undefined ? {} : { id: { gt: cursor } })
       },
-      select: { id: true, orderId: true, submission: true, status: true },
+      select: { id: true, orderId: true, submission: true, status: true, contingencyId: true },
       orderBy: { id: 'asc' },
       take: limit + 1
     })
@@ -217,6 +219,7 @@ export class FiscalSweepService {
       id: row.id,
       orderId: row.orderId,
       submission: row.submission,
+      released: row.contingencyId !== null,
       status: row.status as FiscalDocumentStatus
     }))
   }

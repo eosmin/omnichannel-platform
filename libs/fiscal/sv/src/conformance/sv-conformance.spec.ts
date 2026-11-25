@@ -43,12 +43,13 @@ describe('the plan of the minimum tests', () => {
   const kinds = (kind: ConformanceStep['kind']): ConformanceStep[] =>
     steps.filter(step => step.kind === kind)
 
-  it('has what the authority asks: 90 invoices, 75 tax credit documents, 50 credit notes, 5 invalidations and 5 contingencies', () => {
+  it('has what the authority asks: 90 invoices, 75 tax credit documents, 50 credit notes, 25 debit notes, 5 invalidations and 5 contingencies', () => {
     const sales = kinds('sale')
     // The minimum, and the documents made for the invalidations (the ones of the minimum are never touched)
     expect(sales.filter(step => step.id.startsWith('INV-'))).toHaveLength(90)
     expect(sales.filter(step => step.id.startsWith('CCF-'))).toHaveLength(75)
     expect(kinds('credit_note')).toHaveLength(50)
+    expect(kinds('debit_note')).toHaveLength(25)
     expect(kinds('void')).toHaveLength(5)
     expect(kinds('contingency')).toHaveLength(5)
     expect(kinds('deferred_sale')).toHaveLength(5 * SvConformanceDefaults.deferredPerContingency)
@@ -56,7 +57,8 @@ describe('the plan of the minimum tests', () => {
       buckets: {
         [SvConformanceBuckets.INVOICE]: 90,
         [SvConformanceBuckets.TAX_CREDIT]: 75,
-        [SvConformanceBuckets.CREDIT_NOTE]: 50
+        [SvConformanceBuckets.CREDIT_NOTE]: 50,
+        [SvConformanceBuckets.DEBIT_NOTE]: 25
       },
       voids: 5,
       contingencies: 5
@@ -115,7 +117,7 @@ describe('the plan of the minimum tests', () => {
         parents.set(step.id, built)
         expect(schemaErrors(built.documentType, built.payload)).toEqual([])
       }
-      if (step.kind === 'credit_note') {
+      if (step.kind === 'credit_note' || step.kind === 'debit_note') {
         const parent = parents.get(step.parent)
         const parentStep = steps.find(candidate => candidate.id === step.parent)
         expect(parent).toBeDefined()
@@ -123,7 +125,9 @@ describe('the plan of the minimum tests', () => {
         const credited = svDryRunCredited(parent, parentStep.input)
         expect(credited).not.toBeNull()
         const built = buildDocument({ ...step.input, credited })
-        expect(built.documentType).toBe(SvDocumentTypes.CREDIT_NOTE)
+        expect(built.documentType).toBe(
+          step.kind === 'credit_note' ? SvDocumentTypes.CREDIT_NOTE : SvDocumentTypes.DEBIT_NOTE
+        )
         expect(schemaErrors(built.documentType, built.payload)).toEqual([])
       }
     }
@@ -150,6 +154,15 @@ describe('the plan of the minimum tests', () => {
       steps.flatMap(step => ('input' in step ? [[step.id, step.input] as const] : []))
     )
     for (const step of steps) {
+      if (step.kind === 'debit_note') {
+        // A debit note is never dated before the document it adds to, and charges something
+        const parent = inputs.get(step.parent)
+        expect(parent).toBeDefined()
+        expect(step.input.totalCents).toBeGreaterThan(0)
+        expect(Date.parse(step.input.issuedAt)).toBeGreaterThanOrEqual(
+          Date.parse(parent?.issuedAt ?? '')
+        )
+      }
       if (step.kind === 'credit_note') {
         const parent = inputs.get(step.parent)
         expect(parent).toBeDefined()
@@ -194,13 +207,26 @@ describe('the plan of the minimum tests', () => {
 
   it('takes smaller counts when they are asked for', () => {
     const small = plan({
-      counts: { invoices: 3, taxCredits: 2, creditNotes: 9, voids: 1, contingencies: 1 }
+      counts: {
+        invoices: 3,
+        taxCredits: 2,
+        creditNotes: 9,
+        debitNotes: 30,
+        voids: 1,
+        contingencies: 1
+      }
     })
     expect(small.filter(step => step.kind === 'credit_note')).toHaveLength(2)
+    expect(small.filter(step => step.kind === 'debit_note')).toHaveLength(2)
     expect(small.filter(step => step.kind === 'void')).toHaveLength(1)
     expect(
       svConformanceTargets({ taxCredits: 2, creditNotes: 9 }).buckets[
         SvConformanceBuckets.CREDIT_NOTE
+      ]
+    ).toBe(2)
+    expect(
+      svConformanceTargets({ taxCredits: 2, debitNotes: 30 }).buckets[
+        SvConformanceBuckets.DEBIT_NOTE
       ]
     ).toBe(2)
   })
@@ -265,13 +291,18 @@ describe('the plan against the server that plays the authority', () => {
     expect((await runOf('second', 500)).codes).toEqual({})
   }, 60_000)
 
-  it('in a dry run builds the three kinds of document and sends nothing', async () => {
+  it('in a dry run builds the four kinds of document and sends nothing', async () => {
     const before = authority.stats.receptions
     const report = await run({ dryRun: true })
     expect(authority.stats.receptions).toBe(before)
     expect(report.documents[SvDocumentTypes.CREDIT_NOTE]).toMatchObject({
       planned: 50,
       built: 50,
+      accepted: 0
+    })
+    expect(report.documents[SvDocumentTypes.DEBIT_NOTE]).toMatchObject({
+      planned: 25,
+      built: 25,
       accepted: 0
     })
     expect(report.steps.filter(step => step.outcome === ConformanceOutcome.BUILD_FAILED)).toEqual(

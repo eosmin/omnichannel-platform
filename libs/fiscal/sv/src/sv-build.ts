@@ -22,6 +22,7 @@ import {
   SvCodePatterns,
   SvCreditableDocuments,
   SvCurrency,
+  SvDebitableDocuments,
   SvDefaultPaymentForm,
   SvDeferredTerm,
   SvDocumentTypes,
@@ -54,7 +55,7 @@ import { salvadorMoment } from './sv-time'
 import { amountInWords } from './sv-words'
 
 // The pure construction of the documents of El Salvador from the sale the platform hands over: the invoice to a final consumer (01), the
-// tax credit document to a taxpayer (03) and the credit note (05). Everything is exact (integers and the rounding of the authority,
+// tax credit document to a taxpayer (03), the credit note (05) and the debit note (06). Everything is exact (integers and the rounding of the authority,
 // Funcional §XXI), and what cannot be made right is refused with a code instead of being sent wrong.
 
 type Treatment = 'taxed' | 'exempt' | 'notSubject'
@@ -77,6 +78,7 @@ interface Item {
 // A tax credit document is for a taxpayer: the receiver has a registration number. Everyone else gets an invoice.
 export function resolveDocumentType(input: FiscalTypeInput): SvDocumentType {
   if (input.kind === FiscalDocumentKind.CREDIT_NOTE) return SvDocumentTypes.CREDIT_NOTE
+  if (input.kind === FiscalDocumentKind.DEBIT_NOTE) return SvDocumentTypes.DEBIT_NOTE
   return lacks(input.receiver.registrationId) ? SvDocumentTypes.INVOICE : SvDocumentTypes.TAX_CREDIT
 }
 
@@ -216,6 +218,10 @@ function transmissionOf(contingency: FiscalBuildContingency | undefined): Record
   }
 }
 
+// A credit note and a debit note name the document they change and have the same shape in the schema of the authority
+const isNote = (type: SvDocumentType): boolean =>
+  type === SvDocumentTypes.CREDIT_NOTE || type === SvDocumentTypes.DEBIT_NOTE
+
 function identification(type: SvDocumentType, input: FiscalBuildInput): Record<string, unknown> {
   const issuer = input.issuer
   const moment = salvadorMoment(input.issuedAt)
@@ -231,7 +237,7 @@ function identification(type: SvDocumentType, input: FiscalBuildInput): Record<s
     fecEmi: moment.date,
     horEmi: moment.time,
     tipoMoneda: SvCurrency,
-    ...(type === SvDocumentTypes.CREDIT_NOTE ? { fusion: null } : {})
+    ...(isNote(type) ? { fusion: null } : {})
   }
 }
 
@@ -249,8 +255,8 @@ function emisor(type: SvDocumentType, issuer: FiscalIssuerInput): Record<string,
     telefono: (issuer.phone ?? '').trim(),
     correo: (issuer.email ?? '').trim(),
     // The codes of the establishment and the point of sale are part of the emisor of the invoice and of the tax credit document; the
-    // schema of the credit note has none
-    ...(type === SvDocumentTypes.CREDIT_NOTE
+    // schema of the credit note and of the debit note has none
+    ...(isNote(type)
       ? {}
       : {
           codEstable: (issuer.establishmentCode ?? '').trim(),
@@ -265,7 +271,7 @@ const contactEmail = (value: string | null): string | null =>
 const contactPhone = (value: string | null): string | null =>
   value !== null && validPhone(value.trim()) ? value.trim() : null
 
-// The receiver of a tax credit document or a credit note: a taxpayer, with everything the schema asks
+// The receiver of a tax credit document, a credit note or a debit note: a taxpayer, with everything the schema asks
 function businessReceiver(
   receiver: FiscalReceiver,
   identityKey: 'nit' | 'tipoDocumento'
@@ -464,7 +470,7 @@ function invoiceBody(input: FiscalBuildInput, items: readonly Item[]): Record<st
   }
 }
 
-// ---------------------------------------------------------------- the tax credit document (03) and the credit note (05): net prices
+// ---------------------------------------------------------------- the tax credit document (03), the credit note (05) and the debit note (06): net prices
 
 interface NetItem {
   readonly item: Item
@@ -508,14 +514,16 @@ function netBody(
   const totalGravada = netOf('taxed')
   // The tax of the taxed sales by the formula of the authority: sales x 13 %
   checkTax(Number(roundDiv(BigInt(totalGravada) * BigInt(SvVat.RATE_BPS), 10_000n)), input)
-  const credit = type === SvDocumentTypes.CREDIT_NOTE
+  // A credit note and a debit note share the body; the debit note also has the electronic payment number in its summary
+  const credit = isNote(type)
+  const debit = type === SvDocumentTypes.DEBIT_NOTE
   const cuerpo = net.map((row, index) => {
     const { item } = row
     const taxed = item.treatment === 'taxed'
     return {
       numItem: index + 1,
       tipoItem: item.kind,
-      // A credit note names, in each item, the document the item belongs to
+      // A credit note and a debit note name, in each item, the document the item belongs to
       numeroDocumento: credit ? relatedCode : null,
       codigo: null,
       codTributo: null,
@@ -537,7 +545,8 @@ function netBody(
   const totalExenta = netOf('exempt')
   const subTotalVentas = totalNoSuj + totalExenta + totalGravada
   const montoTotal = subTotalVentas + input.taxCents
-  // A credit note says only the condition: what it gives back is not a payment, so the payments of the order are not read
+  // A credit note or a debit note says only the condition: what it gives back or charges is not a payment, so the payments of the order are
+  // not read
   const how = credit
     ? { pagos: [], condicion: conditionOf(input, montoTotal) }
     : payments(input, montoTotal)
@@ -570,6 +579,7 @@ function netBody(
         totalPagar: dollars(montoTotal),
         totalLetras: amountInWords(montoTotal),
         condicionOperacion: how.condicion,
+        ...(debit ? { numPagoElectronico: null } : {}),
         observaciones: null,
         codigoRetencionMH: null
       }
@@ -605,12 +615,15 @@ function netBody(
   }
 }
 
-// ---------------------------------------------------------------- the credit note names the document it cancels
+// ---------------------------------------------------------------- a note names the document it changes
 
-function relatedDocument(input: FiscalBuildInput): { type: string; code: string; date: string } {
+function relatedDocument(
+  input: FiscalBuildInput,
+  allowed: readonly SvDocumentType[]
+): { type: string; code: string; date: string } {
   const credited = input.credited
   if (credited === null) throw new SvBuildError(SvBuildErrors.CREDITED_DOCUMENT_UNKNOWN)
-  if (!(SvCreditableDocuments as readonly string[]).includes(credited.documentType)) {
+  if (!(allowed as readonly string[]).includes(credited.documentType)) {
     throw new SvBuildError(SvBuildErrors.CREDITED_DOCUMENT_NOT_CREDITABLE)
   }
   const data = credited.providerData
@@ -667,7 +680,11 @@ export function buildDocument(input: FiscalBuildInput): BuiltDocument {
       missingReceiverFields: []
     }
   }
-  const related = relatedDocument(input)
+  const related = relatedDocument(
+    input,
+    type === SvDocumentTypes.DEBIT_NOTE ? SvDebitableDocuments : SvCreditableDocuments
+  )
+  // The receiver of a note is the one of the tax credit document it names, by tax number (identity document 36)
   return {
     documentType: type,
     payload: {

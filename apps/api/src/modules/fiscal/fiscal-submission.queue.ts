@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 
 import { PrismaService } from '@platform/core/database'
-import { fiscalJobOptions } from '@platform/core/domain'
+import { fiscalJobOptions, fiscalReleasedJobOptions } from '@platform/core/domain'
 import {
   JobNames,
   QueueNames,
@@ -22,7 +22,13 @@ export class FiscalSubmissionQueue {
     private readonly prisma: PrismaService
   ) {}
 
-  async enqueue(organizationId: string, documentId: string, submission: number): Promise<void> {
+  // `released`: the document is kept in a contingency whose event was reported, so it is asked again for the whole window of its lot
+  async enqueue(
+    organizationId: string,
+    documentId: string,
+    submission: number,
+    released = false
+  ): Promise<void> {
     const jobId = submitFiscalDocumentJobId(documentId, submission)
     // After the REAL commit: the job reads the document, and a listener or a request that joined a wider transaction has not committed
     // it when this line runs
@@ -34,7 +40,7 @@ export class FiscalSubmissionQueue {
       await this.queue.add(
         JobNames.SUBMIT_FISCAL_DOCUMENT,
         { organizationId, documentId },
-        { ...fiscalJobOptions(), jobId }
+        { ...(released ? fiscalReleasedJobOptions() : fiscalJobOptions()), jobId }
       )
     })
   }

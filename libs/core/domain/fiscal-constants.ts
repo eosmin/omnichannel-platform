@@ -9,11 +9,15 @@ export const FiscalDocumentImmutableStatuses: readonly FiscalDocumentStatus[] = 
   FiscalDocumentStatus.VOIDED
 ]
 
-// What a document is for: the document of a sale, or the credit note of a return, which cancels part (or all) of the sale document it
-// names. A provider's own document types (`FiscalDocumentTypeDeclaration`) stay the provider's; this is core's word for the relation.
+// What a document is for: the document of a sale, the credit note of a return, which cancels part (or all) of the sale document it names,
+// or a debit note, which charges more on the sale document it names. A provider's own document types (`FiscalDocumentTypeDeclaration`)
+// stay the provider's; this is core's word for the relation. **A debit note is only built and sent by a provider today** (the conformance
+// tests of an authority ask for them): the lifecycle of core does not make one yet, and the database accepts no row of this kind until the
+// step that issues it adds it (`IMPLEMENTATION_PLAN.md`, D3b).
 export enum FiscalDocumentKind {
   SALE = 'sale',
-  CREDIT_NOTE = 'credit_note'
+  CREDIT_NOTE = 'credit_note',
+  DEBIT_NOTE = 'debit_note'
 }
 
 export enum FiscalEnvironment {
@@ -160,6 +164,25 @@ export const fiscalReportJobOptions = (): {
   removeOnFail: { age: FiscalLimits.FAILED_JOB_KEEP_SECONDS }
 })
 
+// (`FiscalContingencyLimits` is declared below: these two are functions, so it is read only when they run, never at load)
+// The retries of a document released from a contingency: the same fixed interval as the report, for the whole window in which the lot may
+// be sent (72 hours at most), so that it is still retrying, and not stuck, while the window lasts
+export const fiscalReleasedJobOptions = (): {
+  attempts: number
+  backoff: { type: 'fixed'; delay: number }
+  removeOnComplete: true
+  removeOnFail: { age: number }
+} => ({
+  attempts: FiscalContingencyLimits.RELEASED_MAX_ATTEMPTS,
+  backoff: { type: 'fixed', delay: FiscalContingencyLimits.REPORT_RETRY_DELAY_MS },
+  removeOnComplete: true,
+  removeOnFail: { age: FiscalLimits.FAILED_JOB_KEEP_SECONDS }
+})
+
+// The attempts a submission job gets, by where its document is: kept in a contingency (released) or not
+export const fiscalSubmitMaxAttempts = (inContingency: boolean): number =>
+  inContingency ? FiscalContingencyLimits.RELEASED_MAX_ATTEMPTS : FiscalLimits.MAX_ATTEMPTS
+
 export const FiscalResourceTypes = {
   ISSUER: 'fiscal_issuer',
   DOCUMENT: 'fiscal_document',
@@ -232,6 +255,9 @@ const REPORT_RETRY_INTERVAL_MS = 15 * 60 * 1000
 // two attempts must stay under the 15 minutes
 const REPORT_RETRY_DELAY_MS = 14 * 60 * 1000
 const REPORT_RETRY_HOURS = 24
+// The longest window a provider may declare to send the documents of a lot (`transmitWithinHours`): the registry refuses a provider that
+// declares more, so the retries of a released document (every 14 minutes) always cover the window
+const RELEASED_RETRY_HOURS = 72
 
 export const FiscalContingencyLimits = {
   // The attempts of one submission that find the authority down before the lifecycle opens a contingency by itself
@@ -243,12 +269,31 @@ export const FiscalContingencyLimits = {
   // A report that fails is asked again every REPORT_RETRY_DELAY_MS for REPORT_RETRY_HOURS (the 24 hours the event may wait after the situation
   // ended); after the last attempt the person is told
   REPORT_MAX_ATTEMPTS: Math.ceil((REPORT_RETRY_HOURS * 60 * 60 * 1000) / REPORT_RETRY_DELAY_MS),
+  RELEASED_RETRY_HOURS,
+  // A document released after the report of its event is asked again every REPORT_RETRY_DELAY_MS through the whole window of the lot, and
+  // only then is it stuck: the rules of the authority do not allow a longer gap between two attempts while the authority cannot be reached
+  RELEASED_MAX_ATTEMPTS: Math.ceil((RELEASED_RETRY_HOURS * 60 * 60 * 1000) / REPORT_RETRY_DELAY_MS),
   // Fraction of the transmission window left at which the person is warned (the provider declares the window)
   WARN_REMAINING_RATIO: 0.25,
   // How often an open contingency asks the authority whether it answers again: the rules ask for an attempt at least every 15 minutes
   // while the authority cannot be reached, so the gap stays under it
   PROBE_INTERVAL_MS: REPORT_RETRY_DELAY_MS
 } as const
+
+// A document the authority refused is corrected and sent again within a day of the moment the refusal was communicated, with the same
+// generation code. It is the rule of the authority that receives the documents, read here as data of core.
+export const FiscalRejectionRetry = {
+  WINDOW_MS: 24 * 60 * 60 * 1000,
+  // From this long before the end of the window the person is told, once for each refusal (the daily check asks; a window already over is told too)
+  WARN_BEFORE_MS: 12 * 60 * 60 * 1000
+} as const
+
+// Where a refused document stands against that window
+export enum FiscalRejectionDeadlineState {
+  OPEN = 'open',
+  CLOSING = 'closing',
+  EXPIRED = 'expired'
+}
 
 // What a provider declares about contingency in its manifest (`FiscalContingencyDeclaration`) is in its own words; these are core's reasons
 // for refusing a person's action on a contingency (`details.reason`)

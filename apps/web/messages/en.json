@@ -119,6 +119,7 @@
         "fiscal": {
           "document_rejected": "Fiscal document refused",
           "document_stuck": "Fiscal document stuck",
+          "retransmit_deadline": "Resend window of a refused fiscal document",
           "entry_mismatch": "Fiscal document disagrees with the books",
           "contingency_opened": "Fiscal contingency started",
           "contingency_report_failed": "Fiscal contingency not reported",
@@ -1279,6 +1280,10 @@
       "document_stuck": {
         "title": "A fiscal document is stuck",
         "body": "A fiscal document ran out of attempts while the provider did not answer. Open the fiscal documents and send it again."
+      },
+      "retransmit_deadline": {
+        "title": "The window to resend a fiscal document is closing",
+        "body": "The authority refused a fiscal document and the 24 hours to correct and send it again are closing or over. Open the document, fix it and send it again: it keeps the same generation code."
       },
       "entry_mismatch": {
         "title": "A fiscal document disagrees with the books",
@@ -8128,7 +8133,8 @@
       },
       "kind": {
         "sale": "Sale document",
-        "credit_note": "Credit note"
+        "credit_note": "Credit note",
+        "debit_note": "Debit note"
       },
       "row": {
         "number": "No. {number}",

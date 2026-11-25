@@ -2,7 +2,9 @@ import {
   FiscalContingencyLimits,
   fiscalJobOptions,
   FiscalLimits,
-  fiscalReportJobOptions
+  fiscalReleasedJobOptions,
+  fiscalReportJobOptions,
+  fiscalSubmitMaxAttempts
 } from './fiscal-constants'
 
 describe('how often the authority is asked again (the rules of the authority)', () => {
@@ -23,5 +25,22 @@ describe('how often the authority is asked again (the rules of the authority)', 
     expect(options.attempts * options.backoff.delay).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000)
     expect(options.attempts).toBe(FiscalContingencyLimits.REPORT_MAX_ATTEMPTS)
     expect(options.removeOnFail.age).toBe(FiscalLimits.FAILED_JOB_KEEP_SECONDS)
+  })
+
+  it('asks again for a released document at a fixed interval under 15 minutes through the whole window of the lot', () => {
+    const options = fiscalReleasedJobOptions()
+    expect(options.backoff.type).toBe('fixed')
+    expect(options.backoff.delay).toBeLessThan(FiscalContingencyLimits.RETRY_INTERVAL_MS)
+    expect(options.attempts * options.backoff.delay).toBeGreaterThanOrEqual(
+      FiscalContingencyLimits.RELEASED_RETRY_HOURS * 60 * 60 * 1000
+    )
+    expect(options.attempts).toBe(FiscalContingencyLimits.RELEASED_MAX_ATTEMPTS)
+    expect(options.removeOnFail.age).toBe(FiscalLimits.FAILED_JOB_KEEP_SECONDS)
+  })
+
+  it('counts the attempts a document gets by where it is: a released one gets the attempts of its window', () => {
+    expect(fiscalSubmitMaxAttempts(false)).toBe(FiscalLimits.MAX_ATTEMPTS)
+    expect(fiscalSubmitMaxAttempts(true)).toBe(FiscalContingencyLimits.RELEASED_MAX_ATTEMPTS)
+    expect(fiscalSubmitMaxAttempts(true)).toBeGreaterThan(fiscalSubmitMaxAttempts(false))
   })
 })

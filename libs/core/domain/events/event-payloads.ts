@@ -398,6 +398,15 @@ export interface FiscalDocumentRejectedPayload {
   reason: string
 }
 
+// The window to correct and send again a refused document is closing or over: ids and whether it is over (D14)
+export interface FiscalRetransmitDeadlinePayload {
+  organizationId: string
+  storeId: string
+  documentId: string
+  orderId: string
+  expired: boolean
+}
+
 // The daily check found sale documents that disagree with their entry (Step 4B.8b-2b): the organization, the first of them and how many,
 // never an amount or the receiver's data
 export interface FiscalEntryMismatchPayload {
@@ -714,6 +723,7 @@ export interface DomainEventPayloads {
   [Events.FINANCE_CHAIN_BROKEN]: FinanceChainBrokenPayload
   [Events.FISCAL_DOCUMENT_REJECTED]: FiscalDocumentRejectedPayload
   [Events.FISCAL_DOCUMENT_STUCK]: FiscalDocumentStuckPayload
+  [Events.FISCAL_RETRANSMIT_DEADLINE]: FiscalRetransmitDeadlinePayload
   [Events.FISCAL_ENTRY_MISMATCH]: FiscalEntryMismatchPayload
   [Events.FISCAL_CONTINGENCY_ALERT]: FiscalContingencyAlertPayload
   [Events.FINANCE_PERIOD_CLOSED]: FinancePeriodPayload

@@ -18,9 +18,9 @@ const CREDENTIALS = {
 describe('the manifest of the provider', () => {
   const provider = svProvider({ signer: NO_SIGNER })
 
-  it('declares the three documents, with what a taxpayer needs of a customer and the credit note marked', () => {
-    expect(provider.manifest.documentTypes.map(type => type.id)).toEqual(['01', '03', '05'])
-    const [invoice, taxCredit, note] = provider.manifest.documentTypes
+  it('declares the four documents, with what a taxpayer needs of a customer and the two notes marked', () => {
+    expect(provider.manifest.documentTypes.map(type => type.id)).toEqual(['01', '03', '05', '06'])
+    const [invoice, taxCredit, note, debit] = provider.manifest.documentTypes
     expect(invoice?.requiredReceiverFields).toEqual([])
     expect(taxCredit?.requiredReceiverFields).toEqual([
       'name',
@@ -31,6 +31,11 @@ describe('the manifest of the provider', () => {
     ])
     expect(note?.creditNote).toBe(true)
     expect(taxCredit?.creditNote).toBeUndefined()
+    // The debit note is a taxpayer's document that names another, and is not a credit note
+    expect(debit?.requiredReceiverFields).toEqual(taxCredit?.requiredReceiverFields)
+    expect(debit?.debitNote).toBe(true)
+    expect(debit?.creditNote).toBeUndefined()
+    expect(note?.debitNote).toBeUndefined()
   })
 
   it('numbers by type, establishment and point of sale, and asks the issuer for the codes it needs', () => {

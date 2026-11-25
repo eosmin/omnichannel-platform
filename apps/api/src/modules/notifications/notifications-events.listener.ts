@@ -65,6 +65,7 @@ import {
   type FiscalContingencyAlertPayload,
   type FiscalDocumentRejectedPayload,
   type FiscalDocumentStuckPayload,
+  type FiscalRetransmitDeadlinePayload,
   type FiscalEntryMismatchPayload,
   type InventoryLowPayload,
   type MessageChangedPayload,
@@ -636,6 +637,16 @@ export class NotificationsEventsListener {
       payload.organizationId,
       payload.documentId,
       NotificationTypes.FISCAL_DOCUMENT_REJECTED
+    )
+  }
+
+  @OnEvent(Events.FISCAL_RETRANSMIT_DEADLINE)
+  @InEventOrganization()
+  async onFiscalRetransmitDeadline(payload: FiscalRetransmitDeadlinePayload): Promise<void> {
+    await this.tellFiscalManagers(
+      payload.organizationId,
+      payload.documentId,
+      NotificationTypes.FISCAL_RETRANSMIT_DEADLINE
     )
   }
 
