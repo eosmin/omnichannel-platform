@@ -526,7 +526,7 @@ export class MediaPipeline {
           data: {
             scanResult: {
               ...scalarMarks(media.scanResult),
-              unavailableSince: new Date().toISOString()
+              [UploadLimits.SCAN_UNAVAILABLE_SINCE_KEY]: new Date().toISOString()
             }
           }
         })
@@ -876,7 +876,7 @@ class ImageNotEncoded extends Error {
 // When the scan of a file first ended with no verdict, as `giveUp` wrote it on the row; null when it never did
 function unavailableSince(scanResult: unknown): Date | null {
   if (typeof scanResult !== 'object' || scanResult === null) return null
-  const value = (scanResult as { unavailableSince?: unknown }).unavailableSince
+  const value = (scanResult as Record<string, unknown>)[UploadLimits.SCAN_UNAVAILABLE_SINCE_KEY]
   if (typeof value !== 'string') return null
   const at = new Date(value)
   return Number.isNaN(at.getTime()) ? null : at
