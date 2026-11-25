@@ -33,6 +33,7 @@ import {
   type ProcessImageJob,
   type ReconcileFinanceJob,
   type ResealCredentialsJob,
+  type WarnFiscalDeadlinesJob,
   type ReportFiscalContingencyJob,
   type SubmitFiscalDocumentJob,
   type ReconcileInventoryJob,
@@ -78,6 +79,7 @@ type HeavyJob =
   | ReconcileInventoryJob
   | ReconcileFinanceJob
   | ResealCredentialsJob
+  | WarnFiscalDeadlinesJob
   | VerifyLedgerChainJob
   | PollShipmentStatusJob
   | ReprocessCarrierEventsJob
@@ -134,6 +136,9 @@ const reconcileJobSchema = exactly<ReconcileInventoryJob>()(
   z.object({ storeId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 const reconcileFinanceJobSchema = exactly<ReconcileFinanceJob>()(
+  z.object({ organizationId: z.uuid(), correlationId: jobCorrelationIdSchema })
+)
+const warnFiscalDeadlinesJobSchema = exactly<WarnFiscalDeadlinesJob>()(
   z.object({ organizationId: z.uuid(), correlationId: jobCorrelationIdSchema })
 )
 const resealCredentialsJobSchema = exactly<ResealCredentialsJob>()(
@@ -301,6 +306,34 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
           failures,
           'the checks of the books, of the fiscal documents and of the key failed'
         )
+      }
+      return
+    }
+    if (job.name === JobNames.WARN_FISCAL_DEADLINES) {
+      const warn = warnFiscalDeadlinesJobSchema.safeParse(job.data)
+      if (!warn.success) {
+        throw new JobRejectedError('the fiscal windows job does not fit its schema')
+      }
+      // The windows do not hide each other: each look runs whatever the other did, and a failure rejects the job so the queue asks again (the
+      // marks are conditional updates, so asking again never tells the person twice)
+      const failures: Error[] = []
+      for (const look of [
+        (organizationId: string, now: Date) =>
+          this.fiscalDocuments.warnRejectionDeadlines(organizationId, now),
+        (organizationId: string, now: Date) =>
+          this.fiscalContingencies.warnWindows(organizationId, now)
+      ]) {
+        try {
+          // An organization deleted after the job was queued has nothing left to look at: the job is done, not retried
+          await this.skipIfGone(job, () => look(warn.data.organizationId, new Date()))
+        } catch (error) {
+          failures.push(error instanceof Error ? error : new Error(String(error)))
+        }
+      }
+      const [only] = failures
+      if (only !== undefined && failures.length === 1) throw only
+      if (failures.length > 1) {
+        throw new AggregateError(failures, 'the look at the fiscal windows failed')
       }
       return
     }
