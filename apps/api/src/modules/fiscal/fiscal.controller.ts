@@ -116,10 +116,11 @@ export class FiscalController {
   private async enqueueAfterCommit(
     organizationId: string,
     documentId: string,
-    submission: number
+    submission: number,
+    released = false
   ): Promise<void> {
     try {
-      await this.queue.enqueue(organizationId, documentId, submission)
+      await this.queue.enqueue(organizationId, documentId, submission, released)
     } catch (error) {
       this.logger.error(
         { err: errorName(error), documentId },
@@ -285,7 +286,7 @@ export class FiscalController {
       actorOf(user, store, req),
       this.manageGuard(organization.id, user.id, [documentId])
     )
-    await this.enqueueAfterCommit(organization.id, documentId, retried.submission)
+    await this.enqueueAfterCommit(organization.id, documentId, retried.submission, retried.released)
     return { data: { queued: true } }
   }
 

@@ -11,6 +11,7 @@ import {
   FiscalLimits,
   FiscalSweepKind,
   fiscalJobOptions,
+  fiscalReleasedJobOptions,
   FiscalSweepLimits
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
@@ -234,7 +235,7 @@ export class FiscalReconciler {
       return 'queued'
     }
     // A document left in the queue: the same job again (a job that still waits has the same id and is not added twice)
-    await this.enqueue(organizationId, item.id, item.submission ?? 1)
+    await this.enqueue(organizationId, item.id, item.submission ?? 1, item.released === true)
     return 'queued'
   }
 
@@ -243,7 +244,8 @@ export class FiscalReconciler {
   private async enqueue(
     organizationId: string,
     documentId: string,
-    submission: number
+    submission: number,
+    released = false
   ): Promise<void> {
     const jobId = submitFiscalDocumentJobId(documentId, submission)
     // A job that failed stays a week and would drop the new one with the same id: the failed one goes
@@ -252,7 +254,7 @@ export class FiscalReconciler {
     await this.queue.add(
       JobNames.SUBMIT_FISCAL_DOCUMENT,
       { organizationId, documentId },
-      { ...fiscalJobOptions(), jobId }
+      { ...(released ? fiscalReleasedJobOptions() : fiscalJobOptions()), jobId }
     )
   }
 

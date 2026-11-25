@@ -139,6 +139,25 @@ export const fiscalReportJobOptions = (): {
   removeOnFail: { age: FiscalLimits.FAILED_JOB_KEEP_SECONDS }
 })
 
+// (`FiscalContingencyLimits` is declared below: these two are functions, so it is read only when they run, never at load)
+// The retries of a document released from a contingency: the same fixed interval as the report, for the whole window in which the lot may
+// be sent (72 hours at most), so that it is still retrying, and not stuck, while the window lasts
+export const fiscalReleasedJobOptions = (): {
+  attempts: number
+  backoff: { type: 'fixed'; delay: number }
+  removeOnComplete: true
+  removeOnFail: { age: number }
+} => ({
+  attempts: FiscalContingencyLimits.RELEASED_MAX_ATTEMPTS,
+  backoff: { type: 'fixed', delay: FiscalContingencyLimits.REPORT_RETRY_DELAY_MS },
+  removeOnComplete: true,
+  removeOnFail: { age: FiscalLimits.FAILED_JOB_KEEP_SECONDS }
+})
+
+// The attempts a submission job gets, by where its document is: kept in a contingency (released) or not
+export const fiscalSubmitMaxAttempts = (inContingency: boolean): number =>
+  inContingency ? FiscalContingencyLimits.RELEASED_MAX_ATTEMPTS : FiscalLimits.MAX_ATTEMPTS
+
 export const FiscalResourceTypes = {
   ISSUER: 'fiscal_issuer',
   DOCUMENT: 'fiscal_document',
@@ -205,6 +224,9 @@ const REPORT_RETRY_INTERVAL_MS = 15 * 60 * 1000
 // two attempts must stay under the 15 minutes
 const REPORT_RETRY_DELAY_MS = 14 * 60 * 1000
 const REPORT_RETRY_HOURS = 24
+// The longest window a provider may declare to send the documents of a lot (`transmitWithinHours`): the registry refuses a provider that
+// declares more, so the retries of a released document (every 14 minutes) always cover the window
+const RELEASED_RETRY_HOURS = 72
 
 export const FiscalContingencyLimits = {
   // The attempts of one submission that find the authority down before the lifecycle opens a contingency by itself
@@ -216,6 +238,10 @@ export const FiscalContingencyLimits = {
   // A report that fails is asked again every REPORT_RETRY_DELAY_MS for REPORT_RETRY_HOURS (the 24 hours the event may wait after the situation
   // ended); after the last attempt the person is told
   REPORT_MAX_ATTEMPTS: Math.ceil((REPORT_RETRY_HOURS * 60 * 60 * 1000) / REPORT_RETRY_DELAY_MS),
+  RELEASED_RETRY_HOURS,
+  // A document released after the report of its event is asked again every REPORT_RETRY_DELAY_MS through the whole window of the lot, and
+  // only then is it stuck: the rules of the authority do not allow a longer gap between two attempts while the authority cannot be reached
+  RELEASED_MAX_ATTEMPTS: Math.ceil((RELEASED_RETRY_HOURS * 60 * 60 * 1000) / REPORT_RETRY_DELAY_MS),
   // Fraction of the transmission window left at which the person is warned (the provider declares the window)
   WARN_REMAINING_RATIO: 0.25
 } as const

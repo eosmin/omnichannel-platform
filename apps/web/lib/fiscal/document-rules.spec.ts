@@ -4,7 +4,6 @@ import {
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEvidenceKind,
-  FiscalLimits,
   FiscalRejectionReasons
 } from '@platform/core/domain'
 
@@ -129,23 +128,16 @@ describe('what a person may do with a fiscal document', () => {
 })
 
 describe('what needs attention', () => {
-  it('flags a refusal, and a queued document that spent every attempt', () => {
-    expect(fiscalAttentionOf({ status: FiscalDocumentStatus.REJECTED, attempts: 1 })).toBe(
+  it('flags a refusal, and a queued document the server says is stuck', () => {
+    expect(fiscalAttentionOf({ status: FiscalDocumentStatus.REJECTED, stuck: false })).toBe(
       FiscalAttention.REJECTED
     )
-    expect(
-      fiscalAttentionOf({
-        status: FiscalDocumentStatus.QUEUED,
-        attempts: FiscalLimits.MAX_ATTEMPTS
-      })
-    ).toBe(FiscalAttention.STUCK)
-    expect(
-      fiscalAttentionOf({
-        status: FiscalDocumentStatus.QUEUED,
-        attempts: FiscalLimits.MAX_ATTEMPTS - 1
-      })
-    ).toBeNull()
-    expect(fiscalAttentionOf({ status: FiscalDocumentStatus.ACCEPTED, attempts: 9 })).toBeNull()
+    expect(fiscalAttentionOf({ status: FiscalDocumentStatus.QUEUED, stuck: true })).toBe(
+      FiscalAttention.STUCK
+    )
+    // One that is still retrying (a released document keeps asking for its whole window) is not stuck, however many attempts it has
+    expect(fiscalAttentionOf({ status: FiscalDocumentStatus.QUEUED, stuck: false })).toBeNull()
+    expect(fiscalAttentionOf({ status: FiscalDocumentStatus.ACCEPTED, stuck: false })).toBeNull()
   })
 
   it('has words for the reasons of core and shows a reason of a provider as it came', () => {

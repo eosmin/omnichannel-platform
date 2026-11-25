@@ -27,6 +27,7 @@ import {
   FiscalIssueOn,
   FiscalLimits,
   FiscalRejectionDeadlineState,
+  fiscalSubmitMaxAttempts,
   FiscalRejectionReasons,
   FiscalRejectionRetry,
   FiscalSweepLimits,
@@ -235,6 +236,7 @@ const SELECT = {
   rejectionReason: true,
   rejectedAt: true,
   attempts: true,
+  contingencyId: true,
   voidReason: true,
   voidedAt: true,
   issuedAt: true,
@@ -358,7 +360,11 @@ export class FiscalDocumentsService {
           organizationId,
           ...reach,
           status: FiscalDocumentStatus.QUEUED,
-          attempts: { gte: FiscalLimits.MAX_ATTEMPTS }
+          // The same rule as `isStuck`: a document kept in a contingency has the attempts of the window of its lot
+          OR: [
+            { contingencyId: null, attempts: { gte: fiscalSubmitMaxAttempts(false) } },
+            { contingencyId: { not: null }, attempts: { gte: fiscalSubmitMaxAttempts(true) } }
+          ]
         }
       })
     ])
@@ -1997,12 +2003,15 @@ export class FiscalDocumentsService {
     id: string,
     actor: FiscalActor,
     guard: FiscalReachGuard
-  ): Promise<{ id: string; submission: number }> {
-    const submission = await this.inTx(organizationId, async tx => {
+  ): Promise<{ id: string; submission: number; released: boolean }> {
+    const { submission, released } = await this.inTx(organizationId, async tx => {
       await guard()
       const doc = await this.lock(tx, organizationId, id)
       const status = doc.status as FiscalDocumentStatus
       if (!retryable(status)) throw this.invalid(status)
+      // A document that waits in the queue and is still kept in a contingency (released) is asked again with the retries of its window; a
+      // refused one is made again as any other and leaves the contingency
+      const released = status === FiscalDocumentStatus.QUEUED && doc.contingencyId !== null
       // The document is made again with the issuer as it is now (its provider, its environment, its identity): a retry is how a person
       // gets past an issuer that changed after the document was made. A document that is only waiting keeps the issuer it was made with.
       const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
@@ -2091,7 +2100,7 @@ export class FiscalDocumentsService {
           }
         })
       }
-      return doc.submission
+      return { submission: doc.submission, released }
     })
     this.audit.log({
       action: AuditAction.FISCAL_DOCUMENT_RETRIED,
@@ -2103,7 +2112,7 @@ export class FiscalDocumentsService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    return { id, submission }
+    return { id, submission, released }
   }
 
   // A refused document that may be at the issuer it was made with (an attempt was sent and not answered) while the issuer was changed
@@ -3162,6 +3171,7 @@ export class FiscalDocumentsService {
     rejectionReason: string | null
     rejectedAt: Date | null
     attempts: number
+    contingencyId: string | null
     voidReason: string | null
     voidedAt: Date | null
     issuedAt: Date | null
@@ -3206,7 +3216,7 @@ export class FiscalDocumentsService {
       rejectionReason: row.rejectionReason,
       rejectionDeadline: this.deadlineView(status, row.rejectedAt),
       attempts: row.attempts,
-      stuck: isStuck(status, row.attempts),
+      stuck: isStuck(status, row.attempts, row.contingencyId !== null),
       allowedActions: allowedActionsOf({
         kind,
         status,

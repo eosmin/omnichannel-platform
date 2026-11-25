@@ -28,6 +28,7 @@ import {
   FiscalContingencyStatus,
   type FiscalEnvironment,
   fiscalJobOptions,
+  fiscalReleasedJobOptions,
   fiscalReportJobOptions,
   FiscalDocumentStatus,
   FiscalLimits,
@@ -427,7 +428,8 @@ export class FiscalContingencyService {
     })
     // The decision is recorded first; a queue that is down does not undo it (the check of stalled documents finds what was not queued)
     try {
-      await this.enqueueSubmissions(organizationId, detached)
+      // Given up: the documents left the contingency, so they go out as any other (the ordinary attempts, the ordinary stuck rule)
+      await this.enqueueSubmissions(organizationId, detached, false)
     } catch (error) {
       this.logger.error(
         { contingencyId: id, err: errorName(error) },
@@ -1035,12 +1037,14 @@ export class FiscalContingencyService {
         orderBy: { sequenceNumber: 'asc' }
       })
     )
-    await this.enqueueSubmissions(organizationId, docs)
+    await this.enqueueSubmissions(organizationId, docs, true)
   }
 
   private async enqueueSubmissions(
     organizationId: string,
-    docs: readonly { id: string; submission: number }[]
+    docs: readonly { id: string; submission: number }[],
+    // Released after the report (kept in the contingency: the retries of the whole window) or detached by giving it up (the ordinary ones)
+    released: boolean
   ): Promise<void> {
     // After the REAL commit: the jobs read documents that this unit (or the request that joined it) has not committed when this line
     // runs. The failure reaches the caller after the commit, as a queue that is down always did
@@ -1062,7 +1066,7 @@ export class FiscalContingencyService {
           jobs.map(({ doc, jobId }) => ({
             name: JobNames.SUBMIT_FISCAL_DOCUMENT,
             data: { organizationId, documentId: doc.id },
-            opts: { ...fiscalJobOptions(), jobId }
+            opts: { ...(released ? fiscalReleasedJobOptions() : fiscalJobOptions()), jobId }
           }))
         )
       }
