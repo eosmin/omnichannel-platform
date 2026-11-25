@@ -2,7 +2,7 @@ import { type Job, UnrecoverableError } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 import { ZodError } from 'zod'
 
-import type { EmailService } from '@platform/core/email'
+import { EmailDeliveryError, type EmailService } from '@platform/core/email'
 import { Locales } from '@platform/core/i18n'
 import type { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import { EmailTemplates, JobNames, type RequestMagicLinkJob } from '@platform/core/queues'
@@ -149,13 +149,13 @@ describe('EmailProcessor, the closing notice of a data request', () => {
 
   it('says nothing while the mail still has attempts left, and marks the request on the last one', async () => {
     const { email, notices, handle } = build()
-    email.send.mockRejectedValue(new Error('provider down'))
+    email.send.mockRejectedValue(new EmailDeliveryError('rate_limit', 429))
 
-    await expect(handle(dsrJob(0))).rejects.toThrow('provider down')
-    await expect(handle(dsrJob(1))).rejects.toThrow('provider down')
+    await expect(handle(dsrJob(0))).rejects.toBeInstanceOf(EmailDeliveryError)
+    await expect(handle(dsrJob(1))).rejects.toBeInstanceOf(EmailDeliveryError)
     expect(notices.failed).not.toHaveBeenCalled()
 
-    await expect(handle(dsrJob(2))).rejects.toThrow('provider down')
+    await expect(handle(dsrJob(2))).rejects.toBeInstanceOf(EmailDeliveryError)
     expect(notices.failed).toHaveBeenCalledTimes(1)
     expect(notices.failed).toHaveBeenCalledWith(ID, ID, 'mail_failed')
     expect(notices.sent).not.toHaveBeenCalled()
@@ -172,10 +172,10 @@ describe('EmailProcessor, the closing notice of a data request', () => {
 
   it('keeps the failure of the mail when the request cannot be marked, and does not log the address', async () => {
     const { email, notices, logger, handle } = build()
-    email.send.mockRejectedValue(new Error('provider down'))
+    email.send.mockRejectedValue(new EmailDeliveryError('rate_limit', 429))
     notices.failed.mockRejectedValue(new Error('db down for a@example.com'))
 
-    await expect(handle(dsrJob(2))).rejects.toThrow('provider down')
+    await expect(handle(dsrJob(2))).rejects.toBeInstanceOf(EmailDeliveryError)
 
     expect(JSON.stringify(logger.error.mock.calls)).not.toMatch(/a@example/)
   })
@@ -187,5 +187,30 @@ describe('EmailProcessor, the closing notice of a data request', () => {
     await expect(handle(dsrJob(0))).resolves.toBeUndefined()
 
     expect(email.send).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('EmailProcessor, a failure that is not the provider', () => {
+  const ADDRESS = 'victim.person@example.com'
+  const database = Object.assign(new Error(`Unique constraint failed on (${ADDRESS})`), {
+    name: 'PrismaClientKnownRequestError'
+  })
+
+  it.each([
+    [
+      'an invitation delivery',
+      JobNames.DELIVER_INVITATION_EMAIL,
+      { storeId: ID, invitationId: ID }
+    ],
+    ['a send of mail', JobNames.SEND_EMAIL, emailJob]
+  ])('says only the name of what failed in %s', async (_label, name, data) => {
+    const { email, invitations, handle } = build()
+    invitations.deliver.mockRejectedValue(database)
+    email.send.mockRejectedValue(database)
+
+    const thrown: unknown = await handle({ name, data }).catch((caught: unknown) => caught)
+
+    expect((thrown as Error).message).toBe('the mail job failed: PrismaClientKnownRequestError')
+    expect(JSON.stringify(thrown, Object.getOwnPropertyNames(thrown))).not.toContain(ADDRESS)
   })
 })

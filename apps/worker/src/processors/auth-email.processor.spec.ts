@@ -173,3 +173,40 @@ describe('AuthEmailProcessor', () => {
     })
   })
 })
+
+describe('AuthEmailProcessor, a failure that is not the provider', () => {
+  it('says only the name of what failed when the mail cannot be sent', async () => {
+    const ADDRESS = 'victim.person@example.com'
+    const { email, handle } = build()
+    email.send.mockRejectedValue(
+      Object.assign(new Error(`template data for (${ADDRESS}) is broken`), { name: 'TypeError' })
+    )
+
+    const thrown: unknown = await handle({
+      name: JobNames.SEND_EMAIL,
+      attemptsMade: 0,
+      data: emailJob
+    }).catch((caught: unknown) => caught)
+
+    expect((thrown as Error).message).toBe('the mail job failed: TypeError')
+    expect(JSON.stringify(thrown, Object.getOwnPropertyNames(thrown))).not.toContain(ADDRESS)
+  })
+
+  it('says only the name of what failed when the validity of the link cannot be read', async () => {
+    const ADDRESS = 'victim.person@example.com'
+    const { magicLinks, handle } = build()
+    magicLinks.remainingValidityMs.mockRejectedValue(
+      Object.assign(new Error(`lookup of (${ADDRESS}) failed`), {
+        name: 'PrismaClientKnownRequestError'
+      })
+    )
+
+    const thrown: unknown = await handle({
+      name: JobNames.SEND_EMAIL,
+      attemptsMade: 1,
+      data: { ...emailJob, data: { url: 'https://x.example/m?t=1' } }
+    }).catch((caught: unknown) => caught)
+
+    expect((thrown as Error).message).toBe('the mail job failed: PrismaClientKnownRequestError')
+  })
+})

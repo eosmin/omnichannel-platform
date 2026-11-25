@@ -24,7 +24,7 @@ import { InvitationEmailDelivery } from '../invitations/invitation-email-deliver
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
 import { JobRejectedError } from './job-rejected.error'
-import { issueMagicLinkSafely } from './mail-job-failure'
+import { issueMagicLinkSafely, onlyTheNameOfAFailure } from './mail-job-failure'
 import { ProcessorSupport } from './processor-support'
 
 // The provider's rate limit is shared with the auth-email queue: the two limits add up to it (EmailProviderBudget)
@@ -47,7 +47,14 @@ export class EmailProcessor extends BaseProcessor<
     this.logger.setContext(EmailProcessor.name)
   }
 
-  protected async handle(
+  protected handle(
+    job: Job<SendEmailJob | RequestMagicLinkJob | DeliverInvitationEmailJob>
+  ): Promise<void> {
+    // Whatever this processor does not control (the database, a template) leaves the job as the name of the failure, never as its text
+    return onlyTheNameOfAFailure(() => this.route(job))
+  }
+
+  private async route(
     job: Job<SendEmailJob | RequestMagicLinkJob | DeliverInvitationEmailJob>
   ): Promise<void> {
     switch (job.name) {
