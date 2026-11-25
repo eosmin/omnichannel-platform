@@ -124,4 +124,58 @@ export class FinancePeriodsService {
     }
     return this.get(organizationId, id)
   }
+
+  // Takes away a period that has not started and that nothing points at (FIN-052): a month opened by mistake, or ahead of time, has
+  // no other way out, because the books never delete. A period with an entry, a balance or a frozen book stays: the database
+  // refuses that delete too (every reference restricts), so a post that lands between the check and the delete is refused as well.
+  async remove(organizationId: string, periodId: string, actor: Actor): Promise<void> {
+    const today = await organizationDay(this.prisma.client, organizationId, new Date())
+    const period = await this.prisma.transaction(async tx => {
+      const row = await tx.fiscalPeriod.findFirst({
+        where: { id: periodId, organizationId },
+        select: { id: true, year: true, month: true, startsOn: true }
+      })
+      if (row === null) throw resourceNotFound('fiscal period')
+      if (isoDay(row.startsOn) <= today) throw financeRefusal(ErrorCodes.FINANCE_PERIOD_NOT_FUTURE)
+      const where = { organizationId, periodId }
+      const [entries, balances, snapshots] = await Promise.all([
+        tx.journalEntry.count({ where }),
+        tx.accountPeriodBalance.count({ where }),
+        tx.financeBookSnapshot.count({ where })
+      ])
+      if (entries + balances + snapshots > 0) {
+        throw financeRefusal(ErrorCodes.FINANCE_PERIOD_HAS_ACTIVITY)
+      }
+      try {
+        await tx.fiscalPeriod.delete({
+          where: { organizationId_id: { organizationId, id: row.id } }
+        })
+      } catch (error) {
+        if (isForeignKeyViolation(error))
+          throw financeRefusal(ErrorCodes.FINANCE_PERIOD_HAS_ACTIVITY)
+        throw error
+      }
+      return row
+    })
+    this.audit.log({
+      action: AuditAction.FINANCE_PERIOD_DELETED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: FinanceResourceTypes.PERIOD,
+      resourceId: period.id,
+      metadata: { year: period.year, month: period.month },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+  }
+}
+
+const FOREIGN_KEY_CONSTRAINT_FAILED = 'P2003'
+function isForeignKeyViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === FOREIGN_KEY_CONSTRAINT_FAILED
+  )
 }

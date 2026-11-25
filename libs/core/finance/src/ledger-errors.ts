@@ -21,6 +21,8 @@ type Refusal =
   | typeof ErrorCodes.FINANCE_BALANCE_MISMATCHES
   | typeof ErrorCodes.FINANCE_PERIOD_NOT_CLOSED
   | typeof ErrorCodes.FINANCE_PERIOD_ALREADY_CLOSED
+  | typeof ErrorCodes.FINANCE_PERIOD_NOT_FUTURE
+  | typeof ErrorCodes.FINANCE_PERIOD_HAS_ACTIVITY
   | typeof ErrorCodes.FINANCE_REOPEN_NOT_LATEST
 
 const MESSAGES: Record<Refusal, string> = {
@@ -44,6 +46,9 @@ const MESSAGES: Record<Refusal, string> = {
   [ErrorCodes.FINANCE_BALANCE_MISMATCHES]: 'the balances of the period do not match the journal',
   [ErrorCodes.FINANCE_PERIOD_NOT_CLOSED]: 'the period is not closed',
   [ErrorCodes.FINANCE_PERIOD_ALREADY_CLOSED]: 'the period is closed already',
+  [ErrorCodes.FINANCE_PERIOD_NOT_FUTURE]: 'only a period that has not started can be deleted',
+  [ErrorCodes.FINANCE_PERIOD_HAS_ACTIVITY]:
+    'the period has entries, balances or books and cannot be deleted',
   [ErrorCodes.FINANCE_REOPEN_NOT_LATEST]: 'only the latest closed period can be reopened'
 }
 
