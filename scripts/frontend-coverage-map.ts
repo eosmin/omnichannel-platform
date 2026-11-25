@@ -188,6 +188,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'fiscal.providers': { step: '4B.9' },
   'fiscal.issuer': { step: '4B.9' },
   'fiscal.series': { step: '4B.9' },
+  'fiscal.annex': { step: '4B.9' },
   'fiscal.reconciliation': { step: '4B.9' },
   'fiscal.contingency.current': { step: '4B.9' },
   'fiscal.contingency.end': { step: '4B.9' },

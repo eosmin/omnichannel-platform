@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import {
   confirmFiscalIssuerChangeSchema,
+  FiscalAnnexLimits,
   FiscalEvidenceKind,
   fiscalIdSchema,
   fiscalReceiverPatchSchema,
@@ -45,3 +46,12 @@ export type ReconciliationQuery = z.output<typeof reconciliationQuerySchema>
 
 export const confirmIssuerChangeSchema = confirmFiscalIssuerChangeSchema
 export type ConfirmIssuerChangeBody = ConfirmFiscalIssuerChangeBody
+
+// One annex of the periodic return of a month: the id is the provider's own (checked by the runtime against the annexes of the issuer's
+// provider, a 404 for one it does not make); the month is a calendar month
+export const annexIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
+export const annexQuerySchema = z.strictObject({
+  year: queryIntSchema(FiscalAnnexLimits.FIRST_YEAR, FiscalAnnexLimits.LAST_YEAR),
+  month: queryIntSchema(1, 12)
+})
+export type AnnexQuery = z.output<typeof annexQuerySchema>
