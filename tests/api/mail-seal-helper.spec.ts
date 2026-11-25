@@ -34,6 +34,14 @@ describe('mail-seal test helper', () => {
     }
   )
 
+  it('opens the notice of a request whose ids are not UUIDs, as the suites make them', () => {
+    const notice = { requestId: 'req-expired-a-1', storeId: 'store-a-1' }
+    expect(mailOf(sealMailJob(testMailCipher(), { ...clear, dsrNotice: notice }))).toEqual({
+      ...clear,
+      dsrNotice: notice
+    })
+  })
+
   it('covers every data request template of EmailTemplates', () => {
     const dsr = Object.values<string>(EmailTemplates).filter(name => name.startsWith('dsr-'))
     expect(dsr.length).toBeGreaterThan(0)

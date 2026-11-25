@@ -42,7 +42,7 @@ export const sealedMailJobSchema = z
 
 export type SealedMailJobData = z.output<typeof sealedMailJobSchema>
 
-function aadOf(template: string, requestId: string | undefined): string {
+export function sealedMailAad(template: string, requestId: string | undefined): string {
   return `${SealedMailJob.AAD_PREFIX}:${template}:${requestId ?? ''}`
 }
 
@@ -54,7 +54,7 @@ export function sealMailJob(
   const { dsrNotice, correlationId, ...content } = mail
   const sealed = cipher.sealText(
     JSON.stringify(content),
-    aadOf(mail.template, dsrNotice?.requestId)
+    sealedMailAad(mail.template, dsrNotice?.requestId)
   )
   return {
     template: mail.template,
@@ -73,7 +73,7 @@ export function openMailJob(
   try {
     text = cipher.openTextRotating(
       Buffer.from(job.sealed, 'base64'),
-      aadOf(job.template, job.dsrNotice?.requestId)
+      sealedMailAad(job.template, job.dsrNotice?.requestId)
     ).text
   } catch {
     throw new SealedMailError(SealedMailFailure.UNREADABLE)

@@ -1,5 +1,5 @@
 import { CredentialCipher, parseEncryptionKey } from '@platform/core/crypto'
-import { openMailJob, sealedMailJobSchema } from '@platform/core/email'
+import { sealedMailAad } from '@platform/core/email'
 import { EmailTemplates, type SendEmailJob } from '@platform/core/queues'
 
 // The cipher the app under test seals the mails of a data request with (the key of the environment of the suite, as `CryptoPlatformModule` builds it)
@@ -32,10 +32,21 @@ afterEach(() => {
 
 // What a mail queue stand-in captured, as the mail it will send: a sealed job is opened. A job of a data request that arrives in the clear
 // (a producer that stopped sealing) is recorded (the suite fails after the test) and THROWS; the jobs of the other templates are returned as
-// they are. A job that looks sealed and does not open throws too
+// they are. A job that looks sealed and does not open throws too. The suites use ids that are not UUIDs (`req-...`), which the worker's
+// `sendEmailJobSchema` would refuse, so this opens the text with the real key and AAD and does not run that schema
 export function mailOf(data: unknown): SendEmailJob {
-  const sealed = sealedMailJobSchema.safeParse(data)
-  if (sealed.success) return openMailJob(testMailCipher(), sealed.data)
+  if (isSealedMail(data)) {
+    const job = data as SealedShape
+    const text = testMailCipher().openTextRotating(
+      Buffer.from(job.sealed, 'base64'),
+      sealedMailAad(job.template, job.dsrNotice?.requestId)
+    ).text
+    return {
+      ...(JSON.parse(text) as SendEmailJob),
+      ...(job.dsrNotice === undefined ? {} : { dsrNotice: job.dsrNotice }),
+      ...(job.correlationId === undefined ? {} : { correlationId: job.correlationId })
+    }
+  }
   const template =
     typeof data === 'object' && data !== null
       ? (data as { template?: unknown }).template
@@ -47,6 +58,16 @@ export function mailOf(data: unknown): SendEmailJob {
   return data as SendEmailJob
 }
 
+interface SealedShape {
+  template: string
+  sealed: string
+  dsrNotice?: { requestId: string; storeId: string }
+  correlationId?: string
+}
+
+// The shape of what `sealMailJob` queues (ids are not checked as UUIDs here, see `mailOf`)
 export function isSealedMail(data: unknown): boolean {
-  return sealedMailJobSchema.safeParse(data).success
+  if (typeof data !== 'object' || data === null) return false
+  const job = data as { template?: unknown; sealed?: unknown }
+  return typeof job.template === 'string' && typeof job.sealed === 'string' && job.sealed.length > 0
 }
