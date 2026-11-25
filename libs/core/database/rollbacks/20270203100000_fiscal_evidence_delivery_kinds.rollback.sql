@@ -1,4 +1,4 @@
--- Rolls back 20270201100000_fiscal_evidence_delivery_kinds: the check goes back to the three first kinds. The evidence is never deleted (a trigger
+-- Rolls back 20270203100000_fiscal_evidence_delivery_kinds: the check goes back to the three first kinds. The evidence is never deleted (a trigger
 -- says it), so this FAILS, on purpose and with nothing changed, while a file of the new kinds exists: those files are what a receiver was
 -- given and must be kept. Safe to run twice.
 BEGIN;
