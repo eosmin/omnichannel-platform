@@ -1,4 +1,4 @@
--- Rolls back 20270205100000_fiscal_contingency_probe: the three columns go. `restored_at` was only the first instant the authority was seen
+-- Rolls back 20270205200000_fiscal_contingency_probe: the three columns go. `restored_at` was only the first instant the authority was seen
 -- answering (the end the person or the probe gave is `ended_at`, which stays), so nothing legal is lost. Run it before the code that reads
 -- them is brought back. Safe to run twice.
 BEGIN;
