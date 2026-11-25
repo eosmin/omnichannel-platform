@@ -30,6 +30,9 @@ import { openSealed } from './sealed-open'
 
 export type { FiscalAnnexFile } from '@platform/fiscal/sdk'
 
+// The organizations making an annex in this process: one at a time each
+const making = new Set<string>()
+
 const DAY_MS = 24 * 60 * 60 * 1000
 
 // The annexes of the periodic return of the country of the issuer's provider (D4a): the file of a month made from the documents the
@@ -59,6 +62,24 @@ export class FiscalAnnexService {
 
   // The file of one annex of a month, or a 404 when the issuer's provider has no such annex (or the organization has no issuer)
   async build(
+    organizationId: string,
+    annexId: string,
+    period: FiscalAnnexPeriod
+  ): Promise<FiscalAnnexFile> {
+    if (making.has(organizationId)) {
+      throw resourceConflict('an annex of the organization is being made', {
+        reason: FiscalConflictReasons.ANNEX_IN_PROGRESS
+      })
+    }
+    making.add(organizationId)
+    try {
+      return await this.buildOnce(organizationId, annexId, period)
+    } finally {
+      making.delete(organizationId)
+    }
+  }
+
+  private async buildOnce(
     organizationId: string,
     annexId: string,
     period: FiscalAnnexPeriod
@@ -138,6 +159,14 @@ export class FiscalAnnexService {
           }
         })
       )
+      // Before the pages are opened: the memory the file takes never goes past the cap
+      if (documents.length + page.length > FiscalAnnexLimits.MAX_DOCUMENTS) {
+        throw new PlatformException(
+          ErrorCodes.EXPORT_TOO_LARGE,
+          'the annex would be made from more documents than one file: narrow the month',
+          HttpStatusCodes.BAD_REQUEST
+        )
+      }
       for (const row of page) {
         // A document accepted always has its sealed copy: one that cannot be opened refuses the file (a declaration with a hole is wrong)
         const payload = this.opened(row.id, row.builtPayloadEncrypted)
@@ -149,13 +178,6 @@ export class FiscalAnnexService {
           issuedAt: row.issuedAt ?? row.createdAt,
           voidedAt: row.voidedAt
         })
-      }
-      if (documents.length > FiscalAnnexLimits.MAX_DOCUMENTS) {
-        throw new PlatformException(
-          ErrorCodes.EXPORT_TOO_LARGE,
-          'the annex would be made from more documents than one file: narrow the month',
-          HttpStatusCodes.BAD_REQUEST
-        )
       }
       const last = page.at(-1)
       if (page.length < FiscalAnnexLimits.PAGE_SIZE || last === undefined) return documents

@@ -51,8 +51,9 @@ export enum FiscalOperationCondition {
 
 // The annexes of the periodic return of a country (Step 4B.8b-4 / D4a)
 export const FiscalAnnexLimits = {
-  // The documents one file is made from: more is refused (never cut, a cut declaration looks whole), the dates are narrowed or the month split
-  MAX_DOCUMENTS: 20_000,
+  // The documents one file is made from: more is refused (never cut, a cut declaration looks whole), checked BEFORE a page is opened, so
+  // the memory never goes past it
+  MAX_DOCUMENTS: 10_000,
   // The documents read in one unit
   PAGE_SIZE: 200,
   // The days around the month the documents are read for: the month is the provider's (its country's civil time), so core reads wider and the
@@ -339,6 +340,8 @@ export const FiscalRejectionReasons = {
 
 // Why a person's action on a document is refused with a conflict (`details.reason`), for the interface to tell them apart
 export const FiscalConflictReasons = {
+  // An annex of the organization is being made: one at a time (the file is made in memory and its construction is not short)
+  ANNEX_IN_PROGRESS: 'annex_in_progress',
   // A month whose annex cannot be made without guessing (a document lacks a seal or a figure the file needs): the file is refused, the
   // provider's code of the cause goes in the metadata
   ANNEX_REFUSED: 'annex_refused',

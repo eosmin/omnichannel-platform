@@ -491,6 +491,11 @@ export const SvAnnex = {
   FILE_EXTENSION: 'csv',
   // The provider's own file name: the annex and the month
   FILE_PREFIX: 'f07',
+  // Column A of the voided annex: the control number with its dashes (p.60-62; the manual contradicts itself, see `sv-annexes.ts`)
+  VOIDED_CONTROL_NUMBER_WITH_DASHES: true,
+  // A voided document is written in the annex of consumers of the month of its invalidation when it was issued at most this many periods
+  // before (article 111 of the Tax Code, manual p.11)
+  VOID_MAX_PERIODS_BACK: 3,
   // The seal of reception has 40 characters (p.61)
   SEAL_LENGTH: 40,
   GENERATION_CODE_LENGTH: 36

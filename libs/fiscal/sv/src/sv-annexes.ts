@@ -62,12 +62,14 @@ function dateCell(date: string): string {
   return `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`
 }
 
-// A text of the file: the separator, the quote and the line breaks never travel inside a cell, and the spacing
-// is the only thing changed: the name goes to the authority as the register has it, because it is cross-checked against the tax number (a
-// legal name that starts with a sign would stop matching if it lost it). The file is for the authority's loader, not for a spreadsheet.
+// A text of the file: the separator, the quote, the control characters and the line breaks never travel inside a cell, and a leading
+// sign or space is dropped (security): the name of a customer is data of the customer, and the accountant opens the file in a
+// spreadsheet, where a name that starts with = + - or @ is a formula. It is the choice of data, not an apostrophe: the loader of the
+// authority does not read one. A legal name that starts with a sign loses it ([ACCOUNTANT] in the plan).
 const CELL_BREAKERS = /[;"\p{Cc}]+/gu
+const FORMULA_START = /^[=+\-@\s]+/
 function textCell(value: string): string {
-  return value.replace(CELL_BREAKERS, ' ').replace(/\s+/g, ' ').trim()
+  return value.replace(CELL_BREAKERS, ' ').replace(/\s+/g, ' ').replace(FORMULA_START, '').trim()
 }
 
 // The files: rows of cells joined as the manual asks, each row ended; an empty month is an empty file
@@ -181,6 +183,12 @@ function monthOfIssue(document: FiscalAnnexDocument): string {
     : salvadorMoment(document.issuedAt.toISOString()).date.slice(0, 7)
 }
 
+// Whole months from one yyyy-MM to another (the second is the later)
+function monthsBetween(from: string, to: string): number {
+  const index = (key: string): number => Number(key.slice(0, 4)) * 12 + Number(key.slice(5, 7))
+  return index(to) - index(from)
+}
+
 const rentApplies = (period: FiscalAnnexPeriod): boolean =>
   periodKey(period) >= SvAnnex.RENT_COLUMNS_FROM
 
@@ -219,7 +227,10 @@ function salesTaxpayers(
     const taxed = centsOf(parsed.summary['totalGravada'])
     const tax = taxOf(parsed.summary)
     // Columns N and O (sales for third parties not domiciled) are not made by this platform: 0.00
-    const total = exempt + notSubject + taxed + tax
+    const thirdParties = 0
+    // P is J + K + L + N: the tax (M) and the tax of third parties (O) are NOT part of it (the summary screen of the load, manual p.9, adds
+    // exempt, not subject, local taxed and third parties and shows the tax apart)
+    const total = exempt + notSubject + taxed + thirdParties
     const identity = receiverIdentity(parsed.receiver)
     const rent = rentApplies(period)
     return [
@@ -236,9 +247,9 @@ function salesTaxpayers(
       annexMoney(notSubject), // K ventas no sujetas
       annexMoney(taxed), // L ventas gravadas locales
       annexMoney(tax), // M débito fiscal
-      annexMoney(0), // N ventas por cuenta de terceros no domiciliados
+      annexMoney(thirdParties), // N ventas por cuenta de terceros no domiciliados
       annexMoney(0), // O débito fiscal por cuenta de terceros
-      annexMoney(total), // P total ventas: J to O
+      annexMoney(total), // P total ventas: J + K + L + N, never M or O
       identity.dui, // Q DUI del cliente (persona natural)
       rent ? operationOf(taxed, exempt + notSubject) : SvAnnex.RENT_NOT_APPLICABLE, // R tipo de operación (renta)
       rent ? SvAnnex.INCOME_COMMERCIAL : SvAnnex.RENT_NOT_APPLICABLE, // S tipo de ingreso (renta)
@@ -283,8 +294,8 @@ function salesConsumers(
       last: string
     }
   >()
-  for (const parsed of issuedAndValid(documents, [SvDocumentTypes.INVOICE], period)) {
-    const key = `${parsed.date}|${parsed.type}`
+  const add = (parsed: Parsed, sign: 1 | -1): void => {
+    const key = `${parsed.date}|${parsed.type}|${sign}`
     const code = parsed.generationCode.replace(/-/g, '')
     const day = days.get(key) ?? {
       date: parsed.date,
@@ -295,43 +306,60 @@ function salesConsumers(
       first: code,
       last: code
     }
-    day.exempt += centsOf(parsed.summary['totalExenta'])
-    day.notSubject += centsOf(parsed.summary['totalNoSuj'])
-    day.taxed += centsOf(parsed.summary['totalGravada'])
+    day.exempt += sign * centsOf(parsed.summary['totalExenta'])
+    day.notSubject += sign * centsOf(parsed.summary['totalNoSuj'])
+    day.taxed += sign * centsOf(parsed.summary['totalGravada'])
     // The documents come in order of generation: the last one seen is the last of the day
     day.last = code
     days.set(key, day)
   }
+  for (const parsed of issuedAndValid(documents, [SvDocumentTypes.INVOICE], period)) add(parsed, 1)
+  // A document voided in a LATER month, within three periods of its issue, is written again with NEGATIVE figures and the date of the
+  // original, in the annex of the month of its invalidation (manual p.11 column A: the date may be of three previous periods for voided
+  // documents; p.14: negative values only for voided documents, article 111 of the Tax Code). Out of the three periods nothing is written:
+  // the authority does not take it (a debt of the plan).
+  const key = periodKey(period)
+  for (const parsed of documents
+    .filter(document => document.documentType === SvDocumentTypes.INVOICE)
+    .filter(document => voidMonthOf(document) === key && monthOfIssue(document) < key)
+    .map(parse)
+    .filter(parsed => monthsBetween(parsed.date.slice(0, 7), key) <= SvAnnex.VOID_MAX_PERIODS_BACK)
+    .sort(byGeneration)) {
+    add(parsed, -1)
+  }
   const rent = rentApplies(period)
-  const rows = [...days.values()].map(day => {
-    // L (exempt sales not subject to proportionality) and O to S (exports, free zones, third parties) are not made by this platform: 0.00
-    const total = day.exempt + day.notSubject + day.taxed
-    return [
-      dateCell(day.date), // A fecha de emisión
-      SvAnnex.DOCUMENT_CLASS_DTE, // B clase de documento: 4 DTE
-      day.type, // C tipo de documento: 01
-      SvAnnex.NOT_APPLICABLE, // D número de resolución
-      SvAnnex.NOT_APPLICABLE, // E serie
-      SvAnnex.NOT_APPLICABLE, // F control interno del
-      SvAnnex.NOT_APPLICABLE, // G control interno al
-      day.first, // H número de documento del: generation code of the first DTE of the day
-      day.last, // I número de documento al: generation code of the last DTE of the day
-      '', // J máquina registradora: blank in a DTE (p.13)
-      annexMoney(day.exempt), // K ventas exentas
-      annexMoney(0), // L ventas internas exentas no sujetas a proporcionalidad
-      annexMoney(day.notSubject), // M ventas no sujetas
-      annexMoney(day.taxed), // N ventas gravadas locales, tax included
-      annexMoney(0), // O exportaciones dentro del área centroamericana
-      annexMoney(0), // P exportaciones fuera del área centroamericana
-      annexMoney(0), // Q exportaciones de servicios
-      annexMoney(0), // R ventas a zonas francas y DPA (tasa cero)
-      annexMoney(0), // S ventas a cuenta de terceros no domiciliados
-      annexMoney(total), // T total ventas: K to S
-      rent ? operationOf(day.taxed, day.exempt + day.notSubject) : SvAnnex.RENT_NOT_APPLICABLE, // U tipo de operación (renta)
-      rent ? SvAnnex.INCOME_COMMERCIAL : SvAnnex.RENT_NOT_APPLICABLE, // V tipo de ingreso (renta)
-      SvAnnex.NUMBER_CONSUMERS // W número de anexo
-    ]
-  })
+  // In the order of the date of each row: the voided of the earlier months come first
+  const rows = [...days.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(day => {
+      // L (exempt sales not subject to proportionality) and O to S (exports, free zones, third parties) are not made by this platform: 0.00
+      const total = day.exempt + day.notSubject + day.taxed
+      return [
+        dateCell(day.date), // A fecha de emisión
+        SvAnnex.DOCUMENT_CLASS_DTE, // B clase de documento: 4 DTE
+        day.type, // C tipo de documento: 01
+        SvAnnex.NOT_APPLICABLE, // D número de resolución
+        SvAnnex.NOT_APPLICABLE, // E serie
+        SvAnnex.NOT_APPLICABLE, // F control interno del
+        SvAnnex.NOT_APPLICABLE, // G control interno al
+        day.first, // H número de documento del: generation code of the first DTE of the day
+        day.last, // I número de documento al: generation code of the last DTE of the day
+        '', // J máquina registradora: blank in a DTE (p.13)
+        annexMoney(day.exempt), // K ventas exentas
+        annexMoney(0), // L ventas internas exentas no sujetas a proporcionalidad
+        annexMoney(day.notSubject), // M ventas no sujetas
+        annexMoney(day.taxed), // N ventas gravadas locales, tax included
+        annexMoney(0), // O exportaciones dentro del área centroamericana
+        annexMoney(0), // P exportaciones fuera del área centroamericana
+        annexMoney(0), // Q exportaciones de servicios
+        annexMoney(0), // R ventas a zonas francas y DPA (tasa cero)
+        annexMoney(0), // S ventas a cuenta de terceros no domiciliados
+        annexMoney(total), // T total ventas: K to S (the manual gives no formula; by analogy with the annex 1 and column N, with the tax inside)
+        rent ? operationOf(day.taxed, day.exempt + day.notSubject) : SvAnnex.RENT_NOT_APPLICABLE, // U tipo de operación (renta)
+        rent ? SvAnnex.INCOME_COMMERCIAL : SvAnnex.RENT_NOT_APPLICABLE, // V tipo de ingreso (renta)
+        SvAnnex.NUMBER_CONSUMERS // W número de anexo
+      ]
+    })
   return fileOf(SvAnnexIds.SALES_CONSUMERS, period, rows)
 }
 
@@ -353,7 +381,12 @@ function voided(
     .map(parsed => {
       if (parsed.generationCode.length !== SvAnnex.GENERATION_CODE_LENGTH) return unreadable()
       return [
-        parsed.control.replace(/-/g, ''), // A número de resolución: DTE, the control number with no dashes
+        // A número de resolución: DTE, the control number (from October 2022). The manual contradicts itself on the dashes ("incluyendo
+        // guiones" and "longitud máxima de 100 caracteres sin guiones"; the other annexes say none): the literal reading is WITH them, one
+        // constant to change once a load of the file in a real return, not filed, confirms it
+        SvAnnex.VOIDED_CONTROL_NUMBER_WITH_DASHES
+          ? parsed.control
+          : parsed.control.replace(/-/g, ''),
         SvAnnex.DOCUMENT_CLASS_DTE, // B clase de documento: 4 DTE
         SvAnnex.ZERO, // C desde preimpreso: 0 in a DTE
         SvAnnex.ZERO, // D hasta preimpreso: 0 in a DTE

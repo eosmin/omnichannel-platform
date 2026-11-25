@@ -200,7 +200,7 @@ describe('annex of sales to taxpayers (annex 1, columns A to T)', () => {
       '3.25', // M tax
       '0.00', // N
       '0.00', // O
-      '28.25', // P J to O
+      '25.00', // P J + K + L + N: the tax (3.25 of M) is not in it
       '', // Q
       '1', // R
       '3', // S
@@ -243,14 +243,32 @@ describe('annex of sales to taxpayers (annex 1, columns A to T)', () => {
     expect(row?.[16]).toBe('012345678')
   })
 
-  it('keeps a cell free of the separator, the quote and the line breaks, and keeps the name as the register has it', () => {
+  it('keeps a cell free of the separator, the quote and the line breaks', () => {
     const odd = made(
-      { receiver: { ...BUSINESS, name: '=HYPERLINK("x";"y")\r\nSA' } },
+      { receiver: { ...BUSINESS, name: 'Ana; "la" \r\nSA' } },
       { uuid: U2, issuedAt: '2026-11-17T12:00:00.000Z' }
     )
     const cell = rowsOf(build(SvAnnexIds.SALES_TAXPAYERS, NOV, [odd]).content)[0]?.[8]
-    expect(cell).toBe('=HYPERLINK( x y ) SA')
+    expect(cell).toBe('Ana la SA')
   })
+
+  it.each([
+    ['=1+1', '1+1'],
+    ['@x', 'x'],
+    ['-2', '2'],
+    ['+cmd', 'cmd'],
+    ['  =HYPERLINK("x";"y")', 'HYPERLINK( x y )'],
+    ['+=-@ Servicios S.A.', 'Servicios S.A.']
+  ])(
+    'drops the leading sign of the name %p so a spreadsheet never reads a formula',
+    (name, cell) => {
+      const doc = made(
+        { receiver: { ...BUSINESS, name } },
+        { uuid: U2, issuedAt: '2026-11-17T12:00:00.000Z' }
+      )
+      expect(rowsOf(build(SvAnnexIds.SALES_TAXPAYERS, NOV, [doc]).content)[0]?.[8]).toBe(cell)
+    }
+  )
 })
 
 describe('annex of voided documents (columns A to J)', () => {
@@ -263,20 +281,97 @@ describe('annex of voided documents (columns A to J)', () => {
     // 2026-12-01T05:59Z is still the 30th of November in El Salvador
     const rows = rowsOf(build(SvAnnexIds.VOIDED, NOV, [doc]).content)
     expect(rows).toEqual([
-      [
-        id.numeroControl.replace(/-/g, ''),
-        '4',
-        '0',
-        '0',
-        '01',
-        'D',
-        SEAL,
-        '0',
-        '0',
-        U1.toUpperCase()
-      ]
+      [id.numeroControl, '4', '0', '0', '01', 'D', SEAL, '0', '0', U1.toUpperCase()]
     ])
     expect(rowsOf(build(SvAnnexIds.VOIDED, { year: 2026, month: 12 }, [doc]).content)).toEqual([])
+  })
+})
+
+describe('annex 2: not-subject sales and the documents voided in a later month', () => {
+  const notSubject = {
+    lines: [
+      line({
+        taxTreatment: 'not_subject' as never,
+        taxCents: 0,
+        totalCents: 1000,
+        taxRateBps: 0,
+        unitPriceCents: 500,
+        quantity: 2
+      })
+    ],
+    shippingCents: 0,
+    shippingTaxCents: 0,
+    totalCents: 1000,
+    taxCents: 0
+  }
+  const DEC = { year: 2026, month: 12 }
+  const NEGATIVE_START = 'N/A;N/A;N/A;N/A'
+
+  it('adds the not-subject sales of a day (M) to the total T, with the taxed (N) and the exempt (K)', () => {
+    const docs = [
+      made(notSubject, { uuid: U1, issuedAt: '2026-11-17T12:00:00.000Z' }),
+      made({}, { uuid: U2, issuedAt: '2026-11-17T13:00:00.000Z' })
+    ]
+    const row = rowsOf(build(SvAnnexIds.SALES_CONSUMERS, NOV, docs).content)[0]
+    expect(row?.[12]).toBe('10.00') // M
+    expect(row?.[13]).toBe('28.25') // N
+    expect(row?.[19]).toBe('38.25') // T = K + M + N
+    expect(row?.[20]).toBe('4') // mixed
+  })
+
+  it('writes a document voided in a later month, within three periods, as a NEGATIVE row with the date of the original', () => {
+    const doc = made(
+      {},
+      { uuid: U1, issuedAt: '2026-11-17T12:00:00.000Z', voidedAt: '2026-12-02T12:00:00.000Z' }
+    )
+    const december = rowsOf(build(SvAnnexIds.SALES_CONSUMERS, DEC, [doc]).content)
+    expect(december).toHaveLength(1)
+    expect(december[0]?.slice(0, 3)).toEqual(['17/11/2026', '4', '01'])
+    expect(december[0]?.slice(3, 7).join(';')).toBe(NEGATIVE_START)
+    expect(december[0]?.slice(10, 20)).toEqual([
+      '0.00',
+      '0.00',
+      '0.00',
+      '-28.25',
+      '0.00',
+      '0.00',
+      '0.00',
+      '0.00',
+      '0.00',
+      '-28.25'
+    ])
+    // And in its own month it is still the sale it was
+    expect(rowsOf(build(SvAnnexIds.SALES_CONSUMERS, NOV, [doc]).content)[0]?.[13]).toBe('28.25')
+  })
+
+  it('writes nothing for one voided in its own month, or more than three periods after its issue', () => {
+    const sameMonth = made(
+      {},
+      { uuid: U1, issuedAt: '2026-11-17T12:00:00.000Z', voidedAt: '2026-11-20T12:00:00.000Z' }
+    )
+    // Issued in August, voided in December: four periods
+    const tooLate = made(
+      {},
+      { uuid: U2, issuedAt: '2026-08-17T12:00:00.000Z', voidedAt: '2026-12-02T12:00:00.000Z' }
+    )
+    // Issued in September, voided in December: three periods
+    const justInTime = made(
+      {},
+      { uuid: U3, issuedAt: '2026-09-17T12:00:00.000Z', voidedAt: '2026-12-02T12:00:00.000Z' }
+    )
+    const rows = rowsOf(
+      build(SvAnnexIds.SALES_CONSUMERS, DEC, [sameMonth, tooLate, justInTime]).content
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.[0]).toBe('17/09/2026')
+  })
+
+  it('leaves a tax credit document voided in another month out of annex 1 of both months, as the manual says', () => {
+    const ccf = made(
+      { receiver: BUSINESS },
+      { uuid: U1, issuedAt: '2026-11-17T12:00:00.000Z', voidedAt: '2026-12-02T12:00:00.000Z' }
+    )
+    expect(rowsOf(build(SvAnnexIds.SALES_TAXPAYERS, DEC, [ccf]).content)).toEqual([])
   })
 })
 
