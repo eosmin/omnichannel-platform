@@ -1,5 +1,9 @@
-import { encrypt, parseEncryptionKey } from '@platform/core/crypto'
+import { randomBytes } from 'node:crypto'
 
+import { encrypt, parseEncryptionKey } from '@platform/core/crypto'
+import { DSR_REQUEST_KEY_MAX_LENGTH, DSR_REQUEST_KEY_MIN_LENGTH } from '@platform/core/domain'
+
+import { ComplianceConfig } from './compliance-constants'
 import {
   dsrEmailHash,
   dsrIntakeSchema,
@@ -83,6 +87,20 @@ describe('dsrIntakeSchema', () => {
     expect(dsrIntakeSchema.safeParse({ ...intake, email: 'not-an-address' }).success).toBe(false)
     expect(dsrIntakeSchema.safeParse({ ...intake, type: 'sell' }).success).toBe(false)
     expect(dsrIntakeSchema.safeParse({ ...intake, locale: 'fr' }).success).toBe(false)
+  })
+
+  // The form (`DSR_REQUEST_KEY_*`, app-paths) and this schema read the same two numbers: a key the form lets through is one the api takes
+  it('takes a key of exactly the lengths the public form sends, and no other', () => {
+    const keyOf = (length: number) => ({ ...intake, storeKey: 'k'.repeat(length) })
+    expect(dsrIntakeSchema.safeParse(keyOf(DSR_REQUEST_KEY_MIN_LENGTH)).success).toBe(true)
+    expect(dsrIntakeSchema.safeParse(keyOf(DSR_REQUEST_KEY_MAX_LENGTH)).success).toBe(true)
+    expect(dsrIntakeSchema.safeParse(keyOf(DSR_REQUEST_KEY_MIN_LENGTH - 1)).success).toBe(false)
+    expect(dsrIntakeSchema.safeParse(keyOf(DSR_REQUEST_KEY_MAX_LENGTH + 1)).success).toBe(false)
+  })
+
+  it('takes the key the api makes for a store', () => {
+    const made = randomBytes(ComplianceConfig.DSR_FORM_KEY_BYTES).toString('base64url')
+    expect(dsrIntakeSchema.safeParse({ ...intake, storeKey: made }).success).toBe(true)
   })
 })
 
