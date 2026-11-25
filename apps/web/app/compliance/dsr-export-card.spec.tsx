@@ -101,7 +101,7 @@ describe('the page that hands over the file of a data export', () => {
     expect(screen.queryByRole('button', { name: 'copy' })).toBeNull()
   })
 
-  it('withdraws the link and the password when the signed address expires', async () => {
+  it('withdraws the link when the signed address expires but KEEPS the password (it opens the file already saved)', async () => {
     jest.useFakeTimers()
     try {
       openWith(`#token=${TOKEN}`)
@@ -110,17 +110,46 @@ describe('the page that hands over the file of a data export', () => {
       await act(async () => {
         await Promise.resolve()
       })
-      expect(screen.getByText(ANSWER.password as string)).toBeTruthy()
+      expect(screen.getByRole('link', { name: 'again' })).toBeTruthy()
       act(() => {
         jest.advanceTimersByTime(ANSWER.expiresInSeconds * 1000)
       })
-      expect(screen.queryByText(ANSWER.password as string)).toBeNull()
       expect(screen.queryByRole('link')).toBeNull()
-      expect(screen.getByRole('alert').textContent).toBe('expired')
-      expect(screen.queryByRole('button')).toBeNull()
+      expect(screen.getByText('expired')).toBeTruthy()
+      expect(screen.getByText(ANSWER.password as string)).toBeTruthy()
+      expect(clickSpy).toHaveBeenCalledTimes(1)
     } finally {
       jest.useRealTimers()
     }
+  })
+
+  it('never lets a huge lifetime fire the timer at once (a browser timer holds 2^31 - 1 ms)', async () => {
+    jest.useFakeTimers()
+    try {
+      mockDownload.mockResolvedValueOnce({ ...ANSWER, expiresInSeconds: 3_000_000 })
+      openWith(`#token=${TOKEN}`)
+      render(<DsrExportCard />)
+      fireEvent.click(screen.getByRole('button', { name: 'download' }))
+      await act(async () => {
+        await Promise.resolve()
+      })
+      act(() => {
+        jest.advanceTimersByTime(1000)
+      })
+      expect(screen.getByRole('link', { name: 'again' })).toBeTruthy()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('says it could not copy when the browser has no clipboard', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+    openWith(`#token=${TOKEN}`)
+    render(<DsrExportCard />)
+    fireEvent.click(screen.getByRole('button', { name: 'download' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'copy' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'copy' }))
+    expect(screen.getByText('copyFailed')).toBeTruthy()
   })
 
   it.each(['', '#', '#other=1', '#token=', '#token=abc', `#token=${'+'.repeat(43)}`])(
@@ -144,6 +173,8 @@ describe('the page that hands over the file of a data export', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('invalid'))
     expect(screen.queryByRole('button')).toBeNull()
     expect(window.location.hash).toBe('')
+    // The button that was pressed is gone: the focus goes to the message
+    expect(document.activeElement?.textContent).toBe('invalid')
   })
 
   it('keeps the button and the token for a 400 that is not the refusal of the api (a gateway)', async () => {

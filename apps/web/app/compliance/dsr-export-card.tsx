@@ -16,22 +16,27 @@ import { ClientErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { Button } from '../../components/ui/button'
 import { apiClient } from '../../lib/api'
 
-type Step = 'ask' | 'working' | 'done' | 'expired' | 'invalid' | 'failed' | 'tooMany'
-type Copy = 'idle' | 'copied' | 'failed'
+type Step = 'ask' | 'working' | 'done' | 'invalid' | 'failed' | 'tooMany'
+type CopyState = 'idle' | 'copied' | 'failed'
 
 const MS_PER_SECOND = 1000
+// The longest delay a browser timer holds (2^31 - 1 ms): a larger one fires at once
+const MAX_TIMER_MS = 2_147_483_647
 
 // The token is in the fragment of the address (#token=...), which the browser never sends to a server and never puts in a Referer. NOTHING
 // happens on opening the page: a mail scanner that opens the link must not spend its single use, so the exchange is a POST that only the
 // button sends. The signed link to the file and the password of the ZIP live in memory only (state): never in the address, the storage or a
-// log. The signed link stops being offered when its own lifetime ends. What the page says for a token that does not hold does not depend on
+// log. The signed link stops being offered when its own lifetime ends, but the password stays on the page: the person needs it to open the
+// file they already saved. What the page says for a token that does not hold does not depend on
 // why (unknown, used, expired, a request that is not an export): the api answers all of them alike, and so does the page.
 export function DsrExportCard(): ReactElement {
   const t = useTranslations('dsrExport')
   const [step, setStep] = useState<Step>('ask')
   const [token, setToken] = useState<string | null>(null)
   const [result, setResult] = useState<DsrExportDownloadResult | null>(null)
-  const [copy, setCopy] = useState<Copy>('idle')
+  const [copy, setCopy] = useState<CopyState>('idle')
+  const [linkLive, setLinkLive] = useState(true)
+  const started = useRef(false)
   // The fragment is read after the first render (the server has none): until then the page shows no button
   const [read, setRead] = useState(false)
   const heading = useRef<HTMLHeadingElement>(null)
@@ -50,18 +55,21 @@ export function DsrExportCard(): ReactElement {
   // takes the focus
   useEffect(() => {
     if (step === 'done') heading.current?.focus()
-    else if (step === 'failed' || step === 'tooMany' || step === 'expired') alert.current?.focus()
+    else if (step === 'failed' || step === 'tooMany' || step === 'invalid') alert.current?.focus()
   }, [step])
 
-  // The download starts by itself once, and the link is withdrawn when the signed address dies (and with it the password, which is useless
-  // without the file)
+  // The download starts by itself ONCE (a guard, so a repeated effect never starts a second one), and the link is withdrawn when the signed
+  // address dies. The password stays: it opens the file the person already saved
   useEffect(() => {
     if (step !== 'done' || result === null) return
-    link.current?.click()
-    const timer = window.setTimeout(() => {
-      setResult(null)
-      setStep('expired')
-    }, result.expiresInSeconds * MS_PER_SECOND)
+    if (!started.current) {
+      started.current = true
+      link.current?.click()
+    }
+    const timer = window.setTimeout(
+      () => setLinkLive(false),
+      Math.min(result.expiresInSeconds * MS_PER_SECOND, MAX_TIMER_MS)
+    )
     return () => window.clearTimeout(timer)
   }, [step, result])
 
@@ -100,6 +108,11 @@ export function DsrExportCard(): ReactElement {
   const copyPassword = (): void => {
     const password = result?.password
     if (password === undefined) return
+    // `navigator.clipboard` does not exist outside a secure context or in some webviews: that is a failure to say, not an exception
+    if (typeof navigator.clipboard?.writeText !== 'function') {
+      setCopy('failed')
+      return
+    }
     navigator.clipboard.writeText(password).then(
       () => setCopy('copied'),
       () => setCopy('failed')
@@ -113,15 +126,19 @@ export function DsrExportCard(): ReactElement {
           {t('doneTitle')}
         </h1>
         <p className="text-muted-foreground">{t('done')}</p>
-        <a
-          ref={link}
-          href={result.url}
-          download={result.filename}
-          rel="noreferrer noopener"
-          className="text-primary underline"
-        >
-          {t('again')}
-        </a>
+        {linkLive ? (
+          <a
+            ref={link}
+            href={result.url}
+            download={result.filename}
+            rel="noreferrer noopener"
+            className="text-primary underline"
+          >
+            {t('again')}
+          </a>
+        ) : (
+          <p className="text-muted-foreground">{t('expired')}</p>
+        )}
         {result.password === undefined ? null : (
           <div className="flex flex-col gap-2">
             <p className="text-muted-foreground">{t('passwordHint')}</p>
@@ -154,17 +171,12 @@ export function DsrExportCard(): ReactElement {
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">{t('heading')}</h1>
       <p className="text-muted-foreground">{t('body')}</p>
-      {step === 'invalid' || step === 'failed' || step === 'tooMany' || step === 'expired' ? (
-        <p
-          ref={alert}
-          tabIndex={step === 'invalid' ? undefined : -1}
-          role="alert"
-          className="text-destructive outline-none"
-        >
+      {step === 'invalid' || step === 'failed' || step === 'tooMany' ? (
+        <p ref={alert} tabIndex={-1} role="alert" className="text-destructive outline-none">
           {t(step)}
         </p>
       ) : null}
-      {!read || step === 'invalid' || step === 'expired' ? null : (
+      {!read || step === 'invalid' ? null : (
         <Button
           type="button"
           onClick={download}

@@ -943,7 +943,7 @@
     "copy": "Copiar contraseña",
     "copied": "Contraseña copiada",
     "copyFailed": "No pudimos copiarla. Selecciona la contraseña y cópiala a mano.",
-    "expired": "El enlace de descarga venció. El enlace de tu correo funciona una sola vez; pide a la tienda que te envíe el archivo de nuevo.",
+    "expired": "El enlace de descarga de arriba dejó de funcionar. Si ya guardaste el archivo, la contraseña todavía lo abre; si no, pide a la tienda que te envíe el archivo de nuevo.",
     "invalid": "Este enlace no es válido. Puede haber vencido, ya haberse usado o estar incompleto. Si todavía necesitas tus datos, pide a la tienda que te los envíe de nuevo.",
     "failed": "No pudimos preparar el archivo. Revisa tu conexión e inténtalo de nuevo.",
     "tooMany": "Hubo demasiados intentos. Espera unos minutos e inténtalo de nuevo."

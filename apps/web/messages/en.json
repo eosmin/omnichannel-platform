@@ -943,7 +943,7 @@
     "copy": "Copy password",
     "copied": "Password copied",
     "copyFailed": "We could not copy it. Select the password and copy it by hand.",
-    "expired": "The download link expired. The link of your email works only once; ask the store to send you the file again.",
+    "expired": "The download link above stopped working. If you already saved the file, the password still opens it; if not, ask the store to send you the file again.",
     "invalid": "This link is not valid. It may have expired or already been used, or it is incomplete. If you still need your data, ask the store to send it to you again.",
     "failed": "We could not prepare the file. Check your connection and try again.",
     "tooMany": "There were too many attempts. Wait a few minutes and try again."

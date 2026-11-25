@@ -60,7 +60,7 @@ export const dsrExportDownloadResultSchema = z.object({
   url: z
     .string()
     .url()
-    .refine(value => /^https?:\/\//i.test(value)),
+    .refine(value => ['https:', 'http:'].includes(new URL(value).protocol)),
   filename: z.string().min(1),
   expiresInSeconds: z.number().int().positive(),
   // The password of the ZIP (H2b-3c): shown once and kept only in memory. Optional until the api that mints it ships; that PR makes it required
