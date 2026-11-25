@@ -403,8 +403,12 @@ export interface FiscalDocumentProvider {
   ): Promise<IssuerCheck>
   // Pure, optional: what is wrong in the fiscal data of a customer, by the rules of the provider (the format of a tax id, the values a kind
   // of taxpayer may take). Core calls it when a person saves the data of a customer, so the format of a country is never core's. A
-  // provider without it accepts any value within core's limits.
+  // provider without it accepts any value within core's limits. A problem of `taxId` must depend only on `taxId` and `documentType`: core
+  // does not judge a tax id again when only another field changes.
   validateReceiver?(receiver: FiscalReceiver): readonly FiscalReceiverProblem[]
+  // Pure, optional: whether a tax id written for a party that is not a receiver (a supplier) has the shape the country of the provider
+  // uses, as its document shows it. Core calls it when a person writes one; a provider without it accepts any value within core's limits. The answer must depend on the value alone.
+  validatePartyTaxId?(taxId: string): boolean
   // Pure, required when the manifest declares `sequence.perDocumentType`: the id of the type `build` will pick for this sale. It must
   // answer exactly what `build` puts in `BuiltDocument.documentType` for the same kind and receiver (the contract suite checks it).
   resolveDocumentType?(input: FiscalTypeInput): string

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 
 import { LedgerModule } from '@platform/core/finance-ledger'
 import { InventoryModule as InventoryEngineModule } from '@platform/core/inventory'
+import { FiscalRuntimeModule } from '@platform/fiscal/runtime'
 
 import { TenancyModule } from '../tenancy'
 
@@ -18,7 +19,7 @@ import { SuppliersService } from './suppliers.service'
 // InventoryService and the entries by LedgerService (the only writers of their ledgers); the database, audit and event-bus modules are the
 // global ones of the app.
 @Module({
-  imports: [InventoryEngineModule, LedgerModule, TenancyModule],
+  imports: [FiscalRuntimeModule, InventoryEngineModule, LedgerModule, TenancyModule],
   controllers: [SuppliersController, PurchaseOrdersController],
   providers: [
     SuppliersService,

@@ -103,6 +103,11 @@ export class SimulatorProvider implements FiscalDocumentProvider {
       : []
   }
 
+  // The same rule for a party that is not a receiver (a supplier): no spaces
+  validatePartyTaxId(taxId: string): boolean {
+    return !/\s/.test(taxId)
+  }
+
   // The type of a sale or a credit note: a credit note, a business when the receiver has a tax id, a consumer otherwise. The simulator
   // numbers by the correlative of the organization (it declares no series), so core never asks it; it answers like `build` for the contract suite.
   resolveDocumentType(input: FiscalTypeInput): string {
