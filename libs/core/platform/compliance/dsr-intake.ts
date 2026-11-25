@@ -9,7 +9,11 @@ import {
   failureOf,
   parseEncryptionKey
 } from '@platform/core/crypto'
-import { DsrType } from '@platform/core/domain'
+import {
+  DSR_REQUEST_KEY_MAX_LENGTH,
+  DSR_REQUEST_KEY_MIN_LENGTH,
+  DsrType
+} from '@platform/core/domain'
 import { type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
 
 // The address as the store compares it with the address of a customer: trimmed and lower case, exact (never a LIKE: "%" and "_" are
@@ -28,7 +32,7 @@ export function dsrHashKeyOf(secret: string): string {
 
 // What the public form sends once it passed the checks of the route; it travels sealed to the worker
 export const dsrIntakeSchema = z.object({
-  storeKey: z.string().min(16).max(128),
+  storeKey: z.string().min(DSR_REQUEST_KEY_MIN_LENGTH).max(DSR_REQUEST_KEY_MAX_LENGTH),
   type: z.enum(DsrType),
   // A pasted address often carries a space or capitals: trimmed and lower-cased first, then checked
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)),

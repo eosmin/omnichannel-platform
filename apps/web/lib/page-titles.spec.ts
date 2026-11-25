@@ -39,6 +39,7 @@ const TITLE_OF_PAGE: Record<string, string> = {
   'invitations/[token]/page.tsx': 'invitation',
   'unsubscribe/page.tsx': 'unsubscribe',
   'compliance/dsr/verify/page.tsx': 'dsrVerify',
+  'compliance/dsr/export/page.tsx': 'dsrExport',
   'compliance/dsr/request/page.tsx': 'dsrRequest',
   'no-access/page.tsx': 'noAccess',
   'not-found.tsx': 'notFound',
