@@ -428,6 +428,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'compliance.dsrCancel': { step: '7.2' },
   'compliance.dsrExport': { step: '7.2' },
   'compliance.dsrVerify': { step: '7.2' },
+  'compliance.dsrExportDownload': { step: '7.2' },
   'compliance.dsrForm': { step: '7.2' },
   'compliance.dsrFormKey': { step: '7.2' },
   'compliance.dsrFormKeyRevoke': { step: '7.2' },

@@ -9,8 +9,14 @@ import { connectionUrls, DatabaseRoles } from '@platform/core/database-testing'
 // `resolve_dsr_verification` turns the hash of a mail token into the request that waits for it. Everything runs in a transaction that ends
 // in ROLLBACK, as the api role with NO context: the key must resolve to exactly one store or to nothing, a token that is used, expired, of
 // another kind or of a request that no longer waits opens nothing, and only the application roles may call them.
+// Step 7.2-H2b-3 (migration 20270130100000_dsr_export_download) adds `resolve_dsr_export_download`: the hash of the token of the closing mail
+// opens only a COMPLETED access or portability request that still holds its file.
 
-const FUNCTIONS = ['public.resolve_dsr_store(text)', 'public.resolve_dsr_verification(text)']
+const FUNCTIONS = [
+  'public.resolve_dsr_store(text)',
+  'public.resolve_dsr_verification(text)',
+  'public.resolve_dsr_export_download(text)'
+]
 
 interface Fixture {
   store: string
@@ -21,7 +27,7 @@ interface Fixture {
   query: pg.Client['query']
 }
 
-describe('row-level security, public data requests: resolve_dsr_store and resolve_dsr_verification', () => {
+describe('row-level security, public data requests: resolve_dsr_store, resolve_dsr_verification and resolve_dsr_export_download', () => {
   const raw = new pg.Client({ connectionString: connectionUrls().owner })
 
   beforeAll(async () => {
@@ -39,6 +45,10 @@ describe('row-level security, public data requests: resolve_dsr_store and resolv
       expired?: boolean
       used?: boolean
       publicKey?: string | null
+      requestType?: string
+      resultKey?: string | null
+      // The interval the file is kept for (negative: already past)
+      resultExpiresIn?: string
     } = {}
   ): Promise<T> {
     const run = randomUUID().slice(0, 8)
@@ -64,13 +74,16 @@ describe('row-level security, public data requests: resolve_dsr_store and resolv
         ]
       )
       await raw.query(
-        `INSERT INTO data_subject_requests (id, organization_id, store_id, type, status, subject_type, deadline_at)
-         VALUES ($1, $2, $3, 'access', $4, 'customer', now() + interval '30 days')`,
+        `INSERT INTO data_subject_requests (id, organization_id, store_id, type, status, subject_type, deadline_at, result_key, result_expires_at)
+         VALUES ($1, $2, $3, $5, $4, 'customer', now() + interval '30 days', $6, now() + ($7)::interval)`,
         [
           fixture.request,
           fixture.organization,
           fixture.store,
-          options.requestStatus ?? 'pending_verification'
+          options.requestStatus ?? 'pending_verification',
+          options.requestType ?? 'access',
+          options.resultKey === undefined ? null : options.resultKey,
+          options.resultExpiresIn ?? '7 days'
         ]
       )
       await raw.query(
@@ -103,6 +116,12 @@ describe('row-level security, public data requests: resolve_dsr_store and resolv
   const verification = (f: Fixture, hash: string) =>
     f.query<{ id: string; store_id: string; organization_id: string }>(
       'SELECT * FROM resolve_dsr_verification($1)',
+      [hash]
+    )
+
+  const download = (f: Fixture, hash: string) =>
+    f.query<{ id: string; store_id: string; organization_id: string }>(
+      'SELECT * FROM resolve_dsr_export_download($1)',
       [hash]
     )
 
@@ -182,6 +201,65 @@ describe('row-level security, public data requests: resolve_dsr_store and resolv
       await withFixture(async f => {
         expect((await verification(f, f.tokenHash)).rows).toEqual([])
       }, options)
+    })
+  })
+
+  describe('resolve_dsr_export_download', () => {
+    const live = {
+      requestStatus: 'completed',
+      tokenType: 'dsr_export_download',
+      resultKey: 'compliance/dsr/fixture.zip'
+    }
+
+    it('answers the request, its store and organization for a live token of a finished export, with no context', async () => {
+      await withFixture(async f => {
+        expect((await download(f, f.tokenHash)).rows).toEqual([
+          { id: f.request, store_id: f.store, organization_id: f.organization }
+        ])
+      }, live)
+    })
+
+    it('answers for a portability request too', async () => {
+      await withFixture(
+        async f => {
+          expect((await download(f, f.tokenHash)).rows).toHaveLength(1)
+        },
+        { ...live, requestType: 'portability' }
+      )
+    })
+
+    it('answers nothing for an unknown hash', async () => {
+      await withFixture(async f => {
+        expect((await download(f, `${f.tokenHash}x`)).rows).toEqual([])
+      }, live)
+    })
+
+    it.each([
+      ['a token already used', { used: true }],
+      ['an expired token', { expired: true }],
+      ['the token of the verification mail', { tokenType: 'dsr_verification' }],
+      ['a magic link', { tokenType: 'magic_link' }],
+      ['a request that is not completed', { requestStatus: 'manual_review' }],
+      ['an erasure (it has no file)', { requestType: 'erasure' }],
+      ['a request whose file was purged (no key)', { resultKey: null }],
+      ['a request whose file is past its date', { resultExpiresIn: '-1 minute' }]
+    ])('answers nothing for %s', async (_name, options) => {
+      await withFixture(
+        async f => {
+          expect((await download(f, f.tokenHash)).rows).toEqual([])
+        },
+        { ...live, ...options }
+      )
+    })
+
+    it('does not open with the hash of a verification token (the two kinds never cross)', async () => {
+      await withFixture(
+        async f => {
+          expect((await download(f, f.tokenHash)).rows).toEqual([])
+          expect((await verification(f, f.tokenHash)).rows).toEqual([])
+        },
+        { requestStatus: 'completed', resultKey: 'k' }
+      )
     })
   })
 })

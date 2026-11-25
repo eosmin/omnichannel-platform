@@ -429,3 +429,55 @@ describe('TemplateRenderer: scheduled report', () => {
     ).rejects.toThrow()
   })
 })
+
+describe('TemplateRenderer, the closing mail of an access request', () => {
+  const link = 'https://app.example.com/compliance/dsr/export#token=' + 'A'.repeat(43)
+  const done = { outcome: 'completed', requestType: 'access' }
+
+  it('brings the link to the page that hands the file over, says it works once, and never the file', async () => {
+    const email = await renderer.render(EmailTemplates.DSR_RESULT, Locales.EN, {
+      ...done,
+      downloadUrl: link
+    })
+    expect(email.html).toContain(`href="${link}"`)
+    expect(email.text).toContain(link)
+    expect(email.text).toContain('works once')
+    expect(email.text).not.toContain('safe way')
+  })
+
+  it('renders it in Spanish', async () => {
+    const email = await renderer.render(EmailTemplates.DSR_RESULT, Locales.ES, {
+      ...done,
+      downloadUrl: link
+    })
+    expect(email.text).toContain('una sola vez')
+  })
+
+  it('says the store will hand the file over when there is no link (its file is gone)', async () => {
+    const email = await renderer.render(EmailTemplates.DSR_RESULT, Locales.EN, done)
+    expect(email.text).toContain('safe way')
+    expect(email.text).not.toContain('works once')
+  })
+
+  it('refuses a link that is not http or https, and gives no link to an erasure', async () => {
+    await expect(
+      renderer.render(EmailTemplates.DSR_RESULT, Locales.EN, {
+        ...done,
+        downloadUrl: 'javascript:alert(1)'
+      })
+    ).rejects.toThrow()
+    // A link given to a kind or an outcome that has no file shows nowhere
+    for (const other of [
+      { outcome: 'completed', requestType: 'erasure' },
+      { outcome: 'rejected', requestType: 'access' },
+      { outcome: 'expired', requestType: 'portability' }
+    ]) {
+      const email = await renderer.render(EmailTemplates.DSR_RESULT, Locales.EN, {
+        ...other,
+        downloadUrl: link
+      })
+      expect(email.text).not.toContain('works once')
+      expect(email.html).not.toContain(link)
+    }
+  })
+})

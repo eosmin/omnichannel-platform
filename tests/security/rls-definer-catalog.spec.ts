@@ -31,6 +31,7 @@ const DEFINER_FUNCTIONS: Readonly<Record<string, readonly string[] | typeof TRIG
   // the public data request flow (Step 7.2-H1): the store of a public key and the request that waits for a token
   resolve_dsr_store: [APP, WORKER],
   resolve_dsr_verification: [APP, WORKER],
+  resolve_dsr_export_download: [APP, WORKER],
   // the api only
   rls_store_tables_with_rows: [APP],
   rls_take_disconnected_connection: [APP],

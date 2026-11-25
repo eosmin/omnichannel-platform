@@ -113,6 +113,8 @@ export function authenticatedUserRateLimitOf(
 export const DsrIntakeThrottle = { limit: 5, ttlMs: 600_000 } as const
 // Confirming a request with the token of the mail: the token has 256 bits, so this is only the flood guard
 export const DsrVerifyThrottle = { limit: 20, ttlMs: 600_000 } as const
+// Trading the link of the closing mail for the file: the token has 256 bits and is spent by the first caller, so this is only the flood guard
+export const DsrExportDownloadThrottle = { limit: 20, ttlMs: 600_000 } as const
 
 // The public one-click unsubscribe of the notification emails (Step 7.3, B6b-3b2b). Per address: only a flood guard on a route that needs no session,
 // and wide on purpose: the one-click POSTs of a mailbox provider come from its few server addresses, shared by all its users, so the real limit is the one per token.

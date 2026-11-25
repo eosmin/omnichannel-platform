@@ -1,5 +1,6 @@
 import {
   AppPaths,
+  DSR_EXPORT_FRAGMENT_KEY,
   DSR_VERIFY_FRAGMENT_KEY,
   DsrNoticeStatuses,
   type DsrNoticeStatus,
@@ -329,6 +330,9 @@ export interface DsrConfig {
 // to a server, so the token stays out of access logs)
 export const DSR_VERIFY_WEB_PATH = AppPaths.dsrVerify
 export { DSR_VERIFY_FRAGMENT_KEY }
+// The page of the web app that hands over the file of an access or portability request, and the key of the fragment that carries its token
+export const DSR_EXPORT_WEB_PATH = AppPaths.dsrExport
+export { DSR_EXPORT_FRAGMENT_KEY }
 
 // What a data subject request is called where a text is needed (the kind of resource of an audit entry, who the request is about), and why
 // the flow itself closes a request. Never typed at a call site (rule 1).
@@ -336,6 +340,8 @@ export const DsrResourceTypes = {
   REQUEST: 'data_subject_request',
   FORM_KEY: 'dsr_form_key'
 } as const
+// Who opened the file of an export, for the audit entry: the person with the link of their mail (a reviewer's own request has no such mark)
+export const DsrExportDownloadVia = { PERSON_LINK: 'person_link' } as const
 export const DsrSubjectTypes = { CUSTOMER: 'customer' } as const
 export const DsrRejectionReasons = {
   VERIFICATION_MAIL_NOT_QUEUED: 'verification_mail_not_queued',

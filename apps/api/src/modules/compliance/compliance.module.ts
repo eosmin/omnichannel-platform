@@ -14,6 +14,7 @@ import {
 } from './compliance.controller'
 import { ConsentService } from './consent.service'
 import { CookieConsentService } from './cookie-consent.service'
+import { DsrExportDownloadService } from './dsr-export-download.service'
 import { DsrFormService } from './dsr-form.service'
 import { DsrIntakeService } from './dsr-intake.service'
 import { DSR_EXECUTOR_PROBE, dsrExecutorProbe, DsrReviewService } from './dsr-review.service'
@@ -38,6 +39,7 @@ import { DsrVerifyService } from './dsr-verify.service'
     DsrOpenWorkService,
     DsrReviewService,
     DsrVerifyService,
+    DsrExportDownloadService,
     { provide: DSR_EXECUTOR_PROBE, useValue: dsrExecutorProbe }
   ]
 })

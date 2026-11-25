@@ -20,6 +20,9 @@ export interface DsrNoticeInput {
   requestType: string
   // What an erasure kept, for the legal-basis paragraph of the mail
   retainedOrders?: number
+  // For an access or portability: the link of the page that hands the person their file (the token travels in its fragment). It holds a secret, so
+  // the job that carries it is dropped as soon as it is sent or fails, like the address
+  downloadUrl?: string
 }
 
 export interface DsrNoticeJob {
@@ -38,7 +41,8 @@ export function dsrNoticeJob(input: DsrNoticeInput): DsrNoticeJob {
       data: {
         outcome: input.outcome,
         requestType: input.requestType,
-        ...(input.retainedOrders === undefined ? {} : { retainedOrders: input.retainedOrders })
+        ...(input.retainedOrders === undefined ? {} : { retainedOrders: input.retainedOrders }),
+        ...(input.downloadUrl === undefined ? {} : { downloadUrl: input.downloadUrl })
       },
       tags: { storeId: input.storeId, template: EmailTemplates.DSR_RESULT },
       dsrNotice: { requestId: input.requestId, storeId: input.storeId }

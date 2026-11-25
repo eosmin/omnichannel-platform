@@ -6,6 +6,7 @@ import {
   type AuthenticatedUser,
   DsrIntakeThrottle,
   DsrVerifyThrottle,
+  DsrExportDownloadThrottle,
   Permissions,
   ThrottleProfiles
 } from '@platform/core/auth'
@@ -34,6 +35,8 @@ import {
   dsrIntakeBodySchema,
   type DsrIntakeBody,
   dsrVerifyBodySchema,
+  dsrExportDownloadBodySchema,
+  type DsrExportDownloadBody,
   type DsrVerifyBody,
   cookieConsentSchema,
   type ListConsentQuery,
@@ -45,6 +48,10 @@ import {
 } from './compliance.schemas'
 import { type ConsentList, ConsentService, type RecordedConsent } from './consent.service'
 import { type CookieConsentView, CookieConsentService } from './cookie-consent.service'
+import {
+  type DsrExportDownloadAnswer,
+  DsrExportDownloadService
+} from './dsr-export-download.service'
 import { type DsrFormView, DsrFormService } from './dsr-form.service'
 import { type DsrIntakeAnswer, DsrIntakeService } from './dsr-intake.service'
 import {
@@ -119,7 +126,8 @@ export class CookieConsentController {
 export class DsrPublicController {
   constructor(
     private readonly intake: DsrIntakeService,
-    private readonly verify: DsrVerifyService
+    private readonly verify: DsrVerifyService,
+    private readonly exportDownload: DsrExportDownloadService
   ) {}
 
   @Public()
@@ -148,6 +156,23 @@ export class DsrPublicController {
     @Body(new ZodValidationPipe(dsrVerifyBodySchema)) body: DsrVerifyBody
   ): Promise<DsrVerifyAnswer> {
     return this.verify.verify(body)
+  }
+
+  // The link of the closing mail of an access or portability request, traded for a short signed link to the file. Public on purpose (Step
+  // 7.2-H2b-3, an exception to rule 5 written in the plan): the person has no account. The token has 256 bits, is spent by the first call and
+  // travels in the body, never in the path; every failure is the same answer.
+  @Public()
+  @NoTenantTransaction(
+    'public route: it finds the request by the hash of the token and opens the context of that request itself'
+  )
+  @RateLimit(DsrExportDownloadThrottle)
+  @NoStore()
+  @Post(ApiRoutes.compliance.dsrExportDownload)
+  @HttpCode(HttpStatusCodes.OK)
+  download(
+    @Body(new ZodValidationPipe(dsrExportDownloadBodySchema)) body: DsrExportDownloadBody
+  ): Promise<DsrExportDownloadAnswer> {
+    return this.exportDownload.download(body)
   }
 }
 

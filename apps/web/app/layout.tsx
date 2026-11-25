@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import dynamic from 'next/dynamic'
 import { headers } from 'next/headers'
 import { NextIntlClientProvider } from 'next-intl'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getMessages, getTranslations } from 'next-intl/server'
 import type { ReactNode } from 'react'
 
 import { PluginWidgetFrames } from '@platform/core/domain'
@@ -11,6 +11,7 @@ import { AppProviders } from '../components/providers/app-providers'
 import { DestructiveActionProvider } from '../components/shared/destructive-action'
 import { BusyAnnouncer } from '../components/shell/busy-announcer'
 import { ToasterHost } from '../components/ui/toaster-host'
+import { clientMessagesOf } from '../lib/client-messages'
 import { isSettled } from '../lib/cookie-consent/cookie-settled'
 import { parseFrameOrigins } from '../lib/plugin-frames'
 
@@ -36,6 +37,8 @@ export default async function RootLayout({
   children: ReactNode
 }): Promise<ReactNode> {
   const locale = await getLocale()
+  // The mail templates stay on the server: a page does not pay for texts only the worker renders
+  const messages = clientMessagesOf(await getMessages())
   // What the proxy let the policy frame for this store: the page reads it to know whether a widget can load here
   const requestHeaders = await headers()
   const frameOrigins = parseFrameOrigins(
@@ -48,7 +51,7 @@ export default async function RootLayout({
         <meta name={PluginWidgetFrames.ORIGINS_META_NAME} content={frameOrigins} />
       </head>
       <body>
-        <NextIntlClientProvider>
+        <NextIntlClientProvider messages={messages}>
           <AppProviders>
             <DestructiveActionProvider>{children}</DestructiveActionProvider>
           </AppProviders>

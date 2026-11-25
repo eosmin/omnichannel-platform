@@ -2,6 +2,7 @@ import {
   ApiLockTimeout,
   isLockTimeoutError,
   isRowLevelSecurityError,
+  isTransactionConflictError,
   isTransactionWaitError
 } from './database-errors'
 
@@ -144,5 +145,30 @@ describe('isRowLevelSecurityError', () => {
     loop['cause'] = loop
 
     expect(isRowLevelSecurityError(loop)).toBe(false)
+  })
+})
+
+describe('isTransactionConflictError', () => {
+  it.each([
+    ['Prisma write conflict', { code: 'P2034' }],
+    ['a serialization failure of the driver', { cause: { originalCode: '40001' } }],
+    [
+      'a deadlock behind Prisma P2010',
+      { code: 'P2010', meta: { driverAdapterError: { cause: { originalCode: '40P01' } } } }
+    ]
+  ])('finds %s', (_name, error) => {
+    expect(isTransactionConflictError(error)).toBe(true)
+  })
+
+  it.each([
+    [
+      'a lock timeout',
+      { code: 'P2010', meta: { driverAdapterError: { cause: { originalCode: '55P03' } } } }
+    ],
+    ['a message that only says so', new Error('write conflict or a deadlock')],
+    ['nothing', null],
+    ['a string', 'P2034']
+  ])('does not take %s for one', (_name, error) => {
+    expect(isTransactionConflictError(error)).toBe(false)
   })
 })

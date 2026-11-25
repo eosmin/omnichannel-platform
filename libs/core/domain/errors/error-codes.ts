@@ -304,6 +304,8 @@ export const ErrorCodes = {
 
   // Compliance
   DSR_VERIFICATION_INVALID: 'DSR_VERIFICATION_INVALID',
+  // The link to the file of an access or portability request is unknown, used, expired, or its file is gone (one answer for all)
+  DSR_EXPORT_LINK_INVALID: 'DSR_EXPORT_LINK_INVALID',
   DSR_ALREADY_COMPLETED: 'DSR_ALREADY_COMPLETED',
   // The customer behind a request no longer matches it (the address changed or the customer was erased): it goes back to review
   DSR_SUBJECT_CHANGED: 'DSR_SUBJECT_CHANGED',

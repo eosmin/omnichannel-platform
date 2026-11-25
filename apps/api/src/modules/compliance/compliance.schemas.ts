@@ -60,6 +60,12 @@ export const dsrVerifyBodySchema = z
   .strict()
 export type DsrVerifyBody = z.infer<typeof dsrVerifyBodySchema>
 
+// The token of the link of the closing mail that hands over the file of an access or portability request: the same 256 bits in base64url
+export const dsrExportDownloadBodySchema = z
+  .object({ token: z.string().regex(DSR_VERIFY_TOKEN_PATTERN) })
+  .strict()
+export type DsrExportDownloadBody = z.infer<typeof dsrExportDownloadBodySchema>
+
 // The review queue of the data requests (Step 7.2-H1b). What a reviewer types is free text about a person: it is kept in the row and is
 // never copied to the audit log or a log line.
 const reviewReasonSchema = multiLineText(ComplianceConfig.DSR_REVIEW_REASON_MAX_LENGTH, 1)

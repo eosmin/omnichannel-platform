@@ -119,3 +119,27 @@ describe('the language of the closing mail', () => {
     expect(dsrNoticeLocaleOf(null, null)).toBe(DEFAULT_LOCALE)
   })
 })
+
+describe('dsrNoticeJob, the link of an export', () => {
+  const base = {
+    requestId: 'req-2',
+    storeId: 'store-2',
+    to: 'person@example.com',
+    locale: Locales.EN,
+    outcome: DsrResultOutcomes.COMPLETED,
+    requestType: 'access'
+  }
+  const url = 'https://web.test/compliance/dsr/export#token=abc'
+
+  it('carries the link in the data of the mail, and only there', () => {
+    const job = dsrNoticeJob({ ...base, downloadUrl: url })
+    expect(job.data.data).toEqual({ outcome: 'completed', requestType: 'access', downloadUrl: url })
+    expect(JSON.stringify({ ...job.data, data: null })).not.toContain('token=')
+    // the job that holds the secret is dropped as soon as it is sent or fails
+    expect(job.opts).toMatchObject({ removeOnComplete: true, removeOnFail: true })
+  })
+
+  it('leaves the field out of a notice that has no file to hand over', () => {
+    expect(dsrNoticeJob(base).data.data).toEqual({ outcome: 'completed', requestType: 'access' })
+  })
+})

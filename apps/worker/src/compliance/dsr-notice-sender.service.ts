@@ -9,6 +9,7 @@ import {
   DSR_CONFIG,
   type DsrConfig,
   dsrNoticeJob,
+  type DsrNoticeJob,
   dsrNoticeLocaleOf,
   DsrFailureCodes,
   DsrResultOutcomes,
@@ -18,8 +19,10 @@ import { JobContext, PrismaService, type PrismaTransaction } from '@platform/cor
 import { DsrStatus, DsrType } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import type { Locale } from '@platform/core/i18n'
+import { DIGEST_LINKS, type DigestLinks } from '@platform/core/notifications'
 import { QueueNames, type SendEmailJob } from '@platform/core/queues'
 
+import { dsrExportLinkOf } from './dsr-export-link'
 import { DsrNoticeLedger } from './dsr-notice-ledger.service'
 
 // rls-context: every read and write of a request runs inside JobContext.forStore
@@ -39,6 +42,7 @@ export class DsrNoticeSender {
     private readonly notices: DsrNoticeLedger,
     @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig,
+    @Inject(DIGEST_LINKS) private readonly links: DigestLinks,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(DsrNoticeSender.name)
@@ -136,7 +140,9 @@ export class DsrNoticeSender {
               type: true,
               notifyToEncrypted: true,
               noticeLocale: true,
-              retainedRecordsSummary: true
+              retainedRecordsSummary: true,
+              resultKey: true,
+              resultExpiresAt: true
             }
           })
           const sealed = row.notifyToEncrypted
@@ -149,14 +155,15 @@ export class DsrNoticeSender {
                   this.config.previousEncryptionKeyHex
                 )
           if (to === null) return 'unreadable' as const
-          await this.queueMail(
+          const job = await this.buildMail(
             tx,
             storeId,
             requestId,
             row.type,
             to,
             row.retainedRecordsSummary,
-            row.noticeLocale
+            row.noticeLocale,
+            row.resultKey !== null ? row.resultExpiresAt : null
           )
           // The lease: a run that overlaps this one (or the next pass of the same one) sees a notice that is on its way and leaves it alone
           await tx.dataSubjectRequest.updateMany({
@@ -164,6 +171,8 @@ export class DsrNoticeSender {
             // The tries are counted when the notice is queued, in the same write: a job that never reaches the processor is counted too
             data: { noticeQueuedAt: new Date(), noticeAttempts: { increment: 1 } }
           })
+          // Queued last: a write that failed above rolls the token back before any mail is queued. A failure of the COMMIT itself, after the add, can still leave a mail whose token is not stored (owner 7.7, debt in the plan)
+          await this.emailQueue.add(job.name, job.data, job.opts)
           return 'queued' as const
         })
       )
@@ -183,15 +192,16 @@ export class DsrNoticeSender {
     }
   }
 
-  private async queueMail(
+  private async buildMail(
     tx: PrismaTransaction,
     storeId: string,
     requestId: string,
     requestType: string,
     to: string,
     summary: unknown,
-    requestLocale: string | null
-  ): Promise<void> {
+    requestLocale: string | null,
+    fileExpiresAt: Date | null
+  ): Promise<DsrNoticeJob> {
     const store = await tx.store.findUnique({
       where: { id: storeId },
       select: { defaultLocale: true }
@@ -206,9 +216,16 @@ export class DsrNoticeSender {
       requestType,
       ...(requestType === String(DsrType.ERASURE)
         ? { retainedOrders: retainedOrdersOf(summary) }
-        : {})
+        : {}),
+      // An export that still holds its file brings the link that hands it over; one whose file is gone brings none (the mail then says so)
+      ...(await dsrExportLinkOf(tx, {
+        requestId,
+        requestType,
+        fileExpiresAt,
+        frontendUrl: this.links.frontendUrl
+      }))
     })
-    await this.emailQueue.add(job.name, job.data, job.opts)
+    return job
   }
 }
 
