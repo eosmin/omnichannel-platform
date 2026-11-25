@@ -269,4 +269,13 @@ describe('saleBookOfDocumentType', () => {
       saleBookOfDocumentType({ debitNote: true, requiredReceiverFields: ['name', 'taxId'] })
     ).toBe(LegalBookKind.SALES_TAXPAYERS)
   })
+  it('lists a purchase document in no book of sales: the issuer is the buyer, whatever it asks of the seller', () => {
+    expect(
+      saleBookOfDocumentType({
+        purchase: true,
+        requiredReceiverFields: ['name', 'taxId', 'address']
+      })
+    ).toBeNull()
+    expect(saleBookOfDocumentType({ purchase: true, requiredReceiverFields: [] })).toBeNull()
+  })
 })

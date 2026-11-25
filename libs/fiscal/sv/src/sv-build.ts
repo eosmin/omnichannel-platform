@@ -49,6 +49,7 @@ import {
   issuerProblems,
   lacks,
   missingForBusiness,
+  missingForExcludedSubject,
   missingForRemission,
   validEmail,
   validPhone
@@ -57,7 +58,7 @@ import { salvadorMoment } from './sv-time'
 import { amountInWords } from './sv-words'
 
 // The pure construction of the documents of El Salvador from the sale the platform hands over: the invoice to a final consumer (01), the
-// tax credit document to a taxpayer (03), the credit note (05) and the debit note (06). Everything is exact (integers and the rounding of the authority,
+// tax credit document to a taxpayer (03), the credit note (05), the debit note (06) and the invoice of an excluded subject (14). Everything is exact (integers and the rounding of the authority,
 // Funcional §XXI), and what cannot be made right is refused with a code instead of being sent wrong.
 
 type Treatment = 'taxed' | 'exempt' | 'notSubject'
@@ -82,6 +83,7 @@ export function resolveDocumentType(input: FiscalTypeInput): SvDocumentType {
   if (input.kind === FiscalDocumentKind.CREDIT_NOTE) return SvDocumentTypes.CREDIT_NOTE
   if (input.kind === FiscalDocumentKind.DEBIT_NOTE) return SvDocumentTypes.DEBIT_NOTE
   if (input.kind === FiscalDocumentKind.REMISSION_NOTE) return SvDocumentTypes.REMISSION_NOTE
+  if (input.kind === FiscalDocumentKind.PURCHASE) return SvDocumentTypes.EXCLUDED_SUBJECT
   return lacks(input.receiver.registrationId) ? SvDocumentTypes.INVOICE : SvDocumentTypes.TAX_CREDIT
 }
 
@@ -253,7 +255,8 @@ function emisor(type: SvDocumentType, issuer: FiscalIssuerInput): Record<string,
     nombre: issuer.legalName.trim(),
     codActividad: activity,
     descActividad: (activityName(activity) ?? '').slice(0, SvLimits.ACTIVITY_DESCRIPTION_MAX),
-    nombreComercial: null,
+    // The schema of the invoice of an excluded subject has no trade name
+    ...(type === SvDocumentTypes.EXCLUDED_SUBJECT ? {} : { nombreComercial: null }),
     direccion: addressOf(issuer.address),
     telefono: (issuer.phone ?? '').trim(),
     correo: (issuer.email ?? '').trim(),
@@ -651,6 +654,136 @@ function netBody(
   }
 }
 
+// ---------------------------------------------------------------- the invoice of an excluded subject (14): a purchase, no tax
+
+interface PurchaseItem {
+  readonly description: string
+  readonly quantity: number
+  readonly unitPriceCents: number
+  readonly discountCents: number
+  // What the item cost after its discount: the field `compra` of the schema
+  readonly purchaseCents: number
+  readonly kind: number
+  readonly unit: number
+}
+
+// The lines of a purchase from an excluded subject: the seller charges no sales tax, so a line that carries one, or a shipping fee (no
+// purchase has one), is a document that does not match what the platform recorded and is refused instead of signed
+function purchaseItemsOf(input: FiscalBuildInput): PurchaseItem[] {
+  if (input.lines.length === 0) throw new SvBuildError(SvBuildErrors.NO_ITEMS)
+  if (input.lines.length > SvLimits.ITEMS_MAX) throw new SvBuildError(SvBuildErrors.TOO_MANY_ITEMS)
+  for (const line of input.lines) {
+    if (!Number.isSafeInteger(line.quantity) || line.quantity < 1) {
+      throw new SvBuildError(SvBuildErrors.QUANTITY_INVALID)
+    }
+    for (const cents of [line.totalCents, line.unitPriceCents, line.taxCents]) {
+      if (!Number.isSafeInteger(cents) || cents < 0) {
+        throw new SvBuildError(SvBuildErrors.SALE_TOTALS_MISMATCH)
+      }
+    }
+    if (line.taxCents !== 0) throw new SvBuildError(SvBuildErrors.PURCHASE_HAS_TAX)
+    // The document says the unit price and the purchase of each item: they must be the same figure
+    if (line.totalCents !== line.quantity * line.unitPriceCents) {
+      throw new SvBuildError(SvBuildErrors.SALE_TOTALS_MISMATCH)
+    }
+  }
+  if (input.taxCents !== 0) throw new SvBuildError(SvBuildErrors.PURCHASE_HAS_TAX)
+  const gross = input.lines.map(line => line.totalCents)
+  const grossTotal = gross.reduce((sum, value) => sum + value, 0)
+  if (
+    input.shippingCents !== 0 ||
+    input.shippingTaxCents !== 0 ||
+    input.discountCents < 0 ||
+    input.discountCents > grossTotal ||
+    grossTotal - input.discountCents !== input.totalCents
+  ) {
+    throw new SvBuildError(SvBuildErrors.SALE_TOTALS_MISMATCH)
+  }
+  const discounts = allocate(input.discountCents, gross)
+  return input.lines.map((line, index) => {
+    const kind = Number(line.itemKind)
+    const safeKind =
+      Number.isInteger(kind) && kind >= 1 && kind <= 4 ? kind : SvItemDefaults.KIND_GOODS
+    const discount = discounts[index] ?? 0
+    return {
+      description: describe(line.description),
+      quantity: line.quantity,
+      unitPriceCents: line.unitPriceCents,
+      discountCents: discount,
+      purchaseCents: (gross[index] ?? 0) - discount,
+      kind: safeKind,
+      unit: unitOf(Number(line.unit), safeKind)
+    }
+  })
+}
+
+// The seller: any person, identified by the document they have. The activity is given only when the authority's catalog knows it.
+function excludedSubjectReceiver(receiver: FiscalReceiver): Record<string, unknown> {
+  const identity = identityOf(receiver.taxId, receiver.documentType)
+  const address = addressOf(receiver.address)
+  if (identity === null || address === null || lacks(receiver.name)) {
+    throw new SvBuildError(SvBuildErrors.RECEIVER_UNREADABLE)
+  }
+  const activity = (receiver.economicActivity ?? '').trim()
+  const activityText = activity === '' ? null : activityName(activity)
+  return {
+    tipoDocumento: identity.type,
+    numDocumento: identity.number,
+    nombre: (receiver.name ?? '').trim().slice(0, SvLimits.NAME_MAX),
+    codActividad: activityText === null ? null : activity,
+    descActividad: activityText?.slice(0, SvLimits.ACTIVITY_DESCRIPTION_MAX) ?? null,
+    direccion: address,
+    telefono: contactPhone(receiver.phone),
+    correo: contactEmail(receiver.email)
+  }
+}
+
+function purchaseBody(
+  input: FiscalBuildInput,
+  items: readonly PurchaseItem[]
+): Record<string, unknown> {
+  // The withholding is the caller's to state: nothing is assumed, because a wrong one is a wrong fiscal declaration
+  const withheld = input.withheldIncomeTaxCents
+  if (withheld === undefined) throw new SvBuildError(SvBuildErrors.WITHHOLDING_REQUIRED)
+  const totalCompra = items.reduce((sum, item) => sum + item.purchaseCents, 0)
+  // Anexo IV, field 127: the total of the operations is more than $0.00
+  if (totalCompra <= 0) throw new SvBuildError(SvBuildErrors.SALE_TOTALS_MISMATCH)
+  if (!Number.isSafeInteger(withheld) || withheld < 0 || withheld > totalCompra) {
+    throw new SvBuildError(SvBuildErrors.WITHHOLDING_INVALID)
+  }
+  // Anexo IV, fields 139 and 153 (FSEE): sub-total = purchases - global discount (none: the discount is spread over the items);
+  // to pay = sub-total - withheld income tax
+  const subTotal = totalCompra
+  const totalPagar = subTotal - withheld
+  const how = payments(input, totalPagar)
+  return {
+    cuerpoDocumento: items.map((item, index) => ({
+      numItem: index + 1,
+      tipoItem: item.kind,
+      cantidad: item.quantity,
+      codigo: null,
+      uniMedida: item.unit,
+      descripcion: item.description,
+      precioUni: dollars(item.unitPriceCents),
+      montoDescu: dollars(item.discountCents),
+      compra: dollars(item.purchaseCents)
+    })),
+    resumen: {
+      totalCompra: dollars(totalCompra),
+      descu: 0,
+      totalDescu: dollars(items.reduce((sum, item) => sum + item.discountCents, 0)),
+      subTotal: dollars(subTotal),
+      reteRenta: dollars(withheld),
+      totalPagar: dollars(totalPagar),
+      totalLetras: amountInWords(totalPagar),
+      condicionOperacion: how.condicion,
+      pagos: how.pagos,
+      observaciones: null
+    },
+    apendice: null
+  }
+}
+
 // ---------------------------------------------------------------- a note names the document it changes
 
 function relatedDocument(
@@ -688,9 +821,24 @@ export function buildDocument(input: FiscalBuildInput): BuiltDocument {
       ? []
       : type === SvDocumentTypes.REMISSION_NOTE
         ? missingForRemission(input.receiver)
-        : missingForBusiness(input.receiver)
+        : type === SvDocumentTypes.EXCLUDED_SUBJECT
+          ? missingForExcludedSubject(input.receiver)
+          : missingForBusiness(input.receiver)
   // A receiver that lacks what the type needs is not built into a document nobody could send: core refuses it for a person to fix
   if (missing.length > 0) return { documentType: type, payload: {}, missingReceiverFields: missing }
+  if (type === SvDocumentTypes.EXCLUDED_SUBJECT) {
+    const purchased = purchaseItemsOf(input)
+    return {
+      documentType: type,
+      payload: {
+        identificacion: identification(type, input),
+        emisor: emisor(type, input.issuer),
+        receptor: excludedSubjectReceiver(input.receiver),
+        ...purchaseBody(input, purchased)
+      },
+      missingReceiverFields: []
+    }
+  }
   const items = itemsOf(input)
   const base = {
     identificacion: identification(type, input),

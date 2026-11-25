@@ -18,15 +18,16 @@ const CREDENTIALS = {
 describe('the manifest of the provider', () => {
   const provider = svProvider({ signer: NO_SIGNER })
 
-  it('declares the five documents, with what a taxpayer needs of a customer and the notes marked', () => {
+  it('declares the six documents, with what a taxpayer needs of a customer, the notes and the purchase marked', () => {
     expect(provider.manifest.documentTypes.map(type => type.id)).toEqual([
       '01',
       '03',
       '04',
       '05',
-      '06'
+      '06',
+      '14'
     ])
-    const [invoice, taxCredit, remission, note, debit] = provider.manifest.documentTypes
+    const [invoice, taxCredit, remission, note, debit, excluded] = provider.manifest.documentTypes
     expect(invoice?.requiredReceiverFields).toEqual([])
     expect(taxCredit?.requiredReceiverFields).toEqual([
       'name',
@@ -53,6 +54,13 @@ describe('the manifest of the provider', () => {
       'address'
     ])
     expect(taxCredit?.remissionNote).toBeUndefined()
+    // The purchase from an excluded subject: the seller is no taxpayer (no registration number, no activity), and it is no sale
+    expect(excluded?.requiredReceiverFields).toEqual(['name', 'taxId', 'address'])
+    expect(excluded?.purchase).toBe(true)
+    expect(excluded?.creditNote).toBeUndefined()
+    expect(excluded?.debitNote).toBeUndefined()
+    expect(excluded?.remissionNote).toBeUndefined()
+    expect(taxCredit?.purchase).toBeUndefined()
   })
 
   it('numbers by type, establishment and point of sale, and asks the issuer for the codes it needs', () => {

@@ -34,6 +34,10 @@ export interface FiscalDocumentTypeDeclaration {
   // `build` picks when it is told the document is one (`FiscalBuildInput.kind`). It is no sale (it never enters a book of sales) and it
   // cancels nothing. Never together with `creditNote` or `debitNote`.
   readonly remissionNote?: boolean
+  // A document of this type is made for a purchase: the issuer is the buyer and the receiver the seller, who issues none. It is the type
+  // `build` picks for `FiscalBuildInput.kind` of a purchase. It is never a sale: no book of sales lists it. Never with `creditNote` or
+  // `debitNote`.
+  readonly purchase?: boolean
 }
 
 export type FiscalReceiverField =
@@ -279,9 +283,9 @@ export interface FiscalCreditedDocument {
 }
 
 export interface FiscalBuildInput {
-  // The sale, the credit note of a return, a debit note or a remission note: the provider picks the type of document by its own rule (a
-  // credit note has the type its manifest marks as `creditNote`, a debit note the one it marks as `debitNote`, a remission note the one it
-  // marks as `remissionNote`)
+  // The sale, the credit note of a return, a debit note, a remission note or a purchase: the provider picks the type of document by its own
+  // rule (a credit note has the type its manifest marks as `creditNote`, a debit note the one it marks as `debitNote`, a remission note the
+  // one it marks as `remissionNote`, a purchase the one it marks as `purchase`)
   readonly kind: FiscalDocumentKind
   // Set for a credit note or a debit note, null for the document of a sale
   readonly credited: FiscalCreditedDocument | null
@@ -318,6 +322,11 @@ export interface FiscalBuildInput {
   // of the payment, which a provider may refine from `payments`.
   readonly payments: readonly FiscalPayment[]
   readonly condition: FiscalOperationCondition
+  // The income tax the buyer withheld from the seller of a purchase document, in cents. **Never defaulted:** a provider refuses a purchase
+  // that does not carry it (0 is a figure the caller states, not what is assumed), because a fiscal document with a wrong withholding
+  // is a wrong declaration. Ignored by the other kinds. `totalCents` of a purchase is before it and `payments` are what is paid after it
+  // (the total minus this figure).
+  readonly withheldIncomeTaxCents?: number
 }
 
 // What a provider needs to say which type of document a sale or a credit note is: the choice never depends on anything else, so core
@@ -372,6 +381,9 @@ export type SubmitResult =
 export interface VoidResult {
   readonly voided: boolean
   readonly reason?: string
+  // True when the AUTHORITY refused the invalidation (the answer is its own), false or absent when the provider stopped before sending
+  // anything. Only a refusal of the authority starts the window to correct and send the event again.
+  readonly byAuthority?: boolean
   readonly response?: Readonly<Record<string, unknown>>
 }
 

@@ -284,6 +284,13 @@ describe('bridgedPayload', () => {
       orderId: randomUUID(),
       expired: false
     },
+    [Events.FISCAL_VOID_RETRANSMIT_DEADLINE]: {
+      organizationId: randomUUID(),
+      storeId: randomUUID(),
+      documentId: randomUUID(),
+      orderId: randomUUID(),
+      expired: false
+    },
     [Events.FISCAL_ENTRY_MISMATCH]: {
       organizationId: randomUUID(),
       documentId: randomUUID(),

@@ -139,6 +139,13 @@ export class SvProvider implements FiscalDocumentProvider {
         label: 'Nota de débito electrónica',
         requiredReceiverFields: BUSINESS_RECEIVER_FIELDS,
         debitNote: true
+      },
+      {
+        id: SvDocumentTypes.EXCLUDED_SUBJECT,
+        label: 'Factura de sujeto excluido electrónica',
+        // The seller is no taxpayer: a name, an identity document and an address are what the schema asks (no registration number)
+        requiredReceiverFields: ['name', 'taxId', 'address'],
+        purchase: true
       }
     ],
     requiredIssuerFields: [

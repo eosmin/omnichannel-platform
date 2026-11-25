@@ -1,4 +1,4 @@
-import { FiscalVoidKind } from '@platform/core/domain'
+import { FiscalDocumentKind, FiscalVoidKind } from '@platform/core/domain'
 import {
   conformanceGaps,
   ConformanceOutcome,
@@ -44,7 +44,7 @@ describe('the plan of the minimum tests', () => {
   const kinds = (kind: ConformanceStep['kind']): ConformanceStep[] =>
     steps.filter(step => step.kind === kind)
 
-  it('has what the authority asks: 90 invoices, 75 tax credit documents, 50 credit notes, 25 debit notes, 50 remission notes, 5 invalidations and 5 contingencies', () => {
+  it('has what the authority asks: 90 invoices, 75 tax credit documents, 50 credit notes, 25 debit notes, 50 remission notes, 25 invoices of an excluded subject, 5 invalidations and 5 contingencies', () => {
     const sales = kinds('sale')
     // The minimum, and the documents made for the invalidations (the ones of the minimum are never touched)
     expect(sales.filter(step => step.id.startsWith('INV-'))).toHaveLength(90)
@@ -52,6 +52,7 @@ describe('the plan of the minimum tests', () => {
     expect(kinds('credit_note')).toHaveLength(50)
     expect(kinds('debit_note')).toHaveLength(25)
     expect(sales.filter(step => step.id.startsWith('NR-'))).toHaveLength(50)
+    expect(sales.filter(step => step.id.startsWith('FSE-'))).toHaveLength(25)
     expect(kinds('void')).toHaveLength(5)
     expect(kinds('contingency')).toHaveLength(5)
     expect(kinds('deferred_sale')).toHaveLength(5 * SvConformanceDefaults.deferredPerContingency)
@@ -61,7 +62,8 @@ describe('the plan of the minimum tests', () => {
         [SvConformanceBuckets.TAX_CREDIT]: 75,
         [SvConformanceBuckets.CREDIT_NOTE]: 50,
         [SvConformanceBuckets.DEBIT_NOTE]: 25,
-        [SvConformanceBuckets.REMISSION_NOTE]: 50
+        [SvConformanceBuckets.REMISSION_NOTE]: 50,
+        [SvConformanceBuckets.EXCLUDED_SUBJECT]: 25
       },
       voids: 5,
       contingencies: 5
@@ -71,8 +73,39 @@ describe('the plan of the minimum tests', () => {
   it('plans the remission notes after every other step, so the values of the earlier ones do not move', () => {
     const first = steps.findIndex(step => step.id.startsWith('NR-'))
     expect(first).toBeGreaterThan(0)
-    expect(steps.slice(first).every(step => step.id.startsWith('NR-'))).toBe(true)
-    expect(steps.slice(first)).toHaveLength(50)
+    expect(steps.slice(first, first + 50).every(step => step.id.startsWith('NR-'))).toBe(true)
+    // Only the invoices of an excluded subject follow them, the last of all
+    expect(steps.slice(first + 50).every(step => step.id.startsWith('FSE-'))).toBe(true)
+    expect(steps.slice(first + 50)).toHaveLength(25)
+  })
+
+  it('makes 25 purchases from sellers who are no taxpayers, in many shapes, each stating its withholding and with no tax', () => {
+    const purchases = steps.filter(
+      (step): step is Extract<ConformanceStep, { kind: 'sale' }> =>
+        step.kind === 'sale' && step.id.startsWith('FSE-')
+    )
+    expect(purchases).toHaveLength(25)
+    for (const step of purchases) {
+      expect(step.bucket).toBe(SvConformanceBuckets.EXCLUDED_SUBJECT)
+      expect(step.input.kind).toBe(FiscalDocumentKind.PURCHASE)
+      // Stated, never assumed: the goods of the plan are bought with no withholding
+      expect(step.input.withheldIncomeTaxCents).toBe(0)
+      expect(step.input.taxCents).toBe(0)
+      expect(step.input.receiver.registrationId).toBeNull()
+      expect(step.input.receiver.address).not.toBeNull()
+      const built = buildDocument(step.input)
+      expect(built.documentType).toBe(SvDocumentTypes.EXCLUDED_SUBJECT)
+      expect(built.missingReceiverFields).toEqual([])
+    }
+    const tags = new Set(purchases.flatMap(step => step.tags))
+    for (const wanted of [
+      'seller_national_id',
+      'seller_tax_number',
+      'seller_other_document',
+      'discount'
+    ]) {
+      expect(tags).toContain(wanted)
+    }
   })
 
   it('gives every recipient of a remission note an identity document the entry of a person would accept, whatever its tag', () => {
@@ -247,6 +280,7 @@ describe('the plan of the minimum tests', () => {
         creditNotes: 9,
         debitNotes: 30,
         remissionNotes: 4,
+        excludedSubjects: 3,
         voids: 1,
         contingencies: 1
       }
@@ -254,6 +288,7 @@ describe('the plan of the minimum tests', () => {
     expect(small.filter(step => step.kind === 'credit_note')).toHaveLength(2)
     expect(small.filter(step => step.kind === 'debit_note')).toHaveLength(2)
     expect(small.filter(step => step.id.startsWith('NR-'))).toHaveLength(4)
+    expect(small.filter(step => step.id.startsWith('FSE-'))).toHaveLength(3)
     expect(small.filter(step => step.kind === 'void')).toHaveLength(1)
     expect(
       svConformanceTargets({ taxCredits: 2, creditNotes: 9 }).buckets[

@@ -16,7 +16,14 @@ import {
   sealDateOf,
   type SvInvalidationInput
 } from './sv-invalidation'
-import { acceptedDocument, BUSINESS, credited, ISSUER, schemaErrors } from './testing/sv-fixtures'
+import {
+  acceptedDocument,
+  BUSINESS,
+  credited,
+  ISSUER,
+  purchase,
+  schemaErrors
+} from './testing/sv-fixtures'
 
 const PERSON = { name: 'Ana Pérez', idType: '13', idNumber: '012345678' }
 const REQUESTER = { name: 'Luis Gómez', idType: '36', idNumber: '06140101011011' }
@@ -47,6 +54,12 @@ describe('the deadlines of an invalidation', () => {
     expect(addMonths('2026-12-31', 1)).toBe('2027-01-31')
     expect(invalidationDeadline(SvDocumentTypes.INVOICE, '2026-11-16')).toBe('2027-02-16')
     expect(invalidationDeadline(SvDocumentTypes.INVOICE, '2026-11-30')).toBe('2027-02-28')
+  })
+
+  it('counts three calendar months from the seal for the invoice of an excluded subject, like an invoice (Anexo V, field 47, rule 5)', () => {
+    expect(invalidationDeadline(SvDocumentTypes.EXCLUDED_SUBJECT, '2026-11-16')).toBe('2027-02-16')
+    expect(invalidationDeadline(SvDocumentTypes.EXCLUDED_SUBJECT, '2026-11-30')).toBe('2027-02-28')
+    expect(invalidationDeadline(SvDocumentTypes.EXCLUDED_SUBJECT, '2027-11-30')).toBe('2028-02-29')
   })
 
   it('gives a tax credit document or a credit note one calendar day after the seal (the stricter text)', () => {
@@ -416,6 +429,47 @@ describe('the invalidation event', () => {
     expect(
       clamped.ok && (clamped.event['identificacion'] as Record<string, unknown>)['fecEmi']
     ).toBe('2027-02-16')
+  })
+
+  describe('the invoice of an excluded subject (14)', () => {
+    const doc = acceptedDocument(purchase())
+    const details = { kind: FiscalVoidKind.CORRECTION, responsible: PERSON, requester: REQUESTER }
+
+    it('is refused after three months from its seal, to the last second, like an invoice', () => {
+      expect(refusal(buildInvalidation(input({ doc, now: '2027-02-17T05:59:59.000Z' })))).toBeNull()
+      expect(refusal(buildInvalidation(input({ doc, now: '2027-02-17T06:00:00.000Z' })))).toBe(
+        SvVoidRefusals.DEADLINE_PASSED
+      )
+    })
+
+    it('is dated with the day it is made, never later than three months after the date of the document (Anexo V, field 9)', () => {
+      const date = (now: string): unknown => {
+        const built = buildInvalidation(input({ doc, now }))
+        return built.ok && (built.event['identificacion'] as Record<string, unknown>)['fecEmi']
+      }
+      expect(date('2026-12-20T15:00:00.000Z')).toBe('2026-12-20')
+      expect(date('2027-02-16T15:00:00.000Z')).toBe('2027-02-16')
+    })
+
+    it('asks for the document that takes its place on a correction, and repeats the seller as the receiver of the event', () => {
+      expect(refusal(buildInvalidation(input({ doc, details })))).toBe(
+        SvVoidRefusals.REPLACEMENT_REQUIRED
+      )
+      const replacement = acceptedDocument(purchase({ correlative: 42, documentUuid: OTHER_UUID }))
+      const built = buildInvalidation(input({ doc, details: { ...details, replacement } }))
+      expect(refusal(built)).toBeNull()
+      if (!built.ok) return
+      expect(schemaErrors('invalidation', built.event)).toEqual([])
+      expect(built.event['documento']).toMatchObject({
+        tipoDte: '14',
+        codigoGeneracionR: replacement.providerData?.[SvProviderDataKeys.GENERATION_CODE]
+      })
+      expect(built.event['documento']).toMatchObject({
+        tipoDocumento: '13',
+        numDocumento: '012345678',
+        nombre: 'Juan Pérez Ramos'
+      })
+    })
   })
 
   it('names no replacement for a credit note, whatever the kind, and does not ask for one', () => {
