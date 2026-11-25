@@ -80,6 +80,8 @@ export function buildContentSecurityPolicy(options: ContentSecurityPolicyOptions
 export const UNSUBSCRIBE_PAGE_SOURCE = '/unsubscribe'
 // The page that confirms a public data request carries its token in the fragment too: the same headers (spec fixes it is `AppPaths.dsrVerify`)
 export const DSR_VERIFY_PAGE_SOURCE = '/compliance/dsr/verify'
+// The page that hands over the file of an export carries its token in the fragment too (spec fixes it is `AppPaths.dsrExport`)
+export const DSR_EXPORT_PAGE_SOURCE = '/compliance/dsr/export'
 // The public form carries the key of the store in the fragment: the same headers (spec fixes it is `AppPaths.dsrRequest`)
 export const DSR_REQUEST_PAGE_SOURCE = '/compliance/dsr/request'
 

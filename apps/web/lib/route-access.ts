@@ -17,6 +17,8 @@ function isPublic(pathname: string): boolean {
     pathname === AppPaths.unsubscribe ||
     // The page that confirms a public data request: the person comes from the link of the verification mail and has no account
     pathname === AppPaths.dsrVerify ||
+    // The page that hands over the file of an access or portability request: the person comes from the closing mail and has no account
+    pathname === AppPaths.dsrExport ||
     // The public form of data requests: whoever has the address of a store fills it in, with no account
     pathname === AppPaths.dsrRequest ||
     pathname.startsWith(INVITATIONS_PREFIX) ||
