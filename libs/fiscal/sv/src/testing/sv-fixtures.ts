@@ -123,6 +123,7 @@ const FILES: Record<string, string> = {
   '01': 'fe-f-v2.json',
   '03': 'fe-ccf-v4.json',
   '05': 'fe-nc-v4.json',
+  '06': 'fe-nd-v4.json',
   // The event that invalidates a document
   invalidation: 'invalidacion-v3.json',
   // The event that reports a contingency

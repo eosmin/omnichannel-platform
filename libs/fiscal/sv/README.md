@@ -5,7 +5,7 @@ API, the worker, the web, the SDK and the runtime read its manifest and nothing 
 
 ## State (Steps 4B.7c-2 and 4B.7c-3)
 
-- **Done:** the pure construction of the invoice (`01`), the tax credit document (`03`) and the credit note (`05`); the checks of the issuer and of a receiver; the manifest; **the client of the authority** (Step 4B.7c-3): the token (kept, renewed, with a memory of a refused password), the signer port and the adapter of the official signing service, `submit` and `consult`; **the invalidation** (Step 4B.7c-4): the event of version 3, the deadlines, counted from the reception seal (three months for an invoice, one day for the others while the authority settles which text of its Normativa applies), `void` and `consultVoid`.
+- **Done:** the pure construction of the invoice (`01`), the tax credit document (`03`), the credit note (`05`) and the debit note (`06`); the checks of the issuer and of a receiver; the manifest; **the client of the authority** (Step 4B.7c-3): the token (kept, renewed, with a memory of a refused password), the signer port and the adapter of the official signing service, `submit` and `consult`; **the invalidation** (Step 4B.7c-4): the event of version 3, the deadlines, counted from the reception seal (three months for an invoice, one day for the others while the authority settles which text of its Normativa applies), `void` and `consultVoid`.
 - **Not yet:** the screens (4B.7c-5), the minimum tests in the sandbox (4B.7c-6), contingency (4B.7c-7: `sv-contingency.ts`, schema `schemas/contingencia-v4.json`).
 - **Offered** where the deployment sets `FISCAL_SIGNER_URL` (the address of the official signing service: a private network, never published).
 - **Never reaches the real authority in a test:** the specs and the contract suite run against `src/testing/fake-authority.ts`, a server of our own that plays the authority and the signer with a key generated for each run.
@@ -19,9 +19,14 @@ wording of the amount in words, and the rules of the accountant (`[ACCOUNTANT]` 
 
 ## Provenance of the data files
 
-- `schemas/fe-f-v2.json`, `schemas/fe-ccf-v4.json`, `schemas/fe-nc-v4.json`: the JSON schemas of the invoice (version 2), the tax credit
-  document (version 4) and the credit note (version 4) from `svfe-json-schemas` of the Ministerio de Hacienda (public technical
-  documents). Reformatted by Prettier (whitespace only: the content is the authority's). Used only by the specs, to check every generated document against the schema of the authority. A new version of a schema
+- `schemas/fe-f-v2.json`, `schemas/fe-ccf-v4.json`, `schemas/fe-nc-v4.json`, `schemas/fe-nd-v4.json`: the JSON schemas of the invoice
+  (version 2), the tax credit document (version 4), the credit note (version 4) and the debit note (version 4) from `svfe-json-schemas` of
+  the Ministerio de Hacienda (public technical documents). Reformatted by Prettier (whitespace only: the content is the authority's).
+  **Source of the set:** the archive "JSON Schemas" (`svfe-json-schemas`, 19 files, July 2026; the debit note's file is dated 2026-07-27)
+  published at https://factura.gob.sv/informacion-tecnica-y-funcional/ (row "JSON Schemas, anexo al manual técnico para la integración
+  tecnológica del sistema de transmisión"), downloaded on 2026-11-25. Checked that day: the five schemas that were already here
+  (`fe-f-v2`, `fe-ccf-v4`, `fe-nc-v4`, `invalidacion-v3`, `contingencia-v4`) are, once parsed, identical to those of the archive; only the
+  formatting differs. `fe-nd-v4.json` was added from it. Used only by the specs, to check every generated document against the schema of the authority. A new version of a schema
   replaces its file and the version in `SvSchemaVersions`.
 - `schemas/invalidacion-v3.json`: the JSON schema of the invalidation event (version 3) from the same `svfe-json-schemas`. Used only by the specs.
 - `src/catalogs/*.ts`: generated from "Catálogos - Facturación Electrónica", version 1.1 (07/2026) of the same ministry: departments
@@ -49,7 +54,7 @@ Not copied: the manuals, the signing certificate, any credential, nor the enviro
 
 ## The minimum tests of the sandbox (Step 4B.7c-6)
 
-`libs/fiscal/conformance/src/run-conformance.ts` (`pnpm fiscal:conformance`) makes and sends the documents the authority asks before it authorizes an issuer (90 invoices, 75 tax credit documents and 50 credit notes with seal, 5 invalidations, 5 contingencies) from invented data, through the port of the provider (no database). The plan is `src/conformance/sv-conformance-plan.ts`; the report never carries a document, a number, a seal or a secret.
+`libs/fiscal/conformance/src/run-conformance.ts` (`pnpm fiscal:conformance`) makes and sends the documents the authority asks before it authorizes an issuer (90 invoices, 75 tax credit documents, 50 credit notes and 25 debit notes with seal, 5 invalidations, 5 contingencies) from invented data, through the port of the provider (no database). The plan is `src/conformance/sv-conformance-plan.ts`; the report never carries a document, a number, a seal or a secret.
 
 - `pnpm fiscal:conformance` runs the plan through the simulator (nothing leaves the machine; the simulator has no contingency mode, so those steps are skipped and said so).
 - `pnpm fiscal:conformance --provider sv --dry-run` builds every document with this provider's rules and sends nothing; it needs no environment.
