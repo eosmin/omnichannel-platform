@@ -122,6 +122,8 @@ export const SvContingency = {
   TRANSMIT_WITHIN_HOURS: 72,
   // The time to transmit the event of contingency once the force majeure ended (Normativa DTE v2.0, 13.2.2; field 10 of the event)
   REPORT_WITHIN_HOURS: 24,
+  // A contingency that lasts more than three consecutive days needs a technical report before the event (Normativa DTE v2.0, 13.2.1.1)
+  TECHNICAL_REPORT_AFTER_DAYS: 3,
   // The documents one event lists (the schema's maximum)
   MAX_DOCUMENTS: 1000,
   MOTIVE_MAX: 500

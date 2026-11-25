@@ -1,4 +1,5 @@
 import {
+  FiscalAuthorityProbeOutcome,
   FiscalConsultState,
   FiscalContingencyReportOutcome,
   FiscalDeferOutcome,
@@ -532,6 +533,22 @@ export function authorityInstant(text: string | null): number | null {
 
 // Reports a contingency: the event is signed and sent, and the window to send its documents runs from the moment the authority took it. The
 // window counts from the earlier of the authority's own time and ours, so it is never longer than the authority's.
+// Whether the authority answers now (D2c). A fresh login: the authentication service is the one every call of this provider needs first, and a
+// token kept in memory is never taken for an answer. It does not reach the reception service (the manual's documented calls there all carry a
+// document), so an outage of that service alone is not seen: the person who ends the contingency by hand, and the report that follows, are the
+// check of it. A password the authority refused is reported as such and never asked again by the caller.
+export async function probeAuthority(
+  deps: SvTransmissionDeps,
+  ctx: ProviderContext
+): Promise<FiscalAuthorityProbeOutcome> {
+  const identity = identityOf(ctx.issuer, ctx.credentials)
+  if (identity === null) return FiscalAuthorityProbeOutcome.INCONCLUSIVE
+  const login = await deps.auth.probe(ctx.issuer.environment, identity.nit, identity.apiPassword)
+  if (login.kind === 'token') return FiscalAuthorityProbeOutcome.REACHABLE
+  if (login.kind === 'rejected') return FiscalAuthorityProbeOutcome.CREDENTIALS_REJECTED
+  return FiscalAuthorityProbeOutcome.UNREACHABLE
+}
+
 export async function reportContingencyEvent(
   deps: SvTransmissionDeps,
   event: FiscalContingencyEvent,

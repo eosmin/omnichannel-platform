@@ -170,6 +170,11 @@ export interface ReportFiscalContingencyJob extends BaseJob {
   organizationId: string
   contingencyId: string
 }
+// The probe of one open contingency of an issuer (D2c): the ids only
+export interface ProbeFiscalContingencyJob extends BaseJob {
+  organizationId: string
+  contingencyId: string
+}
 // The automatic entry of one event of one source (TDD_18 §6.1). The job carries which source and which event, never an amount: the worker
 // reads the rows as they are when it runs, so a late or repeated job posts the same entry (the key makes it one).
 export interface PostFinanceEventJob extends BaseJob {

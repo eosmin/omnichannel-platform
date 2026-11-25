@@ -671,7 +671,12 @@ export class NotificationsEventsListener {
       [FiscalContingencyAlertKind.REPORT_FAILED]:
         NotificationTypes.FISCAL_CONTINGENCY_REPORT_FAILED,
       [FiscalContingencyAlertKind.WINDOW_CLOSING]:
-        NotificationTypes.FISCAL_CONTINGENCY_WINDOW_CLOSING
+        NotificationTypes.FISCAL_CONTINGENCY_WINDOW_CLOSING,
+      [FiscalContingencyAlertKind.CLOSED_BY_SYSTEM]:
+        NotificationTypes.FISCAL_CONTINGENCY_CLOSED_BY_SYSTEM,
+      [FiscalContingencyAlertKind.RESTORED]: NotificationTypes.FISCAL_CONTINGENCY_RESTORED,
+      [FiscalContingencyAlertKind.TECHNICAL_REPORT_REQUIRED]:
+        NotificationTypes.FISCAL_CONTINGENCY_TECHNICAL_REPORT
     }[payload.kind]
     await this.tellFiscalManagers(
       payload.organizationId,

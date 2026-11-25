@@ -16,6 +16,7 @@ import {
   type PrismaTransaction
 } from '@platform/core/database'
 import {
+  FiscalAuthorityProbeOutcome,
   FiscalContingencyAlertKind,
   FiscalContingencyAttachResult,
   FiscalContingencyCodePattern,
@@ -24,6 +25,7 @@ import {
   FiscalContingencyConflictReasons,
   FiscalContingencyLimits,
   FiscalContingencyOrigin,
+  FiscalContingencyProbeResult,
   FiscalContingencyReportOutcome,
   FiscalContingencyStatus,
   type FiscalEnvironment,
@@ -45,6 +47,7 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import {
   JobNames,
+  probeFiscalContingencySchedulerId,
   QueueNames,
   reportFiscalContingencyJobId,
   submitFiscalDocumentJobId
@@ -81,6 +84,7 @@ interface ViewRow {
   motive: string | null
   startedAt: Date
   endedAt: Date | null
+  restoredAt: Date | null
   reportedAt: Date | null
   windowEndsAt: Date | null
   reportAttempts: number
@@ -97,6 +101,8 @@ export interface FiscalContingencyView {
   motive: string | null
   startedAt: string
   endedAt: string | null
+  // The first instant the probe found the authority answering while it was open (an upper bound of the real end)
+  restoredAt: string | null
   reportedAt: string | null
   windowEndsAt: string | null
   // The documents made in it
@@ -112,6 +118,9 @@ export interface FiscalContingencyEnterBody {
 
 export interface FiscalContingencyEndBody {
   responsible?: FiscalVoidParty | null
+  // The real instant the situation ended, when the person knows it (ISO 8601): not in the future and not before the contingency started.
+  // The authority counts its 24 hours from it. Absent: the instant the probe saw the authority answer, or now.
+  endedAt?: string | null
 }
 
 // How a document that is about to be made is routed (see `routeOf`)
@@ -233,6 +242,7 @@ export class FiscalContingencyService {
         FiscalContingencyConflictReasons.ALREADY_OPEN
       )
     }
+    await this.startProbe(organizationId, row.id)
     this.audit.log({
       action: AuditAction.FISCAL_CONTINGENCY_ENTERED,
       actor: { userId: actor.userId },
@@ -256,11 +266,31 @@ export class FiscalContingencyService {
     actor: FiscalActor
   ): Promise<FiscalContingencyView> {
     const responsible = body.responsible ?? null
+    const declared =
+      body.endedAt === undefined || body.endedAt === null ? null : new Date(body.endedAt)
     const ended = await this.inTx(organizationId, async tx => {
-      const rows = await tx.$queryRaw<{ id: string; provider_id: string }[]>`
-        SELECT id, provider_id FROM fiscal_contingencies WHERE organization_id = ${organizationId} AND status = ${FiscalContingencyStatus.OPEN} FOR UPDATE`
+      const rows = await tx.$queryRaw<
+        { id: string; provider_id: string; started_at: Date; restored_at: Date | null }[]
+      >`
+        SELECT id, provider_id, started_at, restored_at FROM fiscal_contingencies WHERE organization_id = ${organizationId} AND status = ${FiscalContingencyStatus.OPEN} FOR UPDATE`
       const found = rows[0]
       if (found === undefined) return null
+      // The 24 hours of the authority run from the real end of the situation: the person's, else the first instant the probe saw the
+      // authority answer (it may have come back earlier, so the local clock of the 24 hours is the more careful one), else now
+      const now = new Date()
+      if (
+        declared !== null &&
+        (Number.isNaN(declared.getTime()) ||
+          declared.getTime() > now.getTime() ||
+          declared.getTime() < found.started_at.getTime())
+      ) {
+        throw this.conflict(
+          'the end of the contingency is in the future or before it started',
+          FiscalContingencyConflictReasons.END_TIME_INVALID,
+          HttpStatusCodes.BAD_REQUEST
+        )
+      }
+      const endedAt = declared ?? found.restored_at ?? now
       // What the authority asks is read from the provider the contingency was opened with, not from today's issuer (it may have changed,
       // or be gone): a contingency can always be ended
       const asks =
@@ -281,7 +311,7 @@ export class FiscalContingencyService {
         where: { id },
         data: {
           status: FiscalContingencyStatus.CLOSED,
-          endedAt: new Date(),
+          endedAt,
           closedBy: actor.userId,
           ...(responsible === null
             ? {}
@@ -306,6 +336,7 @@ export class FiscalContingencyService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
+    await this.stopProbe(ended.row.id)
     // A contingency with no document has nothing to report
     // (a queue that is down does not undo an end that was made: the daily check asks for the report that is owed)
     if (ended.documents > 0) await this.tryEnqueueReport(organizationId, ended.row.id, 1)
@@ -459,6 +490,8 @@ export class FiscalContingencyService {
         where: {
           organizationId,
           status: FiscalContingencyStatus.OPEN,
+          // Once the authority answers again no new document is kept in it: the person only has to end it
+          restoredAt: null,
           providerId: provider.id,
           environment
         },
@@ -509,6 +542,7 @@ export class FiscalContingencyService {
       return true
     })
     if (!created) return false
+    await this.startProbe(organizationId, id)
     this.audit.log({
       action: AuditAction.FISCAL_CONTINGENCY_ENTERED,
       actor: { system: true },
@@ -539,11 +573,15 @@ export class FiscalContingencyService {
         ? undefined
         : cappedResponse(providerData, FiscalLimits.PROVIDER_DATA_MAX_CHARS)
     return this.inTx(organizationId, async tx => {
-      const rows = await tx.$queryRaw<{ status: string }[]>`
-        SELECT status FROM fiscal_contingencies WHERE id = ${contingencyId} AND organization_id = ${organizationId} FOR UPDATE`
+      const rows = await tx.$queryRaw<{ status: string; restored_at: Date | null }[]>`
+        SELECT status, restored_at FROM fiscal_contingencies WHERE id = ${contingencyId} AND organization_id = ${organizationId} FOR UPDATE`
       const status = rows[0]?.status
       if (status === undefined) return FiscalContingencyAttachResult.GONE
-      if ((status as FiscalContingencyStatus) !== FiscalContingencyStatus.OPEN) {
+      // One the authority has answered again for (waiting to be ended by a person) takes no new document either
+      if (
+        (status as FiscalContingencyStatus) !== FiscalContingencyStatus.OPEN ||
+        (rows[0]?.restored_at ?? null) !== null
+      ) {
         return FiscalContingencyAttachResult.CLOSED
       }
       const held = await tx.fiscalDocument.count({ where: { organizationId, contingencyId } })
@@ -880,10 +918,293 @@ export class FiscalContingencyService {
     }
   }
 
-  // The window to send the documents of a reported contingency is closing and some of them are not accepted yet: the person is told, once
+  // The window to send the documents of a reported contingency is closing and some of them are not accepted yet: the person is told, once.
+  // The 24 hours to send the event (counted from the real end of the situation) and the 72 hours of the lot share this mark and this
+  // alert: they never run together, because the mark is cleared when the event is taken.
   async warnWindows(organizationId: string, now: Date = new Date()): Promise<number> {
     const told = await this.warnReportDeadlines(organizationId, now)
-    return told + (await this.warnLotWindows(organizationId, now))
+    const lots = await this.warnLotWindows(organizationId, now)
+    return told + lots + (await this.warnTechnicalReports(organizationId, now))
+  }
+
+  // ---------------------------------------------------------------- the probe of an open contingency (D2c)
+
+  // While a contingency is open the authority is asked, every 14 minutes, whether it answers again (the rules of the authority ask for an
+  // attempt at least every 15 minutes while it cannot be reached). The first answer ends the contingency by itself when nobody has to say who
+  // answers for the establishment, or tells a person to end it. Idempotent: the contingency is locked, so two workers, or a worker and a
+  // person, never end it twice.
+  async probe(
+    organizationId: string,
+    contingencyId: string,
+    now: Date = new Date()
+  ): Promise<FiscalContingencyProbeResult> {
+    const found = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalContingency.findFirst({
+        where: { id: contingencyId, organizationId }
+      })
+    )
+    // One that is not this organization's is left alone (its probe is not ours to stop); one that is no longer open stops its probe
+    if (found === null) return FiscalContingencyProbeResult.NOTHING
+    if ((found.status as FiscalContingencyStatus) !== FiscalContingencyStatus.OPEN) {
+      await this.stopProbe(contingencyId)
+      return FiscalContingencyProbeResult.NOTHING
+    }
+    const row = found
+    const provider = this.providers.find(row.providerId)
+    const mode = provider?.manifest.contingencyMode
+    // The days an open contingency lasts are watched on every probe, so the person hears the day it passes the limit
+    try {
+      await this.warnTechnicalReport(organizationId, row, mode, now)
+    } catch (error) {
+      this.logger.error(
+        { contingencyId, err: errorName(error) },
+        'the warning of the technical report of a contingency was not made'
+      )
+    }
+    if (row.restoredAt !== null) {
+      // A person has to end it: nothing to ask
+      await this.stopProbe(contingencyId)
+      return FiscalContingencyProbeResult.NOTHING
+    }
+    const probeFn = provider?.probeAuthority?.bind(provider)
+    if (provider === undefined || mode === undefined || probeFn === undefined) {
+      await this.stopProbe(contingencyId)
+      return FiscalContingencyProbeResult.NOTHING
+    }
+    const issuer = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalIssuer.findUnique({ where: { organizationId } })
+    )
+    if (
+      issuer === null ||
+      issuer.providerId !== row.providerId ||
+      (issuer.environment as FiscalEnvironment) !== (row.environment as FiscalEnvironment)
+    ) {
+      return FiscalContingencyProbeResult.WAITING
+    }
+    // Credentials the authority refused are not sent again until the issuer is changed: three wrong logins lock the user of the authority
+    if (row.probeHaltedAt !== null) {
+      if (issuer.updatedAt.getTime() <= row.probeHaltedAt.getTime()) {
+        return FiscalContingencyProbeResult.HALTED
+      }
+      await this.unit(organizationId, () =>
+        this.prisma.client.fiscalContingency.updateMany({
+          where: { id: contingencyId, organizationId, status: FiscalContingencyStatus.OPEN },
+          data: { probeHaltedAt: null }
+        })
+      )
+    }
+    let credentials: Record<string, unknown> = {}
+    if (issuer.credentialsEncrypted !== null) {
+      try {
+        credentials = openSealed(
+          this.cipher,
+          this.logger,
+          issuer.credentialsEncrypted,
+          SealedValueKind.ISSUER_CREDENTIALS,
+          { organizationId, contingencyId }
+        )
+      } catch {
+        return FiscalContingencyProbeResult.WAITING
+      }
+    }
+    let outcome: FiscalAuthorityProbeOutcome
+    try {
+      // No answer in time is the authority not answering
+      outcome =
+        (await withTimeout(
+          () =>
+            probeFn({
+              issuer: this.issuerInput(issuer),
+              credentials,
+              idempotencyKey: `${organizationId}:contingency:${contingencyId}:probe`,
+              attempt: 1
+            }),
+          FiscalLimits.PROVIDER_CALL_TIMEOUT_MS
+        )) ?? FiscalAuthorityProbeOutcome.UNREACHABLE
+    } catch (error) {
+      this.logger.warn(
+        { contingencyId, err: errorName(error) },
+        'a fiscal provider failed while probing the authority'
+      )
+      outcome = FiscalAuthorityProbeOutcome.UNREACHABLE
+    }
+    if (outcome === FiscalAuthorityProbeOutcome.CREDENTIALS_REJECTED) {
+      await this.unit(organizationId, () =>
+        this.prisma.client.fiscalContingency.updateMany({
+          where: { id: contingencyId, organizationId, status: FiscalContingencyStatus.OPEN },
+          data: { probeHaltedAt: now }
+        })
+      )
+      return FiscalContingencyProbeResult.HALTED
+    }
+    if (outcome !== FiscalAuthorityProbeOutcome.REACHABLE)
+      return FiscalContingencyProbeResult.WAITING
+    return this.restore(organizationId, contingencyId, mode.requiresResponsible, now)
+  }
+
+  // The authority answered: the contingency ends at the instant of the first answer when nobody has to say who answers for the establishment,
+  // and waits for a person (with the time kept) when somebody has
+  private async restore(
+    organizationId: string,
+    contingencyId: string,
+    asksResponsible: boolean,
+    now: Date
+  ): Promise<FiscalContingencyProbeResult> {
+    const done = await this.inTx(organizationId, async tx => {
+      const rows = await tx.$queryRaw<
+        { id: string; has_responsible: boolean; restored_at: Date | null }[]
+      >`
+        SELECT id, responsible_encrypted IS NOT NULL AS has_responsible, restored_at FROM fiscal_contingencies WHERE id = ${contingencyId} AND organization_id = ${organizationId} AND status = ${FiscalContingencyStatus.OPEN} FOR UPDATE`
+      const found = rows[0]
+      // A person (or another worker) ended it a moment ago
+      if (found === undefined) return null
+      const instant = found.restored_at ?? now
+      if (asksResponsible && !found.has_responsible) {
+        if (found.restored_at !== null) return { closed: false, documents: 0 }
+        await tx.fiscalContingency.update({
+          where: { id: contingencyId },
+          data: { restoredAt: instant }
+        })
+        this.events.publish(tx, Events.FISCAL_CONTINGENCY_ALERT, {
+          organizationId,
+          contingencyId,
+          kind: FiscalContingencyAlertKind.RESTORED
+        })
+        return { closed: false, documents: 0 }
+      }
+      const documents = await tx.fiscalDocument.count({ where: { organizationId, contingencyId } })
+      await tx.fiscalContingency.update({
+        where: { id: contingencyId },
+        data: {
+          status: FiscalContingencyStatus.CLOSED,
+          endedAt: instant,
+          restoredAt: instant,
+          closedBy: null
+        }
+      })
+      this.events.publish(tx, Events.FISCAL_CONTINGENCY_ALERT, {
+        organizationId,
+        contingencyId,
+        kind: FiscalContingencyAlertKind.CLOSED_BY_SYSTEM
+      })
+      return { closed: true, documents }
+    })
+    if (done === null) {
+      await this.stopProbe(contingencyId)
+      return FiscalContingencyProbeResult.NOTHING
+    }
+    await this.stopProbe(contingencyId)
+    if (!done.closed) return FiscalContingencyProbeResult.RESTORED
+    this.audit.log({
+      action: AuditAction.FISCAL_CONTINGENCY_ENDED,
+      actor: { system: true },
+      organizationId,
+      resourceType: FiscalResourceTypes.CONTINGENCY,
+      resourceId: contingencyId,
+      metadata: { documents: done.documents, by: 'probe' }
+    })
+    // The same way a person's end goes: a contingency with no document has nothing to report, and a queue that is down is made up for by the
+    // daily check
+    if (done.documents > 0) await this.tryEnqueueReport(organizationId, contingencyId, 1)
+    return FiscalContingencyProbeResult.CLOSED
+  }
+
+  // The probes of the open contingencies of the organization are asked for again (the daily check): a scheduler lost with the queue comes back
+  async ensureProbes(organizationId: string): Promise<void> {
+    const open = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalContingency.findMany({
+        where: { organizationId, status: FiscalContingencyStatus.OPEN, restoredAt: null },
+        select: { id: true }
+      })
+    )
+    for (const { id } of open) await this.startProbe(organizationId, id)
+  }
+
+  // One scheduler for each open contingency (asking for it again is the same scheduler). After the real commit; a queue that is down is told
+  // in the log, and the daily check asks again
+  private async startProbe(organizationId: string, contingencyId: string): Promise<void> {
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      try {
+        await this.queue.upsertJobScheduler(
+          probeFiscalContingencySchedulerId(contingencyId),
+          { every: FiscalContingencyLimits.PROBE_INTERVAL_MS },
+          {
+            name: JobNames.PROBE_FISCAL_CONTINGENCY,
+            data: { organizationId, contingencyId },
+            opts: { attempts: 1, removeOnComplete: true, removeOnFail: true }
+          }
+        )
+      } catch (error) {
+        this.logger.error(
+          { contingencyId, err: errorName(error) },
+          'the probe of a contingency could not be scheduled: the daily check asks for it again'
+        )
+      }
+    })
+  }
+
+  private async stopProbe(contingencyId: string): Promise<void> {
+    try {
+      await this.queue.removeJobScheduler(probeFiscalContingencySchedulerId(contingencyId))
+    } catch (error) {
+      this.logger.error(
+        { contingencyId, err: errorName(error) },
+        'the probe of a contingency could not be stopped: its next run finds it ended'
+      )
+    }
+  }
+
+  // A contingency that lasts more than the days the authority gives (from its start to its end, or to now while it is open) needs a technical
+  // report ahead of its event: the person is told, once. The ones that are open are told by the probe; this is for the ones already ended whose
+  // event is still owed, and for any whose probe is gone.
+  private async warnTechnicalReports(organizationId: string, now: Date): Promise<number> {
+    const owed = await this.unreported(organizationId)
+    const rows = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalContingency.findMany({
+        where: {
+          organizationId,
+          technicalReportWarnedAt: null,
+          OR: [{ status: FiscalContingencyStatus.OPEN }, { id: { in: owed } }]
+        },
+        select: { id: true, providerId: true, startedAt: true, endedAt: true }
+      })
+    )
+    let told = 0
+    for (const row of rows) {
+      const mode = this.providers.find(row.providerId)?.manifest.contingencyMode
+      if (await this.warnTechnicalReport(organizationId, row, mode, now)) told += 1
+    }
+    return told
+  }
+
+  private async warnTechnicalReport(
+    organizationId: string,
+    row: { id: string; startedAt: Date; endedAt: Date | null },
+    mode: Pick<FiscalContingencyDeclaration, 'technicalReportAfterDays'> | undefined,
+    now: Date
+  ): Promise<boolean> {
+    const days = mode?.technicalReportAfterDays
+    if (days === undefined) return false
+    const lasted = (row.endedAt ?? now).getTime() - row.startedAt.getTime()
+    if (lasted < days * 24 * HOUR_MS) return false
+    return this.inTx(organizationId, async tx => {
+      const marked = await tx.fiscalContingency.updateMany({
+        where: {
+          id: row.id,
+          organizationId,
+          technicalReportWarnedAt: null,
+          status: { in: [FiscalContingencyStatus.OPEN, FiscalContingencyStatus.CLOSED] }
+        },
+        data: { technicalReportWarnedAt: now }
+      })
+      if (marked.count === 0) return false
+      this.events.publish(tx, Events.FISCAL_CONTINGENCY_ALERT, {
+        organizationId,
+        contingencyId: row.id,
+        kind: FiscalContingencyAlertKind.TECHNICAL_REPORT_REQUIRED
+      })
+      return true
+    })
   }
 
   // An ended contingency whose event is not taken yet and whose time to send it is closing (the rules of the authority: 24 hours after the
@@ -1307,6 +1628,7 @@ export class FiscalContingencyService {
       motive: row.motive,
       startedAt: row.startedAt.toISOString(),
       endedAt: row.endedAt?.toISOString() ?? null,
+      restoredAt: row.restoredAt?.toISOString() ?? null,
       reportedAt: row.reportedAt?.toISOString() ?? null,
       windowEndsAt: row.windowEndsAt?.toISOString() ?? null,
       documents,

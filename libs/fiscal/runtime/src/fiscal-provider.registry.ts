@@ -57,6 +57,10 @@ export class FiscalProviderRegistry {
           !(mode.transmitWithinHours > 0) ||
           (mode.reportWithinHours !== undefined &&
             !(Number.isFinite(mode.reportWithinHours) && mode.reportWithinHours > 0)) ||
+          (mode.technicalReportAfterDays !== undefined &&
+            !(
+              Number.isFinite(mode.technicalReportAfterDays) && mode.technicalReportAfterDays > 0
+            )) ||
           !Number.isInteger(mode.maxDocumentsPerEvent) ||
           mode.maxDocumentsPerEvent < 1)
       ) {

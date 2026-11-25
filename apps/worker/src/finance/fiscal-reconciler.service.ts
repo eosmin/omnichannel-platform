@@ -180,6 +180,11 @@ export class FiscalReconciler {
       failures.push(error)
     }
     try {
+      await this.contingencies.ensureProbes(organizationId)
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
       await this.contingencies.warnWindows(organizationId, now)
     } catch (error) {
       failures.push(error)

@@ -24,6 +24,22 @@ export class CapturedQueue {
     return Promise.resolve(undefined)
   }
 
+  // The schedulers of repeating jobs (the probe of an open contingency): one for each id, asking again is the same one
+  readonly schedulers = new Map<string, { every: number; template: CapturedJob }>()
+
+  upsertJobScheduler(
+    id: string,
+    repeat: { every: number },
+    template: { name: string; data: unknown; opts?: { jobId?: string; delay?: number } }
+  ): Promise<void> {
+    this.schedulers.set(id, { every: repeat.every, template })
+    return Promise.resolve()
+  }
+
+  removeJobScheduler(id: string): Promise<boolean> {
+    return Promise.resolve(this.schedulers.delete(id))
+  }
+
   addBulk(jobs: CapturedJob[]): Promise<void> {
     this.jobs.push(...jobs)
     return Promise.resolve()

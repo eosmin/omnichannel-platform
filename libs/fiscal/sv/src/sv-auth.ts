@@ -59,6 +59,21 @@ export class SvAuthenticator {
     return attempt
   }
 
+  // Asks the authority for a fresh token whatever is kept (a token in memory proves nothing about the authority answering now). A password the
+  // authority refused is not sent again while its memory lasts, and the documents and probes that wait for the same login share one.
+  async probe(environment: FiscalEnvironment, nit: string, password: string): Promise<SvLogin> {
+    const key = this.keyOf(environment, nit, password)
+    this.prune(this.options.now())
+    if (this.refused.has(key)) return { kind: 'rejected' }
+    const running = this.inFlight.get(key)
+    if (running !== undefined) return running
+    const attempt = this.request(key, environment, nit, password).finally(() => {
+      this.inFlight.delete(key)
+    })
+    this.inFlight.set(key, attempt)
+    return attempt
+  }
+
   // The token the authority did not accept: the next call asks for another one. Only that token is dropped: a newer one that another call
   // just got stays.
   forget(environment: FiscalEnvironment, nit: string, password: string, token: string): void {

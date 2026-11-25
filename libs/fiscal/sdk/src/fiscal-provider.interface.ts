@@ -1,4 +1,5 @@
 import type {
+  FiscalAuthorityProbeOutcome,
   FiscalConsultState,
   FiscalContingencyReportOutcome,
   FiscalDeferOutcome,
@@ -105,6 +106,9 @@ export interface FiscalContingencyDeclaration {
   // The time the authority gives to send the event once the situation that kept the documents from being sent has ended. Absent: the
   // authority sets none, and nothing is watched
   readonly reportWithinHours?: number
+  // The days a contingency may last before the authority asks for a technical report of it ahead of the event (counted from its start to its
+  // end, or to now while it is open). Absent: the authority asks none, and nothing is watched
+  readonly technicalReportAfterDays?: number
   readonly maxDocumentsPerEvent: number
   // The authority wants to know who answers for the establishment (the person who ends the contingency gives it)
   readonly requiresResponsible: boolean
@@ -444,4 +448,8 @@ export interface FiscalDocumentProvider {
     event: FiscalContingencyEvent,
     ctx: ProviderContext
   ): Promise<ContingencyReportResult>
+  // Whether the authority answers a fresh call, asked every few minutes while a contingency is open (D2c). It must reach the authority (a
+  // cached token proves nothing), send no document, and never repeat a login the authority refused. Optional: a provider that leaves it out
+  // is never probed and its contingencies end only by a person.
+  probeAuthority?(ctx: ProviderContext): Promise<FiscalAuthorityProbeOutcome>
 }

@@ -4,8 +4,10 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import { ApiRoutes } from '@platform/core/api'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  FiscalAuthorityProbeOutcome,
   FiscalContingencyAlertKind,
   FiscalContingencyLimits,
+  FiscalContingencyProbeResult,
   FiscalContingencyReportOutcome,
   FiscalContingencyStatus,
   FiscalDeferOutcome,
@@ -16,7 +18,7 @@ import {
   OrderStatus
 } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
-import { JobNames, QueueNames } from '@platform/core/queues'
+import { JobNames, probeFiscalContingencySchedulerId, QueueNames } from '@platform/core/queues'
 import {
   FISCAL_PROVIDERS,
   FiscalContingencyService,
@@ -63,6 +65,8 @@ const WINDOW_HOURS = 72
 // The time the authority gives to send the event once the situation ended
 const REPORT_WITHIN_HOURS = 24
 const HOUR_MS = 3_600_000
+const TECHNICAL_REPORT_DAYS = 3
+const DAY_MS = 24 * HOUR_MS
 const RESPONSIBLE = { name: 'Ana Pérez', idType: 'dui', idNumber: '012345678' }
 
 // What the provider under test does, set by each case: the authority is down (a submission is not answered), what the report answers
@@ -75,7 +79,11 @@ const control = {
   // against a different length each day); `answeredAt` is what it answered last, for the cases that read the window from it
   answeredAt: '',
   // What the authority says when it refuses the event
-  refusal: 'event_refused'
+  refusal: 'event_refused',
+  // What the probe finds, whether the authority asks who answers for the establishment, and how many probes reached the provider
+  probe: FiscalAuthorityProbeOutcome.UNREACHABLE as FiscalAuthorityProbeOutcome,
+  requiresResponsible: true,
+  probes: 0
 }
 const builds: FiscalBuildInput[] = []
 const submitted: BuiltDocument[] = []
@@ -95,8 +103,9 @@ function contingencyProvider(): FiscalDocumentProvider {
           authorityDownReason: AUTHORITY_DOWN,
           transmitWithinHours: WINDOW_HOURS,
           reportWithinHours: REPORT_WITHIN_HOURS,
+          technicalReportAfterDays: TECHNICAL_REPORT_DAYS,
           maxDocumentsPerEvent: control.maxDocuments,
-          requiresResponsible: true
+          requiresResponsible: control.requiresResponsible
         }
       }
     },
@@ -115,6 +124,10 @@ function contingencyProvider(): FiscalDocumentProvider {
     },
     consult: (built, ctx) => base.consult(built, ctx),
     void: (doc, reason) => base.void(doc, reason),
+    probeAuthority: () => {
+      control.probes += 1
+      return Promise.resolve(control.probe)
+    },
     deferDocument: built =>
       Promise.resolve({
         outcome: FiscalDeferOutcome.DEFERRED as const,
@@ -181,6 +194,9 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
     control.maxDocuments = 1000
     control.refusal = 'event_refused'
     control.answeredAt = ''
+    control.probe = FiscalAuthorityProbeOutcome.UNREACHABLE
+    control.requiresResponsible = true
+    control.probes = 0
     alerts.length = 0
   })
 
@@ -756,6 +772,260 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
         where: { id: foreign.id },
         data: { status: FiscalContingencyStatus.CLOSED, endedAt: new Date() }
       })
+    })
+  })
+
+  describe('an open contingency is probed (D2c)', () => {
+    const schedulers = () => queueOf(app, QueueNames.HEAVY_PROCESSING).schedulers
+    const schedulerOf = (id: string) => schedulers().get(probeFiscalContingencySchedulerId(id))
+
+    // None open at the start: the cases above may have left one
+    beforeAll(async () => {
+      await owner.fiscalContingency.updateMany({
+        where: { organizationId: ctx.orgA.id, status: FiscalContingencyStatus.OPEN },
+        data: { status: FiscalContingencyStatus.CLOSED, endedAt: new Date() }
+      })
+      expect((await putIssuer(PROVIDER_ID)).status).toBe(OK)
+    })
+
+    it('starts one probe every 14 minutes when it opens and stops it when a person ends it', async () => {
+      const opened = viewOf(await enter())
+      expect(schedulerOf(opened.id)).toMatchObject({
+        every: FiscalContingencyLimits.PROBE_INTERVAL_MS,
+        template: {
+          name: JobNames.PROBE_FISCAL_CONTINGENCY,
+          data: { organizationId: ctx.orgA.id, contingencyId: opened.id }
+        }
+      })
+      // The rules of the authority ask for an attempt at least every 15 minutes
+      expect(FiscalContingencyLimits.PROBE_INTERVAL_MS).toBeLessThan(15 * 60 * 1000)
+      // Asking for it again (the daily check) is the same scheduler
+      await contingencies.ensureProbes(ctx.orgA.id)
+      expect([...schedulers().keys()].filter(key => key.endsWith(opened.id))).toHaveLength(1)
+      expect((await end()).status).toBe(OK)
+      expect(schedulerOf(opened.id)).toBeUndefined()
+      // A probe that runs after the end finds nothing to do and asks nothing of the authority
+      expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.NOTHING
+      )
+      expect(control.probes).toBe(0)
+    })
+
+    it('goes on while the authority does not answer', async () => {
+      const opened = viewOf(await enter())
+      expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.WAITING
+      )
+      control.probe = FiscalAuthorityProbeOutcome.INCONCLUSIVE
+      expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.WAITING
+      )
+      expect((await contingencyRow(opened.id)).status).toBe(FiscalContingencyStatus.OPEN)
+      expect(schedulerOf(opened.id)).toBeDefined()
+      expect((await end()).status).toBe(OK)
+    })
+
+    it('tells a person, once, and keeps the instant of the first answer when the authority asks who answers for the establishment', async () => {
+      const opened = viewOf(await enter())
+      const first = new Date(Date.now() - HOUR_MS)
+      control.probe = FiscalAuthorityProbeOutcome.REACHABLE
+      expect(await contingencies.probe(ctx.orgA.id, opened.id, first)).toBe(
+        FiscalContingencyProbeResult.RESTORED
+      )
+      const kept = await contingencyRow(opened.id)
+      expect(kept).toMatchObject({ status: FiscalContingencyStatus.OPEN, endedAt: null })
+      expect(kept.restoredAt?.getTime()).toBe(first.getTime())
+      expect(
+        alerts.filter(alert => alert.kind === FiscalContingencyAlertKind.RESTORED)
+      ).toHaveLength(1)
+      expect(schedulerOf(opened.id)).toBeUndefined()
+      // A second probe, if one still runs, neither asks again nor tells again
+      expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.NOTHING
+      )
+      expect(
+        alerts.filter(alert => alert.kind === FiscalContingencyAlertKind.RESTORED)
+      ).toHaveLength(1)
+      // A document made now is not kept in it
+      submitted.length = 0
+      const id = await sale()
+      await documents.submit(ctx.orgA.id, id)
+      expect((await row(id)).contingencyId).toBeNull()
+      // The person ends it with no time: the first answer is the end
+      const ended = await end()
+      expect(ended.status).toBe(OK)
+      expect((await contingencyRow(opened.id)).endedAt?.getTime()).toBe(first.getTime())
+      expect(dataOf(ended)).toMatchObject({ restoredAt: first.toISOString() })
+    })
+
+    it('ends at the real time the person declares, and refuses one in the future or before the start', async () => {
+      const opened = viewOf(await enter())
+      const started = (await contingencyRow(opened.id)).startedAt
+      // A moment later, so that an end just after the start is not in the future
+      await new Promise(resolve => setTimeout(resolve, 50))
+      const future = await end({
+        responsible: RESPONSIBLE,
+        endedAt: new Date(Date.now() + HOUR_MS).toISOString()
+      })
+      expect(future.status).toBe(BAD_REQUEST)
+      expect(metaOf(future)).toMatchObject({ reason: 'contingency_end_time_invalid' })
+      const before = await end({
+        responsible: RESPONSIBLE,
+        endedAt: new Date(started.getTime() - 1000).toISOString()
+      })
+      expect(before.status).toBe(BAD_REQUEST)
+      expect(metaOf(before)).toMatchObject({ reason: 'contingency_end_time_invalid' })
+      expect((await contingencyRow(opened.id)).status).toBe(FiscalContingencyStatus.OPEN)
+      const real = new Date(started.getTime() + 10)
+      expect((await end({ responsible: RESPONSIBLE, endedAt: real.toISOString() })).status).toBe(OK)
+      expect((await contingencyRow(opened.id)).endedAt?.getTime()).toBe(real.getTime())
+    })
+
+    it('ends by itself at the first answer when nobody has to say who answers, and queues the report once', async () => {
+      control.requiresResponsible = false
+      const opened = viewOf(await enter())
+      const id = await sale()
+      await documents.submit(ctx.orgA.id, id)
+      expect((await row(id)).contingencyId).toBe(opened.id)
+      control.probe = FiscalAuthorityProbeOutcome.REACHABLE
+      const before = jobs().length
+      const at = new Date(Date.now() - 5 * 60 * 1000)
+      expect(await contingencies.probe(ctx.orgA.id, opened.id, at)).toBe(
+        FiscalContingencyProbeResult.CLOSED
+      )
+      const closed = await contingencyRow(opened.id)
+      expect(closed).toMatchObject({ status: FiscalContingencyStatus.CLOSED, closedBy: null })
+      expect(closed.endedAt?.getTime()).toBe(at.getTime())
+      expect(
+        alerts.filter(alert => alert.kind === FiscalContingencyAlertKind.CLOSED_BY_SYSTEM)
+      ).toHaveLength(1)
+      expect(schedulerOf(opened.id)).toBeUndefined()
+      const queued = jobs()
+        .slice(before)
+        .filter(job => job.name === JobNames.REPORT_FISCAL_CONTINGENCY)
+      expect(queued).toHaveLength(1)
+      expect(queued[0]?.opts?.jobId).toBe(`${JobNames.REPORT_FISCAL_CONTINGENCY}-${opened.id}-1`)
+      // Two workers that probe at once, or a person who ends it a moment later, close it only once
+      expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.NOTHING
+      )
+      const again = await end()
+      expect(again.status).toBe(CONFLICT)
+      expect(metaOf(again)).toMatchObject({ reason: 'contingency_not_open' })
+      expect(
+        jobs()
+          .slice(before)
+          .filter(job => job.name === JobNames.REPORT_FISCAL_CONTINGENCY)
+      ).toHaveLength(1)
+      // The report goes out with the instant of the first answer as its end
+      reported.length = 0
+      expect(await contingencies.report(ctx.orgA.id, opened.id)).toBe('reported')
+      expect(reported[0]?.endedAt).toBe(at.toISOString())
+    })
+
+    it('never asks again with credentials the authority refused, until the issuer changes', async () => {
+      const opened = viewOf(await enter())
+      control.probe = FiscalAuthorityProbeOutcome.CREDENTIALS_REJECTED
+      expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.HALTED
+      )
+      expect(control.probes).toBe(1)
+      expect((await contingencyRow(opened.id)).probeHaltedAt).not.toBeNull()
+      // Later probes (even after a restart of the worker, since the halt is in the row) do not reach the provider
+      expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.HALTED
+      )
+      expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.HALTED
+      )
+      expect(control.probes).toBe(1)
+      // The issuer changed: it is asked once more
+      await owner.fiscalIssuer.update({
+        where: { organizationId: ctx.orgA.id },
+        data: { legalName: 'Contingency Issuer Changed' }
+      })
+      control.probe = FiscalAuthorityProbeOutcome.UNREACHABLE
+      expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.WAITING
+      )
+      expect(control.probes).toBe(2)
+      expect((await contingencyRow(opened.id)).probeHaltedAt).toBeNull()
+      expect((await end()).status).toBe(OK)
+    })
+
+    it('tells a person once, the day an open contingency passes the days the authority allows without a technical report', async () => {
+      const opened = viewOf(await enter())
+      const started = (await contingencyRow(opened.id)).startedAt.getTime()
+      const technical = () =>
+        alerts.filter(alert => alert.kind === FiscalContingencyAlertKind.TECHNICAL_REPORT_REQUIRED)
+      await contingencies.probe(
+        ctx.orgA.id,
+        opened.id,
+        new Date(started + TECHNICAL_REPORT_DAYS * DAY_MS - 1000)
+      )
+      expect(technical()).toHaveLength(0)
+      await contingencies.probe(
+        ctx.orgA.id,
+        opened.id,
+        new Date(started + TECHNICAL_REPORT_DAYS * DAY_MS)
+      )
+      expect(technical()).toEqual([
+        {
+          organizationId: ctx.orgA.id,
+          contingencyId: opened.id,
+          kind: FiscalContingencyAlertKind.TECHNICAL_REPORT_REQUIRED
+        }
+      ])
+      await contingencies.probe(ctx.orgA.id, opened.id, new Date(started + 4 * DAY_MS))
+      // The daily check does not tell it again either (it may tell other things of other contingencies)
+      await contingencies.warnWindows(ctx.orgA.id, new Date(started + 5 * DAY_MS))
+      expect(technical()).toHaveLength(1)
+      expect((await end()).status).toBe(OK)
+    })
+
+    it('tells it also for an ended contingency that lasted that long and whose event is still owed', async () => {
+      const startedAt = new Date(Date.now() - (TECHNICAL_REPORT_DAYS + 1) * DAY_MS)
+      const old = await owner.fiscalContingency.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          providerId: PROVIDER_ID,
+          environment: FiscalEnvironment.SANDBOX,
+          status: FiscalContingencyStatus.CLOSED,
+          origin: 'user',
+          reason: AUTHORITY_DOWN,
+          eventCode: 'c3c3c3c3-c3c3-4c3c-8c3c-c3c3c3c3c3c3',
+          startedAt,
+          endedAt: new Date()
+        }
+      })
+      const id = await sale()
+      await owner.fiscalDocument.update({
+        where: { id },
+        data: { status: FiscalDocumentStatus.QUEUED, contingencyId: old.id }
+      })
+      expect(await contingencies.warnWindows(ctx.orgA.id)).toBeGreaterThanOrEqual(1)
+      expect(
+        alerts.filter(
+          alert =>
+            alert.contingencyId === old.id &&
+            alert.kind === FiscalContingencyAlertKind.TECHNICAL_REPORT_REQUIRED
+        )
+      ).toHaveLength(1)
+      await owner.fiscalDocument.update({ where: { id }, data: { contingencyId: null } })
+    })
+
+    it('does not probe, end or warn about the contingency of another organization', async () => {
+      const opened = viewOf(await enter())
+      control.probe = FiscalAuthorityProbeOutcome.REACHABLE
+      expect(await contingencies.probe(ctx.orgB.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.NOTHING
+      )
+      expect(control.probes).toBe(0)
+      expect((await contingencyRow(opened.id)).status).toBe(FiscalContingencyStatus.OPEN)
+      // Its scheduler is the contingency's, not the other organization's: the probe of another organization does not stop it
+      expect(schedulerOf(opened.id)).toBeDefined()
+      control.probe = FiscalAuthorityProbeOutcome.UNREACHABLE
+      expect((await end()).status).toBe(OK)
     })
   })
 
