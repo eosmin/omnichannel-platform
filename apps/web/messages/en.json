@@ -747,6 +747,8 @@
     "FINANCE_BALANCE_MISMATCHES": "The balances of the period do not match: it is an incident, it is not closed over",
     "FINANCE_PERIOD_NOT_CLOSED": "The period is not closed",
     "FINANCE_PERIOD_ALREADY_CLOSED": "The period is closed already",
+    "FINANCE_PERIOD_NOT_FUTURE": "Only a period that has not started can be deleted",
+    "FINANCE_PERIOD_HAS_ACTIVITY": "The period has entries, balances or books and cannot be deleted",
     "FINANCE_CURRENCY_UNSUPPORTED": "Only USD is supported",
     "FINANCE_SETUP_REQUIRED": "Finance has not been set up for this organization yet",
     "FINANCE_REPORT_BUSY": "Finance reports are already being prepared for this organization: wait a few seconds and try again",

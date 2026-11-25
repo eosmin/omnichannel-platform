@@ -429,6 +429,62 @@ describe('Closing the months, the reports and the auditor files', () => {
     })
   })
 
+  describe('deleting a period that has not started (FIN-052)', () => {
+    const NO_CONTENT = 204
+    const openFuture = async (month: number): Promise<PeriodBody> => {
+      const year = new Date().getUTCFullYear() + 5
+      const response = await asAdminA().post(ApiRoutes.finance.periods.open).send({ year, month })
+      expect(response.status).toBeLessThan(BAD_REQUEST)
+      return response.body as PeriodBody
+    }
+
+    it('deletes a future period nothing points at, audits it and lets it be opened again', async () => {
+      const future = await openFuture(1)
+
+      const response = await asAdminA().delete(ApiRoutes.finance.periods.byId(future.id))
+
+      expect(response.status).toBe(NO_CONTENT)
+      expect(await owner.fiscalPeriod.findUnique({ where: { id: future.id } })).toBeNull()
+      const audit = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
+        action: AuditAction.FINANCE_PERIOD_DELETED,
+        resourceId: future.id
+      })
+      expect(audit).toHaveLength(1)
+      const again = await asAdminA()
+        .post(ApiRoutes.finance.periods.open)
+        .send({ year: future.year, month: future.month })
+      expect(again.status).toBeLessThan(BAD_REQUEST)
+    })
+
+    it('refuses a period that has started, with its entries untouched', async () => {
+      const response = await asAdminA().delete(ApiRoutes.finance.periods.byId(january.id))
+
+      expect(response.status).toBe(CONFLICT)
+      expect(errorOf(response).code).toBe(ErrorCodes.FINANCE_PERIOD_NOT_FUTURE)
+      expect(await owner.fiscalPeriod.findUnique({ where: { id: january.id } })).not.toBeNull()
+    })
+
+    it('does not see the period of another organization', async () => {
+      const future = await openFuture(2)
+
+      const response = await asAdminB().delete(ApiRoutes.finance.periods.byId(future.id))
+
+      expect(response.status).toBe(NOT_FOUND)
+      expect(await owner.fiscalPeriod.findUnique({ where: { id: future.id } })).not.toBeNull()
+    })
+
+    it('refuses a member who cannot manage the accounts', async () => {
+      const future = await openFuture(3)
+      const viewer = await asRole('period-delete-viewer', [Permissions.FINANCE_VIEW])
+
+      const response = await viewer.delete(ApiRoutes.finance.periods.byId(future.id))
+
+      expect(response.status).toBe(FORBIDDEN)
+      expect(await owner.fiscalPeriod.findUnique({ where: { id: future.id } })).not.toBeNull()
+    })
+  })
+
   describe('the reports', () => {
     it('adds the trial balance up and shows the same figures as the balances', async () => {
       const response = await asAdminA()
