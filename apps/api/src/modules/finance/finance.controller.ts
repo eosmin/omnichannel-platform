@@ -454,6 +454,20 @@ export class FinanceController {
     return this.periods.open(organization.id, body, actorOf(user, store, req))
   }
 
+  @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
+  @Delete(ApiRoutes.finance.periods.byId(':id'))
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
+  removePeriod(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) periodId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<void> {
+    return this.periods.remove(organization.id, periodId, actorOf(user, store, req))
+  }
+
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
   @NoStore()
   @Get(ApiRoutes.finance.entries.list)

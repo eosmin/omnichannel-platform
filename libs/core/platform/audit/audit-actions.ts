@@ -229,6 +229,7 @@ export const AuditAction = {
   FINANCE_TAX_RATE_CHANGED: 'finance.tax_rate_changed',
   FINANCE_PAYMENT_ACCOUNT_CHANGED: 'finance.payment_account_changed',
   FINANCE_PERIOD_OPENED: 'finance.period_opened',
+  FINANCE_PERIOD_DELETED: 'finance.period_deleted',
   // Closing and reopening a month (TDD_18 §5, Step 4B.8): the reopen carries who, when and why; the CSVs and the chain check an auditor takes
   FINANCE_PERIOD_CLOSED: 'finance.period_closed',
   FINANCE_PERIOD_REOPENED: 'finance.period_reopened',
