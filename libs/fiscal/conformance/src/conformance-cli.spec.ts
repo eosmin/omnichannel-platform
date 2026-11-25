@@ -227,6 +227,28 @@ describe('what the tool runs and prints', () => {
     expect(h.out.join('')).toContain('not counted for this provider')
   })
 
+  it('takes the count of debit notes, and refuses one above the limit', async () => {
+    const ok = harness()
+    const code = await runConformanceCli(
+      [
+        '--out',
+        'r.json',
+        '--counts',
+        'invoices=2,taxCredits=2,debitNotes=2,voids=0,contingencies=0'
+      ],
+      {},
+      ok.io
+    )
+    expect(code).toBe(ConformanceExit.OK)
+    const steps = (JSON.parse(ok.files.get('r.json') ?? '{}') as { steps: { kind: string }[] })
+      .steps
+    expect(steps.filter(step => step.kind === 'debit_note')).toHaveLength(2)
+    const refused = harness()
+    expect(await runConformanceCli(['--counts', 'debitNotes=501'], {}, refused.io)).toBe(
+      ConformanceExit.REFUSED
+    )
+  })
+
   it('writes the report where it is told in a real folder too', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'conformance-'))
     try {
