@@ -119,6 +119,7 @@
         "fiscal": {
           "document_rejected": "Documento fiscal rechazado",
           "document_stuck": "Documento fiscal detenido",
+          "retransmit_deadline": "Plazo de reenvío de un documento fiscal rechazado",
           "entry_mismatch": "Un documento fiscal no coincide con los libros",
           "contingency_opened": "Contingencia fiscal iniciada",
           "contingency_report_failed": "Contingencia fiscal sin reportar",
@@ -1276,6 +1277,10 @@
       "document_stuck": {
         "title": "Un documento fiscal quedó detenido",
         "body": "Un documento fiscal agotó sus intentos mientras el proveedor no respondía. Abre los documentos fiscales y envíalo de nuevo."
+      },
+      "retransmit_deadline": {
+        "title": "Se acaba el plazo de reenvío de un documento fiscal",
+        "body": "La autoridad rechazó un documento fiscal y el plazo de 24 horas para corregirlo y reenviarlo se acaba o ya pasó. Abre el documento, corrígelo y envíalo de nuevo: conserva el mismo código de generación."
       },
       "entry_mismatch": {
         "title": "Un documento fiscal no coincide con los libros",
