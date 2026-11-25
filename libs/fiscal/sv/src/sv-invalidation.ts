@@ -15,12 +15,16 @@ import {
   SvHolidays,
   SvInvalidation,
   SvInvalidationAllowed,
+  SvInvalidationDeadlineRules,
+  SvInvalidationDeadlineUnits,
   SvInvalidationEnforceDeadline,
+  SvInvalidationWithoutReplacement,
   SvIdentityDocuments,
   SvLimits,
   SvProviderDataKeys,
   SvVoidRefusals,
-  type SvDocumentType
+  type SvDocumentType,
+  type SvInvalidationDeadlineRule
 } from './sv-constants'
 import { recordOf, textOf } from './sv-http'
 import { digitsOf, identityOf } from './sv-parties'
@@ -30,6 +34,8 @@ import { salvadorMoment } from './sv-time'
 // the event the signer signs, or a code that says what is missing. Nothing here calls the authority.
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/
+// The hour the authority gives a seal (`fhProcesamiento`), in its own time: dd/MM/yyyy HH:mm:ss
+const SEAL_MOMENT = /^(\d{2})\/(\d{2})\/(\d{4})(?: \d{2}:\d{2}:\d{2})?$/
 const SEAL_LENGTH = 40
 
 const daysIn = (year: number, month: number): number =>
@@ -74,16 +80,43 @@ function businessDayOfNextMonth(date: string, n: number, holidays: readonly stri
   throw new RangeError('the month has fewer business days than asked')
 }
 
-// The last day a document may be invalidated, as yyyy-MM-dd: an invoice, three months after its date; a tax credit document or a credit
-// note, the tenth business day of the month after its own
+// A date some days later (or earlier), as yyyy-MM-dd
+function addDays(date: string, days: number): string {
+  const at = parts(date)
+  if (at === null) throw new RangeError('not a date')
+  return new Date(Date.UTC(at.year, at.month - 1, at.day + days)).toISOString().slice(0, 10)
+}
+
+// The day the authority gave a document its seal, as yyyy-MM-dd, read from the hour it answered (`fhProcesamiento`, in the time of El
+// Salvador, as a document is); null when there is none or it is not an hour
+export function sealDateOf(processedAt: string | null): string | null {
+  const match = processedAt === null ? null : SEAL_MOMENT.exec(processedAt.trim())
+  if (match === null) return null
+  const date = `${match[3]}-${match[2]}-${match[1]}`
+  return parts(date) === null ? null : date
+}
+
+// Whether a rule needs the holidays to be counted
+const needsHolidays = (rule: SvInvalidationDeadlineRule): boolean =>
+  rule.unit === SvInvalidationDeadlineUnits.BUSINESS_DAY_OF_NEXT_MONTH
+
+// The last day a document may be invalidated, as yyyy-MM-dd, counted from the day of its reception seal (not from its own date) by the
+// rule of its type (`SvInvalidationDeadlineRules`): an invoice, three months; a tax credit document or a credit note, a day
 export function invalidationDeadline(
   type: SvDocumentType,
-  issueDate: string,
-  holidays: readonly string[] = SvHolidays
+  sealDate: string,
+  holidays: readonly string[] = SvHolidays,
+  rules: Readonly<Record<SvDocumentType, SvInvalidationDeadlineRule>> = SvInvalidationDeadlineRules
 ): string {
-  return type === SvDocumentTypes.INVOICE
-    ? addMonths(issueDate, SvInvalidation.INVOICE_MONTHS)
-    : businessDayOfNextMonth(issueDate, SvInvalidation.BUSINESS_DAYS_OF_NEXT_MONTH, holidays)
+  const rule = rules[type]
+  switch (rule.unit) {
+    case SvInvalidationDeadlineUnits.CALENDAR_MONTHS:
+      return addMonths(sealDate, rule.amount)
+    case SvInvalidationDeadlineUnits.CALENDAR_DAYS:
+      return addDays(sealDate, rule.amount)
+    case SvInvalidationDeadlineUnits.BUSINESS_DAY_OF_NEXT_MONTH:
+      return businessDayOfNextMonth(sealDate, rule.amount, holidays)
+  }
 }
 
 // The generation code of an event: the same for the same request (its key), so that an invalidation sent again is the same event and the
@@ -101,6 +134,8 @@ export interface SvInvalidated {
   readonly controlNumber: string
   readonly issueDate: string
   readonly seal: string
+  // The day the seal was given (El Salvador), what the deadline counts from; null when the hour of the seal was not kept or is not readable
+  readonly sealDate: string | null
 }
 
 const isDocumentType = (value: string): value is SvDocumentType =>
@@ -124,7 +159,14 @@ export function invalidatedOf(doc: StoredFiscalDocument): SvInvalidated | null {
     seal === null ||
     seal.length !== SEAL_LENGTH
     ? null
-    : { type, generationCode, controlNumber, issueDate, seal }
+    : {
+        type,
+        generationCode,
+        controlNumber,
+        issueDate,
+        seal,
+        sealDate: sealDateOf(textOf(doc.providerData?.[SvProviderDataKeys.PROCESSED_AT]))
+      }
 }
 
 export type SvInvalidationBuilt =
@@ -182,6 +224,8 @@ export interface SvInvalidationInput {
   readonly code: string
   readonly now: string
   readonly holidays?: readonly string[]
+  // The windows by type (`SvInvalidationDeadlineRules`); the specs give another to prove the switch
+  readonly rules?: Readonly<Record<SvDocumentType, SvInvalidationDeadlineRule>>
 }
 
 export function buildInvalidation(input: SvInvalidationInput): SvInvalidationBuilt {
@@ -234,7 +278,11 @@ export function buildInvalidation(input: SvInvalidationInput): SvInvalidationBui
 
   // The document that takes its place is named first (a correction, or another reason that replaces it); a rescission names none
   let replacementCode: string | null = null
-  if (SvInvalidation.KINDS_WITH_REPLACEMENT.includes(kind)) {
+  // (a credit note names none, whatever the kind: the schema asks null of it)
+  if (
+    SvInvalidation.KINDS_WITH_REPLACEMENT.includes(kind) &&
+    !SvInvalidationWithoutReplacement.includes(original.type)
+  ) {
     if (details.replacement === undefined) return refuse(SvVoidRefusals.REPLACEMENT_REQUIRED)
     const other = invalidatedOf(details.replacement)
     if (other === null || other.generationCode === original.generationCode) {
@@ -246,14 +294,27 @@ export function buildInvalidation(input: SvInvalidationInput): SvInvalidationBui
   const moment = salvadorMoment(input.now)
   // A deadline counted in business days is enforced only with a list of holidays (without it the count could end too early)
   const holidays = input.holidays ?? SvHolidays
-  const countable = original.type === SvDocumentTypes.INVOICE || holidays.length > 0
-  if (
-    SvInvalidationEnforceDeadline &&
-    countable &&
-    moment.date > invalidationDeadline(original.type, original.issueDate, holidays)
-  ) {
+  const rules = input.rules ?? SvInvalidationDeadlineRules
+  // Without the day of the seal there is nothing to count from: the authority has the last word (a date of the document would make the window
+  // end earlier than the authority's and refuse a lawful invalidation)
+  const countable =
+    original.sealDate !== null && (!needsHolidays(rules[original.type]) || holidays.length > 0)
+  const deadline =
+    countable && original.sealDate !== null
+      ? invalidationDeadline(original.type, original.sealDate, holidays, rules)
+      : null
+  if (SvInvalidationEnforceDeadline && deadline !== null && moment.date > deadline) {
     return refuse(SvVoidRefusals.DEADLINE_PASSED)
   }
+
+  // The date of the event (Anexo V, field 9): that of the document for a tax credit document or a credit note; for an invoice the day it is
+  // made, but never later than three months after the date of the document
+  const eventDate =
+    original.type === SvDocumentTypes.INVOICE
+      ? moment.date > addMonths(original.issueDate, SvInvalidation.INVOICE_EVENT_MONTHS)
+        ? addMonths(original.issueDate, SvInvalidation.INVOICE_EVENT_MONTHS)
+        : moment.date
+      : original.issueDate
 
   return {
     ok: true,
@@ -263,7 +324,7 @@ export function buildInvalidation(input: SvInvalidationInput): SvInvalidationBui
         version: SvInvalidation.VERSION,
         ambiente: SvEnvironmentCodes[issuer.environment],
         codigoGeneracion: input.code,
-        fecEmi: moment.date,
+        fecEmi: eventDate,
         horEmi: moment.time,
         fusion: null
       },
