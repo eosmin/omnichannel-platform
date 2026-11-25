@@ -51,7 +51,9 @@ const client = new S3Client({
     ...(sessionToken === undefined || sessionToken === '' ? {} : { sessionToken })
   },
   ...(bucketEnv.S3_ENDPOINT === undefined ? {} : { endpoint: bucketEnv.S3_ENDPOINT }),
-  forcePathStyle: bucketEnv.S3_FORCE_PATH_STYLE
+  forcePathStyle: bucketEnv.S3_FORCE_PATH_STYLE,
+  // A request that never answers must not hang the operator's session: every call of this command is small
+  requestHandler: { connectionTimeout: 10_000, requestTimeout: 30_000 }
 })
 
 const code = await runBucketProtection(

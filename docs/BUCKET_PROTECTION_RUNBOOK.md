@@ -60,6 +60,8 @@ export S3_ENDPOINT=...              # only for a provider other than AWS S3
 3. **Check the bucket.** `pnpm storage:bucket-protection status` must say `versioning: Enabled`, our rule `present`, and `protection: complete`, exit code 0.
 4. **Check the application.** The api and the worker ask again every hour (a restart asks at once). Then `platform_storage_bucket_protection_gap{protection="versioning"}` reads 0 and the warning about the protection disappears from the logs. Alert on any value above 0.
 
+**Order inside `apply`: versioning first, the lifecycle rule second** (a few seconds apart, with the verification reads after). The worker checks the bucket at the start of each sweep run (every ten minutes), so a run that begins in those seconds can see versioning on before the 30-day rule exists. Nothing is lost by it (the rule expires versions by their age, so it also covers any version made in between), but the first rewritten originals would sit without a rule for those seconds. Run `apply` in a quiet window, with the worker stopped or between two sweep runs, and start the worker (or let it run) after `status` says `protection: complete`. The command sends every request with a 10 second connection and 30 second request timeout, so a store that does not answer fails the run instead of hanging it; run it again, it is idempotent.
+
 **Apply is also what releases the sweeps.** As soon as the worker sees versioning on in production, the three sweeps start to rewrite the old files in place (each original stays as a noncurrent version for the period you set). Apply it when the worker you want is deployed, not before.
 
 ## Way back

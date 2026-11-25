@@ -512,29 +512,112 @@ describe('parseBucketProtectionArguments', () => {
 
 describe('rules of somebody else under the legacy id', () => {
   const legacyId = LEGACY_MANAGED_RULE_IDS[0]
-  const theirs: LifecycleRule = {
+  // Exactly what TDD_03 pasted: the only shape that counts as ours
+  const legacyShape: LifecycleRule = {
     ID: legacyId,
     Status: 'Enabled',
-    Filter: { Prefix: 'invoices/' },
-    Transitions: [{ Days: 90, StorageClass: 'GLACIER' }]
+    Filter: {},
+    Expiration: { ExpiredObjectDeleteMarker: true },
+    NoncurrentVersionExpiration: { NoncurrentDays: 30 },
+    AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 }
   }
-
+  // The legacy shape plus ONE thing that makes the rule somebody else's: each case fails when its own guard in hasLegacyShape goes
   const cases: Array<[string, LifecycleRule]> = [
-    ['a prefix', { ID: legacyId, Status: 'Enabled', Filter: { Prefix: 'invoices/' } }],
-    ['a transition', { ...theirs, Filter: { Prefix: '' } }],
+    ['a transition', { ...legacyShape, Transitions: [{ Days: 90, StorageClass: 'GLACIER' }] }],
     [
-      'an expiration of current objects',
-      { ID: legacyId, Status: 'Enabled', Filter: {}, Expiration: { Days: 30 } }
+      'a noncurrent transition',
+      {
+        ...legacyShape,
+        NoncurrentVersionTransitions: [{ NoncurrentDays: 10, StorageClass: 'GLACIER' }]
+      }
+    ],
+    ['a prefix in the filter', { ...legacyShape, Filter: { Prefix: 'invoices/' } }],
+    ['a legacy prefix of the rule', { ...legacyShape, Filter: undefined, Prefix: 'invoices/' }],
+    ['a tag in the filter', { ...legacyShape, Filter: { Tag: { Key: 'keep', Value: 'yes' } } }],
+    [
+      'an and-filter',
+      { ...legacyShape, Filter: { And: { Prefix: '', Tags: [{ Key: 'a', Value: 'b' }] } } }
+    ],
+    ['an expiration of current objects', { ...legacyShape, Expiration: { Days: 30 } }],
+    [
+      'a count of newer noncurrent versions to keep',
+      {
+        ...legacyShape,
+        NoncurrentVersionExpiration: { NoncurrentDays: 30, NewerNoncurrentVersions: 3 }
+      }
+    ],
+    [
+      'no abort of unfinished uploads',
+      { ...legacyShape, AbortIncompleteMultipartUpload: undefined }
     ]
   ]
+
+  it('takes the complete legacy shape as ours and replaces it', async () => {
+    const fake = new FakeS3({ versioning: 'Enabled', rules: [structuredClone(legacyShape)] })
+    await run(fake, options())
+    expect(fake.rules?.map(entry => entry.ID)).toEqual([MANAGED_RULE_ID])
+  })
 
   it.each(cases)('keeps it on apply and on revert when it has %s', async (_name, rule) => {
     const fake = new FakeS3({ versioning: 'Enabled', rules: [structuredClone(rule)] })
     await run(fake, options())
     expect(fake.rules?.map(entry => entry.ID)).toEqual([legacyId, MANAGED_RULE_ID])
+    expect(fake.rules?.[0]).toEqual(rule)
     await run(fake, options({ mode: BucketProtectionModes.REVERT }))
-    expect(fake.rules).toHaveLength(1)
-    expect(fake.rules?.[0]?.ID).toBe(legacyId)
+    expect(fake.rules).toEqual([rule])
+  })
+
+  it('does not say the protection is complete while a legacy rule is left beside ours', async () => {
+    const fake = new FakeS3({ versioning: 'Enabled' })
+    await run(fake, options())
+    fake.rules = [...(fake.rules ?? []), structuredClone(legacyShape)]
+    const status = await run(
+      fake,
+      options({ mode: BucketProtectionModes.STATUS, confirm: undefined })
+    )
+    expect(status.code).toBe(1)
+    expect(status.lines).toContain('protection: INCOMPLETE')
+    const applied = await run(fake, options())
+    expect(applied.code).toBe(0)
+    expect(fake.rules?.map(entry => entry.ID)).toEqual([MANAGED_RULE_ID])
+  })
+})
+
+describe('a rule of somebody else that is disabled', () => {
+  const disabled: LifecycleRule = {
+    ID: 'paused-archive',
+    Status: 'Disabled',
+    Filter: { Prefix: 'archive/' },
+    Expiration: { Days: 365 }
+  }
+
+  it('stays disabled and in its place through apply and revert', async () => {
+    const rules = [OTHERS[0] as LifecycleRule, disabled, OTHERS[1] as LifecycleRule]
+    const fake = new FakeS3({ versioning: 'Enabled', rules: structuredClone(rules) })
+    await run(fake, options())
+    expect(fake.rules?.slice(0, 3)).toEqual(rules)
+    expect(fake.rules?.[1]?.Status).toBe('Disabled')
+    await run(fake, options({ mode: BucketProtectionModes.REVERT }))
+    expect(fake.rules).toEqual(rules)
+  })
+
+  it('does not count as a rule that expires old versions', async () => {
+    const fake = new FakeS3({
+      versioning: 'Enabled',
+      rules: [
+        {
+          ID: 'paused',
+          Status: 'Disabled',
+          Filter: {},
+          NoncurrentVersionExpiration: { NoncurrentDays: 1 }
+        }
+      ]
+    })
+    const { lines } = await run(
+      fake,
+      options({ mode: BucketProtectionModes.STATUS, confirm: undefined })
+    )
+    expect(lines.some(line => line.startsWith('note:'))).toBe(false)
   })
 })
 
