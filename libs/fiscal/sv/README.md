@@ -19,16 +19,18 @@ wording of the amount in words, and the rules of the accountant (`[ACCOUNTANT]` 
 
 ## Provenance of the data files
 
-- `schemas/fe-f-v2.json`, `schemas/fe-ccf-v4.json`, `schemas/fe-nc-v4.json`, `schemas/fe-nd-v4.json`: the JSON schemas of the invoice
-  (version 2), the tax credit document (version 4), the credit note (version 4) and the debit note (version 4) from `svfe-json-schemas` of
+- `schemas/fe-f-v2.json`, `schemas/fe-ccf-v4.json`, `schemas/fe-nc-v4.json`, `schemas/fe-nd-v4.json`, `schemas/fe-nr-v4.json`: the JSON schemas of the
+  invoice (version 2), the tax credit document (version 4), the credit note (version 4), the debit note (version 4) and the remission note (version 4) from `svfe-json-schemas` of
   the Ministerio de Hacienda (public technical documents). Reformatted by Prettier (whitespace only: the content is the authority's).
   **Source of the set:** the archive "JSON Schemas" (`svfe-json-schemas`, 19 files, July 2026; the debit note's file is dated 2026-07-27)
   published at https://factura.gob.sv/informacion-tecnica-y-funcional/ (row "JSON Schemas, anexo al manual técnico para la integración
   tecnológica del sistema de transmisión"), downloaded on 2026-11-25. Checked that day: the five schemas that were already here
   (`fe-f-v2`, `fe-ccf-v4`, `fe-nc-v4`, `invalidacion-v3`, `contingencia-v4`) are, once parsed, identical to those of the archive; only the
-  formatting differs. `fe-nd-v4.json` was added from it. Used only by the specs, to check every generated document against the schema of the authority. A new version of a schema
+  formatting differs. `fe-nd-v4.json` and `fe-nr-v4.json` (dated 2026-07-27) were added from it. Used only by the specs, to check every generated document against the schema of the authority. A new version of a schema
   replaces its file and the version in `SvSchemaVersions`.
 - `schemas/invalidacion-v3.json`: the JSON schema of the invalidation event (version 3) from the same `svfe-json-schemas`. Used only by the specs.
+- `SvRemissionTitles` (`src/sv-constants.ts`): CAT-025, the title the goods of a remission note are sent under (01 to 05), read from the catalogs
+  workbook of the same site (the file named 1.2). The default title is an `[ACCOUNTANT]` setting.
 - `src/catalogs/*.ts`: generated from "Catálogos - Facturación Electrónica", version 1.1 (07/2026) of the same ministry: departments
   (CAT-012), municipalities (CAT-013, with their department, derived from the name), districts (CAT-008), economic activities (CAT-019),
   units of measure (CAT-014), forms of payment (CAT-017), identity documents (CAT-022) and types of establishment (CAT-009). Data only; a
