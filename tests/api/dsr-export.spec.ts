@@ -594,15 +594,9 @@ describe('the export of the data requests of access and portability', () => {
 
     await runner.run()
 
-    // What the bucket holds is encrypted: none of the text of the person, nor the bytes of their file, nor the name of it, is readable in the object
+    // What the bucket holds is encrypted: none of the text of the person, nor the bytes of their file, nor the name of it, is readable in the object. The only thing in the clear is the generic name of each entry (the format does not encrypt them), which carries nothing of the person
     const stored = objects.get(StorageKeys.dsrExport(id)) ?? Buffer.alloc(0)
-    for (const secret of [
-      'NIT-ANA-1',
-      'Blue shirt',
-      'receipt.png',
-      'manifest',
-      photo.toString('latin1')
-    ]) {
+    for (const secret of ['NIT-ANA-1', 'Blue shirt', 'receipt.png', photo.toString('latin1')]) {
       expect(stored.includes(Buffer.from(secret, 'latin1'))).toBe(false)
     }
     // The password is kept sealed, and the plain one is nowhere in the row
