@@ -39,6 +39,7 @@ everything that is written is sealed with the new key.
 | Value | Where | Longest life | What the user sees if the key is rotated while it exists |
 | --- | --- | --- | --- |
 | Session of a channel login (the user token of the OAuth flow) | Redis, `ChannelOAuthLimits.SESSION_TTL_SECONDS` | 15 minutes | Nothing while both keys are set (it opens with the previous one). After the previous key is retired a session older than the rotation cannot exist (15 minutes): the person starts the connection again |
+| Mail job of a data request (sealed by `sealMailJob`) | Redis, queue `email` | Until sent or given up (about 32 minutes of retries) | Nothing while both keys are set (it opens with the previous one). A job older than the rotation, after the previous key is retired, is refused with fixed text and its request is marked `mail_failed`: the reviewer reaches the person |
 | OAuth `state` | Redis, `STATE_TTL_SECONDS` | 10 minutes | It holds no sealed value |
 | The payload of a public data request intake (the job in the queue) | BullMQ job, removed when processed | minutes | Opens with either key while both are set; a job that cannot open is dropped without a retry (as for any damaged job) and the person asks again |
 

@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto'
 
-import { EMAIL_PROVIDER, type EmailProvider } from '@platform/core/email'
+import { EMAIL_PROVIDER, type EmailProvider, sealMailJob } from '@platform/core/email'
 import { Locales } from '@platform/core/i18n'
 import { EmailTemplates, JobNames, QueueNames } from '@platform/core/queues'
 
 import { deleteMessagesTo, messagesTo, waitForMessages } from './testing/mailpit'
+import { TEST_MAIL_CIPHER } from './testing/worker-test-app'
 import { magicLinkJob, startWorkerTestApp, type WorkerTestApp } from './testing/worker-test-app'
 
 const recipient = (): string => `it-${randomUUID().slice(0, 8)}@example.com`
@@ -82,6 +83,23 @@ describe('SEND_EMAIL', () => {
     expect(message?.Text).toContain('Conversation assigned')
     expect(message?.Text).toContain('And 2 more, waiting in the app.')
     expect(message?.HTML).toContain('href="https://app.example.com/account/notifications"')
+  })
+
+  it('delivers a sealed mail of a data request, whose job holds neither the address nor the link', async () => {
+    const link = 'https://app.example.com/compliance/dsr/verify#token=abc123'
+    const job = sealMailJob(TEST_MAIL_CIPHER, {
+      template: EmailTemplates.DSR_VERIFICATION,
+      to,
+      locale: Locales.EN,
+      data: { url: link, expiresInDays: 7, requestType: 'access' },
+      tags: { template: EmailTemplates.DSR_VERIFICATION }
+    })
+    expect(JSON.stringify(job)).not.toContain('example.com')
+    await test.queue(QueueNames.EMAIL).add(JobNames.SEND_EMAIL, job)
+
+    const [message] = await waitForMessages(to)
+
+    expect(message?.HTML).toContain(link)
   })
 
   it('renders in the locale of the job', async () => {

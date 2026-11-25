@@ -11,12 +11,14 @@ import { hashToken } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { connectionUrls } from '@platform/core/database-testing'
 import { DsrType } from '@platform/core/domain'
+import type { SealedMailJobData } from '@platform/core/email'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import type { SendEmailJob } from '@platform/core/queues'
 
 import { DsrVerifyService } from '../../apps/api/src/modules/compliance/dsr-verify.service'
 import { DsrIntakeWorker } from '../../apps/worker/src/compliance/dsr-intake.worker'
+import { isSealedMail, mailOf, testMailCipher } from '../helpers/mail-seal'
 
 // Step 7.2-H1a, the tenancy of the public data request flow against the REAL database, as the roles the code runs as (the worker for the
 // intake, the api for the verification). Two stores of one organization each have a customer with the SAME address, and the cases prove that
@@ -115,8 +117,11 @@ describe('the public data request flow, tenancy against the database', () => {
     dbs.push(workerDb, apiDb)
     const audit = { log: jest.fn() }
     const mailQueue = {
-      add: (_name: string, data: Record<string, unknown>) => {
-        mails.push({ data })
+      add: (_name: string, queued: Record<string, unknown>) => {
+        // What Redis would keep holds no address and no link: only the opened mail is read by the suite
+        expect(isSealedMail(queued)).toBe(true)
+        expect(JSON.stringify(queued)).not.toContain('@')
+        mails.push({ data: mailOf(queued) as unknown as Record<string, unknown> })
         return Promise.resolve()
       }
     }
@@ -125,7 +130,8 @@ describe('the public data request flow, tenancy against the database', () => {
       workerDb,
       new JobContext(workerDb),
       audit as unknown as AuditService,
-      mailQueue as unknown as Queue<SendEmailJob>,
+      mailQueue as unknown as Queue<SendEmailJob | SealedMailJobData>,
+      testMailCipher(),
       { frontendUrl: 'https://app.example.com' },
       CONFIG,
       { setContext: jest.fn(), info: jest.fn() } as unknown as PinoLogger

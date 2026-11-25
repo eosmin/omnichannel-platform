@@ -8,6 +8,8 @@ import {
   type SendEmailJob
 } from '@platform/core/queues'
 
+import { mailOf } from './mail-seal'
+
 // Stands in for the email queue of the app: the suites read what would have been sent, and nothing
 // reaches the Redis of development (where a worker, if one is running, would try to send it).
 export class CapturedEmails {
@@ -28,7 +30,7 @@ export class CapturedEmails {
     }
     if (name === JobNames.DELIVER_INVITATION_EMAIL)
       this.deliveries.push(data as DeliverInvitationEmailJob)
-    else this.jobs.push(data as SendEmailJob)
+    else this.jobs.push(mailOf(data))
     return Promise.resolve()
   }
 
