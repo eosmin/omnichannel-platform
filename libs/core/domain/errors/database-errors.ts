@@ -10,6 +10,22 @@ const CAUSE_KEYS = ['cause', 'meta', 'driverAdapterError'] as const
 // `timeout`: the database rolled it back and nothing was written
 const TRANSACTION_API_ERROR = 'P2028'
 
+// Prisma's code for "Transaction failed due to a write conflict or a deadlock", and the SQLSTATEs behind it: serialization_failure (40001) and
+// deadlock_detected (40P01). The database rolled the transaction back and nothing was written
+const TRANSACTION_CONFLICT_CODES: readonly string[] = ['P2034', '40001', '40P01']
+
+// Whether a database error is a write conflict or a deadlock between two transactions. Found in the same places and to the same depth as the
+// checks below, and the message is NOT read.
+export function isTransactionConflictError(error: unknown, depth = 0): boolean {
+  if (depth > MAX_DEPTH || typeof error !== 'object' || error === null) return false
+  const record = error as Record<string, unknown>
+  const codes = [record['code'], record['originalCode']]
+  if (codes.some(code => typeof code === 'string' && TRANSACTION_CONFLICT_CODES.includes(code))) {
+    return true
+  }
+  return CAUSE_KEYS.some(key => isTransactionConflictError(record[key], depth + 1))
+}
+
 // How long a request of the api waits for a lock before the database gives up (PostgreSQL
 // `lock_timeout`). Under the 15 s limit of a tenant transaction (prisma.service.ts), so the caller gets
 // DATABASE_BUSY and not an expired transaction. It is set on the role `platform_app` by the migration

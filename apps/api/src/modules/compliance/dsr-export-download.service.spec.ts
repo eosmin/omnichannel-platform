@@ -28,8 +28,8 @@ function build(options: {
   enabled?: boolean
   signFails?: boolean
   objectMissing?: boolean
+  conflict?: boolean
 }) {
-  const updateToken = jest.fn().mockResolvedValue({ count: options.claimed ?? 1 })
   const findRequest = jest
     .fn()
     .mockResolvedValue(
@@ -38,12 +38,26 @@ function build(options: {
         : options.request
     )
   const client = {
-    $queryRaw: jest.fn().mockResolvedValue(options.found === undefined ? [FOUND] : options.found),
-    verificationToken: { updateMany: updateToken },
+    // 1: the lookup of the request by the hash (no context yet); 2: the lock of the request; 3: the claim, which answers the hashes it spent
+    $queryRaw: jest
+      .fn()
+      .mockResolvedValueOnce(options.found === undefined ? [FOUND] : options.found)
+      .mockResolvedValueOnce([{ locked: 1 }])
+      .mockResolvedValueOnce(
+        (options.claimed ?? 1) === 1
+          ? [{ token_hash: hashToken(TOKEN) }, { token_hash: 'sibling' }]
+          : []
+      ),
     dataSubjectRequest: { findFirst: findRequest }
   }
   const tenantTransaction = jest.fn(function (_context: unknown, work: () => Promise<unknown>) {
-    return work()
+    return options.conflict === true
+      ? Promise.reject(
+          Object.assign(new Error('Transaction failed due to a write conflict or a deadlock'), {
+            code: 'P2034'
+          })
+        )
+      : work()
   })
   const prisma = { client, tenantTransaction } as unknown as PrismaService
   const log = jest.fn()
@@ -60,14 +74,14 @@ function build(options: {
     ...CONFIG,
     enabled: options.enabled ?? true
   })
-  return { service, client, updateToken, findRequest, log, tenantTransaction, downloadUrl }
+  return { service, client, findRequest, log, tenantTransaction, downloadUrl }
 }
 
 const invalid = { code: ErrorCodes.DSR_EXPORT_LINK_INVALID }
 
 describe('DsrExportDownloadService', () => {
   it('claims the token in the context of the request, signs a short link to its file and audits ids only', async () => {
-    const { service, updateToken, findRequest, downloadUrl, log, tenantTransaction } = build({})
+    const { service, client, findRequest, downloadUrl, log, tenantTransaction } = build({})
     await expect(service.download({ token: TOKEN })).resolves.toEqual({
       url: SIGNED,
       filename: ComplianceConfig.DSR_EXPORT_FILENAME,
@@ -77,12 +91,14 @@ describe('DsrExportDownloadService', () => {
       { storeIds: ['store-1'], organizationIds: ['org-1'] },
       expect.any(Function)
     )
-    expect(argOf<{ where: unknown }>(updateToken, 0, 0).where).toMatchObject({
-      tokenHash: hashToken(TOKEN),
-      type: 'dsr_export_download',
-      subject: 'req-1',
-      usedAt: null
-    })
+    // The lock and the claim, in the context, with the hash of the token, the request and the kind of token as values (never the token itself)
+    const calls = client.$queryRaw.mock.calls as unknown[][]
+    expect(calls).toHaveLength(3)
+    expect(calls[1]?.slice(1)).toEqual(['dsr-export-download:req-1'])
+    expect(calls[2]?.slice(1)).toEqual(
+      expect.arrayContaining([hashToken(TOKEN), 'req-1', 'dsr_export_download'])
+    )
+    expect(JSON.stringify(calls[2]?.slice(1))).not.toContain(TOKEN)
     expect(argOf<{ where: unknown }>(findRequest, 0, 0).where).toMatchObject({
       id: 'req-1',
       storeId: 'store-1',
@@ -101,15 +117,32 @@ describe('DsrExportDownloadService', () => {
     expect(entry).toContain('"system":true')
   })
 
-  it('spends the other live links of the same request in the same transaction, so a second mail cannot hand the file over again', async () => {
-    const { service, updateToken } = build({})
-    await service.download({ token: TOKEN })
-    expect(updateToken).toHaveBeenCalledTimes(2)
-    expect(argOf<unknown>(updateToken, 1, 0)).toMatchObject({
-      where: { type: 'dsr_export_download', subject: 'req-1', usedAt: null },
-      data: { usedAt: expect.any(Date) as Date }
-    })
+  it('spends the links of the request in ONE statement decided by the token it was given, and a token that is not live spends nothing', async () => {
+    const { service, client } = build({ claimed: 0 })
+    await expect(service.download({ token: TOKEN })).rejects.toMatchObject(invalid)
+    const sql = (client.$queryRaw.mock.calls[2] as unknown[][])[0]?.join('?') ?? ''
+    expect(sql).toContain('UPDATE verification_tokens')
+    expect(sql).toContain('EXISTS')
+    expect(sql).toContain('RETURNING token_hash')
   })
+
+  it.each([
+    ['Prisma P2034', { code: 'P2034' }],
+    ['a deadlock of the driver', { cause: { originalCode: '40P01' } }]
+  ])(
+    'answers the uniform error, never another, when two calls collide (%s)',
+    async (_name, shape) => {
+      const { service, log, downloadUrl } = build({ conflict: true })
+      const error = Object.assign(new Error('boom'), shape)
+      // the mock rejects with P2034; this case also covers the other shapes by swapping the error
+      const failing = build({ conflict: false })
+      ;(failing.tenantTransaction as jest.Mock).mockRejectedValueOnce(error)
+      await expect(failing.service.download({ token: TOKEN })).rejects.toMatchObject(invalid)
+      await expect(service.download({ token: TOKEN })).rejects.toMatchObject(invalid)
+      expect(log).not.toHaveBeenCalled()
+      expect(downloadUrl).not.toHaveBeenCalled()
+    }
+  )
 
   it.each([
     ['the flow is off', { enabled: false }],

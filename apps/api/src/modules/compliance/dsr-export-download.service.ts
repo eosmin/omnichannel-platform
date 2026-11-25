@@ -12,7 +12,12 @@ import {
 import { hashToken } from '@platform/core/crypto'
 import { contextOf, PrismaService, resolveDsrExportDownload } from '@platform/core/database'
 import { DsrStatus, DsrType, VerificationTokenType } from '@platform/core/domain'
-import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  isTransactionConflictError,
+  PlatformException
+} from '@platform/core/errors'
 import { ExportContentTypes } from '@platform/core/exports'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -55,53 +60,55 @@ export class DsrExportDownloadService {
     const found = await resolveDsrExportDownload(this.prisma.client, tokenHash)
     if (found === null) throw invalidLink()
 
-    const answer = await this.prisma.tenantTransaction(contextOf(found), async () => {
-      // The claim: exactly one caller flips an unused, unexpired token. A second click, or a scanner racing the person, finds nothing.
-      const claimed = await this.prisma.client.verificationToken.updateMany({
-        where: {
-          tokenHash,
-          type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
-          subject: found.id,
-          usedAt: null,
-          expiresAt: { gt: new Date() }
-        },
-        data: { usedAt: new Date() }
+    const answer = await this.prisma
+      .tenantTransaction(contextOf(found), async () => {
+        // One caller at a time per request: the claim below spends EVERY live link of the request, and two callers that each held one row and
+        // waited for the other's would deadlock (one of them would answer an error that is not the uniform one)
+        await this.prisma.client.$queryRaw`
+        SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`dsr-export-download:${found.id}`}, 0))) AS lock`
+        // The claim, in ONE statement: if this token is live, the first caller spends it and every other live link of the request (the tokens of
+        // earlier mails of a notice asked for again can not hand the file over a second time); a second click, a scanner racing the person or a
+        // sibling link finds nothing left. A token that is not live spends nothing, so a dead link never burns a live one.
+        const spent = await this.prisma.client.$queryRaw<{ token_hash: string }[]>`
+        UPDATE verification_tokens SET used_at = now()
+        WHERE type = ${VerificationTokenType.DSR_EXPORT_DOWNLOAD} AND subject = ${found.id}
+          AND used_at IS NULL AND expires_at > now()
+          AND EXISTS (
+            SELECT 1 FROM verification_tokens own
+            WHERE own.token_hash = ${tokenHash} AND own.type = ${VerificationTokenType.DSR_EXPORT_DOWNLOAD}
+              AND own.subject = ${found.id} AND own.used_at IS NULL AND own.expires_at > now())
+        RETURNING token_hash`
+        if (!spent.some(row => row.token_hash === tokenHash)) return null
+        const request = await this.prisma.client.dataSubjectRequest.findFirst({
+          where: {
+            id: found.id,
+            storeId: found.storeId,
+            type: { in: [...EXPORT_TYPES] },
+            status: DsrStatus.COMPLETED,
+            resultKey: { not: null },
+            resultExpiresAt: { gt: new Date() }
+          },
+          select: { resultKey: true, type: true }
+        })
+        // The file went between the lookup and the claim: the token is not spent for a file that is not there (the throw rolls the claim back)
+        if (request?.resultKey == null) throw invalidLink()
+        // The object is checked before the token is spent: a file the bucket no longer holds rolls the claim back (a lifecycle rule, a purge race)
+        if ((await this.storage.head(request.resultKey).catch(() => null)) === null)
+          throw invalidLink()
+        const url = await this.storage.downloadUrl({
+          key: request.resultKey,
+          contentType: ExportContentTypes.ZIP,
+          filename: ComplianceConfig.DSR_EXPORT_FILENAME,
+          expiresInSeconds: ComplianceConfig.DSR_EXPORT_DOWNLOAD_URL_SECONDS
+        })
+        return { url, type: request.type }
       })
-      if (claimed.count !== 1) return null
-      // The first download spends every link of the request: the tokens of earlier mails that were never used (a notice asked for again) cannot
-      // hand the file over a second time
-      await this.prisma.client.verificationToken.updateMany({
-        where: {
-          type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
-          subject: found.id,
-          usedAt: null
-        },
-        data: { usedAt: new Date() }
+      .catch((error: unknown) => {
+        // Two calls of the same request that collided: the database rolled this one back and nothing was spent by it. It is the same answer as
+        // any other link that does not open, never a different error (that would tell a live link from a dead one)
+        if (isTransactionConflictError(error)) throw invalidLink()
+        throw error
       })
-      const request = await this.prisma.client.dataSubjectRequest.findFirst({
-        where: {
-          id: found.id,
-          storeId: found.storeId,
-          type: { in: [...EXPORT_TYPES] },
-          status: DsrStatus.COMPLETED,
-          resultKey: { not: null },
-          resultExpiresAt: { gt: new Date() }
-        },
-        select: { resultKey: true, type: true }
-      })
-      // The file went between the lookup and the claim: the token is not spent for a file that is not there (the throw rolls the claim back)
-      if (request?.resultKey == null) throw invalidLink()
-      // The object is checked before the token is spent: a file the bucket no longer holds rolls the claim back (a lifecycle rule, a purge race)
-      if ((await this.storage.head(request.resultKey).catch(() => null)) === null)
-        throw invalidLink()
-      const url = await this.storage.downloadUrl({
-        key: request.resultKey,
-        contentType: ExportContentTypes.ZIP,
-        filename: ComplianceConfig.DSR_EXPORT_FILENAME,
-        expiresInSeconds: ComplianceConfig.DSR_EXPORT_DOWNLOAD_URL_SECONDS
-      })
-      return { url, type: request.type }
-    })
     if (answer === null) throw invalidLink()
 
     // Ids and the kind only: no address, no token, no link (the audit log outlives the file)

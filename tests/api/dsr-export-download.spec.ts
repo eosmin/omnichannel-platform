@@ -165,6 +165,35 @@ describe('The public download of the file of a data request', () => {
     expect(JSON.stringify(entry)).not.toContain('signature')
   })
 
+  it('lets exactly one of three live links of the SAME request through, and the other two get the identical 400, round after round', async () => {
+    const rounds = 10
+    for (let round = 0; round < rounds; round += 1) {
+      const { id, token } = await finished()
+      const extra = [generateToken(), generateToken()]
+      for (const one of extra) {
+        await owner.verificationToken.create({
+          data: {
+            type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
+            tokenHash: hashToken(one),
+            subject: id,
+            expiresAt: new Date(Date.now() + DAY_MS)
+          }
+        })
+      }
+      const unknown = await post(generateToken())
+
+      const answers = await Promise.all([token, ...extra].map(one => post(one)))
+
+      expect(answers.filter(answer => answer.status === OK)).toHaveLength(1)
+      for (const refused of answers.filter(answer => answer.status !== OK)) {
+        // never a 500 from a collision: the same status, code and message as a token that never existed
+        expectSameAnswer(refused, unknown)
+      }
+      const live = await owner.verificationToken.count({ where: { subject: id, usedAt: null } })
+      expect(live).toBe(0)
+    }
+  })
+
   it('spends the other live links of the same request with the first download', async () => {
     const { id, token } = await finished()
     const second = generateToken()
