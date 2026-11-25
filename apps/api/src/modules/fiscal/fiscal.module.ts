@@ -7,6 +7,8 @@ import { MediaModule } from '../media/media.module'
 import { TenancyModule } from '../tenancy'
 
 import { CustomerFiscalDataController } from './customer-fiscal-data.controller'
+import { FiscalAnnexExportService } from './fiscal-annex-export.service'
+import { FiscalAnnexController } from './fiscal-annex.controller'
 import { FiscalContingencyController } from './fiscal-contingency.controller'
 import { FiscalEvidenceUrlsService } from './fiscal-evidence-urls.service'
 import { FiscalReachService } from './fiscal-reach.service'
@@ -18,7 +20,18 @@ import { FiscalListener } from './fiscal.listener'
 // providers are `libs/fiscal/runtime`, which the worker also runs.
 @Module({
   imports: [FiscalRuntimeModule, MediaModule, QueuesPlatformModule, TenancyModule],
-  controllers: [FiscalController, FiscalContingencyController, CustomerFiscalDataController],
-  providers: [FiscalEvidenceUrlsService, FiscalReachService, FiscalSubmissionQueue, FiscalListener]
+  controllers: [
+    FiscalController,
+    FiscalAnnexController,
+    FiscalContingencyController,
+    CustomerFiscalDataController
+  ],
+  providers: [
+    FiscalAnnexExportService,
+    FiscalEvidenceUrlsService,
+    FiscalReachService,
+    FiscalSubmissionQueue,
+    FiscalListener
+  ]
 })
 export class FiscalModule {}

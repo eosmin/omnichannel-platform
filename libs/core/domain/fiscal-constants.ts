@@ -53,6 +53,20 @@ export enum FiscalOperationCondition {
   DEFERRED = 'deferred'
 }
 
+// The annexes of the periodic return of a country (Step 4B.8b-4 / D4a)
+export const FiscalAnnexLimits = {
+  // The documents one file is made from: more is refused (never cut, a cut declaration looks whole), checked BEFORE a page is opened, so
+  // the memory never goes past it
+  MAX_DOCUMENTS: 10_000,
+  // The documents read in one unit
+  PAGE_SIZE: 200,
+  // The days around the month the documents are read for: the month is the provider's (its country's civil time), so core reads wider and the
+  // provider chooses; no time zone is more than a day from UTC
+  WINDOW_PAD_DAYS: 2,
+  FIRST_YEAR: 2022,
+  LAST_YEAR: 2100
+} as const
+
 export const FiscalLimits = {
   // The limits of the context of the organization that ONE unit of fiscal work opens in a job (a claim, an answer of the authority, a page of
   // the sweep). The call to the authority is never inside one, so a unit holds the database for the rows only. 30 s (twice the 15 s of a
@@ -175,7 +189,8 @@ export const FiscalResourceTypes = {
   ISSUER: 'fiscal_issuer',
   DOCUMENT: 'fiscal_document',
   CUSTOMER_DATA: 'customer_fiscal_data',
-  CONTINGENCY: 'fiscal_contingency'
+  CONTINGENCY: 'fiscal_contingency',
+  ANNEX: 'fiscal_annex'
 } as const
 
 // Contingency (Step 4B.7c-7): while the authority cannot be reached an issuer may go on making documents in a deferred model (made, signed
@@ -335,6 +350,11 @@ export const FiscalRejectionReasons = {
 
 // Why a person's action on a document is refused with a conflict (`details.reason`), for the interface to tell them apart
 export const FiscalConflictReasons = {
+  // An annex of the organization is being made: one at a time (the file is made in memory and its construction is not short)
+  ANNEX_IN_PROGRESS: 'annex_in_progress',
+  // A month whose annex cannot be made without guessing (a document lacks a seal or a figure the file needs): the file is refused, the
+  // provider's code of the cause goes in the metadata
+  ANNEX_REFUSED: 'annex_refused',
   // Another invalidation of the same document is being sent: one at a time
   VOID_IN_PROGRESS: 'void_in_progress',
   // A sale document with credit notes that are not voided: the notes go first

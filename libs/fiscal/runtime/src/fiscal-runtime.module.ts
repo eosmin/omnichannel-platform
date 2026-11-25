@@ -9,6 +9,7 @@ import {
   RuntimeEnvironmentPlatformModule
 } from '@platform/core/http'
 
+import { FiscalAnnexService } from './fiscal-annex.service'
 import { FiscalContingencyService } from './fiscal-contingency.service'
 import { FiscalCustomerDataService } from './fiscal-customer-data.service'
 import { FiscalDocumentsService } from './fiscal-documents.service'
@@ -37,6 +38,7 @@ import { officialFiscalProviders } from './official-providers'
         officialFiscalProviders(nodeEnv, { signerUrl })
     },
     FiscalProviderRegistry,
+    FiscalAnnexService,
     FiscalContingencyService,
     FiscalIssuerService,
     FiscalEvidenceService,
@@ -47,6 +49,7 @@ import { officialFiscalProviders } from './official-providers'
     FiscalSweepService
   ],
   exports: [
+    FiscalAnnexService,
     FiscalContingencyService,
     FiscalDocumentsService,
     FiscalEvidenceService,

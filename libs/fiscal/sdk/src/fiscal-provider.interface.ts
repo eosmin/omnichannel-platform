@@ -461,6 +461,51 @@ export interface FiscalRepresentation {
   readonly file: FiscalDeliveryFile | null
 }
 
+// The files a tax authority asks with the periodic return (the annexes of a monthly declaration), made by the provider from the documents
+// it kept. Core never reads a column of one: it hands over the accepted and voided documents of a month and gives back the file. The
+// month is a calendar month in the civil time of the provider's country, which only the provider knows: core passes the documents around
+// the month and the provider decides which ones belong to it.
+export interface FiscalAnnexPeriod {
+  readonly year: number
+  // 1 to 12
+  readonly month: number
+}
+
+export interface FiscalAnnexDocument extends StoredFiscalDocument {
+  readonly issuedAt: Date
+  // Set when the document was voided (the invalidation was accepted)
+  readonly voidedAt: Date | null
+}
+
+export interface FiscalAnnexFile {
+  readonly id: string
+  // The name the file is downloaded with, extension included
+  readonly filename: string
+  // The rows of the file (a count: the audit says how many rows left, never which)
+  readonly rows: number
+  readonly content: string
+}
+
+// A month whose annex cannot be made without guessing (a document that lacks what the file needs): the file is refused, never made
+// with a hole, because a declaration with a wrong figure is worse than none. The code carries no data of the document.
+export class FiscalAnnexError extends Error {
+  constructor(readonly code: string) {
+    super(code)
+    this.name = 'FiscalAnnexError'
+  }
+}
+
+export interface FiscalAnnexExporter {
+  // The ids of the annexes it makes
+  readonly ids: readonly string[]
+  // Pure: the file of one annex for the period; null for an id it does not make
+  build(
+    id: string,
+    period: FiscalAnnexPeriod,
+    documents: readonly FiscalAnnexDocument[]
+  ): FiscalAnnexFile | null
+}
+
 export interface FiscalDocumentProvider {
   readonly id: string
   readonly countryCode: string
@@ -485,6 +530,8 @@ export interface FiscalDocumentProvider {
   // the data the provider wrote when the authority accepted it), so the same document always gives the same representation, whatever
   // changes later in the order or the issuer. Null for a type the provider has no representation for. A provider without it has none.
   represent?(doc: StoredFiscalDocument): FiscalRepresentation | null
+  // Optional: the annexes of the periodic return of the provider's country, made from the documents of a month (see `FiscalAnnexExporter`).
+  readonly annexes?: FiscalAnnexExporter
   // Pure: the sale and the issuer become the document (the choice of the type is the provider's rule)
   build(input: FiscalBuildInput): Promise<BuiltDocument>
   // Sign, send, return the answer. The same ProviderContext.idempotencyKey never makes two documents.

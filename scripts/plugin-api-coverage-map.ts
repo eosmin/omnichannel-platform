@@ -484,6 +484,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'fiscal.providers': { none: FINANCE },
   'fiscal.issuer': { none: FINANCE },
   'fiscal.series': { none: FINANCE },
+  'fiscal.annex': { none: FINANCE },
   'fiscal.reconciliation': { none: FINANCE },
   'fiscal.contingency.current': { none: FINANCE },
   'fiscal.contingency.end': { none: FINANCE },

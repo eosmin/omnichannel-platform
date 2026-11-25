@@ -260,6 +260,8 @@ export const AuditAction = {
   FISCAL_CUSTOMER_DATA_CHANGED: 'fiscal.customer_data_changed',
   FISCAL_CUSTOMER_DATA_CLEARED: 'fiscal.customer_data_cleared',
   FISCAL_EVIDENCE_READ: 'fiscal.evidence_read',
+  // A file of the periodic return (an annex of the monthly VAT return) was taken out: who, the month, which annex and how many rows, never a row
+  FISCAL_ANNEX_EXPORTED: 'fiscal.annex_exported',
   // A sealed fiscal value sealed again with the current key after a rotation (the platform is the actor; the kind and the row, never the value)
   FISCAL_VALUE_RESEALED: 'fiscal.value_resealed',
   // A sealed credential, secret or address outside the fiscal area sealed again with the current key after a rotation (the platform is the actor; the column and the row, never the value)
