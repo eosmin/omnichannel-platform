@@ -747,6 +747,8 @@
     "FINANCE_BALANCE_MISMATCHES": "Los saldos del periodo no cuadran: es un incidente, no se cierra sobre él",
     "FINANCE_PERIOD_NOT_CLOSED": "El periodo no está cerrado",
     "FINANCE_PERIOD_ALREADY_CLOSED": "El periodo ya está cerrado",
+    "FINANCE_PERIOD_NOT_FUTURE": "Solo se puede borrar un periodo que aún no empieza",
+    "FINANCE_PERIOD_HAS_ACTIVITY": "El periodo tiene asientos, saldos o libros y no se puede borrar",
     "FINANCE_CURRENCY_UNSUPPORTED": "Solo se admite USD",
     "FINANCE_SETUP_REQUIRED": "Las finanzas aún no se han configurado para esta organización",
     "FINANCE_REPORT_BUSY": "Ya se están preparando reportes de Finanzas de esta organización: espera unos segundos e inténtalo de nuevo",
