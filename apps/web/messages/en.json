@@ -8113,7 +8113,8 @@
       },
       "kind": {
         "sale": "Sale document",
-        "credit_note": "Credit note"
+        "credit_note": "Credit note",
+        "debit_note": "Debit note"
       },
       "row": {
         "number": "No. {number}",
