@@ -17,6 +17,7 @@ import { CustomerErasureService, DsrOpenWorkService } from '@platform/core/custo
 import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { DAY_MS, DsrStatus, DsrType } from '@platform/core/domain'
+import type { SealedMailJobData } from '@platform/core/email'
 import type { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { dsrResultMailJobId, type SendEmailJob } from '@platform/core/queues'
@@ -28,6 +29,7 @@ import { createCustomer, createOrder } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { mailOf, testMailCipher } from '../helpers/mail-seal'
 import { createGuardedWorkerPrisma } from '../helpers/worker-db'
 
 const CONFIG: DsrConfig = {
@@ -80,7 +82,7 @@ describe('the sweep of the data erasures that are due', () => {
     const mailQueue = {
       add: (name: string, data: SendEmailJob, options: { jobId?: string }) => {
         if (failMail) return Promise.reject(new Error('queue is down'))
-        mails.push({ name, data, options })
+        mails.push({ name, data: mailOf(data), options })
         return Promise.resolve()
       }
     }
@@ -108,7 +110,8 @@ describe('the sweep of the data erasures that are due', () => {
       prisma,
       jobContext,
       ledger,
-      mailQueue as unknown as Queue<SendEmailJob>,
+      mailQueue as unknown as Queue<SendEmailJob | SealedMailJobData>,
+      testMailCipher(),
       CONFIG,
       { frontendUrl: 'http://web.test' },
       logger as unknown as PinoLogger

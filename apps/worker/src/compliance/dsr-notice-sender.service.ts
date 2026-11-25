@@ -15,8 +15,10 @@ import {
   DsrResultOutcomes,
   openDsrNotifyAddress
 } from '@platform/core/compliance'
+import { CredentialCipher } from '@platform/core/crypto'
 import { JobContext, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { DsrStatus, DsrType } from '@platform/core/domain'
+import { type SealedMailJobData, sealMailJob } from '@platform/core/email'
 import { errorName } from '@platform/core/errors'
 import type { Locale } from '@platform/core/i18n'
 import { DIGEST_LINKS, type DigestLinks } from '@platform/core/notifications'
@@ -40,7 +42,9 @@ export class DsrNoticeSender {
     private readonly prisma: PrismaService,
     private readonly jobContext: JobContext,
     private readonly notices: DsrNoticeLedger,
-    @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
+    @InjectQueue(QueueNames.EMAIL)
+    private readonly emailQueue: Queue<SendEmailJob | SealedMailJobData>,
+    private readonly cipher: CredentialCipher,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig,
     @Inject(DIGEST_LINKS) private readonly links: DigestLinks,
     private readonly logger: PinoLogger
@@ -172,7 +176,7 @@ export class DsrNoticeSender {
             data: { noticeQueuedAt: new Date(), noticeAttempts: { increment: 1 } }
           })
           // Queued last: a write that failed above rolls the token back before any mail is queued. A failure of the COMMIT itself, after the add, can still leave a mail whose token is not stored (owner 7.7, debt in the plan)
-          await this.emailQueue.add(job.name, job.data, job.opts)
+          await this.emailQueue.add(job.name, sealMailJob(this.cipher, job.data), job.opts)
           return 'queued' as const
         })
       )

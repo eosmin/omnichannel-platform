@@ -53,6 +53,36 @@ export function verifyDsrRequest(
   })
 }
 
+// The exchange of the link of the closing mail of an access or portability request for the signed link to the file (Step 7.2-H2b-3a route,
+// H2b-3b page). Public: no session and no store. The token is in the body, never in the URL. The signed link lives `expiresInSeconds` and is
+// only ever kept in memory: it is a bearer link to the person's data, so it must be http(s) (a `javascript:` or `data:` address is refused)
+export const dsrExportDownloadResultSchema = z.object({
+  url: z
+    .string()
+    .url()
+    .refine(value => ['https:', 'http:'].includes(new URL(value).protocol)),
+  filename: z.string().min(1),
+  expiresInSeconds: z.number().int().positive(),
+  // The password of the ZIP (H2b-3c): shown once and kept only in memory. Required: an answer without it is a file the person cannot open, so it
+  // is refused here and the page never presents it as a success
+  password: z.string().min(1)
+})
+export type DsrExportDownloadResult = z.infer<typeof dsrExportDownloadResultSchema>
+
+export function downloadDsrExport(
+  client: ApiClient,
+  token: string,
+  signal?: AbortSignal
+): Promise<DsrExportDownloadResult> {
+  return client.request(ApiRoutes.compliance.dsrExportDownload, {
+    method: 'POST',
+    body: { token },
+    schema: dsrExportDownloadResultSchema,
+    authenticated: false,
+    signal
+  })
+}
+
 // The kinds of request the public form offers. The api takes more (`DsrType`): these are the ones a person can ask for without an account and
 // that the store answers by mail after a review (the others need a conversation with the store)
 export const DSR_PUBLIC_TYPES = [DsrType.ACCESS, DsrType.ERASURE, DsrType.PORTABILITY] as const

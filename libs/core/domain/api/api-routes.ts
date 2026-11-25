@@ -242,6 +242,7 @@ export const ApiRoutes = {
       list: '/finance/periods',
       // POST opens the period of a month before any entry needs it
       open: '/finance/periods',
+      // GET reads one; DELETE takes away one that has not started and that nothing points at (FIN-052)
       byId: (id: string) => `/finance/periods/${id}`,
       // POST closes the month (the preconditions of TDD_18 §5.1); POST reopens the latest closed one with a reason (§5.3)
       close: (id: string) => `/finance/periods/${id}/close`,

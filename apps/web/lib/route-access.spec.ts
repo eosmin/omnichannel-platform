@@ -23,6 +23,12 @@ describe('accessFor', () => {
     expect(accessFor('/compliance', false)).toBe(RouteAccess.TO_LOGIN)
   })
 
+  it('lets a visitor with no session open the page that hands over a data export, and no page under it', () => {
+    expect(accessFor('/compliance/dsr/export', false)).toBe(RouteAccess.ALLOW)
+    expect(accessFor('/compliance/dsr/export', true)).toBe(RouteAccess.ALLOW)
+    expect(accessFor('/compliance/dsr/export/other', false)).toBe(RouteAccess.TO_LOGIN)
+  })
+
   it('lets a visitor with no session open the public form of data requests, and no page under it', () => {
     expect(accessFor('/compliance/dsr/request', false)).toBe(RouteAccess.ALLOW)
     expect(accessFor('/compliance/dsr/request', true)).toBe(RouteAccess.ALLOW)

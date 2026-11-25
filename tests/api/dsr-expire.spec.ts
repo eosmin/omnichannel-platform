@@ -9,10 +9,12 @@ import { type DsrConfig, dsrEmailHash } from '@platform/core/compliance'
 import { encrypt, hashToken, parseEncryptionKey } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { connectionUrls } from '@platform/core/database-testing'
+import type { SealedMailJobData } from '@platform/core/email'
 import type { DomainEvents } from '@platform/core/event-bus'
 import { type SendEmailJob } from '@platform/core/queues'
 
 import { DsrExpireSweeper } from '../../apps/worker/src/compliance/dsr-expire.sweeper'
+import { mailOf, testMailCipher } from '../helpers/mail-seal'
 
 // Step 7.2-H1b, the sweep of the data requests that were never confirmed, against the REAL database as the role of the worker. Two stores of
 // one organization each have requests waiting; the cases prove which ones the sweep closes, that it clears the address and its hash, that
@@ -103,7 +105,8 @@ describe('the sweep of data requests whose verification expired', () => {
     const workerDb = new PrismaService({ databaseUrl: connectionUrls().worker })
     dbs.push(workerDb)
     const mailQueue = {
-      add: (_name: string, data: SendEmailJob) => {
+      add: (_name: string, queued: SendEmailJob) => {
+        const data = mailOf(queued)
         if (failNextMail) {
           failNextMail = false
           return Promise.reject(new Error('queue is down'))
@@ -117,7 +120,8 @@ describe('the sweep of data requests whose verification expired', () => {
       new JobContext(workerDb),
       audit as unknown as AuditService,
       { publish: jest.fn() } as unknown as DomainEvents,
-      mailQueue as unknown as Queue<SendEmailJob>,
+      mailQueue as unknown as Queue<SendEmailJob | SealedMailJobData>,
+      testMailCipher(),
       CONFIG,
       { setContext: jest.fn(), error: jest.fn() } as unknown as PinoLogger
     )

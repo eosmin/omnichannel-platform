@@ -17,8 +17,10 @@ import {
   openDsrNotifyAddress,
   DsrResourceTypes
 } from '@platform/core/compliance'
+import { CredentialCipher } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { DsrStatus, VerificationTokenType } from '@platform/core/domain'
+import { type SealedMailJobData, sealMailJob } from '@platform/core/email'
 import { errorName } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -44,7 +46,9 @@ export class DsrExpireSweeper {
     private readonly jobContext: JobContext,
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
-    @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
+    @InjectQueue(QueueNames.EMAIL)
+    private readonly emailQueue: Queue<SendEmailJob | SealedMailJobData>,
+    private readonly cipher: CredentialCipher,
     @Inject(DSR_CONFIG) private readonly config: DsrConfig,
     private readonly logger: PinoLogger
   ) {
@@ -190,7 +194,7 @@ export class DsrExpireSweeper {
           outcome: DsrResultOutcomes.EXPIRED,
           requestType: row.type
         })
-        await this.emailQueue.add(job.name, job.data, job.opts)
+        await this.emailQueue.add(job.name, sealMailJob(this.cipher, job.data), job.opts)
         await tx.dataSubjectRequest.updateMany({
           where: { id: requestId, storeId },
           data: { noticeQueuedAt: new Date(), noticeAttempts: { increment: 1 } }

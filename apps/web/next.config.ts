@@ -4,6 +4,7 @@ import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
 
 import {
+  DSR_EXPORT_PAGE_SOURCE,
   DSR_REQUEST_PAGE_SOURCE,
   DSR_VERIFY_PAGE_SOURCE,
   STATIC_SECURITY_HEADERS,
@@ -27,6 +28,7 @@ const nextConfig: NextConfig = {
       { source: '/(.*)', headers: [...STATIC_SECURITY_HEADERS] },
       { source: UNSUBSCRIBE_PAGE_SOURCE, headers: [...UNSUBSCRIBE_PAGE_HEADERS] },
       { source: DSR_VERIFY_PAGE_SOURCE, headers: [...UNSUBSCRIBE_PAGE_HEADERS] },
+      { source: DSR_EXPORT_PAGE_SOURCE, headers: [...UNSUBSCRIBE_PAGE_HEADERS] },
       { source: DSR_REQUEST_PAGE_SOURCE, headers: [...UNSUBSCRIBE_PAGE_HEADERS] }
     ])
 }

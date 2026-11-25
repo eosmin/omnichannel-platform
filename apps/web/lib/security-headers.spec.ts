@@ -2,6 +2,7 @@ import { AppPaths } from '@platform/core/domain'
 
 import {
   buildContentSecurityPolicy,
+  DSR_EXPORT_PAGE_SOURCE,
   DSR_REQUEST_PAGE_SOURCE,
   DSR_VERIFY_PAGE_SOURCE,
   STATIC_SECURITY_HEADERS,
@@ -149,6 +150,12 @@ describe('UNSUBSCRIBE_PAGE_SOURCE', () => {
 describe('DSR_VERIFY_PAGE_SOURCE', () => {
   it('is the path of the page that confirms a data request', () => {
     expect(DSR_VERIFY_PAGE_SOURCE).toBe(AppPaths.dsrVerify)
+  })
+})
+
+describe('DSR_EXPORT_PAGE_SOURCE', () => {
+  it('is the path of the page that hands over the file of a data export', () => {
+    expect(DSR_EXPORT_PAGE_SOURCE).toBe(AppPaths.dsrExport)
   })
 })
 
