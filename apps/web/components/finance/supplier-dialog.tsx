@@ -17,7 +17,6 @@ import {
   supplierProblem,
   updateSupplierInputOf
 } from '../../lib/finance/purchase-form'
-import { useFinanceSettings } from '../../lib/finance/use-finance'
 import { usePurchaseErrorText } from '../../lib/finance/use-purchase-error-text'
 import { useCreateSupplier, useUpdateSupplier } from '../../lib/finance/use-purchases'
 import { useSubmitGuard } from '../../lib/submit-guard'
@@ -88,9 +87,6 @@ function SupplierForm({
   const errorText = usePurchaseErrorText()
   const { storeId } = useStore()
   const guard = useSubmitGuard()
-  const settings = useFinanceSettings(storeId, true)
-  const countryCode = settings.data?.countryCode ?? null
-  const savedTaxId = supplier?.taxId ?? null
   const create = useCreateSupplier(storeId)
   const update = useUpdateSupplier(storeId)
   const [draft, setDraft] = useState<SupplierDraft>(() =>
@@ -103,7 +99,7 @@ function SupplierForm({
     onBusy(pending)
     return () => onBusy(false)
   }, [pending, onBusy])
-  const valid = supplierProblem(draft, countryCode, savedTaxId) === null
+  const valid = supplierProblem(draft) === null
   const changes = supplier === null || !valid ? null : updateSupplierInputOf(supplier, draft)
   const changed = supplier === null || changes === null || Object.keys(changes).length > 0
   // The payable account of a supplier is a liability; the one already chosen stays in the list
@@ -127,7 +123,7 @@ function SupplierForm({
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    const problem = supplierProblem(draft, countryCode, savedTaxId)
+    const problem = supplierProblem(draft)
     if (problem !== null) {
       setWrong(problem)
       return

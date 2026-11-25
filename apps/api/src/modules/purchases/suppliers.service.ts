@@ -5,7 +5,6 @@ import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, type PrismaTransaction, PrismaService } from '@platform/core/database'
 import {
   AccountType,
-  isPlausibleSupplierTaxId,
   PurchaseConflicts,
   PurchaseLimits,
   PurchaseResourceTypes
@@ -19,6 +18,7 @@ import {
 } from '@platform/core/errors'
 import { PurchaseRule } from '@platform/core/finance'
 import { escapeLike } from '@platform/core/messaging'
+import { FiscalPartyTaxIdService } from '@platform/fiscal/runtime'
 
 import { encodeCursor } from '../customers/list-cursor'
 import { lockChart, lockScope, usableAccount } from '../finance/finance.support'
@@ -49,7 +49,8 @@ const nameInUse = (): PlatformException =>
 export class SuppliersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly partyTaxIds: FiscalPartyTaxIdService
   ) {}
 
   async list(organizationId: string, query: ListSuppliersQuery): Promise<SupplierPage> {
@@ -232,22 +233,18 @@ export class SuppliersService {
     }
   }
 
-  // The tax id of a supplier has the shape of the country of the books (FIN-212). Written only: no row already saved is read back
-  // through this check. Organizations without a setup have no country, so nothing is checked until they have one.
+  // The tax id of a supplier has the shape the provider of the organization's issuer uses (FIN-212). Written only: no row already saved is
+  // read back through this check. An organization with no issuer has no provider, so nothing is checked until it has one.
   private async requireValidTaxId(
     tx: PrismaTransaction,
     organizationId: string,
     taxId: string | null | undefined
   ): Promise<void> {
     if (taxId === null || taxId === undefined) return
-    const settings = await tx.financeSettings.findUnique({
-      where: { organizationId },
-      select: { countryCode: true }
-    })
-    if (settings === null || isPlausibleSupplierTaxId(settings.countryCode, taxId)) return
+    if (await this.partyTaxIds.isPlausible(tx, organizationId, taxId)) return
     throw new PlatformException(
       ErrorCodes.SUPPLIER_TAX_ID_INVALID,
-      'the tax id of the supplier does not have the shape of the country of the books',
+      'the tax id of the supplier does not have the shape of the country of the fiscal provider',
       HttpStatusCodes.BAD_REQUEST
     )
   }

@@ -1,4 +1,4 @@
-import { isPlausibleSupplierTaxId, isValidSvNationalId, taxIdDigits } from './tax-id-rules'
+import { isPlausiblePartyTaxId, isValidSvNationalId, taxIdDigits } from './sv-tax-id'
 
 // Every number here is made up for the test
 describe('isValidSvNationalId', () => {
@@ -32,9 +32,7 @@ describe('taxIdDigits', () => {
   })
 })
 
-describe('isPlausibleSupplierTaxId for El Salvador', () => {
-  const sv = 'SV'
-
+describe('isPlausiblePartyTaxId', () => {
   it.each([
     '06140101011013', // a tax number: 14 digits
     '0614-010101-101-3', // with the hyphens of the document
@@ -46,7 +44,7 @@ describe('isPlausibleSupplierTaxId for El Salvador', () => {
     '12345678',
     '  06140101011013  '
   ])('accepts %j', value => {
-    expect(isPlausibleSupplierTaxId(sv, value)).toBe(true)
+    expect(isPlausiblePartyTaxId(value)).toBe(true)
   })
 
   it.each([
@@ -63,10 +61,6 @@ describe('isPlausibleSupplierTaxId for El Salvador', () => {
     '--',
     '1234-5678-9012-A'
   ])('refuses %j', value => {
-    expect(isPlausibleSupplierTaxId(sv, value)).toBe(false)
-  })
-
-  it('accepts anything for a country with no rule: it does not guess', () => {
-    expect(isPlausibleSupplierTaxId('ZZ', 'x')).toBe(true)
+    expect(isPlausiblePartyTaxId(value)).toBe(false)
   })
 })

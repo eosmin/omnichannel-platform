@@ -128,18 +128,6 @@ describe('the supplier form', () => {
   it('needs a name and keeps the rest to the limits of the api', () => {
     expect(supplierProblem(emptySupplierDraft())).toBe('name')
     expect(supplierProblem({ ...emptySupplierDraft(), name: 'A' })).toBeNull()
-    const draft = { ...emptySupplierDraft(), name: 'A' }
-    // The shape of the tax id is the country's; made-up numbers
-    expect(supplierProblem({ ...draft, taxId: 'x' }, 'SV')).toBe('taxId')
-    expect(supplierProblem({ ...draft, taxId: '01234567-9' }, 'SV')).toBe('taxId')
-    expect(supplierProblem({ ...draft, taxId: '01234567-8' }, 'SV')).toBeNull()
-    expect(supplierProblem({ ...draft, taxId: '0614-010101-101-3' }, 'SV')).toBeNull()
-    expect(supplierProblem({ ...draft, taxId: ' ' }, 'SV')).toBeNull()
-    // The settings are not read yet: only the length is held, the api says the rest
-    expect(supplierProblem({ ...draft, taxId: 'x' })).toBeNull()
-    // A tax id the supplier already has is never blocked, only one that changes
-    expect(supplierProblem({ ...draft, taxId: 'S-1234' }, 'SV', 'S-1234')).toBeNull()
-    expect(supplierProblem({ ...draft, taxId: 'S-12345' }, 'SV', 'S-1234')).toBe('taxId')
     expect(supplierProblem({ ...emptySupplierDraft(), name: 'A', email: 'not-an-email' })).toBe(
       'email'
     )

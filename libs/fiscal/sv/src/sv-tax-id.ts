@@ -1,6 +1,4 @@
-import { FinanceCountryCodes } from './finance-constants'
-
-// The shape of the tax identifications a country uses, checked when a person writes one (FIN-212). Only the SHAPE (and, for the one
+// The shape of the tax identifications of El Salvador, checked when a person writes one (FIN-212). Only the SHAPE (and, for the one
 // document whose check digit is public, the check digit): whether the number belongs to a real taxpayer is the authority's to say.
 // A value already stored is never checked again here, so nothing saved before this rule is broken by it.
 
@@ -47,10 +45,6 @@ function isSvTaxId(value: string): boolean {
   )
 }
 
-// Whether a tax id typed for a supplier (a NIT, a DUI or an NRC, as its document shows it) has the shape of the country of the books.
-// A country the platform has no rule for accepts what was typed: it does not guess.
-export function isPlausibleSupplierTaxId(countryCode: string, value: string): boolean {
-  const trimmed = value.trim()
-  if (countryCode === FinanceCountryCodes.EL_SALVADOR) return isSvTaxId(trimmed)
-  return true
-}
+// Whether a tax id typed for a party that is not a receiver (a supplier: a NIT, a DUI or an NRC, as its document shows it) has the shape
+// of this country
+export const isPlausiblePartyTaxId = (value: string): boolean => isSvTaxId(value.trim())

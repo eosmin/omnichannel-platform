@@ -14,7 +14,6 @@ import type {
 import {
   FinanceLimits,
   isIsoDate,
-  isPlausibleSupplierTaxId,
   PurchaseLimits,
   PurchaseOrderStatus,
   PurchaseOrderStatusTransitions,
@@ -100,27 +99,12 @@ export const supplierDraftOf = (supplier: SupplierView): SupplierDraft => ({
   active: supplier.active
 })
 
-// `countryCode` is the country of the books; without it (the settings are not read yet) only the length is checked, and the api says
-// the rest. A tax id left as the supplier already has it is not checked, so a saved one that predates the rule does not block the form.
-export function supplierProblem(
-  draft: SupplierDraft,
-  countryCode: string | null = null,
-  savedTaxId: string | null = null
-): SupplierField | null {
+export function supplierProblem(draft: SupplierDraft): SupplierField | null {
   const name = draft.name.trim()
   if (name === '' || name.length > PurchaseLimits.SUPPLIER_NAME_MAX_LENGTH) {
     return SupplierFields.NAME
   }
   if (draft.taxId.trim().length > PurchaseLimits.SUPPLIER_TAX_ID_MAX_LENGTH) {
-    return SupplierFields.TAX_ID
-  }
-  const taxId = draft.taxId.trim()
-  if (
-    taxId !== '' &&
-    taxId !== savedTaxId &&
-    countryCode !== null &&
-    !isPlausibleSupplierTaxId(countryCode, taxId)
-  ) {
     return SupplierFields.TAX_ID
   }
   if (draft.contactName.trim().length > PurchaseLimits.SUPPLIER_CONTACT_MAX_LENGTH) {

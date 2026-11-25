@@ -43,6 +43,7 @@ import {
 import type { SvFetch } from './sv-http'
 import { issuerProblems, receiverProblems } from './sv-parties'
 import type { SvSigner } from './sv-signer'
+import { isPlausiblePartyTaxId } from './sv-tax-id'
 import {
   consultDocument,
   consultVoided,
@@ -185,6 +186,10 @@ export class SvProvider implements FiscalDocumentProvider {
 
   validateReceiver(receiver: FiscalReceiver): readonly FiscalReceiverProblem[] {
     return receiverProblems(receiver)
+  }
+
+  validatePartyTaxId(taxId: string): boolean {
+    return isPlausiblePartyTaxId(taxId)
   }
 
   resolveDocumentType(input: FiscalTypeInput): string {

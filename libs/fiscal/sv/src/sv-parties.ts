@@ -1,4 +1,3 @@
-import { isValidSvNationalId, SvTaxIdShapes } from '@platform/core/domain'
 import type {
   FiscalIssuerInput,
   FiscalReceiver,
@@ -20,6 +19,7 @@ import {
   SvLimits,
   SvProblemCodes
 } from './sv-constants'
+import { isValidSvNationalId, SvTaxIdShapes } from './sv-tax-id'
 
 // The issuer and the receiver of a document, read the way the authority writes them. Pure: no value is ever echoed in a problem, only the
 // field and a code.
