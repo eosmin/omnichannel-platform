@@ -176,6 +176,18 @@ export function missingForBusiness(receiver: FiscalReceiver): FiscalReceiverFiel
   return missing
 }
 
+// The fields the invoice of an excluded subject cannot be made without, that this seller lacks or has wrong. The seller is no taxpayer:
+// no registration number and no activity are asked, and the identity document is any the catalog of the authority knows (a national id, a
+// passport, a residence card), so a person without a tax number can be bought from.
+export function missingForExcludedSubject(receiver: FiscalReceiver): FiscalReceiverField[] {
+  const missing: FiscalReceiverField[] = []
+  const wrong = new Set(receiverProblems(receiver).map(problem => problem.field))
+  if (lacks(receiver.name) || wrong.has('name')) missing.push('name')
+  if (identityOf(receiver.taxId, receiver.documentType) === null) missing.push('taxId')
+  if (receiver.address === null || addressOf(receiver.address) === null) missing.push('address')
+  return missing
+}
+
 // Whether the issuer holds everything a document is made from; the codes are the fields of the issuer
 export function issuerProblems(issuer: FiscalIssuerInput): string[] {
   const problems: string[] = []
