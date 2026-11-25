@@ -126,6 +126,7 @@
           "contingency_window_closing": "Fiscal contingency window closing",
           "contingency_closed_by_system": "Fiscal contingency closed when the authority came back",
           "contingency_restored": "The authority answers: end the fiscal contingency",
+          "contingency_probe_halted": "Fiscal contingency: credentials refused by the authority",
           "contingency_technical_report": "Fiscal contingency over three days: technical report"
         }
       },
@@ -1303,11 +1304,15 @@
       },
       "contingency_closed_by_system": {
         "title": "A contingency closed by itself",
-        "body": "The authority answered again, so the contingency was closed with the time of the first answer, which may be later than the moment the service really came back. The event that reports it is sent by itself. If you know the real time, review the contingency in the fiscal settings."
+        "body": "The authority answered again, so the contingency was closed with the time of the first answer, which may be later than the moment the service really came back. If it held documents, the event that reports it is sent by itself. If you know the real time, review the contingency in the fiscal settings."
       },
       "contingency_restored": {
         "title": "The authority answers: end the contingency",
         "body": "The authority answered again and new documents are no longer kept in contingency. Open the fiscal settings and end the contingency, saying who answers for the establishment, so it can be reported and its documents sent."
+      },
+      "contingency_probe_halted": {
+        "title": "The authority refused the fiscal credentials",
+        "body": "While the contingency was open, the authority refused the credentials of the issuer. It is not asked again until they change, so the user is not locked out. Check the credentials in the fiscal settings, and end the contingency by hand when the authority answers."
       },
       "contingency_technical_report": {
         "title": "A contingency has lasted over three days",

@@ -123,6 +123,12 @@ export enum FiscalAuthorityProbeOutcome {
   INCONCLUSIVE = 'inconclusive'
 }
 
+// Who ended a contingency, as the audit trail says it
+export const FiscalContingencyEndedBy = { PROBE: 'probe' } as const
+
+// The end of the idempotency key of a probe (the key of a report is the organization and the contingency)
+export const FiscalContingencyProbeKeySuffix = 'probe'
+
 export enum FiscalContingencyProbeResult {
   // Nothing to do: gone, not open, or not asked
   NOTHING = 'nothing',
@@ -247,7 +253,9 @@ export enum FiscalContingencyAlertKind {
   // The authority answers again but the contingency needs a person to close it (the authority asks who answers for the establishment)
   RESTORED = 'restored',
   // The contingency has been open for more days than the authority allows without a technical report
-  TECHNICAL_REPORT_REQUIRED = 'technical_report_required'
+  TECHNICAL_REPORT_REQUIRED = 'technical_report_required',
+  // The authority refused the credentials while the contingency was open: nobody asks it again until they change
+  PROBE_HALTED = 'probe_halted'
 }
 
 const REPORT_RETRY_INTERVAL_MS = 15 * 60 * 1000

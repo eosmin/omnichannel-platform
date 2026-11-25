@@ -102,6 +102,10 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
     channels: [IN_APP, EMAIL]
   },
   [NotificationTypes.FISCAL_CONTINGENCY_RESTORED]: { severity: WARNING, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.FISCAL_CONTINGENCY_PROBE_HALTED]: {
+    severity: ERROR,
+    channels: [IN_APP, EMAIL]
+  },
   [NotificationTypes.FISCAL_CONTINGENCY_TECHNICAL_REPORT]: {
     severity: ERROR,
     channels: [IN_APP, EMAIL]
@@ -186,6 +190,7 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
     NotificationTypes.FISCAL_CONTINGENCY_WINDOW_CLOSING,
     NotificationTypes.FISCAL_CONTINGENCY_CLOSED_BY_SYSTEM,
     NotificationTypes.FISCAL_CONTINGENCY_RESTORED,
+    NotificationTypes.FISCAL_CONTINGENCY_PROBE_HALTED,
     NotificationTypes.FISCAL_CONTINGENCY_TECHNICAL_REPORT,
     NotificationTypes.EXPORT_READY,
     NotificationTypes.EXPORT_FAILED,

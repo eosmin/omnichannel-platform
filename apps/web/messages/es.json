@@ -126,6 +126,7 @@
           "contingency_window_closing": "El plazo de una contingencia fiscal se acaba",
           "contingency_closed_by_system": "Contingencia fiscal cerrada al volver la autoridad",
           "contingency_restored": "La autoridad responde: cierra la contingencia fiscal",
+          "contingency_probe_halted": "Contingencia fiscal: credenciales rechazadas por la autoridad",
           "contingency_technical_report": "Contingencia fiscal con más de tres días: informe técnico"
         }
       },
@@ -1303,11 +1304,15 @@
       },
       "contingency_closed_by_system": {
         "title": "Una contingencia se cerró sola",
-        "body": "La autoridad volvió a responder, así que la contingencia se cerró con la hora de la primera respuesta, que puede ser posterior al momento real en que volvió el servicio. El evento que la reporta se envía solo. Si conoces la hora real, revisa la contingencia en los ajustes fiscales."
+        "body": "La autoridad volvió a responder, así que la contingencia se cerró con la hora de la primera respuesta, que puede ser posterior al momento real en que volvió el servicio. Si tenía documentos, el evento que la reporta se envía solo. Si conoces la hora real, revisa la contingencia en los ajustes fiscales."
       },
       "contingency_restored": {
         "title": "La autoridad responde: termina la contingencia",
         "body": "La autoridad volvió a responder y los documentos nuevos ya no se guardan en contingencia. Abre los ajustes fiscales y termina la contingencia, indicando quién responde por el establecimiento, para reportarla y enviar los documentos."
+      },
+      "contingency_probe_halted": {
+        "title": "La autoridad rechazó las credenciales fiscales",
+        "body": "Mientras la contingencia seguía abierta, la autoridad rechazó las credenciales del emisor. No se vuelve a preguntar a la autoridad hasta que cambien, para no bloquear al usuario. Revisa las credenciales en los ajustes fiscales, y termina la contingencia a mano cuando la autoridad responda."
       },
       "contingency_technical_report": {
         "title": "Una contingencia lleva más de tres días",

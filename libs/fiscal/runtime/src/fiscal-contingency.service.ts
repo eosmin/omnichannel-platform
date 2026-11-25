@@ -25,6 +25,8 @@ import {
   FiscalContingencyConflictReasons,
   FiscalContingencyLimits,
   FiscalContingencyOrigin,
+  FiscalContingencyEndedBy,
+  FiscalContingencyProbeKeySuffix,
   FiscalContingencyProbeResult,
   FiscalContingencyReportOutcome,
   FiscalContingencyStatus,
@@ -1000,20 +1002,6 @@ export class FiscalContingencyService {
     ) {
       return FiscalContingencyProbeResult.WAITING
     }
-    // Credentials the authority refused are not sent again while the issuer holds the same ones: three wrong logins lock the user of the
-    // authority. The row of the issuer changes with every document (the correlative), so the signal is the sealed credentials themselves.
-    const fingerprint = createHash('sha256')
-      .update(issuer.credentialsEncrypted ?? '')
-      .digest('hex')
-    if (row.probeHaltedFingerprint !== null) {
-      if (row.probeHaltedFingerprint === fingerprint) return FiscalContingencyProbeResult.HALTED
-      await this.unit(organizationId, () =>
-        this.prisma.client.fiscalContingency.updateMany({
-          where: { id: contingencyId, organizationId, status: FiscalContingencyStatus.OPEN },
-          data: { probeHaltedFingerprint: null }
-        })
-      )
-    }
     let credentials: Record<string, unknown> = {}
     if (issuer.credentialsEncrypted !== null) {
       try {
@@ -1028,6 +1016,27 @@ export class FiscalContingencyService {
         return FiscalContingencyProbeResult.WAITING
       }
     }
+    // Credentials the authority refused are not sent again while the issuer holds the same ones: three wrong logins lock the user of the
+    // authority. The signal is the credentials themselves (and whose they are), not the row of the issuer (it changes with every document, the
+    // correlative) nor the sealed bytes (a new seal of the same credentials, a rotation of the key, changes them).
+    const fingerprint = createHash('sha256')
+      .update(
+        JSON.stringify([
+          issuer.taxId,
+          issuer.environment,
+          Object.entries(credentials).sort(([left], [right]) => left.localeCompare(right))
+        ])
+      )
+      .digest('hex')
+    if (row.probeHaltedFingerprint !== null) {
+      if (row.probeHaltedFingerprint === fingerprint) return FiscalContingencyProbeResult.HALTED
+      await this.unit(organizationId, () =>
+        this.prisma.client.fiscalContingency.updateMany({
+          where: { id: contingencyId, organizationId, status: FiscalContingencyStatus.OPEN },
+          data: { probeHaltedFingerprint: null }
+        })
+      )
+    }
     let outcome: FiscalAuthorityProbeOutcome
     try {
       // No answer in time is the authority not answering
@@ -1037,7 +1046,7 @@ export class FiscalContingencyService {
             probeFn({
               issuer: this.issuerInput(issuer),
               credentials,
-              idempotencyKey: `${organizationId}:contingency:${contingencyId}:probe`,
+              idempotencyKey: `${organizationId}:contingency:${contingencyId}:${FiscalContingencyProbeKeySuffix}`,
               attempt: 1
             }),
           FiscalLimits.PROVIDER_CALL_TIMEOUT_MS
@@ -1050,12 +1059,24 @@ export class FiscalContingencyService {
       outcome = FiscalAuthorityProbeOutcome.UNREACHABLE
     }
     if (outcome === FiscalAuthorityProbeOutcome.CREDENTIALS_REJECTED) {
-      await this.unit(organizationId, () =>
-        this.prisma.client.fiscalContingency.updateMany({
-          where: { id: contingencyId, organizationId, status: FiscalContingencyStatus.OPEN },
+      // The person is told once: the mark and its alert in one transaction
+      await this.inTx(organizationId, async tx => {
+        const marked = await tx.fiscalContingency.updateMany({
+          where: {
+            id: contingencyId,
+            organizationId,
+            status: FiscalContingencyStatus.OPEN,
+            OR: [{ probeHaltedFingerprint: null }, { probeHaltedFingerprint: { not: fingerprint } }]
+          },
           data: { probeHaltedFingerprint: fingerprint }
         })
-      )
+        if (marked.count === 0) return
+        this.events.publish(tx, Events.FISCAL_CONTINGENCY_ALERT, {
+          organizationId,
+          contingencyId,
+          kind: FiscalContingencyAlertKind.PROBE_HALTED
+        })
+      })
       return FiscalContingencyProbeResult.HALTED
     }
     if (outcome !== FiscalAuthorityProbeOutcome.REACHABLE)
@@ -1122,7 +1143,7 @@ export class FiscalContingencyService {
       organizationId,
       resourceType: FiscalResourceTypes.CONTINGENCY,
       resourceId: contingencyId,
-      metadata: { documents: done.documents, by: 'probe' }
+      metadata: { documents: done.documents, by: FiscalContingencyEndedBy.PROBE }
     })
     // The same way a person's end goes: a contingency with no document has nothing to report, and a queue that is down is made up for by the
     // daily check
@@ -1169,15 +1190,18 @@ export class FiscalContingencyService {
     })
   }
 
+  // After the real commit, like the start: an end that is rolled back keeps its probe
   private async stopProbe(contingencyId: string): Promise<void> {
-    try {
-      await this.queue.removeJobScheduler(probeFiscalContingencySchedulerId(contingencyId))
-    } catch (error) {
-      this.logger.error(
-        { contingencyId, err: errorName(error) },
-        'the probe of a contingency could not be stopped: its next run finds it ended'
-      )
-    }
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      try {
+        await this.queue.removeJobScheduler(probeFiscalContingencySchedulerId(contingencyId))
+      } catch (error) {
+        this.logger.error(
+          { contingencyId, err: errorName(error) },
+          'the probe of a contingency could not be stopped: its next run finds it ended'
+        )
+      }
+    })
   }
 
   // A contingency that lasts more than the days the authority gives (from its start to its end, or to now while it is open) needs a technical
@@ -1217,7 +1241,8 @@ export class FiscalContingencyService {
     const days = mode?.technicalReportAfterDays
     if (days === undefined || (row.technicalReportWarnedAt ?? null) !== null) return false
     const lasted = (row.endedAt ?? now).getTime() - row.startedAt.getTime()
-    if (lasted < days * 24 * HOUR_MS) return false
+    // More than the days, not the days exactly (the rule says "more than three consecutive days")
+    if (lasted <= days * 24 * HOUR_MS) return false
     return this.inTx(organizationId, async tx => {
       const marked = await tx.fiscalContingency.updateMany({
         where: {

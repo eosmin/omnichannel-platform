@@ -1020,6 +1020,10 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       )
       expect(control.probes).toBe(1)
       expect((await contingencyRow(opened.id)).probeHaltedFingerprint).not.toBeNull()
+      // The person is told once, not on every probe
+      expect(
+        alerts.filter(alert => alert.kind === FiscalContingencyAlertKind.PROBE_HALTED)
+      ).toHaveLength(1)
       // Later probes (even after a restart of the worker, since the halt is in the row) do not reach the provider
       expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
         FiscalContingencyProbeResult.HALTED
@@ -1055,16 +1059,17 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       const started = (await contingencyRow(opened.id)).startedAt.getTime()
       const technical = () =>
         alerts.filter(alert => alert.kind === FiscalContingencyAlertKind.TECHNICAL_REPORT_REQUIRED)
+      // Exactly the days is not more than the days
       await contingencies.probe(
         ctx.orgA.id,
         opened.id,
-        new Date(started + TECHNICAL_REPORT_DAYS * DAY_MS - 1000)
+        new Date(started + TECHNICAL_REPORT_DAYS * DAY_MS)
       )
       expect(technical()).toHaveLength(0)
       await contingencies.probe(
         ctx.orgA.id,
         opened.id,
-        new Date(started + TECHNICAL_REPORT_DAYS * DAY_MS)
+        new Date(started + TECHNICAL_REPORT_DAYS * DAY_MS + 1000)
       )
       expect(technical()).toEqual([
         {
@@ -1118,6 +1123,15 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
         FiscalContingencyProbeResult.NOTHING
       )
       expect(control.probes).toBe(0)
+      // The daily checks of another organization neither tell nor start anything about it
+      const alertsBefore = alerts.length
+      const schedulersBefore = [...schedulers().keys()].sort()
+      await contingencies.ensureProbes(ctx.orgB.id)
+      await contingencies.warnWindows(ctx.orgB.id, new Date(Date.now() + 30 * DAY_MS))
+      expect(
+        alerts.slice(alertsBefore).filter(alert => alert.organizationId === ctx.orgA.id)
+      ).toEqual([])
+      expect([...schedulers().keys()].sort()).toEqual(schedulersBefore)
       expect((await contingencyRow(opened.id)).status).toBe(FiscalContingencyStatus.OPEN)
       // Its scheduler is the contingency's, not the other organization's: the probe of another organization does not stop it
       expect(schedulerOf(opened.id)).toBeDefined()
