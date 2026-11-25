@@ -114,6 +114,31 @@ describe('the issuer and the receiver as the authority reads them', () => {
     expect(addressOf(null)).toBeNull()
   })
 
+  it('holds the check digit of a national id when a receiver is written, and only then', () => {
+    const receiver = (taxId: string, documentType: string | null) => ({
+      name: null,
+      taxId,
+      registrationId: null,
+      email: null,
+      phone: null,
+      documentType,
+      address: null
+    })
+    const wrongId = [{ field: 'taxId', code: 'tax_id_invalid' }]
+    expect(receiverProblems(receiver('01234567-8', '13'))).toEqual([])
+    expect(receiverProblems(receiver('01234567-8', null))).toEqual([])
+    expect(receiverProblems(receiver('01234567-9', '13'))).toEqual(wrongId)
+    expect(receiverProblems(receiver('012345679', null))).toEqual(wrongId)
+    // Nine digits are a national id whichever kind the person picked
+    expect(receiverProblems(receiver('012345679', '36'))).toEqual(wrongId)
+    expect(receiverProblems(receiver('012345678', '36'))).toEqual([])
+    // A tax number has no check digit held, and another document is not a national id
+    expect(receiverProblems(receiver('0614-010101-101-3', '36'))).toEqual([])
+    expect(receiverProblems(receiver('AB1234567', '03'))).toEqual([])
+    // Building a document from data saved before the rule still reads the id
+    expect(identityOf('01234567-9', '13')).toEqual({ type: '13', number: '012345679' })
+  })
+
   it('reads a tax id as digits: 14 of a tax number, 9 of a national id, and another document as it is written', () => {
     expect(digitsOf('0614-010101-101-1')).toBe('06140101011011')
     expect(identityOf('0614-010101-101-1', null)).toEqual({ type: '36', number: '06140101011011' })

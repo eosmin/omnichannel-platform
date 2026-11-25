@@ -746,6 +746,7 @@
     "FINANCE_CLOSE_NOT_ENDED": "El periodo aún no termina: no se cierra un mes antes de su último día",
     "FINANCE_BALANCE_MISMATCHES": "Los saldos del periodo no cuadran: es un incidente, no se cierra sobre él",
     "FINANCE_PERIOD_NOT_CLOSED": "El periodo no está cerrado",
+    "SUPPLIER_TAX_ID_INVALID": "La identificación tributaria del proveedor no tiene la forma de un NIT, un DUI o un NRC",
     "FINANCE_PERIOD_ALREADY_CLOSED": "El periodo ya está cerrado",
     "FINANCE_CURRENCY_UNSUPPORTED": "Solo se admite USD",
     "FINANCE_SETUP_REQUIRED": "Las finanzas aún no se han configurado para esta organización",
@@ -7426,8 +7427,8 @@
         "saved": "Proveedor guardado.",
         "fields": {
           "name": "Nombre",
-          "taxId": "Identificación tributaria (NIT o NRC)",
-          "taxIdHint": "Se escribe como la muestra el documento del proveedor. No se revisa su forma.",
+          "taxId": "Identificación tributaria (NIT, DUI o NRC)",
+          "taxIdHint": "Se escribe como la muestra el documento del proveedor, con o sin guiones. Se revisa su forma, no que el número exista.",
           "contactName": "Persona de contacto",
           "email": "Correo",
           "phone": "Teléfono",
@@ -7441,7 +7442,7 @@
         },
         "problems": {
           "name": "Escribe el nombre, de hasta 150 caracteres.",
-          "taxId": "La identificación tributaria es demasiado larga.",
+          "taxId": "La identificación tributaria no tiene la forma de un NIT, un DUI o un NRC, o es demasiado larga.",
           "contactName": "El nombre del contacto es demasiado largo.",
           "email": "Eso no es un correo.",
           "phone": "El teléfono es demasiado largo.",

@@ -5,6 +5,7 @@ import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, type PrismaTransaction, PrismaService } from '@platform/core/database'
 import {
   AccountType,
+  isPlausibleSupplierTaxId,
   PurchaseConflicts,
   PurchaseLimits,
   PurchaseResourceTypes
@@ -108,6 +109,7 @@ export class SuppliersService {
             conflict: PurchaseConflicts.SUPPLIER_LIMIT
           })
         }
+        await this.requireValidTaxId(tx, organizationId, body.taxId)
         await this.requireFreeName(tx, organizationId, body.name, null)
         if (body.defaultPayableAccountId !== undefined) {
           await this.requirePayableAccount(tx, organizationId, body.defaultPayableAccountId)
@@ -160,6 +162,9 @@ export class SuppliersService {
         if (body.name !== undefined) {
           await this.requireFreeName(tx, organizationId, body.name, id)
         }
+        // Only a tax id that changes is checked: a supplier saved before the rule keeps the one it has
+        if (body.taxId !== current.taxId)
+          await this.requireValidTaxId(tx, organizationId, body.taxId)
         // The payable account is fixed once the supplier has a bill or a payment: its payments would post to another account than its bills
         if (
           body.defaultPayableAccountId !== undefined &&
@@ -225,6 +230,26 @@ export class SuppliersService {
       if (isUniqueViolation(error)) throw nameInUse()
       throw error
     }
+  }
+
+  // The tax id of a supplier has the shape of the country of the books (FIN-212). Written only: no row already saved is read back
+  // through this check. Organizations without a setup have no country, so nothing is checked until they have one.
+  private async requireValidTaxId(
+    tx: PrismaTransaction,
+    organizationId: string,
+    taxId: string | null | undefined
+  ): Promise<void> {
+    if (taxId === null || taxId === undefined) return
+    const settings = await tx.financeSettings.findUnique({
+      where: { organizationId },
+      select: { countryCode: true }
+    })
+    if (settings === null || isPlausibleSupplierTaxId(settings.countryCode, taxId)) return
+    throw new PlatformException(
+      ErrorCodes.SUPPLIER_TAX_ID_INVALID,
+      'the tax id of the supplier does not have the shape of the country of the books',
+      HttpStatusCodes.BAD_REQUEST
+    )
   }
 
   private async requireFreeName(

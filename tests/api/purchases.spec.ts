@@ -207,6 +207,37 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
   }
 
   describe('suppliers', () => {
+    it('holds the shape of the tax id of the country when one is written, and leaves a saved one alone (FIN-212)', async () => {
+      for (const taxId of ['x', '<script>', '01234567-9', '123456789012345']) {
+        const refused = await asAdminA()
+          .post(ApiRoutes.suppliers.create)
+          .send({ name: `Shape ${taxId.length}`, taxId })
+        expect(refused.status).toBe(BAD_REQUEST)
+        expect(errorOf(refused).code).toBe(ErrorCodes.SUPPLIER_TAX_ID_INVALID)
+      }
+      // Made-up numbers: a national id with its check digit, a registration number
+      const dui = await supplier({ name: 'Shape DUI', taxId: '01234567-8' })
+      const nrc = await supplier({ name: 'Shape NRC', taxId: '123456-7' })
+
+      const bad = await asAdminA().patch(ApiRoutes.suppliers.update(dui.id)).send({ taxId: 'x' })
+      expect(bad.status).toBe(BAD_REQUEST)
+      expect(errorOf(bad).code).toBe(ErrorCodes.SUPPLIER_TAX_ID_INVALID)
+      const cleared = await asAdminA()
+        .patch(ApiRoutes.suppliers.update(nrc.id))
+        .send({ taxId: null })
+      expect(cleared.status).toBe(OK)
+
+      // A supplier saved before the rule keeps its tax id and can still be edited
+      const legacy = await owner.supplier.create({
+        data: { organizationId: ctx.orgA.id, name: 'Shape legacy', taxId: 'S-1234' }
+      })
+      const renamed = await asAdminA()
+        .patch(ApiRoutes.suppliers.update(legacy.id))
+        .send({ name: 'Shape legacy 2', taxId: 'S-1234' })
+      expect(renamed.status).toBe(OK)
+      expect((renamed.body as { taxId: string }).taxId).toBe('S-1234')
+    })
+
     it('creates, reads, renames and switches one off, and refuses a name taken ignoring case', async () => {
       const created = await supplier({ name: 'Distribuidora Uno', taxId: '0614-010101-101-1' })
       const taken = await asAdminA()

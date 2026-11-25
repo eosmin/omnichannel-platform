@@ -211,6 +211,31 @@ describe('The fiscal data of a customer (Step 4B.7b-3)', () => {
     })
   })
 
+  describe('data saved before a rule of the provider', () => {
+    it('is not refused for the tax id when another field is edited, and is when the tax id changes', async () => {
+      const id = await customerA()
+      // Saved before the organization had an issuer: nothing was checked
+      expect((await put(id, { taxId: 'ZQ 11 22', name: 'Zq Before Rule' })).status).toBe(OK)
+      const issuer = await asAdminA()
+        .put(ApiRoutes.fiscal.issuer)
+        .send({
+          providerId: SIMULATOR_PROVIDER_ID,
+          legalName: 'Zq Issuer Late',
+          taxId: 'ZQ-ISSUER-LATE',
+          address: { line1: 'x' },
+          environment: FiscalEnvironment.SANDBOX,
+          issueOn: FiscalIssueOn.DELIVERED,
+          credentials: { signingKey: 'not-a-real-signing-key-1234567890' }
+        })
+      expect(issuer.status).toBe(OK)
+
+      expect((await put(id, { name: 'Zq After Rule' })).status).toBe(OK)
+      const changed = await put(id, { taxId: 'ZQ 33 44' })
+      expect(changed.status).toBe(BAD_REQUEST)
+      expect(JSON.stringify(changed.body)).toContain(SimulatorRules.TAX_ID_WITH_SPACES)
+    })
+  })
+
   describe('the sale document', () => {
     it('takes a copy when it is made: a later change of the data never reaches it', async () => {
       const customerId = await customerA()

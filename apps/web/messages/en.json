@@ -746,6 +746,7 @@
     "FINANCE_CLOSE_NOT_ENDED": "The period has not ended yet: a month is not closed before its last day",
     "FINANCE_BALANCE_MISMATCHES": "The balances of the period do not match: it is an incident, it is not closed over",
     "FINANCE_PERIOD_NOT_CLOSED": "The period is not closed",
+    "SUPPLIER_TAX_ID_INVALID": "The tax ID of the supplier does not have the shape of a NIT, a DUI or an NRC",
     "FINANCE_PERIOD_ALREADY_CLOSED": "The period is closed already",
     "FINANCE_CURRENCY_UNSUPPORTED": "Only USD is supported",
     "FINANCE_SETUP_REQUIRED": "Finance has not been set up for this organization yet",
@@ -7426,8 +7427,8 @@
         "saved": "Supplier saved.",
         "fields": {
           "name": "Name",
-          "taxId": "Tax ID (NIT or NRC)",
-          "taxIdHint": "Written as the supplier's document shows it. Nothing is checked about its shape.",
+          "taxId": "Tax ID (NIT, DUI or NRC)",
+          "taxIdHint": "Written as the supplier's document shows it, with or without hyphens. Its shape is checked, not whether the number exists.",
           "contactName": "Contact person",
           "email": "Email",
           "phone": "Phone",
@@ -7441,7 +7442,7 @@
         },
         "problems": {
           "name": "Write the name, up to 150 characters.",
-          "taxId": "The tax ID is too long.",
+          "taxId": "The tax ID does not have the shape of a NIT, a DUI or an NRC, or it is too long.",
           "contactName": "The name of the contact is too long.",
           "email": "That is not an email address.",
           "phone": "The phone is too long.",

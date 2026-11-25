@@ -1,3 +1,4 @@
+import { isValidSvNationalId, SvTaxIdShapes } from '@platform/core/domain'
 import type {
   FiscalIssuerInput,
   FiscalReceiver,
@@ -61,6 +62,9 @@ export function addressOf(
   return { departamento, municipio, distrito, complemento }
 }
 
+const isDigitsDocument = (type: string): boolean =>
+  type === SvIdentityDocuments.TAX_ID || type === SvIdentityDocuments.NATIONAL_ID
+
 // The tax id of a receiver as the authority wants it: digits only, 14 (a tax number) or 9 (a national id) of them. Another kind of
 // document (a passport, a residence card) is kept as written, up to 20 characters.
 export function identityOf(
@@ -109,12 +113,18 @@ export function receiverProblems(receiver: FiscalReceiver): FiscalReceiverProble
   const kind = receiver.documentType ?? null
   if (kind !== null && !isIdentityDocument(kind))
     add('documentType', SvProblemCodes.DOCUMENT_TYPE_UNKNOWN)
-  if (
-    receiver.taxId !== null &&
-    receiver.taxId.trim() !== '' &&
-    identityOf(receiver.taxId, kind) === null
-  ) {
-    add('taxId', SvProblemCodes.TAX_ID_INVALID)
+  if (receiver.taxId !== null && receiver.taxId.trim() !== '') {
+    const identity = identityOf(receiver.taxId, kind)
+    // The check digit of a national id is held when a person writes one (FIN-212); `identityOf`, which builds a document from data
+    // already saved, does not hold it, so a receiver saved before the rule can still be issued to
+    if (
+      identity === null ||
+      (isDigitsDocument(identity.type) &&
+        identity.number.length === SvTaxIdShapes.NATIONAL_ID_DIGITS &&
+        !isValidSvNationalId(identity.number))
+    ) {
+      add('taxId', SvProblemCodes.TAX_ID_INVALID)
+    }
   }
   if (receiver.registrationId !== null && receiver.registrationId.trim() !== '') {
     if (!SvCodePatterns.REGISTRATION.test(digitsOf(receiver.registrationId)))
