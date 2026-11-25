@@ -892,6 +892,17 @@ describe('what a person may do with a document', () => {
     expect(isStuck(FiscalDocumentStatus.ACCEPTED, max)).toBe(false)
   })
 
+  it('waits for the attempts of the window of a document kept in a contingency before saying it is stuck', () => {
+    const max = FiscalContingencyLimits.RELEASED_MAX_ATTEMPTS
+    // The six attempts of an ordinary document do not end the retries of a released one
+    expect(isStuck(FiscalDocumentStatus.QUEUED, FiscalLimits.MAX_ATTEMPTS, true)).toBe(false)
+    expect(isStuck(FiscalDocumentStatus.QUEUED, max - 1, true)).toBe(false)
+    expect(isStuck(FiscalDocumentStatus.QUEUED, max, true)).toBe(true)
+    expect(isStuck(FiscalDocumentStatus.REJECTED, max, true)).toBe(false)
+    // An ordinary document is as before
+    expect(isStuck(FiscalDocumentStatus.QUEUED, FiscalLimits.MAX_ATTEMPTS, false)).toBe(true)
+  })
+
   it('lets an accepted document be voided and nothing else', () => {
     expect(allowedActionsOf(base)).toEqual({ ...none, void: true })
   })

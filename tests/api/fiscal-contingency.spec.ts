@@ -6,6 +6,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import {
   FiscalContingencyAlertKind,
   FiscalContingencyLimits,
+  FiscalLimits,
   FiscalContingencyReportOutcome,
   FiscalContingencyStatus,
   FiscalDeferOutcome,
@@ -465,11 +466,18 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
         responsible: RESPONSIBLE
       })
       expect(reported[0]?.documents).toHaveLength(2)
-      const released = jobs()
+      const releasedJobs = jobs()
         .slice(before)
         .filter(job => job.name === JobNames.SUBMIT_FISCAL_DOCUMENT)
-        .map(job => (job.data as { documentId: string }).documentId)
+      const released = releasedJobs.map(job => (job.data as { documentId: string }).documentId)
       expect(released.sort()).toEqual([heldId, secondId].sort())
+      // Asked again every 14 minutes for the whole window of the lot, not the six attempts of an ordinary document
+      for (const job of releasedJobs) {
+        expect(job.opts).toMatchObject({
+          attempts: FiscalContingencyLimits.RELEASED_MAX_ATTEMPTS,
+          backoff: { type: 'fixed', delay: FiscalContingencyLimits.REPORT_RETRY_DELAY_MS }
+        })
+      }
       // A second report of the same contingency does nothing more
       reported.length = 0
       expect(await contingencies.report(ctx.orgA.id, contingencyId)).toBe('nothing')
@@ -492,6 +500,57 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       await expect(
         owner.fiscalDocument.update({ where: { id: heldId }, data: { contingencyId: null } })
       ).rejects.toThrow(/immutable/)
+    })
+
+    it('does not call a released document stuck until it has spent the attempts of its whole window', async () => {
+      type Page = { attention: { stuck: number } }
+      const stuckCount = async (): Promise<number> =>
+        ((await asAdminA().get(`${ApiRoutes.fiscal.documents.list}?limit=1`)).body as Page)
+          .attention.stuck
+      const stuckOf = async (id: string): Promise<boolean> =>
+        (
+          (await asAdminA().get(ApiRoutes.fiscal.documents.byId(id))).body as {
+            data: { stuck: boolean }
+          }
+        ).data.stuck
+      const original = await row(secondId)
+      expect(original.status).toBe(FiscalDocumentStatus.QUEUED)
+      expect(original.contingencyId).toBe(contingencyId)
+      const base = await stuckCount()
+      try {
+        // The six attempts that end an ordinary document leave a released one retrying
+        await owner.fiscalDocument.update({
+          where: { id: secondId },
+          data: { attempts: FiscalLimits.MAX_ATTEMPTS }
+        })
+        expect(await stuckOf(secondId)).toBe(false)
+        expect(await stuckCount()).toBe(base)
+        await owner.fiscalDocument.update({
+          where: { id: secondId },
+          data: { attempts: FiscalContingencyLimits.RELEASED_MAX_ATTEMPTS }
+        })
+        expect(await stuckOf(secondId)).toBe(true)
+        expect(await stuckCount()).toBe(base + 1)
+        // A person's retry of it asks again with the retries of its window too, so the job does not end long before it is called stuck
+        const before = jobs().length
+        const retried = await asAdminA().post(ApiRoutes.fiscal.documents.retry(secondId))
+        expect(retried.status).toBe(OK)
+        const asked = jobs()
+          .slice(before)
+          .filter(job => job.name === JobNames.SUBMIT_FISCAL_DOCUMENT)
+        expect(asked.length).toBeGreaterThan(0)
+        for (const job of asked) {
+          expect(job.opts).toMatchObject({
+            attempts: FiscalContingencyLimits.RELEASED_MAX_ATTEMPTS,
+            backoff: { type: 'fixed', delay: FiscalContingencyLimits.REPORT_RETRY_DELAY_MS }
+          })
+        }
+      } finally {
+        await owner.fiscalDocument.update({
+          where: { id: secondId },
+          data: { attempts: original.attempts }
+        })
+      }
     })
 
     it('tells a person once when the window is closing and a document is still waiting', async () => {

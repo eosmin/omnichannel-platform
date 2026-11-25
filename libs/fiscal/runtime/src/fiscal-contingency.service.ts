@@ -27,7 +27,7 @@ import {
   FiscalContingencyReportOutcome,
   FiscalContingencyStatus,
   type FiscalEnvironment,
-  fiscalJobOptions,
+  fiscalReleasedJobOptions,
   fiscalReportJobOptions,
   FiscalDocumentStatus,
   FiscalLimits,
@@ -1062,7 +1062,7 @@ export class FiscalContingencyService {
           jobs.map(({ doc, jobId }) => ({
             name: JobNames.SUBMIT_FISCAL_DOCUMENT,
             data: { organizationId, documentId: doc.id },
-            opts: { ...fiscalJobOptions(), jobId }
+            opts: { ...fiscalReleasedJobOptions(), jobId }
           }))
         )
       }

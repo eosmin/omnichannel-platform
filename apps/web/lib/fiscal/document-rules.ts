@@ -4,7 +4,6 @@ import {
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEvidenceKind,
-  FiscalLimits,
   FiscalRejectionReasons
 } from '@platform/core/domain'
 
@@ -76,13 +75,12 @@ export const FiscalAttention = { REJECTED: 'rejected', STUCK: 'stuck' } as const
 export type FiscalAttentionKind = (typeof FiscalAttention)[keyof typeof FiscalAttention]
 
 export function fiscalAttentionOf(
-  document: Pick<FiscalDocumentView, 'status' | 'attempts'>
+  document: Pick<FiscalDocumentView, 'status' | 'stuck'>
 ): FiscalAttentionKind | null {
   if (document.status === FiscalDocumentStatus.REJECTED) return FiscalAttention.REJECTED
-  if (
-    document.status === FiscalDocumentStatus.QUEUED &&
-    document.attempts >= FiscalLimits.MAX_ATTEMPTS
-  ) {
+  // The server says it (`isStuck`): a document kept in a contingency has the attempts of the whole window of its lot, so a count of
+  // attempts here would call it stuck while it is still retrying
+  if (document.status === FiscalDocumentStatus.QUEUED && document.stuck) {
     return FiscalAttention.STUCK
   }
   return null

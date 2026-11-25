@@ -5,9 +5,9 @@ import {
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalDocumentStatusTransitions,
-  FiscalLimits,
   FiscalOperationCondition,
   FiscalRejectionDeadlineState,
+  fiscalSubmitMaxAttempts,
   FiscalRejectionReasons,
   FiscalRejectionRetry,
   type FiscalEnvironment,
@@ -68,8 +68,13 @@ export function rejectionDeadline(
 }
 
 // A document that stays in the queue after every attempt of its job was spent: it needs a person (a retry), nothing will move it by itself
-export const isStuck = (status: FiscalDocumentStatus, attempts: number): boolean =>
-  status === FiscalDocumentStatus.QUEUED && attempts >= FiscalLimits.MAX_ATTEMPTS
+// (one kept in a contingency has the attempts of the whole window of its lot, so it is stuck later than an ordinary one)
+export const isStuck = (
+  status: FiscalDocumentStatus,
+  attempts: number,
+  inContingency = false
+): boolean =>
+  status === FiscalDocumentStatus.QUEUED && attempts >= fiscalSubmitMaxAttempts(inContingency)
 
 // What the state of a document allows a person to do with it. The screen draws its buttons from this and the api decides again on every
 // call (the rules of the calls are the ones in `FiscalDocumentsService`); the permission to do it is the route's, not this function's.

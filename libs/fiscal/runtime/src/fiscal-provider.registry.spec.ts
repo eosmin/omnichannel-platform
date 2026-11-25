@@ -1,3 +1,4 @@
+import { FiscalContingencyLimits } from '@platform/core/domain'
 import type { FiscalDocumentProvider, FiscalProviderManifest } from '@platform/fiscal/sdk'
 import { simulatorProvider } from '@platform/fiscal/simulator'
 
@@ -155,6 +156,8 @@ describe('the contingency mode of a provider', () => {
       { authorityDownReason: 'not-a-reason' },
       { transmitWithinHours: 0 },
       { transmitWithinHours: Number.NaN },
+      // More hours than the retries of a released document cover
+      { transmitWithinHours: FiscalContingencyLimits.RELEASED_RETRY_HOURS + 1 },
       { reportWithinHours: 0 },
       { reportWithinHours: Number.NaN },
       { reportWithinHours: Number.POSITIVE_INFINITY },
