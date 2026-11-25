@@ -98,7 +98,7 @@ type Plan =
 const localeOf = (value: string | null): Locale =>
   SUPPORTED_LOCALES.find(locale => locale === value) ?? DEFAULT_LOCALE
 
-// The files of an accepted fiscal document given to its receiver (Normativa DTE v2.0, section 11): the DTE file and its graphic
+// The files of an accepted fiscal document given to its receiver (the rule on delivering the files of a document): the signed file and its graphic
 // representation, with the document, never held back for a payment. Where they go is decided by what the channel of the customer declares
 // (documents, the types and the size it takes, an open window), never by its name (CLAUDE.md rule 13); when no channel takes both, the
 // email with the two files attached; when neither can carry them, a row that says so and an alert for the people who manage the fiscal
@@ -380,7 +380,7 @@ export class FiscalDeliveryService {
     return FiscalDeliveryOutcome.SENT
   }
 
-  // The email with the two files attached and only the information of the delivery: no advertising and no survey (Anexo I 4). The job is
+  // The email with the two files attached and only the information of the delivery: no advertising and no survey. The job is
   // queued first under an id made from the document, and the row is written after it: a process that dies in between leaves a job that
   // a second try adds once (the id), never a receiver who was not told and nobody who knows.
   private async sendByEmail(

@@ -12,7 +12,7 @@ import { FiscalDeliveryService } from './fiscal-delivery.service'
 export const FISCAL_DELIVERY_ATTEMPTS = 3
 export const FISCAL_DELIVERY_RETRY_MS = 1000
 
-// An accepted document owes its files to the receiver (Normativa DTE v2.0, section 11). The worker says it when it accepts one, the api
+// An accepted document owes its files to the receiver (the rule on delivering the files of a document). The worker says it when it accepts one, the api
 // when it does: both reach this listener (the event is bridged). A failure here never reaches the document: it is decided and kept.
 @Injectable()
 export class FiscalDeliveryListener {

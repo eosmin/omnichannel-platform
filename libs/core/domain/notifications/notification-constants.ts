@@ -58,7 +58,7 @@ export const NotificationTypes = {
   FISCAL_DOCUMENT_STUCK: 'fiscal.document_stuck',
   // The window (24 hours) to correct and send again a document the authority refused is closing or over (D14)
   FISCAL_RETRANSMIT_DEADLINE: 'fiscal.retransmit_deadline',
-  // The files of an accepted document could not be given to its receiver and a person must (Normativa DTE v2.0, section 11)
+  // The files of an accepted document could not be given to its receiver and a person must (the rule on delivering the files of a document)
   FISCAL_DELIVERY_NOT_SENT: 'fiscal.delivery_not_sent',
   // A sale document disagrees with its entry of the books: only a person can say which one is right (TDD_18 §11, Step 4B.8b-2b)
   FISCAL_ENTRY_MISMATCH: 'fiscal.entry_mismatch',

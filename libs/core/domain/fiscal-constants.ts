@@ -221,7 +221,7 @@ export enum FiscalContingencyOrigin {
   SYSTEM = 'system'
 }
 
-// The delivery of an accepted document to its receiver (Normativa DTE v2.0, section 11): the DTE file and its graphic representation, given
+// The delivery of an accepted document to its receiver (the rule on delivering the files of a document): the signed file of the document and its graphic representation, given
 // with the document and never held back for a payment. One row for each document. SENT: the files went by a channel or by email. NOT_SENT:
 // nothing could carry them and a person must give them by hand.
 export enum FiscalDeliveryStatus {

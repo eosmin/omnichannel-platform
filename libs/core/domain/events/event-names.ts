@@ -139,7 +139,7 @@ export const Events = {
   // The weekly check of the hash chain found the journal altered, and no check has passed since (TDD_18 §11). Api and worker only: ids and
   // a reason code, never an entry.
   FINANCE_CHAIN_BROKEN: 'finance.chain_broken',
-  // A fiscal document was accepted by the authority: its receiver is owed the files (Normativa DTE v2.0, section 11). Worker and api: ids
+  // A fiscal document was accepted by the authority: its receiver is owed the files (the rule on delivering the files of a document). Worker and api: ids
   // only, never the receiver's data.
   FISCAL_DOCUMENT_ACCEPTED: 'fiscal.document_accepted',
   // The files of an accepted document could not be given to its receiver and a person must (api only): ids and a reason code.
