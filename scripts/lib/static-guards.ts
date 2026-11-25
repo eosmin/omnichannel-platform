@@ -67,6 +67,9 @@ export const QUEUE_ADD_ALLOWED: Readonly<Record<string, number>> = {
   'apps/api/src/modules/finance/finance-chain.service.ts': 1,
   // The email is queued FIRST on purpose, under an id made from the key; the dispatch is claimed after it (see the comment there)
   'apps/api/src/modules/order-messages/order-messages.service.ts': 1,
+  // Same design as the order messages: the email is queued first under an id made from the document (kept an hour after it is sent), the
+  // delivery row is claimed after it, and a failed claim is retried by the listener without a second email
+  'apps/api/src/modules/fiscal/fiscal-delivery.service.ts': 1,
   // The deliveries of a webhook name rows that were committed earlier (the webhook) and carry the body in the job; the dispatcher runs
   // from a listener after the commit of the event
   'apps/api/src/modules/tenant-webhooks/webhook-dispatcher.ts': 2,
