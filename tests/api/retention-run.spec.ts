@@ -571,8 +571,8 @@ describe('The retention run of the worker', () => {
     describe('the documents of orders past the legal period', () => {
       const now = new Date()
       const cutoff = orderDocumentCutoff(now)
-      const sevenYearsAndADay = new Date(cutoff.getTime() - DAY_MS)
-      const sixYearsElevenMonths = new Date(cutoff.getTime() + 30 * DAY_MS)
+      const tenYearsAndADay = new Date(cutoff.getTime() - DAY_MS)
+      const nineYearsElevenMonths = new Date(cutoff.getTime() + 30 * DAY_MS)
 
       // A document of an order, both made at `madeAt`, with its object in the bucket
       async function orderDocumentMadeAt(
@@ -603,9 +603,9 @@ describe('The retention run of the worker', () => {
       const rowExists = async (mediaId: string) =>
         (await owner.media.count({ where: { id: mediaId } })) === 1
 
-      it('deletes the document of seven years and a day, with its object, and keeps the one of six years and eleven months', async () => {
-        const old = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
-        const young = await orderDocumentMadeAt(ctx.storeA.id, sixYearsElevenMonths)
+      it('deletes the document of ten years and a day, with its object, and keeps the one of nine years and eleven months', async () => {
+        const old = await orderDocumentMadeAt(ctx.storeA.id, tenYearsAndADay)
+        const young = await orderDocumentMadeAt(ctx.storeA.id, nineYearsElevenMonths)
 
         const report = await enforcer.enforce(ctx.storeA.id, now)
 
@@ -618,11 +618,29 @@ describe('The retention run of the worker', () => {
         expect(await owner.order.count({ where: { id: old.orderId } })).toBe(1)
       })
 
+      it('keeps a document and an order of seven, eight and nine years (CT art. 147: ten years from the issue)', async () => {
+        const kept = []
+        for (const years of [7, 8, 9]) {
+          const madeAt = new Date(now.getTime())
+          madeAt.setUTCFullYear(madeAt.getUTCFullYear() - years)
+          madeAt.setUTCDate(madeAt.getUTCDate() - 1)
+          kept.push(await orderDocumentMadeAt(ctx.storeA.id, madeAt))
+        }
+
+        const report = await enforcer.enforce(ctx.storeA.id, now)
+
+        expect(report.orderDocuments).toBe(0)
+        for (const document of kept) {
+          expect(await rowExists(document.mediaId)).toBe(true)
+          expect(await storage.head(document.key)).not.toBeNull()
+        }
+      })
+
       it('keeps a document that is old when its ORDER is not (the later of the two dates rules)', async () => {
-        const document = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const document = await orderDocumentMadeAt(ctx.storeA.id, tenYearsAndADay)
         await owner.order.update({
           where: { id: document.orderId },
-          data: { createdAt: sixYearsElevenMonths }
+          data: { createdAt: nineYearsElevenMonths }
         })
 
         await enforcer.enforce(ctx.storeA.id, now)
@@ -631,7 +649,7 @@ describe('The retention run of the worker', () => {
       })
 
       it('is the same for an order of a customer that was erased', async () => {
-        const document = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const document = await orderDocumentMadeAt(ctx.storeA.id, tenYearsAndADay)
         const order = await owner.order.findUniqueOrThrow({
           where: { id: document.orderId },
           select: { customerId: true }
@@ -647,7 +665,7 @@ describe('The retention run of the worker', () => {
       })
 
       it('never deletes the document of an order that has a fiscal document, of any status', async () => {
-        const document = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const document = await orderDocumentMadeAt(ctx.storeA.id, tenYearsAndADay)
         await owner.fiscalDocument.create({
           data: {
             organizationId: ctx.orgA.id,
@@ -677,8 +695,8 @@ describe('The retention run of the worker', () => {
       })
 
       it('cannot meet a file of an order that is the evidence of a fiscal document: the database refuses that row, and the sweep names the owner columns as a second guard', async () => {
-        const evidence = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
-        const other = await orderDocumentMadeAt(ctx.storeA.id, sixYearsElevenMonths)
+        const evidence = await orderDocumentMadeAt(ctx.storeA.id, tenYearsAndADay)
+        const other = await orderDocumentMadeAt(ctx.storeA.id, nineYearsElevenMonths)
         const document = await owner.fiscalDocument.create({
           data: {
             organizationId: ctx.orgA.id,
@@ -713,8 +731,8 @@ describe('The retention run of the worker', () => {
       })
 
       it('never deletes the document of an order whose sale is in a period with a legal book taken, and takes the one of a period with none', async () => {
-        const sealed = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
-        const open = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const sealed = await orderDocumentMadeAt(ctx.storeA.id, tenYearsAndADay)
+        const open = await orderDocumentMadeAt(ctx.storeA.id, tenYearsAndADay)
         const fixture = await createFinanceFixture(owner, ctx.orgA.id)
         const openPeriodId = await createPeriod(owner, ctx.orgA.id, 2026, 10)
         await postTestEntry(
@@ -758,7 +776,7 @@ describe('The retention run of the worker', () => {
       })
 
       it('leaves the row when the bucket refuses, and takes it on the next run (the bucket first, the row after)', async () => {
-        const document = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const document = await orderDocumentMadeAt(ctx.storeA.id, tenYearsAndADay)
         const failing = jest
           .spyOn(storage, 'delete')
           .mockRejectedValueOnce(new Error('bucket down'))
@@ -776,7 +794,7 @@ describe('The retention run of the worker', () => {
       })
 
       it('is idempotent, and finishes a row whose object is already gone', async () => {
-        const document = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        const document = await orderDocumentMadeAt(ctx.storeA.id, tenYearsAndADay)
         await storage.delete(document.key)
 
         const first = await enforcer.enforce(ctx.storeA.id, now)
@@ -787,8 +805,8 @@ describe('The retention run of the worker', () => {
       })
 
       it('touches the documents of no other store', async () => {
-        const mine = await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
-        const theirs = await orderDocumentMadeAt(ctx.storeB.id, sevenYearsAndADay)
+        const mine = await orderDocumentMadeAt(ctx.storeA.id, tenYearsAndADay)
+        const theirs = await orderDocumentMadeAt(ctx.storeB.id, tenYearsAndADay)
 
         await enforcer.enforce(ctx.storeA.id, now)
 
@@ -811,7 +829,7 @@ describe('The retention run of the worker', () => {
 
       it('writes the count in the entry of the run, and no id or text', async () => {
         const startedAt = new Date()
-        await orderDocumentMadeAt(ctx.storeA.id, sevenYearsAndADay)
+        await orderDocumentMadeAt(ctx.storeA.id, tenYearsAndADay)
 
         await enforcer.enforce(ctx.storeA.id, now)
 
