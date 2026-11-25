@@ -55,6 +55,7 @@ const CountLimits: Readonly<Record<keyof SvConformanceCounts, number>> = {
   creditNotes: 500,
   debitNotes: 500,
   remissionNotes: 500,
+  excludedSubjects: 500,
   voids: 20,
   contingencies: 20,
   deferredPerContingency: 50

@@ -651,6 +651,16 @@ export class NotificationsEventsListener {
     )
   }
 
+  @OnEvent(Events.FISCAL_VOID_RETRANSMIT_DEADLINE)
+  @InEventOrganization()
+  async onFiscalVoidRetransmitDeadline(payload: FiscalRetransmitDeadlinePayload): Promise<void> {
+    await this.tellFiscalManagers(
+      payload.organizationId,
+      payload.documentId,
+      NotificationTypes.FISCAL_VOID_RETRANSMIT_DEADLINE
+    )
+  }
+
   @OnEvent(Events.FISCAL_DOCUMENT_STUCK)
   @InEventOrganization()
   async onFiscalDocumentStuck(payload: FiscalDocumentStuckPayload): Promise<void> {

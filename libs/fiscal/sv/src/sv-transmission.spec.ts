@@ -519,7 +519,8 @@ describe('the client of the authority', () => {
         ...RESCISSION,
         requester: { name: 'Luis', idType: '36', idNumber: FAKE.REJECT }
       })
-      expect(answer).toMatchObject({ voided: false, reason: '020' })
+      // The refusal is the authority's own: it starts the window to correct and send the event again (D14b)
+      expect(answer).toMatchObject({ voided: false, reason: '020', byAuthority: true })
     })
 
     it('throws when the authority does not answer, and a consultation finds what it did', async () => {

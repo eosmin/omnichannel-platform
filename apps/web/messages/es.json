@@ -121,6 +121,7 @@
           "document_stuck": "Documento fiscal detenido",
           "retransmit_deadline": "Plazo de reenvío de un documento fiscal rechazado",
           "delivery_not_sent": "Documento fiscal no entregado",
+          "void_retransmit_deadline": "Plazo de reenvío de una invalidación rechazada",
           "entry_mismatch": "Un documento fiscal no coincide con los libros",
           "contingency_opened": "Contingencia fiscal iniciada",
           "contingency_report_failed": "Contingencia fiscal sin reportar",
@@ -1286,6 +1287,10 @@
       "delivery_not_sent": {
         "title": "Un documento fiscal no llegó al cliente",
         "body": "Los archivos de un documento fiscal (el archivo DTE y su representación gráfica) no se pudieron enviar al cliente por ningún medio. Abre el documento y entrégaselos al cliente a mano: la ley pide que se entreguen junto con el documento."
+      },
+      "void_retransmit_deadline": {
+        "title": "Se acaba el plazo de reenvío de una invalidación",
+        "body": "La autoridad rechazó la invalidación de un documento fiscal y el plazo de 24 horas para corregirla y reenviarla se acaba o ya pasó. Abre el documento, corrige la invalidación y envíala de nuevo: el documento sigue aceptado hasta que la autoridad la reciba."
       },
       "entry_mismatch": {
         "title": "Un documento fiscal no coincide con los libros",
@@ -8125,7 +8130,8 @@
         "sale": "Documento de venta",
         "credit_note": "Nota de crédito",
         "debit_note": "Nota de débito",
-        "remission_note": "Nota de remisión"
+        "remission_note": "Nota de remisión",
+        "purchase": "Documento de compra"
       },
       "row": {
         "number": "N.º {number}",

@@ -153,6 +153,8 @@ export const Events = {
   // The window to correct and send again a document the authority refused is closing or over (D14). Api and worker only: ids and whether it
   // is over, never the receiver's data.
   FISCAL_RETRANSMIT_DEADLINE: 'fiscal.retransmit_deadline',
+  // The same for an invalidation the authority refused (D14b): its own event, so its notice is never taken for the one of the document
+  FISCAL_VOID_RETRANSMIT_DEADLINE: 'fiscal.void_retransmit_deadline',
   // The daily check found a sale document whose total or tax differs from the entry of the books for the same sale (TDD_18 §8.3, §11, Step
   // 4B.8b-2b). Api and worker only: the organization, one document id and the count, never an amount or the receiver's data.
   FISCAL_ENTRY_MISMATCH: 'fiscal.entry_mismatch',
@@ -320,6 +322,7 @@ export const BridgedEvents = [
   Events.FISCAL_DOCUMENT_REJECTED,
   Events.FISCAL_DOCUMENT_STUCK,
   Events.FISCAL_RETRANSMIT_DEADLINE,
+  Events.FISCAL_VOID_RETRANSMIT_DEADLINE,
   // The worker says it when the daily check finds a document that disagrees with its entry; the api tells whoever can act on it
   Events.FISCAL_ENTRY_MISMATCH,
   // The worker says it when a contingency needs a person; the api tells whoever can act on it

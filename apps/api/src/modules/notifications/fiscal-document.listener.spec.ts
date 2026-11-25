@@ -147,6 +147,25 @@ describe('the notice of a fiscal document that needs a person', () => {
     expect(JSON.stringify(asked[0])).toContain('fiscal:manage')
   })
 
+  it('says a refused invalidation with a type of its own, so an unread notice of the document never hides it', async () => {
+    const { listener, sent } = build([{ userId: 'u1', storeId: 's1' }])
+    await listener.onFiscalVoidRetransmitDeadline({
+      organizationId: ORG,
+      storeId: 's1',
+      documentId: DOCUMENT,
+      orderId: 'order-1',
+      expired: false
+    })
+    expect(sent[0]?.input).toMatchObject({
+      type: NotificationTypes.FISCAL_VOID_RETRANSMIT_DEADLINE,
+      resourceType: FiscalResourceTypes.DOCUMENT,
+      resourceId: DOCUMENT
+    })
+    expect(NotificationTypes.FISCAL_VOID_RETRANSMIT_DEADLINE).not.toBe(
+      NotificationTypes.FISCAL_RETRANSMIT_DEADLINE
+    )
+  })
+
   it('says a document that disagrees with its entry with its own type, and names no amount', async () => {
     const { listener, sent } = build([{ userId: 'u1', storeId: 's1' }])
     await listener.onFiscalEntryMismatch({ organizationId: ORG, documentId: DOCUMENT, count: 3 })

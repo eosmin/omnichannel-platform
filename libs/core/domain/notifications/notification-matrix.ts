@@ -88,6 +88,10 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.FISCAL_DOCUMENT_STUCK]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FISCAL_RETRANSMIT_DEADLINE]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FISCAL_DELIVERY_NOT_SENT]: { severity: ERROR, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.FISCAL_VOID_RETRANSMIT_DEADLINE]: {
+    severity: ERROR,
+    channels: [IN_APP, EMAIL]
+  },
   [NotificationTypes.FISCAL_ENTRY_MISMATCH]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FISCAL_CONTINGENCY_OPENED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FISCAL_CONTINGENCY_REPORT_FAILED]: {
@@ -173,6 +177,7 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
     NotificationTypes.FISCAL_DOCUMENT_STUCK,
     NotificationTypes.FISCAL_RETRANSMIT_DEADLINE,
     NotificationTypes.FISCAL_DELIVERY_NOT_SENT,
+    NotificationTypes.FISCAL_VOID_RETRANSMIT_DEADLINE,
     NotificationTypes.FISCAL_ENTRY_MISMATCH,
     NotificationTypes.FISCAL_CONTINGENCY_OPENED,
     NotificationTypes.FISCAL_CONTINGENCY_REPORT_FAILED,

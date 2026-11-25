@@ -34,7 +34,7 @@ import { allocate } from '../sv-decimal'
 import { SALVADOR_OFFSET_HOURS } from '../sv-time'
 
 // The plan of the minimum tests of the sandbox (Step 4B.7c-6; Funcional §XXIV): 90 invoices, 75 tax credit documents, 50 credit notes, 25
-// debit notes and 50 remission notes with seal, 5 invalidations and 5 contingencies, made of invented data in many shapes (receivers, tax treatments, discounts, rounding, payments,
+// debit notes, 50 remission notes and 25 invoices of an excluded subject with seal, 5 invalidations and 5 contingencies, made of invented data in many shapes (receivers, tax treatments, discounts, rounding, payments,
 // dates inside the term). Pure and deterministic: the same options give the same plan, so a run can be repeated and compared. Nothing here
 // is read from the environment and nothing is a real person: the tax numbers and the names are made up.
 
@@ -44,6 +44,7 @@ export interface SvConformanceCounts {
   readonly creditNotes: number
   readonly debitNotes: number
   readonly remissionNotes: number
+  readonly excludedSubjects: number
   readonly voids: number
   readonly contingencies: number
   // Documents each contingency event lists
@@ -76,7 +77,8 @@ export const SvConformanceBuckets = {
   TAX_CREDIT: 'tax_credit',
   CREDIT_NOTE: 'credit_note',
   DEBIT_NOTE: 'debit_note',
-  REMISSION_NOTE: 'remission_note'
+  REMISSION_NOTE: 'remission_note',
+  EXCLUDED_SUBJECT: 'excluded_subject'
 } as const
 
 export const SvConformanceLimits = {
@@ -95,6 +97,8 @@ export const SvConformanceDefaults: SvConformanceCounts = {
   debitNotes: 25,
   // Funcional page 79: the remission note asks for 50
   remissionNotes: 50,
+  // Funcional: the invoice of an excluded subject asks for 25
+  excludedSubjects: 25,
   voids: 5,
   contingencies: 5,
   deferredPerContingency: 2
@@ -276,6 +280,41 @@ function recipientOf(rng: Rng): { receiver: FiscalReceiver; tags: string[] } {
   }
 }
 
+// The seller of an invoice of an excluded subject: a person with a national id, another document or a tax number, with an address (invented)
+function sellerOf(rng: Rng): { receiver: FiscalReceiver; tags: string[] } {
+  const name = personName(rng)
+  const roll = rng.next()
+  const identity =
+    roll < 0.5
+      ? {
+          taxId: nationalIdWithCheckDigit(rng),
+          documentType: SvIdentityDocuments.NATIONAL_ID,
+          tag: 'seller_national_id'
+        }
+      : roll < 0.8
+        ? {
+            taxId: fakeTaxNumber(rng),
+            documentType: SvIdentityDocuments.TAX_ID,
+            tag: 'seller_tax_number'
+          }
+        : {
+            taxId: `P${rng.digits(8)}`,
+            documentType: SvIdentityDocuments.OTHER,
+            tag: 'seller_other_document'
+          }
+  return {
+    receiver: {
+      ...NO_RECEIVER,
+      name,
+      taxId: identity.taxId,
+      documentType: identity.documentType,
+      address: addressOf(rng),
+      ...(rng.chance(0.5) ? contact(rng, name) : {})
+    },
+    tags: [identity.tag]
+  }
+}
+
 function businessOf(rng: Rng): FiscalReceiver {
   const name = `${rng.pick(COMPANIES)} S.A. de C.V.`
   return {
@@ -421,7 +460,8 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
     taxCredit: offset,
     creditNote: offset,
     debitNote: offset,
-    remissionNote: offset
+    remissionNote: offset,
+    excludedSubject: offset
   }
   let sequence = offset
   const nowMs = options.now.getTime()
@@ -439,7 +479,7 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
   }
   const base = (
     id: string,
-    type: 'invoice' | 'taxCredit' | 'creditNote' | 'debitNote' | 'remissionNote'
+    type: 'invoice' | 'taxCredit' | 'creditNote' | 'debitNote' | 'remissionNote' | 'excludedSubject'
   ): Pick<
     FiscalBuildInput,
     'sequenceNumber' | 'correlative' | 'documentUuid' | 'orderNumber' | 'currency' | 'issuer'
@@ -807,6 +847,52 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
     })
   }
 
+  // The invoices of an excluded subject come last of all, for the same reason: they draw from the same seeded generator, and every step
+  // before them keeps the values the same seed gave it. A purchase stands alone (it names no document), and these are all of goods bought
+  // from a person, so the income tax withheld is stated as 0.00 for every one: the rule that withholds is not decided here
+  // (`IMPLEMENTATION_PLAN.md`, D20b).
+  for (let n = 1; n <= counts.excludedSubjects; n += 1) {
+    const id = `FSE-${String(n).padStart(3, '0')}`
+    const shape = shapes[n % shapes.length] as (typeof shapes)[number]
+    const specs = specsOf(rng, shape).map(spec => ({ ...spec, service: false, unit: '59' }))
+    const gross = specs.reduce((sum, spec) => sum + spec.quantity * spec.unitPriceCents, 0)
+    const discount = rng.chance(0.3) ? roundDiv(gross * rng.int(1, 20), 100) : 0
+    const seller = sellerOf(rng)
+    const total = gross - discount
+    steps.push({
+      kind: 'sale',
+      id,
+      bucket: SvConformanceBuckets.EXCLUDED_SUBJECT,
+      tags: ['excluded_subject', ...seller.tags, shape, ...(discount > 0 ? ['discount'] : [])],
+      input: {
+        kind: FiscalDocumentKind.PURCHASE,
+        credited: null,
+        ...base(id, 'excludedSubject'),
+        issuedAt: issuedAt(SvConformanceLimits.MAX_BACK_MINUTES),
+        receiver: seller.receiver,
+        lines: specs.map(spec => ({
+          description: spec.description,
+          quantity: spec.quantity,
+          unitPriceCents: spec.unitPriceCents,
+          taxRateBps: null,
+          taxCents: 0,
+          totalCents: spec.quantity * spec.unitPriceCents,
+          taxTreatment: null,
+          itemKind: '1',
+          unit: spec.unit
+        })),
+        shippingCents: 0,
+        shippingTaxCents: 0,
+        discountCents: discount,
+        totalCents: total,
+        taxCents: 0,
+        pricesIncludeTax: false,
+        withheldIncomeTaxCents: 0,
+        ...paymentOf(rng, total)
+      }
+    })
+  }
+
   return steps
 }
 
@@ -821,7 +907,8 @@ export function svConformanceTargets(
       [SvConformanceBuckets.TAX_CREDIT]: wanted.taxCredits,
       [SvConformanceBuckets.CREDIT_NOTE]: Math.min(wanted.creditNotes, wanted.taxCredits),
       [SvConformanceBuckets.DEBIT_NOTE]: Math.min(wanted.debitNotes, wanted.taxCredits),
-      [SvConformanceBuckets.REMISSION_NOTE]: wanted.remissionNotes
+      [SvConformanceBuckets.REMISSION_NOTE]: wanted.remissionNotes,
+      [SvConformanceBuckets.EXCLUDED_SUBJECT]: wanted.excludedSubjects
     },
     voids: wanted.voids,
     contingencies: wanted.contingencies

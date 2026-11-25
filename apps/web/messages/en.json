@@ -121,6 +121,7 @@
           "document_stuck": "Fiscal document stuck",
           "retransmit_deadline": "Resend window of a refused fiscal document",
           "delivery_not_sent": "Fiscal document not delivered",
+          "void_retransmit_deadline": "Resend window of a refused invalidation",
           "entry_mismatch": "Fiscal document disagrees with the books",
           "contingency_opened": "Fiscal contingency started",
           "contingency_report_failed": "Fiscal contingency not reported",
@@ -1286,6 +1287,10 @@
       "delivery_not_sent": {
         "title": "A fiscal document was not delivered to the customer",
         "body": "The files of a fiscal document (the DTE file and its graphic representation) could not be sent to the customer by any means. Open the document and give them to the customer by hand: the law asks for them to be given with the document."
+      },
+      "void_retransmit_deadline": {
+        "title": "The window to resend an invalidation is closing",
+        "body": "The authority refused the invalidation of a fiscal document and the 24 hours to correct it and send it again are closing or over. Open the document, fix the invalidation and send it again: the document stays accepted until the authority takes it."
       },
       "entry_mismatch": {
         "title": "A fiscal document disagrees with the books",
@@ -8125,7 +8130,8 @@
         "sale": "Sale document",
         "credit_note": "Credit note",
         "debit_note": "Debit note",
-        "remission_note": "Remission note"
+        "remission_note": "Remission note",
+        "purchase": "Purchase document"
       },
       "row": {
         "number": "No. {number}",

@@ -270,6 +270,27 @@ describe('what the tool runs and prints', () => {
     )
   })
 
+  it('takes the count of purchases from excluded subjects, and refuses one above the limit', async () => {
+    const ok = harness()
+    const code = await runConformanceCli(
+      [
+        '--out',
+        'r.json',
+        '--counts',
+        'invoices=2,taxCredits=2,excludedSubjects=3,voids=0,contingencies=0'
+      ],
+      {},
+      ok.io
+    )
+    expect(code).toBe(ConformanceExit.OK)
+    const steps = (JSON.parse(ok.files.get('r.json') ?? '{}') as { steps: { id: string }[] }).steps
+    expect(steps.filter(step => step.id.startsWith('FSE-'))).toHaveLength(3)
+    const refused = harness()
+    expect(await runConformanceCli(['--counts', 'excludedSubjects=501'], {}, refused.io)).toBe(
+      ConformanceExit.REFUSED
+    )
+  })
+
   it('writes the report where it is told in a real folder too', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'conformance-'))
     try {
@@ -306,7 +327,8 @@ const reportOf = (over: Partial<ConformanceReport> = {}): ConformanceReport => (
     tax_credit: { planned: 75, accepted: 75 },
     credit_note: { planned: 50, accepted: 50 },
     debit_note: { planned: 25, accepted: 25 },
-    remission_note: { planned: 50, accepted: 50 }
+    remission_note: { planned: 50, accepted: 50 },
+    excluded_subject: { planned: 25, accepted: 25 }
   },
   voids: { planned: 5, done: 5, refused: 0 },
   contingencies: { planned: 5, reported: 5, refused: 0, deferred: 10, deferredAccepted: 10 },
@@ -336,7 +358,8 @@ describe('the exit codes of a run, with a runner that sends nothing', () => {
         tax_credit: { planned: 75, accepted: 75 },
         credit_note: { planned: 50, accepted: 50 },
         debit_note: { planned: 25, accepted: 25 },
-        remission_note: { planned: 50, accepted: 50 }
+        remission_note: { planned: 50, accepted: 50 },
+        excluded_subject: { planned: 25, accepted: 25 }
       }
     })
     const code = await runConformanceCli(live, FULL, h.io, { runner: () => Promise.resolve(short) })

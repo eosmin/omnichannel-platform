@@ -15,6 +15,7 @@ import {
   SvHolidays,
   SvInvalidation,
   SvInvalidationAllowed,
+  SvInvalidationDatedLikeInvoice,
   SvInvalidationDeadlineRules,
   SvInvalidationDeadlineUnits,
   SvInvalidationEnforceDeadline,
@@ -309,12 +310,11 @@ export function buildInvalidation(input: SvInvalidationInput): SvInvalidationBui
 
   // The date of the event (Anexo V, field 9): that of the document for a tax credit document or a credit note; for an invoice the day it is
   // made, but never later than three months after the date of the document
-  const eventDate =
-    original.type === SvDocumentTypes.INVOICE
-      ? moment.date > addMonths(original.issueDate, SvInvalidation.INVOICE_EVENT_MONTHS)
-        ? addMonths(original.issueDate, SvInvalidation.INVOICE_EVENT_MONTHS)
-        : moment.date
-      : original.issueDate
+  const eventDate = SvInvalidationDatedLikeInvoice.includes(original.type)
+    ? moment.date > addMonths(original.issueDate, SvInvalidation.INVOICE_EVENT_MONTHS)
+      ? addMonths(original.issueDate, SvInvalidation.INVOICE_EVENT_MONTHS)
+      : moment.date
+    : original.issueDate
 
   return {
     ok: true,

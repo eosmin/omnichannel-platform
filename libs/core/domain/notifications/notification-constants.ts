@@ -60,6 +60,8 @@ export const NotificationTypes = {
   FISCAL_RETRANSMIT_DEADLINE: 'fiscal.retransmit_deadline',
   // The files of an accepted document could not be given to its receiver and a person must (the rule on delivering the files of a document)
   FISCAL_DELIVERY_NOT_SENT: 'fiscal.delivery_not_sent',
+  // The same for an invalidation the authority refused (D14b): a type of its own, because a notice is told once for each document and type
+  FISCAL_VOID_RETRANSMIT_DEADLINE: 'fiscal.void_retransmit_deadline',
   // A sale document disagrees with its entry of the books: only a person can say which one is right (TDD_18 §11, Step 4B.8b-2b)
   FISCAL_ENTRY_MISMATCH: 'fiscal.entry_mismatch',
   // A contingency of the issuer: opened by the lifecycle, its event not accepted, its window closing (Step 4B.7c-7)
