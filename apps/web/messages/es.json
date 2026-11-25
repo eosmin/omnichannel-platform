@@ -8224,6 +8224,7 @@
         "replacedFirst": "El reemplazo quedó en cola. Invalida este documento cuando esté aceptado."
       },
       "conflicts": {
+        "representation_too_large": "La representación gráfica de este documento es demasiado grande para dibujarla. Entrega al cliente el archivo del documento por otra vía.",
         "has_credit_notes": "Este documento tiene notas de crédito que no están anuladas. Anula primero las notas.",
         "already_replaced": "Esta venta ya tiene un documento que la reemplaza.",
         "credit_note_receiver": "El receptor de una nota de crédito es el del documento que cancela: corrígelo allí.",
@@ -8471,6 +8472,14 @@
           "void_response": {
             "label": "Respuesta a la anulación",
             "hint": "Lo que respondió la autoridad cuando el documento se anuló."
+          },
+          "dte_file": {
+            "label": "Archivo del documento para el cliente",
+            "hint": "El archivo JSON del documento con su firma y su sello, tal como se entrega al cliente."
+          },
+          "representation": {
+            "label": "Representación gráfica para el cliente",
+            "hint": "El PDF con el código QR de consulta que se entrega al cliente junto con el archivo del documento."
           }
         }
       },
