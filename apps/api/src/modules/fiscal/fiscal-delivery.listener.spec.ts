@@ -16,6 +16,7 @@ const logger = { setContext: () => undefined, warn: () => undefined, error: () =
 
 function build(deliver: jest.Mock, recordFailure: jest.Mock = jest.fn()) {
   return new FiscalDeliveryListener(
+    { inOrganization: (_id: string, work: () => Promise<unknown>) => work() } as never,
     { deliver, recordFailure } as never,
     logger as unknown as PinoLogger
   )

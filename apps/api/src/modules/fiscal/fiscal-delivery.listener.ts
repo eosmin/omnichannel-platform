@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
+import { type EventContext, InEventOrganization } from '@platform/core/database'
 import { errorName } from '@platform/core/errors'
 import { Events, type FiscalDocumentAcceptedPayload } from '@platform/core/events'
 
@@ -17,6 +18,7 @@ export const FISCAL_DELIVERY_RETRY_MS = 1000
 @Injectable()
 export class FiscalDeliveryListener {
   constructor(
+    private readonly events: EventContext,
     private readonly delivery: FiscalDeliveryService,
     private readonly logger: PinoLogger
   ) {
@@ -24,6 +26,7 @@ export class FiscalDeliveryListener {
   }
 
   @OnEvent(Events.FISCAL_DOCUMENT_ACCEPTED)
+  @InEventOrganization()
   async onAccepted(payload: FiscalDocumentAcceptedPayload): Promise<void> {
     const input = {
       organizationId: payload.organizationId,
