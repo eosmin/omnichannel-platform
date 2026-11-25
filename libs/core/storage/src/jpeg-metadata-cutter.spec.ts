@@ -64,6 +64,21 @@ describe('cutJpegMetadata, a file of several scans', () => {
     expect(jpegHasDataAfterEnd(truncated)).toBe(true)
   })
 
+  it.each([
+    ['a stray marker with no length', [0xff, 0x12, 0xff, 0xff]],
+    ['a length that passes the end', [0xff, 0xe1, 0xff, 0xff, 1]],
+    ['a length that cannot hold itself', [0xff, 0xe1, 0x00, 0x01]]
+  ])('keeps cutting what comes before the first scan when %s follows the scan', (_name, junk) => {
+    // The file does not walk to its end, but the GPS that sits before the scan must still go: it was cut before the walk went past the scan
+    const gps = segment(0xe1, ascii('Exif\0\0GPS-secret'))
+    const damaged = Uint8Array.from([...SOI, ...gps, ...JFIF, ...FRAME, ...SCAN, ...junk, ...EOI])
+
+    expect(jpegCarriesMetadata(damaged)).toBe(true)
+    const cut = cutJpegMetadata(damaged) as Uint8Array
+    expect(Buffer.from(cut).includes('GPS')).toBe(false)
+    expect(jpegHasDataAfterEnd(damaged)).toBe(true)
+  })
+
   it('does not take the bytes of a table for the end of the image', () => {
     // `FF D9` inside the table is data: the data after the end is looked for after the real end only
     const jpegWithTable = jpeg(JFIF, PROGRESSIVE_FRAME, SCAN, TABLE, SECOND_SCAN)

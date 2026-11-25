@@ -85,16 +85,21 @@ function walk(jpeg: Uint8Array): WalkedJpeg | undefined {
     return undefined
   }
   const spans: [number, number][] = []
+  // Once a scan has been seen, a file that stops being walkable keeps the segments found before it (they are cut, as they always were) and
+  // loses only its `end`: the file is not vouched for, but what sits before the scan is never left in it because of what comes after
+  let scanned = false
+  const unwalkable = (): WalkedJpeg | undefined => (scanned ? { spans, end: undefined } : undefined)
   let at = SEGMENT_HEADER_BYTES
   while (at < jpeg.length) {
     // Fill bytes (`FF FF`) may precede a marker
     while (at < jpeg.length && jpeg[at] === MARKER_PREFIX && jpeg[at + 1] === MARKER_PREFIX) at += 1
-    if (jpeg[at] !== MARKER_PREFIX || at + 1 >= jpeg.length) return undefined
+    if (jpeg[at] !== MARKER_PREFIX || at + 1 >= jpeg.length) return unwalkable()
     const marker = jpeg[at + 1] as number
     if (marker === EOI) return { spans, end: at + SEGMENT_HEADER_BYTES }
     if (marker === SOS) {
+      scanned = true
       const next = endOfScan(jpeg, at)
-      if (next === undefined) return { spans, end: undefined }
+      if (next === undefined) return unwalkable()
       at = next
       continue
     }
@@ -102,14 +107,14 @@ function walk(jpeg: Uint8Array): WalkedJpeg | undefined {
       at += SEGMENT_HEADER_BYTES
       continue
     }
-    if (at + SEGMENT_HEADER_BYTES + LENGTH_BYTES > jpeg.length) return undefined
+    if (at + SEGMENT_HEADER_BYTES + LENGTH_BYTES > jpeg.length) return unwalkable()
     const length = ((jpeg[at + 2] as number) << 8) | (jpeg[at + 3] as number)
     const end = at + SEGMENT_HEADER_BYTES + length
-    if (length < LENGTH_BYTES || end > jpeg.length) return undefined
+    if (length < LENGTH_BYTES || end > jpeg.length) return unwalkable()
     if (!staysInPicture(jpeg, marker, at, end)) spans.push([at, end])
     at = end
   }
-  return undefined
+  return unwalkable()
 }
 
 const metadataSpans = (jpeg: Uint8Array): [number, number][] | undefined => walk(jpeg)?.spans
