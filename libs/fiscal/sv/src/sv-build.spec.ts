@@ -64,6 +64,10 @@ const creditNote = (over: Partial<ReturnType<typeof sale>> = {}) =>
     ...over
   })
 
+// The debit note charges more on a tax credit document: the same shape as the credit note, an amount that adds instead of cancelling
+const debitNote = (over: Partial<ReturnType<typeof sale>> = {}) =>
+  creditNote({ kind: FiscalDocumentKind.DEBIT_NOTE, ...over })
+
 describe('the check against the schema of the authority', () => {
   it('is a real check: a document with a figure of three decimals, a missing field or an extra one is refused', () => {
     const good = payloadOf(sale())
@@ -97,8 +101,14 @@ describe('which document a sale is', () => {
     )
   })
 
+  it('is a debit note for the debit note of a charge, whoever the receiver is', () => {
+    expect(resolveDocumentType({ kind: FiscalDocumentKind.DEBIT_NOTE, receiver: CONSUMER })).toBe(
+      '06'
+    )
+  })
+
   it('is the type build puts in the document', () => {
-    for (const input of [sale(), sale({ receiver: BUSINESS }), creditNote()]) {
+    for (const input of [sale(), sale({ receiver: BUSINESS }), creditNote(), debitNote()]) {
       expect(build(input).documentType).toBe(
         resolveDocumentType({ kind: input.kind, receiver: input.receiver })
       )
@@ -867,6 +877,91 @@ describe('the construction is pure', () => {
   })
 
   it('only makes the types the manifest declares', () => {
-    expect(Object.values(SvDocumentTypes)).toEqual(['01', '03', '05'])
+    expect(Object.values(SvDocumentTypes)).toEqual(['01', '03', '05', '06'])
+  })
+})
+
+describe('the debit note (06)', () => {
+  it('is a document the official schema accepts, naming the tax credit document it adds to, in the relation and in each item', () => {
+    const built = build(debitNote())
+    expect(built.documentType).toBe('06')
+    expect(built.missingReceiverFields).toEqual([])
+    expect(schemaErrors('06', built.payload)).toEqual([])
+    const p = built.payload as unknown as Payload
+    expect(p['identificacion']).toMatchObject({
+      version: 4,
+      tipoDte: '06',
+      numeroControl: 'DTE-06-M001P001-000000000000041',
+      fusion: null
+    })
+    expect(p['documentoRelacionado']).toEqual([
+      {
+        tipoDocumento: '03',
+        tipoGeneracion: 2,
+        numeroDocumento: 'AC54E9DB-79C5-42CE-B430-EC552C97EFBA',
+        fechaEmision: '2026-11-16'
+      }
+    ])
+    expect(p['cuerpoDocumento'][0]?.numeroDocumento).toBe('AC54E9DB-79C5-42CE-B430-EC552C97EFBA')
+    // The schema of the note has no establishment code in the issuer
+    expect(p['emisor']).not.toHaveProperty('codEstable')
+  })
+
+  it('has the receiver of the tax credit document it names, by its tax number (identity document 36)', () => {
+    const p = payloadOf(debitNote())
+    expect(p['receptor']).toMatchObject({ tipoDocumento: '36', numDocumento: '06140202021023' })
+    expect(p['receptor']).not.toHaveProperty('nit')
+  })
+
+  it('says the amounts the way the credit note does, with the electronic payment number the schema of the debit note asks for', () => {
+    const summary = payloadOf(debitNote())['resumen']
+    expect(summary).toMatchObject({
+      totalGravada: 2.95,
+      totalIva: 0.38,
+      montoTotalOperacion: 3.33,
+      totalPagar: 3.33,
+      condicionOperacion: 1,
+      numPagoElectronico: null
+    })
+    // What it charges is not a payment
+    expect(summary).not.toHaveProperty('pagos')
+  })
+
+  it('takes the number of the series of its own type, from the correlative of the order (the same mechanism of every type)', () => {
+    expect(payloadOf(debitNote({ correlative: 7 }))['identificacion']['numeroControl']).toBe(
+      'DTE-06-M001P001-000000000000007'
+    )
+  })
+
+  it('is refused without the document it adds to, or with one that is not a tax credit document', () => {
+    expect(refused(debitNote({ credited: null }))).toBe(SvBuildErrors.CREDITED_DOCUMENT_UNKNOWN)
+    expect(refused(debitNote({ credited: { ...credited(), documentType: '01' } }))).toBe(
+      SvBuildErrors.CREDITED_DOCUMENT_NOT_CREDITABLE
+    )
+    // Nor a credit note: it is not what a debit note adds to
+    expect(refused(debitNote({ credited: { ...credited(), documentType: '05' } }))).toBe(
+      SvBuildErrors.CREDITED_DOCUMENT_NOT_CREDITABLE
+    )
+    expect(
+      refused(
+        debitNote({ credited: credited({ [SvProviderDataKeys.GENERATION_CODE]: undefined }) })
+      )
+    ).toBe(SvBuildErrors.CREDITED_DOCUMENT_UNKNOWN)
+  })
+
+  it('is refused when the receiver lacks what a taxpayer needs, like any document to a taxpayer', () => {
+    const built = build(debitNote({ receiver: CONSUMER }))
+    expect(built.payload).toEqual({})
+    expect(built.missingReceiverFields.length).toBeGreaterThan(0)
+  })
+
+  it('is checked against the schema in a deferred document too (contingency)', () => {
+    const built = build(debitNote({ contingency: { reason: '3', motive: null } }))
+    expect(schemaErrors('06', built.payload)).toEqual([])
+    expect((built.payload as unknown as Payload)['identificacion']).toMatchObject({
+      tipoModelo: 2,
+      tipoOperacion: 2,
+      tipoContingencia: 3
+    })
   })
 })

@@ -33,8 +33,8 @@ import {
 import { allocate } from '../sv-decimal'
 import { SALVADOR_OFFSET_HOURS } from '../sv-time'
 
-// The plan of the minimum tests of the sandbox (Step 4B.7c-6; Funcional §XXIV): 90 invoices, 75 tax credit documents and 50 credit notes with
-// seal, 5 invalidations and 5 contingencies, made of invented data in many shapes (receivers, tax treatments, discounts, rounding, payments,
+// The plan of the minimum tests of the sandbox (Step 4B.7c-6; Funcional §XXIV): 90 invoices, 75 tax credit documents, 50 credit notes and 25
+// debit notes with seal, 5 invalidations and 5 contingencies, made of invented data in many shapes (receivers, tax treatments, discounts, rounding, payments,
 // dates inside the term). Pure and deterministic: the same options give the same plan, so a run can be repeated and compared. Nothing here
 // is read from the environment and nothing is a real person: the tax numbers and the names are made up.
 
@@ -42,6 +42,7 @@ export interface SvConformanceCounts {
   readonly invoices: number
   readonly taxCredits: number
   readonly creditNotes: number
+  readonly debitNotes: number
   readonly voids: number
   readonly contingencies: number
   // Documents each contingency event lists
@@ -72,7 +73,8 @@ export const SvConformanceDemoIssuer: FiscalIssuerInput = {
 export const SvConformanceBuckets = {
   INVOICE: 'invoice',
   TAX_CREDIT: 'tax_credit',
-  CREDIT_NOTE: 'credit_note'
+  CREDIT_NOTE: 'credit_note',
+  DEBIT_NOTE: 'debit_note'
 } as const
 
 export const SvConformanceLimits = {
@@ -87,6 +89,8 @@ export const SvConformanceDefaults: SvConformanceCounts = {
   invoices: 90,
   taxCredits: 75,
   creditNotes: 50,
+  // Funcional page 79: the debit note asks for 25
+  debitNotes: 25,
   voids: 5,
   contingencies: 5,
   deferredPerContingency: 2
@@ -380,7 +384,7 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
   const rng = rngOf(options.seed)
   const steps: ConformanceStep[] = []
   const offset = options.correlativeOffset ?? 0
-  const series = { invoice: offset, taxCredit: offset, creditNote: offset }
+  const series = { invoice: offset, taxCredit: offset, creditNote: offset, debitNote: offset }
   let sequence = offset
   const nowMs = options.now.getTime()
   // The month is the one of El Salvador (UTC-6), where a document is dated: the first instant of it, as an instant
@@ -397,7 +401,7 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
   }
   const base = (
     id: string,
-    type: 'invoice' | 'taxCredit' | 'creditNote'
+    type: 'invoice' | 'taxCredit' | 'creditNote' | 'debitNote'
   ): Pick<
     FiscalBuildInput,
     'sequenceNumber' | 'correlative' | 'documentUuid' | 'orderNumber' | 'currency' | 'issuer'
@@ -581,6 +585,46 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
     })
   }
 
+  // The debit notes: of the first tax credit documents, one for each, charging more on some of its lines (a charge never has a discount or
+  // shipping of its own). The tax credit documents are shared with the credit notes: a document may be adjusted by both.
+  for (let n = 1; n <= Math.min(counts.debitNotes, taxCredits.length); n += 1) {
+    const parent = taxCredits[n - 1]
+    if (parent === undefined) break
+    const id = `ND-${String(n).padStart(3, '0')}`
+    const charged = parent.specs
+      .map(spec => ({ ...spec, quantity: rng.int(0, spec.quantity) }))
+      .filter(spec => spec.quantity > 0)
+    // A note with nothing in it is no note: at least one unit of the first line is charged
+    const specs: LineSpec[] =
+      charged.length > 0
+        ? charged
+        : parent.specs.slice(0, 1).map(spec => ({ ...spec, quantity: 1 }))
+    const sale = compose(specs, 0, false, 0, parent.includes)
+    steps.push({
+      kind: 'debit_note',
+      id,
+      bucket: SvConformanceBuckets.DEBIT_NOTE,
+      parent: parent.id,
+      tags: ['debit_note', parent.includes ? 'prices_with_tax' : 'prices_net'],
+      input: {
+        kind: FiscalDocumentKind.DEBIT_NOTE,
+        credited: null,
+        ...base(id, 'debitNote'),
+        // After the document it adds to: a note never predates its parent
+        issuedAt: issuedAt(SvConformanceLimits.MAX_BACK_MINUTES, Date.parse(parent.input.issuedAt)),
+        receiver: parent.input.receiver,
+        lines: sale.lines,
+        shippingCents: 0,
+        shippingTaxCents: 0,
+        discountCents: sale.discountCents,
+        totalCents: sale.totalCents,
+        taxCents: sale.taxCents,
+        pricesIncludeTax: parent.includes,
+        ...paymentOf(rng, sale.totalCents)
+      }
+    })
+  }
+
   // The invalidations: documents made for it (the ones of the minimum are never touched), and for a correction or another reason, the
   // document that takes the place of the invalidated one, accepted first (the authority asks for it first)
   const person = (idType: string, digits: string): FiscalVoidParty => ({
@@ -690,14 +734,15 @@ export function svConformanceTargets(
     buckets: {
       [SvConformanceBuckets.INVOICE]: wanted.invoices,
       [SvConformanceBuckets.TAX_CREDIT]: wanted.taxCredits,
-      [SvConformanceBuckets.CREDIT_NOTE]: Math.min(wanted.creditNotes, wanted.taxCredits)
+      [SvConformanceBuckets.CREDIT_NOTE]: Math.min(wanted.creditNotes, wanted.taxCredits),
+      [SvConformanceBuckets.DEBIT_NOTE]: Math.min(wanted.debitNotes, wanted.taxCredits)
     },
     voids: wanted.voids,
     contingencies: wanted.contingencies
   }
 }
 
-// A dry run has no accepted tax credit document for a note to name: what the provider keeps of an accepted one is what its own build says of it
+// A dry run has no accepted tax credit document for a note (credit or debit) to name: what the provider keeps of an accepted one is what its own build says of it
 export function svDryRunCredited(
   built: BuiltDocument,
   input: FiscalBuildInput
