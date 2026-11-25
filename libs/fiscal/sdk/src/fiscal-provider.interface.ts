@@ -29,6 +29,10 @@ export interface FiscalDocumentTypeDeclaration {
   // A document of this type charges more on another one: it is the type of the debit note, which `build` picks when it is told the document
   // is one (`FiscalBuildInput.kind`). Never both this and `creditNote`.
   readonly debitNote?: boolean
+  // A document of this type backs goods that travel before the document of their sale exists: it is the type of the remission note, which
+  // `build` picks when it is told the document is one (`FiscalBuildInput.kind`). It is no sale (it never enters a book of sales) and it
+  // cancels nothing. Never together with `creditNote` or `debitNote`.
+  readonly remissionNote?: boolean
 }
 
 export type FiscalReceiverField =
@@ -271,8 +275,9 @@ export interface FiscalCreditedDocument {
 }
 
 export interface FiscalBuildInput {
-  // The sale, the credit note of a return or a debit note: the provider picks the type of document by its own rule (a credit note has the
-  // type its manifest marks as `creditNote`, a debit note the one it marks as `debitNote`)
+  // The sale, the credit note of a return, a debit note or a remission note: the provider picks the type of document by its own rule (a
+  // credit note has the type its manifest marks as `creditNote`, a debit note the one it marks as `debitNote`, a remission note the one it
+  // marks as `remissionNote`)
   readonly kind: FiscalDocumentKind
   // Set for a credit note or a debit note, null for the document of a sale
   readonly credited: FiscalCreditedDocument | null

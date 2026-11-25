@@ -18,9 +18,15 @@ const CREDENTIALS = {
 describe('the manifest of the provider', () => {
   const provider = svProvider({ signer: NO_SIGNER })
 
-  it('declares the four documents, with what a taxpayer needs of a customer and the two notes marked', () => {
-    expect(provider.manifest.documentTypes.map(type => type.id)).toEqual(['01', '03', '05', '06'])
-    const [invoice, taxCredit, note, debit] = provider.manifest.documentTypes
+  it('declares the five documents, with what a taxpayer needs of a customer and the notes marked', () => {
+    expect(provider.manifest.documentTypes.map(type => type.id)).toEqual([
+      '01',
+      '03',
+      '04',
+      '05',
+      '06'
+    ])
+    const [invoice, taxCredit, remission, note, debit] = provider.manifest.documentTypes
     expect(invoice?.requiredReceiverFields).toEqual([])
     expect(taxCredit?.requiredReceiverFields).toEqual([
       'name',
@@ -36,6 +42,17 @@ describe('the manifest of the provider', () => {
     expect(debit?.debitNote).toBe(true)
     expect(debit?.creditNote).toBeUndefined()
     expect(note?.debitNote).toBeUndefined()
+    // The remission note is no sale and cancels nothing: it asks for who the goods go to, with an identity document, not for a taxpayer
+    expect(remission?.remissionNote).toBe(true)
+    expect(remission?.creditNote).toBeUndefined()
+    expect(remission?.debitNote).toBeUndefined()
+    expect(remission?.requiredReceiverFields).toEqual([
+      'name',
+      'taxId',
+      'economicActivity',
+      'address'
+    ])
+    expect(taxCredit?.remissionNote).toBeUndefined()
   })
 
   it('numbers by type, establishment and point of sale, and asks the issuer for the codes it needs', () => {
