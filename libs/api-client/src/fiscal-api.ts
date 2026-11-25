@@ -128,7 +128,8 @@ const providerSchema = z.object({
         requiredReceiverFields: z.array(z.string()),
         creditNote: z.boolean().optional(),
         debitNote: z.boolean().optional(),
-        remissionNote: z.boolean().optional()
+        remissionNote: z.boolean().optional(),
+        purchase: z.boolean().optional()
       })
     ),
     requiredIssuerFields: z.array(z.string()),

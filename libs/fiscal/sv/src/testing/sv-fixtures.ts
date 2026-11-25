@@ -107,6 +107,44 @@ export function sale(over: Partial<FiscalBuildInput> = {}): FiscalBuildInput {
   }
 }
 
+// A purchase of goods from a person who issues no document: no tax, the seller is the receiver, the withholding is stated by the caller
+export const SELLER: FiscalReceiver = {
+  name: 'Juan Pérez Ramos',
+  taxId: '01234567-8',
+  registrationId: null,
+  address: { department: '06', municipality: '20', district: '02', complement: 'Calle 5, casa 3' },
+  email: null,
+  phone: null,
+  taxpayerType: null,
+  economicActivity: null,
+  documentType: '13'
+}
+export const purchase = (over: Partial<FiscalBuildInput> = {}): FiscalBuildInput =>
+  sale({
+    kind: FiscalDocumentKind.PURCHASE,
+    receiver: SELLER,
+    lines: [
+      line({
+        description: 'Café en grano',
+        quantity: 3,
+        unitPriceCents: 1250,
+        totalCents: 3750,
+        taxRateBps: null,
+        taxCents: 0,
+        taxTreatment: null
+      })
+    ],
+    shippingCents: 0,
+    shippingTaxCents: 0,
+    discountCents: 0,
+    totalCents: 3750,
+    taxCents: 0,
+    pricesIncludeTax: false,
+    payments: [{ method: PaymentMethod.CASH, amountCents: 3750, reference: null }],
+    withheldIncomeTaxCents: 0,
+    ...over
+  })
+
 export const credited = (over: Record<string, unknown> = {}): FiscalCreditedDocument => ({
   documentType: '03',
   externalNumber: 'EXT-1',
@@ -125,6 +163,7 @@ const FILES: Record<string, string> = {
   '04': 'fe-nr-v4.json',
   '05': 'fe-nc-v4.json',
   '06': 'fe-nd-v4.json',
+  '14': 'fe-fse-v2.json',
   // The event that invalidates a document
   invalidation: 'invalidacion-v3.json',
   // The event that reports a contingency

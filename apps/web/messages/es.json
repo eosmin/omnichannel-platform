@@ -8120,7 +8120,8 @@
         "sale": "Documento de venta",
         "credit_note": "Nota de crédito",
         "debit_note": "Nota de débito",
-        "remission_note": "Nota de remisión"
+        "remission_note": "Nota de remisión",
+        "purchase": "Documento de compra"
       },
       "row": {
         "number": "N.º {number}",
