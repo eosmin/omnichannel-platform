@@ -295,8 +295,11 @@ function salesConsumers(
     }
   >()
   const add = (parsed: Parsed, sign: 1 | -1): void => {
-    const key = `${parsed.date}|${parsed.type}|${sign}`
     const code = parsed.generationCode.replace(/-/g, '')
+    // A voided document is its own row (first = last = its code), never added to the row of a day: the manual does not say how a negative
+    // figure is written, and a row of its own is the one that can be told apart
+    const key =
+      sign === 1 ? `${parsed.date}|${parsed.type}|1` : `${parsed.date}|${parsed.type}|-1|${code}`
     const day = days.get(key) ?? {
       date: parsed.date,
       type: parsed.type,
