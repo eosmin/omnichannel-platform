@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto'
 import type { PinoLogger } from 'nestjs-pino'
 
 import {
+  AnyDatabaseNull,
   DatabaseNull,
   JobContextGoneError,
   type JobContext,
   type PrismaService
 } from '@platform/core/database'
+import { isReadyToSend } from '@platform/core/media-guard'
 import { AvSanitizing, ExistingAvSweep, MediaPurpose, UploadLimits } from '@platform/core/storage'
 import type { StorageService } from '@platform/core/storage-module'
 
@@ -45,13 +47,15 @@ function scanMatches(row: Row, guard: Condition): boolean {
   const path = guard.path as string[] | undefined
   if (path !== undefined) {
     const value = row.scanResult?.[path[0] as string]
+    // The database answers a key that is not there (or a column that is null) to `equals: DbNull`; a JSON null is another thing
+    if (guard.equals === DatabaseNull) return value === undefined
     if ('equals' in guard) return value === guard.equals
     if (typeof value !== 'number') return false
     if ('lt' in guard) return value < (guard.lt as number)
     if ('gte' in guard) return value >= (guard.gte as number)
     return false
   }
-  return guard.equals === DatabaseNull
+  return guard.equals === DatabaseNull || guard.equals === AnyDatabaseNull
     ? row.scanResult === null
     : sameJson(row.scanResult, guard.equals)
 }
@@ -60,6 +64,7 @@ function scanMatches(row: Row, guard: Condition): boolean {
 function matches(row: Row, where: Condition): boolean {
   return Object.entries(where).every(([key, value]) => {
     if (key === 'OR') return (value as Condition[]).some(part => matches(row, part))
+    if (key === 'AND') return (value as Condition[]).every(part => matches(row, part))
     if (key === 'scanResult') return scanMatches(row, value as Condition)
     const field = (row as unknown as Record<string, unknown>)[key]
     if (typeof value === 'object' && value !== null && 'in' in value) {
@@ -233,6 +238,22 @@ describe('ExistingAvSanitizer', () => {
     expect(current.scanResult).toEqual(CLEANED_MARK)
   })
 
+  it('takes a file whose row holds only the note of a scanner that was down, which says nothing about the cleaning', async () => {
+    // The scan writes `unavailableSince` on a pending file the first time the scanner gives no verdict, and the move to `clean` leaves the
+    // column as it is. Today the cleaning replaces the column before that move, so no writer leaves this row; the list of the sweep must not
+    // depend on it: a row with no version key is not finished, whatever else it holds
+    const row = store('late', {
+      scanResult: { [UploadLimits.SCAN_UNAVAILABLE_SINCE_KEY]: '2026-01-01T00:00:00.000Z' }
+    })
+    expect(isReadyToSend(row)).toBe(false)
+
+    const report = await sanitizer.runScoped([STORE])
+
+    expect(report).toMatchObject({ cleaned: 1, kept: 0, failed: 0 })
+    expect(row.scanResult).toEqual(CLEANED_MARK)
+    expect(bucket.get(row.key)).toEqual(cleanedBody)
+  })
+
   it('takes an inbound file the scan kept as `av_unavailable` and cleans it once the tools are back', async () => {
     const row = store('in', { scanResult: kept(AvSanitizing.Outcomes.AV_UNAVAILABLE) })
 
@@ -255,6 +276,157 @@ describe('ExistingAvSanitizer', () => {
     expect(seenDuring).toMatchObject({
       [AvSanitizing.OUTCOME_KEY]: AvSanitizing.Outcomes.AV_UNAVAILABLE,
       [ATTEMPTS_KEY]: 1
+    })
+  })
+
+  describe('the window of a file that is being swept: what may leave while it lasts', () => {
+    it('is not sendable at any step of the cleaning of a file with no mark, and is sendable once the size and the mark are written together', async () => {
+      const row = store('v1')
+      const sendable: Record<string, boolean> = {}
+      behaviour = () => {
+        sendable.whileCleaning = isReadyToSend(row)
+        return Promise.resolve({ kind: 'cleaned', body: cleanedBody, hadMetadata: true })
+      }
+      storage.put.mockImplementationOnce((key: string, body: Buffer) => {
+        // The cleaned bytes are in the bucket before the row says so: until it does, the file is not sendable
+        sendable.whilePutting = isReadyToSend(row)
+        puts.push(key)
+        bucket.set(key, body)
+        return Promise.resolve()
+      })
+
+      await sanitizer.runScoped([STORE])
+
+      expect(sendable).toEqual({ whileCleaning: false, whilePutting: false })
+      expect(isReadyToSend(row)).toBe(true)
+      // One write carries the new size and the mark, so there is no step with one and not the other
+      const closing = updates.filter(update => update.data.fileSize !== undefined)
+      expect(closing).toHaveLength(1)
+      expect(closing[0]?.data).toEqual({ fileSize: cleanedBody.length, scanResult: CLEANED_MARK })
+    })
+
+    it('keeps a file that an older version cleaned sendable while the new version rewrites it, and does not take it twice', async () => {
+      const row = store('old', { scanResult: { sanitized: true, cleaningVersion: VERSION - 1 } })
+      const sendable: Record<string, boolean> = {}
+      behaviour = () => {
+        sendable.whileCleaning = isReadyToSend(row)
+        return Promise.resolve({ kind: 'cleaned', body: cleanedBody, hadMetadata: false })
+      }
+      storage.put.mockImplementationOnce((key: string, body: Buffer) => {
+        sendable.whilePutting = isReadyToSend(row)
+        bucket.set(key, body)
+        return Promise.resolve()
+      })
+
+      await sanitizer.runScoped([STORE])
+      const readsAfterFirst = storage.read.mock.calls.length
+      const second = await sanitizer.runScoped([STORE])
+
+      // What it held was cleaned by an older version: it stays what it was, never worse and never in a state with no mark
+      expect(sendable).toEqual({ whileCleaning: true, whilePutting: true })
+      expect(row.scanResult).toEqual(CLEANED_MARK)
+      expect(second).toEqual({ cleaned: 0, kept: 0, unavailable: 0, skipped: 0, failed: 0 })
+      expect(storage.read.mock.calls.length).toBe(readsAfterFirst)
+    })
+
+    it('stops being sendable when the new version cannot clean a file that an older one had cleaned (fails closed: the old copy is not trusted)', async () => {
+      const row = store('old', { scanResult: { sanitized: true, cleaningVersion: VERSION - 1 } })
+      behaviour = () =>
+        Promise.resolve({ kind: 'untouched', why: AvSanitizing.Untouched.NOT_CLEANABLE })
+
+      await sanitizer.runScoped([STORE])
+
+      expect(row.scanResult).toEqual(kept(AvSanitizing.Untouched.NOT_CLEANABLE))
+      expect(isReadyToSend(row)).toBe(false)
+    })
+
+    it('lets a run that overlaps another finish with one rewrite: the slow run finds the object changed and writes nothing', async () => {
+      const row = store('v1')
+      let release: () => void = () => undefined
+      const gate = new Promise<void>(resolve => {
+        release = resolve
+      })
+      let calls = 0
+      behaviour = async () => {
+        calls += 1
+        // The first run is slow; the second one (which the lock of the schedule does not allow, but a restart can leave behind) is not
+        if (calls === 1) await gate
+        return { kind: 'cleaned', body: cleanedBody, hadMetadata: true }
+      }
+
+      const slow = sanitizer.runScoped([STORE])
+      await new Promise(resolve => setImmediate(resolve))
+      const fast = await sanitizer.runScoped([STORE])
+      release()
+      const late = await slow
+
+      expect(fast.cleaned).toBe(1)
+      expect(late).toMatchObject({ cleaned: 0, skipped: 1, failed: 0 })
+      expect(puts).toHaveLength(1)
+      expect(row.scanResult).toEqual(CLEANED_MARK)
+      expect(isReadyToSend(row)).toBe(true)
+    })
+
+    it('writes no mark over a verdict that another run gave while this one was cleaning (the closing write holds only for its own try)', async () => {
+      const row = store('v1')
+      let release: () => void = () => undefined
+      const gate = new Promise<void>(resolve => {
+        release = resolve
+      })
+      let calls = 0
+      behaviour = async () => {
+        calls += 1
+        if (calls === 1) {
+          await gate
+          return { kind: 'cleaned', body: cleanedBody, hadMetadata: true }
+        }
+        return { kind: 'untouched', why: AvSanitizing.Untouched.NOT_CLEANABLE }
+      }
+
+      const slow = sanitizer.runScoped([STORE])
+      await new Promise(resolve => setImmediate(resolve))
+      await sanitizer.runScoped([STORE])
+      release()
+      const late = await slow
+
+      expect(late).toMatchObject({ cleaned: 0, skipped: 1 })
+      expect(row.scanResult).toEqual(kept(AvSanitizing.Untouched.NOT_CLEANABLE))
+      expect(isReadyToSend(row)).toBe(false)
+    })
+
+    it.each([
+      ['the tools are missing', () => Promise.reject(new AvToolUnavailable())],
+      [
+        'the file cannot be cleaned',
+        () => Promise.resolve({ kind: 'untouched', why: AvSanitizing.Untouched.NOT_CLEANABLE })
+      ],
+      [
+        'the cleaner fails for a reason that is not the file',
+        () => Promise.reject(new Error('boom'))
+      ]
+    ] as const)(
+      'leaves a file with no mark not sendable when %s, run after run',
+      async (_name, outcome) => {
+        const row = store('v1')
+        behaviour = outcome as typeof behaviour
+
+        for (let run = 0; run < MAX_ATTEMPTS + 1; run += 1) {
+          await sanitizer.runScoped([STORE])
+          expect(isReadyToSend(row)).toBe(false)
+        }
+      }
+    )
+
+    it('leaves a file with no mark not sendable when its object is missing or its row changed under the write', async () => {
+      const missing = store('gone')
+      bucket.delete(missing.key)
+      const changed = store('moved')
+      denyRowWrite = true
+
+      await sanitizer.runScoped([STORE])
+
+      expect(isReadyToSend(missing)).toBe(false)
+      expect(isReadyToSend(changed)).toBe(false)
     })
   })
 

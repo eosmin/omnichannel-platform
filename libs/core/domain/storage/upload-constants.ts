@@ -32,6 +32,8 @@ export const UploadLimits = {
   // by the sweep of stuck scans, until the scanner has been failing for this long (counted from the first job that ended with no verdict,
   // noted on the row): only then is the file given up (`unscannable`) and deleted
   SCAN_GIVE_UP_HOURS: 6,
+  // The key of `Media.scanResult` where the scan notes when it first ended with no verdict (the scanner was down)
+  SCAN_UNAVAILABLE_SINCE_KEY: 'unavailableSince',
   // A file an agent uploaded and confirmed for a message and never sent is dropped (row and objects) after this long
   UNSENT_MESSAGE_FILE_TTL_HOURS: 48
 } as const

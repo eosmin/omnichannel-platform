@@ -10,7 +10,7 @@ import { WhatsAppLimits } from '@platform/channels/whatsapp'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { type CredentialCipher, SealedWith } from '@platform/core/crypto'
-import { JobContext, PrismaService, WorkerLists } from '@platform/core/database'
+import { DatabaseNull, JobContext, PrismaService, WorkerLists } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -36,7 +36,7 @@ import {
   viewerOf
 } from '@platform/core/messaging'
 import { JobNames, QueueNames } from '@platform/core/queues'
-import { AvSanitizing } from '@platform/core/storage'
+import { AvSanitizing, ExistingAvSweep, UploadLimits } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import {
@@ -1584,6 +1584,8 @@ describe('Replies on their way to a channel', () => {
         fileSize?: number
         position?: number
         scanResult?: Record<string, unknown>
+        // A file stored before the cleaning of video and audio existed: no `scan_result` at all
+        noScanResult?: boolean
       } = {}
     ) => {
       const id = randomUUID()
@@ -1602,6 +1604,7 @@ describe('Replies on their way to a channel', () => {
             : { position: over.position, deliveryStatus: 'queued' }),
           ...scanResultOf(over.contentType ?? 'image/png'),
           ...(over.scanResult === undefined ? {} : { scanResult: over.scanResult as never }),
+          ...(over.noScanResult === true ? { scanResult: DatabaseNull } : {}),
           ...(over.messageId === undefined ? {} : { messageId: over.messageId }),
           ...(over.uploadedBy === undefined ? {} : { uploadedBy: over.uploadedBy })
         },
@@ -1804,6 +1807,66 @@ describe('Replies on their way to a channel', () => {
         deliveryStatus: DeliveryStatus.FAILED,
         deliveryError: ErrorCodes.FILE_UNAVAILABLE
       })
+    })
+
+    // The worker reads the mark itself (`filesOf`, `stillSendable`): the unmarked row is the one that reasoning alone covered until now
+    it.each([
+      ['has no scan result at all', { noScanResult: true }],
+      [
+        'holds only the note of a scanner that was down',
+        { scanResult: { [UploadLimits.SCAN_UNAVAILABLE_SINCE_KEY]: '2026-01-01T00:00:00.000Z' } }
+      ],
+      [
+        'holds the number of a try of the sweep and nothing else',
+        { scanResult: { [ExistingAvSweep.ATTEMPTS_KEY]: 1 } }
+      ]
+    ] as const)(
+      'fails, and never opens, a video that %s: nothing was cleaned, so nothing leaves',
+      async (_name, over) => {
+        const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+        await fileOf(reply.storeId, { messageId: reply.id, contentType: 'video/mp4', ...over })
+
+        await sender.send(job(reply), false)
+
+        expect(sentMedia).toHaveLength(0)
+        expect(await stored(reply.id)).toMatchObject({
+          deliveryStatus: DeliveryStatus.FAILED,
+          deliveryError: ErrorCodes.FILE_UNAVAILABLE
+        })
+      }
+    )
+
+    it('refuses the bytes and the link of a video that lost its mark after the message was picked up', async () => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      const file = await fileOf(reply.storeId, { messageId: reply.id, contentType: 'video/mp4' })
+      const outcomes: Record<string, unknown> = {}
+      duringMediaSend = async params => {
+        // The mark of a file that was cleaned goes away (a row put back to what it was before the cleaning, a restore) between the pick-up and the read
+        await owner.media.update({ where: { id: file.id }, data: { scanResult: DatabaseNull } })
+        outcomes.open = await params.openFile().then(
+          () => 'opened',
+          (error: unknown) => error
+        )
+        outcomes.sign = await (params.signedUrl?.(60) ?? Promise.resolve('no sign')).then(
+          () => 'signed',
+          (error: unknown) => error
+        )
+      }
+
+      await sender.send(job(reply), false)
+
+      expect(outcomes.open).toBeInstanceOf(PluginError)
+      expect(outcomes.sign).toBeInstanceOf(PluginError)
+    })
+
+    it('sends a video that carries the mark of the cleaning', async () => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      await fileOf(reply.storeId, { messageId: reply.id, contentType: 'video/mp4' })
+
+      await sender.send(job(reply), false)
+
+      expect(sentMedia).toHaveLength(1)
+      expect(sentMedia[0]).toMatchObject({ contentType: 'video/mp4' })
     })
 
     it('fails a message that lost its file', async () => {

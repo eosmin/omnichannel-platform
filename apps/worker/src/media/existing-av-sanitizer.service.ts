@@ -4,6 +4,7 @@ import type { Counter } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
 import {
+  AnyDatabaseNull,
   DatabaseNull,
   JobContext,
   JobContextGoneError,
@@ -73,13 +74,29 @@ interface Candidate {
 
 type Left = string
 
-// A row the sweep has not finished with: no `scan_result` at all (stored before the cleaning), a try in progress or interrupted (fewer than
+// A row the sweep has not finished with: no mark of the cleaning, which is no `scan_result` at all (stored before the cleaning) or a
+// `scan_result` with no version key at all (today only the note `unavailableSince` of a scanner that was down could be there, and no writer
+// leaves it on a clean video: the scan replaces the whole column with its mark; the list does not lean on that, because a video with no mark
+// is not sendable and one that no key puts here would wait for ever), a try in progress or interrupted (fewer than
 // MAX_ATTEMPTS), a file the tools could not be started for (`av_unavailable`, the machine's fault and not the file's: taken again on every run
 // for as long as it lasts) or a mark of an older version of the cleaning. A final `not_cleanable` (the file's own fault) carries the current
 // version and is never taken again. A row at MAX_ATTEMPTS is made final by `closeExhausted` BEFORE this is read.
-const TAKEN = {
+export const TAKEN = {
   OR: [
-    { scanResult: { equals: DatabaseNull } },
+    // A key that is not there, and a column that is null, are the same answer of the database to `equals: DbNull` on a path (measured on
+    // PostgreSQL 17 with the Prisma client of the repository); a mark of ANY version carries the key, so this never takes a finished row
+    {
+      AND: [
+        { scanResult: { path: [AvSanitizing.CLEANING_VERSION_KEY], equals: DatabaseNull } },
+        // Not a row that spent its tries: `closeExhausted` makes it final (a run that overlaps may have written the last try after it ran)
+        {
+          OR: [
+            { scanResult: { path: [ATTEMPTS_KEY], equals: DatabaseNull } },
+            { scanResult: { path: [ATTEMPTS_KEY], lt: MAX_ATTEMPTS } }
+          ]
+        }
+      ]
+    },
     { scanResult: { path: [ATTEMPTS_KEY], lt: MAX_ATTEMPTS } },
     { scanResult: { path: [AvSanitizing.OUTCOME_KEY], equals: Outcomes.AV_UNAVAILABLE } },
     { scanResult: { path: [AvSanitizing.CLEANING_VERSION_KEY], lt: AvSanitizing.CLEANING_VERSION } }
@@ -355,15 +372,19 @@ export class ExistingAvSanitizer {
     attempt: number,
     seen: unknown
   ): Promise<boolean> {
+    // Only an object has marks to keep: a column that holds a list or a bare value (nothing writes one) is replaced by the number of the try
     const held =
-      typeof seen === 'object' && seen !== null ? (seen as Record<string, unknown>) : undefined
+      typeof seen === 'object' && seen !== null && !Array.isArray(seen)
+        ? (seen as Record<string, unknown>)
+        : undefined
     const began = await this.jobContext.forStore(storeId, () =>
       this.prisma.client.media.updateMany({
         where: {
           id: mediaId,
           storeId,
           status: MediaStatus.CLEAN,
-          scanResult: seen === null ? { equals: DatabaseNull } : { equals: seen as object }
+          // A row read as `null` is SQL NULL or the JSON null, which the client answers alike and the list above takes both of
+          scanResult: seen === null ? { equals: AnyDatabaseNull } : { equals: seen as object }
         },
         data: { scanResult: { ...held, [ATTEMPTS_KEY]: attempt } }
       })
