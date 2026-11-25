@@ -251,4 +251,9 @@ describe('saleBookOfDocumentType', () => {
     ).toBeNull()
     expect(saleBookOfDocumentType(null)).toBeNull()
   })
+  it('lists a debit note of a taxpayer in the book of taxpayers: it charges more, it cancels nothing', () => {
+    expect(
+      saleBookOfDocumentType({ debitNote: true, requiredReceiverFields: ['name', 'taxId'] })
+    ).toBe(LegalBookKind.SALES_TAXPAYERS)
+  })
 })

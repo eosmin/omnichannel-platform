@@ -8118,7 +8118,8 @@
       },
       "kind": {
         "sale": "Documento de venta",
-        "credit_note": "Nota de crédito"
+        "credit_note": "Nota de crédito",
+        "debit_note": "Nota de débito"
       },
       "row": {
         "number": "N.º {number}",

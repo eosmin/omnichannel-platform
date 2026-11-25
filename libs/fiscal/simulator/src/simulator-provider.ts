@@ -36,7 +36,8 @@ export const SIMULATOR_PROVIDER_ID = 'simulator'
 export const SimulatorDocumentTypes = {
   CONSUMER: 'simulated_consumer',
   BUSINESS: 'simulated_business',
-  CREDIT_NOTE: 'simulated_credit_note'
+  CREDIT_NOTE: 'simulated_credit_note',
+  DEBIT_NOTE: 'simulated_debit_note'
 } as const
 export const SimulatorRules = {
   REJECT: 'REJECT',
@@ -72,6 +73,12 @@ export class SimulatorProvider implements FiscalDocumentProvider {
         label: 'Simulated credit note',
         requiredReceiverFields: [],
         creditNote: true
+      },
+      {
+        id: SimulatorDocumentTypes.DEBIT_NOTE,
+        label: 'Simulated debit note',
+        requiredReceiverFields: [],
+        debitNote: true
       }
     ],
     requiredIssuerFields: ['legalName', 'taxId', 'address'],
@@ -108,10 +115,11 @@ export class SimulatorProvider implements FiscalDocumentProvider {
     return !/\s/.test(taxId)
   }
 
-  // The type of a sale or a credit note: a credit note, a business when the receiver has a tax id, a consumer otherwise. The simulator
+  // The type of a sale, a credit note or a debit note: a credit note or a debit note, a business when the receiver has a tax id, a consumer otherwise. The simulator
   // numbers by the correlative of the organization (it declares no series), so core never asks it; it answers like `build` for the contract suite.
   resolveDocumentType(input: FiscalTypeInput): string {
     if (input.kind === FiscalDocumentKind.CREDIT_NOTE) return SimulatorDocumentTypes.CREDIT_NOTE
+    if (input.kind === FiscalDocumentKind.DEBIT_NOTE) return SimulatorDocumentTypes.DEBIT_NOTE
     const business = input.receiver.taxId !== null && input.receiver.taxId.trim() !== ''
     return business ? SimulatorDocumentTypes.BUSINESS : SimulatorDocumentTypes.CONSUMER
   }
@@ -129,7 +137,7 @@ export class SimulatorProvider implements FiscalDocumentProvider {
       documentUuid: input.documentUuid,
       issuedAt: input.issuedAt,
       orderNumber: input.orderNumber,
-      // A credit note names the document it cancels (part of); a sale names none
+      // A credit note or a debit note names the document it changes; a sale names none
       credits:
         input.credited === null
           ? null

@@ -123,6 +123,12 @@ export class SvProvider implements FiscalDocumentProvider {
         label: 'Nota de crédito electrónica',
         requiredReceiverFields: BUSINESS_RECEIVER_FIELDS,
         creditNote: true
+      },
+      {
+        id: SvDocumentTypes.DEBIT_NOTE,
+        label: 'Nota de débito electrónica',
+        requiredReceiverFields: BUSINESS_RECEIVER_FIELDS,
+        debitNote: true
       }
     ],
     requiredIssuerFields: [

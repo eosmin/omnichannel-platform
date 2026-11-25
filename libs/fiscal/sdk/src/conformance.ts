@@ -41,6 +41,15 @@ export type ConformanceStep =
       readonly parent: string
       readonly input: FiscalBuildInput
     }
+  // A debit note of a document of the plan: made like a credit note (its `credited` is filled in from what the provider accepted)
+  | {
+      readonly kind: 'debit_note'
+      readonly id: string
+      readonly tags: readonly string[]
+      readonly bucket: string | null
+      readonly parent: string
+      readonly input: FiscalBuildInput
+    }
   // The invalidation of an accepted document of the plan, and the document of the plan that takes its place when the reason names one
   | {
       readonly kind: 'void'
@@ -282,9 +291,14 @@ export async function runConformance(
 
   for (const step of steps) {
     try {
-      if (step.kind === 'sale' || step.kind === 'deferred_sale' || step.kind === 'credit_note') {
+      if (
+        step.kind === 'sale' ||
+        step.kind === 'deferred_sale' ||
+        step.kind === 'credit_note' ||
+        step.kind === 'debit_note'
+      ) {
         let input = step.input
-        if (step.kind === 'credit_note') {
+        if (step.kind === 'credit_note' || step.kind === 'debit_note') {
           const parent = held.get(step.parent)
           let credited: FiscalCreditedDocument | null = null
           if (parent !== undefined && parent.accepted !== null) {
