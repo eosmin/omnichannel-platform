@@ -34,6 +34,7 @@ import {
   SvOperationCondition,
   SvPaymentForms,
   SvProviderDataKeys,
+  SvRelatedDocument,
   SvSchemaVersions,
   SvShippingLine,
   SvTransmission,
@@ -41,6 +42,7 @@ import {
 } from './sv-constants'
 import { readContingency, type SvContingencyProblem } from './sv-contingency-reason'
 import { allocate, dollars, dollars8, roundDiv, SCALE_8, toScaled8 } from './sv-decimal'
+import { addMonths } from './sv-invalidation'
 import {
   addressOf,
   digitsOf,
@@ -638,6 +640,18 @@ function relatedDocument(
     !/^\d{4}-\d{2}-\d{2}$/.test(issued)
   ) {
     throw new SvBuildError(SvBuildErrors.CREDITED_DOCUMENT_UNKNOWN)
+  }
+  // The note is generated within the months the authority allows after the document it names: both dates are the ones the documents
+  // carry (`fecEmi`, in Salvador time), so the answer never depends on when the note is sent. ISO dates compare as text.
+  // A date of the right shape that is no day of the calendar (2026-02-30) is a date that was not kept right
+  let lastDay: string
+  try {
+    lastDay = addMonths(issued, SvRelatedDocument.DEADLINE_MONTHS)
+  } catch {
+    throw new SvBuildError(SvBuildErrors.CREDITED_DOCUMENT_UNKNOWN)
+  }
+  if (salvadorMoment(input.issuedAt).date > lastDay) {
+    throw new SvBuildError(SvBuildErrors.RELATED_DOCUMENT_DEADLINE_PASSED)
   }
   // The generation code of a document is in capitals (its own `codigoGeneracion`)
   return { type: credited.documentType, code: code.trim().toUpperCase(), date: issued }
