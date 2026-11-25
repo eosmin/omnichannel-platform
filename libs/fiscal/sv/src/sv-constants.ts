@@ -86,16 +86,18 @@ export const SvEnabledEnvironments: readonly FiscalEnvironment[] = [FiscalEnviro
 export const SvDocumentTypes = {
   INVOICE: '01',
   TAX_CREDIT: '03',
+  REMISSION_NOTE: '04',
   CREDIT_NOTE: '05',
   DEBIT_NOTE: '06'
 } as const
 export type SvDocumentType = (typeof SvDocumentTypes)[keyof typeof SvDocumentTypes]
 
 // The version of the JSON schema of each document (the folders of svfe-json-schemas: factura v2, comprobante de crédito fiscal v4, nota de
-// crédito v4, nota de débito v4)
+// crédito v4, nota de débito v4, nota de remisión v4)
 export const SvSchemaVersions: Readonly<Record<SvDocumentType, number>> = {
   [SvDocumentTypes.INVOICE]: 2,
   [SvDocumentTypes.TAX_CREDIT]: 4,
+  [SvDocumentTypes.REMISSION_NOTE]: 4,
   [SvDocumentTypes.CREDIT_NOTE]: 4,
   [SvDocumentTypes.DEBIT_NOTE]: 4
 }
@@ -275,6 +277,9 @@ export const SvInvalidationDeadlineRules: Readonly<
 > = {
   [SvDocumentTypes.INVOICE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_MONTHS, amount: 3 },
   [SvDocumentTypes.TAX_CREDIT]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 },
+  // Anexo V, field 47, rule 4: the remission note (NRE) is invalidated within four calendar days after its seal (the Manual Funcional
+  // says the tenth business day of the next month for it too, the same contradiction as above: the stricter window is used)
+  [SvDocumentTypes.REMISSION_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 4 },
   [SvDocumentTypes.CREDIT_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 },
   [SvDocumentTypes.DEBIT_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 }
 }
@@ -292,6 +297,7 @@ export const SvInvalidationWithoutReplacement: readonly SvDocumentType[] = [
 export const SvInvalidationAllowed: Readonly<Record<SvDocumentType, boolean>> = {
   [SvDocumentTypes.INVOICE]: true,
   [SvDocumentTypes.TAX_CREDIT]: true,
+  [SvDocumentTypes.REMISSION_NOTE]: true,
   [SvDocumentTypes.CREDIT_NOTE]: true,
   [SvDocumentTypes.DEBIT_NOTE]: true
 }
@@ -333,6 +339,19 @@ export const SvCreditableDocuments: readonly SvDocumentType[] = [SvDocumentTypes
 // same taxpayer, and an invoice to a final consumer is not one). It is its own list, apart from the credit note's, so that one may change
 // without the other.
 export const SvDebitableDocuments: readonly SvDocumentType[] = [SvDocumentTypes.TAX_CREDIT]
+
+// CAT-025: the title the goods of a remission note are sent under (the `bienTitulo` of its receiver). **[ACCOUNTANT]** Which title a dispatch
+// to a buyer whose sale document is made on delivery carries is the accountant's to say; "transfer" is used until then, because the note
+// backs the movement of the goods and no sale is declared by it. Change `SvDefaultRemissionTitle` to adopt another.
+export const SvRemissionTitles = {
+  DEPOSIT: '01',
+  OWNERSHIP: '02',
+  CONSIGNMENT: '03',
+  TRANSFER: '04',
+  OTHER: '05'
+} as const
+export type SvRemissionTitle = (typeof SvRemissionTitles)[keyof typeof SvRemissionTitles]
+export const SvDefaultRemissionTitle: SvRemissionTitle = SvRemissionTitles.TRANSFER
 
 // The names of the keys of the address a customer or the issuer keeps in this provider (the address of core is a record of text keyed by
 // the provider's own names): the codes of the catalogs of the authority and a free line.
@@ -426,3 +445,32 @@ export class SvBuildError extends Error {
     this.name = 'SvBuildError'
   }
 }
+
+// The graphic representation of a document (Normativa de Cumplimiento DTE v2.0, apartado 11.3 and Anexo I 4 and 8; Manual Técnico §5). The
+// names of the fields are the authority's own (Anexos II and III), in Spanish: the document is a legal paper of the country, so its words are
+// not translated. The address of the public consultation is the one of the Manual Técnico §5.
+export const SvRepresentation = {
+  CONSULT_URL: 'https://admin.factura.gob.sv/consultaPublica',
+  // A representation made in the test environment must stand out that the document has no legal value (Normativa 11.3, page 25)
+  TEST_NOTICE:
+    'Este documento carece de valor legal por tratarse de documentación de ensayo con información aparente.',
+  // The 40 characters of the seal are replaced by this when the document has none (a document made in contingency is sealed later)
+  NO_SEAL: '-',
+  EMPTY: '-',
+  MODELS: { 1: 'Modelo de facturación previo', 2: 'Modelo de facturación diferido' },
+  TRANSMISSIONS: { 1: 'Transmisión normal', 2: 'Transmisión por contingencia' },
+  // CAT-002: the description of a type of document, as the representation shows it (the type drawn and the type of a related document)
+  TITLES: {
+    '01': 'Factura',
+    '03': 'Comprobante de crédito fiscal',
+    '04': 'Nota de remisión',
+    '05': 'Nota de crédito',
+    '06': 'Nota de débito',
+    '07': 'Comprobante de retención',
+    '08': 'Comprobante de liquidación',
+    '09': 'Documento contable de liquidación',
+    '11': 'Factura de exportación',
+    '14': 'Factura de sujeto excluido',
+    '15': 'Comprobante de donación'
+  }
+} as const satisfies Record<string, unknown>

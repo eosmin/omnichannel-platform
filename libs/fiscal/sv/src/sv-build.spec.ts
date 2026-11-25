@@ -68,6 +68,24 @@ const creditNote = (over: Partial<ReturnType<typeof sale>> = {}) =>
 const debitNote = (over: Partial<ReturnType<typeof sale>> = {}) =>
   creditNote({ kind: FiscalDocumentKind.DEBIT_NOTE, ...over })
 
+// The remission note backs the goods on their way before the sale document exists: the lines of the order, no document it names, and a
+// receiver identified the way a note is (any identity document), with an economic activity and an address, but no registration number
+const remissionNote = (over: Partial<ReturnType<typeof sale>> = {}) =>
+  sale({
+    kind: FiscalDocumentKind.REMISSION_NOTE,
+    receiver: { ...CONSUMER, ...DELIVERY_RECEIVER },
+    ...over
+  })
+
+const DELIVERY_RECEIVER = {
+  name: 'Ana Pérez',
+  taxId: '012345678',
+  address: { department: '06', municipality: '20', district: '02', complement: 'Avenida 2' },
+  economicActivity: '47119',
+  email: 'ana@example.test',
+  phone: '7777-0001'
+}
+
 describe('the check against the schema of the authority', () => {
   it('is a real check: a document with a figure of three decimals, a missing field or an extra one is refused', () => {
     const good = payloadOf(sale())
@@ -107,8 +125,20 @@ describe('which document a sale is', () => {
     )
   })
 
+  it('is a remission note for the remission note of a dispatch, whoever the receiver is', () => {
+    expect(
+      resolveDocumentType({ kind: FiscalDocumentKind.REMISSION_NOTE, receiver: CONSUMER })
+    ).toBe('04')
+  })
+
   it('is the type build puts in the document', () => {
-    for (const input of [sale(), sale({ receiver: BUSINESS }), creditNote(), debitNote()]) {
+    for (const input of [
+      sale(),
+      sale({ receiver: BUSINESS }),
+      creditNote(),
+      debitNote(),
+      remissionNote()
+    ]) {
       expect(build(input).documentType).toBe(
         resolveDocumentType({ kind: input.kind, receiver: input.receiver })
       )
@@ -877,7 +907,7 @@ describe('the construction is pure', () => {
   })
 
   it('only makes the types the manifest declares', () => {
-    expect(Object.values(SvDocumentTypes)).toEqual(['01', '03', '05', '06'])
+    expect(Object.values(SvDocumentTypes)).toEqual(['01', '03', '04', '05', '06'])
   })
 })
 
@@ -963,5 +993,125 @@ describe('the debit note (06)', () => {
       tipoOperacion: 2,
       tipoContingencia: 3
     })
+  })
+})
+
+describe('the remission note (04)', () => {
+  it('is a document the official schema accepts, with the control number of its own series and no relation', () => {
+    const built = build(remissionNote())
+    expect(built.documentType).toBe('04')
+    expect(built.missingReceiverFields).toEqual([])
+    expect(schemaErrors('04', built.payload)).toEqual([])
+    const p = built.payload as unknown as Payload
+    expect(p['identificacion']).toMatchObject({
+      version: 4,
+      tipoDte: '04',
+      numeroControl: 'DTE-04-M001P001-000000000000041'
+    })
+    expect(p['documentoRelacionado']).toBeNull()
+    // Unlike a note, the issuer of a remission note carries the codes of the establishment and of the point of sale
+    expect(p['emisor']).toMatchObject({ codEstable: 'M001', codPuntoVenta: 'P001' })
+    expect(p['cuerpoDocumento'][0]?.numeroDocumento).toBeNull()
+  })
+
+  it('says the title the goods are sent under (CAT-025), the one of the provider unless told otherwise', () => {
+    expect(payloadOf(remissionNote())['receptor']).toMatchObject({ bienTitulo: '04' })
+  })
+
+  it('names the receiver with an identity document of any kind, with no registration number', () => {
+    const p = payloadOf(remissionNote())
+    expect(p['receptor']).toMatchObject({
+      tipoDocumento: '13',
+      numDocumento: '012345678',
+      nrc: null,
+      nombre: 'Ana Pérez',
+      codActividad: '47119',
+      nombreComercial: null
+    })
+    expect(p['receptor']).not.toHaveProperty('nit')
+    const taxpayer = payloadOf(remissionNote({ receiver: BUSINESS }))
+    expect(taxpayer['receptor']).toMatchObject({ tipoDocumento: '36', nrc: '7654321' })
+    expect(schemaErrors('04', taxpayer)).toEqual([])
+  })
+
+  it('has the net prices and the tax of the tax credit document, and no payment or condition of operation', () => {
+    const p = payloadOf(remissionNote())
+    expect(p['resumen']).toMatchObject({
+      totalGravada: 25.0,
+      subTotalVentas: 25.0,
+      subTotal: 25.0,
+      montoTotalOperacion: 28.25,
+      tributos: [{ codigo: '20', valor: 3.25 }]
+    })
+    expect(p['resumen']).not.toHaveProperty('pagos')
+    expect(p['resumen']).not.toHaveProperty('condicionOperacion')
+    expect(p['cuerpoDocumento'][0]).toMatchObject({ tributos: ['20'] })
+  })
+
+  it('takes the number from the correlative of the order, the same mechanism of every type', () => {
+    expect(payloadOf(remissionNote({ correlative: 7 }))['identificacion']['numeroControl']).toBe(
+      'DTE-04-M001P001-000000000000007'
+    )
+  })
+
+  it('is refused, for a person to complete, when the receiver lacks what the goods need to be sent to someone', () => {
+    for (const lacking of [
+      { name: null },
+      { taxId: null },
+      { economicActivity: null },
+      { address: null }
+    ]) {
+      const built = build(
+        remissionNote({ receiver: { ...CONSUMER, ...DELIVERY_RECEIVER, ...lacking } })
+      )
+      expect(built.payload).toEqual({})
+      expect(built.missingReceiverFields).toEqual([Object.keys(lacking)[0]])
+    }
+    const missing = build(remissionNote({ receiver: CONSUMER })).missingReceiverFields
+    expect(missing).toHaveLength(4)
+    expect(missing).toEqual(
+      expect.arrayContaining(['name', 'taxId', 'economicActivity', 'address'])
+    )
+  })
+
+  it('is refused too when what the person typed is present but wrong: a national id with a bad check digit, an unknown activity, an address outside the catalogs', () => {
+    for (const [wrong, field] of [
+      [{ taxId: '012345679' }, 'taxId'],
+      [{ economicActivity: '00000' }, 'economicActivity'],
+      [
+        { address: { department: '99', municipality: '99', district: '99', complement: 'x' } },
+        'address'
+      ]
+    ] as const) {
+      const built = build(
+        remissionNote({ receiver: { ...CONSUMER, ...DELIVERY_RECEIVER, ...wrong } })
+      )
+      expect(built.payload).toEqual({})
+      expect(built.missingReceiverFields).toEqual([field])
+    }
+  })
+
+  it('sends no registration number when the saved one is malformed: the schema takes it as null, so it never refuses the note', () => {
+    const built = build(
+      remissionNote({ receiver: { ...CONSUMER, ...DELIVERY_RECEIVER, registrationId: 'ABC' } })
+    )
+    expect(built.missingReceiverFields).toEqual([])
+    expect((built.payload as unknown as Payload)['receptor']).toMatchObject({ nrc: null })
+    expect(schemaErrors('04', built.payload)).toEqual([])
+  })
+
+  it('is checked against the schema in a deferred document too (contingency)', () => {
+    const built = build(remissionNote({ contingency: { reason: '3', motive: null } }))
+    expect(schemaErrors('04', built.payload)).toEqual([])
+    expect((built.payload as unknown as Payload)['identificacion']).toMatchObject({
+      tipoModelo: 2,
+      tipoOperacion: 2,
+      tipoContingencia: 3
+    })
+  })
+
+  it('is no sale: it never reads the payments of the order, and it builds with none', () => {
+    const built = build(remissionNote({ payments: [] }))
+    expect(schemaErrors('04', built.payload)).toEqual([])
   })
 })

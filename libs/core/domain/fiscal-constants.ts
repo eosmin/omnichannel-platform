@@ -10,14 +10,16 @@ export const FiscalDocumentImmutableStatuses: readonly FiscalDocumentStatus[] = 
 ]
 
 // What a document is for: the document of a sale, the credit note of a return, which cancels part (or all) of the sale document it names,
-// or a debit note, which charges more on the sale document it names. A provider's own document types (`FiscalDocumentTypeDeclaration`)
-// stay the provider's; this is core's word for the relation. **A debit note is only built and sent by a provider today** (the conformance
-// tests of an authority ask for them): the lifecycle of core does not make one yet, and the database accepts no row of this kind until the
-// step that issues it adds it (`IMPLEMENTATION_PLAN.md`, D3b).
+// a debit note, which charges more on the sale document it names, or a remission note, which backs goods that travel before the document
+// of their sale exists (it names no document). A provider's own document types (`FiscalDocumentTypeDeclaration`)
+// stay the provider's; this is core's word for the relation. **A debit note and a remission note are only built and sent by a provider
+// today** (the conformance tests of an authority ask for them): the lifecycle of core does not make one yet, and the database accepts no row
+// of these kinds until the step that issues them adds them (`IMPLEMENTATION_PLAN.md`, D3b).
 export enum FiscalDocumentKind {
   SALE = 'sale',
   CREDIT_NOTE = 'credit_note',
-  DEBIT_NOTE = 'debit_note'
+  DEBIT_NOTE = 'debit_note',
+  REMISSION_NOTE = 'remission_note'
 }
 
 export enum FiscalEnvironment {
@@ -36,7 +38,9 @@ export enum FiscalIssueOn {
 export enum FiscalEvidenceKind {
   DOCUMENT = 'document',
   RESPONSE = 'response',
-  VOID_RESPONSE = 'void_response'
+  VOID_RESPONSE = 'void_response',
+  DTE_FILE = 'dte_file',
+  REPRESENTATION = 'representation'
 }
 
 // How the sale was paid, in core's words, for a provider whose document says it (the provider maps it to its own catalog). Core derives
@@ -56,6 +60,13 @@ export const FiscalLimits = {
   // A file of evidence larger than this is not made (the sealed copy in the row stays, which is what the document is): a provider whose
   // document is this big is a fault to read in the logs
   EVIDENCE_MAX_BYTES: 4 * 1024 * 1024,
+  // What a representation may hold before it is drawn (it is drawn by the worker, so its size is bounded first): a text longer than this or
+  // more rows than this is refused, never cut (a cut legal paper is a wrong one). The rows of the items table have their own bound, above
+  // the most items a provider builds (the provider of El Salvador builds up to 2000; its spec checks it), and the rest of the rows (the
+  // sections, the totals, the notes) another one, so a legitimate document never reaches either.
+  REPRESENTATION_MAX_TEXT_CHARS: 5000,
+  REPRESENTATION_MAX_TABLE_ROWS: 2500,
+  REPRESENTATION_MAX_OTHER_ROWS: 300,
   // Attempts of the job; the provider's own contingency decides what an attempt does while the authority is down
   MAX_ATTEMPTS: 6,
   // The delay before the first retry; it doubles each time, so the last wait of the queue (BACKOFF_MS * 2^(MAX_ATTEMPTS - 2) = 12 min)
@@ -298,6 +309,15 @@ export const FiscalRejectionRetry = {
   WARN_BEFORE_MS: 12 * 60 * 60 * 1000
 } as const
 
+// The hourly look at the windows of the authority (D14b): a daily one cannot promise a warning 12 hours before the end of a 24-hour window
+export const FiscalDeadlineSweep = {
+  // Organizations one page of the scheduler reads
+  ORGANIZATIONS_PAGE_SIZE: 200,
+  // Attempts of the job of one organization when the infrastructure fails, and the pause between them (the next hour asks again anyway)
+  JOB_ATTEMPTS: 2,
+  JOB_BACKOFF_MS: 60_000
+} as const
+
 // Where a refused document stands against that window
 export enum FiscalRejectionDeadlineState {
   OPEN = 'open',
@@ -320,6 +340,14 @@ export const FiscalContingencyConflictReasons = {
 } as const
 
 export const FiscalEvidenceContentType = 'application/json'
+// The type of the file of each kind: the representation is the only one that is not JSON
+export const FiscalEvidenceContentTypes: Readonly<Record<FiscalEvidenceKind, string>> = {
+  [FiscalEvidenceKind.DOCUMENT]: FiscalEvidenceContentType,
+  [FiscalEvidenceKind.RESPONSE]: FiscalEvidenceContentType,
+  [FiscalEvidenceKind.VOID_RESPONSE]: FiscalEvidenceContentType,
+  [FiscalEvidenceKind.DTE_FILE]: FiscalEvidenceContentType,
+  [FiscalEvidenceKind.REPRESENTATION]: 'application/pdf'
+}
 
 // The reasons core itself gives for a rejection (a provider's own are codes of its own, kept as they come)
 export const FiscalRejectionReasons = {
@@ -348,6 +376,9 @@ export const FiscalConflictReasons = {
   VOID_IN_PROGRESS: 'void_in_progress',
   // A sale document with credit notes that are not voided: the notes go first
   HAS_CREDIT_NOTES: 'has_credit_notes',
+  // The picture of a document is larger than what is drawn (a text or a number of items beyond the bound): the person gives the receiver the
+  // file of the document by another way and the provider is told
+  REPRESENTATION_TOO_LARGE: 'representation_too_large',
   // A voided sale document that already has the document that replaces it
   ALREADY_REPLACED: 'already_replaced',
   // The receiver of a credit note is the one of the document it cancels: it is fixed there

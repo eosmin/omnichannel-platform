@@ -11,6 +11,7 @@ import type {
   FiscalIssuerCredentials,
   FiscalIssuerInput,
   FiscalProviderManifest,
+  FiscalRepresentation,
   FiscalReceiver,
   FiscalReceiverProblem,
   FiscalTypeInput,
@@ -42,6 +43,7 @@ import {
 } from './sv-constants'
 import type { SvFetch } from './sv-http'
 import { issuerProblems, receiverProblems } from './sv-parties'
+import { representDocument } from './sv-representation'
 import type { SvSigner } from './sv-signer'
 import { isPlausiblePartyTaxId } from './sv-tax-id'
 import {
@@ -63,6 +65,9 @@ const BUSINESS_RECEIVER_FIELDS = [
   'economicActivity',
   'address'
 ] as const
+
+// What a remission note needs of the person the goods are sent to: who they are, an identity document, the activity and the address
+const REMISSION_RECEIVER_FIELDS = ['name', 'taxId', 'economicActivity', 'address'] as const
 
 // The provider of the electronic tax documents of El Salvador: Step 4B.7c-2 builds the documents and Step 4B.7c-3 sends and consults them.
 // Step 4B.7c-4 invalidates them. The provider is offered where the deployment sets the address of its signing service
@@ -116,6 +121,12 @@ export class SvProvider implements FiscalDocumentProvider {
         id: SvDocumentTypes.TAX_CREDIT,
         label: 'Comprobante de crédito fiscal electrónico',
         requiredReceiverFields: BUSINESS_RECEIVER_FIELDS
+      },
+      {
+        id: SvDocumentTypes.REMISSION_NOTE,
+        label: 'Nota de remisión electrónica',
+        requiredReceiverFields: REMISSION_RECEIVER_FIELDS,
+        remissionNote: true
       },
       {
         id: SvDocumentTypes.CREDIT_NOTE,
@@ -240,6 +251,10 @@ export class SvProvider implements FiscalDocumentProvider {
 
   probeAuthority(ctx: ProviderContext): Promise<FiscalAuthorityProbeOutcome> {
     return probeAuthority(this.deps, ctx)
+  }
+
+  represent(doc: StoredFiscalDocument): FiscalRepresentation | null {
+    return representDocument(doc)
   }
 
   consultVoid(doc: StoredFiscalDocument, ctx: ProviderContext): Promise<VoidConsultResult> {

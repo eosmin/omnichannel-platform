@@ -69,6 +69,17 @@ describe('what the authority answered to a document', () => {
     }
   )
 
+  it('keeps the codes that say "try again" out of the refusals: 22 (signature service down), 99 (uncatalogued) and 101 (contact support)', () => {
+    // A refusal starts the 24 hours to correct and send again (Normativa DTE apartado 10); these say nothing about the document
+    for (const code of [22, 99, 101]) {
+      expect(SvTransientCodes.has(code)).toBe(true)
+      expect(classifyReception(400, refused(String(code)))).toEqual({ kind: 'transient' })
+      expect(classifyEventAnswer(400, refused(String(code)))).toEqual({ kind: 'transient' })
+    }
+    // A business refusal still is one
+    expect(classifyReception(400, refused('020'))).toMatchObject({ kind: 'rejected' })
+  })
+
   it.each([...SvTokenCodes])('asks for another token for the code %s', code => {
     expect(classifyReception(400, refused(String(code)))).toEqual({ kind: 'token' })
   })

@@ -30,6 +30,8 @@ describe('HeavyProcessingProcessor', () => {
   const resealCredentials = jest.fn().mockResolvedValue(undefined)
   const checkChain = jest.fn().mockResolvedValue(undefined)
   const submitFiscal = jest.fn().mockResolvedValue(undefined)
+  const warnRejections = jest.fn().mockResolvedValue(0)
+  const warnContingencyWindows = jest.fn().mockResolvedValue(0)
   const reportContingency = jest.fn().mockResolvedValue('reported')
   const reportContingencyExhausted = jest.fn().mockResolvedValue(undefined)
   const probeContingency = jest.fn().mockResolvedValue('waiting')
@@ -57,10 +59,11 @@ describe('HeavyProcessingProcessor', () => {
     { check: checkChain } as never, // the weekly check of the chain: what it is handed is what is tested
     { reconcile: reconcileFiscal } as never, // the daily check of the fiscal documents: what it is handed is what is tested
     { reconcile: resealFiscal } as never, // the re-seal of a rotation of the key: what it is handed is what is tested
-    { submit: submitFiscal } as never, // the fiscal documents: what it is handed is what is tested
+    { submit: submitFiscal, warnRejectionDeadlines: warnRejections } as never, // the fiscal documents: what it is handed is what is tested
     {
       report: reportContingency,
       reportExhausted: reportContingencyExhausted,
+      warnWindows: warnContingencyWindows,
       probe: probeContingency
     } as never, // the contingency of the issuer: what it is handed is what is tested
     { reconcile: resealCredentials } as never // the re-seal of the sealed credentials of a rotation of the key: what it is handed is what is tested
@@ -124,6 +127,50 @@ describe('HeavyProcessingProcessor', () => {
   ])('refuses for good a job with %s', async (_name, data) => {
     await expect(run(data)).rejects.toBeInstanceOf(UnrecoverableError)
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  describe('the hourly look at the fiscal windows (D14b)', () => {
+    const ORG_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const warn = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.WARN_FISCAL_DEADLINES,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 2 }
+      } as unknown as ProcessorJob)
+
+    it('hands the organization to both looks, with the instant of the run', async () => {
+      warnRejections.mockClear()
+      warnContingencyWindows.mockClear()
+      await warn({ organizationId: ORG_ID })
+      expect(warnRejections).toHaveBeenCalledWith(ORG_ID, expect.any(Date))
+      expect(warnContingencyWindows).toHaveBeenCalledWith(ORG_ID, expect.any(Date))
+    })
+
+    it('looks at the contingencies even when the refused documents failed, and rejects the job', async () => {
+      warnContingencyWindows.mockClear()
+      warnRejections.mockRejectedValueOnce(new Error('the database blinked'))
+      await expect(warn({ organizationId: ORG_ID })).rejects.toThrow('the database blinked')
+      expect(warnContingencyWindows).toHaveBeenCalledWith(ORG_ID, expect.any(Date))
+    })
+
+    it('keeps both causes when both looks failed', async () => {
+      warnRejections.mockRejectedValueOnce(new Error('first'))
+      warnContingencyWindows.mockRejectedValueOnce(new Error('second'))
+      const error = await warn({ organizationId: ORG_ID }).catch((caught: unknown) => caught)
+      expect(error).toBeInstanceOf(AggregateError)
+      expect((error as AggregateError).errors.map((cause: Error) => cause.message)).toEqual([
+        'first',
+        'second'
+      ])
+    })
+
+    it('refuses what is not an organization, and does not ask again', async () => {
+      warnRejections.mockClear()
+      await expect(warn({ organizationId: 'mine' })).rejects.toBeInstanceOf(UnrecoverableError)
+      await expect(warn({})).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(warnRejections).not.toHaveBeenCalled()
+    })
   })
 
   describe('post-finance-event jobs', () => {

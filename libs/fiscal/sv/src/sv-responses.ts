@@ -4,9 +4,10 @@ import { codeOf, recordOf, textOf } from './sv-http'
 // What the authority answered to a document, read into the three things the platform cares about. Pure.
 
 // The codes of the reception service that are a fault of the moment and not of the document (Manual Técnico §4.2): 22 the validation of the
-// signature is not available, 99 an uncatalogued error. **[TO CONFIRM IN THE SANDBOX]** the manual does not say which codes may be
-// retried: this is a judgment, in one place.
-export const SvTransientCodes: ReadonlySet<number> = new Set([22, 99])
+// signature is not available, 99 an uncatalogued error, 101 "contact technical support" (Manual Técnico, table of response codes). None of
+// them is a verdict on the document, so none starts the 24 hours to correct and send it again. **[TO CONFIRM IN THE SANDBOX]** the manual
+// does not say which codes may be retried: this is a judgment, in one place.
+export const SvTransientCodes: ReadonlySet<number> = new Set([22, 99, 101])
 
 // The codes of the authentication service: those that say the token is bad (ask for another), and those that say the credentials are
 // (never retried). **[TO CONFIRM IN THE SANDBOX]**

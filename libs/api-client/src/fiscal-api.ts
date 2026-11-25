@@ -127,7 +127,8 @@ const providerSchema = z.object({
         label: z.string(),
         requiredReceiverFields: z.array(z.string()),
         creditNote: z.boolean().optional(),
-        debitNote: z.boolean().optional()
+        debitNote: z.boolean().optional(),
+        remissionNote: z.boolean().optional()
       })
     ),
     requiredIssuerFields: z.array(z.string()),

@@ -30,6 +30,10 @@ export interface FiscalDocumentTypeDeclaration {
   // A document of this type charges more on another one: it is the type of the debit note, which `build` picks when it is told the document
   // is one (`FiscalBuildInput.kind`). Never both this and `creditNote`.
   readonly debitNote?: boolean
+  // A document of this type backs goods that travel before the document of their sale exists: it is the type of the remission note, which
+  // `build` picks when it is told the document is one (`FiscalBuildInput.kind`). It is no sale (it never enters a book of sales) and it
+  // cancels nothing. Never together with `creditNote` or `debitNote`.
+  readonly remissionNote?: boolean
 }
 
 export type FiscalReceiverField =
@@ -275,8 +279,9 @@ export interface FiscalCreditedDocument {
 }
 
 export interface FiscalBuildInput {
-  // The sale, the credit note of a return or a debit note: the provider picks the type of document by its own rule (a credit note has the
-  // type its manifest marks as `creditNote`, a debit note the one it marks as `debitNote`)
+  // The sale, the credit note of a return, a debit note or a remission note: the provider picks the type of document by its own rule (a
+  // credit note has the type its manifest marks as `creditNote`, a debit note the one it marks as `debitNote`, a remission note the one it
+  // marks as `remissionNote`)
   readonly kind: FiscalDocumentKind
   // Set for a credit note or a debit note, null for the document of a sale
   readonly credited: FiscalCreditedDocument | null
@@ -402,6 +407,52 @@ export interface ContingencyPolicy {
   readonly description: string
 }
 
+// What a provider hands back to be shown to the receiver of a document (the graphic representation of a tax authority that asks for
+// one): a model of plain text and numbers, never a layout. Core draws it as a PDF without knowing what any field means. Every text is
+// already the provider's own words (the names of the fields are the authority's, written in the language of the document).
+export interface FiscalRepresentationRow {
+  readonly label: string
+  readonly value: string
+}
+
+export interface FiscalRepresentationSection {
+  readonly heading: string
+  readonly rows: readonly FiscalRepresentationRow[]
+}
+
+export interface FiscalRepresentationTable {
+  readonly columns: readonly string[]
+  // Columns that hold an amount are aligned to the right
+  readonly numericColumns: readonly number[]
+  // The column that takes the room the others leave (the description of an item)
+  readonly wideColumn: number
+  readonly rows: readonly (readonly string[])[]
+}
+
+// The file the receiver is given next to the picture, exactly as the authority defines it
+export interface FiscalDeliveryFile {
+  readonly filename: string
+  readonly content: Readonly<Record<string, unknown>>
+}
+
+export interface FiscalRepresentation {
+  readonly title: string
+  // What the files of the document are named, without the extension (the authority names them by the code of generation)
+  readonly name: string
+  // Lines shown in a band on top (for instance that a document of a test environment has no legal value); empty when there is none
+  readonly notices: readonly string[]
+  readonly sections: readonly FiscalRepresentationSection[]
+  readonly table: FiscalRepresentationTable | null
+  // The summary, drawn after the table
+  readonly totals: readonly FiscalRepresentationRow[]
+  // Free lines after the totals (the amount in words, observations)
+  readonly footnotes: readonly FiscalRepresentationRow[]
+  // The address the code the receiver scans leads to; null when the authority has none
+  readonly qrUrl: string | null
+  // The file of the document as the authority defines it (the receiver is given it with the picture); null when it has none
+  readonly file: FiscalDeliveryFile | null
+}
+
 export interface FiscalDocumentProvider {
   readonly id: string
   readonly countryCode: string
@@ -422,6 +473,10 @@ export interface FiscalDocumentProvider {
   // Pure, required when the manifest declares `sequence.perDocumentType`: the id of the type `build` will pick for this sale. It must
   // answer exactly what `build` puts in `BuiltDocument.documentType` for the same kind and receiver (the contract suite checks it).
   resolveDocumentType?(input: FiscalTypeInput): string
+  // Pure, optional: what the receiver is shown of an ACCEPTED document, made only from the document as it was kept (its built payload and
+  // the data the provider wrote when the authority accepted it), so the same document always gives the same representation, whatever
+  // changes later in the order or the issuer. Null for a type the provider has no representation for. A provider without it has none.
+  represent?(doc: StoredFiscalDocument): FiscalRepresentation | null
   // Pure: the sale and the issuer become the document (the choice of the type is the provider's rule)
   build(input: FiscalBuildInput): Promise<BuiltDocument>
   // Sign, send, return the answer. The same ProviderContext.idempotencyKey never makes two documents.
