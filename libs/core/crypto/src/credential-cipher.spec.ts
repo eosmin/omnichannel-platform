@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 
 import { DecryptionError, DecryptionFailure, encrypt, failureOf } from './aes-gcm'
 import { CredentialCipher, SealedWith } from './credential-cipher'
@@ -187,5 +187,49 @@ describe('CredentialCipher, sealed text with a rotation (Step 7.3-S11c)', () => 
     expect(() =>
       new CredentialCipher(newKey).openTextRotating(new CredentialCipher(oldKey).sealText('x'))
     ).toThrow(DecryptionError)
+  })
+
+  describe('fingerprint', () => {
+    const key = randomBytes(32)
+    const label = 'a-label:v1'
+
+    it('is the same for the same text and key, and different for another text', () => {
+      const cipher = new CredentialCipher(key)
+      expect(cipher.fingerprint(label, 'one password')).toBe(
+        cipher.fingerprint(label, 'one password')
+      )
+      expect(cipher.fingerprint(label, 'one password')).not.toBe(
+        cipher.fingerprint(label, 'another password')
+      )
+      expect(new CredentialCipher(key).fingerprint(label, 'x')).toBe(cipher.fingerprint(label, 'x'))
+    })
+
+    it('is keyed: not the plain hash of the text, whatever the text (a guess cannot be tested without the key)', () => {
+      const cipher = new CredentialCipher(key)
+      for (const text of [
+        'one password',
+        JSON.stringify(['tax', 'sandbox', [['apiPassword', 'p']]])
+      ]) {
+        expect(cipher.fingerprint(label, text)).not.toBe(
+          createHash('sha256').update(text).digest('hex')
+        )
+      }
+    })
+
+    it('changes with the key and with the label, so two uses never share one', () => {
+      const cipher = new CredentialCipher(key)
+      expect(new CredentialCipher(randomBytes(32)).fingerprint(label, 'x')).not.toBe(
+        cipher.fingerprint(label, 'x')
+      )
+      expect(cipher.fingerprint('another-label:v1', 'x')).not.toBe(cipher.fingerprint(label, 'x'))
+    })
+
+    it('never uses the key that seals as the key of the MAC, and ignores the previous key', () => {
+      const withPrevious = new CredentialCipher(key, randomBytes(32))
+      expect(withPrevious.fingerprint(label, 'x')).toBe(
+        new CredentialCipher(key).fingerprint(label, 'x')
+      )
+      expect(withPrevious.fingerprint(label, 'x')).toMatch(/^[0-9a-f]{64}$/)
+    })
   })
 })

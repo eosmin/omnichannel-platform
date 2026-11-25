@@ -59,6 +59,10 @@ export class FiscalProviderRegistry {
           mode.transmitWithinHours > FiscalContingencyLimits.RELEASED_RETRY_HOURS ||
           (mode.reportWithinHours !== undefined &&
             !(Number.isFinite(mode.reportWithinHours) && mode.reportWithinHours > 0)) ||
+          (mode.technicalReportAfterDays !== undefined &&
+            !(
+              Number.isFinite(mode.technicalReportAfterDays) && mode.technicalReportAfterDays > 0
+            )) ||
           !Number.isInteger(mode.maxDocumentsPerEvent) ||
           mode.maxDocumentsPerEvent < 1)
       ) {

@@ -1,4 +1,4 @@
-import { FiscalEnvironment } from '@platform/core/domain'
+import { FiscalAuthorityProbeOutcome, FiscalEnvironment } from '@platform/core/domain'
 
 import { activityName, isIdentityDocument } from './sv-catalog'
 import { SvBuildErrors, SvCredentialKeys, SvEndpoints, SvVoidRefusals } from './sv-constants'
@@ -185,5 +185,53 @@ describe('the invalidation and the build refusals', () => {
     await expect(provider.build(sale({ totalCents: 1 }))).rejects.toMatchObject({
       code: SvBuildErrors.SALE_TOTALS_MISMATCH
     })
+  })
+})
+
+describe('the probe of the authority (D2c)', () => {
+  const respond = (status: number, body: unknown) => {
+    let calls = 0
+    const fetch = () => {
+      calls += 1
+      return Promise.resolve({ status, text: () => Promise.resolve(JSON.stringify(body)) })
+    }
+    return { fetch, calls: () => calls }
+  }
+  const ctx = (credentials: Record<string, unknown>) => ({
+    issuer: { ...ISSUER, environment: FiscalEnvironment.SANDBOX },
+    credentials,
+    idempotencyKey: 'probe',
+    attempt: 1
+  })
+
+  it('declares the days after which a contingency needs a technical report', () => {
+    const provider = svProvider({ signer: NO_SIGNER })
+    expect(provider.manifest.contingencyMode?.technicalReportAfterDays).toBe(3)
+    expect(typeof provider.probeAuthority).toBe('function')
+  })
+
+  it('says reachable when the authority gives a token, and unreachable when it does not answer', async () => {
+    const up = respond(200, { status: 'OK', body: { token: 'Bearer t' } })
+    const reachable = svProvider({ signer: NO_SIGNER, fetch: up.fetch })
+    expect(await reachable.probeAuthority?.(ctx(CREDENTIALS))).toBe(
+      FiscalAuthorityProbeOutcome.REACHABLE
+    )
+    const down = respond(503, { status: 'ERROR' })
+    const unreachable = svProvider({ signer: NO_SIGNER, fetch: down.fetch })
+    expect(await unreachable.probeAuthority?.(ctx(CREDENTIALS))).toBe(
+      FiscalAuthorityProbeOutcome.UNREACHABLE
+    )
+  })
+
+  it('says the credentials were refused, and sends nothing without credentials', async () => {
+    const refused = respond(401, { status: 'ERROR' })
+    const provider = svProvider({ signer: NO_SIGNER, fetch: refused.fetch })
+    expect(await provider.probeAuthority?.(ctx(CREDENTIALS))).toBe(
+      FiscalAuthorityProbeOutcome.CREDENTIALS_REJECTED
+    )
+    const none = respond(200, {})
+    const bare = svProvider({ signer: NO_SIGNER, fetch: none.fetch })
+    expect(await bare.probeAuthority?.(ctx({}))).toBe(FiscalAuthorityProbeOutcome.INCONCLUSIVE)
+    expect(none.calls()).toBe(0)
   })
 })

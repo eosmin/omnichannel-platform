@@ -1,4 +1,4 @@
-import type { FiscalVoidKind } from '@platform/core/domain'
+import type { FiscalAuthorityProbeOutcome, FiscalVoidKind } from '@platform/core/domain'
 import type {
   BuiltDocument,
   ConsultResult,
@@ -51,6 +51,7 @@ import {
   consultDocument,
   consultVoided,
   deferDocument,
+  probeAuthority,
   reportContingencyEvent,
   submitDocument,
   voidDocument,
@@ -185,6 +186,7 @@ export class SvProvider implements FiscalDocumentProvider {
       authorityDownReason: String(SvContingency.REASONS.AUTHORITY_DOWN),
       transmitWithinHours: SvContingency.TRANSMIT_WITHIN_HOURS,
       reportWithinHours: SvContingency.REPORT_WITHIN_HOURS,
+      technicalReportAfterDays: SvContingency.TECHNICAL_REPORT_AFTER_DAYS,
       maxDocumentsPerEvent: SvContingency.MAX_DOCUMENTS,
       requiresResponsible: true
     }
@@ -253,6 +255,10 @@ export class SvProvider implements FiscalDocumentProvider {
     ctx: ProviderContext
   ): Promise<ContingencyReportResult> {
     return reportContingencyEvent(this.deps, event, ctx)
+  }
+
+  probeAuthority(ctx: ProviderContext): Promise<FiscalAuthorityProbeOutcome> {
+    return probeAuthority(this.deps, ctx)
   }
 
   // The annexes of the monthly VAT return (F-07)

@@ -247,6 +247,11 @@ describe('RLS phase 5: the fiscal lifecycle of the worker runs in the context of
     await expect(contingencies.current(ctx.orgA.id)).resolves.toBeNull()
     await expect(contingencies.unreported(ctx.orgA.id)).resolves.toEqual([])
     await expect(contingencies.warnWindows(ctx.orgA.id)).resolves.toBe(0)
+    // The probe and the daily start of the probes open their own context too (nothing is open: nothing to ask)
+    await expect(contingencies.ensureProbes(ctx.orgA.id)).resolves.toBeUndefined()
+    await expect(
+      contingencies.probe(ctx.orgA.id, '9e99f91f-dfdc-419b-ae00-aeb3ee1f31eb')
+    ).resolves.toBe('nothing')
     const sale = await documentedSale(ctx.orgA.id, ctx.storeA)
     await expect(documents.reportExhausted(ctx.orgA.id, sale.documentId)).resolves.toBeUndefined()
     expect(jobs.isOpen()).toBe(false)
