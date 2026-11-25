@@ -6,6 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
+import { dsrExportPasswordAad } from '@platform/core/compliance'
 import { CredentialCipher, DecryptionError, failureOf, SealedWith } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import {
@@ -375,6 +376,32 @@ export class CredentialsResealService {
             await client().dataSubjectRequest.updateMany({
               where: { id: row.id, organizationId, notifyToEncrypted: asBytes(row.sealed) },
               data: { notifyToEncrypted: next }
+            })
+          ).count === 1
+      },
+      {
+        // The password of the encrypted ZIP of a data export (text, bound to its request); it lives as long as the file (a few days)
+        id: SealedTargetIds.DSR_EXPORT_PASSWORD,
+        resourceType: SealedResourceTypes.DATA_SUBJECT_REQUEST,
+        format: SealedFormats.TEXT,
+        read: async (organizationId, cursor, take) =>
+          (
+            await client().dataSubjectRequest.findMany({
+              where: { organizationId, resultPasswordSealed: { not: null }, ...after(cursor) },
+              select: { id: true, resultPasswordSealed: true },
+              orderBy: { id: 'asc' },
+              take
+            })
+          ).flatMap(r =>
+            r.resultPasswordSealed === null
+              ? []
+              : [{ id: r.id, sealed: r.resultPasswordSealed, aad: dsrExportPasswordAad(r.id) }]
+          ),
+        swap: async (organizationId, row, next) =>
+          (
+            await client().dataSubjectRequest.updateMany({
+              where: { id: row.id, organizationId, resultPasswordSealed: asBytes(row.sealed) },
+              data: { resultPasswordSealed: next }
             })
           ).count === 1
       }

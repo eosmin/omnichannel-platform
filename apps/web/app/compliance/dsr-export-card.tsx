@@ -106,14 +106,13 @@ export function DsrExportCard(): ReactElement {
   }
 
   const copyPassword = (): void => {
-    const password = result?.password
-    if (password === undefined) return
+    if (result === null) return
     // `navigator.clipboard` does not exist outside a secure context or in some webviews: that is a failure to say, not an exception
     if (typeof navigator.clipboard?.writeText !== 'function') {
       setCopy('failed')
       return
     }
-    navigator.clipboard.writeText(password).then(
+    navigator.clipboard.writeText(result.password).then(
       () => setCopy('copied'),
       () => setCopy('failed')
     )
@@ -139,31 +138,29 @@ export function DsrExportCard(): ReactElement {
         ) : (
           <p className="text-muted-foreground">{t('expired')}</p>
         )}
-        {result.password === undefined ? null : (
-          <div className="flex flex-col gap-2">
-            <p className="text-muted-foreground">{t('passwordHint')}</p>
-            <p className="text-sm font-medium">{t('passwordLabel')}</p>
-            <code
-              translate="no"
-              className="rounded-md border px-3 py-2 font-mono break-all select-all"
-            >
-              {result.password}
-            </code>
-            <Button type="button" variant="outline" onClick={copyPassword}>
-              {copy === 'copied' ? (
-                <Check aria-hidden="true" className="size-4" />
-              ) : (
-                <Copy aria-hidden="true" className="size-4" />
-              )}
-              {copy === 'copied' ? t('copied') : t('copy')}
-            </Button>
-            {copy === 'idle' ? null : (
-              <p role="status" className="text-muted-foreground text-sm">
-                {copy === 'copied' ? t('copied') : t('copyFailed')}
-              </p>
+        <div className="flex flex-col gap-2">
+          <p className="text-muted-foreground">{t('passwordHint')}</p>
+          <p className="text-sm font-medium">{t('passwordLabel')}</p>
+          <code
+            translate="no"
+            className="rounded-md border px-3 py-2 font-mono break-all select-all"
+          >
+            {result.password}
+          </code>
+          <Button type="button" variant="outline" onClick={copyPassword}>
+            {copy === 'copied' ? (
+              <Check aria-hidden="true" className="size-4" />
+            ) : (
+              <Copy aria-hidden="true" className="size-4" />
             )}
-          </div>
-        )}
+            {copy === 'copied' ? t('copied') : t('copy')}
+          </Button>
+          {copy === 'idle' ? null : (
+            <p role="status" className="text-muted-foreground text-sm">
+              {copy === 'copied' ? t('copied') : t('copyFailed')}
+            </p>
+          )}
+        </div>
       </div>
     )
   }

@@ -100,6 +100,9 @@ importers:
       '@tanstack/react-virtual':
         specifier: 3.14.19
         version: 3.14.19(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@zip.js/zip.js':
+        specifier: 2.25.0
+        version: 2.25.0
       bullmq:
         specifier: 6.3.4
         version: 6.3.4(ioredis@6.0.0(supports-color@8.1.1))(pg@8.16.3)
@@ -5273,6 +5276,10 @@ packages:
 
   '@yarnpkg/lockfile@1.1.0':
     resolution: {integrity: sha512-GpSwvyXOcOOlV70vbnzjj4fW5xW/FdUF6nQEt1ENy7m4ZCczi1+/buVUPAqmGfqznsORNFzUMjctTIp8a9tuCQ==}
+
+  '@zip.js/zip.js@2.25.0':
+    resolution: {integrity: sha512-oNRqUuU1XFu6G5d7Z0jufJ9dS9WteO0xiU/PNxsUrb4itZCsSbn191jpJzU00Gmc6S680X3DPZeF5EV4zAEMAg==}
+    engines: {bun: '>=0.7.0', deno: '>=1.0.0', node: '>=18.0.0'}
 
   '@zkochan/js-yaml@0.0.7':
     resolution: {integrity: sha512-nrUSn7hzt7J6JWgWGz78ZYI8wj+gdIJdk0Ynjpp8l+trkn58Uqsf6RYrYkEK+3X18EX+TNdtJI0WxAtc+L84SQ==}
@@ -15047,6 +15054,8 @@ snapshots:
     optional: true
 
   '@yarnpkg/lockfile@1.1.0': {}
+
+  '@zip.js/zip.js@2.25.0': {}
 
   '@zkochan/js-yaml@0.0.7':
     dependencies:

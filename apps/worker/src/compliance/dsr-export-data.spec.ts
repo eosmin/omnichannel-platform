@@ -93,9 +93,7 @@ describe('the data of a data export: files and fiscal data', () => {
       deps({ [own.key]: 2048, [infected.key]: 1, [pending.key]: 1, [foreign.key]: 1 }, {})
     )
 
-    expect(content.attachments).toEqual([
-      { entry: 'files/0000-receipt.png', key: own.key, size: 2048 }
-    ])
+    expect(content.attachments).toEqual([{ entry: 'files/0000.png', key: own.key, size: 2048 }])
     const listed = content.files.find(file => file.name === 'files.json')?.json as {
       filename: string
       included: boolean
