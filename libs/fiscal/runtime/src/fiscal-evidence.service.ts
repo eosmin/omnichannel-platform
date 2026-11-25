@@ -14,6 +14,7 @@ import {
   PrismaService
 } from '@platform/core/database'
 import {
+  FiscalConflictReasons,
   FiscalDocumentStatus,
   FiscalEvidenceContentTypes,
   FiscalEvidenceKind,
@@ -21,13 +22,13 @@ import {
   MediaStatus,
   SealedValueKind
 } from '@platform/core/domain'
-import { errorName } from '@platform/core/errors'
+import { errorName, resourceConflict } from '@platform/core/errors'
 import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
 import { MediaPurpose, sanitizeFilename, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
-import { renderRepresentationPdf } from './fiscal-representation-pdf'
+import { RepresentationTooLargeError, renderRepresentationPdf } from './fiscal-representation-pdf'
 import { record, toJson } from './json'
 import { openSealed } from './sealed-open'
 
@@ -327,6 +328,13 @@ export class FiscalEvidenceService {
         { documentId: doc.id, kind, err: errorName(error) },
         'the representation of a fiscal document could not be made'
       )
+      // A document too large to draw is told to the person who asks (409 with its reason), not hidden behind a "not found": the receiver
+      // must be given the file by another way. Any other fault stays a log and a file that is made the next time it is asked for.
+      if (error instanceof RepresentationTooLargeError) {
+        throw resourceConflict('the representation of this document is too large to be drawn', {
+          reason: FiscalConflictReasons.REPRESENTATION_TOO_LARGE
+        })
+      }
       return null
     }
   }

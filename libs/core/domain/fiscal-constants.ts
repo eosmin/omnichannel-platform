@@ -59,9 +59,12 @@ export const FiscalLimits = {
   // document is this big is a fault to read in the logs
   EVIDENCE_MAX_BYTES: 4 * 1024 * 1024,
   // What a representation may hold before it is drawn (it is drawn by the worker, so its size is bounded first): a text longer than this or
-  // more rows than this is refused, never cut (a cut legal paper is a wrong one). Above what any document of an authority holds.
+  // more rows than this is refused, never cut (a cut legal paper is a wrong one). The rows of the items table have their own bound, above
+  // the most items a provider builds (the provider of El Salvador builds up to 2000; its spec checks it), and the rest of the rows (the
+  // sections, the totals, the notes) another one, so a legitimate document never reaches either.
   REPRESENTATION_MAX_TEXT_CHARS: 5000,
-  REPRESENTATION_MAX_ROWS: 2000,
+  REPRESENTATION_MAX_TABLE_ROWS: 2500,
+  REPRESENTATION_MAX_OTHER_ROWS: 300,
   // Attempts of the job; the provider's own contingency decides what an attempt does while the authority is down
   MAX_ATTEMPTS: 6,
   // The delay before the first retry; it doubles each time, so the last wait of the queue (BACKOFF_MS * 2^(MAX_ATTEMPTS - 2) = 12 min)
@@ -291,6 +294,9 @@ export const FiscalConflictReasons = {
   VOID_IN_PROGRESS: 'void_in_progress',
   // A sale document with credit notes that are not voided: the notes go first
   HAS_CREDIT_NOTES: 'has_credit_notes',
+  // The picture of a document is larger than what is drawn (a text or a number of items beyond the bound): the person gives the receiver the
+  // file of the document by another way and the provider is told
+  REPRESENTATION_TOO_LARGE: 'representation_too_large',
   // A voided sale document that already has the document that replaces it
   ALREADY_REPLACED: 'already_replaced',
   // The receiver of a credit note is the one of the document it cancels: it is fixed there

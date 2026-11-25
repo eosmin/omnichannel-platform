@@ -1,7 +1,12 @@
 import type { PinoLogger } from 'nestjs-pino'
 
 import type { CredentialCipher } from '@platform/core/crypto'
-import { FiscalDocumentStatus, FiscalEvidenceKind } from '@platform/core/domain'
+import {
+  FiscalConflictReasons,
+  FiscalDocumentStatus,
+  FiscalEvidenceKind,
+  FiscalLimits
+} from '@platform/core/domain'
 import type { FiscalDocumentProvider, FiscalRepresentation } from '@platform/fiscal/sdk'
 
 import { FiscalEvidenceService } from './fiscal-evidence.service'
@@ -156,5 +161,26 @@ describe('the files the receiver is given', () => {
     expect(await kept.service.keep('org-1', 'doc-1', FiscalEvidenceKind.REPRESENTATION)).toEqual({
       mediaId: 'media-9'
     })
+  })
+
+  it('tells the person, with a reason, that a picture is too large to be drawn', async () => {
+    const huge = {
+      ...representation,
+      footnotes: [
+        {
+          label: 'Observaciones',
+          value: 'x'.repeat(FiscalLimits.REPRESENTATION_MAX_TEXT_CHARS + 1)
+        }
+      ]
+    }
+    const { service, put } = build({ represent: () => huge })
+    await expect(
+      service.keep('org-1', 'doc-1', FiscalEvidenceKind.REPRESENTATION)
+    ).rejects.toMatchObject({
+      metadata: { reason: FiscalConflictReasons.REPRESENTATION_TOO_LARGE }
+    })
+    expect(put).not.toHaveBeenCalled()
+    // The file of the document is not the picture: it is still made
+    expect(await service.keep('org-1', 'doc-1', FiscalEvidenceKind.DTE_FILE)).not.toBeNull()
   })
 })

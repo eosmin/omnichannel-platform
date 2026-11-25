@@ -1,7 +1,7 @@
-import { FiscalDocumentKind, FiscalEnvironment } from '@platform/core/domain'
+import { FiscalDocumentKind, FiscalEnvironment, FiscalLimits } from '@platform/core/domain'
 import type { StoredFiscalDocument } from '@platform/fiscal/sdk'
 
-import { SvProviderDataKeys, SvRepresentation } from './sv-constants'
+import { SvLimits, SvProviderDataKeys, SvRepresentation } from './sv-constants'
 import { representDocument } from './sv-representation'
 import { acceptedDocument, BUSINESS, credited, ISSUER, line } from './testing/sv-fixtures'
 
@@ -72,7 +72,7 @@ describe('the representation of an accepted document', () => {
 
   it('names the issuer with its address by the names of the catalogs', () => {
     const rep = representDocument(invoice())
-    expect(valueOf(rep, 'Nombre o razón social')).toBe(ISSUER.legalName)
+    expect(valueOf(rep, 'Nombre (Emisor)')).toBe(ISSUER.legalName)
     expect(valueOf(rep, 'NIT')).toBe('06140101011011')
     expect(valueOf(rep, 'Complemento')).toBe('Calle 1, Colonia Centro')
     expect(valueOf(rep, 'Departamento')).toBe('San Salvador')
@@ -89,7 +89,7 @@ describe('the representation of an accepted document', () => {
     const receiver = rep?.sections.find(section => section.heading === 'Receptor')
     expect(receiver?.rows.map(row => row.label)).toEqual(
       expect.arrayContaining([
-        'Nombre o razón social',
+        'Nombre (Receptor)',
         'NIT',
         'NRC',
         'Departamento',
@@ -191,10 +191,11 @@ describe('the representation of an accepted document', () => {
     'Tipo de Transmisión',
     'Fecha de Generación',
     'Hora de Generación',
-    'Nombre o razón social',
+    'Nombre (Emisor)',
     'NIT',
     'Departamento',
     'Municipio',
+    'Dirección Distrito (Emisor)',
     'Complemento',
     'Teléfono',
     'Correo electrónico',
@@ -209,7 +210,7 @@ describe('the representation of an accepted document', () => {
   const ITEM_A = [
     'N°',
     'Cantidad',
-    'Unidad',
+    'Unidad de Medida',
     'Descripción',
     'Precio Unitario',
     'Descuento por ítem',
@@ -219,16 +220,29 @@ describe('the representation of an accepted document', () => {
   ]
   it.each([
     ['01', invoice, [...COMMON_A], ['Sub total']],
-    ['03', taxCredit, [...COMMON_A, 'NRC', 'Actividad económica'], ['Sub total']],
+    [
+      '03',
+      taxCredit,
+      [
+        ...COMMON_A,
+        'Nombre (Receptor)',
+        'Dirección Distrito (Receptor)',
+        'NRC',
+        'Actividad económica'
+      ],
+      ['Sub total']
+    ],
     [
       '05',
       creditNote,
       [
         ...COMMON_A,
+        'Nombre (Receptor)',
+        'Dirección Distrito (Receptor)',
         'NRC',
         'Actividad económica',
         'Tipo de documento de identificación',
-        'Número de documento',
+        'Número de documento de identificación (Receptor)',
         'Tipo de documento relacionado',
         'Número de documento relacionado',
         'Fecha de generación del documento relacionado'
@@ -249,7 +263,88 @@ describe('the representation of an accepted document', () => {
   it('does not show the optional fields (C) nor those of the law (B) that are zero', () => {
     const labels = (representDocument(invoice())?.totals.map(row => row.label) ?? []).join('|')
     expect(labels).not.toContain('IVA 13%')
-    expect(labels).not.toContain('IVA retenido')
+    expect(labels).not.toContain('IVA Retenido')
     expect(labels).not.toContain('Descuento global')
+  })
+
+  it('shows the district by the code the document carries, and not in the receiver of an invoice', () => {
+    const rep = representDocument(invoice())
+    expect(valueOf(rep, 'Dirección Distrito (Emisor)')).toBe('01')
+    expect(valueOf(rep, 'Dirección Distrito (Receptor)')).toBeUndefined()
+    expect(valueOf(representDocument(taxCredit()), 'Dirección Distrito (Receptor)')).toBe('02')
+  })
+
+  it('names the summary and the columns as the Anexo does', () => {
+    const rep = representDocument(creditNote())
+    expect(rep?.table?.columns).toContain('Unidad de Medida')
+    const labels = [...(rep?.totals ?? [])].map(row => row.label)
+    expect(labels).toEqual(
+      expect.arrayContaining(['Total de operaciones gravadas', 'Suma de operaciones'])
+    )
+    // The totals of a note are "Total IVA ...", those of an invoice or a tax credit document "IVA ..."
+    expect(labels).toContain('Total IVA 13%')
+  })
+
+  it('draws a debit note like a credit note: the same fields and its related document', () => {
+    const debit = kept(
+      acceptedDocument({
+        kind: FiscalDocumentKind.DEBIT_NOTE,
+        credited: credited(),
+        receiver: BUSINESS,
+        lines: [
+          line({
+            description: 'Gorra',
+            quantity: 1,
+            unitPriceCents: 333,
+            totalCents: 333,
+            taxCents: 38
+          })
+        ],
+        shippingCents: 0,
+        shippingTaxCents: 0,
+        totalCents: 333,
+        taxCents: 38,
+        payments: []
+      })
+    )
+    const rep = representDocument(debit)
+    expect(rep?.title).toBe(SvRepresentation.TITLES['06'])
+    expect(rep?.table?.columns).toContain('N° Documento relacionado')
+    const related = rep?.sections.find(section => section.heading === 'Documentos relacionados')
+    expect(related?.rows.map(row => row.label)).toEqual([
+      'Tipo de documento relacionado',
+      'Número de documento relacionado',
+      'Fecha de generación del documento relacionado'
+    ])
+    expect(valueOf(rep, 'Total a pagar')).toBeDefined()
+  })
+
+  it('the bounds of the picture hold a document with the most items the provider builds', () => {
+    expect(FiscalLimits.REPRESENTATION_MAX_TABLE_ROWS).toBeGreaterThan(SvLimits.ITEMS_MAX)
+    const lines = Array.from({ length: SvLimits.ITEMS_MAX }, () =>
+      line({
+        description: 'Clavo',
+        quantity: 1,
+        unitPriceCents: 113,
+        totalCents: 113,
+        taxCents: 13
+      })
+    )
+    const big = kept(
+      acceptedDocument({
+        lines,
+        shippingCents: 0,
+        shippingTaxCents: 0,
+        totalCents: 113 * SvLimits.ITEMS_MAX,
+        taxCents: 13 * SvLimits.ITEMS_MAX
+      })
+    )
+    const rep = representDocument(big)
+    expect(rep?.table?.rows).toHaveLength(SvLimits.ITEMS_MAX)
+    const other =
+      (rep?.sections.reduce((sum, section) => sum + section.rows.length, 0) ?? 0) +
+      (rep?.totals.length ?? 0) +
+      (rep?.footnotes.length ?? 0)
+    expect(other).toBeLessThan(FiscalLimits.REPRESENTATION_MAX_OTHER_ROWS)
   })
 })

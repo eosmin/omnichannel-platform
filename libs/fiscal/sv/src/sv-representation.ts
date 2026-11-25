@@ -47,10 +47,11 @@ const MUNICIPALITY_NAMES = new Map<string, string>(
 const IDENTITY_NAMES = new Map<string, string>(IDENTITY_DOCUMENTS.map(row => [row.code, row.name]))
 const UNIT_NAMES = new Map<string, string>(UNITS.map(row => [row.code, row.name]))
 
-// The address as the document gives it, one row for each field of the Anexo: department and municipality by the name of their catalog and
-// the complement, which holds the name of the district (Anexo II, field 29). The district has no row of its own: the catalog of the
-// repository gives no municipality for a district code (the same code repeats), so its name cannot be told from the code alone.
-function addressRows(value: unknown): [string, string | null][] {
+// The address as the document gives it, one row for each field of the Anexo (department, municipality, district, complement). Department
+// and municipality go by the name of their catalog; the district goes by the CODE the document carries: the catalog of the repository gives
+// no municipality for a district code (the same code repeats), so its name cannot be told, and the name is in the complement by the rule of
+// field 29. The code is replaced by the name when the whole catalog is here.
+function addressRows(value: unknown, role: string): [string, string | null][] {
   const data = isRecord(value) ? value : {}
   const department = text(data['departamento'])
   const municipality = text(data['municipio'])
@@ -62,6 +63,7 @@ function addressRows(value: unknown): [string, string | null][] {
         ? (MUNICIPALITY_NAMES.get(`${department}:${municipality}`) ?? null)
         : null
     ],
+    [`Dirección Distrito (${role})`, text(data['distrito'])],
     ['Complemento', text(data['complemento'])]
   ]
 }
@@ -96,6 +98,19 @@ const GLOBAL_DISCOUNTS: Layout['summary'] = [
   ['Descuento global a ventas exentas', 'descuExenta', false],
   ['Descuento global a ventas gravadas', 'descuGravada', false]
 ]
+// A credit note and a debit note have the same structure (Anexo II: the fields of the NCE are the ones of the NDE)
+const ADJUSTMENT: Layout = {
+  relatedColumn: true,
+  summary: [
+    ...OPERATIONS,
+    ['Total IVA Percibido', 'ivaPerci', false],
+    ['Total IVA 13%', 'totalIva', false],
+    ['Total IVA Retenido', 'ivaRete', false],
+    ['Monto total de la operación', 'montoTotalOperacion', true],
+    ['Total cargos / abonos que no afectan la base imponible', 'totalNoGravado', false],
+    ['Total a pagar', 'totalPagar', true]
+  ]
+}
 const LAYOUTS: Readonly<Record<string, Layout>> = {
   [SvDocumentTypes.INVOICE]: {
     relatedColumn: false,
@@ -103,9 +118,9 @@ const LAYOUTS: Readonly<Record<string, Layout>> = {
       ...OPERATIONS,
       ...GLOBAL_DISCOUNTS,
       ['Sub total', 'subTotal', true],
-      ['IVA retenido', 'ivaRete', false],
+      ['IVA Retenido', 'ivaRete', false],
       ['Monto total de la operación', 'montoTotalOperacion', true],
-      ['Total otros montos no afectos', 'totalNoGravado', false],
+      ['Total cargos / abonos que no afectan la base imponible', 'totalNoGravado', false],
       ['Total a pagar', 'totalPagar', true]
     ]
   },
@@ -115,25 +130,15 @@ const LAYOUTS: Readonly<Record<string, Layout>> = {
       ...OPERATIONS,
       ...GLOBAL_DISCOUNTS,
       ['Sub total', 'subTotal', true],
-      ['IVA percibido', 'ivaPerci', false],
-      ['IVA retenido', 'ivaRete', false],
+      ['IVA Percibido', 'ivaPerci', false],
+      ['IVA Retenido', 'ivaRete', false],
       ['Monto total de la operación', 'montoTotalOperacion', true],
-      ['Total otros montos no afectos', 'totalNoGravado', false],
+      ['Total cargos / abonos que no afectan la base imponible', 'totalNoGravado', false],
       ['Total a pagar', 'totalPagar', true]
     ]
   },
-  [SvDocumentTypes.CREDIT_NOTE]: {
-    relatedColumn: true,
-    summary: [
-      ...OPERATIONS,
-      ['IVA percibido', 'ivaPerci', false],
-      ['IVA 13%', 'totalIva', false],
-      ['IVA retenido', 'ivaRete', false],
-      ['Monto total de la operación', 'montoTotalOperacion', true],
-      ['Total otros montos no afectos', 'totalNoGravado', false],
-      ['Total a pagar', 'totalPagar', true]
-    ]
-  }
+  [SvDocumentTypes.CREDIT_NOTE]: ADJUSTMENT,
+  [SvDocumentTypes.DEBIT_NOTE]: ADJUSTMENT
 }
 
 function identification(id: Json, seal: string | null): FiscalRepresentationSection {
@@ -197,30 +202,32 @@ function relatedDocuments(value: unknown): FiscalRepresentationSection | null {
   }
 }
 
+// `role` is the party (Emisor or Receptor); the receiver of an invoice to a final consumer has no address on the picture (the Anexo marks it
+// as optional there, C)
 function party(
-  heading: string,
+  role: 'Emisor' | 'Receptor',
   value: unknown,
-  withEstablishment: boolean
+  showAddress: boolean
 ): FiscalRepresentationSection {
   const data = isRecord(value) ? value : {}
   const kind = text(data['tipoDocumento'])
   return {
-    heading,
+    heading: role,
     rows: rows([
-      ['Nombre o razón social', text(data['nombre'])],
+      [`Nombre (${role})`, text(data['nombre'])],
       ['Nombre comercial', text(data['nombreComercial'])],
       ['NIT', text(data['nit'])],
       [
         'Tipo de documento de identificación',
         kind === null ? null : (IDENTITY_NAMES.get(kind) ?? kind)
       ],
-      ['Número de documento', text(data['numDocumento'])],
+      [`Número de documento de identificación (${role})`, text(data['numDocumento'])],
       ['NRC', text(data['nrc'])],
       ['Actividad económica', text(data['descActividad'])],
-      ...addressRows(data['direccion']),
+      ...(showAddress ? addressRows(data['direccion'], role) : []),
       ['Teléfono', text(data['telefono'])],
       ['Correo electrónico', text(data['correo'])],
-      ...(withEstablishment
+      ...(role === 'Emisor'
         ? ([
             ['Código de establecimiento', text(data['codEstable'])],
             ['Código de punto de venta', text(data['codPuntoVenta'])]
@@ -235,7 +242,7 @@ function itemsTable(body: readonly Json[], layout: Layout): FiscalRepresentation
     'N°',
     ...(layout.relatedColumn ? ['N° Documento relacionado'] : []),
     'Cantidad',
-    'Unidad',
+    'Unidad de Medida',
     'Descripción',
     'Precio Unitario',
     'Descuento por ítem',
@@ -310,7 +317,9 @@ export function representDocument(doc: StoredFiscalDocument): FiscalRepresentati
     sections: [
       identification(id, seal),
       party('Emisor', payload['emisor'], true),
-      ...(isRecord(payload['receptor']) ? [party('Receptor', payload['receptor'], false)] : []),
+      ...(isRecord(payload['receptor'])
+        ? [party('Receptor', payload['receptor'], doc.documentType !== SvDocumentTypes.INVOICE)]
+        : []),
       ...(related === null ? [] : [related])
     ],
     table: itemsTable(list(payload['cuerpoDocumento']), layout),

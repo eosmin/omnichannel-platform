@@ -113,7 +113,7 @@ describe('the PDF of a representation', () => {
         at
       )
     ).rejects.toBeInstanceOf(RepresentationTooLargeError)
-    const rows = Array.from({ length: FiscalLimits.REPRESENTATION_MAX_ROWS + 1 }, () => [
+    const rows = Array.from({ length: FiscalLimits.REPRESENTATION_MAX_TABLE_ROWS + 1 }, () => [
       '1',
       'a',
       '1'
@@ -125,6 +125,41 @@ describe('the PDF of a representation', () => {
         }),
         at
       )
+    ).rejects.toBeInstanceOf(RepresentationTooLargeError)
+  })
+
+  it('draws a table of the most rows it accepts, with the most other rows', async () => {
+    const rows = Array.from({ length: FiscalLimits.REPRESENTATION_MAX_TABLE_ROWS }, () => [
+      '1',
+      'a',
+      '1'
+    ])
+    const sections = [
+      {
+        heading: 'S',
+        rows: Array.from({ length: FiscalLimits.REPRESENTATION_MAX_OTHER_ROWS - 2 }, () => ({
+          label: 'a',
+          value: 'b'
+        }))
+      }
+    ]
+    const bytes = await renderRepresentationPdf(
+      representation({
+        sections,
+        table: { columns: ['N', 'D', 'V'], numericColumns: [0, 2], wideColumn: 1, rows }
+      }),
+      at
+    )
+    expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+  }, 120_000)
+
+  it('refuses more other rows than it accepts', async () => {
+    const rows = Array.from({ length: FiscalLimits.REPRESENTATION_MAX_OTHER_ROWS + 1 }, () => ({
+      label: 'a',
+      value: 'b'
+    }))
+    await expect(
+      renderRepresentationPdf(representation({ totals: rows }), at)
     ).rejects.toBeInstanceOf(RepresentationTooLargeError)
   })
 })

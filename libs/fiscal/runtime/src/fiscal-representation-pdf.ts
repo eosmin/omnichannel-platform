@@ -157,13 +157,13 @@ function assertWithinLimits(representation: FiscalRepresentation): void {
     ]),
     representation.qrUrl ?? ''
   ]
-  const rows =
+  const otherRows =
     representation.sections.reduce((sum, section) => sum + section.rows.length, 0) +
-    (representation.table?.rows.length ?? 0) +
     representation.totals.length +
     representation.footnotes.length
   if (
-    rows > FiscalLimits.REPRESENTATION_MAX_ROWS ||
+    otherRows > FiscalLimits.REPRESENTATION_MAX_OTHER_ROWS ||
+    (representation.table?.rows.length ?? 0) > FiscalLimits.REPRESENTATION_MAX_TABLE_ROWS ||
     texts.some(value => value.length > FiscalLimits.REPRESENTATION_MAX_TEXT_CHARS)
   ) {
     throw new RepresentationTooLargeError()

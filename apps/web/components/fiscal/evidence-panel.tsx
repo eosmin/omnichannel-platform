@@ -10,7 +10,7 @@ import { HttpStatusCodes } from '@platform/core/errors'
 
 import { fiscalEvidenceKindsOf } from '../../lib/fiscal/document-rules'
 import { useFiscalEvidenceLink } from '../../lib/fiscal/use-fiscal'
-import { useErrorText } from '../../lib/use-error-text'
+import { useFiscalErrorText } from '../../lib/fiscal/use-fiscal-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
@@ -46,7 +46,7 @@ function EvidenceRow({
   kind: FiscalEvidenceKind
 }): ReactElement {
   const t = useTranslations('finance.fiscal.evidence')
-  const errorText = useErrorText()
+  const errorText = useFiscalErrorText()
   const { storeId } = useStore()
   const link = useFiscalEvidenceLink(storeId)
   // A link is cleared before it expires, so an expired one is never left to click and one is not kept in the page for long

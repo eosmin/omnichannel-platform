@@ -8224,6 +8224,7 @@
         "replacedFirst": "The replacement was queued. Invalidate this document once it is accepted."
       },
       "conflicts": {
+        "representation_too_large": "The graphic representation of this document is too large to be drawn. Give the customer the file of the document another way.",
         "has_credit_notes": "This document has credit notes that are not voided. Void the notes first.",
         "already_replaced": "This sale already has a document that replaces it.",
         "credit_note_receiver": "The receiver of a credit note is the one of the document it cancels: fix it there.",
