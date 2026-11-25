@@ -194,6 +194,34 @@ describe('The public download of the file of a data request', () => {
     }
   })
 
+  it.each([
+    ['already used', { used: true, tokenExpiresAt: undefined }],
+    ['expired', { used: false, tokenExpiresAt: new Date(Date.now() - 1000) }]
+  ])(
+    'a dead link (%s) does not burn a live sibling of the same request, and the sibling then opens',
+    async (_name, deadOptions) => {
+      const live = await finished()
+      const dead = generateToken()
+      await owner.verificationToken.create({
+        data: {
+          type: VerificationTokenType.DSR_EXPORT_DOWNLOAD,
+          tokenHash: hashToken(dead),
+          subject: live.id,
+          expiresAt: deadOptions.tokenExpiresAt ?? new Date(Date.now() + DAY_MS),
+          usedAt: deadOptions.used === true ? new Date() : null
+        }
+      })
+
+      expect((await post(dead)).status).toBe(BAD_REQUEST)
+
+      const sibling = await owner.verificationToken.findFirstOrThrow({
+        where: { tokenHash: hashToken(live.token) }
+      })
+      expect(sibling.usedAt).toBeNull()
+      expect((await post(live.token)).status).toBe(OK)
+    }
+  )
+
   it('spends the other live links of the same request with the first download', async () => {
     const { id, token } = await finished()
     const second = generateToken()

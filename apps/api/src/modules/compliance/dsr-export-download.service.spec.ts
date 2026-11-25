@@ -144,6 +144,25 @@ describe('DsrExportDownloadService', () => {
     }
   )
 
+  it('asks the bucket BEFORE the claim and outside the transaction: a missing file spends nothing and takes no lock', async () => {
+    const { service, client, tenantTransaction } = build({ objectMissing: true })
+    await expect(service.download({ token: TOKEN })).rejects.toMatchObject(invalid)
+    // only the lookup of the request ran as raw SQL (no lock, no claim), and only the read of the request opened a context
+    expect(client.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(tenantTransaction).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a file that changed between the check of the bucket and the claim, and signs nothing', async () => {
+    const { service, findRequest, downloadUrl, log } = build({})
+    findRequest
+      .mockReset()
+      .mockResolvedValueOnce({ resultKey: 'compliance/dsr/old.zip', type: 'access' })
+      .mockResolvedValueOnce({ resultKey: 'compliance/dsr/new.zip', type: 'access' })
+    await expect(service.download({ token: TOKEN })).rejects.toMatchObject(invalid)
+    expect(downloadUrl).not.toHaveBeenCalled()
+    expect(log).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['the flow is off', { enabled: false }],
     ['the token is unknown, used or expired', { found: [] }],
