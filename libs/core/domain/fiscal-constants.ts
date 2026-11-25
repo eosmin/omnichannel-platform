@@ -277,7 +277,9 @@ export const FiscalContingencyLimits = {
   WARN_REMAINING_RATIO: 0.25,
   // How often an open contingency asks the authority whether it answers again: the rules ask for an attempt at least every 15 minutes
   // while the authority cannot be reached, so the gap stays under it
-  PROBE_INTERVAL_MS: REPORT_RETRY_DELAY_MS
+  PROBE_INTERVAL_MS: REPORT_RETRY_DELAY_MS,
+  // How far ahead of the server's clock the end a person declares may be before it is refused (a screen's clock, not a future end)
+  END_CLOCK_SKEW_MS: 5 * 60 * 1000
 } as const
 
 // A document the authority refused is corrected and sent again within a day of the moment the refusal was communicated, with the same

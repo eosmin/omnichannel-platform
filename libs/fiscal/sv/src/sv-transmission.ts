@@ -531,8 +531,6 @@ export function authorityInstant(text: string | null): number | null {
     : null
 }
 
-// Reports a contingency: the event is signed and sent, and the window to send its documents runs from the moment the authority took it. The
-// window counts from the earlier of the authority's own time and ours, so it is never longer than the authority's.
 // Whether the authority answers now (D2c). A fresh login: the authentication service is the one every call of this provider needs first, and a
 // token kept in memory is never taken for an answer. It does not reach the reception service (the manual's documented calls there all carry a
 // document), so an outage of that service alone is not seen: the person who ends the contingency by hand, and the report that follows, are the
@@ -549,6 +547,8 @@ export async function probeAuthority(
   return FiscalAuthorityProbeOutcome.UNREACHABLE
 }
 
+// Reports a contingency: the event is signed and sent, and the window to send its documents runs from the moment the authority took it. The
+// window counts from the earlier of the authority's own time and ours, so it is never longer than the authority's.
 export async function reportContingencyEvent(
   deps: SvTransmissionDeps,
   event: FiscalContingencyEvent,

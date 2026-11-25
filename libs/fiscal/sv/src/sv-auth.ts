@@ -48,23 +48,29 @@ export class SvAuthenticator {
     this.prune(now)
     const cached = this.tokens.get(key)
     if (cached !== undefined && now < cached.renewAt) return { kind: 'token', token: cached.token }
-    const until = this.refused.get(key)
-    if (until !== undefined && now < until) return { kind: 'rejected' }
-    const running = this.inFlight.get(key)
-    if (running !== undefined) return running
-    const attempt = this.request(key, environment, nit, password).finally(() => {
-      this.inFlight.delete(key)
-    })
-    this.inFlight.set(key, attempt)
-    return attempt
+    return this.ask(key, environment, nit, password)
   }
 
   // Asks the authority for a fresh token whatever is kept (a token in memory proves nothing about the authority answering now). A password the
-  // authority refused is not sent again while its memory lasts, and the documents and probes that wait for the same login share one.
+  // authority refused is not sent again while its memory lasts, as with a login.
   async probe(environment: FiscalEnvironment, nit: string, password: string): Promise<SvLogin> {
     const key = this.keyOf(environment, nit, password)
     this.prune(this.options.now())
-    if (this.refused.has(key)) return { kind: 'rejected' }
+    return this.ask(key, environment, nit, password)
+  }
+
+  // The call to the authority, shared: a password it refused is not sent again while the memory of the refusal lasts, and the documents and
+  // probes that wait for the same login share one call
+  private ask(
+    key: string,
+    environment: FiscalEnvironment,
+    nit: string,
+    password: string
+  ): Promise<SvLogin> {
+    const until = this.refused.get(key)
+    if (until !== undefined && this.options.now() < until) {
+      return Promise.resolve({ kind: 'rejected' })
+    }
     const running = this.inFlight.get(key)
     if (running !== undefined) return running
     const attempt = this.request(key, environment, nit, password).finally(() => {

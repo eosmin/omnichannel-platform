@@ -3364,7 +3364,7 @@ model FiscalContingency {
   windowEndsAt            DateTime? @map("window_ends_at") // the last instant to send the documents of the lot (the provider's window after `reportedAt`)
   warnedAt                DateTime? @map("warned_at") // the person was told the window is closing
   restoredAt              DateTime? @map("restored_at") // the first instant the probe found the authority answering while it was open (an upper bound of the real end)
-  probeHaltedAt           DateTime? @map("probe_halted_at") // the authority refused the credentials: no probe asks again until the issuer changes
+  probeHaltedFingerprint  String?   @map("probe_halted_fingerprint") // a fingerprint of the sealed credentials the authority refused: no probe asks again while the issuer holds the same ones
   technicalReportWarnedAt DateTime? @map("technical_report_warned_at") // the person was told a technical report is due ahead of the event
   providerData            Json?     @map("provider_data") // opaque to core: the seal the authority gave the event
   response                Json? // what the authority answered

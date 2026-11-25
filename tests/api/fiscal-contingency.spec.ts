@@ -203,7 +203,7 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
 
   const asAdminA = () => api(app, ctx.adminA, ctx.storeA)
   const jobs = () => queueOf(app, QueueNames.HEAVY_PROCESSING).jobs
-  const putIssuer = (providerId: string) =>
+  const putIssuer = (providerId: string, signingKey = 'not-a-real-signing-key-1234567890') =>
     asAdminA()
       .put(ApiRoutes.fiscal.issuer)
       .send({
@@ -213,7 +213,7 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
         address: { line1: 'Calle 1', city: 'Ciudad' },
         environment: FiscalEnvironment.SANDBOX,
         issueOn: FiscalIssueOn.DELIVERED,
-        credentials: { signingKey: 'not-a-real-signing-key-1234567890' }
+        credentials: { signingKey }
       })
   const enter = (body: Record<string, unknown> = { reason: AUTHORITY_DOWN }) =>
     asAdminA().post(ApiRoutes.fiscal.contingency.current).send(body)
@@ -875,6 +875,21 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       expect(control.probes).toBe(0)
     })
 
+    it("does not probe a contingency of the issuer's own fault: the authority answering says nothing of it", async () => {
+      const opened = viewOf(await enter({ reason: 'issuer_down' }))
+      expect(schedulerOf(opened.id)).toBeUndefined()
+      control.probe = FiscalAuthorityProbeOutcome.REACHABLE
+      expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.NOTHING
+      )
+      expect(control.probes).toBe(0)
+      expect((await contingencyRow(opened.id)).restoredAt).toBeNull()
+      // The nightly check does not start one either
+      await contingencies.ensureProbes(ctx.orgA.id)
+      expect(schedulerOf(opened.id)).toBeUndefined()
+      expect((await end()).status).toBe(OK)
+    })
+
     it('goes on while the authority does not answer', async () => {
       const opened = viewOf(await enter())
       expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
@@ -943,6 +958,16 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       const real = new Date(started.getTime() + 10)
       expect((await end({ responsible: RESPONSIBLE, endedAt: real.toISOString() })).status).toBe(OK)
       expect((await contingencyRow(opened.id)).endedAt?.getTime()).toBe(real.getTime())
+      // A clock a few seconds ahead of the server's is not a future end: it is taken as now
+      const next = viewOf(await enter())
+      await new Promise(resolve => setTimeout(resolve, 50))
+      const ahead = new Date(Date.now() + 30_000)
+      expect((await end({ responsible: RESPONSIBLE, endedAt: ahead.toISOString() })).status).toBe(
+        OK
+      )
+      expect(
+        (await contingencyRow(next.id)).endedAt?.getTime() ?? Number.POSITIVE_INFINITY
+      ).toBeLessThanOrEqual(Date.now())
     })
 
     it('ends by itself at the first answer when nobody has to say who answers, and queues the report once', async () => {
@@ -994,7 +1019,7 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
         FiscalContingencyProbeResult.HALTED
       )
       expect(control.probes).toBe(1)
-      expect((await contingencyRow(opened.id)).probeHaltedAt).not.toBeNull()
+      expect((await contingencyRow(opened.id)).probeHaltedFingerprint).not.toBeNull()
       // Later probes (even after a restart of the worker, since the halt is in the row) do not reach the provider
       expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
         FiscalContingencyProbeResult.HALTED
@@ -1003,17 +1028,25 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
         FiscalContingencyProbeResult.HALTED
       )
       expect(control.probes).toBe(1)
-      // The issuer changed: it is asked once more
+      // The row of the issuer changes with every document (the correlative): that is not a change of credentials
       await owner.fiscalIssuer.update({
         where: { organizationId: ctx.orgA.id },
-        data: { legalName: 'Contingency Issuer Changed' }
+        data: { nextSequence: { increment: 1 }, legalName: 'Contingency Issuer Changed' }
       })
+      expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
+        FiscalContingencyProbeResult.HALTED
+      )
+      expect(control.probes).toBe(1)
+      // The credentials changed: it is asked once more
+      expect((await putIssuer(PROVIDER_ID, 'another-signing-key-1234567890-abcdef')).status).toBe(
+        OK
+      )
       control.probe = FiscalAuthorityProbeOutcome.UNREACHABLE
       expect(await contingencies.probe(ctx.orgA.id, opened.id)).toBe(
         FiscalContingencyProbeResult.WAITING
       )
       expect(control.probes).toBe(2)
-      expect((await contingencyRow(opened.id)).probeHaltedAt).toBeNull()
+      expect((await contingencyRow(opened.id)).probeHaltedFingerprint).toBeNull()
       expect((await end()).status).toBe(OK)
     })
 

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
@@ -243,7 +243,9 @@ export class FiscalContingencyService {
         FiscalContingencyConflictReasons.ALREADY_OPEN
       )
     }
-    await this.startProbe(organizationId, row.id)
+    // Only a contingency of the authority being down is probed: one for a fault of the issuer's own (the internet, the power) does not end
+    // because the authority answers
+    if (body.reason === mode.authorityDownReason) await this.startProbe(organizationId, row.id)
     this.audit.log({
       action: AuditAction.FISCAL_CONTINGENCY_ENTERED,
       actor: { userId: actor.userId },
@@ -277,13 +279,23 @@ export class FiscalContingencyService {
       const found = rows[0]
       if (found === undefined) return null
       // The 24 hours of the authority run from the real end of the situation: the person's, else the first instant the probe saw the
-      // authority answer (it may have come back earlier, so the local clock of the 24 hours is the more careful one), else now
+      // authority answer, else now. The probe's instant is an UPPER bound (the service may have come back up to one probe interval
+      // earlier), so the local clock can run up to 14 minutes behind the authority's; the warning at a quarter of the time left (six hours)
+      // covers it, and a person who knows the real time declares it. Taking an earlier instant would put the end before documents that were
+      // still kept in it.
       const now = new Date()
-      if (
+      // A clock a few minutes ahead of ours (a screen that fills in "now") is taken as now; anything further ahead is a mistake
+      const declaredAt =
         declared !== null &&
-        (Number.isNaN(declared.getTime()) ||
-          declared.getTime() > now.getTime() ||
-          declared.getTime() < found.started_at.getTime())
+        declared.getTime() > now.getTime() &&
+        declared.getTime() - now.getTime() <= FiscalContingencyLimits.END_CLOCK_SKEW_MS
+          ? now
+          : declared
+      if (
+        declaredAt !== null &&
+        (Number.isNaN(declaredAt.getTime()) ||
+          declaredAt.getTime() > now.getTime() ||
+          declaredAt.getTime() < found.started_at.getTime())
       ) {
         throw this.conflict(
           'the end of the contingency is in the future or before it started',
@@ -291,7 +303,7 @@ export class FiscalContingencyService {
           HttpStatusCodes.BAD_REQUEST
         )
       }
-      const endedAt = declared ?? found.restored_at ?? now
+      const endedAt = declaredAt ?? found.restored_at ?? now
       // What the authority asks is read from the provider the contingency was opened with, not from today's issuer (it may have changed,
       // or be gone): a contingency can always be ended
       const asks =
@@ -969,7 +981,12 @@ export class FiscalContingencyService {
       return FiscalContingencyProbeResult.NOTHING
     }
     const probeFn = provider?.probeAuthority?.bind(provider)
-    if (provider === undefined || mode === undefined || probeFn === undefined) {
+    if (
+      provider === undefined ||
+      mode === undefined ||
+      probeFn === undefined ||
+      row.reason !== mode.authorityDownReason
+    ) {
       await this.stopProbe(contingencyId)
       return FiscalContingencyProbeResult.NOTHING
     }
@@ -983,15 +1000,17 @@ export class FiscalContingencyService {
     ) {
       return FiscalContingencyProbeResult.WAITING
     }
-    // Credentials the authority refused are not sent again until the issuer is changed: three wrong logins lock the user of the authority
-    if (row.probeHaltedAt !== null) {
-      if (issuer.updatedAt.getTime() <= row.probeHaltedAt.getTime()) {
-        return FiscalContingencyProbeResult.HALTED
-      }
+    // Credentials the authority refused are not sent again while the issuer holds the same ones: three wrong logins lock the user of the
+    // authority. The row of the issuer changes with every document (the correlative), so the signal is the sealed credentials themselves.
+    const fingerprint = createHash('sha256')
+      .update(issuer.credentialsEncrypted ?? '')
+      .digest('hex')
+    if (row.probeHaltedFingerprint !== null) {
+      if (row.probeHaltedFingerprint === fingerprint) return FiscalContingencyProbeResult.HALTED
       await this.unit(organizationId, () =>
         this.prisma.client.fiscalContingency.updateMany({
           where: { id: contingencyId, organizationId, status: FiscalContingencyStatus.OPEN },
-          data: { probeHaltedAt: null }
+          data: { probeHaltedFingerprint: null }
         })
       )
     }
@@ -1034,7 +1053,7 @@ export class FiscalContingencyService {
       await this.unit(organizationId, () =>
         this.prisma.client.fiscalContingency.updateMany({
           where: { id: contingencyId, organizationId, status: FiscalContingencyStatus.OPEN },
-          data: { probeHaltedAt: now }
+          data: { probeHaltedFingerprint: fingerprint }
         })
       )
       return FiscalContingencyProbeResult.HALTED
@@ -1116,10 +1135,15 @@ export class FiscalContingencyService {
     const open = await this.unit(organizationId, () =>
       this.prisma.client.fiscalContingency.findMany({
         where: { organizationId, status: FiscalContingencyStatus.OPEN, restoredAt: null },
-        select: { id: true }
+        select: { id: true, providerId: true, reason: true }
       })
     )
-    for (const { id } of open) await this.startProbe(organizationId, id)
+    for (const row of open) {
+      const mode = this.providers.find(row.providerId)?.manifest.contingencyMode
+      if (mode !== undefined && row.reason === mode.authorityDownReason) {
+        await this.startProbe(organizationId, row.id)
+      }
+    }
   }
 
   // One scheduler for each open contingency (asking for it again is the same scheduler). After the real commit; a queue that is down is told
@@ -1181,12 +1205,17 @@ export class FiscalContingencyService {
 
   private async warnTechnicalReport(
     organizationId: string,
-    row: { id: string; startedAt: Date; endedAt: Date | null },
+    row: {
+      id: string
+      startedAt: Date
+      endedAt: Date | null
+      technicalReportWarnedAt?: Date | null
+    },
     mode: Pick<FiscalContingencyDeclaration, 'technicalReportAfterDays'> | undefined,
     now: Date
   ): Promise<boolean> {
     const days = mode?.technicalReportAfterDays
-    if (days === undefined) return false
+    if (days === undefined || (row.technicalReportWarnedAt ?? null) !== null) return false
     const lasted = (row.endedAt ?? now).getTime() - row.startedAt.getTime()
     if (lasted < days * 24 * HOUR_MS) return false
     return this.inTx(organizationId, async tx => {
