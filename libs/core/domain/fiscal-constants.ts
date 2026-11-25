@@ -216,6 +216,21 @@ export const FiscalContingencyLimits = {
   WARN_REMAINING_RATIO: 0.25
 } as const
 
+// A document the authority refused is corrected and sent again within a day of the moment the refusal was communicated, with the same
+// generation code. It is the rule of the authority that receives the documents, read here as data of core.
+export const FiscalRejectionRetry = {
+  WINDOW_MS: 24 * 60 * 60 * 1000,
+  // From this long before the end of the window the person is told, once for each refusal (the daily check asks; a window already over is told too)
+  WARN_BEFORE_MS: 12 * 60 * 60 * 1000
+} as const
+
+// Where a refused document stands against that window
+export enum FiscalRejectionDeadlineState {
+  OPEN = 'open',
+  CLOSING = 'closing',
+  EXPIRED = 'expired'
+}
+
 // What a provider declares about contingency in its manifest (`FiscalContingencyDeclaration`) is in its own words; these are core's reasons
 // for refusing a person's action on a contingency (`details.reason`)
 export const FiscalContingencyConflictReasons = {

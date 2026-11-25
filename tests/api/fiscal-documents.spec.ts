@@ -20,9 +20,17 @@ import {
   OrderStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { Events, type FiscalDocumentRejectedPayload } from '@platform/core/events'
+import {
+  Events,
+  type FiscalDocumentRejectedPayload,
+  type FiscalRetransmitDeadlinePayload
+} from '@platform/core/events'
 import { JobNames, QueueNames, submitFiscalDocumentJobId } from '@platform/core/queues'
-import { FiscalDocumentsService, FiscalProviderRegistry } from '@platform/fiscal/runtime'
+import {
+  fiscalDocumentUuid,
+  FiscalDocumentsService,
+  FiscalProviderRegistry
+} from '@platform/fiscal/runtime'
 import { SIMULATOR_PROVIDER_ID, SimulatorRules } from '@platform/fiscal/simulator'
 
 import { createOrder } from '../builders'
@@ -643,6 +651,98 @@ describe('The fiscal documents (Step 4B.7)', () => {
       } finally {
         emitter.off(Events.FISCAL_DOCUMENT_REJECTED, listener)
       }
+    })
+
+    describe('the window to send a refused document again (D14)', () => {
+      const HOUR_MS = 60 * 60 * 1000
+
+      const refused = async (): Promise<string> => {
+        const { documentId } = await sale()
+        expect(
+          (await patchReceiver(documentId, { taxId: SimulatorRules.REJECT, name: 'Ana' })).status
+        ).toBe(OK)
+        await documents.submit(ctx.orgA.id, documentId)
+        return documentId
+      }
+
+      it('keeps the moment the authority refused it', async () => {
+        const documentId = await refused()
+        const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+        expect(row.status).toBe(FiscalDocumentStatus.REJECTED)
+        expect(row.rejectedAt).not.toBeNull()
+        expect(row.rejectionWarnedAt).toBeNull()
+      })
+
+      it('tells the person once when the window is closing, not before, and again for a new refusal', async () => {
+        const seen: FiscalRetransmitDeadlinePayload[] = []
+        const listener = (payload: FiscalRetransmitDeadlinePayload): void => {
+          seen.push(payload)
+        }
+        emitter.on(Events.FISCAL_RETRANSMIT_DEADLINE, listener)
+        try {
+          const documentId = await refused()
+          const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+          const rejectedAt = row.rejectedAt as Date
+          const at = (hours: number): Date => new Date(rejectedAt.getTime() + hours * HOUR_MS)
+
+          // Other tests of the suite leave refused documents in the same organization: what counts is this document's own notices
+          const mine = (): FiscalRetransmitDeadlinePayload[] =>
+            seen.filter(payload => payload.documentId === documentId)
+
+          await documents.warnRejectionDeadlines(ctx.orgA.id, at(11))
+          expect(mine()).toEqual([])
+
+          await documents.warnRejectionDeadlines(ctx.orgA.id, at(13))
+          expect(mine()).toEqual([expect.objectContaining({ documentId, expired: false })])
+          // Once for each refusal: the daily check asking again says nothing, not even after the window is over
+          await documents.warnRejectionDeadlines(ctx.orgA.id, at(14))
+          await documents.warnRejectionDeadlines(ctx.orgA.id, at(30))
+          expect(mine()).toHaveLength(1)
+        } finally {
+          emitter.off(Events.FISCAL_RETRANSMIT_DEADLINE, listener)
+        }
+      })
+
+      it('tells the person of a window that is already over, and clears the window when the document is queued again', async () => {
+        const documentId = await refused()
+        const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+        const over = new Date((row.rejectedAt as Date).getTime() + 25 * HOUR_MS)
+        // Other refused documents of the organization may be told too: this one's own mark is what counts
+        expect(await documents.warnRejectionDeadlines(ctx.orgA.id, over)).toBeGreaterThanOrEqual(1)
+        expect(
+          (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } }))
+            .rejectionWarnedAt
+        ).not.toBeNull()
+
+        expect((await patchReceiver(documentId, { taxId: null })).status).toBe(OK)
+        expect((await asAdminA().post(ApiRoutes.fiscal.documents.retry(documentId))).status).toBe(
+          OK
+        )
+        const queued = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+        expect(queued.status).toBe(FiscalDocumentStatus.QUEUED)
+        expect(queued.rejectedAt).toBeNull()
+        expect(queued.rejectionWarnedAt).toBeNull()
+        // The retransmission is the same document: the same generation code, whatever the number of submissions
+        expect(queued.submission).toBeGreaterThan(1)
+        expect(fiscalDocumentUuid(ctx.orgA.id, documentId)).toBe(
+          fiscalDocumentUuid(ctx.orgA.id, queued.id)
+        )
+        await documents.submit(ctx.orgA.id, documentId)
+        const accepted = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+        expect(accepted.status).toBe(FiscalDocumentStatus.ACCEPTED)
+        expect(accepted.rejectedAt).toBeNull()
+      })
+
+      it('never tells the person of another organization', async () => {
+        const documentId = await refused()
+        const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+        const over = new Date((row.rejectedAt as Date).getTime() + 25 * HOUR_MS)
+        expect(await documents.warnRejectionDeadlines(ctx.orgB.id, over)).toBe(0)
+        expect(
+          (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } }))
+            .rejectionWarnedAt
+        ).toBeNull()
+      })
     })
 
     describe('a change of the receiver that carries some fields', () => {

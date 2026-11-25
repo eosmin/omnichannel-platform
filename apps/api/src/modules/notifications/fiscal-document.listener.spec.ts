@@ -111,6 +111,24 @@ describe('the notice of a fiscal document that needs a person', () => {
     expect(JSON.stringify(sent)).not.toContain('receiver_incomplete')
   })
 
+  it('says a refused document whose window to be sent again is closing with its own type, to the managers of its store', async () => {
+    const { listener, sent, asked } = build([{ userId: 'u1', storeId: 's1' }])
+    await listener.onFiscalRetransmitDeadline({
+      organizationId: ORG,
+      storeId: 's1',
+      documentId: DOCUMENT,
+      orderId: 'order-1',
+      expired: true
+    })
+    expect(sent[0]?.input).toMatchObject({
+      type: NotificationTypes.FISCAL_RETRANSMIT_DEADLINE,
+      resourceType: FiscalResourceTypes.DOCUMENT,
+      resourceId: DOCUMENT,
+      params: {}
+    })
+    expect(JSON.stringify(asked[0])).toContain('fiscal:manage')
+  })
+
   it('says a document that disagrees with its entry with its own type, and names no amount', async () => {
     const { listener, sent } = build([{ userId: 'u1', storeId: 's1' }])
     await listener.onFiscalEntryMismatch({ organizationId: ORG, documentId: DOCUMENT, count: 3 })

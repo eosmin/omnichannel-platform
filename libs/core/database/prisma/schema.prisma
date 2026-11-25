@@ -3297,6 +3297,8 @@ model FiscalDocument {
   totalCents            Int       @map("total_cents")
   taxCents              Int       @map("tax_cents")
   rejectionReason       String?   @map("rejection_reason") // a code, never the receiver's data
+  rejectedAt            DateTime? @map("rejected_at") // when the authority's refusal was communicated: the window to correct and send it again runs from here (D14); null when core refused it before sending, and cleared when it is queued again
+  rejectionWarnedAt     DateTime? @map("rejection_warned_at") // when the person was told that window is closing (once for each refusal)
   attempts              Int       @default(0)
   submission            Int       @default(1) // moves only when the authority refused the document: the idempotency key is organization:document:submission
   voidReason            String?   @map("void_reason")

@@ -7,7 +7,9 @@ import {
   FiscalDocumentStatusTransitions,
   FiscalLimits,
   FiscalOperationCondition,
+  FiscalRejectionDeadlineState,
   FiscalRejectionReasons,
+  FiscalRejectionRetry,
   type FiscalEnvironment,
   maskReceiverName,
   maskReceiverTaxId,
@@ -40,6 +42,30 @@ export const receiverEditable = (status: FiscalDocumentStatus, attempts: number)
 // Retried from a refusal, or from the queue when the job was lost (the attempts ran out while the authority was down)
 export const retryable = (status: FiscalDocumentStatus): boolean =>
   status === FiscalDocumentStatus.REJECTED || status === FiscalDocumentStatus.QUEUED
+
+// The window to correct and send again a document the authority refused, counted from the moment the refusal was communicated. A document
+// that was not refused by the authority (`rejectedAt` null: refused by core before it was sent, or not refused) has no window. The clock is
+// the caller's, so the same document reads the same at any instant that is given.
+export interface FiscalRejectionDeadline {
+  endsAt: Date
+  state: FiscalRejectionDeadlineState
+}
+
+export function rejectionDeadline(
+  rejectedAt: Date | null,
+  now: Date
+): FiscalRejectionDeadline | null {
+  if (rejectedAt === null) return null
+  const endsAt = new Date(rejectedAt.getTime() + FiscalRejectionRetry.WINDOW_MS)
+  const left = endsAt.getTime() - now.getTime()
+  const state =
+    left <= 0
+      ? FiscalRejectionDeadlineState.EXPIRED
+      : left <= FiscalRejectionRetry.WARN_BEFORE_MS
+        ? FiscalRejectionDeadlineState.CLOSING
+        : FiscalRejectionDeadlineState.OPEN
+  return { endsAt, state }
+}
 
 // A document that stays in the queue after every attempt of its job was spent: it needs a person (a retry), nothing will move it by itself
 export const isStuck = (status: FiscalDocumentStatus, attempts: number): boolean =>

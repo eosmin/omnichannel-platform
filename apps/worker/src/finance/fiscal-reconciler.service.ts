@@ -147,6 +147,7 @@ export class FiscalReconciler {
       }
     }
     failures.push(...(await this.checkContingencies(organizationId, now)))
+    failures.push(...(await this.warnRejections(organizationId, now)))
     this.publish(organizationId, remaining)
     if (report.truncated) {
       this.logger.warn({ organizationId }, 'the check of the fiscal documents stopped at its cap')
@@ -185,6 +186,17 @@ export class FiscalReconciler {
       failures.push(error)
     }
     return failures
+  }
+
+  // A document the authority refused is corrected and sent again within 24 hours (D14): the person is told once when that window is closing
+  // or over. A failure is returned, never thrown, so the rest of the check goes on.
+  private async warnRejections(organizationId: string, now: Date): Promise<unknown[]> {
+    try {
+      await this.documents.warnRejectionDeadlines(organizationId, now)
+      return []
+    } catch (error) {
+      return [error]
+    }
   }
 
   private publish(organizationId: string, found: Record<FiscalSweepKind, number>): void {

@@ -26,7 +26,10 @@ import {
   FiscalPendingDocumentType,
   FiscalIssueOn,
   FiscalLimits,
+  FiscalRejectionDeadlineState,
   FiscalRejectionReasons,
+  FiscalRejectionRetry,
+  FiscalSweepLimits,
   FiscalResourceTypes,
   FiscalSubmitOutcome,
   FiscalVoidConsultState,
@@ -84,6 +87,7 @@ import {
   receiverOf,
   receiverRecord,
   receiverWithFiscalData,
+  rejectionDeadline,
   retryable,
   saleAddsUp,
   shippingTaxFits,
@@ -155,6 +159,8 @@ export interface FiscalDocumentView {
   totalCents: number
   taxCents: number
   rejectionReason: string | null
+  // The window to correct and send again a document the authority refused (D14): null when it has none
+  rejectionDeadline: { endsAt: string; state: FiscalRejectionDeadlineState } | null
   attempts: number
   // Queued with every attempt of its job spent: only a person moves it
   stuck: boolean
@@ -227,6 +233,7 @@ const SELECT = {
   totalCents: true,
   taxCents: true,
   rejectionReason: true,
+  rejectedAt: true,
   attempts: true,
   voidReason: true,
   voidedAt: true,
@@ -1709,6 +1716,8 @@ export class FiscalDocumentsService {
           builtPayloadEncrypted: sealedPayload,
           response,
           rejectionReason: null,
+          rejectedAt: null,
+          rejectionWarnedAt: null,
           issuedAt: doc.createdAt,
           ...(entry === null ? {} : { journalEntryId: entry.id })
         }
@@ -1786,6 +1795,10 @@ export class FiscalDocumentsService {
           status: FiscalDocumentStatus.REJECTED,
           claimToken: null,
           rejectionReason: kept,
+          // The refusal of the authority starts the window to send it again; one core made before sending has none
+          ...(options.byAuthority === true
+            ? { rejectedAt: new Date(), rejectionWarnedAt: null }
+            : { rejectedAt: null, rejectionWarnedAt: null }),
           ...(options.built === undefined
             ? {}
             : { documentType: options.built.documentType, builtPayloadEncrypted: sealedPayload }),
@@ -1796,6 +1809,71 @@ export class FiscalDocumentsService {
       })
       this.announce(tx, doc, kept)
     })
+  }
+
+  // The window of a document that is refused, as the screen reads it
+  private deadlineView(
+    status: FiscalDocumentStatus,
+    rejectedAt: Date | null,
+    now: Date = new Date()
+  ): { endsAt: string; state: FiscalRejectionDeadlineState } | null {
+    if (status !== FiscalDocumentStatus.REJECTED) return null
+    const deadline = rejectionDeadline(rejectedAt, now)
+    return deadline === null
+      ? null
+      : { endsAt: deadline.endsAt.toISOString(), state: deadline.state }
+  }
+
+  // The window to correct and send again a refused document is closing or over (D14): the person is told, once for each refusal. The daily
+  // check asks; the mark and its alert are one transaction, so a failure in between leaves neither. Returns how many were told.
+  async warnRejectionDeadlines(organizationId: string, now: Date = new Date()): Promise<number> {
+    const warnFrom = new Date(
+      now.getTime() - (FiscalRejectionRetry.WINDOW_MS - FiscalRejectionRetry.WARN_BEFORE_MS)
+    )
+    let told = 0
+    for (;;) {
+      const rows = await this.inTx(organizationId, async tx => {
+        const found = await tx.fiscalDocument.findMany({
+          where: {
+            organizationId,
+            status: FiscalDocumentStatus.REJECTED,
+            rejectedAt: { not: null, lte: warnFrom },
+            rejectionWarnedAt: null
+          },
+          select: { id: true, storeId: true, orderId: true, rejectedAt: true },
+          orderBy: { id: 'asc' },
+          take: FiscalSweepLimits.RUN_PAGE_SIZE
+        })
+        const warned: string[] = []
+        for (const doc of found) {
+          const deadline = rejectionDeadline(doc.rejectedAt, now)
+          if (deadline === null || deadline.state === FiscalRejectionDeadlineState.OPEN) continue
+          const marked = await tx.fiscalDocument.updateMany({
+            where: {
+              id: doc.id,
+              organizationId,
+              status: FiscalDocumentStatus.REJECTED,
+              rejectionWarnedAt: null
+            },
+            data: { rejectionWarnedAt: now }
+          })
+          if (marked.count === 0) continue
+          this.events.publish(tx, Events.FISCAL_RETRANSMIT_DEADLINE, {
+            organizationId,
+            storeId: doc.storeId,
+            documentId: doc.id,
+            orderId: doc.orderId,
+            expired: deadline.state === FiscalRejectionDeadlineState.EXPIRED
+          })
+          warned.push(doc.id)
+        }
+        return { read: found.length, warned }
+      })
+      told += rows.warned.length
+      // A page that told nobody (all marked by another run, or none closing) is the end: it would read the same rows again
+      if (rows.read < FiscalSweepLimits.RUN_PAGE_SIZE || rows.warned.length === 0) break
+    }
+    return told
   }
 
   private announce(
@@ -1990,6 +2068,8 @@ export class FiscalDocumentsService {
           data: {
             status: FiscalDocumentStatus.QUEUED,
             rejectionReason: null,
+            rejectedAt: null,
+            rejectionWarnedAt: null,
             parentDocumentId,
             // A refused document made in a contingency is made again as any other: the contingency is over for it
             contingencyId: null,
@@ -2086,6 +2166,8 @@ export class FiscalDocumentsService {
         data: {
           status: FiscalDocumentStatus.QUEUED,
           rejectionReason: null,
+          rejectedAt: null,
+          rejectionWarnedAt: null,
           parentDocumentId,
           contingencyId: null,
           // A new submission for the authority of the new issuer: its own key and a fresh count
@@ -3078,6 +3160,7 @@ export class FiscalDocumentsService {
     totalCents: number
     taxCents: number
     rejectionReason: string | null
+    rejectedAt: Date | null
     attempts: number
     voidReason: string | null
     voidedAt: Date | null
@@ -3121,6 +3204,7 @@ export class FiscalDocumentsService {
       totalCents: row.totalCents,
       taxCents: row.taxCents,
       rejectionReason: row.rejectionReason,
+      rejectionDeadline: this.deadlineView(status, row.rejectedAt),
       attempts: row.attempts,
       stuck: isStuck(status, row.attempts),
       allowedActions: allowedActionsOf({

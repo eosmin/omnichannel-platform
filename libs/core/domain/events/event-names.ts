@@ -145,6 +145,9 @@ export const Events = {
   // A fiscal document ran out of attempts while it was still waiting for the provider: nobody is retrying it any more and a person must
   // (Step 4B.7b-2). Api and worker only: ids and the count, never the receiver's data.
   FISCAL_DOCUMENT_STUCK: 'fiscal.document_stuck',
+  // The window to correct and send again a document the authority refused is closing or over (D14). Api and worker only: ids and whether it
+  // is over, never the receiver's data.
+  FISCAL_RETRANSMIT_DEADLINE: 'fiscal.retransmit_deadline',
   // The daily check found a sale document whose total or tax differs from the entry of the books for the same sale (TDD_18 §8.3, §11, Step
   // 4B.8b-2b). Api and worker only: the organization, one document id and the count, never an amount or the receiver's data.
   FISCAL_ENTRY_MISMATCH: 'fiscal.entry_mismatch',
@@ -309,6 +312,7 @@ export const BridgedEvents = [
   // The worker says it when a fiscal document was refused or ran out of attempts; the api tells whoever can act on it
   Events.FISCAL_DOCUMENT_REJECTED,
   Events.FISCAL_DOCUMENT_STUCK,
+  Events.FISCAL_RETRANSMIT_DEADLINE,
   // The worker says it when the daily check finds a document that disagrees with its entry; the api tells whoever can act on it
   Events.FISCAL_ENTRY_MISMATCH,
   // The worker says it when a contingency needs a person; the api tells whoever can act on it

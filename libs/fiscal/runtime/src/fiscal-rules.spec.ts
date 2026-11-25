@@ -5,7 +5,9 @@ import {
   FiscalEnvironment,
   FiscalLimits,
   FiscalOperationCondition,
+  FiscalRejectionDeadlineState,
   FiscalRejectionReasons,
+  FiscalRejectionRetry,
   PaymentMethod,
   PaymentStatus,
   TaxTreatment
@@ -34,6 +36,7 @@ import {
   receiverOf,
   receiverRecord,
   receiverWithFiscalData,
+  rejectionDeadline,
   retryable,
   saleAddsUp,
   shippingTaxFits,
@@ -939,6 +942,38 @@ describe('what a person may do with a document', () => {
       }).replace
     ).toBe(true)
     expect(allowedActionsOf({ ...base, replacedByDocumentId: 'd2' }).replace).toBe(false)
+  })
+})
+
+describe('the window to send again a document the authority refused', () => {
+  const rejectedAt = new Date('2027-02-01T10:00:00.000Z')
+  const after = (ms: number): Date => new Date(rejectedAt.getTime() + ms)
+
+  it('has none for a document the authority did not refuse', () => {
+    expect(rejectionDeadline(null, rejectedAt)).toBeNull()
+  })
+
+  it('ends 24 hours after the refusal was communicated', () => {
+    const deadline = rejectionDeadline(rejectedAt, rejectedAt)
+    expect(FiscalRejectionRetry.WINDOW_MS).toBe(24 * 60 * 60 * 1000)
+    expect(deadline?.endsAt.toISOString()).toBe('2027-02-02T10:00:00.000Z')
+    expect(deadline?.state).toBe(FiscalRejectionDeadlineState.OPEN)
+  })
+
+  it('is open until the closing stretch, closing inside it and expired from the end', () => {
+    const closing = FiscalRejectionRetry.WINDOW_MS - FiscalRejectionRetry.WARN_BEFORE_MS
+    expect(rejectionDeadline(rejectedAt, after(closing - 1))?.state).toBe(
+      FiscalRejectionDeadlineState.OPEN
+    )
+    expect(rejectionDeadline(rejectedAt, after(closing))?.state).toBe(
+      FiscalRejectionDeadlineState.CLOSING
+    )
+    expect(rejectionDeadline(rejectedAt, after(FiscalRejectionRetry.WINDOW_MS - 1))?.state).toBe(
+      FiscalRejectionDeadlineState.CLOSING
+    )
+    expect(rejectionDeadline(rejectedAt, after(FiscalRejectionRetry.WINDOW_MS))?.state).toBe(
+      FiscalRejectionDeadlineState.EXPIRED
+    )
   })
 })
 

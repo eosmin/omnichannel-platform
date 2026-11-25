@@ -261,6 +261,14 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     orderId: id,
     attempts: z.number().int().min(1)
   }),
+  // The window to send again a refused document is closing or over: ids and whether it is over
+  [Events.FISCAL_RETRANSMIT_DEADLINE]: z.object({
+    organizationId: id,
+    storeId: id,
+    documentId: id,
+    orderId: id,
+    expired: z.boolean()
+  }),
   // A sale document disagrees with its entry: the organization, one document and how many
   [Events.FISCAL_ENTRY_MISMATCH]: z.object({
     organizationId: id,
