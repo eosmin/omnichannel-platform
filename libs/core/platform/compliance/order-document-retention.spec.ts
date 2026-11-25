@@ -27,7 +27,11 @@ describe('orderDocumentCutoff', () => {
   it('never takes a document before seven, eight or nine years and a day (the old period)', () => {
     const now = at('2036-06-15T03:00:00Z')
     const cutoff = orderDocumentCutoff(now)
-    for (const issuedAt of ['2029-06-14T03:00:00Z', '2027-06-14T03:00:00Z']) {
+    for (const issuedAt of [
+      '2029-06-14T03:00:00Z',
+      '2028-06-14T03:00:00Z',
+      '2027-06-14T03:00:00Z'
+    ]) {
       expect(at(issuedAt).getTime() < cutoff.getTime()).toBe(false)
     }
   })

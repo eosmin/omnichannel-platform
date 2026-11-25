@@ -44,7 +44,7 @@ describe('DataRetentionPolicies', () => {
     expect(DataRetentionPolicies.ORDERS).toEqual({ defaultDays: 3650, configurable: false })
   })
 
-  it('names the same period as the sweep of the documents of orders (years of 365 days at least)', () => {
+  it('names the same period as the sweep of the documents of orders (a label: the sweep counts calendar years)', () => {
     expect(DataRetentionPolicies.ORDERS.defaultDays).toBeGreaterThanOrEqual(
       OrderDocumentRetention.LEGAL_YEARS * 365
     )

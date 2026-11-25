@@ -1,7 +1,8 @@
 // The documents of an order (its summary, its label) outlive the conversation they were sent in (TDD_05 §10.4) and go after the legal period
 // of the books (TDD_05 §10.3). The period is TEN years, the one the Codigo Tributario of El Salvador (art. 147) sets for the books, the vouchers
 // and the electronic tax documents, counted from their issue (owner, 2026-11-25). Which documents count as a voucher is still a question for
-// the accountant, so everything of the books is kept the ten years. `DataRetentionPolicies.ORDERS` names the same period. It is counted in calendar years, never in days, so that a leap year can only make the
+// the accountant, so everything of the books is kept the ten years. `DataRetentionPolicies.ORDERS` names the same period.
+// It is counted in calendar years, never in days, so that a leap year can only make the
 // document stay a day longer, never go a day early.
 export const OrderDocumentRetention = {
   LEGAL_YEARS: 10
