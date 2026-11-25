@@ -317,6 +317,8 @@ export class FiscalDeliveryService {
         copies.push({ mediaId, key, file })
       }
     } catch (error) {
+      // No transaction was opened and the keys are this try's own: what was copied is removed before the listener asks again
+      await this.discard(copies)
       this.logger.warn(
         { documentId, err: errorName(error) },
         'the files of a fiscal document could not be copied to be sent'
@@ -391,8 +393,9 @@ export class FiscalDeliveryService {
         })
       )
     } catch (error) {
-      // Not removed: after a connection error the commit may have happened, and the objects are the ones the queued messages read. A
-      // stray object of a try that did not commit is found by its prefix by the storage cleanup
+      // After an ambiguous failure the commit may have happened, and then the rows exist and the queued messages read these objects: only
+      // the copies with no row are removed. A process that dies before this line leaves them (debt (k) of the plan: no sweep reaches `orders/`)
+      await this.discardUnwritten(organizationId, copies)
       this.logger.warn(
         { documentId, err: errorName(error) },
         'the files of a fiscal document were not written'
@@ -562,12 +565,33 @@ export class FiscalDeliveryService {
     })
   }
 
+  // The copies that no row of a file names: what a try that failed for certain left, told from what one that committed uncertainly wrote
+  private async discardUnwritten(
+    organizationId: string,
+    copies: readonly { mediaId: string; key: string }[]
+  ): Promise<void> {
+    let written: Set<string>
+    try {
+      const rows = await this.inOrganization(organizationId, () =>
+        this.prisma.client.media.findMany({
+          where: { id: { in: copies.map(copy => copy.mediaId) } },
+          select: { id: true }
+        })
+      )
+      written = new Set(rows.map(row => row.id))
+    } catch {
+      // The database cannot say: nothing is removed (a file a message reads must never go)
+      return
+    }
+    await this.discard(copies.filter(copy => !written.has(copy.mediaId)))
+  }
+
   private async discard(copies: readonly { key: string }[]): Promise<void> {
     for (const copy of copies) {
       try {
         await this.storage.delete(copy.key)
       } catch {
-        // A stray object is found by its prefix by the storage cleanup; it is not worth failing a delivery that already failed
+        // A failed delete leaves an object no sweep reaches (debt (k) of the plan); it is not worth failing a delivery that already failed
       }
     }
   }

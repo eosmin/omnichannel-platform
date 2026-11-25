@@ -50,6 +50,10 @@ interface Options {
   mediaStatus?: string
   bucketHas?: boolean
   noRepresent?: boolean
+  failSecondCopy?: boolean
+  // The transaction of the channel throws; `rowWritten`: its commit had happened (the rows of the files exist)
+  txFails?: boolean
+  rowWritten?: boolean
 }
 
 function build(options: Options = {}) {
@@ -109,8 +113,15 @@ function build(options: Options = {}) {
           })
       },
       media: {
-        findMany: () =>
-          Promise.resolve([
+        findMany: ({ where }: { where: { id?: unknown } }) => {
+          if (where.id !== undefined) {
+            return Promise.resolve(
+              options.rowWritten === true
+                ? copies.map(key => ({ id: /[0-9a-f-]{36}/.exec(key)?.[0] ?? '' }))
+                : []
+            )
+          }
+          return Promise.resolve([
             {
               fiscalEvidenceKind: FiscalEvidenceKind.REPRESENTATION,
               key: 'k-pdf',
@@ -128,9 +139,13 @@ function build(options: Options = {}) {
               status: options.mediaStatus ?? MediaStatus.CLEAN
             }
           ])
+        }
       }
     },
-    transaction: <T>(work: (tx: unknown) => Promise<T>) => work(tx),
+    transaction: <T>(work: (tx: unknown) => Promise<T>) =>
+      options.txFails === true && messages.length === 0 && created.length === 0
+        ? Promise.reject(new Error('connection reset'))
+        : work(tx),
     afterCommit: (_tx: unknown, run: () => void) => run()
   }
   const channel = options.channel
@@ -187,6 +202,9 @@ function build(options: Options = {}) {
     {
       copy: (_from: string, to: string) => {
         copies.push(to)
+        if (options.failSecondCopy === true && copies.length === 2) {
+          return Promise.reject(new Error('bucket down'))
+        }
         objects.add(to)
         return Promise.resolve(options.bucketHas !== false)
       },
@@ -329,6 +347,31 @@ describe('FiscalDeliveryService', () => {
       expect(mediaKeys).toHaveLength(2)
       // Every file a queued message reads is still in the bucket
       for (const key of mediaKeys) expect(objects.has(key)).toBe(true)
+    })
+
+    it('removes the first copy when the bucket fails on the second, before the listener asks again', async () => {
+      const { service, objects, copies } = build({ channel: open, failSecondCopy: true })
+      await expect(service.deliver(INPUT)).rejects.toThrow('bucket down')
+      expect(copies).toHaveLength(2)
+      expect(objects.size).toBe(0)
+    })
+
+    it('removes the copies when the transaction fails and no row of a file exists', async () => {
+      const { service, objects, copies } = build({ channel: open, txFails: true })
+      await expect(service.deliver(INPUT)).rejects.toThrow('connection reset')
+      expect(copies).toHaveLength(2)
+      expect(objects.size).toBe(0)
+    })
+
+    it('keeps the copies when the transaction fails but its rows exist (the commit was uncertain)', async () => {
+      const { service, objects, copies } = build({
+        channel: open,
+        txFails: true,
+        rowWritten: true
+      })
+      await expect(service.deliver(INPUT)).rejects.toThrow('connection reset')
+      expect(copies).toHaveLength(2)
+      expect(objects.size).toBe(2)
     })
 
     it('removes its own copies, and writes nothing, when the conversation was hidden meanwhile', async () => {
