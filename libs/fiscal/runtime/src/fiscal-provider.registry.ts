@@ -55,6 +55,8 @@ export class FiscalProviderRegistry {
           mode.reasons.length === 0 ||
           !mode.reasons.includes(mode.authorityDownReason) ||
           !(mode.transmitWithinHours > 0) ||
+          (mode.reportWithinHours !== undefined &&
+            !(Number.isFinite(mode.reportWithinHours) && mode.reportWithinHours > 0)) ||
           !Number.isInteger(mode.maxDocumentsPerEvent) ||
           mode.maxDocumentsPerEvent < 1)
       ) {

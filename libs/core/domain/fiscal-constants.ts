@@ -54,7 +54,9 @@ export const FiscalLimits = {
   EVIDENCE_MAX_BYTES: 4 * 1024 * 1024,
   // Attempts of the job; the provider's own contingency decides what an attempt does while the authority is down
   MAX_ATTEMPTS: 6,
-  BACKOFF_MS: 60_000,
+  // The delay before the first retry; it doubles each time, so the last wait of the queue (BACKOFF_MS * 2^(MAX_ATTEMPTS - 2) = 12 min)
+  // stays under the 15 minutes the rules of the authority allow between two attempts while the authority cannot be reached
+  BACKOFF_MS: 45_000,
   REASON_MAX_LENGTH: 500,
   // What a provider may hand back of the authority's answer, as text: more is cut (a provider may copy the whole body of the authority)
   RESPONSE_MAX_CHARS: 16_000,
@@ -115,6 +117,21 @@ export const fiscalJobOptions = (): {
   backoff: { type: 'exponential', delay: FiscalLimits.BACKOFF_MS },
   removeOnComplete: true,
   // A failed submission is kept a week for whoever looks into it, then goes: the document row is what lasts
+  removeOnFail: { age: FiscalLimits.FAILED_JOB_KEEP_SECONDS }
+})
+
+// The retries of a report of a contingency: the rules of the authority ask for an attempt at least every 15 minutes while the authority
+// cannot be reached, for as long as the event may still be sent in time (24 hours after the situation ended), so the queue asks at a fixed
+// interval for that long and the person is told when none went through
+export const fiscalReportJobOptions = (): {
+  attempts: number
+  backoff: { type: 'fixed'; delay: number }
+  removeOnComplete: true
+  removeOnFail: { age: number }
+} => ({
+  attempts: FiscalContingencyLimits.REPORT_MAX_ATTEMPTS,
+  backoff: { type: 'fixed', delay: FiscalContingencyLimits.REPORT_RETRY_DELAY_MS },
+  removeOnComplete: true,
   removeOnFail: { age: FiscalLimits.FAILED_JOB_KEEP_SECONDS }
 })
 
@@ -179,12 +196,22 @@ export enum FiscalContingencyAlertKind {
   WINDOW_CLOSING = 'window_closing'
 }
 
+const REPORT_RETRY_INTERVAL_MS = 15 * 60 * 1000
+// The wait between two attempts of a report is a minute under the interval: the call itself and the queue add to it, and the gap between
+// two attempts must stay under the 15 minutes
+const REPORT_RETRY_DELAY_MS = 14 * 60 * 1000
+const REPORT_RETRY_HOURS = 24
+
 export const FiscalContingencyLimits = {
   // The attempts of one submission that find the authority down before the lifecycle opens a contingency by itself
   AUTO_OPEN_AFTER_ATTEMPTS: 3,
   MOTIVE_MAX_LENGTH: 500,
-  // A report that fails is asked again with the backoff of the queue; after this many the person is told
-  REPORT_MAX_ATTEMPTS: 6,
+  // The longest time between two attempts to reach the authority (the rules of the authority)
+  RETRY_INTERVAL_MS: REPORT_RETRY_INTERVAL_MS,
+  REPORT_RETRY_DELAY_MS,
+  // A report that fails is asked again every REPORT_RETRY_DELAY_MS for REPORT_RETRY_HOURS (the 24 hours the event may wait after the situation
+  // ended); after the last attempt the person is told
+  REPORT_MAX_ATTEMPTS: Math.ceil((REPORT_RETRY_HOURS * 60 * 60 * 1000) / REPORT_RETRY_DELAY_MS),
   // Fraction of the transmission window left at which the person is warned (the provider declares the window)
   WARN_REMAINING_RATIO: 0.25
 } as const

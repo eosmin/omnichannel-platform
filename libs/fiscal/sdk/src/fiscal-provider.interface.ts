@@ -102,6 +102,9 @@ export interface FiscalContingencyDeclaration {
   readonly reasons: readonly string[]
   readonly authorityDownReason: string
   readonly transmitWithinHours: number
+  // The time the authority gives to send the event once the situation that kept the documents from being sent has ended. Absent: the
+  // authority sets none, and nothing is watched
+  readonly reportWithinHours?: number
   readonly maxDocumentsPerEvent: number
   // The authority wants to know who answers for the establishment (the person who ends the contingency gives it)
   readonly requiresResponsible: boolean
