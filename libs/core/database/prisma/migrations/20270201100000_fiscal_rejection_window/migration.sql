@@ -9,6 +9,9 @@ ALTER TABLE "fiscal_documents" ADD COLUMN "rejected_at" TIMESTAMP(3), ADD COLUMN
 -- A document that is refused now was refused by the authority when its submission moved (core's own refusals never move it): the moment of
 -- its last change is the nearest date there is, so it has its window and is not left with none. One whose window is already over is marked
 -- as warned, so the first daily check after the deploy does not tell the person of every old refusal at once.
+-- The backfill is approximate: `updated_at` can be later than the real refusal, and `submission` also moves when the issuer is changed, so a
+-- document refused by core with a submission above 1 would get a window that does not apply to it. A database with real refused rows is
+-- read before this runs.
 UPDATE "fiscal_documents"
 SET "rejected_at" = "updated_at",
     "rejection_warned_at" = CASE WHEN "updated_at" + interval '24 hours' < now() THEN "updated_at" END
