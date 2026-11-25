@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
@@ -11,6 +11,7 @@ import { EventContext, PrismaService, type PrismaTransaction } from '@platform/c
 import {
   AuthorType,
   ChannelCapability,
+  ConversationStatus,
   DeliveryStatus,
   FISCAL_DELIVERY_EMAIL_MAX_BYTES,
   FiscalDeliveryReason,
@@ -90,13 +91,6 @@ type Plan =
   | { route: typeof FiscalDeliveryRoute.NONE; reason: FiscalDeliveryReason }
   | { route: typeof FiscalDeliveryRoute.EMAIL }
   | { route: typeof FiscalDeliveryRoute.CHANNEL; conversationId: string }
-
-// The id of the file of the order that carries one kind of file of a document: the same every time, so a repeated try overwrites its own
-// objects instead of leaving strays. The shape of a UUID, made from a hash.
-function mediaIdOf(documentId: string, kind: string): string {
-  const hex = createHash('sha256').update(`fiscal-delivery:${documentId}:${kind}`).digest('hex')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`
-}
 
 const localeOf = (value: string | null): Locale =>
   SUPPORTED_LOCALES.find(locale => locale === value) ?? DEFAULT_LOCALE
@@ -205,7 +199,12 @@ export class FiscalDeliveryService {
         }
       }
     })
-    if (document === null || document.status !== String(FiscalDocumentStatus.ACCEPTED)) {
+    // A document of another store than the event names is nobody's to give
+    if (
+      document === null ||
+      document.storeId !== input.storeId ||
+      document.status !== String(FiscalDocumentStatus.ACCEPTED)
+    ) {
       return 'skipped'
     }
     if (document.delivery !== null) return 'delivered'
@@ -307,8 +306,8 @@ export class FiscalDeliveryService {
     let missing = false
     try {
       for (const file of files) {
-        // The id comes from the document and the kind, so a second try writes the same objects instead of leaving strays
-        const mediaId = mediaIdOf(documentId, file.kind)
+        // Each try has keys of its own: two tries of one document at once (two replicas hear the same event) never read or delete each other's
+        const mediaId = randomUUID()
         const key = StorageKeys.order(storeId, receiver.orderId, mediaId, file.filename)
         // Only an object that is not there is a permanent fault; a bucket that did not answer throws, and the listener asks again
         if (!(await this.storage.copy(file.key, key))) {
@@ -338,7 +337,8 @@ export class FiscalDeliveryService {
         this.prisma.transaction(async tx => {
           const current = await lockConversationForWrite(tx, storeId, conversationId)
           // Marked as spam or hidden since it was chosen: it carries nothing
-          if (current.status === 'spam' || isHiddenStatus(current.status)) return false
+          if (current.status === String(ConversationStatus.SPAM) || isHiddenStatus(current.status))
+            return false
           if (!(await this.claim(tx, input, receiver, FiscalDeliveryRoute.CHANNEL))) return false
           const base = Date.now()
           for (const [index, copy] of copies.entries()) {
@@ -392,7 +392,7 @@ export class FiscalDeliveryService {
       )
     } catch (error) {
       // Not removed: after a connection error the commit may have happened, and the objects are the ones the queued messages read. A
-      // second try writes the same keys (the ids come from the document), so nothing is left over
+      // stray object of a try that did not commit is found by its prefix by the storage cleanup
       this.logger.warn(
         { documentId, err: errorName(error) },
         'the files of a fiscal document were not written'
@@ -400,6 +400,7 @@ export class FiscalDeliveryService {
       throw error
     }
     if (!committed) {
+      // Nothing was written by this try (the keys are its own), so removing them never touches what another try queued
       await this.discard(copies)
       // The conversation cannot carry them any more, or another delivery got there first: the first is a new try through the email
       const owed = await this.inOrganization(organizationId, () => this.readOwed(input))

@@ -1,6 +1,7 @@
 import type { PinoLogger } from 'nestjs-pino'
 
 import {
+  ConversationStatus,
   FiscalDeliveryReason,
   FiscalDeliveryRoute,
   FiscalDeliveryStatus,
@@ -12,6 +13,8 @@ import {
 import { Events } from '@platform/core/events'
 
 import { FiscalDeliveryOutcome, FiscalDeliveryService } from './fiscal-delivery.service'
+
+let mockConversationStatus = 'open'
 
 // These pull the env of the platform with them: the service only needs their names
 jest.mock('@platform/core/audit-module', () => ({ AuditService: class {} }))
@@ -26,7 +29,8 @@ jest.mock('@platform/core/messaging', () => ({
   ConversationsService: class {},
   OutboundQueue: class {},
   isHiddenStatus: () => false,
-  lockConversationForWrite: () => Promise.resolve({ status: 'open', assignedTo: null })
+  lockConversationForWrite: () =>
+    Promise.resolve({ status: mockConversationStatus, assignedTo: null })
 }))
 
 const ORG = 'org-1'
@@ -55,12 +59,14 @@ function build(options: Options = {}) {
   const emails: { data: Record<string, unknown>; options: Record<string, unknown> }[] = []
   const audit: Record<string, unknown>[] = []
   const copies: string[] = []
+  const objects = new Set<string>()
+  const mediaKeys: string[] = []
   const deleted: string[] = []
   const sizes = options.sizes ?? [1000, 2000]
   const tx = {
     fiscalDelivery: {
       createMany: ({ data }: { data: Record<string, unknown>[] }) => {
-        if (options.delivered === true) return Promise.resolve({ count: 0 })
+        if (options.delivered === true || created.length > 0) return Promise.resolve({ count: 0 })
         created.push(...data)
         return Promise.resolve({ count: data.length })
       }
@@ -71,7 +77,12 @@ function build(options: Options = {}) {
         return Promise.resolve({ id: `message-${messages.length}` })
       }
     },
-    media: { create: () => Promise.resolve({}) }
+    media: {
+      create: ({ data }: { data: { key: string } }) => {
+        mediaKeys.push(data.key)
+        return Promise.resolve({})
+      }
+    }
   }
   const prisma = {
     client: {
@@ -82,7 +93,8 @@ function build(options: Options = {}) {
             storeId: STORE,
             orderId: 'order-1',
             providerId: 'provider-1',
-            delivery: options.delivered === true ? { id: 'delivery-1' } : null,
+            delivery:
+              options.delivered === true || created.length > 0 ? { id: 'delivery-1' } : null,
             order: {
               orderNumber: '1001',
               conversationId: 'conversation-1',
@@ -175,11 +187,13 @@ function build(options: Options = {}) {
     {
       copy: (_from: string, to: string) => {
         copies.push(to)
+        objects.add(to)
         return Promise.resolve(options.bucketHas !== false)
       },
       read: () => Promise.resolve(options.bucketHas === false ? null : Buffer.from('bytes')),
       delete: (key: string) => {
         deleted.push(key)
+        objects.delete(key)
         return Promise.resolve()
       }
     } as never,
@@ -195,7 +209,18 @@ function build(options: Options = {}) {
       warn: () => undefined
     } as unknown as PinoLogger
   )
-  return { service, created, messages, published, emails, audit, copies, deleted }
+  return {
+    service,
+    created,
+    messages,
+    published,
+    emails,
+    audit,
+    copies,
+    deleted,
+    objects,
+    mediaKeys
+  }
 }
 
 describe('FiscalDeliveryService', () => {
@@ -204,6 +229,15 @@ describe('FiscalDeliveryService', () => {
       const { service, created } = build({ status: FiscalDocumentStatus.VOIDED })
       expect(await service.deliver(INPUT)).toBe(FiscalDeliveryOutcome.SKIPPED)
       expect(created).toEqual([])
+    })
+
+    it('skips a document that belongs to another store than the event names', async () => {
+      const { service, created, emails } = build()
+      expect(await service.deliver({ ...INPUT, storeId: 'store-2' })).toBe(
+        FiscalDeliveryOutcome.SKIPPED
+      )
+      expect(created).toEqual([])
+      expect(emails).toEqual([])
     })
 
     it('answers duplicate for a document that was delivered already', async () => {
@@ -282,6 +316,37 @@ describe('FiscalDeliveryService', () => {
       expect(await service.deliver(INPUT)).toBe(FiscalDeliveryOutcome.SENT)
       expect(messages).toEqual([])
       expect(emails).toHaveLength(1)
+    })
+
+    it('keeps the objects of the try that won when two tries of one document run at once', async () => {
+      const { service, objects, mediaKeys, messages, created } = build({ channel: open })
+      const outcomes = await Promise.all([service.deliver(INPUT), service.deliver(INPUT)])
+      expect([...outcomes].sort()).toEqual(
+        [FiscalDeliveryOutcome.DUPLICATE, FiscalDeliveryOutcome.SENT].sort()
+      )
+      expect(created).toHaveLength(1)
+      expect(messages).toHaveLength(2)
+      expect(mediaKeys).toHaveLength(2)
+      // Every file a queued message reads is still in the bucket
+      for (const key of mediaKeys) expect(objects.has(key)).toBe(true)
+    })
+
+    it('removes its own copies, and writes nothing, when the conversation was hidden meanwhile', async () => {
+      mockConversationStatus = ConversationStatus.SPAM
+      try {
+        const { service, objects, copies, deleted, created, messages } = build({
+          channel: open,
+          email: null
+        })
+        expect(await service.deliver(INPUT)).toBe(FiscalDeliveryOutcome.NOT_SENT)
+        expect(messages).toEqual([])
+        expect(copies).toHaveLength(2)
+        expect(deleted.sort()).toEqual([...copies].sort())
+        expect(objects.size).toBe(0)
+        expect(created).toMatchObject([{ reason: FiscalDeliveryReason.NO_CHANNEL }])
+      } finally {
+        mockConversationStatus = 'open'
+      }
     })
 
     it('answers duplicate and writes no message when the document was delivered already', async () => {
