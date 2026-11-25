@@ -1,4 +1,5 @@
 import {
+  FinancePostingKey,
   FiscalDocumentKind,
   FiscalContingencyLimits,
   FiscalDocumentStatus,
@@ -20,6 +21,7 @@ import {
   creditNoteSaleOf,
   documentDetailOf,
   documentLines,
+  entryKeyOfDocument,
   fiscalDocumentUuid,
   fiscalSequenceKey,
   isImmutable,
@@ -43,6 +45,23 @@ import {
   saleOf,
   sameIssuer
 } from './fiscal-rules'
+
+describe('the entry of the books a fiscal document belongs to', () => {
+  it('is the sale for a sale document, the return for a credit note, and none for a remission note (it is no sale)', () => {
+    expect(
+      entryKeyOfDocument({ kind: FiscalDocumentKind.SALE, orderId: 'o1', returnId: null })
+    ).toBe(FinancePostingKey.ORDER_SALE('o1'))
+    expect(
+      entryKeyOfDocument({ kind: FiscalDocumentKind.CREDIT_NOTE, orderId: 'o1', returnId: 'r1' })
+    ).toBe(FinancePostingKey.RETURN_RESTOCK('r1'))
+    expect(
+      entryKeyOfDocument({ kind: FiscalDocumentKind.CREDIT_NOTE, orderId: 'o1', returnId: null })
+    ).toBe(FinancePostingKey.ORDER_RETURN('o1'))
+    expect(
+      entryKeyOfDocument({ kind: FiscalDocumentKind.REMISSION_NOTE, orderId: 'o1', returnId: null })
+    ).toBeNull()
+  })
+})
 
 describe('the transitions of a fiscal document', () => {
   const S = FiscalDocumentStatus
@@ -939,6 +958,23 @@ describe('what a person may do with a document', () => {
         kind: FiscalDocumentKind.CREDIT_NOTE
       }).editReceiver
     ).toBe(false)
+  })
+
+  it('lets the receiver of a remission note be completed (the goods need who they go to), voids it, and does not replace it', () => {
+    const note = { ...base, kind: FiscalDocumentKind.REMISSION_NOTE }
+    // A refused one, and a queued one that was never sent, take the receiver; a sent one does not
+    expect(
+      allowedActionsOf({ ...note, status: FiscalDocumentStatus.REJECTED, attempts: 1 })
+    ).toMatchObject({ editReceiver: true, retry: true })
+    expect(
+      allowedActionsOf({ ...note, status: FiscalDocumentStatus.QUEUED, attempts: 0 }).editReceiver
+    ).toBe(true)
+    expect(
+      allowedActionsOf({ ...note, status: FiscalDocumentStatus.QUEUED, attempts: 3 }).editReceiver
+    ).toBe(false)
+    expect(allowedActionsOf(note).void).toBe(true)
+    // Made again by a person later (not a replacement of the sale kind: the api refuses it)
+    expect(allowedActionsOf({ ...note, status: FiscalDocumentStatus.VOIDED }).replace).toBe(false)
   })
 
   it('lets a voided sale document be replaced once, and a voided credit note be replaced', () => {

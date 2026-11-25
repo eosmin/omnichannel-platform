@@ -66,8 +66,8 @@ const BUSINESS_RECEIVER_FIELDS = [
   'address'
 ] as const
 
-// What a remission note needs of the person the goods are sent to: who they are, an identity document, the activity and the address
-const REMISSION_RECEIVER_FIELDS = ['name', 'taxId', 'economicActivity', 'address'] as const
+// What a remission note needs of the person the goods are sent to: who they are, an identity document and the address (the activity is "other" when none)
+const REMISSION_RECEIVER_FIELDS = ['name', 'taxId', 'address'] as const
 
 // The provider of the electronic tax documents of El Salvador: Step 4B.7c-2 builds the documents and Step 4B.7c-3 sends and consults them.
 // Step 4B.7c-4 invalidates them. The provider is offered where the deployment sets the address of its signing service

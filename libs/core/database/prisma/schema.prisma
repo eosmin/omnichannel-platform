@@ -2102,6 +2102,7 @@ model Shipment {
   remittance      CodRemittance?         @relation("RemittedShipment", fields: [storeId, codRemittanceId], references: [storeId, id], onDelete: Restrict)
   remittanceLines CodRemittanceLine[]
   guideMovements  CarrierGuideMovement[]
+  fiscalDocuments FiscalDocument[]
 
   @@unique([storeId, id])
   @@unique([storeId, idempotencyKey])
@@ -3271,7 +3272,8 @@ model FiscalDocument {
   organizationId        String    @map("organization_id")
   storeId               String    @map("store_id")
   orderId               String    @map("order_id")
-  kind                  String    @default("sale") // FiscalDocumentKind: the document of a sale, or the credit note of a return
+  kind                  String    @default("sale") // FiscalDocumentKind: the document of a sale, the credit note of a return, or the remission note of a guide
+  shipmentId            String?   @map("shipment_id") // a remission note: the guide of the dispatch it backs; null for every other kind
   returnId              String?   @map("return_id") // a credit note of one return; null for the credit note of an order that came back as a whole
   parentDocumentId      String?   @map("parent_document_id") // a credit note: the sale document it cancels (part of)
   replacesDocumentId    String?   @map("replaces_document_id") // a sale document made again after the one before was voided
@@ -3321,6 +3323,7 @@ model FiscalDocument {
   order        Order              @relation(fields: [orderId], references: [id], onDelete: Restrict)
   entry        JournalEntry?      @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
   orderReturn  OrderReturn?       @relation(fields: [returnId], references: [id], onDelete: Restrict)
+  shipment     Shipment?          @relation(fields: [storeId, shipmentId], references: [storeId, id], onDelete: Restrict)
   // NoAction (checked when the statement ends), so a statement that removes a document and the ones that name it works in one go
   parent       FiscalDocument?    @relation("FiscalCreditNotes", fields: [parentDocumentId], references: [id], onDelete: NoAction)
   creditNotes  FiscalDocument[]   @relation("FiscalCreditNotes")
@@ -3339,6 +3342,7 @@ model FiscalDocument {
   @@index([returnId])
   @@index([parentDocumentId])
   @@index([replacesDocumentId])
+  @@index([storeId, shipmentId])
   @@index([organizationId, status])
   @@index([storeId])
   @@index([contingencyId])

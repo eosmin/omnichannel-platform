@@ -1057,12 +1057,7 @@ describe('the remission note (04)', () => {
   })
 
   it('is refused, for a person to complete, when the receiver lacks what the goods need to be sent to someone', () => {
-    for (const lacking of [
-      { name: null },
-      { taxId: null },
-      { economicActivity: null },
-      { address: null }
-    ]) {
+    for (const lacking of [{ name: null }, { taxId: null }, { address: null }]) {
       const built = build(
         remissionNote({ receiver: { ...CONSUMER, ...DELIVERY_RECEIVER, ...lacking } })
       )
@@ -1070,10 +1065,27 @@ describe('the remission note (04)', () => {
       expect(built.missingReceiverFields).toEqual([Object.keys(lacking)[0]])
     }
     const missing = build(remissionNote({ receiver: CONSUMER })).missingReceiverFields
-    expect(missing).toHaveLength(4)
-    expect(missing).toEqual(
-      expect.arrayContaining(['name', 'taxId', 'economicActivity', 'address'])
+    expect(missing).toHaveLength(3)
+    expect(missing).toEqual(expect.arrayContaining(['name', 'taxId', 'address']))
+  })
+
+  it('takes the activity the customer declares, and "other" (10005) when there is none, so a final consumer can have one', () => {
+    const declared = payloadOf(remissionNote())['receptor']
+    expect(declared).toMatchObject({ codActividad: '47119' })
+    const none = build(
+      remissionNote({ receiver: { ...CONSUMER, ...DELIVERY_RECEIVER, economicActivity: null } })
     )
+    expect(none.missingReceiverFields).toEqual([])
+    expect(schemaErrors('04', none.payload)).toEqual([])
+    expect((none.payload as unknown as Payload)['receptor']).toMatchObject({
+      codActividad: '10005',
+      descActividad: 'Otros'
+    })
+    // Blanks are none too
+    const blank = payloadOf(
+      remissionNote({ receiver: { ...CONSUMER, ...DELIVERY_RECEIVER, economicActivity: '  ' } })
+    )
+    expect(blank['receptor']).toMatchObject({ codActividad: '10005' })
   })
 
   it('is refused too when what the person typed is present but wrong: a national id with a bad check digit, an unknown activity, an address outside the catalogs', () => {

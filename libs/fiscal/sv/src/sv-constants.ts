@@ -367,6 +367,12 @@ export const SvRemissionTitles = {
 export type SvRemissionTitle = (typeof SvRemissionTitles)[keyof typeof SvRemissionTitles]
 export const SvDefaultRemissionTitle: SvRemissionTitle = SvRemissionTitles.TRANSFER
 
+// The economic activity (CAT-019) the receiver of a remission note carries when the customer declares none: the schema asks for one as text and
+// a final consumer has none. "Other" is the code the catalog offers for natural persons (section "employees and other natural persons").
+// **[ACCOUNTANT / AUTHORITY]** No text of the authority says which code a final consumer takes: this is the reasonable technical choice, to
+// confirm with the 50 minimum tests of the sandbox and with a question to the authority. Change this one constant to adopt another.
+export const SvDefaultRemissionActivity = '10005'
+
 // The names of the keys of the address a customer or the issuer keeps in this provider (the address of core is a record of text keyed by
 // the provider's own names): the codes of the catalogs of the authority and a free line.
 export const SvAddressKeys = {

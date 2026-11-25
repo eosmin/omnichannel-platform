@@ -71,6 +71,7 @@ const document = {
   storeId: 's1',
   orderId: 'o1',
   kind: 'sale',
+  shipmentId: null,
   returnId: null,
   parentDocumentId: null,
   replacesDocumentId: null,
