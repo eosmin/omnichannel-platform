@@ -98,7 +98,7 @@ export class DsrExportDownloadService {
         SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`dsr-export-download:${found.id}`}, 0))) AS lock`
       // The claim, in ONE statement: if this token is live, the first caller spends it and every other live link of the request (the tokens of
       // earlier mails of a notice asked for again can not hand the file over a second time); a second click, a scanner racing the person or a
-      // sibling link finds nothing left. A token that is not live spends nothing, so a dead link never burns a live one.
+      // sibling link finds nothing left. A token that is not live spends nothing, so a dead link never burns a live one. NOTE: the lookup of `resolve_dsr_export_download` already needs a live token, so the `own` condition is defense in depth: it is reached only by a token that died between the lookup and this statement (a window of milliseconds, with a sibling of a later date still live), and no test of the route can drive it.
       const spent = await this.prisma.client.$queryRaw<{ token_hash: string }[]>`
         UPDATE verification_tokens SET used_at = now()
         WHERE type = ${VerificationTokenType.DSR_EXPORT_DOWNLOAD} AND subject = ${found.id}

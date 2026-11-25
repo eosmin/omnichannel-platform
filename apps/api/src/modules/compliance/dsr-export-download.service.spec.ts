@@ -74,7 +74,7 @@ function build(options: {
     ...CONFIG,
     enabled: options.enabled ?? true
   })
-  return { service, client, findRequest, log, tenantTransaction, downloadUrl }
+  return { service, client, findRequest, log, tenantTransaction, downloadUrl, head }
 }
 
 const invalid = { code: ErrorCodes.DSR_EXPORT_LINK_INVALID }
@@ -162,6 +162,23 @@ describe('DsrExportDownloadService', () => {
     expect(downloadUrl).not.toHaveBeenCalled()
     expect(log).not.toHaveBeenCalled()
   })
+
+  it.each([
+    ['the flow is off (nothing is looked up)', { enabled: false }],
+    [
+      'the token is unknown, used, expired or of another request (the lookup finds nothing)',
+      { found: [] }
+    ],
+    ['the request has no file any more', { request: null }],
+    ['the file has no key', { request: { resultKey: null, type: 'access' } }]
+  ])(
+    'never asks the bucket when %s, so the bucket tells nothing about the token',
+    async (_name, options) => {
+      const { service, head } = build(options)
+      await expect(service.download({ token: TOKEN })).rejects.toMatchObject(invalid)
+      expect(head).not.toHaveBeenCalled()
+    }
+  )
 
   it.each([
     ['the flow is off', { enabled: false }],
