@@ -722,11 +722,16 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       expect(given.status).toBe(OK)
       expect(dataOf(given)).toMatchObject({ status: FiscalContingencyStatus.CLOSED, documents: 0 })
       expect((await row(id)).contingencyId).toBeNull()
-      const queued = jobs()
+      const givenUpJobs = jobs()
         .slice(before)
         .filter(job => job.name === JobNames.SUBMIT_FISCAL_DOCUMENT)
-        .map(job => (job.data as { documentId: string }).documentId)
+      const queued = givenUpJobs.map(job => (job.data as { documentId: string }).documentId)
       expect(queued).toEqual([id])
+      // It left the contingency, so its job has the ordinary attempts and the ordinary stuck rule applies to it (never the 72 hours)
+      expect(givenUpJobs[0]?.opts).toMatchObject({
+        attempts: FiscalLimits.MAX_ATTEMPTS,
+        backoff: { type: 'exponential', delay: FiscalLimits.BACKOFF_MS }
+      })
       // It is sent the normal way: built again, in the previous model, and accepted
       builds.length = 0
       control.report = FiscalContingencyReportOutcome.ACCEPTED
