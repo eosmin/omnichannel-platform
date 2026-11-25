@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -7,13 +8,15 @@ import {
   DSR_CONFIG,
   type DsrConfig,
   DsrExportDownloadVia,
-  DsrResourceTypes
+  DsrResourceTypes,
+  openDsrExportPassword
 } from '@platform/core/compliance'
-import { hashToken } from '@platform/core/crypto'
+import { CredentialCipher, hashToken } from '@platform/core/crypto'
 import { contextOf, PrismaService, resolveDsrExportDownload } from '@platform/core/database'
 import { DsrStatus, DsrType, VerificationTokenType } from '@platform/core/domain'
 import {
   ErrorCodes,
+  errorName,
   HttpStatusCodes,
   isTransactionConflictError,
   PlatformException
@@ -27,6 +30,8 @@ export interface DsrExportDownloadAnswer {
   url: string
   filename: string
   expiresInSeconds: number
+  // The password of the encrypted ZIP: it leaves ONCE, in the answer of the call that spends the link, and is never logged or audited
+  password: string
 }
 
 // The kinds of request whose answer is a file
@@ -50,8 +55,12 @@ export class DsrExportDownloadService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly storage: StorageService,
-    @Inject(DSR_CONFIG) private readonly config: DsrConfig
-  ) {}
+    private readonly cipher: CredentialCipher,
+    @Inject(DSR_CONFIG) private readonly config: DsrConfig,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(DsrExportDownloadService.name)
+  }
 
   async download(body: DsrExportDownloadBody): Promise<DsrExportDownloadAnswer> {
     try {
@@ -82,13 +91,15 @@ export class DsrExportDownloadService {
           resultKey: { not: null },
           resultExpiresAt: { gt: new Date() }
         },
-        select: { resultKey: true, type: true }
+        select: { resultKey: true, resultPasswordSealed: true, type: true }
       })
     // The bucket is asked BEFORE anything is spent and outside the transaction (no network call while a lock is held): a file the bucket no
     // longer holds (a lifecycle rule, a purge race) costs the person nothing and the same link works once it is back. The claim below reads
     // the request again and refuses a file that changed in between.
     const before = await this.prisma.tenantTransaction(context, readRequest)
-    if (before?.resultKey == null) throw invalidLink()
+    // An export with no sealed password was made before the ZIP was encrypted: its object is readable by anyone who holds the bucket, so it is
+    // not handed over (it expires with its date, and a reviewer asks for the export again)
+    if (before?.resultKey == null || before.resultPasswordSealed == null) throw invalidLink()
     if ((await this.storage.head(before.resultKey).catch(() => null)) === null) throw invalidLink()
 
     const answer = await this.prisma.tenantTransaction(context, async () => {
@@ -113,13 +124,26 @@ export class DsrExportDownloadService {
       // The file went or changed between the check and the claim: the token is not spent for a file that is not the one checked (the throw
       // rolls the claim back)
       if (request?.resultKey == null || request.resultKey !== before.resultKey) throw invalidLink()
+      // The password is opened INSIDE the claim: it can be read only by the call that spent the link. A value that does not open (a key that is
+      // not the one that sealed it, an altered row) gives back the token with the same uniform answer; the log names the kind of error only
+      if (request.resultPasswordSealed == null) throw invalidLink()
+      let password: string
+      try {
+        password = openDsrExportPassword(this.cipher, found.id, request.resultPasswordSealed)
+      } catch (error) {
+        this.logger.error(
+          { requestId: found.id, errorName: errorName(error) },
+          'the password of a data export could not be opened'
+        )
+        throw invalidLink()
+      }
       const url = await this.storage.downloadUrl({
         key: request.resultKey,
         contentType: ExportContentTypes.ZIP,
         filename: ComplianceConfig.DSR_EXPORT_FILENAME,
         expiresInSeconds: ComplianceConfig.DSR_EXPORT_DOWNLOAD_URL_SECONDS
       })
-      return { url, type: request.type }
+      return { url, type: request.type, password }
     })
     if (answer === null) throw invalidLink()
 
@@ -136,7 +160,8 @@ export class DsrExportDownloadService {
     return {
       url: answer.url,
       filename: ComplianceConfig.DSR_EXPORT_FILENAME,
-      expiresInSeconds: ComplianceConfig.DSR_EXPORT_DOWNLOAD_URL_SECONDS
+      expiresInSeconds: ComplianceConfig.DSR_EXPORT_DOWNLOAD_URL_SECONDS,
+      password: answer.password
     }
   }
 }

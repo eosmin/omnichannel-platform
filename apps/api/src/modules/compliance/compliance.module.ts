@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common'
 
 import { DsrOpenWorkService } from '@platform/core/customer-erasure'
-import { CompliancePlatformModule, QueuesPlatformModule } from '@platform/core/http'
+import {
+  CompliancePlatformModule,
+  CryptoPlatformModule,
+  QueuesPlatformModule
+} from '@platform/core/http'
 
 import { TenancyModule } from '../tenancy'
 
@@ -23,7 +27,7 @@ import { DsrVerifyService } from './dsr-verify.service'
 // The consents of customers and the answers to the cookie banner (TDD_05 §10, Step 7.2). The erasure and the requests of the
 // people it is about (DSR) are in the modules of customers and, later, of the requests.
 @Module({
-  imports: [TenancyModule, CompliancePlatformModule, QueuesPlatformModule],
+  imports: [TenancyModule, CompliancePlatformModule, CryptoPlatformModule, QueuesPlatformModule],
   controllers: [
     ConsentController,
     CookieConsentController,

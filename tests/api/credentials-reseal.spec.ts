@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
+import { dsrExportPasswordAad } from '@platform/core/compliance'
 import { CredentialCipher, DecryptionFailure } from '@platform/core/crypto'
 import { JobContext } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -49,6 +50,7 @@ describe('The re-seal of the sealed credentials after a rotation of the key', ()
   } as unknown as PinoLogger
   const SECRET = 'reseal-secret-value-ZZZ'
   const ADDRESS = 'closing@reseal.example.com'
+  const ZIP_PASSWORD = 'zip-password-of-a-data-export-0123456789'
 
   const ids = {
     webhook: '',
@@ -134,7 +136,12 @@ describe('The re-seal of the sealed credentials after a rotation of the key', ()
     })
     await owner.dataSubjectRequest.update({
       where: { id: ids.request },
-      data: { notifyToEncrypted: bytes(oldCipher.sealText(ADDRESS)) }
+      data: {
+        notifyToEncrypted: bytes(oldCipher.sealText(ADDRESS)),
+        resultPasswordSealed: bytes(
+          oldCipher.sealText(ZIP_PASSWORD, dsrExportPasswordAad(ids.request))
+        )
+      }
     })
   }
 
@@ -165,7 +172,12 @@ describe('The re-seal of the sealed credentials after a rotation of the key', ()
     })
     await owner.dataSubjectRequest.update({
       where: { id: ids.otherRequest },
-      data: { notifyToEncrypted: bytes(oldCipher.sealText(ADDRESS)) }
+      data: {
+        notifyToEncrypted: bytes(oldCipher.sealText(ADDRESS)),
+        resultPasswordSealed: bytes(
+          oldCipher.sealText(ZIP_PASSWORD, dsrExportPasswordAad(ids.otherRequest))
+        )
+      }
     })
     return otherColumns()
   }
@@ -187,7 +199,8 @@ describe('The re-seal of the sealed credentials after a rotation of the key', ()
       command: installation.commandSecret,
       commandPrevious: installation.commandSecretPrevious,
       invitation: invitation.emailOutbox,
-      request: request.notifyToEncrypted
+      request: request.notifyToEncrypted,
+      exportPassword: request.resultPasswordSealed
     }
   }
   const sameBytes = (a: Uint8Array | null, b: Uint8Array | null): boolean =>
@@ -225,7 +238,8 @@ describe('The re-seal of the sealed credentials after a rotation of the key', ()
       command: installation.commandSecret,
       commandPrevious: installation.commandSecretPrevious,
       invitation: invitation.emailOutbox,
-      request: request.notifyToEncrypted
+      request: request.notifyToEncrypted,
+      exportPassword: request.resultPasswordSealed
     }
   }
 
@@ -240,7 +254,7 @@ describe('The re-seal of the sealed credentials after a rotation of the key', ()
     const report = await service(rotated()).run(ctx.orgA.id, unitOf(ctx.orgA.id))
 
     expect(report).toMatchObject({ enabled: true, failed: {}, truncated: false })
-    expect(report.resealed).toBeGreaterThanOrEqual(9)
+    expect(report.resealed).toBeGreaterThanOrEqual(10)
     const rows = await columns()
     const json = (k: string, aad?: string): unknown => newCipher.open(rows[k] as Uint8Array, aad)
     expect(json('webhook')).toEqual({ secret: SECRET })
@@ -252,12 +266,16 @@ describe('The re-seal of the sealed credentials after a rotation of the key', ()
     expect(json('commandPrevious')).toEqual({ secret: SECRET })
     expect(json('invitation', invitationAad)).toEqual({ template: 't', to: ADDRESS })
     expect(newCipher.openText(rows['request'] as Uint8Array)).toBe(ADDRESS)
+    expect(
+      newCipher.openText(rows['exportPassword'] as Uint8Array, dsrExportPasswordAad(ids.request))
+    ).toBe(ZIP_PASSWORD)
     // The old key alone no longer opens any of them
     expect(() => oldCipher.open(rows['webhook'] as Uint8Array)).toThrow()
     // One audit entry per value, naming the column and the row, never a value
     expect(audited.length).toBe(report.resealed)
     expect(JSON.stringify(audited)).not.toContain(SECRET)
     expect(JSON.stringify(audited)).not.toContain(ADDRESS)
+    expect(JSON.stringify(audited)).not.toContain(ZIP_PASSWORD)
     expect(JSON.stringify(logged)).not.toContain(SECRET)
 
     audited.length = 0

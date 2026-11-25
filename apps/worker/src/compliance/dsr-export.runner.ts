@@ -10,7 +10,9 @@ import {
   DsrErasureReturnReasons,
   DsrFailureCodes,
   DsrResourceTypes,
-  LegalBases
+  LegalBases,
+  newDsrExportPassword,
+  sealDsrExportPassword
 } from '@platform/core/compliance'
 import { CredentialCipher } from '@platform/core/crypto'
 import { checkDsrSubject } from '@platform/core/customer-erasure'
@@ -287,10 +289,14 @@ export class DsrExportRunner {
       const key = StorageKeys.dsrExport(requestId)
       // The ZIP goes to the bucket as it is made: the files are never held whole. The object first, the row after: a death in between leaves an
       // object the next try overwrites (same key) and a request still in progress
+      // The ZIP is encrypted with a password of this request alone; it is sealed here and never written anywhere else (not a log, not the audit
+      // log, not the mail): the person receives it once, in the answer that spends their link
+      const password = newDsrExportPassword()
       const zip = streamDsrZip(
         content,
         { type: row.type, generatedAt: now },
-        { stream: fileKey => this.storage.stream(fileKey) }
+        { stream: fileKey => this.storage.stream(fileKey) },
+        password
       )
       await this.storage.putStream(key, zip.stream, ExportContentTypes.ZIP)
       const done = await tx.dataSubjectRequest.updateMany({
@@ -299,6 +305,9 @@ export class DsrExportRunner {
           status: DsrStatus.COMPLETED,
           completedAt: now,
           resultKey: key,
+          resultPasswordSealed: Buffer.from(
+            sealDsrExportPassword(this.cipher, requestId, password)
+          ),
           resultExpiresAt: new Date(now.getTime() + ComplianceConfig.DSR_EXPORT_LINK_DAYS * DAY_MS),
           retainedRecordsSummary: { legalBasis: LegalBases.LEGAL_OBLIGATION, ...content.counts },
           exportFailureCode: null,
@@ -503,7 +512,7 @@ export class DsrExportRunner {
           this.prisma.transaction(async tx => {
             const cleared = await tx.dataSubjectRequest.updateMany({
               where: { id: row.id, storeId, resultKey: row.resultKey },
-              data: { resultKey: null }
+              data: { resultKey: null, resultPasswordSealed: null }
             })
             if (cleared.count === 1) {
               this.audit.log({

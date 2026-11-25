@@ -15,7 +15,8 @@ const SEALED_BY_THIS_RESEAL: Record<string, string> = {
   'PluginInstallation.commandSecret': SealedTargetIds.PLUGIN_COMMAND_SECRET,
   'PluginInstallation.commandSecretPrevious': SealedTargetIds.PLUGIN_COMMAND_SECRET_PREVIOUS,
   'Invitation.emailOutbox': SealedTargetIds.INVITATION_OUTBOX,
-  'DataSubjectRequest.notifyToEncrypted': SealedTargetIds.DSR_NOTIFY_ADDRESS
+  'DataSubjectRequest.notifyToEncrypted': SealedTargetIds.DSR_NOTIFY_ADDRESS,
+  'DataSubjectRequest.resultPasswordSealed': SealedTargetIds.DSR_EXPORT_PASSWORD
 }
 const SEALED_BY_THE_FISCAL_RESEAL = [
   'CustomerFiscalData.dataEncrypted',

@@ -89,6 +89,15 @@ export const ComplianceConfig = {
   DSR_EXPORT_TRANSACTION_TIMEOUT_MS: 15 * 60 * 1000,
   DSR_EXPORT_DOWNLOAD_URL_SECONDS: 5 * 60,
   DSR_EXPORT_FILENAME: 'data-export.zip',
+  // The ZIP is encrypted (ZIP AES-256, Step 7.2-H2b-3c) with a password of this many random bytes, new for each request; it is kept sealed with the
+  // credentials key, bound to the request, and handed to the person once, in the answer that spends their link (never in the mail)
+  DSR_EXPORT_PASSWORD_BYTES: 24,
+  DSR_EXPORT_PASSWORD_AAD_PREFIX: 'dsr-export-password:',
+  // A password shorter than this is a mistake of the caller, never one made for the export; AES-256 is strength 3 of the ZIP library; the
+  // deflate level of the entries
+  DSR_EXPORT_MIN_PASSWORD_LENGTH: 16,
+  DSR_EXPORT_ZIP_AES_STRENGTH: 3,
+  DSR_EXPORT_ZIP_LEVEL: 6,
   // Requests the export sweep and the purge of expired exports take per store and per run
   DSR_EXPORT_BATCH: 10
 } as const

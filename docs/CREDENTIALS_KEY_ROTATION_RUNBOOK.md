@@ -30,6 +30,7 @@ organization, with books or without them**):
 | `plugin_installations.webhook_secret`, `command_secret`, `command_secret_previous` (`plugin-webhook-secret`, `plugin-command-secret`, `plugin-command-secret-previous`) | yes |
 | `invitations.email_outbox` (`invitation-outbox`; bound to its invitation and store) | yes (it lives hours; if it was left sealed with the old key the invitation shows as not sent) |
 | `data_subject_requests.notify_to_encrypted` (`dsr-notify-address`; text, not JSON) | yes |
+| `data_subject_requests.result_password_sealed` (`dsr-export-password`; text, bound to its request) | yes (the password of the encrypted ZIP of a data export; it lives as long as the file, `DSR_EXPORT_LINK_DAYS` days. A password that opens with neither key leaves the download refused with the uniform answer and the export has to be made again) |
 
 While both keys are set every reader of these values opens with either key (`openRotating`), so nothing stops working during the window, and
 everything that is written is sealed with the new key.
