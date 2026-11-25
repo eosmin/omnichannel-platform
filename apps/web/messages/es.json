@@ -8470,6 +8470,14 @@
           "void_response": {
             "label": "Respuesta a la anulación",
             "hint": "Lo que respondió la autoridad cuando el documento se anuló."
+          },
+          "dte_file": {
+            "label": "Archivo del documento para el cliente",
+            "hint": "El archivo JSON del documento con su firma y su sello, tal como se entrega al cliente."
+          },
+          "representation": {
+            "label": "Representación gráfica para el cliente",
+            "hint": "El PDF con el código QR de consulta que se entrega al cliente junto con el archivo del documento."
           }
         }
       },

@@ -32,7 +32,9 @@ export enum FiscalIssueOn {
 export enum FiscalEvidenceKind {
   DOCUMENT = 'document',
   RESPONSE = 'response',
-  VOID_RESPONSE = 'void_response'
+  VOID_RESPONSE = 'void_response',
+  DTE_FILE = 'dte_file',
+  REPRESENTATION = 'representation'
 }
 
 // How the sale was paid, in core's words, for a provider whose document says it (the provider maps it to its own catalog). Core derives
@@ -245,6 +247,14 @@ export const FiscalContingencyConflictReasons = {
 } as const
 
 export const FiscalEvidenceContentType = 'application/json'
+// The type of the file of each kind: the representation is the only one that is not JSON
+export const FiscalEvidenceContentTypes: Readonly<Record<FiscalEvidenceKind, string>> = {
+  [FiscalEvidenceKind.DOCUMENT]: FiscalEvidenceContentType,
+  [FiscalEvidenceKind.RESPONSE]: FiscalEvidenceContentType,
+  [FiscalEvidenceKind.VOID_RESPONSE]: FiscalEvidenceContentType,
+  [FiscalEvidenceKind.DTE_FILE]: FiscalEvidenceContentType,
+  [FiscalEvidenceKind.REPRESENTATION]: 'application/pdf'
+}
 
 // The reasons core itself gives for a rejection (a provider's own are codes of its own, kept as they come)
 export const FiscalRejectionReasons = {

@@ -109,11 +109,18 @@ export const fiscalEvidenceKindsOf = (
     return [
       FiscalEvidenceKind.DOCUMENT,
       FiscalEvidenceKind.RESPONSE,
-      FiscalEvidenceKind.VOID_RESPONSE
+      FiscalEvidenceKind.VOID_RESPONSE,
+      FiscalEvidenceKind.DTE_FILE,
+      FiscalEvidenceKind.REPRESENTATION
     ]
   }
   return document.status === FiscalDocumentStatus.ACCEPTED
-    ? [FiscalEvidenceKind.DOCUMENT, FiscalEvidenceKind.RESPONSE]
+    ? [
+        FiscalEvidenceKind.DOCUMENT,
+        FiscalEvidenceKind.RESPONSE,
+        FiscalEvidenceKind.DTE_FILE,
+        FiscalEvidenceKind.REPRESENTATION
+      ]
     : []
 }
 

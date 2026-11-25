@@ -414,3 +414,22 @@ export class SvBuildError extends Error {
     this.name = 'SvBuildError'
   }
 }
+
+// The graphic representation of a document (Normativa de Cumplimiento DTE v2.0, apartado 11.3 and Anexo I 4 and 8; Manual Técnico §5). The
+// names of the fields are the authority's own (Anexos II and III), in Spanish: the document is a legal paper of the country, so its words are
+// not translated. The address of the public consultation is the one of the Manual Técnico §5.
+export const SvRepresentation = {
+  CONSULT_URL: 'https://admin.factura.gob.sv/consultaPublica',
+  // A document of the test environment says it has no legal value (Normativa 11.3.1)
+  TEST_NOTICE: 'Documento emitido en el ambiente de pruebas: carece de valor legal.',
+  // The 40 characters of the seal are replaced by this when the document has none (a document made in contingency is sealed later)
+  NO_SEAL: '-',
+  EMPTY: '-',
+  MODELS: { 1: 'Modelo de facturación previo', 2: 'Modelo de facturación diferido' },
+  TRANSMISSIONS: { 1: 'Transmisión normal', 2: 'Transmisión por contingencia' },
+  TITLES: {
+    '01': 'Factura',
+    '03': 'Comprobante de crédito fiscal',
+    '05': 'Nota de crédito'
+  }
+} as const satisfies Record<string, unknown>

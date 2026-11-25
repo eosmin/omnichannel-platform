@@ -93,16 +93,20 @@ describe('what a person may do with a fiscal document', () => {
     ).toBe(false)
   })
 
-  it('offers the files of evidence the api makes: two once accepted, three once voided, none before', () => {
+  it('offers the files of evidence the api makes: four once accepted, five once voided, none before', () => {
     const kinds = (status: FiscalDocumentStatus) => fiscalEvidenceKindsOf({ status })
     expect(kinds(FiscalDocumentStatus.ACCEPTED)).toEqual([
       FiscalEvidenceKind.DOCUMENT,
-      FiscalEvidenceKind.RESPONSE
+      FiscalEvidenceKind.RESPONSE,
+      FiscalEvidenceKind.DTE_FILE,
+      FiscalEvidenceKind.REPRESENTATION
     ])
     expect(kinds(FiscalDocumentStatus.VOIDED)).toEqual([
       FiscalEvidenceKind.DOCUMENT,
       FiscalEvidenceKind.RESPONSE,
-      FiscalEvidenceKind.VOID_RESPONSE
+      FiscalEvidenceKind.VOID_RESPONSE,
+      FiscalEvidenceKind.DTE_FILE,
+      FiscalEvidenceKind.REPRESENTATION
     ])
     for (const status of Object.values(FiscalDocumentStatus)) {
       if (status === FiscalDocumentStatus.ACCEPTED || status === FiscalDocumentStatus.VOIDED) {

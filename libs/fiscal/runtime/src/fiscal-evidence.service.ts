@@ -15,7 +15,7 @@ import {
 } from '@platform/core/database'
 import {
   FiscalDocumentStatus,
-  FiscalEvidenceContentType,
+  FiscalEvidenceContentTypes,
   FiscalEvidenceKind,
   FiscalLimits,
   MediaStatus,
@@ -23,9 +23,11 @@ import {
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { JobNames, QueueNames, scanFileJobOptions, type ScanFileJob } from '@platform/core/queues'
-import { MediaPurpose, StorageKeys } from '@platform/core/storage'
+import { MediaPurpose, sanitizeFilename, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
+import { FiscalProviderRegistry } from './fiscal-provider.registry'
+import { renderRepresentationPdf } from './fiscal-representation-pdf'
 import { record, toJson } from './json'
 import { openSealed } from './sealed-open'
 
@@ -35,7 +37,34 @@ import { openSealed } from './sealed-open'
 const KIND_STATES: Record<FiscalEvidenceKind, readonly FiscalDocumentStatus[]> = {
   [FiscalEvidenceKind.DOCUMENT]: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.VOIDED],
   [FiscalEvidenceKind.RESPONSE]: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.VOIDED],
-  [FiscalEvidenceKind.VOID_RESPONSE]: [FiscalDocumentStatus.VOIDED]
+  [FiscalEvidenceKind.VOID_RESPONSE]: [FiscalDocumentStatus.VOIDED],
+  // What the receiver is given, made from the document as the authority accepted it (it stays when the document is voided: the receiver
+  // keeps what they were given, and the invalidation is its own event)
+  [FiscalEvidenceKind.DTE_FILE]: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.VOIDED],
+  [FiscalEvidenceKind.REPRESENTATION]: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.VOIDED]
+}
+
+// The columns of a document a file of evidence is made from
+interface EvidenceRow {
+  readonly id: string
+  readonly documentType: string
+  readonly providerId: string
+  readonly externalNumber: string | null
+  readonly providerData: unknown
+  readonly builtPayloadEncrypted: Uint8Array | null
+  readonly response: unknown
+  readonly voidReason: string | null
+  readonly voidedAt: Date | null
+  readonly voidResponse: unknown
+  readonly issuedAt: Date | null
+  readonly createdAt: Date
+  readonly sequenceNumber: number
+}
+
+// What a kind of evidence is as a file: its bytes and the name it is downloaded with
+interface MadeFile {
+  readonly bytes: Buffer
+  readonly filename: string
 }
 
 // The evidence of a fiscal document as files of `Media` (TDD_18 §8.3, Step 4B.7b-2): the file is made from the row of the document (which is
@@ -52,7 +81,8 @@ export class FiscalEvidenceService {
     private readonly storage: StorageService,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ScanFileJob>,
     private readonly logger: PinoLogger,
-    private readonly jobContext: JobContext
+    private readonly jobContext: JobContext,
+    private readonly registry: FiscalProviderRegistry
   ) {
     this.logger.setContext(FiscalEvidenceService.name)
   }
@@ -125,10 +155,10 @@ export class FiscalEvidenceService {
     if (row.status === String(MediaStatus.INFECTED)) return { mediaId: row.id }
     const unscannable = row.status === String(MediaStatus.UNSCANNABLE)
     if (unscannable || (await this.storage.head(row.key)) === null) {
-      const bytes = await this.bytesOf(organizationId, documentId, kind)
+      const made = await this.bytesOf(organizationId, documentId, kind)
       // Nothing to write (the sealed copy cannot be opened, or it is larger than what is kept as a file): there is no evidence to serve
-      if (bytes === null) return null
-      await this.storage.put(row.key, bytes, FiscalEvidenceContentType)
+      if (made === null) return null
+      await this.storage.put(row.key, made.bytes, FiscalEvidenceContentTypes[kind])
       if (unscannable) {
         await this.unit(organizationId, () =>
           this.prisma.client.media.updateMany({
@@ -154,12 +184,14 @@ export class FiscalEvidenceService {
       })
     )
     if (doc === null) return null
-    const bytes = await this.bytesOf(organizationId, documentId, kind)
-    if (bytes === null) return null
+    const made = await this.bytesOf(organizationId, documentId, kind)
+    if (made === null) return null
+    // The name comes from the provider: only a plain file name goes into the key and the row
+    const { bytes } = made
+    const filename = sanitizeFilename(made.filename)
     const mediaId = randomUUID()
-    const filename = `fiscal-${doc.sequenceNumber}-${kind}.json`
     const key = StorageKeys.fiscalEvidence(doc.storeId, doc.id, mediaId, filename)
-    await this.storage.put(key, bytes, FiscalEvidenceContentType)
+    await this.storage.put(key, bytes, FiscalEvidenceContentTypes[kind])
     try {
       await inSavepoint(() =>
         this.unit(organizationId, () =>
@@ -172,7 +204,7 @@ export class FiscalEvidenceService {
               fiscalEvidenceKind: kind,
               key,
               filename,
-              contentType: FiscalEvidenceContentType,
+              contentType: FiscalEvidenceContentTypes[kind],
               fileSize: bytes.byteLength,
               status: MediaStatus.PENDING
             }
@@ -196,12 +228,12 @@ export class FiscalEvidenceService {
     return { mediaId }
   }
 
-  // The bytes of a kind of evidence, made from the row; null when the document has none (or it is larger than what is kept as a file)
+  // The file of a kind of evidence, made from the row; null when the document has none (or it is larger than what is kept as a file)
   private async bytesOf(
     organizationId: string,
     documentId: string,
     kind: FiscalEvidenceKind
-  ): Promise<Buffer | null> {
+  ): Promise<MadeFile | null> {
     const doc = await this.unit(organizationId, () =>
       this.prisma.client.fiscalDocument.findFirst({
         where: { id: documentId, organizationId },
@@ -209,6 +241,7 @@ export class FiscalEvidenceService {
           id: true,
           sequenceNumber: true,
           documentType: true,
+          providerId: true,
           externalNumber: true,
           providerData: true,
           builtPayloadEncrypted: true,
@@ -216,22 +249,89 @@ export class FiscalEvidenceService {
           voidReason: true,
           voidedAt: true,
           voidResponse: true,
-          issuedAt: true
+          issuedAt: true,
+          createdAt: true
         }
       })
     )
     if (doc === null) return null
-    const content = this.contentOf(kind, doc)
-    if (content === null) return null
-    const bytes = Buffer.from(JSON.stringify(content), 'utf8')
-    if (bytes.byteLength > FiscalLimits.EVIDENCE_MAX_BYTES) {
+    const made =
+      kind === FiscalEvidenceKind.DTE_FILE || kind === FiscalEvidenceKind.REPRESENTATION
+        ? await this.deliveryFileOf(kind, doc)
+        : this.jsonFileOf(kind, doc)
+    if (made === null) return null
+    if (made.bytes.byteLength > FiscalLimits.EVIDENCE_MAX_BYTES) {
       this.logger.error(
-        { documentId, kind, bytes: bytes.byteLength },
+        { documentId, kind, bytes: made.bytes.byteLength },
         'the evidence of a fiscal document is larger than what is kept as a file'
       )
       return null
     }
-    return bytes
+    return made
+  }
+
+  private jsonFileOf(kind: FiscalEvidenceKind, doc: EvidenceRow): MadeFile | null {
+    const content = this.contentOf(kind, doc)
+    if (content === null) return null
+    return {
+      bytes: Buffer.from(JSON.stringify(content), 'utf8'),
+      filename: `fiscal-${doc.sequenceNumber}-${kind}.json`
+    }
+  }
+
+  // What the receiver is given: made by the provider of the document from the document as it was kept (so it is the same file every time),
+  // the picture drawn from that model. A provider without a representation, or a type it does not draw, has none (null).
+  private async deliveryFileOf(
+    kind: FiscalEvidenceKind,
+    doc: EvidenceRow
+  ): Promise<MadeFile | null> {
+    const payload = this.openedPayload(doc)
+    const provider = this.registry.find(doc.providerId)
+    if (payload === null || provider?.represent === undefined) return null
+    try {
+      const representation = provider.represent({
+        documentType: doc.documentType,
+        externalNumber: doc.externalNumber,
+        providerData: doc.providerData === null ? null : record(toJson(doc.providerData)),
+        payload: record(toJson(payload))
+      })
+      if (representation === null) return null
+      if (kind === FiscalEvidenceKind.DTE_FILE) {
+        if (representation.file === null) return null
+        return {
+          bytes: Buffer.from(JSON.stringify(representation.file.content), 'utf8'),
+          filename: representation.file.filename
+        }
+      }
+      return {
+        bytes: await renderRepresentationPdf(representation, doc.issuedAt ?? doc.createdAt),
+        filename: `${representation.name}.pdf`
+      }
+    } catch (error) {
+      this.logger.error(
+        { documentId: doc.id, kind, err: errorName(error) },
+        'the representation of a fiscal document could not be made'
+      )
+      return null
+    }
+  }
+
+  // The built document, opened; null when the sealed copy is missing or cannot be opened
+  private openedPayload(doc: EvidenceRow): Record<string, unknown> | null {
+    if (doc.builtPayloadEncrypted === null) return null
+    let payload: Record<string, unknown>
+    try {
+      payload = openSealed(
+        this.cipher,
+        this.logger,
+        doc.builtPayloadEncrypted,
+        SealedValueKind.BUILT_PAYLOAD,
+        { documentId: doc.id }
+      )
+    } catch {
+      return null
+    }
+    return payload['unreadable'] === true ? null : payload
   }
 
   // Scanned like any file: nobody is given a link before it is clean. The job of a file has one id, so asking again never makes two; a
@@ -260,39 +360,10 @@ export class FiscalEvidenceService {
   // The content of a kind, read from the row. The built document is sealed in the row (it holds the receiver): it is opened here and
   // written as the evidence, a file only the people who read the fiscal documents are given a link to. A row whose sealed copy cannot be
   // opened has no document evidence to make (null), never an empty one.
-  private contentOf(
-    kind: FiscalEvidenceKind,
-    doc: {
-      id: string
-      documentType: string
-      externalNumber: string | null
-      providerData: unknown
-      builtPayloadEncrypted: Uint8Array | null
-      response: unknown
-      voidReason: string | null
-      voidedAt: Date | null
-      voidResponse: unknown
-      issuedAt: Date | null
-      sequenceNumber: number
-    }
-  ): Record<string, unknown> | null {
+  private contentOf(kind: FiscalEvidenceKind, doc: EvidenceRow): Record<string, unknown> | null {
     if (kind === FiscalEvidenceKind.DOCUMENT) {
-      if (doc.builtPayloadEncrypted === null) return null
-      let payload: Record<string, unknown>
-      try {
-        payload = openSealed(
-          this.cipher,
-          this.logger,
-          doc.builtPayloadEncrypted,
-          SealedValueKind.BUILT_PAYLOAD,
-          {
-            documentId: doc.id
-          }
-        )
-      } catch {
-        return null
-      }
-      if (payload['unreadable'] === true) return null
+      const payload = this.openedPayload(doc)
+      if (payload === null) return null
       return {
         sequenceNumber: doc.sequenceNumber,
         documentType: doc.documentType,

@@ -8470,6 +8470,14 @@
           "void_response": {
             "label": "Answer to the void",
             "hint": "What the authority answered when the document was voided."
+          },
+          "dte_file": {
+            "label": "Document file for the customer",
+            "hint": "The JSON file of the document with its signature and its seal, as it is given to the customer."
+          },
+          "representation": {
+            "label": "Graphic representation for the customer",
+            "hint": "The PDF with the consultation QR code that is given to the customer along with the document file."
           }
         }
       },
