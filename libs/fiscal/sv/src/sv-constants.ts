@@ -86,18 +86,23 @@ export const SvEnabledEnvironments: readonly FiscalEnvironment[] = [FiscalEnviro
 export const SvDocumentTypes = {
   INVOICE: '01',
   TAX_CREDIT: '03',
+  REMISSION_NOTE: '04',
   CREDIT_NOTE: '05',
-  DEBIT_NOTE: '06'
+  DEBIT_NOTE: '06',
+  // The invoice of an excluded subject (FSEE): the buyer makes it for a seller who is no taxpayer and issues none
+  EXCLUDED_SUBJECT: '14'
 } as const
 export type SvDocumentType = (typeof SvDocumentTypes)[keyof typeof SvDocumentTypes]
 
 // The version of the JSON schema of each document (the folders of svfe-json-schemas: factura v2, comprobante de crédito fiscal v4, nota de
-// crédito v4, nota de débito v4)
+// crédito v4, nota de débito v4, nota de remisión v4, factura de sujeto excluido v2)
 export const SvSchemaVersions: Readonly<Record<SvDocumentType, number>> = {
   [SvDocumentTypes.INVOICE]: 2,
   [SvDocumentTypes.TAX_CREDIT]: 4,
+  [SvDocumentTypes.REMISSION_NOTE]: 4,
   [SvDocumentTypes.CREDIT_NOTE]: 4,
-  [SvDocumentTypes.DEBIT_NOTE]: 4
+  [SvDocumentTypes.DEBIT_NOTE]: 4,
+  [SvDocumentTypes.EXCLUDED_SUBJECT]: 2
 }
 
 // CAT-003 (the billing model) and CAT-004 (the kind of transmission). Normal transmission is the previous model (the document is sent
@@ -273,9 +278,24 @@ export const SvInvalidationDeadlineRules: Readonly<
 > = {
   [SvDocumentTypes.INVOICE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_MONTHS, amount: 3 },
   [SvDocumentTypes.TAX_CREDIT]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 },
+  // Anexo V, field 47, rule 4: the remission note (NRE) is invalidated within four calendar days after its seal (the Manual Funcional
+  // says the tenth business day of the next month for it too, the same contradiction as above: the stricter window is used)
+  [SvDocumentTypes.REMISSION_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 4 },
   [SvDocumentTypes.CREDIT_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 },
-  [SvDocumentTypes.DEBIT_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 }
+  [SvDocumentTypes.DEBIT_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 },
+  // Three calendar months after the seal, like an invoice (Anexo V, field 47, rule 5: FE, FEXE and FSEE)
+  [SvDocumentTypes.EXCLUDED_SUBJECT]: {
+    unit: SvInvalidationDeadlineUnits.CALENDAR_MONTHS,
+    amount: 3
+  }
 }
+
+// The types whose event is dated the way an invoice's is (Anexo V, field 9, rules 4 and 5): the day it is made, but never later than three
+// months after the date of the document. The others take the date of their document.
+export const SvInvalidationDatedLikeInvoice: readonly SvDocumentType[] = [
+  SvDocumentTypes.INVOICE,
+  SvDocumentTypes.EXCLUDED_SUBJECT
+]
 
 // The types whose invalidation names no replacement document whatever the kind (Anexo V, field 48: null for 05, 08, 16, 17 and 18). The
 // debit note (06) is not among them: it names one like a tax credit document.
@@ -290,8 +310,10 @@ export const SvInvalidationWithoutReplacement: readonly SvDocumentType[] = [
 export const SvInvalidationAllowed: Readonly<Record<SvDocumentType, boolean>> = {
   [SvDocumentTypes.INVOICE]: true,
   [SvDocumentTypes.TAX_CREDIT]: true,
+  [SvDocumentTypes.REMISSION_NOTE]: true,
   [SvDocumentTypes.CREDIT_NOTE]: true,
-  [SvDocumentTypes.DEBIT_NOTE]: true
+  [SvDocumentTypes.DEBIT_NOTE]: true,
+  [SvDocumentTypes.EXCLUDED_SUBJECT]: true
 }
 
 // The deadlines are checked before anything is sent (a refusal with a code of ours, the authority is not troubled); switch this off to leave
@@ -336,6 +358,19 @@ export const SvDebitableDocuments: readonly SvDocumentType[] = [SvDocumentTypes.
 // 2 c): three calendar months, the last day included, counted on the dates the documents carry (`fecEmi`). **[ACCOUNTANT]** The manual
 // adds "except the legal exceptions", which are not known: no exception is applied, a note out of time is refused before it is sent.
 export const SvRelatedDocument = { DEADLINE_MONTHS: 3 } as const
+
+// CAT-025: the title the goods of a remission note are sent under (the `bienTitulo` of its receiver). **[ACCOUNTANT]** Which title a dispatch
+// to a buyer whose sale document is made on delivery carries is the accountant's to say; "transfer" is used until then, because the note
+// backs the movement of the goods and no sale is declared by it. Change `SvDefaultRemissionTitle` to adopt another.
+export const SvRemissionTitles = {
+  DEPOSIT: '01',
+  OWNERSHIP: '02',
+  CONSIGNMENT: '03',
+  TRANSFER: '04',
+  OTHER: '05'
+} as const
+export type SvRemissionTitle = (typeof SvRemissionTitles)[keyof typeof SvRemissionTitles]
+export const SvDefaultRemissionTitle: SvRemissionTitle = SvRemissionTitles.TRANSFER
 
 // The names of the keys of the address a customer or the issuer keeps in this provider (the address of core is a record of text keyed by
 // the provider's own names): the codes of the catalogs of the authority and a free line.
@@ -419,7 +454,12 @@ export const SvBuildErrors = {
   QUANTITY_INVALID: 'quantity_invalid',
   CONTINGENCY_REASON_UNKNOWN: 'contingency_reason_unknown',
   CONTINGENCY_MOTIVE_REQUIRED: 'contingency_motive_required',
-  CONTINGENCY_MOTIVE_TOO_LONG: 'contingency_motive_too_long'
+  CONTINGENCY_MOTIVE_TOO_LONG: 'contingency_motive_too_long',
+  // A purchase document asks the caller for the income tax withheld, always stated and never assumed
+  WITHHOLDING_REQUIRED: 'withholding_required',
+  WITHHOLDING_INVALID: 'withholding_invalid',
+  // A purchase from an excluded subject carries no sales tax
+  PURCHASE_HAS_TAX: 'purchase_has_tax'
 } as const
 export type SvBuildErrorCode = (typeof SvBuildErrors)[keyof typeof SvBuildErrors]
 

@@ -32,8 +32,16 @@ describe('the conformance run with the simulator', () => {
       (sum, totals) => sum + totals.accepted,
       0
     )
-    // 90 + 75 + 8 made for the invalidations + 50 credit notes + 25 debit notes; the deferred ones need a contingency mode
-    expect(accepted).toBe(90 + 75 + 8 + 50 + 25)
+    // 90 + 75 + 8 made for the invalidations + 50 credit notes + 25 debit notes + 50 remission notes + 25 purchases from excluded subjects; the deferred ones need a contingency mode
+    expect(accepted).toBe(90 + 75 + 8 + 50 + 25 + 50 + 25)
+    // The notes are made as the type the simulator declares for them, and fill the bucket of their own
+    expect(report.documents['simulated_remission_note']).toMatchObject({
+      planned: 50,
+      accepted: 50
+    })
+    expect(report.minimum['remission_note']).toEqual({ planned: 50, accepted: 50 })
+    expect(report.documents['simulated_purchase']).toMatchObject({ planned: 25, accepted: 25 })
+    expect(report.minimum['excluded_subject']).toEqual({ planned: 25, accepted: 25 })
     expect(report.voids).toEqual({ planned: 5, done: 5, refused: 0 })
     expect(Object.values(report.documents).reduce((sum, totals) => sum + totals.rejected, 0)).toBe(
       0
@@ -68,7 +76,7 @@ describe('the conformance run with the simulator', () => {
     expect(report.steps.filter(step => step.outcome === ConformanceOutcome.ACCEPTED)).toEqual([])
     expect(
       report.steps.filter(step => step.outcome === ConformanceOutcome.DRY_RUN_BUILT)
-    ).toHaveLength(90 + 75 + 8 + 50 + 25)
+    ).toHaveLength(90 + 75 + 8 + 50 + 25 + 50 + 25)
   })
 
   it('keeps the data of the issuer and of the receivers out of its report', async () => {

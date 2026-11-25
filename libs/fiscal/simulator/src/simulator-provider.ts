@@ -37,7 +37,9 @@ export const SimulatorDocumentTypes = {
   CONSUMER: 'simulated_consumer',
   BUSINESS: 'simulated_business',
   CREDIT_NOTE: 'simulated_credit_note',
-  DEBIT_NOTE: 'simulated_debit_note'
+  DEBIT_NOTE: 'simulated_debit_note',
+  REMISSION_NOTE: 'simulated_remission_note',
+  PURCHASE: 'simulated_purchase'
 } as const
 export const SimulatorRules = {
   REJECT: 'REJECT',
@@ -79,6 +81,18 @@ export class SimulatorProvider implements FiscalDocumentProvider {
         label: 'Simulated debit note',
         requiredReceiverFields: [],
         debitNote: true
+      },
+      {
+        id: SimulatorDocumentTypes.REMISSION_NOTE,
+        label: 'Simulated remission note',
+        requiredReceiverFields: [],
+        remissionNote: true
+      },
+      {
+        id: SimulatorDocumentTypes.PURCHASE,
+        label: 'Simulated purchase document',
+        requiredReceiverFields: [],
+        purchase: true
       }
     ],
     requiredIssuerFields: ['legalName', 'taxId', 'address'],
@@ -120,6 +134,9 @@ export class SimulatorProvider implements FiscalDocumentProvider {
   resolveDocumentType(input: FiscalTypeInput): string {
     if (input.kind === FiscalDocumentKind.CREDIT_NOTE) return SimulatorDocumentTypes.CREDIT_NOTE
     if (input.kind === FiscalDocumentKind.DEBIT_NOTE) return SimulatorDocumentTypes.DEBIT_NOTE
+    if (input.kind === FiscalDocumentKind.REMISSION_NOTE)
+      return SimulatorDocumentTypes.REMISSION_NOTE
+    if (input.kind === FiscalDocumentKind.PURCHASE) return SimulatorDocumentTypes.PURCHASE
     const business = input.receiver.taxId !== null && input.receiver.taxId.trim() !== ''
     return business ? SimulatorDocumentTypes.BUSINESS : SimulatorDocumentTypes.CONSUMER
   }

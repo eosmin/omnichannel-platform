@@ -16,7 +16,14 @@ import {
   sealDateOf,
   type SvInvalidationInput
 } from './sv-invalidation'
-import { acceptedDocument, BUSINESS, credited, ISSUER, schemaErrors } from './testing/sv-fixtures'
+import {
+  acceptedDocument,
+  BUSINESS,
+  credited,
+  ISSUER,
+  purchase,
+  schemaErrors
+} from './testing/sv-fixtures'
 
 const PERSON = { name: 'Ana Pérez', idType: '13', idNumber: '012345678' }
 const REQUESTER = { name: 'Luis Gómez', idType: '36', idNumber: '06140101011011' }
@@ -49,12 +56,24 @@ describe('the deadlines of an invalidation', () => {
     expect(invalidationDeadline(SvDocumentTypes.INVOICE, '2026-11-30')).toBe('2027-02-28')
   })
 
+  it('counts three calendar months from the seal for the invoice of an excluded subject, like an invoice (Anexo V, field 47, rule 5)', () => {
+    expect(invalidationDeadline(SvDocumentTypes.EXCLUDED_SUBJECT, '2026-11-16')).toBe('2027-02-16')
+    expect(invalidationDeadline(SvDocumentTypes.EXCLUDED_SUBJECT, '2026-11-30')).toBe('2027-02-28')
+    expect(invalidationDeadline(SvDocumentTypes.EXCLUDED_SUBJECT, '2027-11-30')).toBe('2028-02-29')
+  })
+
   it('gives a tax credit document or a credit note one calendar day after the seal (the stricter text)', () => {
     expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-11-16')).toBe('2026-11-17')
     expect(invalidationDeadline(SvDocumentTypes.CREDIT_NOTE, '2026-11-30')).toBe('2026-12-01')
     // The debit note is counted like the credit note (Anexo V, field 47, rule 2: CCFE, CRE, NCE and NDE)
     expect(invalidationDeadline(SvDocumentTypes.DEBIT_NOTE, '2026-11-30')).toBe('2026-12-01')
     expect(invalidationDeadline(SvDocumentTypes.DEBIT_NOTE, '2026-12-31')).toBe('2027-01-01')
+    // The remission note has four calendar days (Anexo V, field 47, rule 4: NRE)
+    expect(invalidationDeadline(SvDocumentTypes.REMISSION_NOTE, '2026-11-16')).toBe('2026-11-20')
+    expect(invalidationDeadline(SvDocumentTypes.REMISSION_NOTE, '2026-12-29')).toBe('2027-01-02')
+    // A leap day and a month rollover for the four days
+    expect(invalidationDeadline(SvDocumentTypes.REMISSION_NOTE, '2028-02-27')).toBe('2028-03-02')
+    expect(invalidationDeadline(SvDocumentTypes.REMISSION_NOTE, '2026-11-30')).toBe('2026-12-04')
     // Over the end of a year, and a leap day
     expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-12-31')).toBe('2027-01-01')
     expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2028-02-28')).toBe('2028-02-29')
@@ -274,6 +293,60 @@ describe('the invalidation event', () => {
     }
   })
 
+  const remissionNote = (
+    over: Partial<Parameters<typeof acceptedDocument>[0]> = {}
+  ): ReturnType<typeof acceptedDocument> =>
+    acceptedDocument({
+      kind: FiscalDocumentKind.REMISSION_NOTE,
+      receiver: { ...BUSINESS, registrationId: null, taxId: '012345678', documentType: null },
+      ...over
+    })
+
+  it('lets a remission note be rescinded with no replacement, and asks one for the kind "other" like a correction', () => {
+    const doc = remissionNote()
+    const now = '2026-11-17T15:00:00.000Z'
+    const parties = { responsible: PERSON, requester: REQUESTER }
+    expect(
+      refusal(
+        buildInvalidation(
+          input({ doc, now, details: { kind: FiscalVoidKind.RESCISSION, ...parties } })
+        )
+      )
+    ).toBeNull()
+    expect(
+      refusal(
+        buildInvalidation(input({ doc, now, details: { kind: FiscalVoidKind.OTHER, ...parties } }))
+      )
+    ).toBe(SvVoidRefusals.REPLACEMENT_REQUIRED)
+  })
+
+  it('refuses a remission note after the fourth day that follows its seal, to the last second', () => {
+    const doc = remissionNote()
+    // Sealed on the 16th: the 20th is the last day. 23:59:59 on the 20th in El Salvador is 05:59:59 UTC of the 21st
+    expect(refusal(buildInvalidation(input({ doc, now: '2026-11-21T05:59:59.000Z' })))).toBeNull()
+    expect(refusal(buildInvalidation(input({ doc, now: '2026-11-21T06:00:00.000Z' })))).toBe(
+      SvVoidRefusals.DEADLINE_PASSED
+    )
+  })
+
+  it('asks a remission note for the document that takes its place, and names its type in the event (only the credit note is exempt)', () => {
+    const doc = remissionNote()
+    const now = '2026-11-17T15:00:00.000Z'
+    const details = { kind: FiscalVoidKind.CORRECTION, responsible: PERSON, requester: REQUESTER }
+    expect(refusal(buildInvalidation(input({ doc, now, details })))).toBe(
+      SvVoidRefusals.REPLACEMENT_REQUIRED
+    )
+    const replacement = remissionNote({ correlative: 42, documentUuid: OTHER_UUID })
+    const built = buildInvalidation(input({ doc, now, details: { ...details, replacement } }))
+    expect(refusal(built)).toBeNull()
+    if (!built.ok) return
+    expect(schemaErrors('invalidation', built.event)).toEqual([])
+    expect(built.event['documento']).toMatchObject({
+      tipoDte: '04',
+      codigoGeneracionR: replacement.providerData?.[SvProviderDataKeys.GENERATION_CODE]
+    })
+  })
+
   it('counts from the day of the seal and not from the date of the document', () => {
     // Made on the 16th and sealed on the 20th (a contingency sent late): the 21st is the last day, not the 17th
     const base = acceptedDocument({ receiver: BUSINESS })
@@ -356,6 +429,47 @@ describe('the invalidation event', () => {
     expect(
       clamped.ok && (clamped.event['identificacion'] as Record<string, unknown>)['fecEmi']
     ).toBe('2027-02-16')
+  })
+
+  describe('the invoice of an excluded subject (14)', () => {
+    const doc = acceptedDocument(purchase())
+    const details = { kind: FiscalVoidKind.CORRECTION, responsible: PERSON, requester: REQUESTER }
+
+    it('is refused after three months from its seal, to the last second, like an invoice', () => {
+      expect(refusal(buildInvalidation(input({ doc, now: '2027-02-17T05:59:59.000Z' })))).toBeNull()
+      expect(refusal(buildInvalidation(input({ doc, now: '2027-02-17T06:00:00.000Z' })))).toBe(
+        SvVoidRefusals.DEADLINE_PASSED
+      )
+    })
+
+    it('is dated with the day it is made, never later than three months after the date of the document (Anexo V, field 9)', () => {
+      const date = (now: string): unknown => {
+        const built = buildInvalidation(input({ doc, now }))
+        return built.ok && (built.event['identificacion'] as Record<string, unknown>)['fecEmi']
+      }
+      expect(date('2026-12-20T15:00:00.000Z')).toBe('2026-12-20')
+      expect(date('2027-02-16T15:00:00.000Z')).toBe('2027-02-16')
+    })
+
+    it('asks for the document that takes its place on a correction, and repeats the seller as the receiver of the event', () => {
+      expect(refusal(buildInvalidation(input({ doc, details })))).toBe(
+        SvVoidRefusals.REPLACEMENT_REQUIRED
+      )
+      const replacement = acceptedDocument(purchase({ correlative: 42, documentUuid: OTHER_UUID }))
+      const built = buildInvalidation(input({ doc, details: { ...details, replacement } }))
+      expect(refusal(built)).toBeNull()
+      if (!built.ok) return
+      expect(schemaErrors('invalidation', built.event)).toEqual([])
+      expect(built.event['documento']).toMatchObject({
+        tipoDte: '14',
+        codigoGeneracionR: replacement.providerData?.[SvProviderDataKeys.GENERATION_CODE]
+      })
+      expect(built.event['documento']).toMatchObject({
+        tipoDocumento: '13',
+        numDocumento: '012345678',
+        nombre: 'Juan Pérez Ramos'
+      })
+    })
   })
 
   it('names no replacement for a credit note, whatever the kind, and does not ask for one', () => {

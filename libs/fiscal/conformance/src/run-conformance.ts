@@ -1,5 +1,5 @@
 // The minimum tests the tax authority of El Salvador asks of an issuer before it authorizes it (Step 4B.7c-6): 90 invoices, 75 tax credit
-// documents, 50 credit notes and 25 debit notes with seal, 5 invalidations and 5 contingencies, made of invented data in many shapes.
+// documents, 50 credit notes, 25 debit notes, 50 remission notes and 25 invoices of an excluded subject with seal, 5 invalidations and 5 contingencies, made of invented data in many shapes.
 //
 // It runs the plan through the port of a provider and never through the lifecycle of the platform, so it needs no database. By default the
 // provider is the simulator and nothing leaves the machine. Against the real sandbox it runs only on the machine of the owner, only with
@@ -9,7 +9,7 @@
 //
 // Usage:
 //   pnpm fiscal:conformance [--provider simulator|sv] [--dry-run] [--seed 2026] [--batch b1]
-//        [--offset 0] [--counts invoices=90,taxCredits=75,creditNotes=50,debitNotes=25,voids=5,contingencies=5,deferredPerContingency=2]
+//        [--offset 0] [--counts invoices=90,taxCredits=75,creditNotes=50,debitNotes=25,remissionNotes=50,excludedSubjects=25,voids=5,contingencies=5,deferredPerContingency=2]
 //        [--out report.json] [--json] [--help-env]
 //
 //   --provider simulator   (default) the simulator: documents, credit notes and invalidations; it has no contingency mode, so those are skipped

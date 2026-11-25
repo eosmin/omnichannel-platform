@@ -10,14 +10,18 @@ export const FiscalDocumentImmutableStatuses: readonly FiscalDocumentStatus[] = 
 ]
 
 // What a document is for: the document of a sale, the credit note of a return, which cancels part (or all) of the sale document it names,
-// or a debit note, which charges more on the sale document it names. A provider's own document types (`FiscalDocumentTypeDeclaration`)
-// stay the provider's; this is core's word for the relation. **A debit note is only built and sent by a provider today** (the conformance
-// tests of an authority ask for them): the lifecycle of core does not make one yet, and the database accepts no row of this kind until the
-// step that issues it adds it (`IMPLEMENTATION_PLAN.md`, D3b).
+// a debit note, which charges more on the sale document it names, a remission note, which backs goods that travel before the document
+// of their sale exists (it names no document), or the document of a purchase, which the buyer makes for a seller who issues none (the
+// issuer is the buyer, the receiver the seller). A provider's own document types (`FiscalDocumentTypeDeclaration`)
+// stay the provider's; this is core's word for the relation. **A debit note, a remission note and a purchase document are only built and
+// sent by a provider today** (the conformance tests of an authority ask for them): the lifecycle of core does not make one yet, and the
+// database accepts no row of these kinds until the step that issues them adds them (`IMPLEMENTATION_PLAN.md`, D3b and D20b).
 export enum FiscalDocumentKind {
   SALE = 'sale',
   CREDIT_NOTE = 'credit_note',
-  DEBIT_NOTE = 'debit_note'
+  DEBIT_NOTE = 'debit_note',
+  REMISSION_NOTE = 'remission_note',
+  PURCHASE = 'purchase'
 }
 
 export enum FiscalEnvironment {

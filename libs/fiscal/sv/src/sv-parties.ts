@@ -176,6 +176,18 @@ export function missingForBusiness(receiver: FiscalReceiver): FiscalReceiverFiel
   return missing
 }
 
+// The fields the invoice of an excluded subject cannot be made without, that this seller lacks or has wrong. The seller is no taxpayer:
+// no registration number and no activity are asked, and the identity document is any the catalog of the authority knows (a national id, a
+// passport, a residence card), so a person without a tax number can be bought from.
+export function missingForExcludedSubject(receiver: FiscalReceiver): FiscalReceiverField[] {
+  const missing: FiscalReceiverField[] = []
+  const wrong = new Set(receiverProblems(receiver).map(problem => problem.field))
+  if (lacks(receiver.name) || wrong.has('name')) missing.push('name')
+  if (identityOf(receiver.taxId, receiver.documentType) === null) missing.push('taxId')
+  if (receiver.address === null || addressOf(receiver.address) === null) missing.push('address')
+  return missing
+}
+
 // Whether the issuer holds everything a document is made from; the codes are the fields of the issuer
 export function issuerProblems(issuer: FiscalIssuerInput): string[] {
   const problems: string[] = []
@@ -202,4 +214,20 @@ export function issuerProblems(issuer: FiscalIssuerInput): string[] {
   if (issuer.phone === null || !validPhone(issuer.phone.trim())) problems.push('phone')
   if (issuer.email === null || !validEmail(issuer.email.trim())) problems.push('email')
   return problems
+}
+
+// The fields a remission note cannot be made without, that this receiver lacks or has wrong: the person the goods are sent to, with the
+// identity document of any kind (a taxpayer's tax number, a national id, a passport, a residence card), the economic activity and the
+// address the schema asks for; no registration number (the schema takes it as null). Unlike the one of a tax credit document it needs
+// no taxpayer: a final consumer has an identity document too.
+export function missingForRemission(receiver: FiscalReceiver): FiscalReceiverField[] {
+  const missing: FiscalReceiverField[] = []
+  const wrong = new Set(receiverProblems(receiver).map(problem => problem.field))
+  if (lacks(receiver.name) || wrong.has('name')) missing.push('name')
+  if (identityOf(receiver.taxId, receiver.documentType) === null || wrong.has('taxId'))
+    missing.push('taxId')
+  if (lacks(receiver.economicActivity) || wrong.has('economicActivity'))
+    missing.push('economicActivity')
+  if (receiver.address === null || addressOf(receiver.address) === null) missing.push('address')
+  return missing
 }

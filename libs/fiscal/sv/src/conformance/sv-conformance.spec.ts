@@ -1,4 +1,4 @@
-import { FiscalVoidKind } from '@platform/core/domain'
+import { FiscalDocumentKind, FiscalVoidKind } from '@platform/core/domain'
 import {
   conformanceGaps,
   ConformanceOutcome,
@@ -10,6 +10,7 @@ import { buildDocument } from '../sv-build'
 import { SvContingency, SvCredentialKeys, SvDocumentTypes } from '../sv-constants'
 import { svProvider } from '../sv-provider'
 import { officialSigner } from '../sv-signer'
+import { isValidSvNationalId } from '../sv-tax-id'
 import { FAKE, startFakeAuthority, type FakeAuthority } from '../testing/fake-authority'
 import { schemaErrors } from '../testing/sv-fixtures'
 
@@ -43,13 +44,15 @@ describe('the plan of the minimum tests', () => {
   const kinds = (kind: ConformanceStep['kind']): ConformanceStep[] =>
     steps.filter(step => step.kind === kind)
 
-  it('has what the authority asks: 90 invoices, 75 tax credit documents, 50 credit notes, 25 debit notes, 5 invalidations and 5 contingencies', () => {
+  it('has what the authority asks: 90 invoices, 75 tax credit documents, 50 credit notes, 25 debit notes, 50 remission notes, 25 invoices of an excluded subject, 5 invalidations and 5 contingencies', () => {
     const sales = kinds('sale')
     // The minimum, and the documents made for the invalidations (the ones of the minimum are never touched)
     expect(sales.filter(step => step.id.startsWith('INV-'))).toHaveLength(90)
     expect(sales.filter(step => step.id.startsWith('CCF-'))).toHaveLength(75)
     expect(kinds('credit_note')).toHaveLength(50)
     expect(kinds('debit_note')).toHaveLength(25)
+    expect(sales.filter(step => step.id.startsWith('NR-'))).toHaveLength(50)
+    expect(sales.filter(step => step.id.startsWith('FSE-'))).toHaveLength(25)
     expect(kinds('void')).toHaveLength(5)
     expect(kinds('contingency')).toHaveLength(5)
     expect(kinds('deferred_sale')).toHaveLength(5 * SvConformanceDefaults.deferredPerContingency)
@@ -58,11 +61,67 @@ describe('the plan of the minimum tests', () => {
         [SvConformanceBuckets.INVOICE]: 90,
         [SvConformanceBuckets.TAX_CREDIT]: 75,
         [SvConformanceBuckets.CREDIT_NOTE]: 50,
-        [SvConformanceBuckets.DEBIT_NOTE]: 25
+        [SvConformanceBuckets.DEBIT_NOTE]: 25,
+        [SvConformanceBuckets.REMISSION_NOTE]: 50,
+        [SvConformanceBuckets.EXCLUDED_SUBJECT]: 25
       },
       voids: 5,
       contingencies: 5
     })
+  })
+
+  it('plans the remission notes after every other step, so the values of the earlier ones do not move', () => {
+    const first = steps.findIndex(step => step.id.startsWith('NR-'))
+    expect(first).toBeGreaterThan(0)
+    expect(steps.slice(first, first + 50).every(step => step.id.startsWith('NR-'))).toBe(true)
+    // Only the invoices of an excluded subject follow them, the last of all
+    expect(steps.slice(first + 50).every(step => step.id.startsWith('FSE-'))).toBe(true)
+    expect(steps.slice(first + 50)).toHaveLength(25)
+  })
+
+  it('makes 25 purchases from sellers who are no taxpayers, in many shapes, each stating its withholding and with no tax', () => {
+    const purchases = steps.filter(
+      (step): step is Extract<ConformanceStep, { kind: 'sale' }> =>
+        step.kind === 'sale' && step.id.startsWith('FSE-')
+    )
+    expect(purchases).toHaveLength(25)
+    for (const step of purchases) {
+      expect(step.bucket).toBe(SvConformanceBuckets.EXCLUDED_SUBJECT)
+      expect(step.input.kind).toBe(FiscalDocumentKind.PURCHASE)
+      // Stated, never assumed: the goods of the plan are bought with no withholding
+      expect(step.input.withheldIncomeTaxCents).toBe(0)
+      expect(step.input.taxCents).toBe(0)
+      expect(step.input.receiver.registrationId).toBeNull()
+      expect(step.input.receiver.address).not.toBeNull()
+      const built = buildDocument(step.input)
+      expect(built.documentType).toBe(SvDocumentTypes.EXCLUDED_SUBJECT)
+      expect(built.missingReceiverFields).toEqual([])
+    }
+    const tags = new Set(purchases.flatMap(step => step.tags))
+    for (const wanted of [
+      'seller_national_id',
+      'seller_tax_number',
+      'seller_other_document',
+      'discount'
+    ]) {
+      expect(tags).toContain(wanted)
+    }
+  })
+
+  it('gives every recipient of a remission note an identity document the entry of a person would accept, whatever its tag', () => {
+    for (const step of steps.filter(candidate => candidate.id.startsWith('NR-'))) {
+      if (!('input' in step)) continue
+      const { receiver } = step.input
+      if (step.tags.includes('recipient_national_id')) {
+        expect(receiver.documentType).toBe('13')
+        expect(isValidSvNationalId(receiver.taxId ?? '')).toBe(true)
+      } else if (step.tags.includes('recipient_tax_number')) {
+        expect(receiver.documentType).toBe('36')
+      } else {
+        expect(step.tags).toContain('recipient_company')
+        expect(receiver.registrationId).not.toBeNull()
+      }
+    }
   })
 
   it('is the same for the same options and different for another seed, and never repeats a generation code or a number of a series', () => {
@@ -94,6 +153,9 @@ describe('the plan of the minimum tests', () => {
       'shipping_exempt',
       'prices_net',
       'prices_with_tax',
+      'recipient_company',
+      'recipient_national_id',
+      'recipient_tax_number',
       'credit_term',
       'whole_return',
       'partial_return',
@@ -116,6 +178,11 @@ describe('the plan of the minimum tests', () => {
         const built = buildDocument(step.input)
         parents.set(step.id, built)
         expect(schemaErrors(built.documentType, built.payload)).toEqual([])
+        // A remission note of the plan is built as such, with no receiver field left to complete
+        if (step.id.startsWith('NR-')) {
+          expect(built.documentType).toBe(SvDocumentTypes.REMISSION_NOTE)
+          expect(built.missingReceiverFields).toEqual([])
+        }
       }
       if (step.kind === 'credit_note' || step.kind === 'debit_note') {
         const parent = parents.get(step.parent)
@@ -212,12 +279,16 @@ describe('the plan of the minimum tests', () => {
         taxCredits: 2,
         creditNotes: 9,
         debitNotes: 30,
+        remissionNotes: 4,
+        excludedSubjects: 3,
         voids: 1,
         contingencies: 1
       }
     })
     expect(small.filter(step => step.kind === 'credit_note')).toHaveLength(2)
     expect(small.filter(step => step.kind === 'debit_note')).toHaveLength(2)
+    expect(small.filter(step => step.id.startsWith('NR-'))).toHaveLength(4)
+    expect(small.filter(step => step.id.startsWith('FSE-'))).toHaveLength(3)
     expect(small.filter(step => step.kind === 'void')).toHaveLength(1)
     expect(
       svConformanceTargets({ taxCredits: 2, creditNotes: 9 }).buckets[
@@ -229,6 +300,12 @@ describe('the plan of the minimum tests', () => {
         SvConformanceBuckets.DEBIT_NOTE
       ]
     ).toBe(2)
+    // A remission note names no document, so its count is not bounded by the tax credit documents
+    expect(
+      svConformanceTargets({ taxCredits: 2, remissionNotes: 7 }).buckets[
+        SvConformanceBuckets.REMISSION_NOTE
+      ]
+    ).toBe(7)
   })
 })
 
@@ -291,7 +368,7 @@ describe('the plan against the server that plays the authority', () => {
     expect((await runOf('second', 500)).codes).toEqual({})
   }, 60_000)
 
-  it('in a dry run builds the four kinds of document and sends nothing', async () => {
+  it('in a dry run builds the five kinds of document and sends nothing', async () => {
     const before = authority.stats.receptions
     const report = await run({ dryRun: true })
     expect(authority.stats.receptions).toBe(before)
@@ -303,6 +380,11 @@ describe('the plan against the server that plays the authority', () => {
     expect(report.documents[SvDocumentTypes.DEBIT_NOTE]).toMatchObject({
       planned: 25,
       built: 25,
+      accepted: 0
+    })
+    expect(report.documents[SvDocumentTypes.REMISSION_NOTE]).toMatchObject({
+      planned: 50,
+      built: 50,
       accepted: 0
     })
     expect(report.steps.filter(step => step.outcome === ConformanceOutcome.BUILD_FAILED)).toEqual(

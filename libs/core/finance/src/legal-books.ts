@@ -239,13 +239,24 @@ export interface DocumentTypeDeclaration {
   readonly creditNote?: boolean
   // A debit note charges more on a sale document: it is listed like the document of a sale to its receiver, never apart
   readonly debitNote?: boolean
+  // A remission note backs goods that travel before their sale document exists: it declares no sale, so it is listed in no book of sales
+  readonly remissionNote?: boolean
+  // The document of a purchase (the issuer is the buyer): it is no sale, so no book of sales lists it
+  readonly purchase?: boolean
   readonly requiredReceiverFields: readonly string[]
 }
 
 export function saleBookOfDocumentType(
   declaration: DocumentTypeDeclaration | null
 ): LegalBookKind.SALES_TAXPAYERS | LegalBookKind.SALES_CONSUMERS | null {
-  if (declaration === null || declaration.creditNote === true) return null
+  if (
+    declaration === null ||
+    declaration.creditNote === true ||
+    declaration.remissionNote === true ||
+    declaration.purchase === true
+  ) {
+    return null
+  }
   return declaration.requiredReceiverFields.some(field => TaxIdentityReceiverFields.includes(field))
     ? LegalBookKind.SALES_TAXPAYERS
     : LegalBookKind.SALES_CONSUMERS

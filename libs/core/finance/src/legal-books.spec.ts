@@ -251,9 +251,31 @@ describe('saleBookOfDocumentType', () => {
     ).toBeNull()
     expect(saleBookOfDocumentType(null)).toBeNull()
   })
+  it('lists a remission note in no book of sales: it backs the goods on their way and declares no sale', () => {
+    // With the receiver fields that would otherwise put it in the book of taxpayers (what the provider of El Salvador declares for it)
+    expect(
+      saleBookOfDocumentType({
+        remissionNote: true,
+        requiredReceiverFields: ['name', 'taxId', 'economicActivity', 'address']
+      })
+    ).toBeNull()
+    expect(
+      saleBookOfDocumentType({ remissionNote: true, requiredReceiverFields: ['name', 'taxId'] })
+    ).toBeNull()
+  })
+
   it('lists a debit note of a taxpayer in the book of taxpayers: it charges more, it cancels nothing', () => {
     expect(
       saleBookOfDocumentType({ debitNote: true, requiredReceiverFields: ['name', 'taxId'] })
     ).toBe(LegalBookKind.SALES_TAXPAYERS)
+  })
+  it('lists a purchase document in no book of sales: the issuer is the buyer, whatever it asks of the seller', () => {
+    expect(
+      saleBookOfDocumentType({
+        purchase: true,
+        requiredReceiverFields: ['name', 'taxId', 'address']
+      })
+    ).toBeNull()
+    expect(saleBookOfDocumentType({ purchase: true, requiredReceiverFields: [] })).toBeNull()
   })
 })

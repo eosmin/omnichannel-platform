@@ -65,6 +65,9 @@ const BUSINESS_RECEIVER_FIELDS = [
   'address'
 ] as const
 
+// What a remission note needs of the person the goods are sent to: who they are, an identity document, the activity and the address
+const REMISSION_RECEIVER_FIELDS = ['name', 'taxId', 'economicActivity', 'address'] as const
+
 // The provider of the electronic tax documents of El Salvador: Step 4B.7c-2 builds the documents and Step 4B.7c-3 sends and consults them.
 // Step 4B.7c-4 invalidates them. The provider is offered where the deployment sets the address of its signing service
 // (`FISCAL_SIGNER_URL`), which stays refused in production until the owner authorizes it (Step 4B.7c-8).
@@ -119,6 +122,12 @@ export class SvProvider implements FiscalDocumentProvider {
         requiredReceiverFields: BUSINESS_RECEIVER_FIELDS
       },
       {
+        id: SvDocumentTypes.REMISSION_NOTE,
+        label: 'Nota de remisión electrónica',
+        requiredReceiverFields: REMISSION_RECEIVER_FIELDS,
+        remissionNote: true
+      },
+      {
         id: SvDocumentTypes.CREDIT_NOTE,
         label: 'Nota de crédito electrónica',
         requiredReceiverFields: BUSINESS_RECEIVER_FIELDS,
@@ -129,6 +138,13 @@ export class SvProvider implements FiscalDocumentProvider {
         label: 'Nota de débito electrónica',
         requiredReceiverFields: BUSINESS_RECEIVER_FIELDS,
         debitNote: true
+      },
+      {
+        id: SvDocumentTypes.EXCLUDED_SUBJECT,
+        label: 'Factura de sujeto excluido electrónica',
+        // The seller is no taxpayer: a name, an identity document and an address are what the schema asks (no registration number)
+        requiredReceiverFields: ['name', 'taxId', 'address'],
+        purchase: true
       }
     ],
     requiredIssuerFields: [
