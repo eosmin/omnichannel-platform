@@ -10,6 +10,8 @@ import { OrderMessagesModule } from '../order-messages/order-messages.module'
 import { TenancyModule } from '../tenancy'
 
 import { CustomerFiscalDataController } from './customer-fiscal-data.controller'
+import { FiscalAnnexExportService } from './fiscal-annex-export.service'
+import { FiscalAnnexController } from './fiscal-annex.controller'
 import { FiscalContingencyController } from './fiscal-contingency.controller'
 import { FiscalDeliveryListener } from './fiscal-delivery.listener'
 import { FiscalDeliveryService } from './fiscal-delivery.service'
@@ -30,8 +32,14 @@ import { FiscalListener } from './fiscal.listener'
     QueuesPlatformModule,
     TenancyModule
   ],
-  controllers: [FiscalController, FiscalContingencyController, CustomerFiscalDataController],
+  controllers: [
+    FiscalController,
+    FiscalAnnexController,
+    FiscalContingencyController,
+    CustomerFiscalDataController
+  ],
   providers: [
+    FiscalAnnexExportService,
     FiscalDeliveryListener,
     FiscalDeliveryService,
     FiscalEvidenceUrlsService,
