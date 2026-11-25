@@ -42,7 +42,7 @@ FROM native-sharp AS native-api
 # ffmpeg and ffprobe for the worker (Step 7.1-J: the metadata of video and audio, GPS included, is cut out of what customers and agents
 # send). Built from the source of a release, never downloaded as a binary, with the version and the SHA-256 of the tarball PINNED here:
 # a download that does not match stops the build, so a changed or poisoned file never gets in. The checksum is the one of the tarball
-# published at https://ffmpeg.org/releases/ (checked against the file, 2026-11-23).
+# published at https://ffmpeg.org/releases/ (checked against the file, 2026-11-25; the SHA-512 in the Alpine package of the same release matches, which only shows that the file was the same when Alpine packaged it: the signature of the release is NOT verified, see the plan).
 # Why this build and not `apk add ffmpeg`: the package of the distribution is GPL (x264, x265, ...) and carries every codec and every
 # protocol, which is attack surface the cleaner never needs, because it only copies the streams (`-c copy`). This one is LGPL 2.1+
 # (`--disable-gpl --disable-nonfree --disable-version3`: no GPL codec, no non-free one, nothing that raises the license), shared
@@ -56,8 +56,8 @@ FROM native-sharp AS native-api
 # reported. The control is `.github/workflows/ffmpeg-version.yml` (weekly: fails and opens an issue when FFMPEG_VERSION is behind the newest
 # release published on ffmpeg.org), whose failure is read by the owner of Step 7.3 (dependency review).
 FROM ${RUNTIME_IMAGE} AS ffmpeg-build
-ARG FFMPEG_VERSION=8.1.3
-ARG FFMPEG_SHA256=7138d28c96d9d3e3af4ee3d8cad72741f8ffb40da90c1112235dea3ecd3178a3
+ARG FFMPEG_VERSION=9.1
+ARG FFMPEG_SHA256=1a4d394ae63d190a526cd052eb4415c156b5c5e2df37efab41a7de0b8fde2433
 RUN apk add --no-cache build-base curl xz
 WORKDIR /src
 RUN curl --fail --silent --show-error --retry 5 --retry-all-errors --location --proto '=https' --tlsv1.2 \

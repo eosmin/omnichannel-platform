@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common'
 
-import { WIDGET_FILES_SELECT, visitorMessagesWhere } from '@platform/channels/web-widget'
+import {
+  WIDGET_FILES_SELECT,
+  isFileForVisitor,
+  visitorMessagesWhere
+} from '@platform/channels/web-widget'
 import { PrismaService } from '@platform/core/database'
 import { resourceNotFound } from '@platform/core/errors'
 import { ImageVariants } from '@platform/core/storage'
@@ -51,9 +55,21 @@ export class WidgetDownloads {
         ...WIDGET_FILES_SELECT.where,
         message: visitorMessagesWhere(site, visitorId)
       },
-      select: { id: true }
+      select: {
+        id: true,
+        contentType: true,
+        scanResult: true,
+        message: { select: { authorType: true } }
+      }
     })
-    if (owned === null) throw resourceNotFound('widget file')
+    // A video or audio file that is clean for the scan but not ready to leave (kept with its metadata, or not
+    // reached by the cleaning yet) is the same answer as one that does not exist
+    if (
+      owned === null ||
+      owned.message === null ||
+      !isFileForVisitor(owned, owned.message.authorType)
+    )
+      throw resourceNotFound('widget file')
     const urls = await this.media.urlsFor(site.storeId, owned.id, null)
     return {
       url: urls.url,

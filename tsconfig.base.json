@@ -95,6 +95,7 @@
       "@platform/core/image-sanitizer": ["libs/core/storage/src/image-sanitizer.ts"],
       "@platform/core/document-sanitizer": ["libs/core/storage/src/document-sanitizer.ts"],
       "@platform/core/av-sanitizer": ["libs/core/storage/src/av-sanitizer.ts"],
+      "@platform/core/media-guard": ["libs/core/messaging/src/messages/media-guard.ts"],
       "@platform/core/sentry": ["libs/core/http/src/instrument.ts"]
     }
   },
