@@ -163,8 +163,10 @@ export const SvVat = {
 // (debt (c) of Step 4B.7c-1): a unit, and goods, are the default, and the shipping fee is a service.
 export const SvItemDefaults = {
   UNIT: 59,
+  UNIT_OTHER: 99,
   KIND_GOODS: 1,
-  KIND_SERVICE: 2
+  KIND_SERVICE: 2,
+  KIND_OTHER_CHARGES: 4
 } as const
 
 // The text of the line that carries the shipping fee. **[ACCOUNTANT]** The fee is a taxed service when it carries tax (the order's own

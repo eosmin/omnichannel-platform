@@ -123,6 +123,8 @@ function itemsOf(input: FiscalBuildInput): Item[] {
     }
     const unit = Number(line.unit)
     const kind = Number(line.itemKind)
+    const safeKind =
+      Number.isInteger(kind) && kind >= 1 && kind <= 4 ? kind : SvItemDefaults.KIND_GOODS
     return {
       description: describe(line.description),
       quantity: line.quantity,
@@ -131,8 +133,8 @@ function itemsOf(input: FiscalBuildInput): Item[] {
       discountCents: discounts[index] ?? 0,
       taxCents: treatment === 'taxed' ? line.taxCents : 0,
       treatment,
-      kind: Number.isInteger(kind) && kind >= 1 && kind <= 4 ? kind : SvItemDefaults.KIND_GOODS,
-      unit: Number.isInteger(unit) && isUnit(unit) ? unit : SvItemDefaults.UNIT
+      kind: safeKind,
+      unit: unitOf(unit, safeKind)
     }
   })
   // The shipping fee is a service of its own: taxed when the order taxed it, exempt when it carried no tax
@@ -146,7 +148,7 @@ function itemsOf(input: FiscalBuildInput): Item[] {
       taxCents: input.shippingTaxCents,
       treatment: input.shippingTaxCents > 0 ? 'taxed' : 'exempt',
       kind: SvItemDefaults.KIND_SERVICE,
-      unit: SvItemDefaults.UNIT
+      unit: SvItemDefaults.UNIT_OTHER
     })
   }
   if (items.length > SvLimits.ITEMS_MAX) throw new SvBuildError(SvBuildErrors.TOO_MANY_ITEMS)
@@ -294,6 +296,15 @@ function businessReceiver(
     : { tipoDocumento: identity.type, numDocumento: identity.number, ...common }
 }
 
+// The unit of an item (CAT-014): a service, and an item of kind 4 (charges that do not touch the base), are always 99 "other"
+// (Normativa DTE v2.0, Anexo II, page 64, field 85); a good takes the unit of the order when the catalog knows it
+function unitOf(unit: number, kind: number): number {
+  if (kind === SvItemDefaults.KIND_SERVICE || kind === SvItemDefaults.KIND_OTHER_CHARGES) {
+    return SvItemDefaults.UNIT_OTHER
+  }
+  return Number.isInteger(unit) && isUnit(unit) ? unit : SvItemDefaults.UNIT
+}
+
 // The receiver of an invoice: a final consumer says what they want to and nothing more is asked (the notice of the authority of
 // 2024-09-05 forbids asking for an identity document under the threshold). Null when the order has nothing about them.
 function consumerReceiver(receiver: FiscalReceiver): Record<string, unknown> | null {
@@ -301,20 +312,19 @@ function consumerReceiver(receiver: FiscalReceiver): Record<string, unknown> | n
   const name = lacks(receiver.name)
     ? null
     : (receiver.name ?? '').trim().slice(0, SvLimits.NAME_MAX)
-  const address = addressOf(receiver.address)
-  const activity = (receiver.economicActivity ?? '').trim()
   const phone = contactPhone(receiver.phone)
   const email = contactEmail(receiver.email)
-  if (identity === null && name === null && address === null && phone === null && email === null)
-    return null
+  if (identity === null && name === null && phone === null && email === null) return null
   return {
     tipoDocumento: identity?.type ?? null,
     numDocumento: identity?.number ?? null,
     nrc: registrationDigits(receiver.registrationId),
     nombre: name,
-    codActividad: activityName(activity) === null ? null : activity,
-    descActividad: activityName(activity)?.slice(0, SvLimits.ACTIVITY_DESCRIPTION_MAX) ?? null,
-    direccion: address,
+    // Anexo IV (fields 43.1, 44.1, 47.1, 48.1 and 50, pages 106-107): the authority validates these as null in an invoice, and the
+    // complement is null when the department is, so the whole address goes as null: the delivery address is not the receiver's
+    codActividad: null,
+    descActividad: null,
+    direccion: null,
     telefono: phone,
     correo: email
   }
@@ -326,25 +336,45 @@ function registrationDigits(registrationId: string | null): string | null {
 }
 
 // How it was paid: the payments of the order in the forms of the authority, and the condition of the operation
-const conditionOf = (input: FiscalBuildInput): number =>
-  input.condition === FiscalOperationCondition.DEFERRED
-    ? SvOperationCondition.CREDIT
-    : SvOperationCondition.CASH
+// A document with nothing to pay is always cash, whatever the order says (Anexo IV, field 159.2, page 121)
+const isCredit = (input: FiscalBuildInput, totalPagar: number): boolean =>
+  input.condition === FiscalOperationCondition.DEFERRED && totalPagar > 0
+const conditionOf = (input: FiscalBuildInput, totalPagar: number): number =>
+  isCredit(input, totalPagar) ? SvOperationCondition.CREDIT : SvOperationCondition.CASH
 
 function payments(
   input: FiscalBuildInput,
   totalPagar: number
 ): { pagos: Record<string, unknown>[]; condicion: number } {
-  const credit = input.condition === FiscalOperationCondition.DEFERRED
+  const credit = isCredit(input, totalPagar)
   const source =
     input.payments.length > 0
       ? input.payments
       : [{ method: PaymentMethod.CASH, amountCents: totalPagar, reference: null }]
-  if (source.reduce((sum, payment) => sum + payment.amountCents, 0) !== totalPagar) {
+  const recorded = source.reduce((sum, payment) => sum + payment.amountCents, 0)
+  // On credit the order may have been paid in part (a deposit): what is recorded cannot be more than the total, and the document
+  // declares the credit, not the payments; paid in cash the payments are the total
+  if (credit ? recorded > totalPagar : recorded !== totalPagar) {
     throw new SvBuildError(SvBuildErrors.SALE_TOTALS_MISMATCH)
   }
+  // On credit nothing is paid yet (Anexo IV, fields 160.5, 161.6 and 162.5, page 121): no form, $0.00 and no reference, and the
+  // term, which stays required (163.2 and 164.2)
+  if (credit) {
+    return {
+      condicion: SvOperationCondition.CREDIT,
+      pagos: [
+        {
+          codigo: null,
+          montoPago: dollars(0),
+          referencia: null,
+          plazo: SvDeferredTerm.UNIT,
+          periodo: SvDeferredTerm.PERIOD
+        }
+      ]
+    }
+  }
   return {
-    condicion: conditionOf(input),
+    condicion: conditionOf(input, totalPagar),
     pagos: source.map(payment => ({
       codigo: SvPaymentForms[payment.method] ?? SvDefaultPaymentForm,
       montoPago: dollars(payment.amountCents),
@@ -353,8 +383,8 @@ function payments(
         payment.reference === null
           ? null
           : payment.reference.trim().slice(0, SvLimits.PAYMENT_REFERENCE_MAX) || null,
-      plazo: credit ? SvDeferredTerm.UNIT : null,
-      periodo: credit ? SvDeferredTerm.PERIOD : null
+      plazo: null,
+      periodo: null
     }))
   }
 }
@@ -508,7 +538,9 @@ function netBody(
   const subTotalVentas = totalNoSuj + totalExenta + totalGravada
   const montoTotal = subTotalVentas + input.taxCents
   // A credit note says only the condition: what it gives back is not a payment, so the payments of the order are not read
-  const how = credit ? { pagos: [], condicion: conditionOf(input) } : payments(input, montoTotal)
+  const how = credit
+    ? { pagos: [], condicion: conditionOf(input, montoTotal) }
+    : payments(input, montoTotal)
   const tributos =
     totalGravada > 0
       ? [{ codigo: SvVat.CODE, descripcion: SvVat.DESCRIPTION, valor: dollars(input.taxCents) }]

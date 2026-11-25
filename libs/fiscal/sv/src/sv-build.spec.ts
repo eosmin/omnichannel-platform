@@ -259,8 +259,9 @@ describe('the invoice to a final consumer (01)', () => {
     expect(schemaErrors('01', owed.payload)).toEqual([])
     const resumen = (owed.payload as unknown as Payload)['resumen']
     expect(resumen.condicionOperacion).toBe(2)
+    // Condition 2 (Anexo IV, 160.5, 161.6 and 162.5): no form, $0.00 and no reference; the term is what stays required
     expect(resumen.pagos).toEqual([
-      { codigo: '01', montoPago: 28.25, referencia: null, plazo: '01', periodo: 1 }
+      { codigo: null, montoPago: 0, referencia: null, plazo: '01', periodo: 1 }
     ])
   })
 
@@ -672,7 +673,100 @@ describe('how it is paid', () => {
     expect(schemaErrors('03', built.payload)).toEqual([])
     const resumen = (built.payload as unknown as Payload)['resumen']
     expect(resumen['condicionOperacion']).toBe(2)
-    expect(resumen.pagos[0]).toMatchObject({ plazo: '01', periodo: 1 })
+    expect(resumen.pagos).toEqual([
+      { codigo: null, montoPago: 0, referencia: null, plazo: '01', periodo: 1 }
+    ])
+  })
+
+  it('says cash, whatever the order says, when there is nothing to pay (Anexo IV, 159.2)', () => {
+    const free = sale({
+      lines: [line({ unitPriceCents: 0, totalCents: 0, taxCents: 0 })],
+      shippingCents: 0,
+      shippingTaxCents: 0,
+      totalCents: 0,
+      taxCents: 0,
+      payments: [],
+      condition: FiscalOperationCondition.DEFERRED
+    })
+    const built = build(free)
+    expect(schemaErrors('01', built.payload)).toEqual([])
+    const resumen = (built.payload as unknown as Payload)['resumen']
+    expect(resumen['totalPagar']).toBe(0)
+    expect(resumen['condicionOperacion']).toBe(1)
+    expect(resumen.pagos[0]).toMatchObject({ montoPago: 0, plazo: null, periodo: null })
+  })
+
+  it('builds a sale on credit that was paid in part, and refuses payments over the total', () => {
+    const part = build(
+      sale({
+        condition: FiscalOperationCondition.DEFERRED,
+        payments: [{ method: PaymentMethod.CASH, amountCents: 1000, reference: null }]
+      })
+    )
+    expect(schemaErrors('01', part.payload)).toEqual([])
+    expect((part.payload as unknown as Payload)['resumen'].pagos[0]).toMatchObject({
+      codigo: null,
+      montoPago: 0
+    })
+    expect(
+      refused(
+        sale({
+          condition: FiscalOperationCondition.DEFERRED,
+          payments: [{ method: PaymentMethod.CASH, amountCents: 9999, reference: null }]
+        })
+      )
+    ).toBe(SvBuildErrors.SALE_TOTALS_MISMATCH)
+  })
+
+  it('declares an item of kind 4 in unit 99 and a credit sale of a tax credit document by the schema of 03', () => {
+    const built = build(
+      sale({
+        receiver: BUSINESS,
+        lines: [line({ itemKind: '4', unit: '59' })],
+        shippingCents: 0,
+        shippingTaxCents: 0,
+        totalCents: 2260,
+        taxCents: 260,
+        condition: FiscalOperationCondition.DEFERRED
+      })
+    )
+    expect(schemaErrors('03', built.payload)).toEqual([])
+    expect((built.payload as unknown as Payload)['cuerpoDocumento'][0]).toMatchObject({
+      uniMedida: 99
+    })
+  })
+
+  it('declares a service in unit 99 (other), the shipping fee and a service line of the order', () => {
+    const built = build(
+      sale({
+        lines: [line(), line({ itemKind: '2', unit: '59', description: 'Instalación' })],
+        totalCents: 5085,
+        taxCents: 585
+      })
+    )
+    expect(schemaErrors('01', built.payload)).toEqual([])
+    const body = (built.payload as unknown as Payload)['cuerpoDocumento']
+    expect(body.map(item => item['uniMedida'])).toEqual([59, 99, 99])
+  })
+
+  it('sends a final consumer with no activity, no department, no municipality and no address (Anexo IV, 43.1, 47.1, 48.1, 50)', () => {
+    const built = build(
+      sale({
+        receiver: { ...BUSINESS, name: 'Ana Pérez', taxId: null, registrationId: null }
+      })
+    )
+    expect(schemaErrors('01', built.payload)).toEqual([])
+    expect((built.payload as unknown as Payload)['receptor']).toMatchObject({
+      nombre: 'Ana Pérez',
+      codActividad: null,
+      descActividad: null,
+      direccion: null,
+      correo: 'compras@example.test'
+    })
+    // A delivery address alone says nothing about who bought: there is no receiver
+    expect(
+      payloadOf(sale({ receiver: { ...CONSUMER, address: BUSINESS.address } }))['receptor']
+    ).toBeNull()
   })
 
   it('does not read the payments of the order for a credit note, whatever they say', () => {
