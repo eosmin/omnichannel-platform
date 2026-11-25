@@ -161,7 +161,7 @@ describe('SEND_EMAIL', () => {
       originalQueue: QueueNames.EMAIL,
       originalJobName: JobNames.SEND_EMAIL,
       originalJobId: job.id,
-      error: 'Error' // The queue keeps the name of a failed job of mail, never its text (it can hold the address)
+      error: 'the mail job failed: Error' // The queue keeps the name of a failed job of mail, never its text (it can hold the address)
     })
     const failed = await queue.getJob(job.id ?? '') // Stays here: Bull Board retries it in place
     expect(await failed?.getState()).toBe('failed')
