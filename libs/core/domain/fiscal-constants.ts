@@ -54,6 +54,10 @@ export const FiscalLimits = {
   // A file of evidence larger than this is not made (the sealed copy in the row stays, which is what the document is): a provider whose
   // document is this big is a fault to read in the logs
   EVIDENCE_MAX_BYTES: 4 * 1024 * 1024,
+  // What a representation may hold before it is drawn (it is drawn by the worker, so its size is bounded first): a text longer than this or
+  // more rows than this is refused, never cut (a cut legal paper is a wrong one). Above what any document of an authority holds.
+  REPRESENTATION_MAX_TEXT_CHARS: 5000,
+  REPRESENTATION_MAX_ROWS: 2000,
   // Attempts of the job; the provider's own contingency decides what an attempt does while the authority is down
   MAX_ATTEMPTS: 6,
   // The delay before the first retry; it doubles each time, so the last wait of the queue (BACKOFF_MS * 2^(MAX_ATTEMPTS - 2) = 12 min)

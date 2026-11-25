@@ -7,6 +7,7 @@ import type {
 } from '@platform/fiscal/sdk'
 
 import { DEPARTMENTS } from './catalogs/departments'
+import { IDENTITY_DOCUMENTS } from './catalogs/identity-documents'
 import { MUNICIPALITIES } from './catalogs/municipalities'
 import { UNITS } from './catalogs/units'
 import { SvDocumentTypes, SvProviderDataKeys, SvRepresentation } from './sv-constants'
@@ -43,21 +44,26 @@ const DEPARTMENT_NAMES = new Map<string, string>(DEPARTMENTS.map(row => [row.cod
 const MUNICIPALITY_NAMES = new Map<string, string>(
   MUNICIPALITIES.map(row => [`${row.department}:${row.code}`, row.name])
 )
+const IDENTITY_NAMES = new Map<string, string>(IDENTITY_DOCUMENTS.map(row => [row.code, row.name]))
 const UNIT_NAMES = new Map<string, string>(UNITS.map(row => [row.code, row.name]))
 
-// The address as the document gives it: the complement, then the municipality and the department by the name of the catalogs
-function addressText(value: unknown): string | null {
-  if (!isRecord(value)) return null
-  const department = text(value['departamento'])
-  const municipality = text(value['municipio'])
-  const parts = [
-    text(value['complemento']),
-    municipality !== null && department !== null
-      ? (MUNICIPALITY_NAMES.get(`${department}:${municipality}`) ?? null)
-      : null,
-    department === null ? null : (DEPARTMENT_NAMES.get(department) ?? null)
-  ].filter((part): part is string => part !== null)
-  return parts.length === 0 ? null : parts.join(', ')
+// The address as the document gives it, one row for each field of the Anexo: department and municipality by the name of their catalog and
+// the complement, which holds the name of the district (Anexo II, field 29). The district has no row of its own: the catalog of the
+// repository gives no municipality for a district code (the same code repeats), so its name cannot be told from the code alone.
+function addressRows(value: unknown): [string, string | null][] {
+  const data = isRecord(value) ? value : {}
+  const department = text(data['departamento'])
+  const municipality = text(data['municipio'])
+  return [
+    ['Departamento', department === null ? null : (DEPARTMENT_NAMES.get(department) ?? null)],
+    [
+      'Municipio',
+      municipality !== null && department !== null
+        ? (MUNICIPALITY_NAMES.get(`${department}:${municipality}`) ?? null)
+        : null
+    ],
+    ['Complemento', text(data['complemento'])]
+  ]
 }
 
 // A row that exists only when the document has a value for it
@@ -77,49 +83,54 @@ interface Layout {
   readonly summary: readonly (readonly [label: string, key: string, always: boolean])[]
 }
 
-// What the summary shows of each type: a field that is always shown (A) and one shown when it is not zero (B: the law asks for it only then)
+// What the summary shows of each type, by the names of the fields of the Anexo II: a field the Anexo marks A is always shown; one marked B
+// (shown when the law asks for it) only when it is not zero; one marked C (optional) is not shown.
+const OPERATIONS: Layout['summary'] = [
+  ['Total de operaciones no sujetas', 'totalNoSuj', true],
+  ['Total de operaciones exentas', 'totalExenta', true],
+  ['Total de operaciones gravadas', 'totalGravada', true],
+  ['Suma de operaciones', 'subTotalVentas', true]
+]
+const GLOBAL_DISCOUNTS: Layout['summary'] = [
+  ['Descuento global a ventas no sujetas', 'descuNoSuj', false],
+  ['Descuento global a ventas exentas', 'descuExenta', false],
+  ['Descuento global a ventas gravadas', 'descuGravada', false]
+]
 const LAYOUTS: Readonly<Record<string, Layout>> = {
   [SvDocumentTypes.INVOICE]: {
     relatedColumn: false,
     summary: [
-      ['Total No Sujeto', 'totalNoSuj', true],
-      ['Total Exento', 'totalExenta', true],
-      ['Total Gravado', 'totalGravada', true],
-      ['Suma de Ventas', 'subTotalVentas', true],
-      ['Descuento total', 'totalDescu', false],
-      ['Sub-Total', 'subTotal', true],
-      ['IVA incluido en el precio', 'totalIva', true],
-      ['IVA Retenido', 'ivaRete', false],
+      ...OPERATIONS,
+      ...GLOBAL_DISCOUNTS,
+      ['Sub total', 'subTotal', true],
+      ['IVA retenido', 'ivaRete', false],
       ['Monto total de la operación', 'montoTotalOperacion', true],
+      ['Total otros montos no afectos', 'totalNoGravado', false],
       ['Total a pagar', 'totalPagar', true]
     ]
   },
   [SvDocumentTypes.TAX_CREDIT]: {
     relatedColumn: false,
     summary: [
-      ['Total No Sujeto', 'totalNoSuj', true],
-      ['Total Exento', 'totalExenta', true],
-      ['Total Gravado', 'totalGravada', true],
-      ['Suma de Ventas', 'subTotalVentas', true],
-      ['Descuento total', 'totalDescu', false],
-      ['Sub-Total', 'subTotal', true],
-      ['IVA Percibido', 'ivaPerci', false],
-      ['IVA Retenido', 'ivaRete', false],
+      ...OPERATIONS,
+      ...GLOBAL_DISCOUNTS,
+      ['Sub total', 'subTotal', true],
+      ['IVA percibido', 'ivaPerci', false],
+      ['IVA retenido', 'ivaRete', false],
       ['Monto total de la operación', 'montoTotalOperacion', true],
+      ['Total otros montos no afectos', 'totalNoGravado', false],
       ['Total a pagar', 'totalPagar', true]
     ]
   },
   [SvDocumentTypes.CREDIT_NOTE]: {
     relatedColumn: true,
     summary: [
-      ['Total No Sujeto', 'totalNoSuj', true],
-      ['Total Exento', 'totalExenta', true],
-      ['Total Gravado', 'totalGravada', true],
-      ['Suma de Ventas', 'subTotalVentas', true],
-      ['Descuento total', 'totalDescu', false],
-      ['IVA Percibido', 'ivaPerci', false],
-      ['IVA Retenido', 'ivaRete', false],
+      ...OPERATIONS,
+      ['IVA percibido', 'ivaPerci', false],
+      ['IVA 13%', 'totalIva', false],
+      ['IVA retenido', 'ivaRete', false],
       ['Monto total de la operación', 'montoTotalOperacion', true],
+      ['Total otros montos no afectos', 'totalNoGravado', false],
       ['Total a pagar', 'totalPagar', true]
     ]
   }
@@ -128,11 +139,18 @@ const LAYOUTS: Readonly<Record<string, Layout>> = {
 function identification(id: Json, seal: string | null): FiscalRepresentationSection {
   const model = SvRepresentation.MODELS[Number(id['tipoModelo']) as 1 | 2] ?? null
   const transmission = SvRepresentation.TRANSMISSIONS[Number(id['tipoOperacion']) as 1 | 2] ?? null
-  const date = text(id['fecEmi'])
-  const time = text(id['horEmi'])
+  const type = text(id['tipoDte'])
   return {
     heading: 'Identificación',
     rows: [
+      { label: 'Versión', value: text(id['version']) ?? SvRepresentation.EMPTY },
+      {
+        label: 'Tipo de Documento',
+        value:
+          type === null
+            ? SvRepresentation.EMPTY
+            : (SvRepresentation.TITLES[type as keyof typeof SvRepresentation.TITLES] ?? type)
+      },
       {
         label: 'Código de Generación',
         value: text(id['codigoGeneracion']) ?? SvRepresentation.EMPTY
@@ -142,11 +160,40 @@ function identification(id: Json, seal: string | null): FiscalRepresentationSect
       { label: 'Sello de Recepción', value: seal ?? SvRepresentation.NO_SEAL },
       { label: 'Modelo de Facturación', value: model ?? SvRepresentation.EMPTY },
       { label: 'Tipo de Transmisión', value: transmission ?? SvRepresentation.EMPTY },
-      {
-        label: 'Fecha y Hora de Generación',
-        value: date !== null && time !== null ? `${date} ${time}` : SvRepresentation.EMPTY
-      }
+      { label: 'Fecha de Generación', value: text(id['fecEmi']) ?? SvRepresentation.EMPTY },
+      { label: 'Hora de Generación', value: text(id['horEmi']) ?? SvRepresentation.EMPTY }
     ]
+  }
+}
+
+// The documents the document relates to (a credit note names the one it adjusts: the type, with its description, the number and the date of
+// generation of each). Null when it relates none.
+function relatedDocuments(value: unknown): FiscalRepresentationSection | null {
+  const related = list(value)
+  if (related.length === 0) return null
+  return {
+    heading: 'Documentos relacionados',
+    rows: related.flatMap((doc, index) => {
+      const type = text(doc['tipoDocumento'])
+      const suffix = related.length > 1 ? ` ${index + 1}` : ''
+      return [
+        {
+          label: `Tipo de documento relacionado${suffix}`,
+          value:
+            type === null
+              ? SvRepresentation.EMPTY
+              : (SvRepresentation.TITLES[type as keyof typeof SvRepresentation.TITLES] ?? type)
+        },
+        {
+          label: `Número de documento relacionado${suffix}`,
+          value: text(doc['numeroDocumento']) ?? SvRepresentation.EMPTY
+        },
+        {
+          label: `Fecha de generación del documento relacionado${suffix}`,
+          value: text(doc['fechaEmision']) ?? SvRepresentation.EMPTY
+        }
+      ]
+    })
   }
 }
 
@@ -156,24 +203,21 @@ function party(
   withEstablishment: boolean
 ): FiscalRepresentationSection {
   const data = isRecord(value) ? value : {}
+  const kind = text(data['tipoDocumento'])
   return {
     heading,
     rows: rows([
       ['Nombre o razón social', text(data['nombre'])],
       ['Nombre comercial', text(data['nombreComercial'])],
+      ['NIT', text(data['nit'])],
       [
-        'NIT',
-        text(data['nit']) ?? (data['tipoDocumento'] === '36' ? text(data['numDocumento']) : null)
+        'Tipo de documento de identificación',
+        kind === null ? null : (IDENTITY_NAMES.get(kind) ?? kind)
       ],
-      [
-        'Documento de identificación',
-        data['nit'] === undefined && data['tipoDocumento'] !== '36'
-          ? text(data['numDocumento'])
-          : null
-      ],
+      ['Número de documento', text(data['numDocumento'])],
       ['NRC', text(data['nrc'])],
       ['Actividad económica', text(data['descActividad'])],
-      ['Dirección', addressText(data['direccion'])],
+      ...addressRows(data['direccion']),
       ['Teléfono', text(data['telefono'])],
       ['Correo electrónico', text(data['correo'])],
       ...(withEstablishment
@@ -253,6 +297,7 @@ export function representDocument(doc: StoredFiscalDocument): FiscalRepresentati
     ['Observaciones', text(summary['observaciones'])]
   ])
 
+  const related = relatedDocuments(payload['documentoRelacionado'])
   const query = new URLSearchParams({
     ambiente: environment,
     codGen: generationCode,
@@ -265,7 +310,8 @@ export function representDocument(doc: StoredFiscalDocument): FiscalRepresentati
     sections: [
       identification(id, seal),
       party('Emisor', payload['emisor'], true),
-      ...(isRecord(payload['receptor']) ? [party('Receptor', payload['receptor'], false)] : [])
+      ...(isRecord(payload['receptor']) ? [party('Receptor', payload['receptor'], false)] : []),
+      ...(related === null ? [] : [related])
     ],
     table: itemsTable(list(payload['cuerpoDocumento']), layout),
     totals,

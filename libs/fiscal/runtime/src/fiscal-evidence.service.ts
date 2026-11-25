@@ -61,6 +61,14 @@ interface EvidenceRow {
   readonly sequenceNumber: number
 }
 
+// The files the receiver is given are made while the document is accepted (the receiver got them then). A document that is voided keeps the
+// ones it has, but one never made is not made now: it would show the original with no sign that it was invalidated, and the receiver
+// could take it for a valid one. The invalidation is its own event, with its own representation.
+const MADE_WHILE_ACCEPTED: readonly FiscalEvidenceKind[] = [
+  FiscalEvidenceKind.DTE_FILE,
+  FiscalEvidenceKind.REPRESENTATION
+]
+
 // What a kind of evidence is as a file: its bytes and the name it is downloaded with
 interface MadeFile {
   readonly bytes: Buffer
@@ -134,6 +142,13 @@ export class FiscalEvidenceService {
         select: { id: true, key: true, status: true }
       })
     )
+    if (
+      existing === null &&
+      owned.status !== String(FiscalDocumentStatus.ACCEPTED) &&
+      MADE_WHILE_ACCEPTED.includes(kind)
+    ) {
+      return null
+    }
     if (existing?.status === String(MediaStatus.CLEAN)) return { mediaId: existing.id }
     if (existing !== null)
       return this.repair(organizationId, documentId, kind, existing, owned.storeId)

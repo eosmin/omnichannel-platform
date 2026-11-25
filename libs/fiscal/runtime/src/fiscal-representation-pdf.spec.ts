@@ -1,9 +1,15 @@
 import jsQR from 'jsqr'
 import { PDFDocument } from 'pdf-lib'
 
+import { FiscalLimits } from '@platform/core/domain'
 import type { FiscalRepresentation } from '@platform/fiscal/sdk'
 
-import { drawable, qrModules, renderRepresentationPdf } from './fiscal-representation-pdf'
+import {
+  drawable,
+  qrModules,
+  RepresentationTooLargeError,
+  renderRepresentationPdf
+} from './fiscal-representation-pdf'
 
 const URL_OF_CODE =
   'https://admin.factura.gob.sv/consultaPublica?ambiente=01&codGen=1B9D6BCD-BBFD-4B2D-9B5D-AB8DFBBD4BED&fechaEmi=2026-11-16'
@@ -97,5 +103,28 @@ describe('the PDF of a representation', () => {
 
   it('shows a character the faces cannot draw as a question mark', () => {
     expect(drawable('Camisa 😀 Ñandú')).toBe('Camisa ? Ñandú')
+  })
+
+  it('refuses, before drawing, a text or a number of rows above what a document holds', async () => {
+    const long = 'x'.repeat(FiscalLimits.REPRESENTATION_MAX_TEXT_CHARS + 1)
+    await expect(
+      renderRepresentationPdf(
+        representation({ footnotes: [{ label: 'Observaciones', value: long }] }),
+        at
+      )
+    ).rejects.toBeInstanceOf(RepresentationTooLargeError)
+    const rows = Array.from({ length: FiscalLimits.REPRESENTATION_MAX_ROWS + 1 }, () => [
+      '1',
+      'a',
+      '1'
+    ])
+    await expect(
+      renderRepresentationPdf(
+        representation({
+          table: { columns: ['N', 'D', 'V'], numericColumns: [0, 2], wideColumn: 1, rows }
+        }),
+        at
+      )
+    ).rejects.toBeInstanceOf(RepresentationTooLargeError)
   })
 })

@@ -420,16 +420,26 @@ export class SvBuildError extends Error {
 // not translated. The address of the public consultation is the one of the Manual Técnico §5.
 export const SvRepresentation = {
   CONSULT_URL: 'https://admin.factura.gob.sv/consultaPublica',
-  // A document of the test environment says it has no legal value (Normativa 11.3.1)
-  TEST_NOTICE: 'Documento emitido en el ambiente de pruebas: carece de valor legal.',
+  // A representation made in the test environment must stand out that the document has no legal value (Normativa 11.3, page 25)
+  TEST_NOTICE:
+    'Este documento carece de valor legal por tratarse de documentación de ensayo con información aparente.',
   // The 40 characters of the seal are replaced by this when the document has none (a document made in contingency is sealed later)
   NO_SEAL: '-',
   EMPTY: '-',
   MODELS: { 1: 'Modelo de facturación previo', 2: 'Modelo de facturación diferido' },
   TRANSMISSIONS: { 1: 'Transmisión normal', 2: 'Transmisión por contingencia' },
+  // CAT-002: the description of a type of document, as the representation shows it (the type drawn and the type of a related document)
   TITLES: {
     '01': 'Factura',
     '03': 'Comprobante de crédito fiscal',
-    '05': 'Nota de crédito'
+    '04': 'Nota de remisión',
+    '05': 'Nota de crédito',
+    '06': 'Nota de débito',
+    '07': 'Comprobante de retención',
+    '08': 'Comprobante de liquidación',
+    '09': 'Documento contable de liquidación',
+    '11': 'Factura de exportación',
+    '14': 'Factura de sujeto excluido',
+    '15': 'Comprobante de donación'
   }
 } as const satisfies Record<string, unknown>

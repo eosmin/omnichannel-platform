@@ -66,17 +66,17 @@ describe('the representation of an accepted document', () => {
     expect(valueOf(rep, 'Sello de Recepción')).toBe(SEAL)
     expect(valueOf(rep, 'Modelo de Facturación')).toBe(SvRepresentation.MODELS[1])
     expect(valueOf(rep, 'Tipo de Transmisión')).toBe(SvRepresentation.TRANSMISSIONS[1])
-    expect(valueOf(rep, 'Fecha y Hora de Generación')).toMatch(
-      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
-    )
+    expect(valueOf(rep, 'Fecha de Generación')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(valueOf(rep, 'Hora de Generación')).toMatch(/^\d{2}:\d{2}:\d{2}$/)
   })
 
   it('names the issuer with its address by the names of the catalogs', () => {
     const rep = representDocument(invoice())
     expect(valueOf(rep, 'Nombre o razón social')).toBe(ISSUER.legalName)
     expect(valueOf(rep, 'NIT')).toBe('06140101011011')
-    expect(valueOf(rep, 'Dirección')).toContain('Calle 1, Colonia Centro')
-    expect(valueOf(rep, 'Dirección')).toContain('San Salvador')
+    expect(valueOf(rep, 'Complemento')).toBe('Calle 1, Colonia Centro')
+    expect(valueOf(rep, 'Departamento')).toBe('San Salvador')
+    expect(valueOf(rep, 'Municipio')).toBe('SAN SALVADOR CENTRO')
   })
 
   it('names the receiver of a tax credit document by the fields of the authority', () => {
@@ -88,7 +88,14 @@ describe('the representation of an accepted document', () => {
     ])
     const receiver = rep?.sections.find(section => section.heading === 'Receptor')
     expect(receiver?.rows.map(row => row.label)).toEqual(
-      expect.arrayContaining(['Nombre o razón social', 'NIT', 'NRC', 'Dirección'])
+      expect.arrayContaining([
+        'Nombre o razón social',
+        'NIT',
+        'NRC',
+        'Departamento',
+        'Municipio',
+        'Complemento'
+      ])
     )
   })
 
@@ -106,6 +113,15 @@ describe('the representation of an accepted document', () => {
   it('a credit note names the document it adjusts', () => {
     const rep = representDocument(creditNote())
     expect(rep?.table?.columns).toContain('N° Documento relacionado')
+    const related = rep?.sections.find(section => section.heading === 'Documentos relacionados')
+    expect(related?.rows).toEqual([
+      { label: 'Tipo de documento relacionado', value: 'Comprobante de crédito fiscal' },
+      {
+        label: 'Número de documento relacionado',
+        value: 'AC54E9DB-79C5-42CE-B430-EC552C97EFBA'
+      },
+      { label: 'Fecha de generación del documento relacionado', value: '2026-11-16' }
+    ])
     expect(rep?.table?.columns[rep.table.wideColumn]).toBe('Descripción')
   })
 
@@ -122,6 +138,7 @@ describe('the representation of an accepted document', () => {
 
   it('says it has no legal value only in the test environment', () => {
     expect(representDocument(invoice())?.notices).toEqual([SvRepresentation.TEST_NOTICE])
+    expect(SvRepresentation.TEST_NOTICE).toContain('carece de valor legal')
     const prod = representDocument(
       kept(acceptedDocument({ issuer: { ...ISSUER, environment: FiscalEnvironment.PRODUCTION } }))
     )
@@ -160,5 +177,79 @@ describe('the representation of an accepted document', () => {
   it('has none for a type it does not draw or a payload that is not a document', () => {
     expect(representDocument({ ...invoice(), documentType: '04' })).toBeNull()
     expect(representDocument({ ...invoice(), payload: {} })).toBeNull()
+  })
+
+  // The fields the Normativa v2.0 (Anexo II, column "Representación Gráfica") marks A for each type, by the names the representation uses.
+  // A field marked A that the document has is always shown: omitting one is a fine.
+  const COMMON_A = [
+    'Versión',
+    'Tipo de Documento',
+    'Código de Generación',
+    'Número de Control',
+    'Sello de Recepción',
+    'Modelo de Facturación',
+    'Tipo de Transmisión',
+    'Fecha de Generación',
+    'Hora de Generación',
+    'Nombre o razón social',
+    'NIT',
+    'Departamento',
+    'Municipio',
+    'Complemento',
+    'Teléfono',
+    'Correo electrónico',
+    'Total de operaciones no sujetas',
+    'Total de operaciones exentas',
+    'Total de operaciones gravadas',
+    'Suma de operaciones',
+    'Monto total de la operación',
+    'Total a pagar',
+    'Condición de la operación'
+  ]
+  const ITEM_A = [
+    'N°',
+    'Cantidad',
+    'Unidad',
+    'Descripción',
+    'Precio Unitario',
+    'Descuento por ítem',
+    'Ventas No Sujetas',
+    'Ventas Exentas',
+    'Ventas Gravadas'
+  ]
+  it.each([
+    ['01', invoice, [...COMMON_A], ['Sub total']],
+    ['03', taxCredit, [...COMMON_A, 'NRC', 'Actividad económica'], ['Sub total']],
+    [
+      '05',
+      creditNote,
+      [
+        ...COMMON_A,
+        'NRC',
+        'Actividad económica',
+        'Tipo de documento de identificación',
+        'Número de documento',
+        'Tipo de documento relacionado',
+        'Número de documento relacionado',
+        'Fecha de generación del documento relacionado'
+      ],
+      []
+    ]
+  ] as const)('shows every field marked A for type %s', (_type, make, fields, summary) => {
+    const rep = representDocument(make())
+    const shown = [
+      ...(rep?.sections.flatMap(section => section.rows.map(row => row.label)) ?? []),
+      ...(rep?.totals.map(row => row.label) ?? []),
+      ...(rep?.footnotes.map(row => row.label) ?? [])
+    ]
+    for (const field of [...fields, ...summary]) expect(shown).toContain(field)
+    for (const column of ITEM_A) expect(rep?.table?.columns).toContain(column)
+  })
+
+  it('does not show the optional fields (C) nor those of the law (B) that are zero', () => {
+    const labels = (representDocument(invoice())?.totals.map(row => row.label) ?? []).join('|')
+    expect(labels).not.toContain('IVA 13%')
+    expect(labels).not.toContain('IVA retenido')
+    expect(labels).not.toContain('Descuento global')
   })
 })

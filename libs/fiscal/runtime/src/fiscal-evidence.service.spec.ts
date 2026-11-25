@@ -46,12 +46,17 @@ const row = {
   createdAt: new Date('2026-11-17T03:30:00.000Z')
 }
 
-function build(provider: Partial<FiscalDocumentProvider> | undefined) {
+function build(
+  provider: Partial<FiscalDocumentProvider> | undefined,
+  over: { status?: FiscalDocumentStatus; existing?: unknown } = {}
+) {
   const put = jest.fn().mockResolvedValue(undefined)
   const create = jest.fn().mockResolvedValue({})
   const client = {
-    fiscalDocument: { findFirst: jest.fn().mockResolvedValue(row) },
-    media: { findFirst: jest.fn().mockResolvedValue(null), create }
+    fiscalDocument: {
+      findFirst: jest.fn().mockResolvedValue({ ...row, status: over.status ?? row.status })
+    },
+    media: { findFirst: jest.fn().mockResolvedValue(over.existing ?? null), create }
   }
   const prisma = { client, afterCommitStep: (_c: unknown, work: () => Promise<void>) => work() }
   const logger = { setContext: jest.fn(), error: jest.fn(), warn: jest.fn() }
@@ -130,5 +135,26 @@ describe('the files the receiver is given', () => {
     expect(await service.keep('org-1', 'doc-1', FiscalEvidenceKind.REPRESENTATION)).toBeNull()
     expect(put).not.toHaveBeenCalled()
     expect(logger.error).toHaveBeenCalled()
+  })
+
+  it('does not make them for a document that was voided before they were made, but serves the ones it has', async () => {
+    const voided = build(
+      { represent: () => representation },
+      { status: FiscalDocumentStatus.VOIDED }
+    )
+    for (const kind of [FiscalEvidenceKind.DTE_FILE, FiscalEvidenceKind.REPRESENTATION]) {
+      expect(await voided.service.keep('org-1', 'doc-1', kind)).toBeNull()
+    }
+    expect(voided.put).not.toHaveBeenCalled()
+    const kept = build(
+      { represent: () => representation },
+      {
+        status: FiscalDocumentStatus.VOIDED,
+        existing: { id: 'media-9', key: 'k', status: 'clean' }
+      }
+    )
+    expect(await kept.service.keep('org-1', 'doc-1', FiscalEvidenceKind.REPRESENTATION)).toEqual({
+      mediaId: 'media-9'
+    })
   })
 })

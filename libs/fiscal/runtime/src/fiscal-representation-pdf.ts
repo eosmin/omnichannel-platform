@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit'
 import { encode } from 'uqr'
 
+import { FiscalLimits } from '@platform/core/domain'
 import type { FiscalRepresentation, FiscalRepresentationRow } from '@platform/fiscal/sdk'
 
 // The picture of a document as a PDF (the graphic representation a tax authority may ask for): drawn from the model of the provider and nothing else, with the standard
@@ -131,11 +132,50 @@ function drawTable(
   for (const row of table.rows) line(row, false)
 }
 
+// A representation larger than what a document holds is refused before anything is drawn: the worker's time is bounded, and a text that
+// was cut would be a wrong legal paper
+export class RepresentationTooLargeError extends Error {
+  constructor() {
+    super('the representation is larger than what is drawn')
+    this.name = 'RepresentationTooLargeError'
+  }
+}
+
+function assertWithinLimits(representation: FiscalRepresentation): void {
+  const texts = [
+    representation.title,
+    ...representation.notices,
+    ...representation.sections.flatMap(section => [
+      section.heading,
+      ...section.rows.flatMap(row => [row.label, row.value])
+    ]),
+    ...(representation.table?.columns ?? []),
+    ...(representation.table?.rows.flat() ?? []),
+    ...[...representation.totals, ...representation.footnotes].flatMap(row => [
+      row.label,
+      row.value
+    ]),
+    representation.qrUrl ?? ''
+  ]
+  const rows =
+    representation.sections.reduce((sum, section) => sum + section.rows.length, 0) +
+    (representation.table?.rows.length ?? 0) +
+    representation.totals.length +
+    representation.footnotes.length
+  if (
+    rows > FiscalLimits.REPRESENTATION_MAX_ROWS ||
+    texts.some(value => value.length > FiscalLimits.REPRESENTATION_MAX_TEXT_CHARS)
+  ) {
+    throw new RepresentationTooLargeError()
+  }
+}
+
 // The file. `at` is the date written in it (the one of the document, so the same document always gives the same file).
 export async function renderRepresentationPdf(
   representation: FiscalRepresentation,
   at: Date
 ): Promise<Buffer> {
+  assertWithinLimits(representation)
   const pdf = new PDFDocument({
     size: 'LETTER',
     margin: MARGIN_PT,
