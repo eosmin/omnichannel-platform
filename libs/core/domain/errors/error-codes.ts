@@ -275,6 +275,9 @@ export const ErrorCodes = {
   // Reopening a period that is open, or closing one that is closed already
   FINANCE_PERIOD_NOT_CLOSED: 'FINANCE_PERIOD_NOT_CLOSED',
   FINANCE_PERIOD_ALREADY_CLOSED: 'FINANCE_PERIOD_ALREADY_CLOSED',
+  // Deleting a period (FIN-052): only one that has not started and that nothing points at
+  FINANCE_PERIOD_NOT_FUTURE: 'FINANCE_PERIOD_NOT_FUTURE',
+  FINANCE_PERIOD_HAS_ACTIVITY: 'FINANCE_PERIOD_HAS_ACTIVITY',
   FINANCE_CURRENCY_UNSUPPORTED: 'FINANCE_CURRENCY_UNSUPPORTED',
   FINANCE_SETUP_REQUIRED: 'FINANCE_SETUP_REQUIRED',
   // A taxed product has no tax rate of its own and the organization has no default one: an order never guesses a rate (TDD_18 §7)

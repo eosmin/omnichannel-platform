@@ -132,6 +132,8 @@ describe('the issuer and the receiver as the authority reads them', () => {
     // Nine digits are a national id whichever kind the person picked
     expect(receiverProblems(receiver('012345679', '36'))).toEqual(wrongId)
     expect(receiverProblems(receiver('012345678', '36'))).toEqual([])
+    // A legacy tax number of nine digits has no check digit: it is refused when written
+    expect(receiverProblems(receiver('123456789', '36'))).toEqual(wrongId)
     // A tax number has no check digit held, and another document is not a national id
     expect(receiverProblems(receiver('0614-010101-101-3', '36'))).toEqual([])
     expect(receiverProblems(receiver('AB1234567', '03'))).toEqual([])
