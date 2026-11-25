@@ -7,5 +7,9 @@
 ALTER TABLE "fiscal_documents" ADD COLUMN "rejected_at" TIMESTAMP(3), ADD COLUMN "rejection_warned_at" TIMESTAMP(3);
 
 -- A document that is refused now was refused by the authority when its submission moved (core's own refusals never move it): the moment of
--- its last change is the nearest date there is, so it has its window and is not left with none. Those already warned of nothing stay unwarned.
-UPDATE "fiscal_documents" SET "rejected_at" = "updated_at" WHERE "status" = 'rejected' AND "submission" > 1;
+-- its last change is the nearest date there is, so it has its window and is not left with none. One whose window is already over is marked
+-- as warned, so the first daily check after the deploy does not tell the person of every old refusal at once.
+UPDATE "fiscal_documents"
+SET "rejected_at" = "updated_at",
+    "rejection_warned_at" = CASE WHEN "updated_at" + interval '24 hours' < now() THEN "updated_at" END
+WHERE "status" = 'rejected' AND "submission" > 1;
