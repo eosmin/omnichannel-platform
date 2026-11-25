@@ -28,6 +28,7 @@ import {
   FiscalContingencyStatus,
   type FiscalEnvironment,
   fiscalJobOptions,
+  fiscalReportJobOptions,
   FiscalDocumentStatus,
   FiscalLimits,
   FiscalResourceTypes,
@@ -61,6 +62,7 @@ import type {
 import { type ClaimToken } from './claim-token'
 import type { FiscalActor } from './fiscal-issuer.service'
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
+import { reportDeadlineIsClosing } from './fiscal-rules'
 import { cappedResponse, record, toJson } from './json'
 import { openSealed } from './sealed-open'
 import { withTimeout } from './with-timeout'
@@ -760,6 +762,17 @@ export class FiscalContingencyService {
         data: { reportAttempts: { increment: 1 } }
       })
     )
+    // The report is asked again every 15 minutes while the authority does not answer: each time, the person is told once if the time the
+    // authority gives to send the event is closing
+    // A failure of the warning never costs an attempt to reach the authority
+    try {
+      await this.warnReportDeadline(organizationId, row, mode, new Date())
+    } catch (error) {
+      this.logger.error(
+        { contingencyId, err: errorName(error) },
+        'the warning of the time to send a contingency event was not made'
+      )
+    }
     let result
     try {
       result = await withTimeout(
@@ -829,6 +842,8 @@ export class FiscalContingencyService {
           status: FiscalContingencyStatus.REPORTED,
           reportedAt: new Date(),
           windowEndsAt,
+          // The warning of the time to send the event (above) is not the one of the window of the lot: that one is told again
+          warnedAt: null,
           lastReportError: null,
           ...(providerData === undefined ? {} : { providerData }),
           ...(response === undefined ? {} : { response })
@@ -867,6 +882,80 @@ export class FiscalContingencyService {
 
   // The window to send the documents of a reported contingency is closing and some of them are not accepted yet: the person is told, once
   async warnWindows(organizationId: string, now: Date = new Date()): Promise<number> {
+    const told = await this.warnReportDeadlines(organizationId, now)
+    return told + (await this.warnLotWindows(organizationId, now))
+  }
+
+  // An ended contingency whose event is not taken yet and whose time to send it is closing (the rules of the authority: 24 hours after the
+  // situation ended). The report job tells it too on each attempt; this is for the one whose job is gone.
+  private async warnReportDeadlines(organizationId: string, now: Date): Promise<number> {
+    // Only an event that is still owed (the same ones the daily check asks for): one that was refused, or has no document left, is not
+    // told again as closing
+    const owed = await this.unreported(organizationId)
+    if (owed.length === 0) return 0
+    const rows = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalContingency.findMany({
+        where: {
+          id: { in: owed },
+          organizationId,
+          status: FiscalContingencyStatus.CLOSED,
+          lastReportError: null,
+          warnedAt: null,
+          endedAt: { not: null }
+        },
+        select: { id: true, providerId: true, endedAt: true }
+      })
+    )
+    let told = 0
+    for (const row of rows) {
+      const mode = this.providers.find(row.providerId)?.manifest.contingencyMode
+      if (await this.warnReportDeadline(organizationId, row, mode, now)) told += 1
+    }
+    return told
+  }
+
+  // Tells the person, once, that the time to send the event is closing (or passed). The event is owed still when it passed: only the
+  // provider that declares the time is watched. Returns whether it told.
+  private async warnReportDeadline(
+    organizationId: string,
+    row: { id: string; endedAt: Date | null },
+    mode: Pick<FiscalContingencyDeclaration, 'reportWithinHours'> | undefined,
+    now: Date
+  ): Promise<boolean> {
+    const hours = mode?.reportWithinHours
+    if (hours === undefined || row.endedAt === null) return false
+    if (
+      !reportDeadlineIsClosing(
+        row.endedAt,
+        hours,
+        now,
+        FiscalContingencyLimits.WARN_REMAINING_RATIO
+      )
+    ) {
+      return false
+    }
+    // The mark and its alert in one transaction: a failure in between leaves neither. Only a contingency that is still waiting for its event.
+    return this.inTx(organizationId, async tx => {
+      const marked = await tx.fiscalContingency.updateMany({
+        where: {
+          id: row.id,
+          organizationId,
+          status: FiscalContingencyStatus.CLOSED,
+          warnedAt: null
+        },
+        data: { warnedAt: now }
+      })
+      if (marked.count === 0) return false
+      this.events.publish(tx, Events.FISCAL_CONTINGENCY_ALERT, {
+        organizationId,
+        contingencyId: row.id,
+        kind: FiscalContingencyAlertKind.WINDOW_CLOSING
+      })
+      return true
+    })
+  }
+
+  private async warnLotWindows(organizationId: string, now: Date): Promise<number> {
     const rows = await this.unit(organizationId, () =>
       this.prisma.client.fiscalContingency.findMany({
         where: {
@@ -1019,7 +1108,7 @@ export class FiscalContingencyService {
         await this.queue.add(
           JobNames.REPORT_FISCAL_CONTINGENCY,
           { organizationId, contingencyId },
-          { ...fiscalJobOptions(), jobId }
+          { ...fiscalReportJobOptions(), jobId }
         )
       } catch (error) {
         if (!swallow) throw error

@@ -120,6 +120,8 @@ export const SvContingency = {
   } as const,
   // The time to send the documents of the lot once the event was taken (Normativa cuadro 5)
   TRANSMIT_WITHIN_HOURS: 72,
+  // The time to transmit the event of contingency once the force majeure ended (Normativa DTE v2.0, 13.2.2; field 10 of the event)
+  REPORT_WITHIN_HOURS: 24,
   // The documents one event lists (the schema's maximum)
   MAX_DOCUMENTS: 1000,
   MOTIVE_MAX: 500

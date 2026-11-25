@@ -263,6 +263,7 @@ describe('the provider against the authority while it is down', () => {
       reasons: ['1', '2', '3', '4', '5'],
       authorityDownReason: '1',
       transmitWithinHours: 72,
+      reportWithinHours: 24,
       maxDocumentsPerEvent: 1000,
       requiresResponsible: true
     })

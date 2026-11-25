@@ -155,6 +155,9 @@ describe('the contingency mode of a provider', () => {
       { authorityDownReason: 'not-a-reason' },
       { transmitWithinHours: 0 },
       { transmitWithinHours: Number.NaN },
+      { reportWithinHours: 0 },
+      { reportWithinHours: Number.NaN },
+      { reportWithinHours: Number.POSITIVE_INFINITY },
       { maxDocumentsPerEvent: 0 },
       { maxDocumentsPerEvent: 1.5 }
     ]) {
