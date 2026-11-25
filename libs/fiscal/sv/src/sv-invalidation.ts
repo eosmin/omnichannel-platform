@@ -134,8 +134,8 @@ export interface SvInvalidated {
   readonly controlNumber: string
   readonly issueDate: string
   readonly seal: string
-  // The day the seal was given (El Salvador), what the deadline counts from; the date of the document when the hour of the seal was not kept
-  readonly sealDate: string
+  // The day the seal was given (El Salvador), what the deadline counts from; null when the hour of the seal was not kept or is not readable
+  readonly sealDate: string | null
 }
 
 const isDocumentType = (value: string): value is SvDocumentType =>
@@ -165,8 +165,7 @@ export function invalidatedOf(doc: StoredFiscalDocument): SvInvalidated | null {
         controlNumber,
         issueDate,
         seal,
-        sealDate:
-          sealDateOf(textOf(doc.providerData?.[SvProviderDataKeys.PROCESSED_AT])) ?? issueDate
+        sealDate: sealDateOf(textOf(doc.providerData?.[SvProviderDataKeys.PROCESSED_AT]))
       }
 }
 
@@ -296,10 +295,14 @@ export function buildInvalidation(input: SvInvalidationInput): SvInvalidationBui
   // A deadline counted in business days is enforced only with a list of holidays (without it the count could end too early)
   const holidays = input.holidays ?? SvHolidays
   const rules = input.rules ?? SvInvalidationDeadlineRules
-  const countable = !needsHolidays(rules[original.type]) || holidays.length > 0
-  const deadline = countable
-    ? invalidationDeadline(original.type, original.sealDate, holidays, rules)
-    : null
+  // Without the day of the seal there is nothing to count from: the authority has the last word (a date of the document would make the window
+  // end earlier than the authority's and refuse a lawful invalidation)
+  const countable =
+    original.sealDate !== null && (!needsHolidays(rules[original.type]) || holidays.length > 0)
+  const deadline =
+    countable && original.sealDate !== null
+      ? invalidationDeadline(original.type, original.sealDate, holidays, rules)
+      : null
   if (SvInvalidationEnforceDeadline && deadline !== null && moment.date > deadline) {
     return refuse(SvVoidRefusals.DEADLINE_PASSED)
   }

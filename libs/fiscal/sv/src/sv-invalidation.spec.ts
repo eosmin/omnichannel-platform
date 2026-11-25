@@ -282,17 +282,14 @@ describe('the invalidation event', () => {
     )
   })
 
-  it('counts from the date of the document when the authority gave no readable hour of the seal (the stricter day)', () => {
+  it('leaves the deadline to the authority when the hour of the seal was not kept or is not readable', () => {
     const base = acceptedDocument({ receiver: BUSINESS })
     for (const processedAt of [null, 'not an hour']) {
       const doc = {
         ...base,
         providerData: { ...base.providerData, [SvProviderDataKeys.PROCESSED_AT]: processedAt }
       }
-      expect(refusal(buildInvalidation(input({ doc, now: '2026-11-18T05:59:59.000Z' })))).toBeNull()
-      expect(refusal(buildInvalidation(input({ doc, now: '2026-11-18T06:00:00.000Z' })))).toBe(
-        SvVoidRefusals.DEADLINE_PASSED
-      )
+      expect(refusal(buildInvalidation(input({ doc, now: '2026-12-30T15:00:00.000Z' })))).toBeNull()
     }
   })
 
