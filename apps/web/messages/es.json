@@ -1280,7 +1280,7 @@
       },
       "retransmit_deadline": {
         "title": "Se acaba el plazo de reenvío de un documento fiscal",
-        "body": "La autoridad rechazó un documento fiscal y el plazo de 24 horas para corregirlo y reenviarlo se acaba o ya pasó. Abre el documento, corrígelo y envíalo de nuevo: conserva el mismo código de generación."
+        "body": "La autoridad rechazó un documento fiscal, o la invalidación de uno, y el plazo de 24 horas para corregirlo y reenviarlo se acaba o ya pasó. Abre el documento, corrígelo y envíalo de nuevo: un documento conserva el mismo código de generación."
       },
       "entry_mismatch": {
         "title": "Un documento fiscal no coincide con los libros",

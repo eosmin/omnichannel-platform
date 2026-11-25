@@ -389,7 +389,7 @@ export async function voidDocument(
       }
       throw new SvTransportError(SvTransportFailures.NETWORK)
     }
-    return { voided: false, reason: answer.code, response: answer.body }
+    return { voided: false, reason: answer.code, response: answer.body, byAuthority: true }
   }
   // The token was refused twice: not a verdict on the document
   throw new SvTransportError(SvTransportFailures.NETWORK)
