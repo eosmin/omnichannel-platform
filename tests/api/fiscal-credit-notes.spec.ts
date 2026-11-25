@@ -314,6 +314,29 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
       expect(await statusOf(note?.id ?? '')).toBe(FiscalDocumentStatus.ACCEPTED)
     })
 
+    it('does not release a note while the sale document is refused or has no seal: nothing is claimed (Normativa DTE 9.2)', async () => {
+      const order = await sale(false)
+      const note = await noteOf(await receivedReturn(order, 1))
+      // The authority refused the sale document: the note that names it does not go out until it is accepted
+      await owner.fiscalDocument.update({
+        where: { id: order.documentId },
+        data: { status: FiscalDocumentStatus.REJECTED, rejectedAt: new Date() }
+      })
+      await expect(documents.submit(ctx.orgA.id, note?.id ?? '')).rejects.toThrow(
+        /not accepted yet/
+      )
+      const waiting = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: note?.id } })
+      expect([waiting.status, waiting.attempts]).toEqual([FiscalDocumentStatus.QUEUED, 0])
+      // The sale document is back in the queue and sent: the note goes after it
+      await owner.fiscalDocument.update({
+        where: { id: order.documentId },
+        data: { status: FiscalDocumentStatus.QUEUED, rejectedAt: null }
+      })
+      await documents.submit(ctx.orgA.id, order.documentId)
+      await documents.submit(ctx.orgA.id, note?.id ?? '')
+      expect(await statusOf(note?.id ?? '')).toBe(FiscalDocumentStatus.ACCEPTED)
+    })
+
     it('takes the receiver of the document it cancels and refuses to edit its own', async () => {
       const order = await sale(false)
       const note = await noteOf(await receivedReturn(order, 1))

@@ -254,6 +254,15 @@ export const FiscalRejectionRetry = {
   WARN_BEFORE_MS: 12 * 60 * 60 * 1000
 } as const
 
+// The hourly look at the windows of the authority (D14b): a daily one cannot promise a warning 12 hours before the end of a 24-hour window
+export const FiscalDeadlineSweep = {
+  // Organizations one page of the scheduler reads
+  ORGANIZATIONS_PAGE_SIZE: 200,
+  // Attempts of the job of one organization when the infrastructure fails, and the pause between them (the next hour asks again anyway)
+  JOB_ATTEMPTS: 2,
+  JOB_BACKOFF_MS: 60_000
+} as const
+
 // Where a refused document stands against that window
 export enum FiscalRejectionDeadlineState {
   OPEN = 'open',
