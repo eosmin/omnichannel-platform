@@ -15,6 +15,7 @@ import {
   FiscalEnvironment,
   FiscalIssueOn,
   FiscalLimits,
+  FiscalRejectionDeadlineState,
   FiscalRejectionReasons,
   FiscalVoidKind,
   OrderStatus
@@ -1266,6 +1267,125 @@ describe('The fiscal documents (Step 4B.7)', () => {
         .post(ApiRoutes.fiscal.documents.void(queued.documentId))
         .send({ reason: 'not accepted yet' })
       expect(early.status).toBe(CONFLICT)
+    })
+
+    // D14b: an invalidation the authority refused is corrected and sent again within 24 hours of the refusal, as a document is
+    describe('the window to send again an invalidation the authority refused', () => {
+      const HOUR = 60 * 60 * 1000
+      const provider = (): NonNullable<ReturnType<FiscalProviderRegistry['find']>> => {
+        const found = app.get(FiscalProviderRegistry).find(SIMULATOR_PROVIDER_ID)
+        if (found === undefined) throw new Error('the simulator is registered in test')
+        return found
+      }
+      const accepted = async (): Promise<string> => {
+        const { documentId } = await sale()
+        await documents.submit(ctx.orgA.id, documentId)
+        return documentId
+      }
+      const refuse = async (documentId: string, byAuthority: boolean) => {
+        const spy = jest
+          .spyOn(provider(), 'void')
+          .mockResolvedValue({ voided: false, reason: '020', byAuthority })
+        try {
+          return await asAdminA()
+            .post(ApiRoutes.fiscal.documents.void(documentId))
+            .send({ reason: 'wrong customer' })
+        } finally {
+          spy.mockRestore()
+        }
+      }
+      const rowOf = (id: string) => owner.fiscalDocument.findUniqueOrThrow({ where: { id } })
+
+      it('starts when the authority refuses it, keeps the document accepted and shows the deadline', async () => {
+        const documentId = await accepted()
+        expect((await refuse(documentId, true)).status).toBe(CONFLICT)
+        const row = await rowOf(documentId)
+        expect(row.status).toBe(FiscalDocumentStatus.ACCEPTED)
+        expect(row.voidRejectedAt).not.toBeNull()
+        expect(row.voidRejectionWarnedAt).toBeNull()
+        expect(row.voidClaimKey).toBeNull()
+        const view = await asAdminA().get(ApiRoutes.fiscal.documents.byId(documentId))
+        expect((view.body as { data: unknown }).data).toMatchObject({
+          voidRejectionDeadline: { state: FiscalRejectionDeadlineState.OPEN }
+        })
+      })
+
+      it('does not start when the provider stopped before sending anything', async () => {
+        const documentId = await accepted()
+        expect((await refuse(documentId, false)).status).toBe(CONFLICT)
+        expect((await rowOf(documentId)).voidRejectedAt).toBeNull()
+      })
+
+      it('tells the person once when it is closing, not before, and again for a new refusal', async () => {
+        const seen: FiscalRetransmitDeadlinePayload[] = []
+        const listener = (payload: FiscalRetransmitDeadlinePayload): void => {
+          seen.push(payload)
+        }
+        emitter.on(Events.FISCAL_VOID_RETRANSMIT_DEADLINE, listener)
+        try {
+          const documentId = await accepted()
+          await refuse(documentId, true)
+          const at = async (hours: number): Promise<Date> =>
+            new Date(((await rowOf(documentId)).voidRejectedAt as Date).getTime() + hours * HOUR)
+          // Other tests leave windows in the same organization: what counts is this document's own notices
+          const mine = (): FiscalRetransmitDeadlinePayload[] =>
+            seen.filter(payload => payload.documentId === documentId)
+
+          await documents.warnRejectionDeadlines(ctx.orgA.id, await at(11))
+          expect(mine()).toEqual([])
+          await documents.warnRejectionDeadlines(ctx.orgA.id, await at(13))
+          expect(mine()).toEqual([expect.objectContaining({ documentId, expired: false })])
+          await documents.warnRejectionDeadlines(ctx.orgA.id, await at(30))
+          expect(mine()).toHaveLength(1)
+
+          // Refused again: a new window, and a new notice
+          await refuse(documentId, true)
+          expect((await rowOf(documentId)).voidRejectionWarnedAt).toBeNull()
+          await documents.warnRejectionDeadlines(ctx.orgA.id, await at(25))
+          expect(mine()).toHaveLength(2)
+          expect(mine()[1]?.expired).toBe(true)
+        } finally {
+          emitter.off(Events.FISCAL_VOID_RETRANSMIT_DEADLINE, listener)
+        }
+      })
+
+      it('ends with the invalidation that is accepted, and never tells another organization', async () => {
+        const documentId = await accepted()
+        await refuse(documentId, true)
+        const over = new Date(
+          ((await rowOf(documentId)).voidRejectedAt as Date).getTime() + 25 * HOUR
+        )
+        expect(await documents.warnRejectionDeadlines(ctx.orgB.id, over)).toBe(0)
+        expect((await rowOf(documentId)).voidRejectionWarnedAt).toBeNull()
+        const voided = await asAdminA()
+          .post(ApiRoutes.fiscal.documents.void(documentId))
+          .send({ reason: 'wrong customer' })
+        expect(voided.status).toBe(OK)
+        const row = await rowOf(documentId)
+        expect(row.status).toBe(FiscalDocumentStatus.VOIDED)
+        expect([row.voidRejectedAt, row.voidRejectionWarnedAt]).toEqual([null, null])
+      })
+
+      it('lets the database change only the window and the claim of an accepted document', async () => {
+        const documentId = await accepted()
+        await expect(
+          owner.fiscalDocument.update({
+            where: { id: documentId },
+            data: { voidRejectedAt: new Date(), voidRejectionWarnedAt: new Date() }
+          })
+        ).resolves.toBeDefined()
+        await expect(
+          owner.fiscalDocument.update({ where: { id: documentId }, data: { totalCents: 1 } })
+        ).rejects.toThrow(/immutable/)
+        // A refused invalidation of a document that is not accepted has no meaning
+        const queued = await sale()
+        await expect(
+          owner.fiscalDocument.update({
+            where: { id: queued.documentId },
+            data: { voidRejectedAt: new Date() }
+          })
+        ).rejects.toThrow()
+      })
     })
 
     // HC-205: the key of an invalidation carries its reason, so a second request with another reason must not reach the authority while

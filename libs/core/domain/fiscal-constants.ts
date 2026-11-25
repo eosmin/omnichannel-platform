@@ -276,6 +276,12 @@ export const FiscalDeadlineSweep = {
   JOB_BACKOFF_MS: 60_000
 } as const
 
+// What the window of the authority is about: a refused document, or a refused invalidation of an accepted one (D14b)
+export enum FiscalWindowKind {
+  DOCUMENT = 'document',
+  INVALIDATION = 'invalidation'
+}
+
 // Where a refused document stands against that window
 export enum FiscalRejectionDeadlineState {
   OPEN = 'open',
