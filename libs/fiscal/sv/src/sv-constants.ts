@@ -233,11 +233,47 @@ export const SvInvalidation = {
   REASON_MAX: 200,
   PARTY_NAME_MAX: 100,
   PARTY_ID_MAX: 20,
-  // The business days of the following month a tax credit document or a credit note may be invalidated within (Funcional §VII)
-  BUSINESS_DAYS_OF_NEXT_MONTH: 10,
-  // The months an invoice may be invalidated within (Funcional §VII)
-  INVOICE_MONTHS: 3
+  // The months after the date of an invoice its event may be dated within (Anexo V, field 9)
+  INVOICE_EVENT_MONTHS: 3
 } as const
+
+// How a deadline of invalidation is counted, from the day the authority gave the document its reception seal (Normativa de Interoperabilidad
+// DTE v2.0, cuadro 6 and Anexo V, validation of field 47)
+export const SvInvalidationDeadlineUnits = {
+  // Calendar months after the day of the seal (to the last day of a shorter month)
+  CALENDAR_MONTHS: 'calendar_months',
+  // Calendar days after the day of the seal
+  CALENDAR_DAYS: 'calendar_days',
+  // The n-th business day of the month after the one the seal was given in (holidays: `SvHolidays`)
+  BUSINESS_DAY_OF_NEXT_MONTH: 'business_day_of_next_month'
+} as const
+export type SvInvalidationDeadlineUnit =
+  (typeof SvInvalidationDeadlineUnits)[keyof typeof SvInvalidationDeadlineUnits]
+
+export interface SvInvalidationDeadlineRule {
+  readonly unit: SvInvalidationDeadlineUnit
+  readonly amount: number
+}
+
+// The window of each type, counted from the SEAL (not from the date of the document). **[ACCOUNTANT / AUTHORITY]** The Normativa
+// contradicts itself for a tax credit document and a credit note: the body (cuadro 6, and the Manual Funcional) says the tenth business
+// day of the month after the seal, and the Anexo V (field 47, rule 2) says one day after the seal, which is what the reception platform is
+// said to apply. A late invalidation is a fine, so the STRICTER window, one calendar day after the seal, is used until the authority
+// answers the consultation sent to it (B4). To adopt the body's rule, change these two lines to
+// `{ unit: BUSINESS_DAY_OF_NEXT_MONTH, amount: 10 }` and list the holidays in `SvHolidays`; nothing else changes. An invoice is three
+// calendar months after the seal in both texts.
+export const SvInvalidationDeadlineRules: Readonly<
+  Record<SvDocumentType, SvInvalidationDeadlineRule>
+> = {
+  [SvDocumentTypes.INVOICE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_MONTHS, amount: 3 },
+  [SvDocumentTypes.TAX_CREDIT]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 },
+  [SvDocumentTypes.CREDIT_NOTE]: { unit: SvInvalidationDeadlineUnits.CALENDAR_DAYS, amount: 1 }
+}
+
+// The types whose invalidation names no replacement document whatever the kind (Anexo V, field 48: null for a credit note)
+export const SvInvalidationWithoutReplacement: readonly SvDocumentType[] = [
+  SvDocumentTypes.CREDIT_NOTE
+]
 
 // Whether a person may invalidate a document of each type. **[ACCOUNTANT]** Whether a final consumer's invoice is cancelled by an
 // invalidation or by a credit note is the accountant's to say, and the manual does not settle it: the answer is one switch per type (the
@@ -253,10 +289,11 @@ export const SvInvalidationAllowed: Readonly<Record<SvDocumentType, boolean>> = 
 // the verdict to the authority alone. **[ACCOUNTANT]**
 export const SvInvalidationEnforceDeadline = true
 
-// The days that are not business days besides Saturdays and Sundays (holidays), as yyyy-MM-dd. **[ACCOUNTANT]** Empty until the accountant
-// hands the list the authority counts by. A holiday that is not listed makes the tenth business day come EARLIER than the authority's, so
-// the platform's deadline would be stricter than the law: until the list is given, the deadline of a tax credit document or a credit note
-// (counted in business days) is not enforced here and the authority has the last word. An invoice's (calendar months) always is.
+// The days that are not business days besides Saturdays and Sundays (holidays), as yyyy-MM-dd. **[ACCOUNTANT]** Empty until the official
+// list the authority counts by is given (none is invented here). Used only by a rule counted in business days
+// (`SvInvalidationDeadlineUnits.BUSINESS_DAY_OF_NEXT_MONTH`, none today): an unlisted holiday makes the n-th business day come EARLIER than
+// the authority's, so such a rule is enforced only when the list is given and the authority has the last word until then. A rule in
+// calendar days or months always is.
 export const SvHolidays: readonly string[] = []
 
 // Why this provider refuses an invalidation, in codes of its own (never a value). Nothing was sent when one of these is the reason.

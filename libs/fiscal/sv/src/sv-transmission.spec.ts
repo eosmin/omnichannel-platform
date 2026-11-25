@@ -629,7 +629,8 @@ describe('the client of the authority', () => {
 
     it('sends nothing when the window is over, and says it with a code', async () => {
       const stored = await accepted(null)
-      provider = make({ now: () => Date.parse('2027-02-17T12:00:00.000Z') })
+      // The fake authority seals on 17 November 2026: three months from the seal end on 17 February 2027
+      provider = make({ now: () => Date.parse('2027-02-18T12:00:00.000Z') })
       const before = authority.stats.invalidations
       expect(await provider.void(stored, 'a', vctx(), RESCISSION)).toEqual({
         voided: false,
