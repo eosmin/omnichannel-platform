@@ -3,8 +3,10 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import type { AuditService } from '@platform/core/audit-module'
 import { type DsrConfig, sealDsrIntake } from '@platform/core/compliance'
+import { CredentialCipher, parseEncryptionKey } from '@platform/core/crypto'
 import type { JobContext, PrismaService } from '@platform/core/database'
 import { DsrType } from '@platform/core/domain'
+import { openMailJob, type SealedMailJobData } from '@platform/core/email'
 import type { DigestLinks } from '@platform/core/notifications'
 import type { SendEmailJob } from '@platform/core/queues'
 
@@ -19,6 +21,7 @@ const CONFIG: DsrConfig = {
   hashKey: 'h'.repeat(64),
   encryptionKeyHex: 'a'.repeat(64)
 }
+const cipher = new CredentialCipher(parseEncryptionKey('b'.repeat(64)))
 const LINKS: DigestLinks = { frontendUrl: 'https://app.example.com' }
 const STORE = { id: 's', store_id: 'store-1', organization_id: 'org-1' }
 const intake = {
@@ -63,7 +66,8 @@ function build(options: {
     prisma,
     jobContext,
     { log } as unknown as AuditService,
-    { add } as unknown as Queue<SendEmailJob>,
+    { add } as unknown as Queue<SendEmailJob | SealedMailJobData>,
+    cipher,
     LINKS,
     { ...CONFIG, enabled: options.enabled ?? true },
     { setContext: jest.fn(), info: jest.fn() } as unknown as PinoLogger
@@ -91,8 +95,14 @@ describe('DsrIntakeWorker', () => {
     expect(data.noticeLocale).toBe('en')
     const token = argOf<{ data: { tokenHash: string; subject: string } }>(createToken, 0, 0).data
     expect(token.subject).toBe('req-1')
-    const mail = argOf<SendEmailJob & { data: { url: string } }>(add, 0, 1)
+    const queued = argOf<SealedMailJobData>(add, 0, 1)
     expect(add).toHaveBeenCalledTimes(1)
+    // What Redis keeps holds neither the address nor the link
+    const stored = JSON.stringify(queued)
+    expect(stored).not.toContain('example.com')
+    expect(stored).not.toContain('token=')
+    expect(stored).not.toContain('ana')
+    const mail = openMailJob(cipher, queued) as SendEmailJob & { data: { url: string } }
     expect(mail.to).toBe('ana@example.com')
     const raw = new URL(mail.data.url).hash.replace('#token=', '')
     expect(raw).toHaveLength(43)
