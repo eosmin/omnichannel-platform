@@ -89,6 +89,9 @@ export const JobNames = {
   POST_FINANCE_EVENT: 'post-finance-event',
   // The daily check of the books of one organization (TDD_18 §6.1, §11): the sweep of sources with no entry and the balances
   RECONCILE_FINANCE: 'reconcile-finance',
+  // The hourly look at the windows of the authority of one organization (refused documents to send again, contingency events and lots): the
+  // person is told, once, when one is closing (D14b)
+  WARN_FISCAL_DEADLINES: 'warn-fiscal-deadlines',
   // The nightly re-seal of the sealed credentials of one organization with the current key, while a previous key is held (Step 7.3-S11c)
   RESEAL_CREDENTIALS: 'reseal-credentials',
   // The weekly check of the hash chain of the journal of one organization (TDD_18 §11): read only, it opens or clears an incident
@@ -167,6 +170,11 @@ export const postFinanceEventJobId = (kind: string, sourceId: string, day: strin
 // One check of the books per organization and UTC day: the schedule run twice (two replicas, a restart) asks for the same job
 export const reconcileFinanceJobId = (organizationId: string, day: string): string =>
   `${JobNames.RECONCILE_FINANCE}-${organizationId}-${day}`
+
+// One look at the fiscal windows per organization and UTC hour (dashes, no colon, `2026-11-12-09`): the schedule run twice in the same hour (two
+// replicas, a restart) asks for the same job
+export const warnFiscalDeadlinesJobId = (organizationId: string, hour: string): string =>
+  `${JobNames.WARN_FISCAL_DEADLINES}-${organizationId}-${hour}`
 
 // One re-seal of the credentials per organization and UTC day: asked twice, it is one job
 export const resealCredentialsJobId = (organizationId: string, day: string): string =>

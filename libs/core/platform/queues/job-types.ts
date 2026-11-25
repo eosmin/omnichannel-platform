@@ -185,6 +185,10 @@ export interface PostFinanceEventJob extends BaseJob {
 export interface ReconcileFinanceJob extends BaseJob {
   organizationId: string
 }
+// The hourly look at the windows of the authority of one organization (D14b): ids only; it writes the mark that the person was told and its alert
+export interface WarnFiscalDeadlinesJob extends BaseJob {
+  organizationId: string
+}
 // The nightly re-seal of the sealed credentials of one organization after a rotation of the key (Step 7.3-S11c): ids only, never a secret
 export interface ResealCredentialsJob extends BaseJob {
   organizationId: string

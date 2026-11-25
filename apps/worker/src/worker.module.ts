@@ -67,6 +67,7 @@ import { ExistingPicturesScheduler } from './schedulers/existing-pictures.schedu
 import { ExpiredExportsScheduler } from './schedulers/expired-exports.scheduler'
 import { FinanceChainScheduler } from './schedulers/finance-chain.scheduler'
 import { FinanceReconcileScheduler } from './schedulers/finance-reconcile.scheduler'
+import { FiscalDeadlinesScheduler } from './schedulers/fiscal-deadlines.scheduler'
 import { InventoryReconcileScheduler } from './schedulers/inventory-reconcile.scheduler'
 import { InvitationEmailScheduler } from './schedulers/invitation-email.scheduler'
 import { LeaderLockService } from './schedulers/leader-lock.service'
@@ -164,6 +165,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     AutoArchiveScheduler,
     InventoryReconcileScheduler,
     FinanceReconcileScheduler,
+    FiscalDeadlinesScheduler,
     CredentialsResealScheduler,
     FinanceChainScheduler,
     AnalyticsRollupScheduler,

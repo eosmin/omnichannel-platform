@@ -11,6 +11,7 @@ import type {
   FiscalIssuerCredentials,
   FiscalIssuerInput,
   FiscalProviderManifest,
+  FiscalRepresentation,
   FiscalReceiver,
   FiscalReceiverProblem,
   FiscalTypeInput,
@@ -42,6 +43,7 @@ import {
 } from './sv-constants'
 import type { SvFetch } from './sv-http'
 import { issuerProblems, receiverProblems } from './sv-parties'
+import { representDocument } from './sv-representation'
 import type { SvSigner } from './sv-signer'
 import { isPlausiblePartyTaxId } from './sv-tax-id'
 import {
@@ -243,6 +245,10 @@ export class SvProvider implements FiscalDocumentProvider {
     ctx: ProviderContext
   ): Promise<ContingencyReportResult> {
     return reportContingencyEvent(this.deps, event, ctx)
+  }
+
+  represent(doc: StoredFiscalDocument): FiscalRepresentation | null {
+    return representDocument(doc)
   }
 
   consultVoid(doc: StoredFiscalDocument, ctx: ProviderContext): Promise<VoidConsultResult> {
