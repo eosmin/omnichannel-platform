@@ -14,5 +14,5 @@ ALTER TABLE "fiscal_documents" ADD COLUMN "rejected_at" TIMESTAMP(3), ADD COLUMN
 -- read before this runs.
 UPDATE "fiscal_documents"
 SET "rejected_at" = "updated_at",
-    "rejection_warned_at" = CASE WHEN "updated_at" + interval '24 hours' < now() THEN "updated_at" END
+    "rejection_warned_at" = CASE WHEN "updated_at" + interval '24 hours' < (now() AT TIME ZONE 'UTC') THEN "updated_at" END
 WHERE "status" = 'rejected' AND "submission" > 1;

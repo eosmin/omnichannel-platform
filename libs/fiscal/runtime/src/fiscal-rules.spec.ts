@@ -1,5 +1,6 @@
 import {
   FiscalDocumentKind,
+  FiscalContingencyLimits,
   FiscalDocumentStatus,
   FiscalEnvironment,
   FiscalLimits,
@@ -23,6 +24,8 @@ import {
   fiscalSequenceKey,
   isImmutable,
   isStuck,
+  reportDeadlineIsClosing,
+  reportDeadlineOf,
   operationConditionOf,
   paymentOfSnapshot,
   paymentsOf,
@@ -970,6 +973,27 @@ describe('the window to send again a document the authority refused', () => {
     )
     expect(rejectionDeadline(rejectedAt, after(FiscalRejectionRetry.WINDOW_MS))?.state).toBe(
       FiscalRejectionDeadlineState.EXPIRED
+    )
+  })
+})
+
+describe('the time to send the event of a contingency', () => {
+  const ended = new Date('2026-12-01T10:00:00.000Z')
+
+  it('ends the declared hours after the situation ended', () => {
+    expect(reportDeadlineOf(ended, 24).toISOString()).toBe('2026-12-02T10:00:00.000Z')
+  })
+
+  it('is closing when the share left is at or under the ratio, and still when it passed', () => {
+    const ratio = FiscalContingencyLimits.WARN_REMAINING_RATIO
+    expect(reportDeadlineIsClosing(ended, 24, new Date('2026-12-02T03:59:59.000Z'), ratio)).toBe(
+      false
+    )
+    expect(reportDeadlineIsClosing(ended, 24, new Date('2026-12-02T04:00:00.000Z'), ratio)).toBe(
+      true
+    )
+    expect(reportDeadlineIsClosing(ended, 24, new Date('2026-12-05T00:00:00.000Z'), ratio)).toBe(
+      true
     )
   })
 })

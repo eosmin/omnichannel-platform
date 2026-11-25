@@ -713,3 +713,22 @@ export function maskedReceiverView(receiver: FiscalReceiver): {
     complete: maskReceiverName(receiver.name) !== null
   }
 }
+
+const REPORT_HOUR_MS = 3_600_000
+
+// The last instant the event that reports a contingency may be sent: the hours the authority gives after the situation ended
+// (the rules of the authority). The clock is the caller's, never read here.
+export const reportDeadlineOf = (endedAt: Date, withinHours: number): Date =>
+  new Date(endedAt.getTime() + withinHours * REPORT_HOUR_MS)
+
+// Whether the person is to be told that the time to send the event is closing: the share of it that is left is at or under `ratio`
+// (a deadline that passed is closing too, the event is owed still)
+export const reportDeadlineIsClosing = (
+  endedAt: Date,
+  withinHours: number,
+  now: Date,
+  ratio: number
+): boolean => {
+  const total = withinHours * REPORT_HOUR_MS
+  return reportDeadlineOf(endedAt, withinHours).getTime() - now.getTime() <= total * ratio
+}

@@ -152,6 +152,9 @@ export function schemaErrors(type: string, payload: unknown): string[] {
     : (validate.errors ?? []).map(error => `${error.instancePath} ${error.message ?? ''}`.trim())
 }
 
+// When the authority sealed the documents of the fixtures (`fhProcesamiento`: dd/MM/yyyy HH:mm:ss, El Salvador)
+export const SEALED_AT = '16/11/2026 22:15:00'
+
 // A document as the authority accepted it and core kept it: built from a sale, with the answer's seal in its provider data. What the
 // invalidation reads.
 export function acceptedDocument(over: Partial<FiscalBuildInput> = {}): StoredFiscalDocument {
@@ -163,7 +166,9 @@ export function acceptedDocument(over: Partial<FiscalBuildInput> = {}): StoredFi
     providerData: {
       [SvProviderDataKeys.GENERATION_CODE]: id.codigoGeneracion,
       [SvProviderDataKeys.CONTROL_NUMBER]: id.numeroControl,
-      [SvProviderDataKeys.RECEPTION_SEAL]: 'A'.repeat(40)
+      [SvProviderDataKeys.RECEPTION_SEAL]: 'A'.repeat(40),
+      // The hour the authority gave the seal, in its own time and format: the day the deadlines of an invalidation count from
+      [SvProviderDataKeys.PROCESSED_AT]: SEALED_AT
     },
     payload: built.payload
   }

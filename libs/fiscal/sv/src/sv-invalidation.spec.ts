@@ -1,15 +1,22 @@
-import { FiscalEnvironment, FiscalVoidKind } from '@platform/core/domain'
+import { FiscalDocumentKind, FiscalEnvironment, FiscalVoidKind } from '@platform/core/domain'
 import type { FiscalVoidDetails } from '@platform/fiscal/sdk'
 
-import { SvDocumentTypes, SvVoidRefusals } from './sv-constants'
+import {
+  SvDocumentTypes,
+  SvInvalidationDeadlineRules,
+  SvInvalidationDeadlineUnits,
+  SvProviderDataKeys,
+  SvVoidRefusals
+} from './sv-constants'
 import {
   addMonths,
   buildInvalidation,
   invalidationCode,
   invalidationDeadline,
+  sealDateOf,
   type SvInvalidationInput
 } from './sv-invalidation'
-import { acceptedDocument, BUSINESS, ISSUER, schemaErrors } from './testing/sv-fixtures'
+import { acceptedDocument, BUSINESS, credited, ISSUER, schemaErrors } from './testing/sv-fixtures'
 
 const PERSON = { name: 'Ana Pérez', idType: '13', idNumber: '012345678' }
 const REQUESTER = { name: 'Luis Gómez', idType: '36', idNumber: '06140101011011' }
@@ -33,35 +40,58 @@ const refusal = (built: ReturnType<typeof buildInvalidation>): string | null =>
   built.ok ? null : built.reason
 
 describe('the deadlines of an invalidation', () => {
-  it('counts three calendar months for an invoice, to the last day of a shorter month', () => {
+  it('counts three calendar months from the seal for an invoice, to the last day of a shorter month', () => {
     expect(addMonths('2026-11-16', 3)).toBe('2027-02-16')
     expect(addMonths('2026-11-30', 3)).toBe('2027-02-28')
     expect(addMonths('2027-11-30', 3)).toBe('2028-02-29')
     expect(addMonths('2026-12-31', 1)).toBe('2027-01-31')
     expect(invalidationDeadline(SvDocumentTypes.INVOICE, '2026-11-16')).toBe('2027-02-16')
+    expect(invalidationDeadline(SvDocumentTypes.INVOICE, '2026-11-30')).toBe('2027-02-28')
   })
 
-  it('gives a tax credit document or a credit note the tenth business day of the next month', () => {
-    // December 2026 starts on a Tuesday: business days 1,2,3,4 | 7,8,9,10,11 | 14 -> the tenth is the 15th (Monday)
-    // 1 Tue, 2 Wed, 3 Thu, 4 Fri, 7 Mon, 8 Tue, 9 Wed, 10 Thu, 11 Fri, 14 Mon
-    expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-11-16')).toBe('2026-12-14')
-    expect(invalidationDeadline(SvDocumentTypes.CREDIT_NOTE, '2026-11-30')).toBe('2026-12-14')
-    // The same whatever the day of the month
-    expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-11-01')).toBe('2026-12-14')
+  it('gives a tax credit document or a credit note one calendar day after the seal (the stricter text)', () => {
+    expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-11-16')).toBe('2026-11-17')
+    expect(invalidationDeadline(SvDocumentTypes.CREDIT_NOTE, '2026-11-30')).toBe('2026-12-01')
+    // Over the end of a year, and a leap day
+    expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-12-31')).toBe('2027-01-01')
+    expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2028-02-28')).toBe('2028-02-29')
+    // Calendar days: a Friday seal still ends on the Saturday
+    expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-11-20')).toBe('2026-11-21')
   })
 
-  it('crosses the year and skips the holidays it is given', () => {
-    // January 2027 starts on a Friday: 1 Fri, 4 Mon, 5, 6, 7, 8, 11, 12, 13, 14 -> the tenth is the 14th
-    expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-12-20')).toBe('2027-01-14')
-    // With the first of January a holiday the count ends a business day later
-    expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-12-20', ['2027-01-01'])).toBe(
-      '2027-01-15'
+  it('still counts the tenth business day of the next month when that rule is the one given', () => {
+    const body = {
+      ...SvInvalidationDeadlineRules,
+      [SvDocumentTypes.TAX_CREDIT]: {
+        unit: SvInvalidationDeadlineUnits.BUSINESS_DAY_OF_NEXT_MONTH,
+        amount: 10
+      }
+    }
+    // December 2026: 1 Tue, 2, 3, 4 | 7, 8, 9, 10, 11 | 14 Mon is the tenth
+    expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-11-16', [], body)).toBe(
+      '2026-12-14'
     )
+    // January 2027 starts on a Friday: the tenth is the 14th, or the 15th with the first a holiday
+    expect(invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-12-20', [], body)).toBe(
+      '2027-01-14'
+    )
+    expect(
+      invalidationDeadline(SvDocumentTypes.TAX_CREDIT, '2026-12-20', ['2027-01-01'], body)
+    ).toBe('2027-01-15')
   })
 
   it('refuses a date that is not one', () => {
     expect(() => addMonths('2026-02-30', 1)).toThrow(RangeError)
     expect(() => invalidationDeadline(SvDocumentTypes.TAX_CREDIT, 'soon')).toThrow(RangeError)
+  })
+
+  it('reads the day of the seal from the hour the authority gave, in its own time', () => {
+    expect(sealDateOf('16/11/2026 22:15:00')).toBe('2026-11-16')
+    expect(sealDateOf('01/12/2026 00:00:00')).toBe('2026-12-01')
+    expect(sealDateOf('31/12/2026 23:59:59')).toBe('2026-12-31')
+    for (const bad of [null, '', 'yesterday', '2026-11-16T22:15:00', '31/02/2026 10:00:00']) {
+      expect(sealDateOf(bad)).toBeNull()
+    }
   })
 })
 
@@ -105,6 +135,7 @@ describe('the invalidation event', () => {
     const built = buildInvalidation(
       input({
         doc,
+        now: '2026-11-17T15:00:00.000Z',
         details: {
           kind: FiscalVoidKind.CORRECTION,
           responsible: PERSON,
@@ -211,31 +242,136 @@ describe('the invalidation event', () => {
     )
   })
 
-  it('refuses an invoice after three months and a tax credit document after the tenth business day', () => {
-    // The invoice is of 2026-11-16: the last day is 2027-02-16
-    expect(refusal(buildInvalidation(input({ now: '2027-02-16T20:00:00.000Z' })))).toBeNull()
-    expect(refusal(buildInvalidation(input({ now: '2027-02-17T06:30:00.000Z' })))).toBe(
+  it('refuses an invoice after three months from its seal', () => {
+    // Sealed on 2026-11-16 (22:15, El Salvador): the last day is 2027-02-16, to its last second in El Salvador (UTC-6)
+    expect(refusal(buildInvalidation(input({ now: '2027-02-17T05:59:59.000Z' })))).toBeNull()
+    expect(refusal(buildInvalidation(input({ now: '2027-02-17T06:00:00.000Z' })))).toBe(
       SvVoidRefusals.DEADLINE_PASSED
     )
-    // The tax credit document of the same date: the last day is 2026-12-14, counted with the holidays of the accountant
-    const doc = acceptedDocument({ receiver: BUSINESS })
-    const holidays = ['2026-12-25']
-    expect(
-      refusal(buildInvalidation(input({ doc, holidays, now: '2026-12-14T20:00:00.000Z' })))
-    ).toBeNull()
-    expect(
-      refusal(buildInvalidation(input({ doc, holidays, now: '2026-12-15T07:00:00.000Z' })))
-    ).toBe(SvVoidRefusals.DEADLINE_PASSED)
+  })
+
+  it('refuses a tax credit document or a credit note after the day that follows its seal, to the last second', () => {
+    const credit = acceptedDocument({
+      kind: FiscalDocumentKind.CREDIT_NOTE,
+      credited: credited(),
+      receiver: BUSINESS
+    })
+    for (const doc of [acceptedDocument({ receiver: BUSINESS }), credit]) {
+      // Sealed on the 16th: the 17th is the last day. 23:59:59 on the 17th in El Salvador is 05:59:59 UTC of the 18th
+      expect(refusal(buildInvalidation(input({ doc, now: '2026-11-17T05:59:59.000Z' })))).toBeNull()
+      expect(refusal(buildInvalidation(input({ doc, now: '2026-11-18T05:59:59.000Z' })))).toBeNull()
+      expect(refusal(buildInvalidation(input({ doc, now: '2026-11-18T06:00:00.000Z' })))).toBe(
+        SvVoidRefusals.DEADLINE_PASSED
+      )
+    }
+  })
+
+  it('counts from the day of the seal and not from the date of the document', () => {
+    // Made on the 16th and sealed on the 20th (a contingency sent late): the 21st is the last day, not the 17th
+    const base = acceptedDocument({ receiver: BUSINESS })
+    const doc = {
+      ...base,
+      providerData: {
+        ...base.providerData,
+        [SvProviderDataKeys.PROCESSED_AT]: '20/11/2026 08:00:00'
+      }
+    }
+    expect(refusal(buildInvalidation(input({ doc, now: '2026-11-22T05:59:59.000Z' })))).toBeNull()
+    expect(refusal(buildInvalidation(input({ doc, now: '2026-11-22T06:00:00.000Z' })))).toBe(
+      SvVoidRefusals.DEADLINE_PASSED
+    )
+  })
+
+  it('leaves the deadline to the authority when the hour of the seal was not kept or is not readable', () => {
+    const base = acceptedDocument({ receiver: BUSINESS })
+    for (const processedAt of [null, 'not an hour']) {
+      const doc = {
+        ...base,
+        providerData: { ...base.providerData, [SvProviderDataKeys.PROCESSED_AT]: processedAt }
+      }
+      expect(refusal(buildInvalidation(input({ doc, now: '2026-12-30T15:00:00.000Z' })))).toBeNull()
+    }
   })
 
   it('leaves a deadline counted in business days to the authority until the holidays are listed', () => {
-    // Without the list the tenth business day could come too early, and a lawful invalidation would be refused here
+    // Without the list the n-th business day could come too early, and a lawful invalidation would be refused here
+    const rules = {
+      ...SvInvalidationDeadlineRules,
+      [SvDocumentTypes.TAX_CREDIT]: {
+        unit: SvInvalidationDeadlineUnits.BUSINESS_DAY_OF_NEXT_MONTH,
+        amount: 10
+      }
+    }
     const doc = acceptedDocument({ receiver: BUSINESS })
-    expect(refusal(buildInvalidation(input({ doc, now: '2026-12-20T20:00:00.000Z' })))).toBeNull()
+    expect(
+      refusal(buildInvalidation(input({ doc, rules, now: '2026-12-20T20:00:00.000Z' })))
+    ).toBeNull()
+    expect(
+      refusal(
+        buildInvalidation(
+          input({ doc, rules, holidays: ['2026-12-25'], now: '2026-12-15T07:00:00.000Z' })
+        )
+      )
+    ).toBe(SvVoidRefusals.DEADLINE_PASSED)
     // An invoice (calendar months) is always checked
     expect(refusal(buildInvalidation(input({ now: '2027-03-20T20:00:00.000Z' })))).toBe(
       SvVoidRefusals.DEADLINE_PASSED
     )
+  })
+
+  it('dates the event of a tax credit document or a credit note with the date of the document, and an invoice with the day it is made', () => {
+    // Anexo V, field 9, rule 4: the same date as the document (made on 2026-11-16), whatever the day the event is sent
+    const ccf = buildInvalidation(
+      input({ doc: acceptedDocument({ receiver: BUSINESS }), now: '2026-11-17T15:00:00.000Z' })
+    )
+    expect(ccf.ok && (ccf.event['identificacion'] as Record<string, unknown>)['fecEmi']).toBe(
+      '2026-11-16'
+    )
+    expect(ccf.ok && (ccf.event['identificacion'] as Record<string, unknown>)['horEmi']).toBe(
+      '09:00:00'
+    )
+    // The invoice: today, not later than three months after the date of the document
+    const invoice = buildInvalidation(input({ now: '2027-02-16T15:00:00.000Z' }))
+    expect(
+      invoice.ok && (invoice.event['identificacion'] as Record<string, unknown>)['fecEmi']
+    ).toBe('2027-02-16')
+    // Sealed after the date of the document: its three months end later than those of the date; the event is dated by the date
+    const base = acceptedDocument()
+    const late = {
+      ...base,
+      providerData: {
+        ...base.providerData,
+        [SvProviderDataKeys.PROCESSED_AT]: '18/11/2026 08:00:00'
+      }
+    }
+    const clamped = buildInvalidation(input({ doc: late, now: '2027-02-18T15:00:00.000Z' }))
+    expect(
+      clamped.ok && (clamped.event['identificacion'] as Record<string, unknown>)['fecEmi']
+    ).toBe('2027-02-16')
+  })
+
+  it('names no replacement for a credit note, whatever the kind, and does not ask for one', () => {
+    const doc = acceptedDocument({
+      kind: FiscalDocumentKind.CREDIT_NOTE,
+      credited: credited(),
+      receiver: BUSINESS
+    })
+    const replacement = acceptedDocument({ correlative: 42, documentUuid: OTHER_UUID })
+    for (const kind of [FiscalVoidKind.CORRECTION, FiscalVoidKind.OTHER]) {
+      for (const given of [undefined, replacement]) {
+        const built = buildInvalidation(
+          input({
+            doc,
+            now: '2026-11-17T15:00:00.000Z',
+            details: { kind, responsible: PERSON, requester: REQUESTER, replacement: given }
+          })
+        )
+        expect(refusal(built)).toBeNull()
+        if (!built.ok) return
+        expect(schemaErrors('invalidation', built.event)).toEqual([])
+        expect(built.event['documento']).toMatchObject({ tipoDte: '05', codigoGeneracionR: null })
+      }
+    }
   })
 
   it('refuses a document whose receiver the schema of the event would not take', () => {

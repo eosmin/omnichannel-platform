@@ -70,13 +70,13 @@ describe('the page that hands over the file of a data export', () => {
     openWith(`#token=${TOKEN}`)
     render(<DsrExportCard />)
     fireEvent.click(screen.getByRole('button', { name: 'download' }))
-    await waitFor(() => expect(screen.getByText(ANSWER.password as string)).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(ANSWER.password)).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'copy' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(ANSWER.password))
     await waitFor(() => expect(screen.getAllByText('copied').length).toBeGreaterThan(0))
-    expect(window.location.href).not.toContain(ANSWER.password as string)
-    expect(JSON.stringify(window.localStorage)).not.toContain(ANSWER.password as string)
-    expect(JSON.stringify(window.sessionStorage)).not.toContain(ANSWER.password as string)
+    expect(window.location.href).not.toContain(ANSWER.password)
+    expect(JSON.stringify(window.localStorage)).not.toContain(ANSWER.password)
+    expect(JSON.stringify(window.sessionStorage)).not.toContain(ANSWER.password)
   })
 
   it('says so when the password could not be copied', async () => {
@@ -92,12 +92,14 @@ describe('the page that hands over the file of a data export', () => {
     await waitFor(() => expect(screen.getByText('copyFailed')).toBeTruthy())
   })
 
-  it('shows no password block when the api sent none', async () => {
-    mockDownload.mockResolvedValueOnce({ ...ANSWER, password: undefined })
+  it('does not present a success when the answer was refused for carrying no password: the file could not be opened', async () => {
+    // The api client throws (not an ApiError) when the answer does not fit its schema, which now requires the password
+    mockDownload.mockRejectedValueOnce(new Error('the answer carries no password'))
     openWith(`#token=${TOKEN}`)
     render(<DsrExportCard />)
     fireEvent.click(screen.getByRole('button', { name: 'download' }))
-    await waitFor(() => expect(screen.getByText('doneTitle')).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy())
+    expect(screen.queryByText('doneTitle')).toBeNull()
     expect(screen.queryByRole('button', { name: 'copy' })).toBeNull()
   })
 
@@ -116,7 +118,7 @@ describe('the page that hands over the file of a data export', () => {
       })
       expect(screen.queryByRole('link')).toBeNull()
       expect(screen.getByText('expired')).toBeTruthy()
-      expect(screen.getByText(ANSWER.password as string)).toBeTruthy()
+      expect(screen.getByText(ANSWER.password)).toBeTruthy()
       expect(clickSpy).toHaveBeenCalledTimes(1)
     } finally {
       jest.useRealTimers()

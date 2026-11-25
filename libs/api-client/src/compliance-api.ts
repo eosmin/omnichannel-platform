@@ -63,8 +63,9 @@ export const dsrExportDownloadResultSchema = z.object({
     .refine(value => ['https:', 'http:'].includes(new URL(value).protocol)),
   filename: z.string().min(1),
   expiresInSeconds: z.number().int().positive(),
-  // The password of the ZIP (H2b-3c): shown once and kept only in memory. Optional until the api that mints it ships; that PR makes it required
-  password: z.string().min(1).optional()
+  // The password of the ZIP (H2b-3c): shown once and kept only in memory. Required: an answer without it is a file the person cannot open, so it
+  // is refused here and the page never presents it as a success
+  password: z.string().min(1)
 })
 export type DsrExportDownloadResult = z.infer<typeof dsrExportDownloadResultSchema>
 

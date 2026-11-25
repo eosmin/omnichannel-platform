@@ -1795,6 +1795,7 @@ model DataSubjectRequest {
   completedAt            DateTime? @map("completed_at")
   resultKey              String?   @map("result_key")
   resultExpiresAt        DateTime? @map("result_expires_at")
+  resultPasswordSealed   Bytes?    @map("result_password_sealed") // Password of the encrypted ZIP of an export, sealed with the credentials key and bound to the request; cleared with the file
   rejectionReason        String?   @map("rejection_reason")
   retainedRecordsSummary Json?     @map("retained_records_summary") // What was kept and under which legal basis
   notes                  String?

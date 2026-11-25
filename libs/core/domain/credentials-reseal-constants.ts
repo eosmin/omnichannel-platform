@@ -12,7 +12,8 @@ export const SealedTargetIds = {
   PLUGIN_COMMAND_SECRET: 'plugin-command-secret',
   PLUGIN_COMMAND_SECRET_PREVIOUS: 'plugin-command-secret-previous',
   INVITATION_OUTBOX: 'invitation-outbox',
-  DSR_NOTIFY_ADDRESS: 'dsr-notify-address'
+  DSR_NOTIFY_ADDRESS: 'dsr-notify-address',
+  DSR_EXPORT_PASSWORD: 'dsr-export-password'
 } as const
 export type SealedTargetId = (typeof SealedTargetIds)[keyof typeof SealedTargetIds]
 

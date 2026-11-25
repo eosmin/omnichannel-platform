@@ -2,8 +2,8 @@ import { randomInt, randomUUID } from 'node:crypto'
 import { Readable } from 'node:stream'
 
 import type { INestApplication } from '@nestjs/common'
+import { BlobReader, Uint8ArrayWriter, ZipReader } from '@zip.js/zip.js'
 import type { Queue } from 'bullmq'
-import { unzipSync } from 'fflate'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
@@ -12,7 +12,8 @@ import {
   ComplianceConfig,
   type DsrConfig,
   dsrEmailHash,
-  dsrNoticeStatusOf
+  dsrNoticeStatusOf,
+  openDsrExportPassword
 } from '@platform/core/compliance'
 import { CredentialCipher, encrypt, hashToken, parseEncryptionKey } from '@platform/core/crypto'
 import { JobContext } from '@platform/core/database'
@@ -280,17 +281,29 @@ describe('the export of the data requests of access and portability', () => {
       where: { id },
       data: { exportAttemptedAt: new Date(Date.now() - 2 * HOUR_MS) }
     })
-  const filesOf = (id: string): Record<string, unknown> => {
+  // The ZIP is encrypted: it is opened with the password the request keeps sealed (the one the person is given once), as any tool would
+  const unzipOf = async (id: string): Promise<Record<string, Buffer>> => {
     const zip = objects.get(StorageKeys.dsrExport(id))
     if (zip === undefined) throw new Error('no export')
-    const files = unzipSync(new Uint8Array(zip))
-    return Object.fromEntries(
-      Object.entries(files).map(([name, bytes]) => [
+    const sealed = (await rowOf(id)).resultPasswordSealed
+    if (sealed === null) throw new Error('no password sealed')
+    const password = openDsrExportPassword(cipher, id, sealed)
+    const reader = new ZipReader(new BlobReader(new Blob([new Uint8Array(zip)])), { password })
+    const out: Record<string, Buffer> = {}
+    for (const entry of await reader.getEntries()) {
+      if (!entry.directory)
+        out[entry.filename] = Buffer.from(await entry.getData(new Uint8ArrayWriter()))
+    }
+    await reader.close()
+    return out
+  }
+  const filesOf = async (id: string): Promise<Record<string, unknown>> =>
+    Object.fromEntries(
+      Object.entries(await unzipOf(id)).map(([name, bytes]) => [
         name,
-        JSON.parse(Buffer.from(bytes).toString('utf8')) as unknown
+        JSON.parse(bytes.toString('utf8')) as unknown
       ])
     )
-  }
 
   it('makes one file with the data of the people the request names and of nobody else, and ends the request', async () => {
     const mine = await personOfStoreA('ana')
@@ -304,7 +317,7 @@ describe('the export of the data requests of access and portability', () => {
     const report = await runner.run()
 
     expect(report.exported).toBeGreaterThanOrEqual(1)
-    const files = filesOf(id)
+    const files = await filesOf(id)
     const text = JSON.stringify(files)
     // Theirs: the customer, the words, the order, the address
     expect(text).toContain('hello from ana')
@@ -437,7 +450,7 @@ describe('the export of the data requests of access and portability', () => {
     await runner.run()
 
     expect((await rowOf(id)).status).toBe(DsrStatus.COMPLETED)
-    expect(Object.keys(filesOf(id))).toContain('customers.json')
+    expect(Object.keys(await filesOf(id))).toContain('customers.json')
   })
 
   it('never takes a request that is not approved, not an export, or that already has its file', async () => {
@@ -466,16 +479,7 @@ describe('the export of the data requests of access and portability', () => {
     expect((await rowOf(withFile)).exportAttempts).toBe(0)
   })
 
-  const rawFilesOf = (id: string): Record<string, Buffer> => {
-    const zip = objects.get(StorageKeys.dsrExport(id))
-    if (zip === undefined) throw new Error('no export')
-    return Object.fromEntries(
-      Object.entries(unzipSync(new Uint8Array(zip))).map(([name, bytes]) => [
-        name,
-        Buffer.from(bytes)
-      ])
-    )
-  }
+  const rawFilesOf = unzipOf
   const textOf = (files: Record<string, Buffer>, name: string): string =>
     (files[name] ?? Buffer.alloc(0)).toString('utf8')
 
@@ -593,7 +597,15 @@ describe('the export of the data requests of access and portability', () => {
 
     await runner.run()
 
-    const files = rawFilesOf(id)
+    // What the bucket holds is encrypted: none of the text of the person, nor the bytes of their file, nor the name of it, is readable in the object. The only thing in the clear is the generic name of each entry (the format does not encrypt them), which carries nothing of the person
+    const stored = objects.get(StorageKeys.dsrExport(id)) ?? Buffer.alloc(0)
+    for (const secret of ['NIT-ANA-1', 'Blue shirt', 'receipt.png', photo.toString('latin1')]) {
+      expect(stored.includes(Buffer.from(secret, 'latin1'))).toBe(false)
+    }
+    // The password is kept sealed, and the plain one is nowhere in the row
+    const sealedPassword = (await rowOf(id)).resultPasswordSealed
+    expect(sealedPassword).not.toBeNull()
+    const files = await rawFilesOf(id)
     const entries = Object.keys(files).filter(name => name.startsWith('files/'))
     expect(entries).toHaveLength(1)
     expect(files[entries[0] ?? '']?.equals(photo)).toBe(true)
@@ -905,7 +917,7 @@ describe('the export of the data requests of access and portability', () => {
 
     await runner.run()
 
-    const text = JSON.stringify(filesOf(id))
+    const text = JSON.stringify(await filesOf(id))
     expect(text).not.toContain('Agent Smith')
     expect(text).not.toContain('Agent Jones')
   })

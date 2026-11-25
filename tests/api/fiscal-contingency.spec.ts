@@ -60,6 +60,8 @@ const PROVIDER_ID = 'contingency-test'
 const AUTHORITY_DOWN = 'authority_down'
 const REASONS = [AUTHORITY_DOWN, 'issuer_down', 'other']
 const WINDOW_HOURS = 72
+// The time the authority gives to send the event once the situation ended
+const REPORT_WITHIN_HOURS = 24
 const HOUR_MS = 3_600_000
 const RESPONSIBLE = { name: 'Ana Pérez', idType: 'dui', idNumber: '012345678' }
 
@@ -92,6 +94,7 @@ function contingencyProvider(): FiscalDocumentProvider {
           reasons: REASONS,
           authorityDownReason: AUTHORITY_DOWN,
           transmitWithinHours: WINDOW_HOURS,
+          reportWithinHours: REPORT_WITHIN_HOURS,
           maxDocumentsPerEvent: control.maxDocuments,
           requiresResponsible: true
         }
@@ -363,11 +366,36 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
         .filter(job => job.name === JobNames.REPORT_FISCAL_CONTINGENCY)
       expect(queued).toHaveLength(1)
       expect(queued[0]?.data).toEqual({ organizationId: ctx.orgA.id, contingencyId })
+      // Asked again every 15 minutes for the 24 hours the event may wait (the rules of the authority)
+      expect(queued[0]?.opts).toMatchObject({
+        attempts: FiscalContingencyLimits.REPORT_MAX_ATTEMPTS,
+        backoff: { type: 'fixed', delay: FiscalContingencyLimits.REPORT_RETRY_DELAY_MS }
+      })
       // The responsible is sealed: not in the row in the clear
       const sealed = await contingencyRow(contingencyId)
       expect(JSON.stringify(sealed)).not.toContain('012345678')
       // A document made now is not in it: no contingency is open
       expect(dataOf(await asAdminA().get(ApiRoutes.fiscal.contingency.current))).toBeNull()
+    })
+
+    it('tells a person once when the time to send the event is closing, before it is taken', async () => {
+      const ended = (await contingencyRow(contingencyId)).endedAt?.getTime() ?? Number.NaN
+      expect(Number.isNaN(ended)).toBe(false)
+      const alertsBefore = alerts.length
+      expect(await contingencies.warnWindows(ctx.orgA.id, new Date(ended + HOUR_MS))).toBe(0)
+      const late = new Date(
+        ended +
+          REPORT_WITHIN_HOURS * HOUR_MS * (1 - FiscalContingencyLimits.WARN_REMAINING_RATIO / 2)
+      )
+      expect(await contingencies.warnWindows(ctx.orgA.id, late)).toBe(1)
+      expect(alerts.slice(alertsBefore)).toEqual([
+        {
+          organizationId: ctx.orgA.id,
+          contingencyId,
+          kind: FiscalContingencyAlertKind.WINDOW_CLOSING
+        }
+      ])
+      expect(await contingencies.warnWindows(ctx.orgA.id, late)).toBe(0)
     })
 
     it('keeps the report asked again when the authority does not answer, and tells a person when it is refused', async () => {

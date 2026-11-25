@@ -9,9 +9,16 @@ import {
   ComplianceConfig,
   DSR_CONFIG,
   type DsrConfig,
-  dsrEmailHash
+  dsrEmailHash,
+  sealDsrExportPassword
 } from '@platform/core/compliance'
-import { encrypt, generateToken, hashToken, parseEncryptionKey } from '@platform/core/crypto'
+import {
+  CredentialCipher,
+  encrypt,
+  generateToken,
+  hashToken,
+  parseEncryptionKey
+} from '@platform/core/crypto'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { DAY_MS, DsrStatus, DsrType, VerificationTokenType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -57,11 +64,13 @@ function expectSameAnswer(
 // runs. The person has no account, so every case is an anonymous call with a token: it must open the file of ITS request once, and every
 // other token (used, expired, unknown, of another kind, of a request that is not a finished export) must get the one same answer.
 describe('The public download of the file of a data request', () => {
+  const PASSWORD = 'integration-password-of-the-zip-0123456789'
   const prefix = newRunPrefix()
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
   let storage: StorageService
+  let cipher: CredentialCipher
   // The tokens point at a request by a plain text id (no foreign key), so the cleanup of the prefix does not reach them
   const requestIds: string[] = []
 
@@ -71,6 +80,7 @@ describe('The public download of the file of a data request', () => {
     app = await createTestApp([], builder => builder.overrideProvider(DSR_CONFIG).useValue(ON))
     ctx = await seedTestContext(owner, app, prefix)
     storage = app.get(StorageService, { strict: false })
+    cipher = app.get(CredentialCipher, { strict: false })
   })
   afterAll(async () => {
     await owner.verificationToken.deleteMany({ where: { subject: { in: requestIds } } })
@@ -100,6 +110,8 @@ describe('The public download of the file of a data request', () => {
       used?: boolean
       storeId?: string
       organizationId?: string
+      // An export made before the ZIP was encrypted has no sealed password
+      unsealed?: boolean
     } = {}
   ): Promise<{ id: string; token: string }> {
     const storeId = overrides.storeId ?? ctx.storeA.id
@@ -127,6 +139,13 @@ describe('The public download of the file of a data request', () => {
       select: { id: true }
     })
     requestIds.push(id)
+    // Sealed for its own request, as the runner does once the ZIP is in the bucket
+    if (overrides.unsealed !== true) {
+      await owner.dataSubjectRequest.update({
+        where: { id },
+        data: { resultPasswordSealed: Buffer.from(sealDsrExportPassword(cipher, id, PASSWORD)) }
+      })
+    }
     const token = generateToken()
     await owner.verificationToken.create({
       data: {
@@ -146,7 +165,13 @@ describe('The public download of the file of a data request', () => {
     const response = await post(token)
 
     expect(response.status).toBe(OK)
-    const body = response.body as { url: string; filename: string; expiresInSeconds: number }
+    const body = response.body as {
+      url: string
+      filename: string
+      expiresInSeconds: number
+      password: string
+    }
+    expect(body.password).toBe(PASSWORD)
     expect(body.filename).toBe(ComplianceConfig.DSR_EXPORT_FILENAME)
     expect(body.expiresInSeconds).toBe(ComplianceConfig.DSR_EXPORT_DOWNLOAD_URL_SECONDS)
     expect(body.url).toContain('compliance/dsr/')
@@ -163,6 +188,7 @@ describe('The public download of the file of a data request', () => {
     expect(JSON.stringify(entry)).not.toContain(token)
     expect(JSON.stringify(entry)).not.toContain('@example.com')
     expect(JSON.stringify(entry)).not.toContain('signature')
+    expect(JSON.stringify(entry)).not.toContain(PASSWORD)
   })
 
   it('lets exactly one of three live links of the SAME request through, and the other two get the identical 400, round after round', async () => {
@@ -266,6 +292,10 @@ describe('The public download of the file of a data request', () => {
 
     expect(answers.filter(answer => answer.status === OK)).toHaveLength(1)
     expect(answers.filter(answer => answer.status === BAD_REQUEST)).toHaveLength(3)
+    // The password left once: no refused call carries it
+    expect(
+      JSON.stringify(answers.filter(answer => answer.status === BAD_REQUEST).map(a => a.text))
+    ).not.toContain(PASSWORD)
   })
 
   it.each([
@@ -279,7 +309,12 @@ describe('The public download of the file of a data request', () => {
     ['a request that is not completed', () => finished({ status: DsrStatus.IN_PROGRESS }), false],
     ['an erasure', () => finished({ type: DsrType.ERASURE }), false],
     ['a file that was purged', () => finished({ key: null }), false],
-    ['a file past its date', () => finished({ expiresAt: new Date(Date.now() - 1000) }), false]
+    ['a file past its date', () => finished({ expiresAt: new Date(Date.now() - 1000) }), false],
+    [
+      'an export made before the ZIP was encrypted (no sealed password)',
+      () => finished({ unsealed: true }),
+      false
+    ]
   ])(
     'answers the one same error for %s, signs nothing and spends nothing',
     async (_name, make, wasUsed) => {

@@ -65,11 +65,15 @@ export interface DsrExportDeps {
   open(sealed: Uint8Array): Record<string, unknown>
 }
 
-// The name of a file inside the ZIP: its number and its name cut down to letters, digits, dot, dash and underscore, so no path, no separator and
-// no control character of a filename that came from outside reaches the archive
+// The name of a file inside the ZIP: its number and, at most, an extension of letters and digits. The names of the entries of a ZIP are NOT
+// encrypted (only their contents are), and the name a person gave a file can say who they are or what is in it, so it stays out of the archive
+// (it is in `files.json`, inside the encrypted ZIP). No path, no separator and no control character of a filename that came from outside
+// reaches the archive either.
 export function dsrFileEntryName(index: number, filename: string): string {
-  const safe = filename.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80)
-  return `files/${String(index).padStart(4, '0')}-${safe === '' ? 'file' : safe}`
+  const dot = filename.lastIndexOf('.')
+  const extension = dot > 0 ? filename.slice(dot + 1) : ''
+  const safe = /^[A-Za-z0-9]{1,8}$/.test(extension) ? `.${extension.toLowerCase()}` : ''
+  return `files/${String(index).padStart(4, '0')}${safe}`
 }
 
 function fiscalRecordOf(opened: Record<string, unknown>): Record<string, unknown> {

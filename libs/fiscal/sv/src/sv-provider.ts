@@ -159,6 +159,7 @@ export class SvProvider implements FiscalDocumentProvider {
       reasons: Object.values(SvContingency.REASONS).map(String),
       authorityDownReason: String(SvContingency.REASONS.AUTHORITY_DOWN),
       transmitWithinHours: SvContingency.TRANSMIT_WITHIN_HOURS,
+      reportWithinHours: SvContingency.REPORT_WITHIN_HOURS,
       maxDocumentsPerEvent: SvContingency.MAX_DOCUMENTS,
       requiresResponsible: true
     }
