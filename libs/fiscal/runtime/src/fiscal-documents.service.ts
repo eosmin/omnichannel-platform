@@ -27,6 +27,7 @@ import {
   FiscalIssueOn,
   FiscalLimits,
   FiscalRejectionDeadlineState,
+  FiscalWindowKind,
   fiscalSubmitMaxAttempts,
   FiscalRejectionReasons,
   FiscalRejectionRetry,
@@ -162,6 +163,8 @@ export interface FiscalDocumentView {
   rejectionReason: string | null
   // The window to correct and send again a document the authority refused (D14): null when it has none
   rejectionDeadline: { endsAt: string; state: FiscalRejectionDeadlineState } | null
+  // The same for an invalidation the authority refused (D14b): the document stays accepted; null when it has none
+  voidRejectionDeadline: { endsAt: string; state: FiscalRejectionDeadlineState } | null
   attempts: number
   // Queued with every attempt of its job spent: only a person moves it
   stuck: boolean
@@ -235,6 +238,7 @@ const SELECT = {
   taxCents: true,
   rejectionReason: true,
   rejectedAt: true,
+  voidRejectedAt: true,
   attempts: true,
   contingencyId: true,
   voidReason: true,
@@ -1830,47 +1834,92 @@ export class FiscalDocumentsService {
       : { endsAt: deadline.endsAt.toISOString(), state: deadline.state }
   }
 
-  // The window to correct and send again a refused document is closing or over (D14): the person is told, once for each refusal. The daily
-  // check asks; the mark and its alert are one transaction, so a failure in between leaves neither. Returns how many were told.
+  // The window of an invalidation the authority refused: the document is still accepted
+  private voidDeadlineView(
+    status: FiscalDocumentStatus,
+    voidRejectedAt: Date | null,
+    now: Date = new Date()
+  ): { endsAt: string; state: FiscalRejectionDeadlineState } | null {
+    if (status !== FiscalDocumentStatus.ACCEPTED) return null
+    const deadline = rejectionDeadline(voidRejectedAt, now)
+    return deadline === null
+      ? null
+      : { endsAt: deadline.endsAt.toISOString(), state: deadline.state }
+  }
+
+  // The window to correct and send again a refused document, or a refused invalidation of an accepted one, is closing or over (D14, D14b): the
+  // person is told, once for each refusal. The hourly check asks; the mark and its alert are one transaction, so a failure in between leaves
+  // neither. Returns how many were told.
   async warnRejectionDeadlines(organizationId: string, now: Date = new Date()): Promise<number> {
+    return (
+      (await this.warnWindows(organizationId, now, FiscalWindowKind.DOCUMENT)) +
+      (await this.warnWindows(organizationId, now, FiscalWindowKind.INVALIDATION))
+    )
+  }
+
+  private async warnWindows(
+    organizationId: string,
+    now: Date,
+    kind: FiscalWindowKind
+  ): Promise<number> {
     const warnFrom = new Date(
       now.getTime() - (FiscalRejectionRetry.WINDOW_MS - FiscalRejectionRetry.WARN_BEFORE_MS)
     )
+    const invalidation = kind === FiscalWindowKind.INVALIDATION
+    // A document is refused (status REJECTED), an invalidation is refused for a document that stays ACCEPTED
+    const status = invalidation ? FiscalDocumentStatus.ACCEPTED : FiscalDocumentStatus.REJECTED
     let told = 0
     for (;;) {
       const rows = await this.inTx(organizationId, async tx => {
         const found = await tx.fiscalDocument.findMany({
           where: {
             organizationId,
-            status: FiscalDocumentStatus.REJECTED,
-            rejectedAt: { not: null, lte: warnFrom },
-            rejectionWarnedAt: null
+            status,
+            ...(invalidation
+              ? { voidRejectedAt: { not: null, lte: warnFrom }, voidRejectionWarnedAt: null }
+              : { rejectedAt: { not: null, lte: warnFrom }, rejectionWarnedAt: null })
           },
-          select: { id: true, storeId: true, orderId: true, rejectedAt: true },
+          select: {
+            id: true,
+            storeId: true,
+            orderId: true,
+            rejectedAt: true,
+            voidRejectedAt: true
+          },
           orderBy: { id: 'asc' },
           take: FiscalSweepLimits.RUN_PAGE_SIZE
         })
         const warned: string[] = []
         for (const doc of found) {
-          const deadline = rejectionDeadline(doc.rejectedAt, now)
+          const deadline = rejectionDeadline(
+            invalidation ? doc.voidRejectedAt : doc.rejectedAt,
+            now
+          )
           if (deadline === null || deadline.state === FiscalRejectionDeadlineState.OPEN) continue
+          // The same condition the page was read with: a run that marked it first (or a document that moved on) leaves nothing to mark
           const marked = await tx.fiscalDocument.updateMany({
             where: {
               id: doc.id,
               organizationId,
-              status: FiscalDocumentStatus.REJECTED,
-              rejectionWarnedAt: null
+              status,
+              ...(invalidation ? { voidRejectionWarnedAt: null } : { rejectionWarnedAt: null })
             },
-            data: { rejectionWarnedAt: now }
+            data: invalidation ? { voidRejectionWarnedAt: now } : { rejectionWarnedAt: now }
           })
           if (marked.count === 0) continue
-          this.events.publish(tx, Events.FISCAL_RETRANSMIT_DEADLINE, {
-            organizationId,
-            storeId: doc.storeId,
-            documentId: doc.id,
-            orderId: doc.orderId,
-            expired: deadline.state === FiscalRejectionDeadlineState.EXPIRED
-          })
+          this.events.publish(
+            tx,
+            invalidation
+              ? Events.FISCAL_VOID_RETRANSMIT_DEADLINE
+              : Events.FISCAL_RETRANSMIT_DEADLINE,
+            {
+              organizationId,
+              storeId: doc.storeId,
+              documentId: doc.id,
+              orderId: doc.orderId,
+              expired: deadline.state === FiscalRejectionDeadlineState.EXPIRED
+            }
+          )
           warned.push(doc.id)
         }
         return { read: found.length, warned }
@@ -2377,7 +2426,12 @@ export class FiscalDocumentsService {
     if (!outcome.voided) {
       // Only a refusal frees the document at once: with no answer the invalidation may still be at the authority, and the claim is
       // kept until its lease ends
-      await this.releaseVoidClaim(organizationId, id, voidKey)
+      await this.releaseVoidClaim(
+        organizationId,
+        id,
+        voidKey,
+        outcome.byAuthority === true ? new Date() : undefined
+      )
       throw new PlatformException(
         ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
         'the provider did not accept the invalidation',
@@ -2396,6 +2450,9 @@ export class FiscalDocumentsService {
           status: FiscalDocumentStatus.VOIDED,
           voidClaimKey: null,
           voidClaimUntil: null,
+          // The window of a refused invalidation ends with the invalidation that was accepted
+          voidRejectedAt: null,
+          voidRejectionWarnedAt: null,
           voidReason: plainText(reason).slice(0, FiscalLimits.VOID_REASON_MAX_LENGTH),
           voidedBy: actor.userId,
           voidedAt: new Date(),
@@ -3005,8 +3062,14 @@ export class FiscalDocumentsService {
     })
   }
 
-  // Frees the claim of this request, only if it is still the one that holds it
-  private async releaseVoidClaim(organizationId: string, id: string, key: string): Promise<void> {
+  // Frees the claim of this request, only if it is still the one that holds it. `refusedAt`: the moment the AUTHORITY refused the invalidation,
+  // which starts the 24 hours to correct and send it again (D14b), once for each refusal (the warning is cleared with it).
+  private async releaseVoidClaim(
+    organizationId: string,
+    id: string,
+    key: string,
+    refusedAt?: Date
+  ): Promise<void> {
     try {
       await this.inUnit(organizationId, () =>
         this.prisma.client.fiscalDocument.updateMany({
@@ -3016,14 +3079,26 @@ export class FiscalDocumentsService {
             status: FiscalDocumentStatus.ACCEPTED,
             voidClaimKey: key
           },
-          data: { voidClaimKey: null, voidClaimUntil: null }
+          data: {
+            voidClaimKey: null,
+            voidClaimUntil: null,
+            ...(refusedAt === undefined
+              ? {}
+              : { voidRejectedAt: refusedAt, voidRejectionWarnedAt: null })
+          }
         })
       )
     } catch (error) {
-      this.logger.warn(
-        { documentId: id, err: errorName(error) },
-        'the claim of an invalidation was not released'
-      )
+      // A refusal whose moment was not kept leaves no 24-hour window and no warning: that is a deadline lost, not only a claim left to expire
+      const fields = { documentId: id, err: errorName(error) }
+      if (refusedAt === undefined) {
+        this.logger.warn(fields, 'the claim of an invalidation was not released')
+      } else {
+        this.logger.error(
+          fields,
+          'the refusal of an invalidation was not kept: its 24-hour window has no start'
+        )
+      }
     }
   }
 
@@ -3170,6 +3245,7 @@ export class FiscalDocumentsService {
     taxCents: number
     rejectionReason: string | null
     rejectedAt: Date | null
+    voidRejectedAt: Date | null
     attempts: number
     contingencyId: string | null
     voidReason: string | null
@@ -3215,6 +3291,7 @@ export class FiscalDocumentsService {
       taxCents: row.taxCents,
       rejectionReason: row.rejectionReason,
       rejectionDeadline: this.deadlineView(status, row.rejectedAt),
+      voidRejectionDeadline: this.voidDeadlineView(status, row.voidRejectedAt),
       attempts: row.attempts,
       stuck: isStuck(status, row.attempts, row.contingencyId !== null),
       allowedActions: allowedActionsOf({

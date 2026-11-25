@@ -231,7 +231,11 @@ export class SimulatorProvider implements FiscalDocumentProvider {
     }
     // Refused without a reason or for a document that never had a number from the authority
     if (reason.trim() === '' || doc.externalNumber === null) {
-      return Promise.resolve({ voided: false, reason: SimulatorRules.VOID_REFUSED_REASON })
+      return Promise.resolve({
+        voided: false,
+        reason: SimulatorRules.VOID_REFUSED_REASON,
+        byAuthority: true
+      })
     }
     return Promise.resolve({ voided: true, response: { voided: true } })
   }

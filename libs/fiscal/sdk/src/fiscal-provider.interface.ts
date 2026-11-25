@@ -377,6 +377,9 @@ export type SubmitResult =
 export interface VoidResult {
   readonly voided: boolean
   readonly reason?: string
+  // True when the AUTHORITY refused the invalidation (the answer is its own), false or absent when the provider stopped before sending
+  // anything. Only a refusal of the authority starts the window to correct and send the event again.
+  readonly byAuthority?: boolean
   readonly response?: Readonly<Record<string, unknown>>
 }
 
