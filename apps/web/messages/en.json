@@ -1285,7 +1285,7 @@
       },
       "delivery_not_sent": {
         "title": "A fiscal document was not delivered to the customer",
-        "body": "The files of a fiscal document (the DTE file and its graphic representation) could not be sent to the customer: there was no channel or email that could carry them. Open the document and give them to the customer by hand: the law asks for them to be given with the document."
+        "body": "The files of a fiscal document (the DTE file and its graphic representation) could not be sent to the customer by any means. Open the document and give them to the customer by hand: the law asks for them to be given with the document."
       },
       "entry_mismatch": {
         "title": "A fiscal document disagrees with the books",

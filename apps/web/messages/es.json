@@ -1285,7 +1285,7 @@
       },
       "delivery_not_sent": {
         "title": "Un documento fiscal no llegó al cliente",
-        "body": "Los archivos de un documento fiscal (el archivo DTE y su representación gráfica) no se pudieron enviar al cliente: no había un canal ni un correo que pudiera llevarlos. Abre el documento y entrégaselos al cliente a mano: la ley pide que se entreguen junto con el documento."
+        "body": "Los archivos de un documento fiscal (el archivo DTE y su representación gráfica) no se pudieron enviar al cliente por ningún medio. Abre el documento y entrégaselos al cliente a mano: la ley pide que se entreguen junto con el documento."
       },
       "entry_mismatch": {
         "title": "Un documento fiscal no coincide con los libros",

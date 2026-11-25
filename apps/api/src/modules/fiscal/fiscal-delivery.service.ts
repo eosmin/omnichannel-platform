@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
@@ -7,12 +7,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import {
-  EventContext,
-  isUniqueViolation,
-  PrismaService,
-  type PrismaTransaction
-} from '@platform/core/database'
+import { EventContext, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
   AuthorType,
   ChannelCapability,
@@ -41,7 +36,7 @@ import {
 import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
 import { MediaPurpose, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
-import { FiscalEvidenceService } from '@platform/fiscal/runtime'
+import { FiscalEvidenceService, FiscalProviderRegistry } from '@platform/fiscal/runtime'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
 import { channelFileLimits } from '../messages/channel-file-limits'
@@ -82,6 +77,7 @@ interface EvidenceFile {
 
 interface Receiver {
   orderId: string
+  providerId: string
   orderNumber: string
   conversationId: string | null
   customerId: string
@@ -94,6 +90,13 @@ type Plan =
   | { route: typeof FiscalDeliveryRoute.NONE; reason: FiscalDeliveryReason }
   | { route: typeof FiscalDeliveryRoute.EMAIL }
   | { route: typeof FiscalDeliveryRoute.CHANNEL; conversationId: string }
+
+// The id of the file of the order that carries one kind of file of a document: the same every time, so a repeated try overwrites its own
+// objects instead of leaving strays. The shape of a UUID, made from a hash.
+function mediaIdOf(documentId: string, kind: string): string {
+  const hex = createHash('sha256').update(`fiscal-delivery:${documentId}:${kind}`).digest('hex')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`
+}
 
 const localeOf = (value: string | null): Locale =>
   SUPPORTED_LOCALES.find(locale => locale === value) ?? DEFAULT_LOCALE
@@ -112,6 +115,7 @@ export class FiscalDeliveryService {
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
     private readonly evidence: FiscalEvidenceService,
+    private readonly providers: FiscalProviderRegistry,
     private readonly orderMessages: OrderMessagesService,
     private readonly conversations: ConversationsService,
     private readonly registry: PluginRegistry,
@@ -137,8 +141,16 @@ export class FiscalDeliveryService {
     const made = await Promise.all(
       FILE_KINDS.map(kind => this.evidence.keep(organizationId, documentId, kind))
     )
-    if (made.every(file => file === null)) return FiscalDeliveryOutcome.SKIPPED
-    const files = await this.inOrganization(organizationId, () => this.filesOf(documentId))
+    if (made.every(file => file === null)) {
+      // A provider that draws no files owes none. One that does, and made none, owes them: a person is told, never a silent skip
+      if (this.providers.find(receiver.providerId)?.represent === undefined) {
+        return FiscalDeliveryOutcome.SKIPPED
+      }
+      return this.recordNotSent(input, receiver, FiscalDeliveryReason.FILES_UNAVAILABLE)
+    }
+    const files = await this.inOrganization(organizationId, () =>
+      this.filesOf(input.storeId, documentId)
+    )
     if (files === null) {
       return this.recordNotSent(input, receiver, FiscalDeliveryReason.FILES_UNAVAILABLE)
     }
@@ -158,7 +170,11 @@ export class FiscalDeliveryService {
   async recordFailure(input: DeliverFiscalDocumentInput): Promise<void> {
     const read = await this.inOrganization(input.organizationId, () => this.readOwed(input))
     if (read === 'skipped' || read === 'delivered') return
-    await this.recordNotSent(input, read, FiscalDeliveryReason.FILES_UNAVAILABLE)
+    const reason =
+      read.customer.erasedAt === null
+        ? FiscalDeliveryReason.FILES_UNAVAILABLE
+        : FiscalDeliveryReason.CUSTOMER_ERASED
+    await this.recordNotSent(input, read, reason)
   }
 
   // ---------------------------------------------------------------------------------------------------------------------
@@ -176,6 +192,7 @@ export class FiscalDeliveryService {
         status: true,
         storeId: true,
         orderId: true,
+        providerId: true,
         delivery: { select: { id: true } },
         order: {
           select: {
@@ -195,6 +212,7 @@ export class FiscalDeliveryService {
     const { order } = document
     return {
       orderId: document.orderId,
+      providerId: document.providerId,
       orderNumber: order.orderNumber,
       conversationId: order.conversationId,
       customerId: order.customerId,
@@ -204,10 +222,11 @@ export class FiscalDeliveryService {
     }
   }
 
-  // Both files as rows of evidence that can be given: a file the scan found infected or could not scan is never given
-  private async filesOf(documentId: string): Promise<EvidenceFile[] | null> {
+  // Both files as rows of evidence that can be given: a file the scan found infected or could not scan is never given. One still waiting for
+  // its scan is given: the platform made it from the row of the document, and the delivery cannot wait for a queue
+  private async filesOf(storeId: string, documentId: string): Promise<EvidenceFile[] | null> {
     const rows = await this.prisma.client.media.findMany({
-      where: { fiscalDocumentId: documentId, fiscalEvidenceKind: { in: [...FILE_KINDS] } },
+      where: { storeId, fiscalDocumentId: documentId, fiscalEvidenceKind: { in: [...FILE_KINDS] } },
       select: {
         fiscalEvidenceKind: true,
         key: true,
@@ -285,19 +304,31 @@ export class FiscalDeliveryService {
   ): Promise<FiscalDeliveryOutcome> {
     const { organizationId, storeId, documentId } = input
     const copies: { mediaId: string; key: string; file: EvidenceFile }[] = []
+    let missing = false
     try {
       for (const file of files) {
-        const mediaId = randomUUID()
+        // The id comes from the document and the kind, so a second try writes the same objects instead of leaving strays
+        const mediaId = mediaIdOf(documentId, file.kind)
         const key = StorageKeys.order(storeId, receiver.orderId, mediaId, file.filename)
-        const copied = await this.storage.copy(file.key, key)
-        if (!copied) throw new Error('an evidence file to give is not in the bucket')
+        // Only an object that is not there is a permanent fault; a bucket that did not answer throws, and the listener asks again
+        if (!(await this.storage.copy(file.key, key))) {
+          missing = true
+          break
+        }
         copies.push({ mediaId, key, file })
       }
     } catch (error) {
-      await this.discard(copies)
-      this.logger.error(
+      this.logger.warn(
         { documentId, err: errorName(error) },
         'the files of a fiscal document could not be copied to be sent'
+      )
+      throw error
+    }
+    if (missing) {
+      await this.discard(copies)
+      this.logger.error(
+        { documentId },
+        'an evidence file of a fiscal document is not in the bucket'
       )
       return this.recordNotSent(input, receiver, FiscalDeliveryReason.FILES_UNAVAILABLE)
     }
@@ -360,12 +391,12 @@ export class FiscalDeliveryService {
         })
       )
     } catch (error) {
-      // The files are removed only when the transaction is known not to have committed: another delivery of the same document that won
-      // the unique row is a duplicate, and after a connection error the commit may have happened
-      if (isUniqueViolation(error)) {
-        await this.discard(copies)
-        return FiscalDeliveryOutcome.DUPLICATE
-      }
+      // Not removed: after a connection error the commit may have happened, and the objects are the ones the queued messages read. A
+      // second try writes the same keys (the ids come from the document), so nothing is left over
+      this.logger.warn(
+        { documentId, err: errorName(error) },
+        'the files of a fiscal document were not written'
+      )
       throw error
     }
     if (!committed) {
@@ -424,23 +455,18 @@ export class FiscalDeliveryService {
         attachments,
         tags: { storeId, template: EmailTemplates.ORDER_MESSAGE }
       },
-      // The job holds the address and the files of the receiver: once sent it has no reason to stay, and one that failed for good is kept
-      // for a day for whoever looks at it
+      // The job holds the address and the files of the receiver: it stays an hour after it is sent and a day if it failed for good
       {
-        removeOnComplete: true,
+        // kept an hour after it is sent: the id above only guards a repeat while the job exists, and a try repeated after a failed write must not send twice
+        removeOnComplete: { age: 60 * 60 },
         removeOnFail: { age: EMAIL_FAILED_JOB_KEEP_SECONDS },
         jobId: `fiscal-delivery-${documentId}`
       }
     )
-    try {
-      const claimed = await this.inOrganization(organizationId, () =>
-        this.prisma.transaction(tx => this.claim(tx, input, receiver, FiscalDeliveryRoute.EMAIL))
-      )
-      if (!claimed) return FiscalDeliveryOutcome.DUPLICATE
-    } catch (error) {
-      if (isUniqueViolation(error)) return FiscalDeliveryOutcome.DUPLICATE
-      throw error
-    }
+    const claimed = await this.inOrganization(organizationId, () =>
+      this.prisma.transaction(tx => this.claim(tx, input, receiver, FiscalDeliveryRoute.EMAIL))
+    )
+    if (!claimed) return FiscalDeliveryOutcome.DUPLICATE
     this.logSent(input, FiscalDeliveryRoute.EMAIL)
     return FiscalDeliveryOutcome.SENT
   }
@@ -469,27 +495,21 @@ export class FiscalDeliveryService {
     reason: FiscalDeliveryReason
   ): Promise<FiscalDeliveryOutcome> {
     const { organizationId, storeId, documentId } = input
-    let claimed: boolean
-    try {
-      claimed = await this.inOrganization(organizationId, () =>
-        this.prisma.transaction(async tx => {
-          const made = await this.claim(tx, input, receiver, FiscalDeliveryRoute.NONE, reason)
-          if (made && reason !== FiscalDeliveryReason.CUSTOMER_ERASED) {
-            this.events.publish(tx, Events.FISCAL_DELIVERY_NOT_SENT, {
-              organizationId,
-              storeId,
-              documentId,
-              orderId: receiver.orderId,
-              reason
-            })
-          }
-          return made
-        })
-      )
-    } catch (error) {
-      if (isUniqueViolation(error)) return FiscalDeliveryOutcome.DUPLICATE
-      throw error
-    }
+    const claimed = await this.inOrganization(organizationId, () =>
+      this.prisma.transaction(async tx => {
+        const made = await this.claim(tx, input, receiver, FiscalDeliveryRoute.NONE, reason)
+        if (made && reason !== FiscalDeliveryReason.CUSTOMER_ERASED) {
+          this.events.publish(tx, Events.FISCAL_DELIVERY_NOT_SENT, {
+            organizationId,
+            storeId,
+            documentId,
+            orderId: receiver.orderId,
+            reason
+          })
+        }
+        return made
+      })
+    )
     if (!claimed) return FiscalDeliveryOutcome.DUPLICATE
     this.audit.log({
       action: AuditAction.FISCAL_DELIVERY_NOT_SENT,

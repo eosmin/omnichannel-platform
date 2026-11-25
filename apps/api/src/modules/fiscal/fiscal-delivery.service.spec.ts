@@ -17,7 +17,10 @@ import { FiscalDeliveryOutcome, FiscalDeliveryService } from './fiscal-delivery.
 jest.mock('@platform/core/audit-module', () => ({ AuditService: class {} }))
 jest.mock('@platform/core/storage-module', () => ({ StorageService: class {} }))
 jest.mock('@platform/plugins/runtime', () => ({ PluginRegistry: class {} }))
-jest.mock('@platform/fiscal/runtime', () => ({ FiscalEvidenceService: class {} }))
+jest.mock('@platform/fiscal/runtime', () => ({
+  FiscalEvidenceService: class {},
+  FiscalProviderRegistry: class {}
+}))
 jest.mock('../order-messages/order-messages.service', () => ({ OrderMessagesService: class {} }))
 jest.mock('@platform/core/messaging', () => ({
   ConversationsService: class {},
@@ -42,6 +45,7 @@ interface Options {
   sizes?: number[]
   mediaStatus?: string
   bucketHas?: boolean
+  noRepresent?: boolean
 }
 
 function build(options: Options = {}) {
@@ -77,6 +81,7 @@ function build(options: Options = {}) {
             status: options.status ?? FiscalDocumentStatus.ACCEPTED,
             storeId: STORE,
             orderId: 'order-1',
+            providerId: 'provider-1',
             delivery: options.delivered === true ? { id: 'delivery-1' } : null,
             order: {
               orderNumber: '1001',
@@ -134,6 +139,7 @@ function build(options: Options = {}) {
         return Promise.resolve(made[index] === null ? null : { mediaId: `media-${index}` })
       }
     } as never,
+    { find: () => (options.noRepresent === true ? {} : { represent: () => null }) } as never,
     {
       channelFor: () =>
         Promise.resolve(
@@ -207,8 +213,15 @@ describe('FiscalDeliveryService', () => {
       expect(emails).toEqual([])
     })
 
+    it('records a provider that draws files and made none, so a person is told', async () => {
+      const { service, created, published } = build({ made: [null, null] })
+      expect(await service.deliver(INPUT)).toBe(FiscalDeliveryOutcome.NOT_SENT)
+      expect(created).toMatchObject([{ reason: FiscalDeliveryReason.FILES_UNAVAILABLE }])
+      expect(published).toHaveLength(1)
+    })
+
     it('skips a provider that draws no files', async () => {
-      const { service, created } = build({ made: [null, null] })
+      const { service, created } = build({ made: [null, null], noRepresent: true })
       expect(await service.deliver(INPUT)).toBe(FiscalDeliveryOutcome.SKIPPED)
       expect(created).toEqual([])
     })
