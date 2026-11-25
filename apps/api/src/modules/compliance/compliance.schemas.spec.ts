@@ -1,7 +1,9 @@
 import { ConsentPurposes, COOKIE_POLICY_VERSION } from '@platform/core/compliance'
+import { DSR_REQUEST_KEY_MAX_LENGTH, DSR_REQUEST_KEY_MIN_LENGTH } from '@platform/core/domain'
 
 import {
   cookieConsentSchema,
+  dsrFormKeyBodySchema,
   listConsentQuerySchema,
   recordConsentSchema
 } from './compliance.schemas'
@@ -67,5 +69,18 @@ describe('cookieConsentSchema', () => {
     ['an id that is not a UUID', { visitorId: 'visitor-1' }]
   ])('refuses %s', (_name, extra) => {
     expect(cookieConsentSchema.safeParse({ ...body, ...extra }).success).toBe(false)
+  })
+})
+
+describe('dsrFormKeyBodySchema', () => {
+  // The same two numbers as the intake and the public form (`DSR_REQUEST_KEY_*`): the key the screen shows is the key this takes back
+  it.each([
+    ['the shortest key of the form', 'k'.repeat(DSR_REQUEST_KEY_MIN_LENGTH), true],
+    ['the longest key of the form', 'k'.repeat(DSR_REQUEST_KEY_MAX_LENGTH), true],
+    ['no key at all', null, true],
+    ['one character short', 'k'.repeat(DSR_REQUEST_KEY_MIN_LENGTH - 1), false],
+    ['one character long', 'k'.repeat(DSR_REQUEST_KEY_MAX_LENGTH + 1), false]
+  ])('%s', (_name, current, accepted) => {
+    expect(dsrFormKeyBodySchema.safeParse({ current }).success).toBe(accepted)
   })
 })
