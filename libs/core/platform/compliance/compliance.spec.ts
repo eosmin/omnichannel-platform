@@ -5,6 +5,7 @@ import {
   dsrExecutorAvailable,
   dsrPublicFlowReady
 } from './compliance-constants'
+import { OrderDocumentRetention } from './order-document-retention'
 
 describe('ComplianceConfig', () => {
   it('alerts before the response deadline', () => {
@@ -39,8 +40,14 @@ describe('the grace period of an approved erasure', () => {
 })
 
 describe('DataRetentionPolicies', () => {
-  it('keeps orders for the tax period and never lets them be configured', () => {
-    expect(DataRetentionPolicies.ORDERS).toEqual({ defaultDays: 2555, configurable: false })
+  it('keeps orders for the ten years of the tax period (CT art. 147) and never lets them be configured', () => {
+    expect(DataRetentionPolicies.ORDERS).toEqual({ defaultDays: 3650, configurable: false })
+  })
+
+  it('names the same period as the sweep of the documents of orders (years of 365 days at least)', () => {
+    expect(DataRetentionPolicies.ORDERS.defaultDays).toBeGreaterThanOrEqual(
+      OrderDocumentRetention.LEGAL_YEARS * 365
+    )
   })
 
   it('keeps cold audit logs longer than hot ones', () => {

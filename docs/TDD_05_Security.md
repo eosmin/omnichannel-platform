@@ -855,7 +855,7 @@ export const ComplianceConfig = {
 export const DataRetentionPolicies = {
   CONVERSATIONS:      { defaultDays: 730,  configurable: true  },   // Messages follow conversations
   MEDIA:              { defaultDays: 365,  configurable: true  },
-  ORDERS:             { defaultDays: 2555, configurable: false },   // Tax: 7 years
+  ORDERS:             { defaultDays: 3650, configurable: false },   // Tax: 10 years (Codigo Tributario art. 147)
   AUDIT_LOGS_HOT:     { defaultDays: 730,  configurable: false },   // Then cold storage, §9.3
   AUDIT_LOGS_COLD:    { defaultDays: 2555, configurable: false },
   ANALYTICS_EVENTS:   { defaultDays: 395,  configurable: true  },
@@ -907,7 +907,7 @@ Erasure is **anonymization plus targeted deletion**, not a blanket `DELETE`:
 4. Media files       → deleted from S3 (all variants) and from the database
 5. Addresses, notes  → hard deleted
 6. Orders            → shipping address and customer notes cleared;
-                       financial records retained under tax obligation (7 years, LegalBases.LEGAL_OBLIGATION)
+                       financial records retained under tax obligation (10 years, Codigo Tributario art. 147, LegalBases.LEGAL_OBLIGATION)
 7. Consents          → all revoked with timestamp
 8. Billing           → BillableConversation rows kept (no PII), UsageRecords untouched
 9. Audit entry       → DSR_ERASURE_COMPLETED with retainedRecordsSummary
@@ -926,7 +926,7 @@ Per store, `JobNames.ENFORCE_RETENTION` (`HEAVY_PROCESSING` queue):
 - Deletes resolved/archived conversations (and their messages) past
   `min(RetentionSettings.conversationDays, plan.historyRetentionDays)`, in batches of 500
 - Deletes expired media from both S3 and the database (message files only: a file that belongs to an order, to a transaction of the books or to a fiscal document is never reached by this category)
-- Deletes the documents of orders (summary, label) once both they and their order are older than the legal period of the books (proposal: 7 years, `OrderDocumentRetention.LEGAL_YEARS`), the bucket before the row, unless the order has a fiscal document or its sale is in a period with a legal book taken: those are kept
+- Deletes the documents of orders (summary, label) once both they and their order are older than the legal period of the books (10 years, Codigo Tributario art. 147, `OrderDocumentRetention.LEGAL_YEARS`), the bucket before the row, unless the order has a fiscal document or its sale is in a period with a legal book taken: those are kept
 - Deletes analytics events past the window
 - Deletes read notifications past the window
 - Logs counts per category

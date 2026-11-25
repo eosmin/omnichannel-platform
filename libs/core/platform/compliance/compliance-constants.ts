@@ -147,8 +147,9 @@ export const DsrFailureCodes = {
 export const DataRetentionPolicies = {
   CONVERSATIONS: { defaultDays: 730, configurable: true }, // Messages follow conversations
   MEDIA: { defaultDays: 365, configurable: true },
-  ORDERS: { defaultDays: 2555, configurable: false }, // Tax: 7 years
+  ORDERS: { defaultDays: 3650, configurable: false }, // Tax: 10 years (Codigo Tributario art. 147)
   AUDIT_LOGS_HOT: { defaultDays: 730, configurable: false }, // Then cold storage, TDD_05 §9.3
+  // Not tax support (who looked at what): it keeps its own period, which the ten years of the books do not change
   AUDIT_LOGS_COLD: { defaultDays: 2555, configurable: false },
   ANALYTICS_EVENTS: { defaultDays: 395, configurable: true },
   SESSIONS: { defaultDays: 30, configurable: false },
