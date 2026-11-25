@@ -207,7 +207,7 @@ interface StoredSummary {
   byteLength: number
 }
 
-interface FoundChannel {
+export interface FoundChannel {
   conversationId: string
   pluginId: string
   channel: Omit<OrderMessageChannel, 'template'>
@@ -331,6 +331,16 @@ export class OrderMessagesService {
       return loaded
     })
     this.logNotSent(input, order, reason)
+  }
+
+  // The conversation a message about an order can go through, by what its channel declares (the same decision every order message takes):
+  // the order's own, otherwise the customer's most recent open one, or the one whose window is closed when none is open, or null. Read in the
+  // context of the caller. For what is not an order message but is owed to the customer of an order (the files of a fiscal document).
+  channelFor(
+    storeId: string,
+    order: { conversationId: string | null; customerId: string }
+  ): Promise<FoundChannel | null> {
+    return this.findChannel(storeId, order)
   }
 
   // ---------------------------------------------------------------------------------------------------------------------
@@ -521,7 +531,10 @@ export class OrderMessagesService {
   // otherwise none (the email fallback). One that cannot carry a message (spam, hidden, a connection let go, a plugin that is
   // gone or not offered to the store) is skipped, not an error. One that can carry it but whose window is closed gives way to
   // another one whose window is open (free text beats a template or an email), and is the answer when there is none.
-  private async findChannel(storeId: string, order: LoadedOrder): Promise<FoundChannel | null> {
+  private async findChannel(
+    storeId: string,
+    order: { conversationId: string | null; customerId: string }
+  ): Promise<FoundChannel | null> {
     let closed: FoundChannel | null = null
     const own =
       order.conversationId === null

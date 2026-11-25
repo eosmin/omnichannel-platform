@@ -389,6 +389,23 @@ export interface FinanceChainBrokenPayload {
   reason: ChainProblem
 }
 
+// A fiscal document was accepted: ids only, never the receiver's data
+export interface FiscalDocumentAcceptedPayload {
+  organizationId: string
+  storeId: string
+  documentId: string
+  orderId: string
+}
+
+// The files of an accepted document could not be given to its receiver: ids and a reason code (FiscalDeliveryReason), never the receiver's data
+export interface FiscalDeliveryNotSentPayload {
+  organizationId: string
+  storeId: string
+  documentId: string
+  orderId: string
+  reason: string
+}
+
 // A fiscal document was refused (TDD_18 §8.3): ids and a reason code, never the receiver's data
 export interface FiscalDocumentRejectedPayload {
   organizationId: string
@@ -721,6 +738,8 @@ export interface DomainEventPayloads {
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload
   [Events.FINANCE_POSTING_FAILED]: FinancePostingFailedPayload
   [Events.FINANCE_CHAIN_BROKEN]: FinanceChainBrokenPayload
+  [Events.FISCAL_DOCUMENT_ACCEPTED]: FiscalDocumentAcceptedPayload
+  [Events.FISCAL_DELIVERY_NOT_SENT]: FiscalDeliveryNotSentPayload
   [Events.FISCAL_DOCUMENT_REJECTED]: FiscalDocumentRejectedPayload
   [Events.FISCAL_DOCUMENT_STUCK]: FiscalDocumentStuckPayload
   [Events.FISCAL_RETRANSMIT_DEADLINE]: FiscalRetransmitDeadlinePayload

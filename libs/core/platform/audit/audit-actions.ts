@@ -260,6 +260,9 @@ export const AuditAction = {
   FISCAL_CUSTOMER_DATA_CHANGED: 'fiscal.customer_data_changed',
   FISCAL_CUSTOMER_DATA_CLEARED: 'fiscal.customer_data_cleared',
   FISCAL_EVIDENCE_READ: 'fiscal.evidence_read',
+  // The files of an accepted document given to its receiver (route and reason only, never the receiver's data), or nothing could carry them
+  FISCAL_DELIVERY_SENT: 'fiscal.delivery_sent',
+  FISCAL_DELIVERY_NOT_SENT: 'fiscal.delivery_not_sent',
   // A sealed fiscal value sealed again with the current key after a rotation (the platform is the actor; the kind and the row, never the value)
   FISCAL_VALUE_RESEALED: 'fiscal.value_resealed',
   // A sealed credential, secret or address outside the fiscal area sealed again with the current key after a rotation (the platform is the actor; the column and the row, never the value)

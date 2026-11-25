@@ -120,6 +120,7 @@
           "document_rejected": "Documento fiscal rechazado",
           "document_stuck": "Documento fiscal detenido",
           "retransmit_deadline": "Plazo de reenvío de un documento fiscal rechazado",
+          "delivery_not_sent": "Documento fiscal no entregado",
           "entry_mismatch": "Un documento fiscal no coincide con los libros",
           "contingency_opened": "Contingencia fiscal iniciada",
           "contingency_report_failed": "Contingencia fiscal sin reportar",
@@ -1281,6 +1282,10 @@
       "retransmit_deadline": {
         "title": "Se acaba el plazo de reenvío de un documento fiscal",
         "body": "La autoridad rechazó un documento fiscal y el plazo de 24 horas para corregirlo y reenviarlo se acaba o ya pasó. Abre el documento, corrígelo y envíalo de nuevo: conserva el mismo código de generación."
+      },
+      "delivery_not_sent": {
+        "title": "Un documento fiscal no llegó al cliente",
+        "body": "Los archivos de un documento fiscal (el archivo DTE y su representación gráfica) no se pudieron enviar al cliente: no había un canal ni un correo que pudiera llevarlos. Abre el documento y entrégaselos al cliente a mano: la ley pide que se entreguen junto con el documento."
       },
       "entry_mismatch": {
         "title": "Un documento fiscal no coincide con los libros",
@@ -8632,5 +8637,8 @@
       "whatToDo": "Avisa a un administrador: hay que revisar el libro diario antes de cerrar cualquier otra cosa.",
       "unreadable": "No se pudo leer el estado de la revisión semanal de los libros. Un cierre aún puede ser rechazado si encontró un problema."
     }
+  },
+  "fiscalDelivery": {
+    "text": "Adjuntamos los archivos del documento tributario de tu pedido {order} de {store}: el documento tributario electrónico (DTE) en formato JSON y su representación gráfica en PDF."
   }
 }

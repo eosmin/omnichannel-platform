@@ -66,6 +66,7 @@ import {
   type FiscalDocumentRejectedPayload,
   type FiscalDocumentStuckPayload,
   type FiscalRetransmitDeadlinePayload,
+  type FiscalDeliveryNotSentPayload,
   type FiscalEntryMismatchPayload,
   type InventoryLowPayload,
   type MessageChangedPayload,
@@ -657,6 +658,18 @@ export class NotificationsEventsListener {
       payload.organizationId,
       payload.documentId,
       NotificationTypes.FISCAL_DOCUMENT_STUCK
+    )
+  }
+
+  // The files of an accepted document could not be given to its receiver (Normativa DTE v2.0, section 11): the person who manages the
+  // fiscal documents is told once until they read it, and gives them by hand from the fiscal screens. The text names no receiver and no reason.
+  @OnEvent(Events.FISCAL_DELIVERY_NOT_SENT)
+  @InEventOrganization()
+  async onFiscalDeliveryNotSent(payload: FiscalDeliveryNotSentPayload): Promise<void> {
+    await this.tellFiscalManagers(
+      payload.organizationId,
+      payload.documentId,
+      NotificationTypes.FISCAL_DELIVERY_NOT_SENT
     )
   }
 

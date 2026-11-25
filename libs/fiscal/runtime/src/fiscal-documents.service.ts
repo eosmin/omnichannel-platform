@@ -1688,6 +1688,7 @@ export class FiscalDocumentsService {
         where: { id: documentId, organizationId },
         select: {
           orderId: true,
+          storeId: true,
           kind: true,
           returnId: true,
           status: true,
@@ -1727,6 +1728,14 @@ export class FiscalDocumentsService {
           issuedAt: doc.createdAt,
           ...(entry === null ? {} : { journalEntryId: entry.id })
         }
+      })
+      // The receiver is owed the files with the document (Normativa DTE v2.0, section 11): the event leaves with the commit of the
+      // acceptance, so a crash after it never loses it, and the one that gives the files makes the evidence itself if it is not there yet
+      this.events.publish(tx, Events.FISCAL_DOCUMENT_ACCEPTED, {
+        organizationId,
+        storeId: doc.storeId,
+        documentId,
+        orderId: doc.orderId
       })
       return true
     })

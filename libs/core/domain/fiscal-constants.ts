@@ -170,6 +170,7 @@ export const fiscalSubmitMaxAttempts = (inContingency: boolean): number =>
 export const FiscalResourceTypes = {
   ISSUER: 'fiscal_issuer',
   DOCUMENT: 'fiscal_document',
+  DELIVERY: 'fiscal_delivery',
   CUSTOMER_DATA: 'customer_fiscal_data',
   CONTINGENCY: 'fiscal_contingency'
 } as const
@@ -217,6 +218,36 @@ export enum FiscalContingencyOrigin {
   USER = 'user',
   SYSTEM = 'system'
 }
+
+// The delivery of an accepted document to its receiver (Normativa DTE v2.0, section 11): the DTE file and its graphic representation, given
+// with the document and never held back for a payment. One row for each document. SENT: the files went by a channel or by email. NOT_SENT:
+// nothing could carry them and a person must give them by hand.
+export enum FiscalDeliveryStatus {
+  SENT = 'sent',
+  NOT_SENT = 'not_sent'
+}
+
+// How the files went. A channel carries them as two documents of the conversation; the email as two attachments of one message.
+export enum FiscalDeliveryRoute {
+  CHANNEL = 'channel',
+  EMAIL = 'email',
+  NONE = 'none'
+}
+
+// Why nothing was sent. Codes only: the receiver's data never goes in a reason.
+export enum FiscalDeliveryReason {
+  // No conversation takes both files and the customer has no email
+  NO_CHANNEL = 'no_channel',
+  // The two files could not be made or read (the evidence is made again when a person asks for it)
+  FILES_UNAVAILABLE = 'files_unavailable',
+  // The files are larger than what an email carries
+  TOO_LARGE = 'too_large',
+  // The customer was erased: nobody is left to give them to
+  CUSTOMER_ERASED = 'customer_erased'
+}
+
+// The largest pair of files an email carries (the sum of the two, before the encoding): above it the person gives them by hand
+export const FISCAL_DELIVERY_EMAIL_MAX_BYTES = 8 * 1024 * 1024
 
 // What a person is told about a contingency
 export enum FiscalContingencyAlertKind {

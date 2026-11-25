@@ -120,6 +120,7 @@
           "document_rejected": "Fiscal document refused",
           "document_stuck": "Fiscal document stuck",
           "retransmit_deadline": "Resend window of a refused fiscal document",
+          "delivery_not_sent": "Fiscal document not delivered",
           "entry_mismatch": "Fiscal document disagrees with the books",
           "contingency_opened": "Fiscal contingency started",
           "contingency_report_failed": "Fiscal contingency not reported",
@@ -1281,6 +1282,10 @@
       "retransmit_deadline": {
         "title": "The window to resend a fiscal document is closing",
         "body": "The authority refused a fiscal document and the 24 hours to correct and send it again are closing or over. Open the document, fix it and send it again: it keeps the same generation code."
+      },
+      "delivery_not_sent": {
+        "title": "A fiscal document was not delivered to the customer",
+        "body": "The files of a fiscal document (the DTE file and its graphic representation) could not be sent to the customer: there was no channel or email that could carry them. Open the document and give them to the customer by hand: the law asks for them to be given with the document."
       },
       "entry_mismatch": {
         "title": "A fiscal document disagrees with the books",
@@ -8632,5 +8637,8 @@
       "whatToDo": "Tell an administrator: the journal must be looked at before anything else is closed.",
       "unreadable": "The state of the weekly check of the books could not be read. A close may still be refused if it found a problem."
     }
+  },
+  "fiscalDelivery": {
+    "text": "Attached are the files of the tax document of your order {order} from {store}: the electronic tax document (DTE) in JSON format and its printable representation in PDF."
   }
 }
