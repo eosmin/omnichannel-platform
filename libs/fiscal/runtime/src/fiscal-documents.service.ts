@@ -40,7 +40,9 @@ import {
   OrderReturnStatus,
   OrderStatus,
   SealedValueKind,
-  ShipmentKind
+  ShipmentKind,
+  type VoidEventState,
+  VoidEventStates
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -2595,8 +2597,12 @@ export class FiscalDocumentsService {
     const sealedEvent = this.sealVoidEvent(id, outcome.event)
     // Whether the event was kept goes in the trail of the void, so "the event was lost" (the provider gave one and it could not be sealed) is
     // told from "there never was one of ours" (the authority already held the invalidation)
-    const eventState =
-      sealedEvent !== null ? 'kept' : outcome.event === undefined ? 'none' : 'not_sealed'
+    const eventState: VoidEventState =
+      sealedEvent !== null
+        ? VoidEventStates.KEPT
+        : outcome.event === undefined
+          ? VoidEventStates.NONE
+          : VoidEventStates.NOT_SEALED
     await this.inTx(organizationId, async tx => {
       const locked = await this.lock(tx, organizationId, id)
       if (locked.status !== (FiscalDocumentStatus.ACCEPTED as string)) {
@@ -2635,7 +2641,6 @@ export class FiscalDocumentsService {
       metadata: {
         externalNumber: doc.externalNumber,
         recoveredFromAuthority: recovered,
-        // kept | none (the authority already held it) | not_sealed (the provider gave one and it could not be sealed)
         voidEvent: eventState,
         // What the person declared (the numbers of the identity documents stay out of the trail: they are customer data)
         ...(input.kind === undefined ? {} : { voidKind: input.kind }),

@@ -146,6 +146,28 @@ describe.each([DatabaseRoles.APP, DatabaseRoles.WORKER])(
       }
     })
 
+    // The guard refuses a write on an accepted row before the check is reached, so the check is proved on its own: it is there, it says what it
+    // must, and with the triggers off for one transaction the database still refuses an event on a row that is not voided
+    it('holds the check of the table on its own: only a voided row may hold an event', async () => {
+      const definition = await raw.query<{ def: string }>(
+        `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'fiscal_documents_void_event_encrypted_chk'`
+      )
+      expect(definition.rows[0]?.def).toMatch(/void_event_encrypted IS NULL.*status.*voided/)
+      const documentId = await document('accepted')
+      await raw.query('BEGIN')
+      try {
+        await raw.query('ALTER TABLE fiscal_documents DISABLE TRIGGER USER')
+        await expect(
+          raw.query('UPDATE fiscal_documents SET void_event_encrypted = $1 WHERE id = $2', [
+            Buffer.from([1, 2, 3]),
+            documentId
+          ])
+        ).rejects.toThrow(/fiscal_documents_void_event_encrypted_chk/)
+      } finally {
+        await raw.query('ROLLBACK').catch(() => undefined)
+      }
+    })
+
     it('does not let the role set the door by hand and change the event with a plain update', async () => {
       const documentId = await document('voided', sealed({ event: {}, signature: 'a.b.c' }))
       await raw.query('BEGIN')

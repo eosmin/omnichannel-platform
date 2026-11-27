@@ -20,7 +20,8 @@ import {
   FiscalRejectionDeadlineState,
   FiscalRejectionReasons,
   FiscalVoidKind,
-  OrderStatus
+  OrderStatus,
+  VoidEventStates
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -1772,7 +1773,7 @@ describe('The fiscal documents (Step 4B.7)', () => {
             action: AuditAction.FISCAL_DOCUMENT_VOIDED,
             resourceId: documentId
           })
-          expect(trail[0]?.metadata).toMatchObject({ voidEvent: 'kept' })
+          expect(trail[0]?.metadata).toMatchObject({ voidEvent: VoidEventStates.KEPT })
         })
 
         it('keeps none when the authority refuses, and a retry keeps only the event of the attempt it accepted', async () => {
@@ -1802,7 +1803,7 @@ describe('The fiscal documents (Step 4B.7)', () => {
             action: AuditAction.FISCAL_DOCUMENT_VOIDED,
             resourceId: documentId
           })
-          expect(trail[0]?.metadata).toMatchObject({ voidEvent: 'none' })
+          expect(trail[0]?.metadata).toMatchObject({ voidEvent: VoidEventStates.NONE })
         })
 
         it('voids all the same when the event cannot be sealed, and leaves no trace of it in the logs', async () => {
@@ -1830,7 +1831,7 @@ describe('The fiscal documents (Step 4B.7)', () => {
             action: AuditAction.FISCAL_DOCUMENT_VOIDED,
             resourceId: documentId
           })
-          expect(trail[0]?.metadata).toMatchObject({ voidEvent: 'not_sealed' })
+          expect(trail[0]?.metadata).toMatchObject({ voidEvent: VoidEventStates.NOT_SEALED })
         })
 
         it('refuses a sealed event on a document that is not voided, whoever writes it', async () => {

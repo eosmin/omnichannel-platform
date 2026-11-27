@@ -617,6 +617,15 @@ export const SealedValueKind = {
 } as const
 export type SealedValueKind = (typeof SealedValueKind)[keyof typeof SealedValueKind]
 
+// What the trail of an invalidation says of the signed event (`voidEvent` in the metadata of `fiscal.document_voided`): kept sealed with the
+// document, none (the authority already held the invalidation: there is no event of ours), or the provider gave one and it could not be sealed
+export const VoidEventStates = {
+  KEPT: 'kept',
+  NONE: 'none',
+  NOT_SEALED: 'not_sealed'
+} as const
+export type VoidEventState = (typeof VoidEventStates)[keyof typeof VoidEventStates]
+
 // How often the same sealed value that does not open is logged (Step 7.3-S11b-2): a document that cannot be opened is tried again by every
 // retry of the submit, and a line per try would bury the rest. One line per value, cause and window; the map that remembers them is bounded.
 export const SealedOpenLog = {

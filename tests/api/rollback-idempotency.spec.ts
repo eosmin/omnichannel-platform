@@ -20,7 +20,8 @@ const IDEMPOTENT = [
   ['20261217100000_finance_receipts.rollback.sql', 'media', 'finance_transaction_id'],
   ['20270208100000_fiscal_delivery_by_hand.rollback.sql', 'fiscal_deliveries', 'hand_means'],
   ['20270208100000_fiscal_delivery_by_hand.rollback.sql', 'fiscal_deliveries', 'handed_over_by'],
-  ['20270208100000_fiscal_delivery_by_hand.rollback.sql', 'fiscal_deliveries', 'handed_over_at']
+  ['20270208100000_fiscal_delivery_by_hand.rollback.sql', 'fiscal_deliveries', 'handed_over_at'],
+  ['20270213100000_fiscal_void_event.rollback.sql', 'fiscal_documents', 'void_event_encrypted']
 ] as const
 
 // The script has its own BEGIN and COMMIT: the case wraps it in the transaction it throws away
@@ -89,6 +90,47 @@ describe('Rollbacks that are safe to run twice', () => {
         { id: 'rb-3', status: 'sent', route: 'email', reason: null },
         { id: 'rb-4', status: 'not_sent', route: 'none', reason: 'too_large' }
       ])
+      await client.query(sql)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+  })
+  // The rollback of the sealed event: with a voided row that holds one, the first run takes the column, the function of the re-seal and the
+  // check away and gives the guard the form it had before (it no longer names the column); the second finds it done. Written with the triggers
+  // off for the transaction (replica role), never committed.
+  it('20270213100000_fiscal_void_event.rollback.sql drops the column, the function and the check, with an event sealed in a row, and runs twice', async () => {
+    const sql = body('20270213100000_fiscal_void_event.rollback.sql')
+    const hasFunction = async (): Promise<boolean> =>
+      (await client.query(`SELECT 1 FROM pg_proc WHERE proname = 'fiscal_reseal_void_event'`))
+        .rowCount === 1
+    const guardNamesColumn = async (): Promise<boolean> =>
+      (
+        await client.query<{ named: boolean }>(
+          `SELECT prosrc LIKE '%void_event_encrypted%' AS named FROM pg_proc WHERE proname = 'fiscal_document_guard'`
+        )
+      ).rows[0]?.named === true
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL session_replication_role = replica')
+      await client.query(
+        `INSERT INTO fiscal_documents (id, organization_id, store_id, order_id, sequence_number, document_type, status, provider_id, environment,
+           issuer_snapshot, lines_snapshot, receiver_encrypted, total_cents, tax_cents, void_reason, voided_by, voided_at, void_event_encrypted, updated_at)
+         VALUES ('rb-doc', 'o', 's', 'od', 987654321, 'pending', 'voided', 'simulator', 'sandbox', '{}', '{}', '\\x01', 1, 0, 'r', 'u', now(), '\\x0102', now())`
+      )
+      expect(await hasFunction()).toBe(true)
+      expect(await guardNamesColumn()).toBe(true)
+      await client.query(sql)
+      expect(await hasColumn('fiscal_documents', 'void_event_encrypted')).toBe(false)
+      expect(await hasFunction()).toBe(false)
+      expect(await guardNamesColumn()).toBe(false)
+      const check = await client.query(
+        `SELECT 1 FROM pg_constraint WHERE conname = 'fiscal_documents_void_event_encrypted_chk'`
+      )
+      expect(check.rowCount).toBe(0)
+      // The row stays: only the sealed event goes with the column
+      expect(
+        (await client.query(`SELECT 1 FROM fiscal_documents WHERE id = 'rb-doc'`)).rowCount
+      ).toBe(1)
       await client.query(sql)
     } finally {
       await client.query('ROLLBACK')
