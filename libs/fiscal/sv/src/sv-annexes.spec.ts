@@ -344,6 +344,25 @@ describe('annex 2: not-subject sales and the documents voided in a later month',
     expect(rowsOf(build(SvAnnexIds.SALES_CONSUMERS, NOV, [doc]).content)[0]?.[13]).toBe('28.25')
   })
 
+  it('writes one negative row for each voided document, each with its own code, never added to another', () => {
+    const first = made(
+      {},
+      { uuid: U1, issuedAt: '2026-11-17T12:00:00.000Z', voidedAt: '2026-12-02T12:00:00.000Z' }
+    )
+    const second = made(
+      {},
+      { uuid: U2, issuedAt: '2026-11-17T13:00:00.000Z', voidedAt: '2026-12-03T12:00:00.000Z' }
+    )
+    const rows = rowsOf(
+      build(SvAnnexIds.SALES_CONSUMERS, { year: 2026, month: 12 }, [first, second]).content
+    )
+    expect(rows).toHaveLength(2)
+    expect(rows.map(row => [row[7], row[8], row[13]])).toEqual([
+      [U1.toUpperCase().replace(/-/g, ''), U1.toUpperCase().replace(/-/g, ''), '-28.25'],
+      [U2.toUpperCase().replace(/-/g, ''), U2.toUpperCase().replace(/-/g, ''), '-28.25']
+    ])
+  })
+
   it('writes nothing for one voided in its own month, or more than three periods after its issue', () => {
     const sameMonth = made(
       {},

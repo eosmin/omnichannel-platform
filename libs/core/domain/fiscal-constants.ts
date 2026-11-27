@@ -138,6 +138,40 @@ export enum FiscalContingencyReportOutcome {
   UNAVAILABLE = 'unavailable'
 }
 
+// What a provider says when it is asked whether its authority answers (D2c): the only thing core reads of a probe
+export enum FiscalAuthorityProbeOutcome {
+  // The authority answered a fresh call
+  REACHABLE = 'reachable',
+  // No answer: the contingency goes on
+  UNREACHABLE = 'unreachable',
+  // The authority refused the credentials: nothing is asked again until the issuer changes (three wrong logins lock the user)
+  CREDENTIALS_REJECTED = 'credentials_rejected',
+  // The provider cannot ask (no credentials to ask with)
+  INCONCLUSIVE = 'inconclusive'
+}
+
+// Who ended a contingency, as the audit trail says it
+export const FiscalContingencyEndedBy = { PROBE: 'probe' } as const
+
+// The end of the idempotency key of a probe (the key of a report is the organization and the contingency)
+export const FiscalContingencyProbeKeySuffix = 'probe'
+
+// The label under which the fingerprint of the credentials a probe was refused with is derived and kept
+export const FiscalContingencyProbeFingerprintLabel = 'fiscal-contingency-probe-credentials:v1'
+
+export enum FiscalContingencyProbeResult {
+  // Nothing to do: gone, not open, or not asked
+  NOTHING = 'nothing',
+  // The authority did not answer, or could not be asked
+  WAITING = 'waiting',
+  // The authority answered and the contingency was ended by the platform
+  CLOSED = 'closed',
+  // The authority answered and a person must end the contingency (the authority asks who answers for the establishment)
+  RESTORED = 'restored',
+  // The credentials were refused: no more probes until the issuer is changed
+  HALTED = 'halted'
+}
+
 export const fiscalJobOptions = (): {
   attempts: number
   backoff: { type: 'exponential'; delay: number }
@@ -275,7 +309,15 @@ export enum FiscalContingencyAlertKind {
   // The event that reports it was not accepted after every attempt of the queue
   REPORT_FAILED = 'report_failed',
   // The window to send the documents of the lot is closing
-  WINDOW_CLOSING = 'window_closing'
+  WINDOW_CLOSING = 'window_closing',
+  // The probe found the authority answering and closed the contingency itself, at the time of the first answer (D2c)
+  CLOSED_BY_SYSTEM = 'closed_by_system',
+  // The authority answers again but the contingency needs a person to close it (the authority asks who answers for the establishment)
+  RESTORED = 'restored',
+  // The contingency has been open for more days than the authority allows without a technical report
+  TECHNICAL_REPORT_REQUIRED = 'technical_report_required',
+  // The authority refused the credentials while the contingency was open: nobody asks it again until they change
+  PROBE_HALTED = 'probe_halted'
 }
 
 const REPORT_RETRY_INTERVAL_MS = 15 * 60 * 1000
@@ -302,7 +344,12 @@ export const FiscalContingencyLimits = {
   // only then is it stuck: the rules of the authority do not allow a longer gap between two attempts while the authority cannot be reached
   RELEASED_MAX_ATTEMPTS: Math.ceil((RELEASED_RETRY_HOURS * 60 * 60 * 1000) / REPORT_RETRY_DELAY_MS),
   // Fraction of the transmission window left at which the person is warned (the provider declares the window)
-  WARN_REMAINING_RATIO: 0.25
+  WARN_REMAINING_RATIO: 0.25,
+  // How often an open contingency asks the authority whether it answers again: the rules ask for an attempt at least every 15 minutes
+  // while the authority cannot be reached, so the gap stays under it
+  PROBE_INTERVAL_MS: REPORT_RETRY_DELAY_MS,
+  // How far ahead of the server's clock the end a person declares may be before it is refused (a screen's clock, not a future end)
+  END_CLOCK_SKEW_MS: 5 * 60 * 1000
 } as const
 
 // A document the authority refused is corrected and sent again within a day of the moment the refusal was communicated, with the same
@@ -345,7 +392,8 @@ export const FiscalContingencyConflictReasons = {
   RESPONSIBLE_REQUIRED: 'contingency_responsible_required',
   NOT_CLOSED: 'contingency_not_closed',
   NOT_FAILED: 'contingency_report_not_failed',
-  MOTIVE_TOO_LONG: 'contingency_motive_too_long'
+  MOTIVE_TOO_LONG: 'contingency_motive_too_long',
+  END_TIME_INVALID: 'contingency_end_time_invalid'
 } as const
 
 export const FiscalEvidenceContentType = 'application/json'

@@ -33,6 +33,7 @@ import {
   type ProcessImageJob,
   type ReconcileFinanceJob,
   type ResealCredentialsJob,
+  type ProbeFiscalContingencyJob,
   type WarnFiscalDeadlinesJob,
   type ReportFiscalContingencyJob,
   type SubmitFiscalDocumentJob,
@@ -92,6 +93,7 @@ type HeavyJob =
   | PostFinanceEventJob
   | SubmitFiscalDocumentJob
   | ReportFiscalContingencyJob
+  | ProbeFiscalContingencyJob
 
 const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
   z.object({
@@ -165,6 +167,13 @@ const submitFiscalJobSchema = exactly<SubmitFiscalDocumentJob>()(
   z.object({
     organizationId: z.uuid(),
     documentId: z.uuid(),
+    correlationId: jobCorrelationIdSchema
+  })
+)
+const probeFiscalContingencyJobSchema = exactly<ProbeFiscalContingencyJob>()(
+  z.object({
+    organizationId: z.uuid(),
+    contingencyId: z.uuid(),
     correlationId: jobCorrelationIdSchema
   })
 )
@@ -377,6 +386,16 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
         }
         throw error
       }
+      return
+    }
+    if (job.name === JobNames.PROBE_FISCAL_CONTINGENCY) {
+      const probe = probeFiscalContingencyJobSchema.safeParse(job.data)
+      if (!probe.success) throw new JobRejectedError('the probe job does not fit its schema')
+      // An organization deleted since the job was queued has no contingency to probe; the scheduler is removed by the service when the
+      // contingency is no longer open
+      await this.skipIfGone(job, () =>
+        this.fiscalContingencies.probe(probe.data.organizationId, probe.data.contingencyId)
+      )
       return
     }
     if (job.name === JobNames.REPORT_FISCAL_CONTINGENCY) {

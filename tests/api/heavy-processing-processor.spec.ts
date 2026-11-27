@@ -34,6 +34,7 @@ describe('HeavyProcessingProcessor', () => {
   const warnContingencyWindows = jest.fn().mockResolvedValue(0)
   const reportContingency = jest.fn().mockResolvedValue('reported')
   const reportContingencyExhausted = jest.fn().mockResolvedValue(undefined)
+  const probeContingency = jest.fn().mockResolvedValue('waiting')
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -62,7 +63,8 @@ describe('HeavyProcessingProcessor', () => {
     {
       report: reportContingency,
       reportExhausted: reportContingencyExhausted,
-      warnWindows: warnContingencyWindows
+      warnWindows: warnContingencyWindows,
+      probe: probeContingency
     } as never, // the contingency of the issuer: what it is handed is what is tested
     { reconcile: resealCredentials } as never // the re-seal of the sealed credentials of a rotation of the key: what it is handed is what is tested
   )
@@ -884,6 +886,35 @@ describe('HeavyProcessingProcessor', () => {
         report({ organizationId: ORG_ID, contingencyId: CONTINGENCY_ID, ...patch })
       ).rejects.toBeInstanceOf(UnrecoverableError)
       expect(reportContingency).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('probe-fiscal-contingency jobs', () => {
+    const ORG_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const CONTINGENCY_ID = '9e99f91f-dfdc-419b-ae00-aeb3ee1f31eb'
+    const probe = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.PROBE_FISCAL_CONTINGENCY,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 1 }
+      } as unknown as ProcessorJob)
+
+    it('hands the organization and the contingency to the service, nothing else', async () => {
+      probeContingency.mockClear()
+      await probe({ organizationId: ORG_ID, contingencyId: CONTINGENCY_ID, correlationId: 'c' })
+      expect(probeContingency).toHaveBeenCalledWith(ORG_ID, CONTINGENCY_ID)
+    })
+
+    it.each([
+      ['a contingency that is not an id', { contingencyId: 'all' }],
+      ['an organization that is not an id', { organizationId: 'mine' }]
+    ])('refuses %s, and does not probe', async (_label, patch) => {
+      probeContingency.mockClear()
+      await expect(
+        probe({ organizationId: ORG_ID, contingencyId: CONTINGENCY_ID, ...patch })
+      ).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(probeContingency).not.toHaveBeenCalled()
     })
   })
 

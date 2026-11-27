@@ -160,7 +160,11 @@ export type EnterFiscalContingencyBody = z.output<typeof enterFiscalContingencyS
 
 // A person ends it: who answers for the establishment, when the provider's authority asks
 export const endFiscalContingencySchema = z
-  .object({ responsible: voidPartySchema.optional() })
+  .object({
+    responsible: voidPartySchema.optional(),
+    // The real instant the situation ended, when the person knows it (checked against the start and the clock by the service)
+    endedAt: z.iso.datetime({ offset: true }).optional()
+  })
   .strict()
 export type EndFiscalContingencyBody = z.output<typeof endFiscalContingencySchema>
 

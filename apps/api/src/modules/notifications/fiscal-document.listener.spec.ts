@@ -190,6 +190,16 @@ describe('the notice of a fiscal document that needs a person', () => {
       [
         FiscalContingencyAlertKind.WINDOW_CLOSING,
         NotificationTypes.FISCAL_CONTINGENCY_WINDOW_CLOSING
+      ],
+      [
+        FiscalContingencyAlertKind.CLOSED_BY_SYSTEM,
+        NotificationTypes.FISCAL_CONTINGENCY_CLOSED_BY_SYSTEM
+      ],
+      [FiscalContingencyAlertKind.RESTORED, NotificationTypes.FISCAL_CONTINGENCY_RESTORED],
+      [FiscalContingencyAlertKind.PROBE_HALTED, NotificationTypes.FISCAL_CONTINGENCY_PROBE_HALTED],
+      [
+        FiscalContingencyAlertKind.TECHNICAL_REPORT_REQUIRED,
+        NotificationTypes.FISCAL_CONTINGENCY_TECHNICAL_REPORT
       ]
     ] as const
     for (const [kind, type] of expected) {
