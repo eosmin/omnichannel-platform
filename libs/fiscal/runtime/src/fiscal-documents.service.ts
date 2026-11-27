@@ -3302,18 +3302,27 @@ export class FiscalDocumentsService {
           documentType: true,
           externalNumber: true,
           providerData: true,
-          builtPayloadEncrypted: true
+          builtPayloadEncrypted: true,
+          voidClaimUntil: true
         },
         orderBy: { id: 'asc' },
         take: FiscalSweepLimits.RUN_PAGE_SIZE
       })
       let told = 0
       for (const note of notes) {
+        // A note whose invalidation is being sent now needs no notice
+        if (note.voidClaimUntil !== null && note.voidClaimUntil.getTime() > now.getTime()) continue
         const stored = this.storedOf(note)
-        const deadline =
-          stored === null
-            ? null
-            : (this.providers.find(note.providerId)?.voidDeadline?.(stored) ?? null)
+        let deadline: string | null
+        try {
+          deadline =
+            stored === null
+              ? null
+              : (this.providers.find(note.providerId)?.voidDeadline?.(stored) ?? null)
+        } catch {
+          // A provider that cannot read one document must not leave the others untold
+          deadline = null
+        }
         if (deadline === null || new Date(deadline).getTime() <= now.getTime()) {
           this.logger.warn(
             { documentId: note.id },
