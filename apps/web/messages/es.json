@@ -8256,6 +8256,10 @@
         "replacedFirst": "El reemplazo quedó en cola. Invalida este documento cuando esté aceptado."
       },
       "conflicts": {
+        "delivery_running": "El sistema todavía está entregando los archivos de este documento. Espera unos minutos antes de registrar una entrega a mano.",
+        "already_delivered": "Los archivos de este documento ya se entregaron al cliente.",
+        "delivery_files_missing": "Los archivos de este documento no existen para entregarlos.",
+        "delivery_not_owed": "Este documento no está aceptado: sus archivos no se deben a un cliente.",
         "representation_too_large": "La representación gráfica de este documento es demasiado grande para dibujarla. Entrega al cliente el archivo del documento por otra vía.",
         "has_credit_notes": "Este documento tiene notas de crédito que no están anuladas. Anula primero las notas.",
         "already_replaced": "Esta venta ya tiene un documento que la reemplaza.",
@@ -8484,6 +8488,32 @@
         "confirm": "Confirmar el cambio",
         "done": "El documento se confirmó y quedó en cola con el emisor nuevo.",
         "nowNone": "No hay un emisor configurado. Configúralo antes de confirmar."
+      },
+      "delivery": {
+        "title": "Entrega al cliente",
+        "description": "Al cliente se le entrega el archivo del documento y su representación gráfica junto con el documento, esté o no pagado. El sistema los envía por la conversación o por correo cuando puede.",
+        "state": {
+          "pending": "El sistema todavía no ha entregado los archivos.",
+          "channel": "Enviados por la conversación del cliente.",
+          "email": "Enviados por correo.",
+          "manual": "Entregados a mano ({means}) el {date}.",
+          "none": "El sistema no pudo enviar los archivos. Siguen pendientes de entregar al cliente."
+        },
+        "reasons": {
+          "no_channel": "El cliente no tiene una conversación que acepte los archivos ni correo.",
+          "files_unavailable": "No se pudieron leer los archivos para enviarlos.",
+          "too_large": "Los archivos pesan más de lo que cabe en un correo.",
+          "customer_erased": "El cliente fue borrado: no queda a quién entregarlos."
+        },
+        "means": {
+          "download": "archivos descargados",
+          "paper": "copia en papel"
+        },
+        "howTo": "Descarga los dos archivos de arriba y entrégalos al cliente, o imprime la representación gráfica si el cliente la pide en papel. Luego regístralo aquí: así se cierra la entrega pendiente.",
+        "handed": {
+          "download": "Entregué los archivos",
+          "paper": "Entregué una copia en papel"
+        }
       },
       "evidence": {
         "title": "Archivos de evidencia",

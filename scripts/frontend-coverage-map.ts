@@ -202,6 +202,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'fiscal.documents.void': { step: '4B.9' },
   'fiscal.documents.replace': { step: '4B.9' },
   'fiscal.documents.evidence': { step: '4B.9' },
+  'fiscal.documents.delivery': { step: '4B.9' },
   'fiscal.documents.confirmIssuerChange': { step: '4B.9' },
   'fiscal.customerData.get': { step: '4B.9' },
   'fiscal.customerData.put': { step: '4B.9' },

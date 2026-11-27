@@ -1,9 +1,11 @@
-import type { FiscalDocumentView } from '@platform/api-client'
+import type { FiscalDeliveryView, FiscalDocumentView } from '@platform/api-client'
 import {
   FiscalConflictReasons,
   FiscalDocumentKind,
+  FiscalDeliveryStatus,
   FiscalDocumentStatus,
   FiscalEvidenceKind,
+  FiscalHandMeans,
   FiscalRejectionReasons
 } from '@platform/core/domain'
 
@@ -102,17 +104,21 @@ export const conflictReasonOf = (value: unknown): string | null =>
   typeof value === 'string' && CONFLICTS.includes(value) ? value : null
 
 // The files of evidence a document has, by its state (the api makes them when the document is accepted or voided: what was built and the
-// authority's answer to the acceptance from then on, its answer to the invalidation once it is voided)
+// authority's answer to the acceptance from then on, its answer to the invalidation once it is voided). The two files of the receiver are
+// made while the document is accepted and never after, so a voided document has them only when `existing` says so (the api lists them);
+// without that list a voided document offers neither, so no button leads to a file that was never made.
 export const fiscalEvidenceKindsOf = (
-  document: Pick<FiscalDocumentView, 'status'>
+  document: Pick<FiscalDocumentView, 'status'>,
+  existing: readonly FiscalEvidenceKind[] = []
 ): readonly FiscalEvidenceKind[] => {
   if (document.status === FiscalDocumentStatus.VOIDED) {
     return [
       FiscalEvidenceKind.DOCUMENT,
       FiscalEvidenceKind.RESPONSE,
       FiscalEvidenceKind.VOID_RESPONSE,
-      FiscalEvidenceKind.DTE_FILE,
-      FiscalEvidenceKind.REPRESENTATION
+      ...[FiscalEvidenceKind.DTE_FILE, FiscalEvidenceKind.REPRESENTATION].filter(kind =>
+        existing.includes(kind)
+      )
     ]
   }
   return document.status === FiscalDocumentStatus.ACCEPTED
@@ -123,6 +129,22 @@ export const fiscalEvidenceKindsOf = (
         FiscalEvidenceKind.REPRESENTATION
       ]
     : []
+}
+
+// What the panel offers to record as handed over while the files are still owed (the system did not give them: no row yet, or a row that says it
+// could not): the files need both of them, the paper the representation alone. Nothing once the system or a person gave them.
+export const handOverMeansOf = (
+  delivery: FiscalDeliveryView,
+  accepted: boolean
+): readonly FiscalHandMeans[] => {
+  if (!accepted || delivery.state === FiscalDeliveryStatus.SENT) return []
+  const has = (kind: FiscalEvidenceKind): boolean => delivery.files.includes(kind)
+  return [
+    ...(has(FiscalEvidenceKind.REPRESENTATION) && has(FiscalEvidenceKind.DTE_FILE)
+      ? [FiscalHandMeans.DOWNLOAD]
+      : []),
+    ...(has(FiscalEvidenceKind.REPRESENTATION) ? [FiscalHandMeans.PAPER] : [])
+  ]
 }
 
 // Whether a refusal of `retry` is the one that asks for the person's confirmation of an issuer change

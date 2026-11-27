@@ -1,9 +1,13 @@
-import type { FiscalDocumentView } from '@platform/api-client'
+import type { FiscalDeliveryView, FiscalDocumentView } from '@platform/api-client'
 import {
   FiscalConflictReasons,
+  FiscalDeliveryPending,
+  FiscalDeliveryRoute,
+  FiscalDeliveryStatus,
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEvidenceKind,
+  FiscalHandMeans,
   FiscalRejectionReasons
 } from '@platform/core/domain'
 
@@ -14,6 +18,7 @@ import {
   FiscalAttention,
   fiscalAttentionOf,
   fiscalEvidenceKindsOf,
+  handOverMeansOf,
   isIssuerChangedInFlight,
   replacedIdsOf
 } from './document-rules'
@@ -108,7 +113,64 @@ describe('what a person may do with a fiscal document', () => {
     ).toBe(false)
   })
 
-  it('offers the files of evidence the api makes: four once accepted, five once voided, none before', () => {
+  it('offers a voided document the files of the receiver only when the api says it has them (they are made while it is accepted)', () => {
+    const voided = { status: FiscalDocumentStatus.VOIDED }
+    const base = [
+      FiscalEvidenceKind.DOCUMENT,
+      FiscalEvidenceKind.RESPONSE,
+      FiscalEvidenceKind.VOID_RESPONSE
+    ]
+    expect(fiscalEvidenceKindsOf(voided)).toEqual(base)
+    expect(fiscalEvidenceKindsOf(voided, [])).toEqual(base)
+    expect(fiscalEvidenceKindsOf(voided, [FiscalEvidenceKind.REPRESENTATION])).toEqual([
+      ...base,
+      FiscalEvidenceKind.REPRESENTATION
+    ])
+    expect(
+      fiscalEvidenceKindsOf(voided, [
+        FiscalEvidenceKind.REPRESENTATION,
+        FiscalEvidenceKind.DTE_FILE
+      ])
+    ).toEqual([...base, FiscalEvidenceKind.DTE_FILE, FiscalEvidenceKind.REPRESENTATION])
+  })
+
+  it('offers the hand delivery only while the files are owed and exist: the files need both, the paper the picture alone', () => {
+    const view = (over: Partial<FiscalDeliveryView>): FiscalDeliveryView => ({
+      documentId: 'd',
+      state: FiscalDeliveryStatus.NOT_SENT,
+      route: FiscalDeliveryRoute.NONE,
+      reason: 'no_channel',
+      means: null,
+      handedOverAt: null,
+      files: [FiscalEvidenceKind.REPRESENTATION, FiscalEvidenceKind.DTE_FILE],
+      ...over
+    })
+    const both = [FiscalHandMeans.DOWNLOAD, FiscalHandMeans.PAPER]
+    expect(handOverMeansOf(view({}), true)).toEqual(both)
+    expect(
+      handOverMeansOf(view({ state: FiscalDeliveryPending, route: null, reason: null }), true)
+    ).toEqual(both)
+    expect(handOverMeansOf(view({ files: [FiscalEvidenceKind.REPRESENTATION] }), true)).toEqual([
+      FiscalHandMeans.PAPER
+    ])
+    expect(handOverMeansOf(view({ files: [FiscalEvidenceKind.DTE_FILE] }), true)).toEqual([])
+    expect(
+      handOverMeansOf(
+        view({ state: FiscalDeliveryStatus.SENT, route: FiscalDeliveryRoute.EMAIL }),
+        true
+      )
+    ).toEqual([])
+    expect(
+      handOverMeansOf(
+        view({ state: FiscalDeliveryStatus.SENT, route: FiscalDeliveryRoute.MANUAL }),
+        true
+      )
+    ).toEqual([])
+    expect(handOverMeansOf(view({ files: [] }), true)).toEqual([])
+    expect(handOverMeansOf(view({}), false)).toEqual([])
+  })
+
+  it('offers the files of evidence the api makes: four once accepted, three once voided with none of the receiver, none before', () => {
     const kinds = (status: FiscalDocumentStatus) => fiscalEvidenceKindsOf({ status })
     expect(kinds(FiscalDocumentStatus.ACCEPTED)).toEqual([
       FiscalEvidenceKind.DOCUMENT,
@@ -119,9 +181,7 @@ describe('what a person may do with a fiscal document', () => {
     expect(kinds(FiscalDocumentStatus.VOIDED)).toEqual([
       FiscalEvidenceKind.DOCUMENT,
       FiscalEvidenceKind.RESPONSE,
-      FiscalEvidenceKind.VOID_RESPONSE,
-      FiscalEvidenceKind.DTE_FILE,
-      FiscalEvidenceKind.REPRESENTATION
+      FiscalEvidenceKind.VOID_RESPONSE
     ])
     for (const status of Object.values(FiscalDocumentStatus)) {
       if (status === FiscalDocumentStatus.ACCEPTED || status === FiscalDocumentStatus.VOIDED) {

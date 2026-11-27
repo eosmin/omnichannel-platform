@@ -239,6 +239,23 @@ export class FiscalReconciler {
       await this.enqueue(organizationId, documentId, 1)
       return 'queued'
     }
+    if (item.kind === FiscalSweepKind.DELIVERY_MISSING) {
+      // The event of the acceptance again: the delivery of its files is idempotent (one row for each document, the first writer wins)
+      if (item.storeId === undefined) return 'declined'
+      const { storeId } = item
+      await this.unit(organizationId, () =>
+        this.prisma.transaction(tx => {
+          this.events.publish(tx, Events.FISCAL_DOCUMENT_ACCEPTED, {
+            organizationId,
+            storeId,
+            documentId: item.id,
+            orderId: item.orderId
+          })
+          return Promise.resolve()
+        })
+      )
+      return 'queued'
+    }
     // A document left in the queue: the same job again (a job that still waits has the same id and is not added twice)
     await this.enqueue(organizationId, item.id, item.submission ?? 1, item.released === true)
     return 'queued'
@@ -293,6 +310,7 @@ function emptyCounts(): Record<FiscalSweepKind, number> {
     [FiscalSweepKind.SALE_WITHOUT_DOCUMENT]: 0,
     [FiscalSweepKind.STALLED_DOCUMENT]: 0,
     [FiscalSweepKind.CREDIT_NOTE_MISSING]: 0,
-    [FiscalSweepKind.ENTRY_MISMATCH]: 0
+    [FiscalSweepKind.ENTRY_MISMATCH]: 0,
+    [FiscalSweepKind.DELIVERY_MISSING]: 0
   }
 }

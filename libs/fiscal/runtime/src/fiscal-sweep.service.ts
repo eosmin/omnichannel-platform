@@ -8,6 +8,7 @@ import {
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEntryMismatchField,
+  FiscalEvidenceKind,
   FiscalIssueOn,
   FiscalLimits,
   FiscalSweepKind,
@@ -31,6 +32,8 @@ export interface FiscalFinding {
   // STALLED_DOCUMENT: the document was kept in a contingency and released, so its job is the one of a released document
   released?: boolean
   status?: FiscalDocumentStatus
+  // DELIVERY_MISSING: the store of the document, which the event that is published again names
+  storeId?: string
   // ENTRY_MISMATCH: what differs
   fields?: FiscalEntryMismatchField[]
 }
@@ -101,6 +104,8 @@ export class FiscalSweepService {
             return this.creditNotesMissing(organizationId, now, options.cursor, limit, reach)
           case FiscalSweepKind.ENTRY_MISMATCH:
             return this.entryMismatches(organizationId, now, options.cursor, limit, reach)
+          case FiscalSweepKind.DELIVERY_MISSING:
+            return this.deliveriesMissing(organizationId, now, options.cursor, limit, reach)
         }
       },
       { maxWait: FiscalLimits.CONTEXT_MAX_WAIT_MS, timeout: FiscalLimits.CONTEXT_TIMEOUT_MS }
@@ -221,6 +226,47 @@ export class FiscalSweepService {
       submission: row.submission,
       released: row.contingencyId !== null,
       status: row.status as FiscalDocumentStatus
+    }))
+  }
+
+  // An accepted document whose files were made (a provider that draws none has no such file and owes nothing) and that has no delivery row an
+  // hour after it was accepted: the event of its acceptance was lost (the api was down, the bridge dropped it). The worker publishes it again;
+  // the delivery is safe to repeat, so a document found twice is one delivery.
+  private async deliveriesMissing(
+    organizationId: string,
+    now: Date,
+    cursor: string | undefined,
+    limit: number,
+    reach: StoreReach
+  ): Promise<FiscalFindingsPage> {
+    const before = new Date(now.getTime() - FiscalSweepLimits.DELIVERY_GRACE_MINUTES * MINUTE_MS)
+    const since = new Date(now.getTime() - FiscalSweepLimits.LOOKBACK_DAYS * DAY_MS)
+    const rows = await this.prisma.client.fiscalDocument.findMany({
+      where: {
+        organizationId,
+        ...reach,
+        status: FiscalDocumentStatus.ACCEPTED,
+        updatedAt: { lt: before },
+        createdAt: { gte: since },
+        delivery: null,
+        evidence: {
+          some: {
+            fiscalEvidenceKind: {
+              in: [FiscalEvidenceKind.REPRESENTATION, FiscalEvidenceKind.DTE_FILE]
+            }
+          }
+        },
+        ...(cursor === undefined ? {} : { id: { gt: cursor } })
+      },
+      select: { id: true, orderId: true, storeId: true },
+      orderBy: { id: 'asc' },
+      take: limit + 1
+    })
+    return this.page(rows, limit, row => ({
+      kind: FiscalSweepKind.DELIVERY_MISSING,
+      id: row.id,
+      orderId: row.orderId,
+      storeId: row.storeId
     }))
   }
 

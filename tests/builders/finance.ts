@@ -338,6 +338,8 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     // The frozen books and the layouts of the legal books name the organization and the period: they go before the periods
     await tx.financeBookSnapshot.deleteMany({ where })
     await tx.financeBookLayout.deleteMany({ where })
+    // The delivery of a document's files names the document: it goes first
+    await tx.fiscalDelivery.deleteMany({ where })
     await tx.fiscalDocument.deleteMany({ where })
     // A contingency is named by its documents: it goes after them
     await tx.fiscalContingency.deleteMany({ where })

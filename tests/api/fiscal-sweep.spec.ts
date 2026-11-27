@@ -11,14 +11,18 @@ import {
   FinanceCountryCodes,
   FinanceEventKind,
   FinanceSourceType,
+  FiscalDeliveryRoute,
+  FiscalDeliveryStatus,
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEntryMismatchField,
   FiscalEnvironment,
+  FiscalEvidenceKind,
   FiscalIssueOn,
   FiscalSweepKind,
   FiscalSweepLimits,
   InventoryMovementType,
+  MediaStatus,
   OrderReturnStatus,
   OrderStatus
 } from '@platform/core/domain'
@@ -26,6 +30,7 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { Events, type FiscalEntryMismatchPayload } from '@platform/core/events'
 import { FinancePostingService } from '@platform/core/finance-ledger'
 import { submitFiscalDocumentJobId } from '@platform/core/queues'
+import { MediaPurpose } from '@platform/core/storage'
 import {
   type FiscalFindingsPage,
   FiscalContingencyService,
@@ -430,6 +435,74 @@ describe('The check of the fiscal documents', () => {
       const item = page.data.find(entry => entry.id === sale.documentId)
       expect(item?.status).toBe(FiscalDocumentStatus.SUBMITTED)
       expect(item?.submission).toBe(1)
+    })
+  })
+
+  describe('an accepted document whose files were never delivered', () => {
+    // The files of the receiver as rows of evidence (the simulator draws none): what a provider that draws them leaves when it accepts
+    async function withFiles(documentId: string): Promise<void> {
+      for (const kind of [FiscalEvidenceKind.REPRESENTATION, FiscalEvidenceKind.DTE_FILE]) {
+        const id = randomUUID()
+        await owner.media.create({
+          data: {
+            id,
+            storeId: ctx.storeA.id,
+            purpose: MediaPurpose.FISCAL_EVIDENCE,
+            fiscalDocumentId: documentId,
+            fiscalEvidenceKind: kind,
+            key: `stores/${ctx.storeA.id}/fiscal-evidence/${documentId}/${id}/${kind}`,
+            filename: `${kind}.bin`,
+            contentType: 'application/octet-stream',
+            fileSize: 10,
+            status: MediaStatus.CLEAN
+          }
+        })
+      }
+    }
+
+    it('is found an hour after it was accepted when it has files and no delivery row, and its event is published again', async () => {
+      const sale = await documentedSale()
+      await documents.submit(ctx.orgA.id, sale.documentId)
+      await ageDocument(sale.documentId, 2)
+      // No files of the receiver: a provider that draws none owes none, so nothing is found
+      expect(await idsOf(FiscalSweepKind.DELIVERY_MISSING)).not.toContain(sale.documentId)
+      await withFiles(sale.documentId)
+      expect(await idsOf(FiscalSweepKind.DELIVERY_MISSING)).toContain(sale.documentId)
+
+      const heard: string[] = []
+      const listener = (payload: { documentId: string }): void => {
+        heard.push(payload.documentId)
+      }
+      emitter.on(Events.FISCAL_DOCUMENT_ACCEPTED, listener)
+      try {
+        const run = reconciler()
+        const report = await run.reconciler.reconcile(ctx.orgA.id)
+        expect(report.found[FiscalSweepKind.DELIVERY_MISSING]).toBeGreaterThanOrEqual(1)
+        expect(heard).toContain(sale.documentId)
+      } finally {
+        emitter.off(Events.FISCAL_DOCUMENT_ACCEPTED, listener)
+      }
+    })
+
+    it('is not found while it is young, or once a delivery row exists', async () => {
+      const sale = await documentedSale()
+      await documents.submit(ctx.orgA.id, sale.documentId)
+      await withFiles(sale.documentId)
+      // Just accepted: its delivery is running
+      expect(await idsOf(FiscalSweepKind.DELIVERY_MISSING)).not.toContain(sale.documentId)
+      await ageDocument(sale.documentId, 2)
+      expect(await idsOf(FiscalSweepKind.DELIVERY_MISSING)).toContain(sale.documentId)
+      await owner.fiscalDelivery.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          storeId: sale.storeId,
+          documentId: sale.documentId,
+          orderId: sale.id,
+          status: FiscalDeliveryStatus.SENT,
+          route: FiscalDeliveryRoute.EMAIL
+        }
+      })
+      expect(await idsOf(FiscalSweepKind.DELIVERY_MISSING)).not.toContain(sale.documentId)
     })
   })
 
