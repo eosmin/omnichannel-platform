@@ -13,8 +13,11 @@ import {
   FiscalSweepKind,
   FiscalSweepLimits,
   OrderReturnStatus,
-  OrderStatus
+  OrderStatus,
+  ShipmentKind
 } from '@platform/core/domain'
+
+import { SHIPMENT_STATES_THAT_BACK_GOODS } from './fiscal-rules'
 
 const MINUTE_MS = 60_000
 const DAY_MS = 86_400_000
@@ -101,6 +104,8 @@ export class FiscalSweepService {
             return this.creditNotesMissing(organizationId, now, options.cursor, limit, reach)
           case FiscalSweepKind.ENTRY_MISMATCH:
             return this.entryMismatches(organizationId, now, options.cursor, limit, reach)
+          case FiscalSweepKind.REMISSION_NOTE_MISSING:
+            return this.remissionNotesMissing(organizationId, now, options.cursor, limit, reach)
         }
       },
       { maxWait: FiscalLimits.CONTEXT_MAX_WAIT_MS, timeout: FiscalLimits.CONTEXT_TIMEOUT_MS }
@@ -260,6 +265,62 @@ export class FiscalSweepService {
     })
     return this.page(rows, limit, row => ({
       kind: FiscalSweepKind.CREDIT_NOTE_MISSING,
+      id: row.id,
+      orderId: row.orderId
+    }))
+  }
+
+  // The guides whose goods are on their way and that have no remission note at all (D3b-3). The event that makes the note is not repeated, so a
+  // listener that failed, or a guide made while the issuer made the sale document at the dispatch and was changed to delivery, leaves the goods
+  // with none. A voided note is a person's decision and is not a finding; an order whose sale document exists is backed by it. Like the sale
+  // sweep it never reaches before the first document of the organization in this environment (a guide of the time before the issuer went
+  // live is history nobody asked to document), and it looks at no organization whose issuer makes the sale document at the dispatch.
+  private async remissionNotesMissing(
+    organizationId: string,
+    now: Date,
+    cursor: string | undefined,
+    limit: number,
+    reach: StoreReach
+  ): Promise<FiscalFindingsPage> {
+    const issuer = await this.prisma.client.fiscalIssuer.findUnique({
+      where: { organizationId },
+      select: { issueOn: true, environment: true }
+    })
+    if (issuer === null || issuer.issueOn !== (FiscalIssueOn.DELIVERED as string)) return empty()
+    const first = await this.prisma.client.fiscalDocument.findFirst({
+      where: { organizationId, environment: issuer.environment },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true }
+    })
+    if (first === null) return empty()
+    const lookback = new Date(now.getTime() - FiscalSweepLimits.LOOKBACK_DAYS * DAY_MS)
+    const since = first.createdAt.getTime() > lookback.getTime() ? first.createdAt : lookback
+    const rows = await this.prisma.client.shipment.findMany({
+      where: {
+        store: { organizationId },
+        ...reach,
+        kind: ShipmentKind.OUTBOUND,
+        status: { in: [...SHIPMENT_STATES_THAT_BACK_GOODS] },
+        createdAt: { gte: since },
+        // Any note of the guide, voided or not
+        fiscalDocuments: { none: { organizationId, kind: FiscalDocumentKind.REMISSION_NOTE } },
+        order: {
+          status: { notIn: [OrderStatus.CANCELLED as string] },
+          // An order with no tax snapshot makes no document (HC-006): not a finding the sweep could ever close
+          taxCents: { not: null },
+          pricesIncludeTax: { not: null },
+          items: { none: { taxCents: null } },
+          // The sale document backs the goods once it exists
+          fiscalDocuments: { none: { organizationId, kind: FiscalDocumentKind.SALE } }
+        },
+        ...(cursor === undefined ? {} : { id: { gt: cursor } })
+      },
+      select: { id: true, orderId: true },
+      orderBy: { id: 'asc' },
+      take: limit + 1
+    })
+    return this.page(rows, limit, row => ({
+      kind: FiscalSweepKind.REMISSION_NOTE_MISSING,
       id: row.id,
       orderId: row.orderId
     }))

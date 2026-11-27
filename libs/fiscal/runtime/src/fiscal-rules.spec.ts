@@ -960,7 +960,7 @@ describe('what a person may do with a document', () => {
     ).toBe(false)
   })
 
-  it('lets the receiver of a remission note be completed (the goods need who they go to), voids it, and does not replace it', () => {
+  it('lets the receiver of a remission note be completed (the goods need who they go to), voids it, and makes a voided one again for its guide', () => {
     const note = { ...base, kind: FiscalDocumentKind.REMISSION_NOTE }
     // A refused one, and a queued one that was never sent, take the receiver; a sent one does not
     expect(
@@ -973,8 +973,8 @@ describe('what a person may do with a document', () => {
       allowedActionsOf({ ...note, status: FiscalDocumentStatus.QUEUED, attempts: 3 }).editReceiver
     ).toBe(false)
     expect(allowedActionsOf(note).void).toBe(true)
-    // Made again by a person later (not a replacement of the sale kind: the api refuses it)
-    expect(allowedActionsOf({ ...note, status: FiscalDocumentStatus.VOIDED }).replace).toBe(false)
+    // Made again by a person for the same guide, as a credit note is (the api refuses it with a reason when the goods do not travel)
+    expect(allowedActionsOf({ ...note, status: FiscalDocumentStatus.VOIDED }).replace).toBe(true)
   })
 
   it('lets a voided sale document be replaced once, and a voided credit note be replaced', () => {

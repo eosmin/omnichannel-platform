@@ -378,7 +378,15 @@ export const SvDefaultRemissionActivity = '10005'
 // How long after the generation of a tax credit document a credit or debit note may name it (Normativa DTE v2.0, Anexo IV, field 17 rule
 // 2 c): three calendar months, the last day included, counted on the dates the documents carry (`fecEmi`). **[ACCOUNTANT]** The manual
 // adds "except the legal exceptions", which are not known: no exception is applied, a note out of time is refused before it is sent.
-export const SvRelatedDocument = { DEADLINE_MONTHS: 3 } as const
+export const SvRelatedDocument = {
+  DEADLINE_MONTHS: 3,
+  // Anexo IV, field 17 rule 2 a: an invoice, a tax credit document or an export invoice that names a remission note is generated in the tax
+  // period (the calendar month) of the note, or within this many days after the period
+  REMISSION_GRACE_DAYS: 3,
+  // The related documents the schema of an invoice and of a tax credit document take (`documentoRelacionado`, `maxItems`); the schemas of
+  // the notes take 50, these two take 5
+  MAX_ON_SALE: 5
+} as const
 
 // The names of the keys of the address a customer or the issuer keeps in this provider (the address of core is a record of text keyed by
 // the provider's own names): the codes of the catalogs of the authority and a free line.

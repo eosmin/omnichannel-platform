@@ -16,6 +16,7 @@ import {
   maskReceiverTaxId,
   PaymentMethod,
   PaymentStatus,
+  ShipmentStatus,
   TaxTreatment
 } from '@platform/core/domain'
 import { lineBases, reversalLinesOf } from '@platform/core/finance'
@@ -120,8 +121,9 @@ export function allowedActionsOf(document: {
   replacedByDocumentId: string | null
 }): FiscalDocumentActions {
   const sale = document.kind === FiscalDocumentKind.SALE
-  // A remission note takes the receiver like a sale document (the goods need to say who they go to, and a person completes it), but it is
-  // not replaced: the one of a voided note is made again from the guide, never as a replacement
+  // A remission note takes the receiver like a sale document (the goods need to say who they go to, and a person completes it). The one of a
+  // voided note is made again for the same guide, as a credit note is (a new document, no link of replacement): the service refuses it with a
+  // reason when the goods no longer travel or the guide has a live note
   const remission = document.kind === FiscalDocumentKind.REMISSION_NOTE
   const refused = document.status === FiscalDocumentStatus.REJECTED
   return {
@@ -130,7 +132,6 @@ export function allowedActionsOf(document: {
     void: document.status === FiscalDocumentStatus.ACCEPTED,
     replace:
       document.status === FiscalDocumentStatus.VOIDED &&
-      !remission &&
       (sale ? document.replacedByDocumentId === null : true),
     confirmIssuerChange:
       refused &&
@@ -758,3 +759,17 @@ export const reportDeadlineIsClosing = (
   const total = withinHours * REPORT_HOUR_MS
   return reportDeadlineOf(endedAt, withinHours).getTime() - now.getTime() <= total * ratio
 }
+
+// The states of a guide whose goods are on their way or were: from the label to the delivery and the way back. Not a guide being made, one
+// that failed, one in the middle of a cancellation or cancelled, nor one whose outcome is unknown: they back nothing, and a note made for
+// them (a retry, a backfill) would back goods that do not travel.
+export const SHIPMENT_STATES_THAT_BACK_GOODS: readonly string[] = [
+  ShipmentStatus.LABEL_CREATED,
+  ShipmentStatus.PICKED_UP,
+  ShipmentStatus.IN_TRANSIT,
+  ShipmentStatus.OUT_FOR_DELIVERY,
+  ShipmentStatus.FAILED_ATTEMPT,
+  ShipmentStatus.DELIVERED,
+  ShipmentStatus.RETURNING,
+  ShipmentStatus.RETURNED
+]
