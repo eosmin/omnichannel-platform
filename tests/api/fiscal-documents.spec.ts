@@ -1579,6 +1579,12 @@ describe('The fiscal documents (Step 4B.7)', () => {
           await raw.query('BEGIN')
           try {
             await raw.query(`SET LOCAL ROLE ${role}`)
+            // The context of the organization and the store, as the api and the worker open it: with row security enforced (the CI shard), a
+            // statement with no context sees no row and the guard would never run
+            await raw.query(
+              "SELECT set_config('app.store_ids', $1, true), set_config('app.organization_ids', $2, true)",
+              [ctx.storeA.id, ctx.orgA.id]
+            )
             const result = await raw.query(sql, values)
             return { rows: result.rowCount ?? 0 }
           } catch (error) {
