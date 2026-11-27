@@ -12,6 +12,7 @@ import {
   moneyOfLines,
   newIdempotencyKey,
   pendingOf,
+  documentProblem,
   type ReceiveDraft,
   type ReceiveField,
   ReceiveFields,
@@ -31,6 +32,7 @@ import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 
 import { TextField } from './fields'
+import { PurchaseDocumentFields } from './purchase-document-fields'
 
 // Receiving the goods of a purchase order (TDD_18 §4.2 E10): how many units of each line arrive now, on which day, with which supplier
 // document. It makes the receipt (the bill), puts the units in the warehouse and posts the entry in one step, so the cost and the tax are the
@@ -233,6 +235,14 @@ function ReceiveForm({
           <span className="text-muted-foreground block text-xs">{t('fields.creditTaxHint')}</span>
         </span>
       </label>
+      <PurchaseDocumentFields
+        draft={draft.document}
+        problem={
+          wrong?.field === ReceiveFields.FISCAL_DOCUMENT ? documentProblem(draft.document) : null
+        }
+        disabled={receive.isPending}
+        onChange={patch => set({ document: { ...draft.document, ...patch } })}
+      />
       <dl className="grid grid-cols-3 gap-3 text-sm" data-testid="receive-totals">
         <div className="flex flex-col">
           <dt className="text-muted-foreground text-xs">{t('subtotal')}</dt>

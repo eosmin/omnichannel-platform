@@ -7708,12 +7708,62 @@
         "unknownWarehouse": "Unknown warehouse",
         "percent": "{percent} %"
       },
+      "document": {
+        "legend": "Supplier document for the VAT return",
+        "intro": "The data the purchases annex of the monthly return needs. You can leave it blank and complete it later from the bill.",
+        "completeTitle": "Document of the purchase",
+        "completeDescription": "Write the data of the supplier document of this bill, or mark it as left out of the annex. The amounts and the entry do not change.",
+        "complete": "Complete document",
+        "save": "Save",
+        "cancel": "Cancel",
+        "done": "Document saved.",
+        "state": {
+          "complete": "Document complete for the annex",
+          "missing": "Document data missing for the annex",
+          "leftOut": "Left out of the annex"
+        },
+        "fields": {
+          "documentClass": "Class of document",
+          "documentType": "Type of document",
+          "generationCode": "Generation code",
+          "generationCodeHint": "Only for an electronic document: the code of generation, with or without dashes as it is printed.",
+          "origin": "Origin of the purchase",
+          "expenseClass": "Cost or expense",
+          "sector": "Sector",
+          "costType": "Type of cost or expense"
+        },
+        "origins": {
+          "internal": "Bought in the country",
+          "internation": "Internation",
+          "import_goods": "Import of goods",
+          "import_services": "Import of services"
+        },
+        "leaveOut": {
+          "label": "Leave out of the annex",
+          "hint": "Only for a bill that credits no tax: it has no document to declare.",
+          "none": "No, declare it",
+          "reasons": {
+            "excluded_subject": "Bought from a person with no document (excluded subject)",
+            "not_deductible": "Not deductible"
+          }
+        },
+        "problems": {
+          "empty": "Write the data of the document, or choose to leave it out.",
+          "documentClass": "Write the class of document as a number.",
+          "documentType": "Write the type of document as a number.",
+          "generationCode": "The generation code has letters, digits and dashes only.",
+          "expenseClass": "Write the class of cost or expense as a number.",
+          "sector": "Write the sector as a number.",
+          "costType": "Write the type of cost or expense as a number."
+        }
+      },
       "receive": {
         "title": "Receive {number}",
         "description": "Say how many units of each line arrive now. The cost and the tax are the ones of the order. This makes the bill, puts the units in the warehouse and posts the entry.",
         "formLabel": "Receive goods",
         "progress": "{received} of {ordered} received",
         "problems": {
+          "fiscalDocument": "Check the data of the supplier document.",
           "receivedOn": "Write a real day as year-month-day.",
           "supplierDocumentNumber": "The document number is too long.",
           "quantity": "Write a whole number from 0 to {max}.",
@@ -7779,6 +7829,8 @@
         "product_not_tracked": "A line names a product whose stock is not tracked: a purchase receives units.",
         "line_store_not_visible": "A line belongs to a store you do not belong to.",
         "document_number_in_use": "That supplier document number is already used on another order.",
+        "generation_code_in_use": "That electronic document is already on another receipt.",
+        "annex_exclusion_with_document": "A bill that credits tax has a document to declare: it cannot be left out of the annex.",
         "payment_exceeds_balance": "The payment is above what is owed to this supplier.",
         "payment_exceeds_receipt": "The payment is above what is open on that bill.",
         "payment_already_voided": "This payment was already voided.",
@@ -7790,6 +7842,15 @@
         "entry_owned_by_purchase": "This entry belongs to a purchase: change it from the purchase."
       },
       "rules": {
+        "class_invalid": "The class of document is not valid.",
+        "type_invalid": "The type of document is not valid.",
+        "class_type_mismatch": "That class of document does not go with that type.",
+        "generation_code_required": "An electronic document needs its generation code.",
+        "generation_code_invalid": "The generation code is not valid.",
+        "generation_code_not_electronic": "Only an electronic document has a generation code.",
+        "number_required": "The supplier document number is needed to declare it.",
+        "origin_invalid_for_type": "That origin does not go with that type of document.",
+        "classification_invalid": "The cost or expense, the sector and the type do not go together.",
         "quantity": "The units of a line are not valid.",
         "unit_cost": "The cost of a line is not valid.",
         "line_total_too_big": "A line is above the largest amount a line may hold.",

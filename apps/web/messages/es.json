@@ -7708,12 +7708,62 @@
         "unknownWarehouse": "Bodega desconocida",
         "percent": "{percent} %"
       },
+      "document": {
+        "legend": "Documento del proveedor para la declaración de IVA",
+        "intro": "Los datos que pide el anexo de compras de la declaración mensual. Puede dejarlos en blanco y completarlos después desde la factura.",
+        "completeTitle": "Documento de la compra",
+        "completeDescription": "Escriba los datos del documento del proveedor de esta factura, o márquela como fuera del anexo. Los montos y el asiento no cambian.",
+        "complete": "Completar documento",
+        "save": "Guardar",
+        "cancel": "Cancelar",
+        "done": "Documento guardado.",
+        "state": {
+          "complete": "Documento completo para el anexo",
+          "missing": "Faltan datos del documento para el anexo",
+          "leftOut": "Fuera del anexo"
+        },
+        "fields": {
+          "documentClass": "Clase de documento",
+          "documentType": "Tipo de documento",
+          "generationCode": "Código de generación",
+          "generationCodeHint": "Solo en un documento electrónico: el código de generación, con o sin guiones como viene impreso.",
+          "origin": "Origen de la compra",
+          "expenseClass": "Costo o gasto",
+          "sector": "Sector",
+          "costType": "Tipo de costo o gasto"
+        },
+        "origins": {
+          "internal": "Compra en el país",
+          "internation": "Internación",
+          "import_goods": "Importación de bienes",
+          "import_services": "Importación de servicios"
+        },
+        "leaveOut": {
+          "label": "Dejar fuera del anexo",
+          "hint": "Solo para una factura que no acredita impuesto: no tiene documento que declarar.",
+          "none": "No, declararla",
+          "reasons": {
+            "excluded_subject": "Compra a una persona sin documento (sujeto excluido)",
+            "not_deductible": "No deducible"
+          }
+        },
+        "problems": {
+          "empty": "Escriba los datos del documento, o elija dejarlo fuera.",
+          "documentClass": "Escriba la clase de documento como número.",
+          "documentType": "Escriba el tipo de documento como número.",
+          "generationCode": "El código de generación solo lleva letras, dígitos y guiones.",
+          "expenseClass": "Escriba la clase de costo o gasto como número.",
+          "sector": "Escriba el sector como número.",
+          "costType": "Escriba el tipo de costo o gasto como número."
+        }
+      },
       "receive": {
         "title": "Recibir {number}",
         "description": "Di cuántas unidades de cada línea llegan ahora. El costo y el impuesto son los de la orden. Esto crea la factura, mete las unidades a la bodega y registra el asiento.",
         "formLabel": "Recibir mercadería",
         "progress": "{received} de {ordered} recibidas",
         "problems": {
+          "fiscalDocument": "Revise los datos del documento del proveedor.",
           "receivedOn": "Escribe un día real como año-mes-día.",
           "supplierDocumentNumber": "El número de documento es demasiado largo.",
           "quantity": "Escribe un número entero de 0 a {max}.",
@@ -7779,6 +7829,8 @@
         "product_not_tracked": "Una línea nombra un producto cuyo inventario no se lleva: una compra recibe unidades.",
         "line_store_not_visible": "Una línea es de una tienda a la que no perteneces.",
         "document_number_in_use": "Ese número de documento del proveedor ya se usó en otra orden.",
+        "generation_code_in_use": "Ese documento electrónico ya está en otro recibo.",
+        "annex_exclusion_with_document": "Una factura que acredita impuesto tiene un documento que declarar: no puede quedar fuera del anexo.",
         "payment_exceeds_balance": "El pago es mayor que lo que se le debe a este proveedor.",
         "payment_exceeds_receipt": "El pago es mayor que lo que está por pagar de esa factura.",
         "payment_already_voided": "Este pago ya estaba anulado.",
@@ -7790,6 +7842,15 @@
         "entry_owned_by_purchase": "Este asiento es de una compra: cámbialo desde la compra."
       },
       "rules": {
+        "class_invalid": "La clase de documento no es válida.",
+        "type_invalid": "El tipo de documento no es válido.",
+        "class_type_mismatch": "Esa clase de documento no va con ese tipo.",
+        "generation_code_required": "Un documento electrónico necesita su código de generación.",
+        "generation_code_invalid": "El código de generación no es válido.",
+        "generation_code_not_electronic": "Solo un documento electrónico tiene código de generación.",
+        "number_required": "Hace falta el número del documento del proveedor para declararlo.",
+        "origin_invalid_for_type": "Ese origen no va con ese tipo de documento.",
+        "classification_invalid": "El costo o gasto, el sector y el tipo no van juntos.",
         "quantity": "Las unidades de una línea no son válidas.",
         "unit_cost": "El costo de una línea no es válido.",
         "line_total_too_big": "Una línea pasa del monto mayor que puede tener.",

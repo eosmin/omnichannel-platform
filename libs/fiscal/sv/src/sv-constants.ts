@@ -77,6 +77,21 @@ export const SvAnswerStates = {
 } as const
 export const SvSignerRoute = '/firmardocumento/'
 
+// The question of the probe of the authority (D2d): the consultation of a document by a generation code that cannot exist (the shape of a version 4
+// code, all zeros), for the issuer itself. It is read-only and carries no document, so it makes no number, no seal and no trace in the books of the
+// authority; any answer in the form of the authority (even "there is no such document") says the reception side is up.
+export const SvProbe = {
+  GENERATION_CODE: '00000000-0000-4000-8000-000000000000',
+  // The states the reception side gives in its own answers (not those of the login or of the signing service, `OK` and `ERROR`): an answer of
+  // the probe is believed only with one of these and a code of three digits (`SvCodePatterns.RESPONSE_CODE`)
+  ANSWER_STATES: [
+    SvAnswerStates.PROCESSED,
+    SvAnswerStates.RECEIVED,
+    SvAnswerStates.INVALIDATED,
+    SvAnswerStates.REFUSED
+  ] as readonly string[]
+} as const
+
 // The environments this provider lets an issuer choose. **Only the sandbox until the owner authorizes production (Step 4B.7c-8)**: the
 // invalidation exists since Step 4B.7c-4, but the real environment also needs its own configuration, apart from the sandbox's.
 export const SvEnabledEnvironments: readonly FiscalEnvironment[] = [FiscalEnvironment.SANDBOX]
@@ -449,7 +464,9 @@ export const SvCodePatterns = {
   REGISTRATION: /^\d{2,8}$/,
   // The generation code of a document or an event: a UUID in capitals
   GENERATION_CODE: /^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$/,
-  CONTROL_NUMBER: /^DTE-\d{2}-[MBSP]\d{3}P\d{3}-\d{15}$/
+  CONTROL_NUMBER: /^DTE-\d{2}-[MBSP]\d{3}P\d{3}-\d{15}$/,
+  // The code of a response of the authority (`codigoMsg`): three digits
+  RESPONSE_CODE: /^\d{3}$/
 } as const
 
 // Why this provider refuses to build a document, in codes of its own (the error carries no customer data)
@@ -569,3 +586,48 @@ export const SvAnnexErrors = {
   // A figure of a document is not a whole number of cents, or a field the file needs is missing or unreadable
   UNREADABLE: 'annex_document_unreadable'
 } as const
+
+// The supplier's document in the annex of purchases of the return (manual of annexes F-07 v14, annex 3): the class and the type of the
+// document, the classification of the cost or expense for the income tax (columns Q to T, from 2024-02) and the combinations the loader accepts
+export const SvPurchaseClass = {
+  PRINTED: '1',
+  SINGLE_FORM: '2',
+  OTHER: '3',
+  DTE: '4'
+} as const
+
+export const SvPurchaseType = {
+  TAX_CREDIT: '03',
+  CREDIT_NOTE: '05',
+  DEBIT_NOTE: '06',
+  EXPORT_INVOICE: '11',
+  CUSTOMS_DECLARATION: '12',
+  PAYMENT_ORDER: '13'
+} as const
+
+// The classes 1, 2 and 4 hold the documents of a supplier; the class 3 only the two documents of the customs and of the treasury
+export const SV_PURCHASE_SUPPLIER_TYPES: readonly string[] = [
+  SvPurchaseType.TAX_CREDIT,
+  SvPurchaseType.CREDIT_NOTE,
+  SvPurchaseType.DEBIT_NOTE,
+  SvPurchaseType.EXPORT_INVOICE
+]
+export const SV_PURCHASE_OTHER_TYPES: readonly string[] = [
+  SvPurchaseType.CUSTOMS_DECLARATION,
+  SvPurchaseType.PAYMENT_ORDER
+]
+
+export const SvPurchaseClassification = {
+  COST: '1',
+  EXPENSE: '2',
+  SECTOR_INDUSTRY: '1',
+  SECTORS: ['1', '2', '3', '4'],
+  // Column T by class and sector (the table of the manual, p.21)
+  COST_TYPES_INDUSTRY: ['4', '5', '6', '7'],
+  COST_TYPES_OTHER_SECTORS: ['4', '5'],
+  EXPENSE_TYPES: ['1', '2', '3']
+} as const
+
+// The code of generation of a DTE: a UUID, written with dashes by the person and without them in the file
+export const SV_GENERATION_CODE =
+  /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/u

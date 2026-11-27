@@ -13,6 +13,7 @@ import type {
   FiscalProviderManifest,
   FiscalRepresentation,
   FiscalReceiver,
+  FiscalPurchaseDocumentInput,
   FiscalReceiverProblem,
   FiscalTypeInput,
   FiscalVoidDetails,
@@ -45,6 +46,7 @@ import {
 import type { SvFetch } from './sv-http'
 import { voidDeadlineOf } from './sv-invalidation'
 import { issuerProblems, receiverProblems } from './sv-parties'
+import { purchaseDocumentProblems } from './sv-purchase-document'
 import { representDocument } from './sv-representation'
 import type { SvSigner } from './sv-signer'
 import { isPlausiblePartyTaxId } from './sv-tax-id'
@@ -219,6 +221,10 @@ export class SvProvider implements FiscalDocumentProvider {
 
   validatePartyTaxId(taxId: string): boolean {
     return isPlausiblePartyTaxId(taxId)
+  }
+
+  validatePurchaseDocument(input: FiscalPurchaseDocumentInput): readonly string[] {
+    return purchaseDocumentProblems(input)
   }
 
   resolveDocumentType(input: FiscalTypeInput): string {
