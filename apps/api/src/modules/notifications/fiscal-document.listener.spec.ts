@@ -166,6 +166,24 @@ describe('the notice of a fiscal document that needs a person', () => {
     )
   })
 
+  it('tells the last day to void the remission note of a cancelled guide, with a type of its own', async () => {
+    const { listener, sent } = build([{ userId: 'u1', storeId: 's1' }])
+    await listener.onFiscalRemissionVoidDeadline({
+      organizationId: ORG,
+      storeId: 's1',
+      documentId: DOCUMENT,
+      orderId: 'order-1',
+      shipmentId: 'ship-1',
+      deadline: '2026-12-01T17:30:12.000Z'
+    })
+    expect(sent[0]?.input).toMatchObject({
+      type: NotificationTypes.FISCAL_REMISSION_VOID_DEADLINE,
+      resourceType: FiscalResourceTypes.DOCUMENT,
+      resourceId: DOCUMENT,
+      params: { date: '2026-12-01 17:30 UTC' }
+    })
+  })
+
   it('says a document that disagrees with its entry with its own type, and names no amount', async () => {
     const { listener, sent } = build([{ userId: 'u1', storeId: 's1' }])
     await listener.onFiscalEntryMismatch({ organizationId: ORG, documentId: DOCUMENT, count: 3 })

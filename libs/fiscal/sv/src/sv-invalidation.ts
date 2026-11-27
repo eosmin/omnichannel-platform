@@ -29,7 +29,7 @@ import {
 } from './sv-constants'
 import { recordOf, textOf } from './sv-http'
 import { digitsOf, identityOf } from './sv-parties'
-import { salvadorMoment } from './sv-time'
+import { SALVADOR_OFFSET_HOURS, salvadorMoment } from './sv-time'
 
 // The invalidation event of an accepted document (Manual Técnico §4.4, Funcional §VII). Pure: the document, the issuer and the people become
 // the event the signer signs, or a code that says what is missing. Nothing here calls the authority.
@@ -118,6 +118,22 @@ export function invalidationDeadline(
     case SvInvalidationDeadlineUnits.BUSINESS_DAY_OF_NEXT_MONTH:
       return businessDayOfNextMonth(sealDate, rule.amount, holidays)
   }
+}
+
+// The last instant the authority accepts the invalidation of an accepted document: the end of the last day of its window, in the time of El
+// Salvador, as an instant. Null when the day of the seal was not kept or a window counted in business days has no holidays to count with
+// (the same cases in which `buildInvalidation` enforces nothing).
+export function voidDeadlineOf(
+  doc: StoredFiscalDocument,
+  holidays: readonly string[] = SvHolidays,
+  rules: Readonly<Record<SvDocumentType, SvInvalidationDeadlineRule>> = SvInvalidationDeadlineRules
+): string | null {
+  const original = invalidatedOf(doc)
+  if (original === null || original.sealDate === null) return null
+  if (needsHolidays(rules[original.type]) && holidays.length === 0) return null
+  const lastDay = invalidationDeadline(original.type, original.sealDate, holidays, rules)
+  const offset = `-${String(SALVADOR_OFFSET_HOURS).padStart(2, '0')}:00`
+  return new Date(`${lastDay}T23:59:59.000${offset}`).toISOString()
 }
 
 // The generation code of an event: the same for the same request (its key), so that an invalidation sent again is the same event and the

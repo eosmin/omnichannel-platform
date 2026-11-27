@@ -43,6 +43,7 @@ import {
   SvUserAgent
 } from './sv-constants'
 import type { SvFetch } from './sv-http'
+import { voidDeadlineOf } from './sv-invalidation'
 import { issuerProblems, receiverProblems } from './sv-parties'
 import { representDocument } from './sv-representation'
 import type { SvSigner } from './sv-signer'
@@ -266,6 +267,10 @@ export class SvProvider implements FiscalDocumentProvider {
 
   represent(doc: StoredFiscalDocument): FiscalRepresentation | null {
     return representDocument(doc)
+  }
+
+  voidDeadline(doc: StoredFiscalDocument): string | null {
+    return voidDeadlineOf(doc)
   }
 
   consultVoid(doc: StoredFiscalDocument, ctx: ProviderContext): Promise<VoidConsultResult> {

@@ -65,6 +65,7 @@ import {
   type FiscalContingencyAlertPayload,
   type FiscalDocumentRejectedPayload,
   type FiscalDocumentStuckPayload,
+  type FiscalRemissionVoidDeadlinePayload,
   type FiscalRetransmitDeadlinePayload,
   type FiscalDeliveryNotSentPayload,
   type FiscalEntryMismatchPayload,
@@ -661,6 +662,20 @@ export class NotificationsEventsListener {
     )
   }
 
+  // A guide was cancelled and the remission note of its goods is accepted: the note stays alive until a person voids it, and the authority
+  // gives a few days to do it. The text says the last instant (UTC, to the minute) and names no receiver.
+  @OnEvent(Events.FISCAL_REMISSION_VOID_DEADLINE)
+  @InEventOrganization()
+  async onFiscalRemissionVoidDeadline(payload: FiscalRemissionVoidDeadlinePayload): Promise<void> {
+    await this.tellFiscalManagers(
+      payload.organizationId,
+      payload.documentId,
+      NotificationTypes.FISCAL_REMISSION_VOID_DEADLINE,
+      FiscalResourceTypes.DOCUMENT,
+      { date: `${payload.deadline.slice(0, 16).replace('T', ' ')} UTC` }
+    )
+  }
+
   @OnEvent(Events.FISCAL_DOCUMENT_STUCK)
   @InEventOrganization()
   async onFiscalDocumentStuck(payload: FiscalDocumentStuckPayload): Promise<void> {
@@ -725,7 +740,8 @@ export class NotificationsEventsListener {
     organizationId: string,
     documentId: string,
     type: NotificationType,
-    resourceType: string = FiscalResourceTypes.DOCUMENT
+    resourceType: string = FiscalResourceTypes.DOCUMENT,
+    params: Record<string, string> = {}
   ): Promise<void> {
     try {
       // A document is reached by the store of its sale (HC-128): only who manages the fiscal documents in THAT store is told of it, so the
@@ -761,7 +777,7 @@ export class NotificationsEventsListener {
           await this.notifications.sendToUsersOnce([userId], {
             storeId,
             type,
-            params: {},
+            params,
             resourceType,
             resourceId: documentId
           })

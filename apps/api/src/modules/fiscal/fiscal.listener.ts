@@ -80,6 +80,24 @@ export class FiscalListener {
     }
   }
 
+  // A guide was cancelled: its remission note, if it was accepted, stays alive (a person voids it), so whoever manages the documents is told the
+  // last day to do it. A guide that never had an accepted note says nothing. A failure here never reaches the cancellation.
+  @OnEvent(Events.SHIPMENT_CANCELLED)
+  async onShipmentCancelled(payload: ShipmentEventPayload): Promise<void> {
+    try {
+      const organizationId = await this.organizationOf(payload.storeId)
+      if (organizationId === null) return
+      await this.events.inOrganizationOfStore(payload.storeId, () =>
+        this.documents.announceNotesOfCancelledGuide(organizationId, payload.shipmentId)
+      )
+    } catch (error) {
+      this.logger.error(
+        { err: errorName(error), shipmentId: payload.shipmentId },
+        'the notice to void the remission note of a cancelled guide was not made'
+      )
+    }
+  }
+
   // Read with no tenant context on purpose: `stores` has no row policy (`neverPolicy` in scripts/rls-exceptions.ts), here and in the
   // same read of `onOrderStatus`. The documents are made inside `inOrganizationOfStore`; the queue is Redis, outside any transaction.
   private async organizationOf(storeId: string): Promise<string | null> {

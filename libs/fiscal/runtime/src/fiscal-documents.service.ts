@@ -40,7 +40,8 @@ import {
   OrderReturnStatus,
   OrderStatus,
   SealedValueKind,
-  ShipmentKind
+  ShipmentKind,
+  ShipmentStatus
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -3268,6 +3269,70 @@ export class FiscalDocumentsService {
       userAgent: actor.userAgent
     })
     return { id: made, creditNoteIds: [] }
+  }
+
+  // The guide was cancelled: the remission notes that back its goods and are accepted stay alive (an invalidation is a legal act with a window
+  // of a few days, and a person decides it), so the people who manage the documents are told the last day to void each one (D3b-3). The
+  // deadline is the provider's rule, read from the document as it was kept; a provider that gives none, and a window that is over, tell nobody
+  // (there is nothing to do by a date nobody knows, or that passed). Idempotent: the notice is sent once for each document until it is read.
+  // Returns how many notes were announced.
+  async announceNotesOfCancelledGuide(
+    organizationId: string,
+    shipmentId: string,
+    now: Date = new Date()
+  ): Promise<number> {
+    return this.inTx(organizationId, async tx => {
+      const shipment = await tx.shipment.findFirst({
+        where: { id: shipmentId, store: { organizationId } },
+        select: { id: true, status: true, kind: true }
+      })
+      if (shipment === null || shipment.status !== (ShipmentStatus.CANCELLED as string)) return 0
+      const notes = await tx.fiscalDocument.findMany({
+        where: {
+          organizationId,
+          shipmentId,
+          kind: FiscalDocumentKind.REMISSION_NOTE,
+          status: FiscalDocumentStatus.ACCEPTED
+        },
+        select: {
+          id: true,
+          storeId: true,
+          orderId: true,
+          providerId: true,
+          documentType: true,
+          externalNumber: true,
+          providerData: true,
+          builtPayloadEncrypted: true
+        },
+        orderBy: { id: 'asc' },
+        take: FiscalSweepLimits.RUN_PAGE_SIZE
+      })
+      let told = 0
+      for (const note of notes) {
+        const stored = this.storedOf(note)
+        const deadline =
+          stored === null
+            ? null
+            : (this.providers.find(note.providerId)?.voidDeadline?.(stored) ?? null)
+        if (deadline === null || new Date(deadline).getTime() <= now.getTime()) {
+          this.logger.warn(
+            { documentId: note.id },
+            'the remission note of a cancelled guide has no window to void it that a person can still use'
+          )
+          continue
+        }
+        this.events.publish(tx, Events.FISCAL_REMISSION_VOID_DEADLINE, {
+          organizationId,
+          storeId: note.storeId,
+          documentId: note.id,
+          orderId: note.orderId,
+          shipmentId,
+          deadline
+        })
+        told += 1
+      }
+      return told
+    })
   }
 
   // ---------------------------------------------------------------- helpers
