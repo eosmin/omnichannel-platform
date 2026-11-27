@@ -16,9 +16,14 @@ export function isUniqueViolation(error: unknown): boolean {
 export function isUniqueViolationOf(error: unknown, constraint: string): boolean {
   if (!isUniqueViolation(error)) return false
   const message = error instanceof Error ? error.message : ''
-  // The own fields of the error (the code and the details of the driver) as text
-  const details = JSON.stringify({ ...(error as object) })
-  return message.includes(constraint) || details.includes(constraint)
+  if (message.includes(constraint)) return true
+  try {
+    // The own fields of the error (the code and the details of the driver) as text
+    return JSON.stringify({ ...(error as object) }).includes(constraint)
+  } catch {
+    // Details that cannot be written as text (a number too big, a loop) name no index we can read: not this one
+    return false
+  }
 }
 
 // Prisma's code for "a foreign key constraint failed": a row that something else points to was deleted (or one that

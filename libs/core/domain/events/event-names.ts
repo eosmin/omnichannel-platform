@@ -155,6 +155,10 @@ export const Events = {
   FISCAL_RETRANSMIT_DEADLINE: 'fiscal.retransmit_deadline',
   // The same for an invalidation the authority refused (D14b): its own event, so its notice is never taken for the one of the document
   FISCAL_VOID_RETRANSMIT_DEADLINE: 'fiscal.void_retransmit_deadline',
+  // A guide was cancelled while the remission note that backs its goods is accepted: the note stays alive until a person voids it, and the
+  // authority gives a few days to do it (D3b-3). Api only (the guide's event reaches the api, which tells the people who manage the documents):
+  // the ids and the last instant to void it, never the receiver's data.
+  FISCAL_REMISSION_VOID_DEADLINE: 'fiscal.remission_void_deadline',
   // The daily check found a sale document whose total or tax differs from the entry of the books for the same sale (TDD_18 §8.3, §11, Step
   // 4B.8b-2b). Api and worker only: the organization, one document id and the count, never an amount or the receiver's data.
   FISCAL_ENTRY_MISMATCH: 'fiscal.entry_mismatch',

@@ -62,6 +62,8 @@ export const NotificationTypes = {
   FISCAL_DELIVERY_NOT_SENT: 'fiscal.delivery_not_sent',
   // The same for an invalidation the authority refused (D14b): a type of its own, because a notice is told once for each document and type
   FISCAL_VOID_RETRANSMIT_DEADLINE: 'fiscal.void_retransmit_deadline',
+  // A guide was cancelled and the remission note of its goods is accepted: the person voids it before the authority's last day (D3b-3)
+  FISCAL_REMISSION_VOID_DEADLINE: 'fiscal.remission_void_deadline',
   // A sale document disagrees with its entry of the books: only a person can say which one is right (TDD_18 §11, Step 4B.8b-2b)
   FISCAL_ENTRY_MISMATCH: 'fiscal.entry_mismatch',
   // A contingency of the issuer: opened by the lifecycle, its event not accepted, its window closing (Step 4B.7c-7)
@@ -169,4 +171,7 @@ export const NotificationResourceTypes = {
   CONVERSATION: 'conversation',
   MESSAGE: 'message'
 } as const
+// The reasons the text of a notice of the fiscal documents has a sentence for (`reason.<CODE>` under its message key)
+export const FiscalNoticeReasons = { NO_DEADLINE: 'NO_DEADLINE' } as const
+
 export const NotificationParamKeys = { CUSTOMER: 'customer', MEMBER: 'member' } as const

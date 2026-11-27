@@ -14,7 +14,8 @@ import {
   invalidationCode,
   invalidationDeadline,
   sealDateOf,
-  type SvInvalidationInput
+  type SvInvalidationInput,
+  voidDeadlineOf
 } from './sv-invalidation'
 import {
   acceptedDocument,
@@ -587,5 +588,46 @@ describe('the invalidation event', () => {
     expect(built.ok && (built.event['identificacion'] as Record<string, unknown>)['ambiente']).toBe(
       '01'
     )
+  })
+})
+
+describe('the last instant to void a document (the notice of a cancelled guide)', () => {
+  const sealedOn = (processedAt: string | null) => {
+    const base = acceptedDocument({ receiver: BUSINESS })
+    return {
+      ...base,
+      providerData: { ...base.providerData, [SvProviderDataKeys.PROCESSED_AT]: processedAt }
+    }
+  }
+
+  it('is the end of the last day of the window in the time of El Salvador, counted from the day of the seal', () => {
+    // A tax credit document has one calendar day: sealed on the 20th, the 21st is the last day, and its end is 05:59:59 UTC of the 22nd
+    expect(voidDeadlineOf(sealedOn('20/11/2026 08:00:00'))).toBe('2026-11-22T05:59:59.000Z')
+    // The same instant is the one buildInvalidation still lets through and the next second refuses
+    const doc = sealedOn('20/11/2026 08:00:00')
+    expect(refusal(buildInvalidation(input({ doc, now: '2026-11-22T05:59:59.000Z' })))).toBeNull()
+    expect(refusal(buildInvalidation(input({ doc, now: '2026-11-22T06:00:00.000Z' })))).toBe(
+      SvVoidRefusals.DEADLINE_PASSED
+    )
+  })
+
+  it('is null when the hour of the seal was not kept or is not readable', () => {
+    expect(voidDeadlineOf(sealedOn(null))).toBeNull()
+    expect(voidDeadlineOf(sealedOn('not an hour'))).toBeNull()
+  })
+
+  it('is null for a window counted in business days when there are no holidays to count with', () => {
+    const rules = {
+      ...SvInvalidationDeadlineRules,
+      [SvDocumentTypes.TAX_CREDIT]: {
+        unit: SvInvalidationDeadlineUnits.BUSINESS_DAY_OF_NEXT_MONTH,
+        amount: 10
+      }
+    }
+    expect(voidDeadlineOf(sealedOn('20/11/2026 08:00:00'), [], rules)).toBeNull()
+  })
+
+  it('is null for a document the provider cannot read', () => {
+    expect(voidDeadlineOf({ ...acceptedDocument(), providerData: null })).toBeNull()
   })
 })

@@ -424,6 +424,17 @@ export interface FiscalRetransmitDeadlinePayload {
   expired: boolean
 }
 
+// A guide was cancelled and its remission note is still accepted: ids and the last instant a person can void the note (ISO 8601), or null
+export interface FiscalRemissionVoidDeadlinePayload {
+  organizationId: string
+  storeId: string
+  documentId: string
+  orderId: string
+  shipmentId: string
+  // Null when the provider cannot tell it: the notice then says no date
+  deadline: string | null
+}
+
 // The daily check found sale documents that disagree with their entry (Step 4B.8b-2b): the organization, the first of them and how many,
 // never an amount or the receiver's data
 export interface FiscalEntryMismatchPayload {
@@ -744,6 +755,7 @@ export interface DomainEventPayloads {
   [Events.FISCAL_DOCUMENT_STUCK]: FiscalDocumentStuckPayload
   [Events.FISCAL_RETRANSMIT_DEADLINE]: FiscalRetransmitDeadlinePayload
   [Events.FISCAL_VOID_RETRANSMIT_DEADLINE]: FiscalRetransmitDeadlinePayload
+  [Events.FISCAL_REMISSION_VOID_DEADLINE]: FiscalRemissionVoidDeadlinePayload
   [Events.FISCAL_ENTRY_MISMATCH]: FiscalEntryMismatchPayload
   [Events.FISCAL_CONTINGENCY_ALERT]: FiscalContingencyAlertPayload
   [Events.FINANCE_PERIOD_CLOSED]: FinancePeriodPayload

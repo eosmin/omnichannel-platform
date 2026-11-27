@@ -13,7 +13,7 @@ import {
   OrderStatus,
   ShipmentStatus
 } from '@platform/core/domain'
-import { Events } from '@platform/core/events'
+import { Events, type FiscalRemissionVoidDeadlinePayload } from '@platform/core/events'
 import { JobNames, QueueNames, submitFiscalDocumentJobId } from '@platform/core/queues'
 import { FiscalDocumentsService, FiscalProviderRegistry } from '@platform/fiscal/runtime'
 import { SIMULATOR_PROVIDER_ID, SimulatorDocumentTypes } from '@platform/fiscal/simulator'
@@ -441,6 +441,202 @@ describe('The remission note of a dispatch (D3b-2)', () => {
       )
       expect(other.status).toBe(NOT_FOUND)
       expect(await noteOf(shipment.id)).toHaveLength(1)
+    })
+  })
+
+  describe('a guide that is cancelled while its note is accepted (D3b-3)', () => {
+    const told = async (shipmentId: string, noteId: string, at?: Date) => {
+      const seen: FiscalRemissionVoidDeadlinePayload[] = []
+      const listener = (payload: FiscalRemissionVoidDeadlinePayload): void => {
+        seen.push(payload)
+      }
+      emitter.on(Events.FISCAL_REMISSION_VOID_DEADLINE, listener)
+      try {
+        const count = await documents.announceNotesOfCancelledGuide(ctx.orgA.id, shipmentId, at)
+        await new Promise(resolve => setImmediate(resolve))
+        return { count, seen: seen.filter(payload => payload.documentId === noteId) }
+      } finally {
+        emitter.off(Events.FISCAL_REMISSION_VOID_DEADLINE, listener)
+      }
+    }
+
+    it('tells the last day to void an accepted note, once for each call, and tells nothing for a note that is not accepted or a guide that was not cancelled', async () => {
+      const order = await dispatchedOrder()
+      const shipment = await guide(order.id)
+      await created(shipment)
+      const [note] = await noteOf(shipment.id)
+      await documents.submit(ctx.orgA.id, note?.id ?? '')
+      // The guide is on its way: nothing to tell
+      expect((await told(shipment.id, note?.id ?? '')).count).toBe(0)
+      await owner.shipment.update({
+        where: { id: shipment.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+      const first = await told(shipment.id, note?.id ?? '')
+      expect(first.count).toBe(1)
+      expect(first.seen).toHaveLength(1)
+      expect(first.seen[0]).toMatchObject({
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        orderId: order.id,
+        shipmentId: shipment.id
+      })
+      // The window is ahead of now: the last instant to void is in the future
+      expect(new Date(first.seen[0]?.deadline ?? 0).getTime()).toBeGreaterThan(Date.now())
+      // Another organization asks for the same guide and learns nothing
+      expect(await documents.announceNotesOfCancelledGuide(ctx.orgB.id, shipment.id)).toBe(0)
+    })
+
+    it('is told by the event of the cancelled guide, as the platform raises it', async () => {
+      const order = await dispatchedOrder()
+      const shipment = await guide(order.id)
+      await created(shipment)
+      const [note] = await noteOf(shipment.id)
+      await documents.submit(ctx.orgA.id, note?.id ?? '')
+      await owner.shipment.update({
+        where: { id: shipment.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+      const seen: FiscalRemissionVoidDeadlinePayload[] = []
+      const listener = (payload: FiscalRemissionVoidDeadlinePayload): void => {
+        seen.push(payload)
+      }
+      emitter.on(Events.FISCAL_REMISSION_VOID_DEADLINE, listener)
+      try {
+        await emitter.emitAsync(Events.SHIPMENT_CANCELLED, {
+          storeId: ctx.storeA.id,
+          shipmentId: shipment.id,
+          orderId: order.id,
+          orderNumber: 'N',
+          connectionId: shipment.connectionId,
+          actor: { type: 'system' as const, id: null }
+        })
+        await new Promise(resolve => setImmediate(resolve))
+      } finally {
+        emitter.off(Events.FISCAL_REMISSION_VOID_DEADLINE, listener)
+      }
+      expect(seen.filter(payload => payload.documentId === note?.id)).toHaveLength(1)
+    })
+
+    // An accepted note of a guide that is cancelled
+    async function cancelledWithAcceptedNote() {
+      const order = await dispatchedOrder()
+      const shipment = await guide(order.id)
+      await created(shipment)
+      const [note] = await noteOf(shipment.id)
+      await documents.submit(ctx.orgA.id, note?.id ?? '')
+      await owner.shipment.update({
+        where: { id: shipment.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+      return { order, shipment, noteId: note?.id ?? '' }
+    }
+
+    it('tells nothing once the window to void is over, and says so', async () => {
+      const { shipment, noteId } = await cancelledWithAcceptedNote()
+      const later = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
+      const over = await told(shipment.id, noteId, later)
+      expect([over.count, over.seen]).toEqual([0, []])
+      // The control: the same note, asked inside the window, is told
+      expect((await told(shipment.id, noteId)).count).toBe(1)
+    })
+
+    it('tells nothing for a note whose invalidation is being sent now', async () => {
+      const { shipment, noteId } = await cancelledWithAcceptedNote()
+      await owner.fiscalDocument.update({
+        where: { id: noteId },
+        data: { voidClaimKey: 'void-in-flight', voidClaimUntil: new Date(Date.now() + 60_000) }
+      })
+      const flying = await told(shipment.id, noteId)
+      expect([flying.count, flying.seen]).toEqual([0, []])
+      // The lease over, the note is told (the claim is not for ever)
+      await owner.fiscalDocument.update({
+        where: { id: noteId },
+        data: { voidClaimUntil: new Date(Date.now() - 60_000) }
+      })
+      expect((await told(shipment.id, noteId)).count).toBe(1)
+    })
+
+    it('tells it with no date when the provider cannot tell one, or fails on the document, and the other notes are still told', async () => {
+      const first = await cancelledWithAcceptedNote()
+      const provider = app.get(FiscalProviderRegistry).find(SIMULATOR_PROVIDER_ID)
+      if (provider === undefined) throw new Error('the simulator is not registered')
+      const deadline = jest.spyOn(provider, 'voidDeadline')
+      try {
+        deadline.mockReturnValue(null)
+        const none = await told(first.shipment.id, first.noteId)
+        expect(none.count).toBe(1)
+        expect(none.seen[0]?.deadline).toBeNull()
+        deadline.mockImplementation(() => {
+          throw new RangeError('not a date')
+        })
+        const failed = await told(first.shipment.id, first.noteId)
+        expect(failed.count).toBe(1)
+        expect(failed.seen[0]?.deadline).toBeNull()
+      } finally {
+        deadline.mockRestore()
+      }
+    })
+
+    it('tells it from the acceptance when the guide was cancelled before the note was accepted', async () => {
+      const order = await dispatchedOrder()
+      const shipment = await guide(order.id)
+      await created(shipment)
+      const [note] = await noteOf(shipment.id)
+      // The cancellation finds nothing accepted: it tells nobody
+      await owner.shipment.update({
+        where: { id: shipment.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+      expect((await told(shipment.id, note?.id ?? '')).count).toBe(0)
+      // The note is accepted afterwards: it is alive now and backs goods that do not travel
+      const seen: FiscalRemissionVoidDeadlinePayload[] = []
+      const listener = (payload: FiscalRemissionVoidDeadlinePayload): void => {
+        seen.push(payload)
+      }
+      emitter.on(Events.FISCAL_REMISSION_VOID_DEADLINE, listener)
+      try {
+        await documents.submit(ctx.orgA.id, note?.id ?? '')
+        await new Promise(resolve => setImmediate(resolve))
+      } finally {
+        emitter.off(Events.FISCAL_REMISSION_VOID_DEADLINE, listener)
+      }
+      const mine = seen.filter(payload => payload.documentId === note?.id)
+      expect(mine).toHaveLength(1)
+      expect(mine[0]).toMatchObject({ shipmentId: shipment.id, orderId: order.id })
+      expect(new Date(mine[0]?.deadline ?? 0).getTime()).toBeGreaterThan(Date.now())
+      // A note of a guide on its way, accepted, tells nobody
+      const onItsWay = await dispatchedOrder()
+      const live = await guide(onItsWay.id)
+      await created(live)
+      const [liveNote] = await noteOf(live.id)
+      const quiet: FiscalRemissionVoidDeadlinePayload[] = []
+      const watch = (payload: FiscalRemissionVoidDeadlinePayload): void => {
+        quiet.push(payload)
+      }
+      emitter.on(Events.FISCAL_REMISSION_VOID_DEADLINE, watch)
+      try {
+        await documents.submit(ctx.orgA.id, liveNote?.id ?? '')
+        await new Promise(resolve => setImmediate(resolve))
+      } finally {
+        emitter.off(Events.FISCAL_REMISSION_VOID_DEADLINE, watch)
+      }
+      expect(quiet.filter(payload => payload.documentId === liveNote?.id)).toEqual([])
+    })
+
+    it('tells nothing for a note that was never accepted, and the note stays alive (a person voids it)', async () => {
+      const order = await dispatchedOrder()
+      const shipment = await guide(order.id)
+      await created(shipment)
+      const [note] = await noteOf(shipment.id)
+      await owner.shipment.update({
+        where: { id: shipment.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+      expect((await told(shipment.id, note?.id ?? '')).count).toBe(0)
+      expect(
+        (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: note?.id } })).status
+      ).toBe(FiscalDocumentStatus.QUEUED)
     })
   })
 
