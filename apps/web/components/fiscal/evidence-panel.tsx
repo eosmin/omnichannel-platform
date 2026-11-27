@@ -5,14 +5,16 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useEffect } from 'react'
 
 import { ApiError, type FiscalDocumentView } from '@platform/api-client'
-import type { FiscalEvidenceKind } from '@platform/core/domain'
+import { FiscalDocumentStatus, type FiscalEvidenceKind } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 
 import { fiscalEvidenceKindsOf } from '../../lib/fiscal/document-rules'
-import { useFiscalEvidenceLink } from '../../lib/fiscal/use-fiscal'
+import { useFiscalDelivery, useFiscalEvidenceLink } from '../../lib/fiscal/use-fiscal'
 import { useFiscalErrorText } from '../../lib/fiscal/use-fiscal-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
+
+import { HandDelivery } from './hand-delivery'
 
 // The api signs a link for 15 minutes: it is shown for 10
 const EVIDENCE_LINK_SHOWN_MS = 10 * 60 * 1000
@@ -21,20 +23,44 @@ const EVIDENCE_LINK_SHOWN_MS = 10 * 60 * 1000
 // The system makes them; a person only reads them, so there is no upload here. A link is asked when the person asks for the file: the api
 // signs it for 15 minutes, only for a clean file of the organization of the document, and writes the read in the audit log. The files hold
 // the receiver's data, so a link is never kept or shown twice.
-export function EvidencePanel({ document }: { document: FiscalDocumentView }): ReactElement | null {
+export function EvidencePanel({
+  document,
+  canManage
+}: {
+  document: FiscalDocumentView
+  canManage: boolean
+}): ReactElement | null {
   const t = useTranslations('finance.fiscal.evidence')
-  const kinds = fiscalEvidenceKindsOf(document)
+  const { storeId } = useStore()
+  // Which files exist is the api's to say: a voided document never made the two files of the receiver if it was voided before they were
+  // (they are made while it is accepted), and a button for a file that does not exist only leads to a 404
+  const accepted = document.status === FiscalDocumentStatus.ACCEPTED
+  const delivery = useFiscalDelivery(
+    storeId,
+    document.id,
+    accepted || document.status === FiscalDocumentStatus.VOIDED
+  )
+  const kinds = fiscalEvidenceKindsOf(document, delivery.data?.files ?? [])
   if (kinds.length === 0) return null
   return (
-    <section className="flex flex-col gap-2" aria-label={t('title')} data-testid="fiscal-evidence">
-      <h3 className="text-sm font-semibold">{t('title')}</h3>
-      <p className="text-muted-foreground text-xs">{t('description')}</p>
-      <ul className="flex flex-col gap-2">
-        {kinds.map(kind => (
-          <EvidenceRow key={`${document.id}:${kind}`} documentId={document.id} kind={kind} />
-        ))}
-      </ul>
-    </section>
+    <>
+      <section
+        className="flex flex-col gap-2"
+        aria-label={t('title')}
+        data-testid="fiscal-evidence"
+      >
+        <h3 className="text-sm font-semibold">{t('title')}</h3>
+        <p className="text-muted-foreground text-xs">{t('description')}</p>
+        <ul className="flex flex-col gap-2">
+          {kinds.map(kind => (
+            <EvidenceRow key={`${document.id}:${kind}`} documentId={document.id} kind={kind} />
+          ))}
+        </ul>
+      </section>
+      {accepted && delivery.data !== undefined ? (
+        <HandDelivery document={document} delivery={delivery.data} canManage={canManage} />
+      ) : null}
+    </>
   )
 }
 

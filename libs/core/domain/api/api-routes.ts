@@ -330,6 +330,9 @@ export const ApiRoutes = {
       replace: (id: string) => `/fiscal/documents/${id}/replace`,
       // GET the signed link of one file of evidence of a document (`document`, `response`, `void_response`): short-lived, clean files only
       evidence: (id: string, kind: string) => `/fiscal/documents/${id}/evidence/${kind}`,
+      // GET how the files of an accepted document reached its receiver (the route and the reason, never an address) and which of its
+      // files exist; POST records that a person gave them by hand (the download is `evidence`)
+      delivery: (id: string) => `/fiscal/documents/${id}/delivery`,
       // POST: a person confirms that a document that may be at the issuer it was made with is not there, so it is made again with the
       // issuer as it is now (the authority's answer is the person's, with the accountant)
       confirmIssuerChange: (id: string) => `/fiscal/documents/${id}/confirm-issuer-change`

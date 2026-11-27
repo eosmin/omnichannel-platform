@@ -1,14 +1,21 @@
-import { FiscalDocumentStatus, FiscalEvidenceKind, FiscalVoidKind } from '@platform/core/domain'
+import {
+  FiscalDocumentStatus,
+  FiscalEvidenceKind,
+  FiscalHandMeans,
+  FiscalVoidKind
+} from '@platform/core/domain'
 
 import { createApiClient } from './api-client'
 import {
   confirmFiscalIssuerChange,
+  fetchFiscalDelivery,
   fetchFiscalDocument,
   fetchFiscalDocumentPage,
   fetchFiscalEvidenceUrls,
   fetchFiscalIssuer,
   fetchFiscalProviders,
   fetchFiscalSeries,
+  handOverFiscalDelivery,
   patchFiscalReceiver,
   putFiscalIssuer,
   replaceFiscalDocument,
@@ -444,5 +451,51 @@ describe('the refusals of the evidence and of the issuer change', () => {
   it('does not take an answer that says it was not queued', async () => {
     const { client } = setup(json(200, { data: { queued: false } }))
     await expect(confirmFiscalIssuerChange(client, 's1', 'd1', 'checked')).rejects.toThrow()
+  })
+})
+
+describe('the delivery of the files of a document', () => {
+  const delivery = {
+    documentId: 'd1',
+    state: 'not_sent',
+    route: 'none',
+    reason: 'no_channel',
+    means: null,
+    handedOverAt: null,
+    files: ['representation', 'dte_file']
+  }
+
+  it('reads how the files reached the receiver and which of them exist, through the store', async () => {
+    const { client, fetchImpl } = setup(json(200, { data: delivery }))
+    const view = await fetchFiscalDelivery(client, 's1', 'd 1')
+    expect(view.files).toEqual(['representation', 'dte_file'])
+    const { url, headers } = callOf(fetchImpl)
+    expect(url).toContain('/fiscal/documents/d%201/delivery')
+    expect(headers.get('x-store-id')).toBe('s1')
+  })
+
+  it('records the hand delivery with the means and nothing else', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, {
+        data: {
+          ...delivery,
+          state: 'sent',
+          route: 'manual',
+          means: 'paper',
+          handedOverAt: '2026-11-27T10:00:00.000Z'
+        }
+      })
+    )
+    const view = await handOverFiscalDelivery(client, 's1', 'd1', { means: FiscalHandMeans.PAPER })
+    expect(view.route).toBe('manual')
+    const { url, init } = callOf(fetchImpl)
+    expect(url).toContain('/fiscal/documents/d1/delivery')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ means: 'paper' })
+  })
+
+  it('refuses an answer with a route or a file kind it does not know', async () => {
+    const { client } = setup(json(200, { data: { ...delivery, route: 'carrier-pigeon' } }))
+    await expect(fetchFiscalDelivery(client, 's1', 'd1')).rejects.toBeDefined()
   })
 })
