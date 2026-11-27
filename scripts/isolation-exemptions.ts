@@ -13,6 +13,11 @@ import type { IsolationExemption } from './lib/isolation'
 // stores, even of the same organization). The plan lists which PR removes which line (Step 4.8, "Left by PR B1").
 
 export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> = {
+  FiscalDelivery: {
+    step: '4B.7',
+    reason:
+      'No route reads or changes it yet: the delivery is written by the api itself when a document is accepted, and the action of the panel that reads it and hands the files over is PR D13b-2, which deletes this line and adds its case. Until then its isolation is the organization policy of the table (listed in PHASE_4_TABLES of tests/security/rls-finance-isolation.spec.ts) and the unit spec of FiscalDeliveryService, whose every read and write runs in the organization of the document'
+  },
   PluginIdempotencyKey: {
     step: '7.3',
     reason:

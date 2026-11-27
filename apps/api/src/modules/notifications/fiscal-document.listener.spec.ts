@@ -100,6 +100,24 @@ describe('the notice of a fiscal document that needs a person', () => {
     expect(asked).toEqual([])
   })
 
+  it('tells the managers that the files of a document could not be given to its customer, naming no receiver and no reason', async () => {
+    const { listener, sent } = build([{ userId: 'u1', storeId: 's1' }])
+    await listener.onFiscalDeliveryNotSent({
+      organizationId: ORG,
+      storeId: 's1',
+      documentId: DOCUMENT,
+      orderId: 'order-1',
+      reason: 'no_channel'
+    })
+    expect(sent[0]?.input).toMatchObject({
+      type: NotificationTypes.FISCAL_DELIVERY_NOT_SENT,
+      resourceType: FiscalResourceTypes.DOCUMENT,
+      resourceId: DOCUMENT,
+      params: {}
+    })
+    expect(JSON.stringify(sent)).not.toContain('no_channel')
+  })
+
   it('says a document that ran out of attempts with its own type, and names no receiver, no amount and no reason', async () => {
     const { listener, sent } = build([{ userId: 'u1', storeId: 's1' }])
     await listener.onFiscalDocumentStuck(stuck)

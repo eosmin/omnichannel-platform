@@ -39,6 +39,7 @@ model Organization {
   fiscalSequences        FiscalSequence[]
   fiscalContingencies    FiscalContingency[]
   fiscalDocuments        FiscalDocument[]
+  fiscalDeliveries       FiscalDelivery[]
   financeBookLayouts     FinanceBookLayout[]
   financeBookSnapshots   FinanceBookSnapshot[]
   journalEntries         JournalEntry[]
@@ -142,6 +143,7 @@ model Store {
   returnReceptionBatches   ReturnReceptionBatch[]
   returnReceptionItems     ReturnReceptionItem[]
   fiscalDocuments          FiscalDocument[]
+  fiscalDeliveries         FiscalDelivery[]
 
   @@unique([organizationId, slug])
   // So that a link to a store can name its organization and the database check that they go together (StoreWarehouse)
@@ -3266,6 +3268,27 @@ model FinanceBookSnapshot {
   @@map("finance_book_snapshots")
 }
 
+// The delivery of the files of an accepted fiscal document to its receiver (the rule on delivering the files of a document): one row for each document, written
+// when the files went (sent) or when nothing could carry them and a person must give them by hand (not_sent). Never deleted with the document.
+model FiscalDelivery {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  storeId        String   @map("store_id")
+  documentId     String   @unique @map("document_id")
+  orderId        String   @map("order_id")
+  status         String // FiscalDeliveryStatus
+  route          String // FiscalDeliveryRoute
+  reason         String? // FiscalDeliveryReason, set only when nothing was sent
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  store        Store          @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  document     FiscalDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, storeId, createdAt(sort: Desc)])
+  @@map("fiscal_deliveries")
+}
+
 model FiscalDocument {
   id                    String    @id @default(uuid())
   organizationId        String    @map("organization_id")
@@ -3327,6 +3350,7 @@ model FiscalDocument {
   replaces     FiscalDocument?    @relation("FiscalReplacement", fields: [replacesDocumentId], references: [id], onDelete: NoAction)
   replacedBy   FiscalDocument[]   @relation("FiscalReplacement")
   evidence     Media[]            @relation("FiscalEvidence")
+  delivery     FiscalDelivery?
 
   // At most one live sale document per order, one live credit note per return and one per order that came back with no return row: the
   // partial unique indexes of the migration say it (Prisma cannot), a voided document leaves room for the one that replaces it, and a

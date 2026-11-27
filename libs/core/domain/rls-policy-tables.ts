@@ -43,6 +43,7 @@ export const RlsPolicyTables: readonly string[] = [
   'finance_settings',
   'finance_transactions',
   'fiscal_contingencies',
+  'fiscal_deliveries',
   'fiscal_documents',
   'fiscal_issuers',
   'fiscal_periods',
