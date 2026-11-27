@@ -1,4 +1,5 @@
 import {
+  FiscalAuthorityProbeOutcome,
   FiscalConsultState,
   FiscalEnvironment,
   FiscalSubmitOutcome,
@@ -415,6 +416,43 @@ describe('the client of the authority', () => {
       await expect(down.consult(await built(null, 97), ctxOf())).rejects.toBeInstanceOf(
         SvTransportError
       )
+    })
+  })
+
+  describe('the probe reaches the reception side, not only the login (D2d)', () => {
+    let authority: FakeAuthority
+    const probe = async (): Promise<FiscalAuthorityProbeOutcome | undefined> =>
+      svProvider({
+        signer: officialSigner({
+          baseUrl: authority.baseUrl,
+          fetch: (url, init) => fetch(url, init),
+          timeoutMs: 2000
+        }),
+        endpoints: authority.endpoints,
+        fetch: (url, init) => fetch(url, init)
+      }).probeAuthority?.(ctxOf())
+
+    beforeEach(async () => {
+      authority = await startFakeAuthority()
+    })
+    afterEach(async () => {
+      await authority.close()
+    })
+
+    it('is reachable when both answer, and sends no document and no event to find out', async () => {
+      expect(await probe()).toBe(FiscalAuthorityProbeOutcome.REACHABLE)
+      expect(authority.stats.consults).toBe(1)
+      expect(authority.stats.receptions).toBe(0)
+      expect(authority.stats.invalidations).toBe(0)
+      expect(authority.stats.contingencies).toBe(0)
+    })
+
+    it('is unreachable when the login answers and the reception side does not: the contingency goes on', async () => {
+      authority.receptionDown = true
+      expect(await probe()).toBe(FiscalAuthorityProbeOutcome.UNREACHABLE)
+      expect(authority.stats.logins).toBeGreaterThan(0)
+      authority.receptionDown = false
+      expect(await probe()).toBe(FiscalAuthorityProbeOutcome.REACHABLE)
     })
   })
 
