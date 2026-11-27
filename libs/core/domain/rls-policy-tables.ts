@@ -78,6 +78,7 @@ export const RlsPolicyTables: readonly string[] = [
   'products',
   'purchase_order_lines',
   'purchase_orders',
+  'purchase_receipt_documents',
   'purchase_receipt_lines',
   'purchase_receipts',
   'reconciliation_matches',

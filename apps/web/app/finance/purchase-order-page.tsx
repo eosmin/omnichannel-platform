@@ -15,6 +15,7 @@ import { PaymentDialog, type PaymentTarget } from '../../components/finance/paym
 import { PurchaseStatusBadge } from '../../components/finance/purchase-status-badge'
 import { PurchasesGate } from '../../components/finance/purchases-gate'
 import { ReasonDialog } from '../../components/finance/reason-dialog'
+import { ReceiptDocumentDialog } from '../../components/finance/receipt-document-dialog'
 import { ReceiveDialog } from '../../components/finance/receive-dialog'
 import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading } from '../../components/settings/states'
@@ -58,6 +59,7 @@ function PurchaseOrder(): ReactElement {
   const params = useParams<{ id: string }>()
   const id = params.id
   const t = useTranslations('finance.purchases.order')
+  const td = useTranslations('finance.purchases.document')
   const percentFigure = usePercentFigure()
   const locale = useLocale()
   const format = useFormatter()
@@ -78,6 +80,7 @@ function PurchaseOrder(): ReactElement {
   const guard = useSubmitGuard()
   const [dirty, setDirty] = useState(false)
   const [receiving, setReceiving] = useState(false)
+  const [completing, setCompleting] = useState<string | null>(null)
   const [closing, setClosing] = useState<'close' | 'cancel' | null>(null)
   const [paying, setPaying] = useState<PaymentTarget | null>(null)
   const labels = useLineLabels(storeId, order.data?.lines ?? [])
@@ -306,7 +309,24 @@ function PurchaseOrder(): ReactElement {
                       })}
                       {bill.taxCreditable ? '' : ` · ${t('taxNotCredited')}`}
                     </span>
+                    <span className="text-muted-foreground text-xs" data-testid="bill-annex-state">
+                      {bill.annexExclusion !== null
+                        ? td('state.leftOut')
+                        : bill.documentType === null
+                          ? td('state.missing')
+                          : td('state.complete')}
+                    </span>
                   </div>
+                  {can(ClientPermissions.FINANCE_MANAGE_PURCHASES) && bill.documentType === null ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setCompleting(bill.id)}
+                    >
+                      {td('complete')}
+                    </Button>
+                  ) : null}
                   {canPay && open > 0 ? (
                     <Button
                       type="button"
@@ -370,6 +390,19 @@ function PurchaseOrder(): ReactElement {
         open={receiving}
         onOpenChange={setReceiving}
       />
+      {view.receipts.map(bill =>
+        bill.id === completing ? (
+          <ReceiptDocumentDialog
+            key={bill.id}
+            order={view}
+            receipt={bill}
+            open
+            onOpenChange={open => {
+              if (!open) setCompleting(null)
+            }}
+          />
+        ) : null
+      )}
       <PaymentDialog
         target={paying}
         open={paying !== null}

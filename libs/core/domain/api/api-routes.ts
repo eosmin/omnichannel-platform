@@ -373,6 +373,8 @@ export const ApiRoutes = {
     update: (id: string) => `/purchase-orders/${id}`,
     order: (id: string) => `/purchase-orders/${id}/order`,
     receive: (id: string) => `/purchase-orders/${id}/receive`,
+    receiptDocument: (id: string, receiptId: string) =>
+      `/purchase-orders/${id}/receipts/${receiptId}/document`,
     close: (id: string) => `/purchase-orders/${id}/close`,
     cancel: (id: string) => `/purchase-orders/${id}/cancel`,
     payments: (id: string) => `/purchase-orders/${id}/payments`,

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { ApiRoutes } from '@platform/core/api'
 import {
   type closePurchaseOrderSchema,
+  type completeReceiptDocumentSchema,
   type createPurchaseOrderSchema,
   type createSupplierSchema,
   PaginationLimits,
@@ -75,6 +76,14 @@ const receiptSchema = z.object({
   dueOn: z.string(),
   supplierDocumentNumber: z.string().nullable(),
   taxCreditable: z.boolean(),
+  documentClass: z.string().nullable(),
+  documentType: z.string().nullable(),
+  generationCode: z.string().nullable(),
+  purchaseOrigin: z.string().nullable(),
+  expenseClass: z.string().nullable(),
+  sector: z.string().nullable(),
+  costType: z.string().nullable(),
+  annexExclusion: z.string().nullable(),
   subtotalCents: z.number().int(),
   taxCents: z.number().int(),
   totalCents: z.number().int(),
@@ -176,6 +185,7 @@ export type UpdateSupplierInput = z.input<typeof updateSupplierSchema>
 export type CreatePurchaseOrderInput = z.input<typeof createPurchaseOrderSchema>
 export type UpdatePurchaseOrderInput = z.input<typeof updatePurchaseOrderSchema>
 export type ReceivePurchaseOrderInput = z.input<typeof receivePurchaseOrderSchema>
+export type CompleteReceiptDocumentInput = z.input<typeof completeReceiptDocumentSchema>
 export type ClosePurchaseOrderInput = z.input<typeof closePurchaseOrderSchema>
 export type RecordSupplierPaymentInput = z.input<typeof recordPaymentSchema>
 export type VoidSupplierPaymentInput = z.input<typeof voidPaymentSchema>
@@ -491,6 +501,22 @@ export function receivePurchaseOrder(
 ): Promise<PurchaseOrderView> {
   return client.request(ApiRoutes.purchaseOrders.receive(enc(id)), {
     method: 'POST',
+    body: input,
+    schema: orderSchema,
+    storeId
+  })
+}
+
+// Completes the data of the supplier's document of a receipt (or marks it as left out of the annex of purchases); the order comes back whole
+export function completePurchaseReceiptDocument(
+  client: ApiClient,
+  storeId: string,
+  id: string,
+  receiptId: string,
+  input: CompleteReceiptDocumentInput
+): Promise<PurchaseOrderView> {
+  return client.request(ApiRoutes.purchaseOrders.receiptDocument(enc(id), enc(receiptId)), {
+    method: 'PUT',
     body: input,
     schema: orderSchema,
     storeId

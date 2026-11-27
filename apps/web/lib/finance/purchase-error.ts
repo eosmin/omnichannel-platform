@@ -3,6 +3,7 @@ import {
   PaymentReturnRule,
   PaymentRule,
   PurchaseConflicts,
+  PurchaseDocumentProblems,
   PurchaseRule
 } from '@platform/core/domain'
 
@@ -14,7 +15,8 @@ const CONFLICTS: readonly string[] = Object.values(PurchaseConflicts)
 const RULES: readonly string[] = [
   ...Object.values(PurchaseRule),
   ...Object.values(PaymentRule),
-  ...Object.values(PaymentReturnRule)
+  ...Object.values(PaymentReturnRule),
+  ...Object.values(PurchaseDocumentProblems)
 ]
 
 export type PurchaseErrorKey = `conflicts.${string}` | `rules.${string}`

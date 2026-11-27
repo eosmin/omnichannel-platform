@@ -224,6 +224,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'purchaseOrders.update': { step: '4B.9' },
   'purchaseOrders.order': { step: '4B.9' },
   'purchaseOrders.receive': { step: '4B.9' },
+  'purchaseOrders.receiptDocument': { step: '4B.9' },
   'purchaseOrders.close': { step: '4B.9' },
   'purchaseOrders.cancel': { step: '4B.9' },
   'purchaseOrders.payments': { step: '4B.9' },

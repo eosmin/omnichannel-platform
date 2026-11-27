@@ -512,6 +512,22 @@ export class FiscalAnnexError extends Error {
   }
 }
 
+// The supplier's document of a purchase as a person writes it (D4b): the codes are the provider's catalogs, core only carries them. The
+// provider says what is wrong in them (the class of the document against its type, the code of generation of an electronic one, the
+// classification of the cost for the income tax), so no code of a country is written in core.
+export interface FiscalPurchaseDocumentInput {
+  readonly documentClass: string
+  readonly documentType: string
+  readonly generationCode: string | null
+  // The number the supplier printed on the document, or null
+  readonly documentNumber: string | null
+  // internal, internation, import_goods or import_services
+  readonly origin: string
+  readonly expenseClass: string
+  readonly sector: string
+  readonly costType: string
+}
+
 export interface FiscalAnnexExporter {
   // The ids of the annexes it makes
   readonly ids: readonly string[]
@@ -540,6 +556,9 @@ export interface FiscalDocumentProvider {
   // Pure, optional: whether a tax id written for a party that is not a receiver (a supplier) has the shape the country of the provider
   // uses, as its document shows it. Core calls it when a person writes one; a provider without it accepts any value within core's limits. The answer must depend on the value alone.
   validatePartyTaxId?(taxId: string): boolean
+  // Pure, optional: what is wrong in the supplier's document of a purchase, as codes of the provider (an empty list when it is right). Core calls
+  // it when a person writes the document of a receipt. A provider without it accepts any value within core's limits.
+  validatePurchaseDocument?(input: FiscalPurchaseDocumentInput): readonly string[]
   // Pure, required when the manifest declares `sequence.perDocumentType`: the id of the type `build` will pick for this sale. It must
   // answer exactly what `build` puts in `BuiltDocument.documentType` for the same kind and receiver (the contract suite checks it).
   resolveDocumentType?(input: FiscalTypeInput): string

@@ -520,6 +520,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'purchaseOrders.update': { none: FINANCE },
   'purchaseOrders.order': { none: FINANCE },
   'purchaseOrders.receive': { none: FINANCE },
+  'purchaseOrders.receiptDocument': { none: FINANCE },
   'purchaseOrders.close': { none: FINANCE },
   'purchaseOrders.cancel': { none: FINANCE },
   'purchaseOrders.payments': { none: FINANCE },

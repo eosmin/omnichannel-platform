@@ -17,6 +17,7 @@ import { FiscalEvidenceService } from './fiscal-evidence.service'
 import { FiscalIssuerService } from './fiscal-issuer.service'
 import { FiscalPartyTaxIdService } from './fiscal-party-tax-id.service'
 import { FISCAL_PROVIDERS, FiscalProviderRegistry } from './fiscal-provider.registry'
+import { FiscalPurchaseDocumentService } from './fiscal-purchase-document.service'
 import { FiscalResealService } from './fiscal-reseal.service'
 import { FiscalSweepService } from './fiscal-sweep.service'
 import { officialFiscalProviders } from './official-providers'
@@ -45,6 +46,7 @@ import { officialFiscalProviders } from './official-providers'
     FiscalDocumentsService,
     FiscalCustomerDataService,
     FiscalPartyTaxIdService,
+    FiscalPurchaseDocumentService,
     FiscalResealService,
     FiscalSweepService
   ],
@@ -56,6 +58,7 @@ import { officialFiscalProviders } from './official-providers'
     FiscalIssuerService,
     FiscalCustomerDataService,
     FiscalPartyTaxIdService,
+    FiscalPurchaseDocumentService,
     FiscalProviderRegistry,
     FiscalResealService,
     FiscalSweepService
