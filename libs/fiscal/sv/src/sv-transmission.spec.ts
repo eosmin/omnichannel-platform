@@ -596,6 +596,80 @@ describe('the client of the authority', () => {
       expect(codeOf()).not.toBe(first)
     })
 
+    describe('the event that is corrected and sent again (Normativa DTE, apartado 10)', () => {
+      const EVENT = { code: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA', at: '2026-11-18T15:00:00.000Z' }
+      const identification = (): { codigoGeneracion: string; fecEmi: string; horEmi: string } =>
+        authority.stats.lastEvent?.['identificacion'] as {
+          codigoGeneracion: string
+          fecEmi: string
+          horEmi: string
+        }
+
+      it('carries the code core gives it, whatever the request says: a corrected request is the same event', async () => {
+        const stored = await accepted(null, 10)
+        const refused = await provider.void(stored, 'a', vctx({ voidEvent: EVENT }), {
+          ...RESCISSION,
+          requester: { name: 'Luis', idType: '36', idNumber: FAKE.REJECT }
+        })
+        expect(refused).toMatchObject({ voided: false, byAuthority: true })
+        expect(identification().codigoGeneracion).toBe(EVENT.code)
+        // Corrected (another reason, another key) and sent again: the authority took no event with that code, so it takes this one
+        const again = await provider.void(
+          stored,
+          'corrected reason',
+          vctx({ voidEvent: EVENT }),
+          RESCISSION
+        )
+        expect(again.voided).toBe(true)
+        expect(identification().codigoGeneracion).toBe(EVENT.code)
+      })
+
+      it('keeps the date and the hour of the first attempt when the retry is another day', async () => {
+        const stored = await accepted(null, 11)
+        provider = make({ now: () => Date.parse('2026-11-19T15:00:00.000Z') })
+        await provider.void(stored, 'a', vctx({ voidEvent: EVENT }), RESCISSION)
+        expect(identification()).toMatchObject({ fecEmi: '2026-11-18', horEmi: '09:00:00' })
+      })
+
+      it('counts the deadline from the moment of the first attempt, not from the retry', async () => {
+        const stored = await accepted(null, 12)
+        provider = make({ now: () => Date.parse('2028-01-01T15:00:00.000Z') })
+        expect(await provider.void(stored, 'a', vctx(), RESCISSION)).toMatchObject({
+          voided: false,
+          reason: SvVoidRefusals.DEADLINE_PASSED
+        })
+        const retried = await provider.void(stored, 'a', vctx({ voidEvent: EVENT }), RESCISSION)
+        expect(retried.voided).toBe(true)
+      })
+
+      it('says the code was refused only when the authority names the code, and not for another refusal', async () => {
+        const first = await accepted(null, 13)
+        const second = await accepted(null, 14)
+        expect(
+          (await provider.void(first, 'a', vctx({ voidEvent: EVENT }), RESCISSION)).voided
+        ).toBe(true)
+        // Another document sent with a code the authority holds already (code 4 naming identificacion.codigoGeneracion)
+        const clash = await provider.void(second, 'a', vctx({ voidEvent: EVENT }), RESCISSION)
+        expect(clash).toMatchObject({
+          voided: false,
+          reason: '004',
+          byAuthority: true,
+          eventCodeRefused: true
+        })
+        const other = await accepted(null, 15)
+        const refused = await provider.void(
+          other,
+          'a',
+          vctx({
+            voidEvent: { code: 'BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB', at: EVENT.at }
+          }),
+          { ...RESCISSION, requester: { name: 'Luis', idType: '36', idNumber: FAKE.REJECT } }
+        )
+        expect(refused).toMatchObject({ voided: false, reason: '020', byAuthority: true })
+        expect(refused.eventCodeRefused).toBeUndefined()
+      })
+    })
+
     it('needs the replacement the authority has for a correction', async () => {
       const stored = await accepted(null, 1)
       const replacement = await accepted(null, 2)

@@ -2,7 +2,9 @@ import {
   classifyEventAnswer,
   classifyReception,
   SvCredentialCodes,
+  eventCodeFault,
   SvDuplicateCodes,
+  SvEventCodeFaultCodes,
   SvTokenCodes,
   SvTransientCodes
 } from './sv-responses'
@@ -159,5 +161,24 @@ describe('what the authority answered to the event of a contingency', () => {
       kind: 'transient'
     })
     expect(classifyEventAnswer(200, '<html>')).toEqual({ kind: 'transient' })
+  })
+})
+
+describe('whether the refusal of an event is about its own generation code', () => {
+  const field = ['[identificacion.codigoGeneracion] YA EXISTE UN REGISTRO CON ESE VALOR']
+  it.each([...SvEventCodeFaultCodes])('is, for code %s, when the answer names the field', code => {
+    expect(eventCodeFault(String(code), { observaciones: field })).toBe(true)
+    expect(eventCodeFault(String(code).padStart(3, '0'), { descripcionMsg: field[0] })).toBe(true)
+  })
+
+  it('is not, for a code of that group that names another field or none (006 is also a schema error)', () => {
+    expect(eventCodeFault('006', { observaciones: ['[motivo.tipoAnulacion] INVALIDO'] })).toBe(
+      false
+    )
+    expect(eventCodeFault('004', { observaciones: null })).toBe(false)
+  })
+
+  it('is not, for any other code, even when the field is named', () => {
+    expect(eventCodeFault('020', { observaciones: field })).toBe(false)
   })
 })

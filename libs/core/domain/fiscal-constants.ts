@@ -358,7 +358,10 @@ export const FiscalContingencyLimits = {
 export const FiscalRejectionRetry = {
   WINDOW_MS: 24 * 60 * 60 * 1000,
   // From this long before the end of the window the person is told, once for each refusal (the daily check asks; a window already over is told too)
-  WARN_BEFORE_MS: 12 * 60 * 60 * 1000
+  WARN_BEFORE_MS: 12 * 60 * 60 * 1000,
+  // The invalidation event that is corrected and sent again keeps its code and moment (D14c) only while its first attempt is this recent: a
+  // refusal restarts the 24 hours, so without a cap a document refused again and again would send an event dated weeks back
+  VOID_EVENT_MAX_AGE_MS: 3 * 24 * 60 * 60 * 1000
 } as const
 
 // The hourly look at the windows of the authority (D14b): a daily one cannot promise a warning 12 hours before the end of a 24-hour window

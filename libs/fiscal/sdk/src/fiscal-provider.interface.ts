@@ -353,6 +353,11 @@ export interface ProviderContext {
   readonly idempotencyKey: string
   // 1 for the first attempt of the submission
   readonly attempt: number
+  // Only for the invalidation of an accepted document: the code and the moment of the event, fixed by core at its FIRST attempt and kept with the
+  // document, so that the event a person corrects and sends again is the same event (the authority asks the corrected one to carry the code of the
+  // refused one). `at` is an ISO instant: the date, the hour and the deadline of the event are those of that moment, never of the retry. A provider
+  // that is given none makes its own from the idempotency key and the clock.
+  readonly voidEvent?: { readonly code: string; readonly at: string }
 }
 
 // The answer of a submission, one shape per outcome so that what core stores is always complete: an accepted document has its number
@@ -384,6 +389,9 @@ export interface VoidResult {
   // True when the AUTHORITY refused the invalidation (the answer is its own), false or absent when the provider stopped before sending
   // anything. Only a refusal of the authority starts the window to correct and send the event again.
   readonly byAuthority?: boolean
+  // True when the authority refused the event because of its OWN code (it is repeated, or it is not valid): the event is made again with another
+  // code. Any other refusal keeps the code, because the event is corrected and sent again with the one it had.
+  readonly eventCodeRefused?: boolean
   readonly response?: Readonly<Record<string, unknown>>
 }
 
