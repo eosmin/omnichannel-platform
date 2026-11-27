@@ -290,11 +290,24 @@ export enum FiscalDeliveryStatus {
   NOT_SENT = 'not_sent'
 }
 
+// The state of the delivery of a document that has no row yet (the system has not delivered it, or the event was lost): the panel and the api
+// say it with this word, which is no row of the table
+export const FiscalDeliveryPending = 'pending' as const
+
 // How the files went. A channel carries them as two documents of the conversation; the email as two attachments of one message.
 export enum FiscalDeliveryRoute {
   CHANNEL = 'channel',
   EMAIL = 'email',
-  NONE = 'none'
+  NONE = 'none',
+  // A person of the store gave the files by hand (a download or paper); recorded in the panel, never made by the system
+  MANUAL = 'manual'
+}
+
+// How a person gave the files by hand: the files downloaded from the panel and handed over (any means: a drive, a message the person
+// writes), or the representation printed on paper at the customer's request (the rule on delivering the files of a document)
+export enum FiscalHandMeans {
+  DOWNLOAD = 'download',
+  PAPER = 'paper'
 }
 
 // Why nothing was sent. Codes only: the receiver's data never goes in a reason.
@@ -456,6 +469,16 @@ export const FiscalConflictReasons = {
   REPRESENTATION_TOO_LARGE: 'representation_too_large',
   // A voided sale document that already has the document that replaces it
   ALREADY_REPLACED: 'already_replaced',
+  // The files of the document were already given to its receiver by the system (a channel or an email): there is nothing to hand over
+  ALREADY_DELIVERED: 'already_delivered',
+  // The system is still delivering a document accepted a moment ago: a person who records a hand delivery now would give the customer the
+  // files twice
+  DELIVERY_RUNNING: 'delivery_running',
+  // A hand delivery is recorded for a document whose files are not there (the provider draws none, or they were never made): there is
+  // nothing to have handed over
+  DELIVERY_FILES_MISSING: 'delivery_files_missing',
+  // The document is not accepted (voided or not yet decided): its files are not owed to a receiver by this route
+  DELIVERY_NOT_OWED: 'delivery_not_owed',
   // The receiver of a credit note is the one of the document it cancels: it is fixed there
   CREDIT_NOTE_RECEIVER: 'credit_note_receiver',
   // The sealed receiver cannot be read and the change does not carry the whole receiver: it would be merged over nothing and drop what
@@ -548,6 +571,9 @@ export enum FiscalSweepKind {
   CREDIT_NOTE_MISSING = 'credit_note_missing',
   // A sale document whose total or tax differs from the entry of the books that holds the same sale: only a person looks at it
   ENTRY_MISMATCH = 'entry_mismatch',
+  // An accepted document whose files were made and that has no delivery row an hour later (the api was down when the event came, or the
+  // bridge lost it): the event is published again, and the delivery is safe to repeat
+  DELIVERY_MISSING = 'delivery_missing',
   // A guide whose goods travel (outbound, in a state that backs them) of an issuer that makes the sale document on delivery, and that has no
   // remission note at all: the event of the guide is not repeated, so a listener that failed leaves it with none
   REMISSION_NOTE_MISSING = 'remission_note_missing'
@@ -560,6 +586,9 @@ export enum FiscalEntryMismatchField {
 }
 
 export const FiscalSweepLimits = {
+  // How long an accepted document with its files may wait for the delivery row before the event is published again (the delivery of the
+  // first try, with its retries, takes seconds)
+  DELIVERY_GRACE_MINUTES: 60,
   // How far back the check looks for a sale or a return with no document, never before the first sale document of the organization
   LOOKBACK_DAYS: 120,
   // The size of a page of findings the check reads (the report asks for at most `PAGE_SIZE_MAX`)

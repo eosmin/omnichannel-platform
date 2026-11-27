@@ -35,7 +35,11 @@ export const UploadLimits = {
   // The key of `Media.scanResult` where the scan notes when it first ended with no verdict (the scanner was down)
   SCAN_UNAVAILABLE_SINCE_KEY: 'unavailableSince',
   // A file an agent uploaded and confirmed for a message and never sent is dropped (row and objects) after this long
-  UNSENT_MESSAGE_FILE_TTL_HOURS: 48
+  UNSENT_MESSAGE_FILE_TTL_HOURS: 48,
+  // An object under `orders/<order>/<media>/` that no row of that media id names is removed after this long: the copies a delivery makes
+  // for a channel are written before their rows, and a process that dies in between leaves one. Longer than every retry of the listener
+  // that writes them (minutes) and than an unconfirmed upload, so a copy in flight is never taken
+  ORPHAN_ORDER_FILE_TTL_HOURS: 48
 } as const
 
 export const AllowedContentTypes = {

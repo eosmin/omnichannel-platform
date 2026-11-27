@@ -17,6 +17,7 @@ import { FiscalContingencyController } from './fiscal-contingency.controller'
 import { FiscalDeliveryListener } from './fiscal-delivery.listener'
 import { FiscalDeliveryService } from './fiscal-delivery.service'
 import { FiscalEvidenceUrlsService } from './fiscal-evidence-urls.service'
+import { FiscalHandDeliveryService } from './fiscal-hand-delivery.service'
 import { FiscalReachService } from './fiscal-reach.service'
 import { FiscalSubmissionQueue } from './fiscal-submission.queue'
 import { FiscalController } from './fiscal.controller'
@@ -45,6 +46,7 @@ import { FiscalListener } from './fiscal.listener'
     FiscalDeliveryListener,
     FiscalDeliveryService,
     FiscalEvidenceUrlsService,
+    FiscalHandDeliveryService,
     FiscalListener,
     FiscalReachService,
     FiscalSubmissionQueue,
