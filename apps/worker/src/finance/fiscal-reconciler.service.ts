@@ -5,8 +5,15 @@ import type { Gauge } from '@prometheus-io/client'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { inSavepoint, isUniqueViolation, JobContext, PrismaService } from '@platform/core/database'
 import {
+  inSavepoint,
+  isUniqueViolation,
+  isUniqueViolationOf,
+  JobContext,
+  PrismaService
+} from '@platform/core/database'
+import {
+  FiscalIndexNames,
   FiscalIssueOn,
   FiscalLimits,
   FiscalSweepKind,
@@ -241,7 +248,7 @@ export class FiscalReconciler {
         )
       } catch (error) {
         // The listener of the guide made it between the sweep's read and its insert: the unique index of the live note says so
-        if (isUniqueViolation(error)) return 'exists'
+        if (isUniqueViolationOf(error, FiscalIndexNames.LIVE_REMISSION_OF_SHIPMENT)) return 'exists'
         throw error
       }
       if (documentId === null) return 'declined'

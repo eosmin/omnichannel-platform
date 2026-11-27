@@ -68,6 +68,12 @@ export const FiscalAnnexLimits = {
   LAST_YEAR: 2100
 } as const
 
+// The names of the unique indexes of the fiscal documents that code answers to (the migration says each)
+export const FiscalIndexNames = {
+  // One live remission note per guide
+  LIVE_REMISSION_OF_SHIPMENT: 'uq_fiscal_documents_live_remission_of_shipment'
+} as const
+
 export const FiscalLimits = {
   // The remission notes of an order a sale document is offered to name (the provider names the few its authority takes): a bound for the read,
   // above the most guides an order has

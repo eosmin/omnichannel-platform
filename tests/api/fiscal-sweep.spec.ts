@@ -642,6 +642,52 @@ describe('The check of the fiscal documents', () => {
       })
     })
 
+    it('does not look at the guide of a cancelled order, nor at the guide of a return (the goods come back: no note backs them)', async () => {
+      const cancelled = await dispatched()
+      await owner.order.update({
+        where: { id: cancelled.order.id },
+        data: { status: OrderStatus.CANCELLED }
+      })
+      // The order of a return has an outbound guide that is not on its way any more, and the guide of the return that is
+      const sent = await dispatched()
+      await owner.shipment.update({
+        where: { id: sent.guide.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+      const ret = await owner.orderReturn.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderId: sent.order.id,
+          type: 'refund',
+          reason: 'DEFECTIVE',
+          status: 'requested',
+          shippingPayer: 'sender',
+          createdBy: (
+            await owner.membership.findFirstOrThrow({
+              where: { storeId: ctx.storeA.id },
+              select: { userId: true }
+            })
+          ).userId
+        },
+        select: { id: true }
+      })
+      const back = await createShipment(owner, {
+        storeId: ctx.storeA.id,
+        returnOf: { returnId: ret.id, orderId: sent.order.id },
+        status: ShipmentStatus.IN_TRANSIT
+      })
+      const ids = await idsOf(FiscalSweepKind.REMISSION_NOTE_MISSING)
+      expect(ids).not.toContain(cancelled.guide.id)
+      expect(ids).not.toContain(back.id)
+      // A note is never made for either: the service answers nothing, so the sweep never has one to ask for
+      expect(await documents.createRemissionForShipment(ctx.orgA.id, back.id)).toBeNull()
+      // The guide of an order that was cancelled while the goods travel still backs them when the service is asked: only the night skips it
+      // (the note covers goods in transit; a person voids it if the goods come back)
+      expect(
+        await documents.createRemissionForShipment(ctx.orgA.id, cancelled.guide.id)
+      ).not.toBeNull()
+    })
+
     it('is made by the lifecycle and queued as one submission, once whatever the number of nights', async () => {
       const lost = await dispatched()
       const run = reconciler()

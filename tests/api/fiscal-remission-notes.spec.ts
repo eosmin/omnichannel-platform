@@ -2,12 +2,13 @@ import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService } from '@platform/core/database'
+import { isUniqueViolationOf, PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEnvironment,
+  FiscalIndexNames,
   FiscalIssueOn,
   OrderStatus,
   ShipmentStatus
@@ -17,6 +18,7 @@ import { JobNames, QueueNames, submitFiscalDocumentJobId } from '@platform/core/
 import { FiscalDocumentsService, FiscalProviderRegistry } from '@platform/fiscal/runtime'
 import { SIMULATOR_PROVIDER_ID, SimulatorDocumentTypes } from '@platform/fiscal/simulator'
 
+import { FiscalListener } from '../../apps/api/src/modules/fiscal/fiscal.listener'
 import { createOrder, createShipment } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -266,6 +268,55 @@ describe('The remission note of a dispatch (D3b-2)', () => {
       shipmentId: shipment.id,
       allowedActions: { editReceiver: true, replace: false }
     })
+  })
+
+  it('takes the loss of a race on the index of the live note as a duplicate: a warning, never an error (D3b-3)', async () => {
+    // The error the database really gives when a second live note of the guide is written, as the listener receives it
+    const order = await dispatchedOrder()
+    const other = await guide(order.id)
+    await created(other)
+    const real: unknown = await owner.fiscalDocument
+      .create({
+        data: rawNote({
+          orderId: order.id,
+          kind: FiscalDocumentKind.REMISSION_NOTE,
+          shipmentId: other.id
+        })
+      })
+      .catch((error: unknown) => error)
+    expect(isUniqueViolationOf(real, FiscalIndexNames.LIVE_REMISSION_OF_SHIPMENT)).toBe(true)
+
+    const shipment = await guide((await dispatchedOrder()).id)
+    const listener = app.get(FiscalListener)
+    const warn = jest.spyOn(listener['logger'], 'warn')
+    const error = jest.spyOn(listener['logger'], 'error')
+    const make = jest.spyOn(documents, 'createRemissionForShipment')
+    try {
+      make.mockRejectedValueOnce(real)
+      await created(shipment)
+      expect(warn).toHaveBeenCalledWith(
+        { shipmentId: shipment.id },
+        'the remission note of a guide was made by another replica'
+      )
+      expect(error).not.toHaveBeenCalled()
+      // Another unique rule of the table is a fault, said as one
+      make.mockRejectedValueOnce(
+        Object.assign(
+          new Error(
+            'Unique constraint failed on `fiscal_documents_organization_id_sequence_number_key`'
+          ),
+          {
+            code: 'P2002'
+          }
+        )
+      )
+      await created(shipment)
+      expect(error).toHaveBeenCalledTimes(1)
+    } finally {
+      make.mockRestore()
+      warn.mockRestore()
+      error.mockRestore()
+    }
   })
 
   it('is not made for an order that has its sale document already (it backs the goods itself)', async () => {
