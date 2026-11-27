@@ -433,6 +433,11 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
 
       if (path === '/fesv/recepcion/consultadte') {
         stats.consults += 1
+        // The reception side down while the login still answers (D2d)
+        if (control.receptionDown) {
+          send(response, 503, { error: 'Service Unavailable' })
+          return
+        }
         const body = JSON.parse(raw) as { codigoGeneracion?: string; nitEmisor?: string }
         const known = received.get(String(body.codigoGeneracion))
         if (known === undefined || body.nitEmisor !== FAKE.NIT) {
