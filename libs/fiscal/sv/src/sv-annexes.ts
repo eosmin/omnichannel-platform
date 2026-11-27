@@ -33,10 +33,10 @@ const isRecord = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 const textOf = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : null
-const digitsOf = (value: unknown): string =>
+export const digitsOf = (value: unknown): string =>
   (typeof value === 'string' || typeof value === 'number' ? String(value) : '').replace(/\D/g, '')
 
-const unreadable = (): never => {
+export const unreadable = (): never => {
   throw new FiscalAnnexError(SvAnnexErrors.UNREADABLE)
 }
 
@@ -58,7 +58,7 @@ export function annexMoney(cents: number): string {
 }
 
 // DD/MM/YYYY from yyyy-MM-dd
-function dateCell(date: string): string {
+export function dateCell(date: string): string {
   return `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`
 }
 
@@ -68,12 +68,12 @@ function dateCell(date: string): string {
 // authority does not read one. A legal name that starts with a sign loses it ([ACCOUNTANT] in the plan).
 const CELL_BREAKERS = /[;"\p{Cc}]+/gu
 const FORMULA_START = /^[=+\-@\s]+/
-function textCell(value: string): string {
+export function textCell(value: string): string {
   return value.replace(CELL_BREAKERS, ' ').replace(/\s+/g, ' ').replace(FORMULA_START, '').trim()
 }
 
 // The files: rows of cells joined as the manual asks, each row ended; an empty month is an empty file
-function fileOf(
+export function fileOf(
   id: string,
   period: FiscalAnnexPeriod,
   rows: readonly (readonly string[])[]
@@ -86,7 +86,7 @@ function fileOf(
   }
 }
 
-const periodKey = (period: FiscalAnnexPeriod): string =>
+export const periodKey = (period: FiscalAnnexPeriod): string =>
   `${period.year}-${String(period.month).padStart(2, '0')}`
 
 // What the files read of a document
@@ -416,7 +416,8 @@ const BUILDERS = new Map<string, AnnexBuilder>([
   [SvAnnexIds.VOIDED, voided]
 ])
 
-export const svAnnexes: FiscalAnnexExporter = {
+// The annexes made from the documents the authority accepted; the annex of purchases is made from the receipts (`sv-annex-exporter.ts` joins them)
+export const svSalesAnnexes: Pick<FiscalAnnexExporter, 'ids' | 'build'> = {
   ids: [...BUILDERS.keys()],
   build(id, period, documents) {
     return BUILDERS.get(id)?.(documents, period) ?? null

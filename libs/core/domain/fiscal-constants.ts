@@ -68,6 +68,27 @@ export const FiscalAnnexLimits = {
   LAST_YEAR: 2100
 } as const
 
+// Why the annex of purchases cannot be made from the receipts of a month (the code of the 409 `annex_refused`, with the number of receipts
+// and the first ones by id): the staff completes them. A receipt is declared when its supplier's document was written; one that was left
+// out on purpose, or that has no document and credits no tax, is not, and is only counted
+export const FiscalAnnexRefusals = {
+  PURCHASE_DOCUMENT_MISSING: 'annex_purchase_document_missing',
+  PURCHASE_LINES_INCONSISTENT: 'annex_purchase_lines_inconsistent'
+} as const
+
+// What an annex leaves out on purpose and counts (the response header and the audit row carry the counts, never a row): the accountant sees
+// them. A receipt left out WITH a document is counted apart, so a documented purchase is never hidden quietly
+export const FiscalAnnexNotices = {
+  NO_DOCUMENT_NO_CREDIT: 'no_document_no_credit',
+  LEFT_OUT: 'left_out',
+  LEFT_OUT_WITH_DOCUMENT: 'left_out_with_document'
+} as const
+
+export const FiscalAnnexHeaders = {
+  // `code=count` pairs separated by commas
+  NOTICES: 'X-Annex-Notices'
+} as const
+
 // The names of the unique indexes of the fiscal documents that code answers to (the migration says each)
 export const FiscalIndexNames = {
   // One live remission note per guide

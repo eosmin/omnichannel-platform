@@ -5,7 +5,8 @@ import {
   type FiscalAnnexFile
 } from '@platform/fiscal/sdk'
 
-import { annexMoney, svAnnexes } from './sv-annexes'
+import { svAnnexes } from './sv-annex-exporter'
+import { annexMoney } from './sv-annexes'
 import { buildDocument } from './sv-build'
 import { SvAnnexErrors, SvAnnexIds, SvProviderDataKeys } from './sv-constants'
 import { BUSINESS, credited, line, sale } from './testing/sv-fixtures'
@@ -426,7 +427,8 @@ describe('the exporter', () => {
     expect(svAnnexes.ids).toEqual([
       SvAnnexIds.SALES_TAXPAYERS,
       SvAnnexIds.SALES_CONSUMERS,
-      SvAnnexIds.VOIDED
+      SvAnnexIds.VOIDED,
+      SvAnnexIds.PURCHASES
     ])
     expect(svAnnexes.build('constructor', NOV, [])).toBeNull()
     expect(svAnnexes.build('nope', NOV, [])).toBeNull()

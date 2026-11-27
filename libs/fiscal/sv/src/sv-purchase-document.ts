@@ -17,6 +17,7 @@ const TYPES: readonly string[] = [...SV_PURCHASE_SUPPLIER_TYPES, ...SV_PURCHASE_
 // the annex of a month never has to guess. Pure and total: a list of codes of core's `PurchaseDocumentProblems`, empty when it is right.
 export function purchaseDocumentProblems(input: FiscalPurchaseDocumentInput): readonly string[] {
   const problems: string[] = []
+  problems.push(...issuedProblems(input.issuedOn, input.receivedOn))
   const classOk = CLASSES.includes(input.documentClass)
   const typeOk = TYPES.includes(input.documentType)
   if (!classOk) problems.push(PurchaseDocumentProblems.CLASS_INVALID)
@@ -43,6 +44,18 @@ export function purchaseDocumentProblems(input: FiscalPurchaseDocumentInput): re
   }
   problems.push(...classificationProblems(input))
   return problems
+}
+
+// The day of issue is not after the day the goods arrived, and the return takes a document of up to three periods before the one it is
+// declared in (article 63 of the law of VAT, manual p.17). Both are calendar days written YYYY-MM-DD, compared as text and by month
+// arithmetic: no instant, no time zone, so the day of El Salvador is the day that was written.
+const MONTHS_BACK = 3
+const monthIndex = (day: string): number => Number(day.slice(0, 4)) * 12 + Number(day.slice(5, 7))
+function issuedProblems(issuedOn: string, receivedOn: string): string[] {
+  if (issuedOn > receivedOn) return [PurchaseDocumentProblems.ISSUED_AFTER_RECEIPT]
+  return monthIndex(receivedOn) - monthIndex(issuedOn) > MONTHS_BACK
+    ? [PurchaseDocumentProblems.ISSUED_TOO_OLD]
+    : []
 }
 
 // A document of a supplier is a purchase in the country; the declaration of goods is the internation or the import of goods; the payment

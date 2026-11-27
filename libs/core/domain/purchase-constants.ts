@@ -67,6 +67,9 @@ export const PurchaseDocumentProblems = {
   GENERATION_CODE_REQUIRED: 'generation_code_required',
   GENERATION_CODE_INVALID: 'generation_code_invalid',
   GENERATION_CODE_NOT_ELECTRONIC: 'generation_code_not_electronic',
+  // The document is issued after the day it arrived, or older than the periods the return may still take it (the provider's rule)
+  ISSUED_AFTER_RECEIPT: 'issued_after_receipt',
+  ISSUED_TOO_OLD: 'issued_too_old',
   NUMBER_REQUIRED: 'number_required',
   ORIGIN_INVALID_FOR_TYPE: 'origin_invalid_for_type',
   CLASSIFICATION_INVALID: 'classification_invalid'

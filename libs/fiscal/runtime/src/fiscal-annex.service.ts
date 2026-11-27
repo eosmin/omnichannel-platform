@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
@@ -5,9 +7,12 @@ import { CredentialCipher } from '@platform/core/crypto'
 import { JobContext, PrismaService } from '@platform/core/database'
 import {
   FiscalAnnexLimits,
+  FiscalAnnexNotices,
+  FiscalAnnexRefusals,
   FiscalConflictReasons,
   FiscalDocumentStatus,
   FiscalLimits,
+  PurchaseLimits,
   SealedValueKind
 } from '@platform/core/domain'
 import {
@@ -21,14 +26,22 @@ import {
   FiscalAnnexError,
   type FiscalAnnexDocument,
   type FiscalAnnexFile,
-  type FiscalAnnexPeriod
+  type FiscalAnnexPeriod,
+  type FiscalAnnexPurchase
 } from '@platform/fiscal/sdk'
 
+import { splitReceiptLines } from './fiscal-annex-purchase-lines'
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
 import { record, toJson } from './json'
 import { openSealed } from './sealed-open'
 
 export type { FiscalAnnexFile } from '@platform/fiscal/sdk'
+
+// What the service gives back: the file and, for an annex made from the receipts of purchases, a digest of the documents it was made from
+// (their ids and the instant each was last written), so the audit row can say later whether a document changed after the file was taken
+export interface FiscalAnnexResult extends FiscalAnnexFile {
+  readonly sourcesSha256?: string
+}
 
 // The organizations making an annex in this process: one at a time each
 const making = new Set<string>()
@@ -65,7 +78,7 @@ export class FiscalAnnexService {
     organizationId: string,
     annexId: string,
     period: FiscalAnnexPeriod
-  ): Promise<FiscalAnnexFile> {
+  ): Promise<FiscalAnnexResult> {
     if (making.has(organizationId)) {
       throw resourceConflict('an annex of the organization is being made', {
         reason: FiscalConflictReasons.ANNEX_IN_PROGRESS
@@ -83,7 +96,7 @@ export class FiscalAnnexService {
     organizationId: string,
     annexId: string,
     period: FiscalAnnexPeriod
-  ): Promise<FiscalAnnexFile> {
+  ): Promise<FiscalAnnexResult> {
     const issuer = await this.unit(organizationId, () =>
       this.prisma.client.fiscalIssuer.findUnique({
         where: { organizationId },
@@ -96,16 +109,24 @@ export class FiscalAnnexService {
     if (exporter === undefined || !exporter.ids.includes(annexId)) {
       throw resourceNotFound('fiscal annex')
     }
-    const documents = await this.documentsAround(organizationId, issuer.providerId, period)
+    const purchaseAnnex = exporter.purchaseIds?.includes(annexId) === true
+    const documents = purchaseAnnex
+      ? []
+      : await this.documentsAround(organizationId, issuer.providerId, period)
+    const read = purchaseAnnex ? await this.purchasesOf(organizationId, period) : null
     try {
-      const file = exporter.build(annexId, period, documents)
+      const file = purchaseAnnex
+        ? (exporter.buildPurchases?.(annexId, period, read?.purchases ?? []) ?? null)
+        : exporter.build(annexId, period, documents)
       if (file === null) throw resourceNotFound('fiscal annex')
-      return file
+      if (read === null) return file
+      return { ...file, notices: read.notices, sourcesSha256: read.sourcesSha256 }
     } catch (error) {
       if (error instanceof FiscalAnnexError) {
         throw resourceConflict('the annex cannot be made from the documents of the month', {
           reason: FiscalConflictReasons.ANNEX_REFUSED,
-          code: error.code
+          code: error.code,
+          ...(error.refs.length === 0 ? {} : refsOf(error.refs))
         })
       }
       throw error
@@ -185,6 +206,167 @@ export class FiscalAnnexService {
     }
   }
 
+  // The receipts of the purchases that arrived in the month, in the organization (every store: a return is the organization's), read a page
+  // at a time and never past the cap. A receipt is declared when the supplier's document was written for it; one marked as left out, or one with no
+  // document that credits no tax, is only counted; any other is a refusal that lists how many and the first ones, so the staff completes them.
+  private async purchasesOf(
+    organizationId: string,
+    period: FiscalAnnexPeriod
+  ): Promise<{
+    purchases: FiscalAnnexPurchase[]
+    notices: Record<string, number>
+    sourcesSha256: string
+  }> {
+    const from = new Date(Date.UTC(period.year, period.month - 1, 1))
+    const until = new Date(Date.UTC(period.year, period.month, 1))
+    // A month that has not started is no declaration: the same rule as for the documents
+    if (from.getTime() - DAY_MS > Date.now()) {
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_FAILED,
+        'the month has not started',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
+    const purchases: FiscalAnnexPurchase[] = []
+    const sources: string[] = []
+    const missing: string[] = []
+    const inconsistent: string[] = []
+    const notices: Record<string, number> = {}
+    const count = (code: string): void => {
+      notices[code] = (notices[code] ?? 0) + 1
+    }
+    let read = 0
+    let after: string | undefined
+    for (;;) {
+      const page = await this.unit(organizationId, () =>
+        this.prisma.client.purchaseReceipt.findMany({
+          where: { organizationId, receivedOn: { gte: from, lt: until } },
+          orderBy: { id: 'asc' },
+          take: FiscalAnnexLimits.PAGE_SIZE,
+          ...(after === undefined ? {} : { cursor: { id: after }, skip: 1 }),
+          select: {
+            id: true,
+            receivedOn: true,
+            supplierDocumentNumber: true,
+            taxCreditable: true,
+            subtotalCents: true,
+            taxCents: true,
+            supplier: { select: { name: true, taxId: true } },
+            lines: { select: { subtotalCents: true, taxCents: true } },
+            document: {
+              select: {
+                issuedOn: true,
+                documentClass: true,
+                documentType: true,
+                generationCode: true,
+                purchaseOrigin: true,
+                expenseClass: true,
+                sector: true,
+                costType: true,
+                annexExclusion: true,
+                updatedAt: true
+              }
+            }
+          }
+        })
+      )
+      // Before the page is used: the memory the file takes never goes past the cap
+      read += page.length
+      if (read > FiscalAnnexLimits.MAX_DOCUMENTS) {
+        throw new PlatformException(
+          ErrorCodes.EXPORT_TOO_LARGE,
+          'the annex would be made from more documents than one file: narrow the month',
+          HttpStatusCodes.BAD_REQUEST
+        )
+      }
+      for (const row of page) {
+        const doc = row.document
+        // The digest covers every receipt of the month with what decides its place in the file (the document and when it was written, the
+        // mark, the money, the supplier), the ones left out too, so any change after a file was taken makes another digest
+        sources.push(
+          [
+            row.id,
+            doc?.updatedAt.toISOString() ?? '-',
+            doc?.annexExclusion ?? '-',
+            row.subtotalCents,
+            row.taxCents,
+            row.supplier.name,
+            row.supplier.taxId ?? '-'
+          ].join('|')
+        )
+        if (doc?.annexExclusion != null) {
+          count(FiscalAnnexNotices.LEFT_OUT)
+          if (row.supplierDocumentNumber !== null) count(FiscalAnnexNotices.LEFT_OUT_WITH_DOCUMENT)
+          continue
+        }
+        if (doc === null) {
+          if (row.supplierDocumentNumber === null && !row.taxCreditable && row.taxCents === 0) {
+            count(FiscalAnnexNotices.NO_DOCUMENT_NO_CREDIT)
+          } else {
+            missing.push(row.id)
+          }
+          continue
+        }
+        if (doc.issuedOn === null || doc.documentClass === null || doc.documentType === null) {
+          missing.push(row.id)
+          continue
+        }
+        // The lines are what the ledger posted: they add up to the receipt, or the receipt is not read
+        const split = splitReceiptLines(row.lines, row)
+        if (split === null) {
+          inconsistent.push(row.id)
+          continue
+        }
+        const day = (date: Date): string => date.toISOString().slice(0, 10)
+        purchases.push({
+          receiptId: row.id,
+          receivedOn: day(row.receivedOn),
+          supplierName: row.supplier.name,
+          supplierTaxId: row.supplier.taxId,
+          documentNumber: row.supplierDocumentNumber,
+          taxCreditable: row.taxCreditable,
+          taxedBaseCents: split.taxedBaseCents,
+          taxedLines: split.taxedLines,
+          taxCents: split.taxCents,
+          exemptBaseCents: split.exemptBaseCents,
+          document: {
+            issuedOn: day(doc.issuedOn),
+            receivedOn: day(row.receivedOn),
+            documentClass: doc.documentClass,
+            documentType: doc.documentType,
+            generationCode: doc.generationCode,
+            documentNumber: row.supplierDocumentNumber,
+            origin: doc.purchaseOrigin ?? '',
+            expenseClass: doc.expenseClass ?? '',
+            sector: doc.sector ?? '',
+            costType: doc.costType ?? ''
+          }
+        })
+      }
+      const last = page.at(-1)
+      if (page.length < FiscalAnnexLimits.PAGE_SIZE || last === undefined) break
+      after = last.id
+    }
+    for (const [code, ids] of [
+      [FiscalAnnexRefusals.PURCHASE_DOCUMENT_MISSING, missing],
+      [FiscalAnnexRefusals.PURCHASE_LINES_INCONSISTENT, inconsistent]
+    ] as const) {
+      if (ids.length > 0) {
+        throw resourceConflict('the annex cannot be made from the receipts of the month', {
+          reason: FiscalConflictReasons.ANNEX_REFUSED,
+          code,
+          ...refsOf(ids)
+        })
+      }
+    }
+    sources.sort()
+    return {
+      purchases,
+      notices,
+      sourcesSha256: createHash('sha256').update(sources.join('\n')).digest('hex')
+    }
+  }
+
   private opened(documentId: string, sealed: Uint8Array | null): Record<string, unknown> {
     // A copy that cannot be opened is handed over as an empty one: the provider refuses the month if the document belongs to it (a
     // declaration with a hole is wrong) and ignores it if it belongs to a neighbouring month the window read
@@ -200,3 +382,10 @@ export class FiscalAnnexService {
     return payload['unreadable'] === true ? {} : record(toJson(payload))
   }
 }
+
+// How many receipts a refusal names and the first ones by id: an id is no personal data, so the staff can find them, and the list is
+// bounded so an answer never carries a month
+const refsOf = (ids: readonly string[]): { count: number; ids: string[] } => ({
+  count: ids.length,
+  ids: [...ids].sort().slice(0, PurchaseLimits.ANNEX_MISSING_LISTED)
+})

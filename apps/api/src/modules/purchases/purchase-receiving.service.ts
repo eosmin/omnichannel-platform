@@ -13,6 +13,7 @@ import {
   InventoryReferenceType,
   JournalEntryType,
   PurchaseConflicts,
+  PurchaseDocumentProblems,
   PurchaseIdempotencyKey,
   PurchaseOrderStatus,
   PurchaseResourceTypes,
@@ -224,7 +225,7 @@ export class PurchaseReceivingService {
     // The data of the supplier's document, when sent, is right by the rules of the provider and is not another receipt's
     const fiscal = body.fiscalDocument
     if (fiscal !== undefined) {
-      await this.checkDocument(tx, organizationId, fiscal, document, null)
+      await this.checkDocument(tx, organizationId, fiscal, document, body.receivedOn, null)
     }
     // Several receipts of ONE order may share the supplier's invoice (it arrives in parts); the same invoice on another order would
     // credit its tax twice, so it is refused [ACCOUNTANT]
@@ -405,10 +406,12 @@ export class PurchaseReceivingService {
         where: { id: receiptId, purchaseOrderId: orderId, organizationId },
         select: {
           id: true,
+          receivedOn: true,
           supplierDocumentNumber: true,
           taxCreditable: true,
           document: {
             select: {
+              issuedOn: true,
               documentClass: true,
               documentType: true,
               generationCode: true,
@@ -439,6 +442,7 @@ export class PurchaseReceivingService {
           organizationId,
           body.fiscalDocument,
           receipt.supplierDocumentNumber,
+          dateToDay(receipt.receivedOn),
           receipt.id
         )
         const columns = { ...documentColumns(body.fiscalDocument), annexExclusion: null }
@@ -448,8 +452,9 @@ export class PurchaseReceivingService {
           update: columns
         })
       } else {
-        // A receipt that claims the tax as input VAT has a document that the annex declares: it is not left out
-        if (receipt.taxCreditable || receipt.document?.documentType != null) {
+        // A receipt that claims the tax as input VAT has a document that the annex declares: it is not left out. One that credits no tax may
+        // be, with a reason from the closed list, and the audit row keeps what the document said before
+        if (receipt.taxCreditable) {
           throw resourceConflict(
             'a receipt with a document to declare is not left out of the annex',
             {
@@ -480,9 +485,11 @@ export class PurchaseReceivingService {
       metadata: {
         purchaseOrderId: orderId,
         // The codes of a document are not personal data: the values it had before and the ones it has now are in the row of the trail
-        previous,
+        previous: previous === null ? null : trailOf(previous),
         current:
-          'annexExclusion' in body ? { annexExclusion: body.annexExclusion } : body.fiscalDocument
+          'annexExclusion' in body
+            ? { annexExclusion: body.annexExclusion }
+            : trailOf(documentColumns(body.fiscalDocument))
       },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
@@ -496,9 +503,12 @@ export class PurchaseReceivingService {
     organizationId: string,
     fiscal: NonNullable<ReceivePurchaseOrderBody['fiscalDocument']>,
     documentNumber: string | null,
+    receivedOn: string,
     receiptId: string | null
   ): Promise<void> {
-    const found = await this.documents.problems(tx, organizationId, {
+    const asked = await this.documents.problems(tx, organizationId, {
+      issuedOn: fiscal.issuedOn,
+      receivedOn,
       documentClass: fiscal.documentClass,
       documentType: fiscal.documentType,
       generationCode: fiscal.generationCode ?? null,
@@ -508,6 +518,13 @@ export class PurchaseReceivingService {
       sector: fiscal.sector,
       costType: fiscal.costType
     })
+    // A document is never issued after the day it arrived, whatever the provider says (an organization with no issuer has no rule of its own)
+    const found = [
+      ...new Set([
+        ...(fiscal.issuedOn > receivedOn ? [PurchaseDocumentProblems.ISSUED_AFTER_RECEIPT] : []),
+        ...asked
+      ])
+    ]
     if (found.length > 0) {
       throw new PlatformException(
         ErrorCodes.VALIDATION_INVALID_INPUT,
@@ -550,6 +567,7 @@ export class PurchaseReceivingService {
         taxCreditable: true,
         document: {
           select: {
+            issuedOn: true,
             documentClass: true,
             documentType: true,
             generationCode: true,
@@ -586,6 +604,7 @@ const normalizedCode = (code: string | undefined): string | null =>
   code === undefined ? null : code.toUpperCase()
 
 interface DocumentColumns {
+  issuedOn: Date | null
   documentClass: string | null
   documentType: string | null
   generationCode: string | null
@@ -598,6 +617,7 @@ interface DocumentColumns {
 // The columns of a receipt that hold the supplier's document: all null when none was sent
 function documentColumns(fiscal: ReceivePurchaseOrderBody['fiscalDocument']): DocumentColumns {
   return {
+    issuedOn: fiscal === undefined ? null : dayToDate(fiscal.issuedOn),
     documentClass: fiscal?.documentClass ?? null,
     documentType: fiscal?.documentType ?? null,
     generationCode: normalizedCode(fiscal?.generationCode),
@@ -611,6 +631,7 @@ function documentColumns(fiscal: ReceivePurchaseOrderBody['fiscalDocument']): Do
 function sameDocument(stored: DocumentColumns | null, sent: DocumentColumns): boolean {
   const has = stored ?? documentColumns(undefined)
   return (
+    has.issuedOn?.getTime() === sent.issuedOn?.getTime() &&
     has.documentClass === sent.documentClass &&
     has.documentType === sent.documentType &&
     has.generationCode === sent.generationCode &&
@@ -619,4 +640,21 @@ function sameDocument(stored: DocumentColumns | null, sent: DocumentColumns): bo
     has.sector === sent.sector &&
     has.costType === sent.costType
   )
+}
+
+// A row of the audit trail: the days as text and the code of generation as it is kept (in capitals), so what it says before and now reads alike
+function trailOf(
+  columns: DocumentColumns & { annexExclusion?: string | null }
+): Record<string, string | null> {
+  return {
+    issuedOn: columns.issuedOn === null ? null : dateToDay(columns.issuedOn),
+    documentClass: columns.documentClass,
+    documentType: columns.documentType,
+    generationCode: columns.generationCode,
+    purchaseOrigin: columns.purchaseOrigin,
+    expenseClass: columns.expenseClass,
+    sector: columns.sector,
+    costType: columns.costType,
+    annexExclusion: columns.annexExclusion ?? null
+  }
 }

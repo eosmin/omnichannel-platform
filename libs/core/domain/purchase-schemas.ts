@@ -91,6 +91,8 @@ const documentCode = z
   .string()
   .regex(new RegExp(`^[0-9]{1,${PurchaseLimits.DOCUMENT_CODE_MAX_LENGTH}}$`))
 export const purchaseFiscalDocumentSchema = z.strictObject({
+  // The day the supplier issued the document (the annex declares it; the day the goods arrived is the receipt's)
+  issuedOn: day,
   documentClass: documentCode,
   documentType: documentCode,
   // Only a received electronic document has one

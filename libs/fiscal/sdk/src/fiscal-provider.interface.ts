@@ -506,7 +506,29 @@ export interface FiscalAnnexDocument extends StoredFiscalDocument {
   readonly voidedAt: Date | null
 }
 
+// What the receipt of a purchase gives the annex of purchases: what the ledger kept of the money (split by the tax of its lines, in whole
+// cents) and the supplier's document as it was written. Core only reads it; which month it belongs to and which column holds what is the
+// provider's. The days are plain calendar days (YYYY-MM-DD).
+export interface FiscalAnnexPurchase {
+  readonly receiptId: string
+  readonly receivedOn: string
+  readonly supplierName: string
+  readonly supplierTaxId: string | null
+  // The number the supplier printed, or null
+  readonly documentNumber: string | null
+  readonly taxCreditable: boolean
+  // The lines that carry tax: their base and their tax; the lines that carry none: their base
+  readonly taxedBaseCents: number
+  // How many lines carry tax: each line's tax is rounded on its own, so the tax of the receipt may differ from the share of the whole base
+  readonly taxedLines: number
+  readonly taxCents: number
+  readonly exemptBaseCents: number
+  readonly document: FiscalPurchaseDocumentInput
+}
+
 export interface FiscalAnnexFile {
+  // What was left out of the file on purpose and how many, by a code of core (a count, never a row); absent when nothing was
+  readonly notices?: Readonly<Record<string, number>>
   readonly id: string
   // The name the file is downloaded with, extension included
   readonly filename: string
@@ -518,7 +540,11 @@ export interface FiscalAnnexFile {
 // A month whose annex cannot be made without guessing (a document that lacks what the file needs): the file is refused, never made
 // with a hole, because a declaration with a wrong figure is worse than none. The code carries no data of the document.
 export class FiscalAnnexError extends Error {
-  constructor(readonly code: string) {
+  // `refs` are the ids (of a receipt) the cause names, so the staff can find them; never a name, a number or a figure
+  constructor(
+    readonly code: string,
+    readonly refs: readonly string[] = []
+  ) {
     super(code)
     this.name = 'FiscalAnnexError'
   }
@@ -528,6 +554,9 @@ export class FiscalAnnexError extends Error {
 // provider says what is wrong in them (the class of the document against its type, the code of generation of an electronic one, the
 // classification of the cost for the income tax), so no code of a country is written in core.
 export interface FiscalPurchaseDocumentInput {
+  // The days (YYYY-MM-DD) the supplier issued it and the goods arrived: plain calendar days, never an instant
+  readonly issuedOn: string
+  readonly receivedOn: string
   readonly documentClass: string
   readonly documentType: string
   readonly generationCode: string | null
@@ -548,6 +577,14 @@ export interface FiscalAnnexExporter {
     id: string,
     period: FiscalAnnexPeriod,
     documents: readonly FiscalAnnexDocument[]
+  ): FiscalAnnexFile | null
+  // The ids of the annexes made from the purchases of the month (a subset of `ids`): core reads the receipts for them, not the documents
+  readonly purchaseIds?: readonly string[]
+  // Pure, required when `purchaseIds` has any: the file of one annex of purchases; null for an id it does not make
+  buildPurchases?(
+    id: string,
+    period: FiscalAnnexPeriod,
+    purchases: readonly FiscalAnnexPurchase[]
   ): FiscalAnnexFile | null
 }
 

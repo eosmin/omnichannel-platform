@@ -3,6 +3,7 @@ import {
   PaymentReturnRule,
   PaymentRule,
   PurchaseConflicts,
+  PurchaseDocumentProblems,
   PurchaseRule
 } from '@platform/core/domain'
 
@@ -53,7 +54,8 @@ describe('the reason an api refusal of a purchase gives', () => {
       for (const rule of [
         ...Object.values(PurchaseRule),
         ...Object.values(PaymentRule),
-        ...Object.values(PaymentReturnRule)
+        ...Object.values(PaymentReturnRule),
+        ...Object.values(PurchaseDocumentProblems)
       ]) {
         expect(purchases.rules[rule]).toEqual(expect.any(String))
       }
