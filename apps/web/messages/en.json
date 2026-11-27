@@ -8325,6 +8325,10 @@
         "replacedFirst": "The replacement was queued. Invalidate this document once it is accepted."
       },
       "conflicts": {
+        "delivery_running": "The files of this document are still being delivered by the system. Wait a few minutes before recording a hand delivery.",
+        "already_delivered": "The files of this document were already given to the customer.",
+        "delivery_files_missing": "The files of this document are not there to be handed over.",
+        "delivery_not_owed": "This document is not accepted: its files are not owed to a customer.",
         "representation_too_large": "The graphic representation of this document is too large to be drawn. Give the customer the file of the document another way.",
         "has_credit_notes": "This document has credit notes that are not voided. Void the notes first.",
         "already_replaced": "This sale already has a document that replaces it.",
@@ -8553,6 +8557,32 @@
         "confirm": "Confirm the change",
         "done": "The document was confirmed and queued with the new issuer.",
         "nowNone": "There is no issuer set up. Set it up before you confirm."
+      },
+      "delivery": {
+        "title": "Delivery to the customer",
+        "description": "The customer is given the document file and its graphic representation together with the document, whether or not it is paid. The system sends them through the conversation or by email when it can.",
+        "state": {
+          "pending": "The system has not delivered the files yet.",
+          "channel": "Sent through the customer's conversation.",
+          "email": "Sent by email.",
+          "manual": "Handed over by hand ({means}) on {date}.",
+          "none": "The system could not send the files. They are still owed to the customer."
+        },
+        "reasons": {
+          "no_channel": "The customer has no conversation that takes the files and no email.",
+          "files_unavailable": "The files could not be read to be sent.",
+          "too_large": "The files are larger than what an email carries.",
+          "customer_erased": "The customer was erased: nobody is left to give them to."
+        },
+        "means": {
+          "download": "files downloaded",
+          "paper": "paper copy"
+        },
+        "howTo": "Download both files above and give them to the customer, or print the graphic representation if the customer asks for it on paper. Then record it here: this closes the pending delivery.",
+        "handed": {
+          "download": "I gave the files",
+          "paper": "I gave a paper copy"
+        }
       },
       "evidence": {
         "title": "Evidence files",

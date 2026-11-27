@@ -2,6 +2,7 @@ import {
   parseAvatarKey,
   parseAvatarUploadKey,
   parseMediaObjectKey,
+  parseOrderObjectKey,
   StorageKeys
 } from './storage-keys'
 
@@ -119,5 +120,29 @@ describe('the keys of an avatar', () => {
         mediaId: MEDIA
       })
     })
+  })
+})
+
+describe('parseOrderObjectKey', () => {
+  const ORDER = '33333333-3333-4333-8333-333333333333'
+
+  it('reads back the key the builder makes: the store, the order and the media', () => {
+    expect(parseOrderObjectKey(StorageKeys.order(STORE, ORDER, MEDIA, 'summary.pdf'))).toEqual({
+      storeId: STORE,
+      orderId: ORDER,
+      mediaId: MEDIA
+    })
+  })
+
+  it.each([
+    ['another area', `stores/${STORE}/messages/${MEDIA}/a.png`],
+    ['an order that is not an id', `stores/${STORE}/orders/not-an-order/${MEDIA}/a.pdf`],
+    ['a media that is not an id', `stores/${STORE}/orders/${ORDER}/not-a-media/a.pdf`],
+    ['a store that is not an id', `stores/x/orders/${ORDER}/${MEDIA}/a.pdf`],
+    ['an order that goes up', `stores/${STORE}/orders/../${MEDIA}/a.pdf`],
+    ['no file name', `stores/${STORE}/orders/${ORDER}/${MEDIA}`],
+    ['a prefix only', `stores/${STORE}/orders/${ORDER}/`]
+  ])('reads nothing from %s', (_case, key) => {
+    expect(parseOrderObjectKey(key)).toBeNull()
   })
 })

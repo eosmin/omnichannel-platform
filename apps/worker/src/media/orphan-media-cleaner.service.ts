@@ -23,6 +23,7 @@ import {
   parseAvatarKey,
   parseAvatarUploadKey,
   parseMediaObjectKey,
+  parseOrderObjectKey,
   STORES_ROOT,
   UploadLimits,
   USERS_ROOT
@@ -219,6 +220,7 @@ export class OrphanMediaCleaner {
   // the last run stopped: the cursor is the schedule's, and a run limited to some stores has its own start.
   private sweepStoreRoot(root: string, now: Date, resumable: boolean): Promise<number> {
     const cutoff = now.getTime() - UploadLimits.UNCONFIRMED_UPLOAD_TTL_HOURS * HOUR_MS
+    const orderCutoff = now.getTime() - UploadLimits.ORPHAN_ORDER_FILE_TTL_HOURS * HOUR_MS
     return this.sweepRoot(root, CacheKeys.mediaCleanup.cursor(), resumable, async objects => {
       let deleted = 0
       const old = objects.flatMap(object => {
@@ -227,10 +229,28 @@ export class OrphanMediaCleaner {
           ? [{ key: object.key, ...parsed }]
           : []
       })
+      // The files of an order (`orders/<order>/<media>/`): the copies a fiscal delivery makes for a channel. Only a key shaped as we write it,
+      // by the id of its media, and only past a TTL longer than every retry of the process that writes them. Never a blind prefix.
+      const orders = objects.flatMap(object => {
+        const parsed = parseOrderObjectKey(object.key)
+        return parsed !== null && object.lastModified.getTime() < orderCutoff
+          ? [{ key: object.key, storeId: parsed.storeId, mediaId: parsed.mediaId }]
+          : []
+      })
       // Every store of the page is read BEFORE anything is deleted: a store that cannot be read aborts the run with this page untouched
-      const alive = await this.aliveMessageMedia(
-        old.filter(object => object.area === MediaObjectAreas.MESSAGES)
-      )
+      const alive = await this.aliveMessageMedia([
+        ...old.filter(object => object.area === MediaObjectAreas.MESSAGES),
+        ...orders
+      ])
+      for (const object of orders) {
+        if (alive.has(`${object.storeId}/${object.mediaId}`)) continue
+        try {
+          await this.storage.delete(object.key)
+          deleted += 1
+        } catch (error) {
+          this.logger.warn({ errorName: errorName(error) }, 'a stray order object was not deleted')
+        }
+      }
       for (const object of old) {
         if (
           object.area === MediaObjectAreas.MESSAGES &&

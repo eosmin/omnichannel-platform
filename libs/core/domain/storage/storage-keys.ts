@@ -34,6 +34,24 @@ export function parseMediaObjectKey(
     : null
 }
 
+const ORDER_OBJECT_KEY = new RegExp(`^${STORES_ROOT}([^/]+)/orders/([^/]+)/([^/]+)/.+$`)
+const UUID_SEGMENT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// The inverse of `StorageKeys.order`: the store, the order and the media of a file of an order. null for any other key, and for one whose
+// three ids are not ids of ours (a key that is not shaped as we write it is never read as belonging to anybody, so no sweep takes it).
+export function parseOrderObjectKey(
+  key: string
+): { storeId: string; orderId: string; mediaId: string } | null {
+  const match = ORDER_OBJECT_KEY.exec(key)
+  const storeId = match?.[1]
+  const orderId = match?.[2]
+  const mediaId = match?.[3]
+  if (storeId === undefined || orderId === undefined || mediaId === undefined) return null
+  return UUID_SEGMENT.test(storeId) && UUID_SEGMENT.test(orderId) && UUID_SEGMENT.test(mediaId)
+    ? { storeId, orderId, mediaId }
+    : null
+}
+
 // Where every key of a user's own files begins (an avatar has no store)
 export const USERS_ROOT = 'users/'
 

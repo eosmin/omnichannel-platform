@@ -15,10 +15,13 @@ import {
   confirmFiscalIssuerChange,
   fetchFiscalDocument,
   fetchFiscalDocumentPage,
+  fetchFiscalDelivery,
   fetchFiscalEvidenceUrls,
   fetchFiscalIssuer,
   fetchFiscalProviders,
+  handOverFiscalDelivery,
   fetchFiscalSeries,
+  type FiscalDeliveryView,
   type FiscalDocumentDetailView,
   type FiscalDocumentFilters,
   type FiscalDocumentPageView,
@@ -36,6 +39,7 @@ import {
 } from '@platform/api-client'
 import type {
   FiscalEvidenceKind,
+  HandOverFiscalDeliveryBody,
   FiscalReceiverPatchBody,
   PutFiscalIssuerBody,
   VoidFiscalDocumentBody
@@ -174,3 +178,22 @@ export const useFiscalEvidenceLink = (
   useMutation({
     mutationFn: input => fetchFiscalEvidenceUrls(apiClient, storeId, input.id, input.kind)
   })
+
+// How the files of an accepted document reached its receiver, and which of them exist (a voided document may have none)
+export function useFiscalDelivery(
+  storeId: string,
+  id: string,
+  enabled: boolean
+): UseQueryResult<FiscalDeliveryView> {
+  return useQuery({
+    queryKey: QueryKeys.fiscal.delivery(storeId, id),
+    queryFn: ({ signal }) => fetchFiscalDelivery(apiClient, storeId, id, signal),
+    enabled
+  })
+}
+
+// A person records that they gave the files to the receiver by hand
+export const useHandOverFiscalDelivery = (
+  storeId: string
+): Write<{ id: string; body: HandOverFiscalDeliveryBody }, FiscalDeliveryView> =>
+  useFiscalWrite(input => handOverFiscalDelivery(apiClient, storeId, input.id, input.body))

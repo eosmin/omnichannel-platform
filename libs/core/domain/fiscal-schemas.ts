@@ -4,6 +4,7 @@ import { FiscalDocumentStatus } from './finance-constants'
 import {
   FiscalCustomerDataLimits,
   FiscalEnvironment,
+  FiscalHandMeans,
   FiscalIssueOn,
   FiscalContingencyLimits,
   FiscalLimits,
@@ -148,6 +149,11 @@ export const voidFiscalDocumentSchema = z
   })
   .strict()
 export type VoidFiscalDocumentBody = z.output<typeof voidFiscalDocumentSchema>
+
+// A person records that they gave the files of an accepted document to its receiver by hand (the files are downloaded by the route of the
+// evidence): how, and nothing of the receiver
+export const handOverFiscalDeliverySchema = z.object({ means: z.enum(FiscalHandMeans) }).strict()
+export type HandOverFiscalDeliveryBody = z.output<typeof handOverFiscalDeliverySchema>
 
 // A person starts a contingency of the issuer (Step 4B.7c-7): one of the reasons the provider's manifest declares, and what they say of it
 export const enterFiscalContingencySchema = z

@@ -3301,15 +3301,18 @@ model FinanceBookSnapshot {
 // The delivery of the files of an accepted fiscal document to its receiver (the rule on delivering the files of a document): one row for each document, written
 // when the files went (sent) or when nothing could carry them and a person must give them by hand (not_sent). Never deleted with the document.
 model FiscalDelivery {
-  id             String   @id @default(uuid())
-  organizationId String   @map("organization_id")
-  storeId        String   @map("store_id")
-  documentId     String   @unique @map("document_id")
-  orderId        String   @map("order_id")
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  storeId        String    @map("store_id")
+  documentId     String    @unique @map("document_id")
+  orderId        String    @map("order_id")
   status         String // FiscalDeliveryStatus
   route          String // FiscalDeliveryRoute
-  reason         String? // FiscalDeliveryReason, set only when nothing was sent
-  createdAt      DateTime @default(now()) @map("created_at")
+  reason         String? // FiscalDeliveryReason: why the system did not send (kept when a person then gave the files by hand)
+  handMeans      String?   @map("hand_means") // FiscalHandMeans, set only by the route MANUAL
+  handedOverBy   String?   @map("handed_over_by") // the user who gave the files by hand
+  handedOverAt   DateTime? @map("handed_over_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   store        Store          @relation(fields: [storeId], references: [id], onDelete: Restrict)
