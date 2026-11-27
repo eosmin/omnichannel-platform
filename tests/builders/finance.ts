@@ -250,6 +250,30 @@ export const simpleEntry = (
 
 export { NormalSide }
 
+// The remission notes of the organizations of a run (a fiscal document is never deleted, the owner included, so the trigger is off inside
+// one transaction and on again before it commits), with the files of evidence they kept. They are removed before the shipments: the note
+// restricts the deletion of its guide. Nothing else of the books is touched here (`purgeFinance` goes later, after the remittances that
+// name its accounts).
+export async function purgeRemissionNotes(owner: OwnerClient, prefix: string): Promise<void> {
+  const notes = await owner.fiscalDocument.findMany({
+    where: { kind: 'remission_note', organization: { slug: { startsWith: prefix } } },
+    select: { id: true }
+  })
+  if (notes.length === 0) return
+  const ids = notes.map(note => note.id)
+  // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+  await owner.$transaction(async tx => {
+    await tx.$executeRawUnsafe('ALTER TABLE fiscal_documents DISABLE TRIGGER USER')
+    await tx.$executeRawUnsafe('ALTER TABLE media DISABLE TRIGGER trg_media_fiscal_evidence_keeps')
+    await tx.media.deleteMany({
+      where: { purpose: 'fiscal_evidence', fiscalDocumentId: { in: ids } }
+    })
+    await tx.$executeRawUnsafe('ALTER TABLE media ENABLE TRIGGER trg_media_fiscal_evidence_keeps')
+    await tx.fiscalDocument.deleteMany({ where: { id: { in: ids } } })
+    await tx.$executeRawUnsafe('ALTER TABLE fiscal_documents ENABLE TRIGGER USER')
+  })
+}
+
 // The books of the organizations of a run, removed. The journal is append-only for everyone, the owner included, so the
 // triggers are switched off inside one transaction, the rows go, and they are switched on again before it commits.
 export async function purgeFinance(owner: OwnerClient, organizationIds: string[]): Promise<void> {

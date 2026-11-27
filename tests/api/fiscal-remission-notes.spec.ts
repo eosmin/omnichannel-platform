@@ -220,7 +220,11 @@ describe('The remission note of a dispatch (D3b-2)', () => {
     expect(await noteOf(live.id)).toHaveLength(1)
     // An order that predates the tax snapshot has no note, and its guide would have one with the snapshot
     const untaxedOrder = await dispatchedOrder()
-    await owner.order.update({ where: { id: untaxedOrder.id }, data: { taxCents: null } })
+    // The two columns of the snapshot are null together (the database checks the pair)
+    await owner.order.update({
+      where: { id: untaxedOrder.id },
+      data: { taxCents: null, pricesIncludeTax: null }
+    })
     const untaxed = await guide(untaxedOrder.id)
     await created(untaxed)
     expect(await noteOf(untaxed.id)).toEqual([])
@@ -280,7 +284,10 @@ describe('The remission note of a dispatch (D3b-2)', () => {
         owner.fiscalDocument.create({
           data: rawNote({ orderId: order.id, kind: 'remission_note', shipmentId: foreign.id })
         })
-      ).rejects.toThrow(/fiscal_documents_store_id_shipment_id_fkey|Foreign key constraint/i)
+      ).rejects.toThrow(
+        // The scope of the document answers first (a trigger before the insert); the foreign key is the floor under it
+        /the guide of a remission note belongs|fiscal_documents_store_id_shipment_id_fkey|Foreign key constraint/i
+      )
       // The guide is one of the order of the note: the guide of another order of the same store is refused by the scope of the document
       await expect(
         owner.fiscalDocument.create({
@@ -305,7 +312,10 @@ describe('The remission note of a dispatch (D3b-2)', () => {
       const shipment = await guide(order.id)
       await created(shipment)
       const [first] = await noteOf(shipment.id)
-      await owner.fiscalDocument.update({ where: { id: first?.id }, data: { status: 'voided' } })
+      await owner.fiscalDocument.update({
+        where: { id: first?.id },
+        data: { status: 'voided', voidedAt: new Date(), voidReason: 'The guide was made again' }
+      })
       const again = await owner.fiscalDocument.create({
         data: rawNote({
           orderId: order.id,
