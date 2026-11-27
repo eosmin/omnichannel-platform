@@ -348,6 +348,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     await tx.fiscalIssuer.deleteMany({ where })
     await tx.supplierPaymentReturn.deleteMany({ where })
     await tx.supplierPayment.deleteMany({ where })
+    await tx.purchaseReceiptDocument.deleteMany({ where })
     await tx.purchaseReceiptLine.deleteMany({ where })
     await tx.purchaseReceipt.deleteMany({ where })
     await tx.purchaseOrderLine.deleteMany({ where })

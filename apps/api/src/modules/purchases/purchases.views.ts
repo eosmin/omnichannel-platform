@@ -76,6 +76,18 @@ export const RECEIPT_SELECT = {
   dueOn: true,
   supplierDocumentNumber: true,
   taxCreditable: true,
+  document: {
+    select: {
+      documentClass: true,
+      documentType: true,
+      generationCode: true,
+      purchaseOrigin: true,
+      expenseClass: true,
+      sector: true,
+      costType: true,
+      annexExclusion: true
+    }
+  },
   subtotalCents: true,
   taxCents: true,
   totalCents: true,
@@ -104,6 +116,16 @@ export interface ReceiptRow {
   dueOn: Date
   supplierDocumentNumber: string | null
   taxCreditable: boolean
+  document: {
+    documentClass: string | null
+    documentType: string | null
+    generationCode: string | null
+    purchaseOrigin: string | null
+    expenseClass: string | null
+    sector: string | null
+    costType: string | null
+    annexExclusion: string | null
+  } | null
   subtotalCents: number
   taxCents: number
   totalCents: number
@@ -132,6 +154,14 @@ export interface ReceiptView {
   dueOn: string
   supplierDocumentNumber: string | null
   taxCreditable: boolean
+  documentClass: string | null
+  documentType: string | null
+  generationCode: string | null
+  purchaseOrigin: string | null
+  expenseClass: string | null
+  sector: string | null
+  costType: string | null
+  annexExclusion: string | null
   subtotalCents: number
   taxCents: number
   totalCents: number
@@ -150,6 +180,14 @@ export const receiptView = (row: ReceiptRow, lines: ReceiptLineRow[]): ReceiptVi
   dueOn: dateToDay(row.dueOn),
   supplierDocumentNumber: row.supplierDocumentNumber,
   taxCreditable: row.taxCreditable,
+  documentClass: row.document?.documentClass ?? null,
+  documentType: row.document?.documentType ?? null,
+  generationCode: row.document?.generationCode ?? null,
+  purchaseOrigin: row.document?.purchaseOrigin ?? null,
+  expenseClass: row.document?.expenseClass ?? null,
+  sector: row.document?.sector ?? null,
+  costType: row.document?.costType ?? null,
+  annexExclusion: row.document?.annexExclusion ?? null,
   subtotalCents: row.subtotalCents,
   taxCents: row.taxCents,
   totalCents: row.totalCents,

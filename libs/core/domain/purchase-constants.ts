@@ -21,8 +21,58 @@ export const PurchaseLimits = {
   // The units of one line: the same ceiling as one inventory movement, so a receipt line is always one movement
   MAX_LINE_QUANTITY: 1_000_000,
   // The accounting date of a receipt or a payment may be a day ahead of today (the clock of the person is not the server's)
-  FUTURE_DAYS: 1
+  FUTURE_DAYS: 1,
+  // The codes of the supplier's document (class, type, the sector...) are short text of the provider's catalogs; the code of generation of a
+  // received electronic document is a UUID (36 with dashes), with room for a provider that writes another
+  DOCUMENT_CODE_MAX_LENGTH: 2,
+  GENERATION_CODE_MAX_LENGTH: 64,
+  // How many receipts the refusal of an annex names: the first ones, by day, so the staff can complete them
+  ANNEX_MISSING_LISTED: 20
 } as const
+
+// Where the goods of a purchase come from, for the annex of purchases of the return: bought in the country, brought in from a country of the
+// customs union (internation), imported goods, imported services. One receipt is one origin (a mixed bill is two receipts)
+export const PurchaseOrigins = {
+  INTERNAL: 'internal',
+  INTERNATION: 'internation',
+  IMPORT_GOODS: 'import_goods',
+  IMPORT_SERVICES: 'import_services'
+} as const
+export type PurchaseOrigin = (typeof PurchaseOrigins)[keyof typeof PurchaseOrigins]
+export const PURCHASE_ORIGINS = Object.values(PurchaseOrigins) as [
+  PurchaseOrigin,
+  ...PurchaseOrigin[]
+]
+
+// Why a receipt is left out of the annex of purchases on purpose (marked by a person, audited): the document of the purchase is not one the
+// annex declares. A purchase to a person with no document goes by the invoice of an excluded subject (its own annex), and a purchase that
+// does not count as a cost or an expense for the income tax has no place in the columns of the annex
+export const PurchaseAnnexExclusions = {
+  EXCLUDED_SUBJECT: 'excluded_subject',
+  NOT_DEDUCTIBLE: 'not_deductible'
+} as const
+export type PurchaseAnnexExclusion =
+  (typeof PurchaseAnnexExclusions)[keyof typeof PurchaseAnnexExclusions]
+export const PURCHASE_ANNEX_EXCLUSIONS = Object.values(PurchaseAnnexExclusions) as [
+  PurchaseAnnexExclusion,
+  ...PurchaseAnnexExclusion[]
+]
+
+// The problems a provider finds in the supplier's document of a receipt (`FiscalDocumentProvider.validatePurchaseDocument`), for the client to
+// tell apart (`metadata.problems`)
+export const PurchaseDocumentProblems = {
+  CLASS_INVALID: 'class_invalid',
+  TYPE_INVALID: 'type_invalid',
+  CLASS_TYPE_MISMATCH: 'class_type_mismatch',
+  GENERATION_CODE_REQUIRED: 'generation_code_required',
+  GENERATION_CODE_INVALID: 'generation_code_invalid',
+  GENERATION_CODE_NOT_ELECTRONIC: 'generation_code_not_electronic',
+  NUMBER_REQUIRED: 'number_required',
+  ORIGIN_INVALID_FOR_TYPE: 'origin_invalid_for_type',
+  CLASSIFICATION_INVALID: 'classification_invalid'
+} as const
+export type PurchaseDocumentProblem =
+  (typeof PurchaseDocumentProblems)[keyof typeof PurchaseDocumentProblems]
 
 // The kind of a resource, for the audit log and for the not-found answers
 export const PurchaseResourceTypes = {
@@ -78,5 +128,9 @@ export const PurchaseConflicts = {
   RETURN_VOID_WOULD_OVERPAY: 'return_void_would_overpay',
   PAYMENT_VOIDED: 'payment_voided',
   // The entry of a receipt or a payment is reversed through the purchase (its permission, its audit row), never alone
-  ENTRY_OWNED_BY_PURCHASE: 'entry_owned_by_purchase'
+  ENTRY_OWNED_BY_PURCHASE: 'entry_owned_by_purchase',
+  // The supplier's document of a receipt is already on another receipt of the organization (the same electronic document twice would be declared twice)
+  GENERATION_CODE_IN_USE: 'generation_code_in_use',
+  // A receipt with a document to declare cannot also be marked as left out of the annex
+  ANNEX_EXCLUSION_WITH_DOCUMENT: 'annex_exclusion_with_document'
 } as const

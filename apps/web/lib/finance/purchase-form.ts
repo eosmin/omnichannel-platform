@@ -14,7 +14,11 @@ import type {
 import {
   FinanceLimits,
   isIsoDate,
+  type PurchaseFiscalDocumentBody,
+  purchaseFiscalDocumentSchema,
   PurchaseLimits,
+  type PurchaseOrigin,
+  PurchaseOrigins,
   PurchaseOrderStatus,
   PurchaseOrderStatusTransitions,
   type ReceiptMoney,
@@ -351,7 +355,88 @@ export function orderActionsOf(
 
 // ---------------------------------------------------------------------------------------------------------------- receiving
 
+// The supplier's document as the annex of purchases of the return reads it (D4b). The codes are the provider's: the form only carries them,
+// and the api says what is wrong in them. Left blank, nothing is sent and the receipt is completed later.
+export interface DocumentDraft {
+  documentClass: string
+  documentType: string
+  generationCode: string
+  origin: PurchaseOrigin
+  expenseClass: string
+  sector: string
+  costType: string
+}
+
+export const emptyDocumentDraft = (): DocumentDraft => ({
+  documentClass: '',
+  documentType: '',
+  generationCode: '',
+  origin: PurchaseOrigins.INTERNAL,
+  expenseClass: '',
+  sector: '',
+  costType: ''
+})
+
+const DOCUMENT_CODE = new RegExp(`^[0-9]{1,${PurchaseLimits.DOCUMENT_CODE_MAX_LENGTH}}$`)
+
+// Whether the person wrote anything of the document (an origin other than the default counts: it is a choice, never dropped in silence)
+export const documentTouched = (draft: DocumentDraft): boolean =>
+  draft.origin !== PurchaseOrigins.INTERNAL ||
+  [
+    draft.documentClass,
+    draft.documentType,
+    draft.generationCode,
+    draft.expenseClass,
+    draft.sector,
+    draft.costType
+  ].some(value => value.trim() !== '')
+
+export const DocumentFields = {
+  CLASS: 'documentClass',
+  TYPE: 'documentType',
+  GENERATION_CODE: 'generationCode',
+  EXPENSE_CLASS: 'expenseClass',
+  SECTOR: 'sector',
+  COST_TYPE: 'costType'
+} as const
+export type DocumentField = (typeof DocumentFields)[keyof typeof DocumentFields]
+
+// The first field of a document written in part or wrong in its shape; null when it is complete or left entirely blank (the rules of
+// the provider on the combinations are the api's)
+export function documentProblem(draft: DocumentDraft): DocumentField | null {
+  if (!documentTouched(draft)) return null
+  for (const field of [
+    DocumentFields.CLASS,
+    DocumentFields.TYPE,
+    DocumentFields.EXPENSE_CLASS,
+    DocumentFields.SECTOR,
+    DocumentFields.COST_TYPE
+  ]) {
+    if (!DOCUMENT_CODE.test(draft[field].trim())) return field
+  }
+  const code = draft.generationCode.trim()
+  return code === '' || purchaseFiscalDocumentSchema.shape.generationCode.safeParse(code).success
+    ? null
+    : DocumentFields.GENERATION_CODE
+}
+
+// What is sent; undefined when the document was left blank. Call only after `documentProblem` said null.
+export function documentInputOf(draft: DocumentDraft): PurchaseFiscalDocumentBody | undefined {
+  if (!documentTouched(draft)) return undefined
+  const code = draft.generationCode.trim()
+  return {
+    documentClass: draft.documentClass.trim(),
+    documentType: draft.documentType.trim(),
+    ...(code === '' ? {} : { generationCode: code }),
+    origin: draft.origin,
+    expenseClass: draft.expenseClass.trim(),
+    sector: draft.sector.trim(),
+    costType: draft.costType.trim()
+  }
+}
+
 export interface ReceiveDraft {
+  document: DocumentDraft
   receivedOn: string
   supplierDocumentNumber: string
   // The tax is credited as input VAT; with the box on, the api credits it when the supplier's document number is given [ACCOUNTANT]
@@ -364,7 +449,8 @@ export const ReceiveFields = {
   DATE: 'receivedOn',
   DOCUMENT: 'supplierDocumentNumber',
   QUANTITY: 'quantity',
-  NOTHING: 'nothing'
+  NOTHING: 'nothing',
+  FISCAL_DOCUMENT: 'fiscalDocument'
 } as const
 export type ReceiveField = (typeof ReceiveFields)[keyof typeof ReceiveFields]
 
@@ -373,6 +459,7 @@ export const receiveDraftOf = (
   order: Pick<PurchaseOrderView, 'lines'>,
   today: string
 ): ReceiveDraft => ({
+  document: emptyDocumentDraft(),
   receivedOn: today,
   supplierDocumentNumber: '',
   creditTax: true,
@@ -392,6 +479,9 @@ export function receiveProblem(
   if (!isIsoDate(draft.receivedOn.trim())) return { field: ReceiveFields.DATE, lineId: null }
   if (draft.supplierDocumentNumber.trim().length > FinanceLimits.DOCUMENT_NUMBER_MAX_LENGTH) {
     return { field: ReceiveFields.DOCUMENT, lineId: null }
+  }
+  if (documentProblem(draft.document) !== null) {
+    return { field: ReceiveFields.FISCAL_DOCUMENT, lineId: null }
   }
   let any = false
   for (const line of order.lines) {
@@ -416,12 +506,14 @@ export function receiveInputOf(
     return quantity > 0 ? [{ orderLineId: line.id, quantity }] : []
   })
   const document = trimmed(draft.supplierDocumentNumber)
+  const fiscalDocument = documentInputOf(draft.document)
   return {
     idempotencyKey,
     receivedOn: draft.receivedOn.trim(),
     ...(document === undefined ? {} : { supplierDocumentNumber: document }),
     // Left out the api decides (credited when there is a document number); only "no" is said
     ...(draft.creditTax ? {} : { taxCreditable: false }),
+    ...(fiscalDocument === undefined ? {} : { fiscalDocument }),
     lines
   }
 }
