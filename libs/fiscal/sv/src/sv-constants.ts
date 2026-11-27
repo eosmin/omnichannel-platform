@@ -375,6 +375,11 @@ export const SvDefaultRemissionTitle: SvRemissionTitle = SvRemissionTitles.TRANS
 // confirm with the 50 minimum tests of the sandbox and with a question to the authority. Change this one constant to adopt another.
 export const SvDefaultRemissionActivity = '10005'
 
+// How long after the generation of a tax credit document a credit or debit note may name it (Normativa DTE v2.0, Anexo IV, field 17 rule
+// 2 c): three calendar months, the last day included, counted on the dates the documents carry (`fecEmi`). **[ACCOUNTANT]** The manual
+// adds "except the legal exceptions", which are not known: no exception is applied, a note out of time is refused before it is sent.
+export const SvRelatedDocument = { DEADLINE_MONTHS: 3 } as const
+
 // The names of the keys of the address a customer or the issuer keeps in this provider (the address of core is a record of text keyed by
 // the provider's own names): the codes of the catalogs of the authority and a free line.
 export const SvAddressKeys = {
@@ -450,6 +455,7 @@ export const SvBuildErrors = {
   RECEIVER_UNREADABLE: 'receiver_unreadable',
   CREDITED_DOCUMENT_UNKNOWN: 'credited_document_unknown',
   CREDITED_DOCUMENT_NOT_CREDITABLE: 'credited_document_not_creditable',
+  RELATED_DOCUMENT_DEADLINE_PASSED: 'related_document_deadline_passed',
   TOO_MANY_ITEMS: 'too_many_items',
   NO_ITEMS: 'no_items',
   ITEM_DESCRIPTION_EMPTY: 'item_description_empty',

@@ -1351,3 +1351,72 @@ describe('the invoice of an excluded subject (14)', () => {
     expect(credit['resumen']).toMatchObject({ condicionOperacion: 2 })
   })
 })
+
+// Normativa DTE v2.0, Anexo IV, field 17 rule 2 c: a note that names a tax credit document is generated within three months of the
+// generation of that document. Counted in calendar months of the date it carries (`fecEmi`), the last day included, in Salvador time.
+describe.each([
+  ['credit note', creditNote],
+  ['debit note', debitNote]
+])('the three months a %s has to name its tax credit document', (_name, make) => {
+  const noteOn = (parentDate: string, noteInstant: string) =>
+    make({
+      issuedAt: noteInstant,
+      credited: credited({ [SvProviderDataKeys.ISSUE_DATE]: parentDate })
+    })
+
+  it('is built on the last day of the three months and refused the day after', () => {
+    expect(refused(noteOn('2026-08-16', '2026-11-16T15:00:00.000Z'))).toBe('built')
+    expect(refused(noteOn('2026-08-16', '2026-11-17T15:00:00.000Z'))).toBe(
+      SvBuildErrors.RELATED_DOCUMENT_DEADLINE_PASSED
+    )
+  })
+
+  it('is built on the same day it was generated', () => {
+    expect(refused(noteOn('2026-11-16', '2026-11-16T15:00:00.000Z'))).toBe('built')
+  })
+
+  it('counts the date in the time of El Salvador, not in UTC', () => {
+    // 2026-11-17 03:30 UTC is still 2026-11-16 in El Salvador: the last day
+    expect(refused(noteOn('2026-08-16', '2026-11-17T03:30:00.000Z'))).toBe('built')
+    // 2026-11-17 06:00 UTC is 2026-11-17 00:00 in El Salvador: the day after
+    expect(refused(noteOn('2026-08-16', '2026-11-17T06:00:00.000Z'))).toBe(
+      SvBuildErrors.RELATED_DOCUMENT_DEADLINE_PASSED
+    )
+  })
+
+  it('ends on the last day of a shorter month: a document of 30 or 31 November lasts until 28 February', () => {
+    expect(refused(noteOn('2026-11-30', '2027-02-28T15:00:00.000Z'))).toBe('built')
+    expect(refused(noteOn('2026-11-30', '2027-03-01T15:00:00.000Z'))).toBe(
+      SvBuildErrors.RELATED_DOCUMENT_DEADLINE_PASSED
+    )
+    expect(refused(noteOn('2026-12-31', '2027-03-31T15:00:00.000Z'))).toBe('built')
+    expect(refused(noteOn('2026-12-31', '2027-04-01T15:00:00.000Z'))).toBe(
+      SvBuildErrors.RELATED_DOCUMENT_DEADLINE_PASSED
+    )
+    // A leap year
+    expect(refused(noteOn('2023-11-30', '2024-02-29T15:00:00.000Z'))).toBe('built')
+    expect(refused(noteOn('2023-11-30', '2024-03-01T15:00:00.000Z'))).toBe(
+      SvBuildErrors.RELATED_DOCUMENT_DEADLINE_PASSED
+    )
+  })
+
+  it('crosses the year', () => {
+    expect(refused(noteOn('2026-10-15', '2027-01-15T15:00:00.000Z'))).toBe('built')
+    expect(refused(noteOn('2026-10-15', '2027-01-16T15:00:00.000Z'))).toBe(
+      SvBuildErrors.RELATED_DOCUMENT_DEADLINE_PASSED
+    )
+  })
+
+  it('refuses a document whose date is not a day of the calendar, and builds a note dated before it', () => {
+    expect(refused(noteOn('2026-02-30', '2026-03-16T15:00:00.000Z'))).toBe(
+      SvBuildErrors.CREDITED_DOCUMENT_UNKNOWN
+    )
+    expect(refused(noteOn('2026-11-16', '2026-11-10T15:00:00.000Z'))).toBe('built')
+  })
+
+  it('still refuses a document whose date was not kept before looking at the deadline', () => {
+    expect(
+      refused(make({ credited: credited({ [SvProviderDataKeys.ISSUE_DATE]: undefined }) }))
+    ).toBe(SvBuildErrors.CREDITED_DOCUMENT_UNKNOWN)
+  })
+})
