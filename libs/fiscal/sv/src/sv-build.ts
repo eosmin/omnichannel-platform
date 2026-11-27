@@ -44,7 +44,7 @@ import {
 } from './sv-constants'
 import { readContingency, type SvContingencyProblem } from './sv-contingency-reason'
 import { allocate, dollars, dollars8, roundDiv, SCALE_8, toScaled8 } from './sv-decimal'
-import { addMonths } from './sv-invalidation'
+import { addDays, addMonths } from './sv-invalidation'
 import {
   addressOf,
   digitsOf,
@@ -830,6 +830,64 @@ function relatedDocument(
   return { type: credited.documentType, code: code.trim().toUpperCase(), date: issued }
 }
 
+// The remission notes an invoice or a tax credit document names (Anexo IV, fields 14, 16 and 17). The notes core offers are accepted ones; of
+// them, the document names those that are of the type of a remission note (all of one type), whose generation code and date were kept, that
+// were generated in the tax period of this document or no more than three days before the period ended (rule 2 a: the document is made in the
+// period of the note or within three days after it), once each, and no more than the schema takes. What is left out is left out in silence: the
+// relation is optional (field 14, rule 4: "may name") and a sale is never refused for it.
+function followedNotes(input: FiscalBuildInput): Array<{
+  tipoDocumento: string
+  tipoGeneracion: number
+  numeroDocumento: string
+  fechaEmision: string
+}> {
+  const made = salvadorMoment(input.issuedAt).date
+  const named: Array<{
+    tipoDocumento: string
+    tipoGeneracion: number
+    numeroDocumento: string
+    fechaEmision: string
+  }> = []
+  for (const note of input.follows ?? []) {
+    if (named.length >= SvRelatedDocument.MAX_ON_SALE) break
+    if (note.documentType !== SvDocumentTypes.REMISSION_NOTE) continue
+    const code = note.providerData?.[SvProviderDataKeys.GENERATION_CODE]
+    const issued = note.providerData?.[SvProviderDataKeys.ISSUE_DATE]
+    if (
+      typeof code !== 'string' ||
+      !SvCodePatterns.GENERATION_CODE.test(code.trim().toUpperCase()) ||
+      typeof issued !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(issued)
+    ) {
+      continue
+    }
+    let lastDay: string
+    try {
+      // The last day of the month of the note, and the days of grace after it
+      lastDay = addDays(
+        addMonths(`${issued.slice(0, 7)}-01`, 1),
+        SvRelatedDocument.REMISSION_GRACE_DAYS - 1
+      )
+    } catch {
+      continue
+    }
+    const normalized = code.trim().toUpperCase()
+    if (made > lastDay || made < issued) continue
+    if (named.some(item => item.numeroDocumento === normalized)) continue
+    named.push({
+      tipoDocumento: note.documentType,
+      tipoGeneracion: SvGenerationType.ELECTRONIC,
+      numeroDocumento: normalized,
+      fechaEmision: issued
+    })
+  }
+  return named
+}
+
+// An empty relation is the absence of one: the schemas ask for at least one entry or null
+const relationOrNull = <T>(list: readonly T[]): readonly T[] | null =>
+  list.length === 0 ? null : list
+
 // ---------------------------------------------------------------- the document
 
 export function buildDocument(input: FiscalBuildInput): BuiltDocument {
@@ -867,7 +925,7 @@ export function buildDocument(input: FiscalBuildInput): BuiltDocument {
       documentType: type,
       payload: {
         ...base,
-        documentoRelacionado: null,
+        documentoRelacionado: relationOrNull(followedNotes(input)),
         receptor: consumerReceiver(input.receiver),
         ...invoiceBody(input, items)
       },
@@ -879,7 +937,7 @@ export function buildDocument(input: FiscalBuildInput): BuiltDocument {
       documentType: type,
       payload: {
         ...base,
-        documentoRelacionado: null,
+        documentoRelacionado: relationOrNull(followedNotes(input)),
         receptor: businessReceiver(input.receiver, 'nit'),
         ...netBody(type, input, items, null)
       },

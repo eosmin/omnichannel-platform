@@ -82,7 +82,7 @@ function businessDayOfNextMonth(date: string, n: number, holidays: readonly stri
 }
 
 // A date some days later (or earlier), as yyyy-MM-dd
-function addDays(date: string, days: number): string {
+export function addDays(date: string, days: number): string {
   const at = parts(date)
   if (at === null) throw new RangeError('not a date')
   return new Date(Date.UTC(at.year, at.month - 1, at.day + days)).toISOString().slice(0, 10)

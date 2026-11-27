@@ -14,7 +14,7 @@ import {
 } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
 import { JobNames, QueueNames, submitFiscalDocumentJobId } from '@platform/core/queues'
-import { FiscalDocumentsService } from '@platform/fiscal/runtime'
+import { FiscalDocumentsService, FiscalProviderRegistry } from '@platform/fiscal/runtime'
 import { SIMULATOR_PROVIDER_ID, SimulatorDocumentTypes } from '@platform/fiscal/simulator'
 
 import { createOrder, createShipment } from '../builders'
@@ -26,6 +26,8 @@ import { queueOf } from '../helpers/queue'
 import { inStoreContext } from '../helpers/tenant-context'
 
 const OK = 200
+const NOT_FOUND = 404
+const CONFLICT = 409
 
 const ISSUER = {
   providerId: SIMULATOR_PROVIDER_ID,
@@ -263,6 +265,173 @@ describe('The remission note of a dispatch (D3b-2)', () => {
       kind: FiscalDocumentKind.REMISSION_NOTE,
       shipmentId: shipment.id,
       allowedActions: { editReceiver: true, replace: false }
+    })
+  })
+
+  it('is not made for an order that has its sale document already (it backs the goods itself)', async () => {
+    const order = await dispatchedOrder()
+    await owner.fiscalDocument.create({
+      data: rawNote({ orderId: order.id, kind: FiscalDocumentKind.SALE })
+    })
+    const shipment = await guide(order.id)
+    await created(shipment)
+    expect(await noteOf(shipment.id)).toEqual([])
+  })
+
+  describe('made again after it was voided (D3b-3)', () => {
+    const asAdmin = () => api(app, ctx.adminA, ctx.storeA)
+    const voidNote = (id: string) =>
+      owner.fiscalDocument.update({
+        where: { id },
+        data: {
+          status: FiscalDocumentStatus.VOIDED,
+          voidedAt: new Date(),
+          voidReason: 'wrong data'
+        }
+      })
+
+    it('makes a new note for the same guide, with the receiver of the voided one, and refuses a second one while the first is alive', async () => {
+      const order = await dispatchedOrder()
+      const shipment = await guide(order.id)
+      await created(shipment)
+      const [first] = await noteOf(shipment.id)
+      await voidNote(first?.id ?? '')
+      const view = await inStoreContext(
+        app.get(PrismaService, { strict: false }),
+        { storeId: ctx.storeA.id, organizationId: ctx.orgA.id },
+        () => documents.get(ctx.orgA.id, first?.id ?? '')
+      )
+      expect(view.allowedActions.replace).toBe(true)
+      const made = await asAdmin().post(ApiRoutes.fiscal.documents.replace(first?.id ?? ''))
+      expect(made.status).toBe(OK)
+      const again = await owner.fiscalDocument.findUniqueOrThrow({
+        where: { id: (made.body as { data: { id: string } }).data.id }
+      })
+      expect(again).toMatchObject({
+        kind: FiscalDocumentKind.REMISSION_NOTE,
+        shipmentId: shipment.id,
+        orderId: order.id,
+        status: FiscalDocumentStatus.QUEUED,
+        replacesDocumentId: null,
+        journalEntryId: null
+      })
+      expect(again.sequenceNumber).toBeGreaterThan(first?.sequenceNumber ?? 0)
+      expect(
+        Buffer.from(again.receiverEncrypted).equals(Buffer.from(first?.receiverEncrypted ?? []))
+      ).toBe(true)
+      // Queued for the authority like any other document
+      expect(
+        jobs().some(entry => entry.opts?.jobId === submitFiscalDocumentJobId(again.id, 1))
+      ).toBe(true)
+      // The guide has a live note now: the voided one cannot be made again a second time
+      const second = await asAdmin().post(ApiRoutes.fiscal.documents.replace(first?.id ?? ''))
+      expect(second.status).toBe(CONFLICT)
+      expect(JSON.stringify(second.body)).toContain('remission_already_replaced')
+      expect(await noteOf(shipment.id)).toHaveLength(2)
+    })
+
+    it('refuses it when the goods no longer travel (the guide was cancelled), when the issuer no longer makes the note, and for a note that is not voided', async () => {
+      const order = await dispatchedOrder()
+      const shipment = await guide(order.id)
+      await created(shipment)
+      const [note] = await noteOf(shipment.id)
+      // Not voided
+      const alive = await asAdmin().post(ApiRoutes.fiscal.documents.replace(note?.id ?? ''))
+      expect(alive.status).toBe(CONFLICT)
+      await voidNote(note?.id ?? '')
+      await owner.shipment.update({
+        where: { id: shipment.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+      const cancelled = await asAdmin().post(ApiRoutes.fiscal.documents.replace(note?.id ?? ''))
+      expect(cancelled.status).toBe(CONFLICT)
+      expect(JSON.stringify(cancelled.body)).toContain('note_guide_not_active')
+      // The guide is on its way again in this test, and the issuer makes the sale document at the dispatch: nothing for a note to back
+      await owner.shipment.update({
+        where: { id: shipment.id },
+        data: { status: ShipmentStatus.IN_TRANSIT }
+      })
+      await setIssueOn(FiscalIssueOn.SHIPPED)
+      try {
+        const shipped = await asAdmin().post(ApiRoutes.fiscal.documents.replace(note?.id ?? ''))
+        expect(shipped.status).toBe(CONFLICT)
+        expect(JSON.stringify(shipped.body)).toContain('note_guide_not_active')
+      } finally {
+        await setIssueOn(FiscalIssueOn.DELIVERED)
+      }
+      // The control: the same request with the goods on their way and the issuer on delivery makes the note
+      const control = await asAdmin().post(ApiRoutes.fiscal.documents.replace(note?.id ?? ''))
+      expect(control.status).toBe(OK)
+    })
+
+    it('never reaches a note of another organization', async () => {
+      const order = await dispatchedOrder()
+      const shipment = await guide(order.id)
+      await created(shipment)
+      const [note] = await noteOf(shipment.id)
+      await voidNote(note?.id ?? '')
+      const other = await api(app, ctx.adminB, ctx.storeB).post(
+        ApiRoutes.fiscal.documents.replace(note?.id ?? '')
+      )
+      expect(other.status).toBe(NOT_FOUND)
+      expect(await noteOf(shipment.id)).toHaveLength(1)
+    })
+  })
+
+  describe('a sale document that follows its notes (D3b-3)', () => {
+    // What the provider is asked to build: the sale is made and sent after the notes, and the provider is shown which notes it may name
+    async function followedBy(saleId: string): Promise<string[]> {
+      const provider = app.get(FiscalProviderRegistry).find(SIMULATOR_PROVIDER_ID)
+      if (provider === undefined) throw new Error('the simulator is not registered')
+      const build = jest.spyOn(provider, 'build')
+      try {
+        // What happens after the build is the business of other specs: only the offer to the provider is read here
+        await documents.submit(ctx.orgA.id, saleId).catch(() => undefined)
+        const input = build.mock.calls[0]?.[0]
+        expect(input?.kind).toBe(FiscalDocumentKind.SALE)
+        return (input?.follows ?? []).map(item => item.externalNumber)
+      } finally {
+        build.mockRestore()
+      }
+    }
+    const acceptedNote = async (orderId: string) => {
+      const shipment = await guide(orderId)
+      await created(shipment)
+      const [note] = await noteOf(shipment.id)
+      await documents.submit(ctx.orgA.id, note?.id ?? '')
+      // Only one guide of an order and warehouse is active: the note of this one stays accepted after it is cancelled, as the notes of
+      // cancelled guides do (a person voids them), and the next guide of the order can be made
+      await owner.shipment.update({
+        where: { id: shipment.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+      return owner.fiscalDocument.findUniqueOrThrow({ where: { id: note?.id } })
+    }
+
+    it('offers the accepted notes of its order, and not a voided one, nor one of another order', async () => {
+      const order = await dispatchedOrder()
+      const alive = await acceptedNote(order.id)
+      const voided = await acceptedNote(order.id)
+      await owner.fiscalDocument.update({
+        where: { id: voided.id },
+        data: {
+          status: FiscalDocumentStatus.VOIDED,
+          voidedAt: new Date(),
+          voidReason: 'wrong data'
+        }
+      })
+      // A note of another order is never offered
+      const other = await dispatchedOrder()
+      await acceptedNote(other.id)
+      const saleId = await documents.createForOrder(ctx.orgA.id, order.id, FiscalIssueOn.DELIVERED)
+      expect(saleId).not.toBeNull()
+      expect(await followedBy(saleId ?? '')).toEqual([alive.externalNumber])
+    })
+
+    it('offers none for the document of an order that has no note', async () => {
+      const order = await dispatchedOrder()
+      const saleId = await documents.createForOrder(ctx.orgA.id, order.id, FiscalIssueOn.DELIVERED)
+      expect(await followedBy(saleId ?? '')).toEqual([])
     })
   })
 

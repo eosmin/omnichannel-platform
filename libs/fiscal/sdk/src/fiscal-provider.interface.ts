@@ -289,6 +289,11 @@ export interface FiscalBuildInput {
   readonly kind: FiscalDocumentKind
   // Set for a credit note or a debit note, null for the document of a sale
   readonly credited: FiscalCreditedDocument | null
+  // Accepted documents of the same order that this one follows and may name, oldest first: the remission notes that backed its goods on their
+  // way. They are core's candidates, not a demand: the provider names the ones its authority allows (the same type, within the period it
+  // asks, as many as the document takes) and leaves out the rest, because the relation is optional and a sale is never refused for it. Absent
+  // or empty: none. Ignored by the notes and the purchase.
+  readonly follows?: readonly FiscalCreditedDocument[]
   // The correlative of the organization (the order the documents were made in). Never the number a legal document carries unless the
   // provider declares no scope of its own: see `correlative`.
   readonly sequenceNumber: number

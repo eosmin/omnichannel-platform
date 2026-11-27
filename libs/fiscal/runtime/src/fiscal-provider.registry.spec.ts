@@ -108,6 +108,35 @@ describe('the manifest of a provider', () => {
     }
     expect(() => new FiscalProviderRegistry([withTypes(['a', 'b'])])).not.toThrow()
   })
+
+  it('is refused when one type is more than one of a credit note, a debit note, a remission note and a purchase', () => {
+    const flags = ['creditNote', 'debitNote', 'remissionNote', 'purchase'] as const
+    const withFlags = (set: readonly string[]) => {
+      const provider = simulatorProvider()
+      return {
+        ...provider,
+        manifest: {
+          ...provider.manifest,
+          documentTypes: [
+            {
+              id: 'a',
+              label: 'a',
+              requiredReceiverFields: [],
+              ...Object.fromEntries(set.map(flag => [flag, true]))
+            }
+          ]
+        }
+      } as unknown as ReturnType<typeof simulatorProvider>
+    }
+    for (const first of flags) {
+      expect(() => new FiscalProviderRegistry([withFlags([first])])).not.toThrow()
+      for (const second of flags.filter(flag => flag !== first)) {
+        expect(() => new FiscalProviderRegistry([withFlags([first, second])])).toThrow(
+          /more than one of a credit note/
+        )
+      }
+    }
+  })
 })
 
 describe('the contingency mode of a provider', () => {

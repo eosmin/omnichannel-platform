@@ -40,8 +40,7 @@ import {
   OrderReturnStatus,
   OrderStatus,
   SealedValueKind,
-  ShipmentKind,
-  ShipmentStatus
+  ShipmentKind
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -97,7 +96,8 @@ import {
   saleAddsUp,
   shippingTaxFits,
   saleOf,
-  sameIssuer
+  sameIssuer,
+  SHIPMENT_STATES_THAT_BACK_GOODS
 } from './fiscal-rules'
 import { cappedResponse, type Json, plainText, record, toJson } from './json'
 import { openSealed, type SealedRef } from './sealed-open'
@@ -222,20 +222,6 @@ function copiedMasksOf(row: Omit<SaleReceiver, 'id'>): {
     receiverMaskedAt: row.receiverMaskedAt
   }
 }
-
-// The states of a guide whose goods are on their way or were: from the label to the delivery and the way back. Not a guide being made, one
-// that failed, one in the middle of a cancellation or cancelled, nor one whose outcome is unknown: they back nothing, and a note made for
-// them (a retry, a backfill) would back goods that do not travel.
-const SHIPMENT_STATES_THAT_BACK_GOODS: readonly string[] = [
-  ShipmentStatus.LABEL_CREATED,
-  ShipmentStatus.PICKED_UP,
-  ShipmentStatus.IN_TRANSIT,
-  ShipmentStatus.OUT_FOR_DELIVERY,
-  ShipmentStatus.FAILED_ATTEMPT,
-  ShipmentStatus.DELIVERED,
-  ShipmentStatus.RETURNING,
-  ShipmentStatus.RETURNED
-]
 
 const SELECT = {
   id: true,
@@ -505,12 +491,18 @@ export class FiscalDocumentsService {
         if (!SHIPMENT_STATES_THAT_BACK_GOODS.includes(shipment.status)) return null
         const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
         if (issuer === null || issuer.issueOn !== (FiscalIssueOn.DELIVERED as string)) return null
-        // Any note of the guide, voided or not: a voided one is made again by a person
+        // Any note of the guide, voided or not: a voided one is made again by a person (`replace`)
         const existing = await tx.fiscalDocument.findFirst({
           where: { organizationId, shipmentId, kind: FiscalDocumentKind.REMISSION_NOTE },
           select: { id: true }
         })
         if (existing !== null) return null
+        // The sale document backs the goods once it exists (any, voided or not: a voided one is replaced by a person, never by this)
+        const documented = await tx.fiscalDocument.findFirst({
+          where: { organizationId, orderId: shipment.orderId, kind: FiscalDocumentKind.SALE },
+          select: { id: true }
+        })
+        if (documented !== null) return null
         const sale = await this.readSale(tx, organizationId, shipment.orderId)
         if (sale === null || sale.storeId !== shipment.storeId) return null
         if (sale.taxSnapshotMissing) {
@@ -521,34 +513,59 @@ export class FiscalDocumentsService {
           )
           return null
         }
-        const sequenceNumber = await this.takeSequence(tx, organizationId)
-        const created = await tx.fiscalDocument.create({
-          data: {
-            organizationId,
-            storeId: sale.storeId,
-            orderId: shipment.orderId,
-            shipmentId,
-            kind: FiscalDocumentKind.REMISSION_NOTE,
-            // No entry of the books: the note is no sale
-            journalEntryId: null,
-            sequenceNumber,
-            documentType: FiscalPendingDocumentType,
-            status: FiscalDocumentStatus.QUEUED,
-            providerId: issuer.providerId,
-            environment: issuer.environment,
-            issuerSnapshot: toJson(this.issuerInput(issuer)),
-            linesSnapshot: sale.linesSnapshot,
-            receiverEncrypted: new Uint8Array(this.cipher.seal(receiverRecord(sale.receiver))),
-            ...maskColumnsOf(sale.receiver),
-            currency: sale.currency,
-            totalCents: sale.totalCents,
-            taxCents: sale.taxCents
-          },
-          select: { id: true }
+        return this.insertRemissionNote(tx, organizationId, shipment, issuer, sale, {
+          encrypted: new Uint8Array(this.cipher.seal(receiverRecord(sale.receiver))),
+          masks: maskColumnsOf(sale.receiver)
         })
-        return created.id
       })
     )
+  }
+
+  // The note of one guide, in the transaction of its caller: the next number of the organization, no entry of the books (the note is no
+  // sale), the lines of the whole order (a guide does not know yet which lines it carries: the debt (d) of D3b-2) and the receiver it is given.
+  // Returns the id to enqueue.
+  private async insertRemissionNote(
+    tx: PrismaTransaction,
+    organizationId: string,
+    shipment: { id: string; orderId: string },
+    issuer: IssuerRow & { providerId: string },
+    sale: {
+      storeId: string
+      currency: string
+      totalCents: number
+      taxCents: number
+      linesSnapshot: Json
+    },
+    receiver: {
+      encrypted: Uint8Array<ArrayBuffer>
+      masks: ReturnType<typeof copiedMasksOf>
+    }
+  ): Promise<string> {
+    const sequenceNumber = await this.takeSequence(tx, organizationId)
+    const created = await tx.fiscalDocument.create({
+      data: {
+        organizationId,
+        storeId: sale.storeId,
+        orderId: shipment.orderId,
+        shipmentId: shipment.id,
+        kind: FiscalDocumentKind.REMISSION_NOTE,
+        journalEntryId: null,
+        sequenceNumber,
+        documentType: FiscalPendingDocumentType,
+        status: FiscalDocumentStatus.QUEUED,
+        providerId: issuer.providerId,
+        environment: issuer.environment,
+        issuerSnapshot: toJson(this.issuerInput(issuer)),
+        linesSnapshot: sale.linesSnapshot,
+        receiverEncrypted: receiver.encrypted,
+        ...receiver.masks,
+        currency: sale.currency,
+        totalCents: sale.totalCents,
+        taxCents: sale.taxCents
+      },
+      select: { id: true }
+    })
+    return created.id
   }
 
   // The sale as the order has it now: the lines with the tax snapshot of Step 4B.3b, the amounts of the order and its customer as the
@@ -1139,6 +1156,7 @@ export class FiscalDocumentsService {
       provider,
       issuerInput.environment
     )
+    const follows = await this.followedNotes(organizationId, doc, issuer)
     const built = await this.attempt('build', doc.id, () =>
       provider.build({
         ...(route.kind === 'attach'
@@ -1151,6 +1169,7 @@ export class FiscalDocumentsService {
           : {}),
         kind: doc.kind as FiscalDocumentKind,
         credited: original === null ? null : this.creditedOf(original),
+        ...(follows.length === 0 ? {} : { follows }),
         sequenceNumber: doc.sequenceNumber,
         correlative: numbered.correlative,
         documentUuid: fiscalDocumentUuid(organizationId, doc.id),
@@ -2806,6 +2825,10 @@ export class FiscalDocumentsService {
     if (kind?.kind === (FiscalDocumentKind.CREDIT_NOTE as string)) {
       return this.reissueCreditNote(organizationId, id, actor, guard)
     }
+    // The note of a guide that was voided is made again for the same guide, while the goods still travel
+    if (kind?.kind === (FiscalDocumentKind.REMISSION_NOTE as string)) {
+      return this.reissueRemissionNote(organizationId, id, actor, guard)
+    }
     const made = await this.inTx(organizationId, async tx => {
       await guard()
       const old = await this.lock(tx, organizationId, id)
@@ -3115,6 +3138,109 @@ export class FiscalDocumentsService {
     return { id: made, creditNoteIds: [] }
   }
 
+  // A remission note that was voided, made again for the same guide (D3b-3): a new document with a new number, queued by the caller; the voided
+  // one is never edited. It is made only while the goods still travel (the guide is on its way or was, and the issuer still makes the sale
+  // document on delivery) and while the guide has no live note. It keeps the receiver the voided note had (what a person corrected) and takes
+  // the lines as the order is now. A guide that was made again after a cancellation is another guide: its own event makes its own note.
+  private async reissueRemissionNote(
+    organizationId: string,
+    id: string,
+    actor: FiscalActor,
+    guard: FiscalReachGuard
+  ): Promise<{ id: string; creditNoteIds: string[] }> {
+    const alreadyMade = (): PlatformException =>
+      new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'the guide already has a live remission note',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.REMISSION_ALREADY_REPLACED }
+      )
+    const made = await this.inTx(organizationId, async tx => {
+      await guard()
+      const old = await this.lock(tx, organizationId, id)
+      if (
+        old.kind !== (FiscalDocumentKind.REMISSION_NOTE as string) ||
+        old.status !== (FiscalDocumentStatus.VOIDED as string) ||
+        old.shipmentId === null
+      ) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'only a voided remission note is made again',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.NOTE_NOT_VOIDED }
+        )
+      }
+      const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
+      if (issuer === null || this.providers.find(issuer.providerId) === undefined) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+          'the organization has no issuer set up',
+          HttpStatusCodes.CONFLICT
+        )
+      }
+      const shipment = await tx.shipment.findFirst({
+        where: { id: old.shipmentId, store: { organizationId } },
+        select: { id: true, storeId: true, orderId: true, kind: true, status: true }
+      })
+      // Goods that do not travel (a guide cancelled or failed, one that brings goods back) or an issuer that no longer makes the note have
+      // nothing for it to back
+      if (
+        shipment === null ||
+        shipment.kind !== (ShipmentKind.OUTBOUND as string) ||
+        !SHIPMENT_STATES_THAT_BACK_GOODS.includes(shipment.status) ||
+        issuer.issueOn !== (FiscalIssueOn.DELIVERED as string)
+      ) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'the guide of this remission note has no goods on their way',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.NOTE_GUIDE_NOT_ACTIVE }
+        )
+      }
+      const live = await tx.fiscalDocument.findFirst({
+        where: {
+          organizationId,
+          shipmentId: shipment.id,
+          kind: FiscalDocumentKind.REMISSION_NOTE,
+          status: { not: FiscalDocumentStatus.VOIDED }
+        },
+        select: { id: true }
+      })
+      if (live !== null) throw alreadyMade()
+      const sale = await this.readSale(tx, organizationId, shipment.orderId, false)
+      if (sale === null) throw resourceNotFound('order')
+      if (sale.taxSnapshotMissing) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'the order has no tax snapshot: no document can be made of it',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.TAX_SNAPSHOT_MISSING }
+        )
+      }
+      return this.insertRemissionNote(tx, organizationId, shipment, issuer, sale, {
+        encrypted: new Uint8Array(old.receiverEncrypted),
+        masks: copiedMasksOf(old)
+      })
+    })
+      // Two requests for the same guide meet the unique index of the live note: the loser is told the note exists, never a fault
+      .catch((error: unknown) => {
+        if (!isUniqueViolation(error)) throw error
+        throw alreadyMade()
+      })
+    this.audit.log({
+      action: AuditAction.FISCAL_DOCUMENT_REPLACED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: FiscalResourceTypes.DOCUMENT,
+      resourceId: made,
+      metadata: { replaces: id, creditNotes: 0, movedNotes: 0 },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return { id: made, creditNoteIds: [] }
+  }
+
   // ---------------------------------------------------------------- helpers
 
   // Takes the claim of the invalidation of a document, under its row lock (see `void`). Refused when the document is no longer accepted,
@@ -3307,6 +3433,58 @@ export class FiscalDocumentsService {
       email: row.email,
       environment: row.environment as FiscalEnvironment
     }
+  }
+
+  // The remission notes a sale document may name (D3b-3): the accepted ones of its order, of the same issuer and environment, that were made
+  // before this document and are not voided (a voided or refused note is never named). A note still waiting when the document is built is not
+  // named, and one accepted by the time of a later attempt is: the relation is optional, and a document refused by the authority is corrected
+  // and sent again with the same code. The provider picks from them what its authority allows. Another kind of document names none.
+  private async followedNotes(
+    organizationId: string,
+    doc: {
+      kind: string
+      orderId: string
+      createdAt: Date
+      environment: string
+      providerId: string
+    },
+    issuer: Parameters<typeof sameIssuer>[1]
+  ): Promise<FiscalCreditedDocument[]> {
+    if (doc.kind !== (FiscalDocumentKind.SALE as string)) return []
+    const notes = await this.inUnit(organizationId, () =>
+      this.prisma.client.fiscalDocument.findMany({
+        where: {
+          organizationId,
+          orderId: doc.orderId,
+          kind: FiscalDocumentKind.REMISSION_NOTE,
+          status: FiscalDocumentStatus.ACCEPTED,
+          providerId: doc.providerId,
+          environment: doc.environment,
+          issuedAt: { not: null },
+          // Made before this document: a note made after it backs goods that left after the sale was documented
+          createdAt: { lte: doc.createdAt },
+          externalNumber: { not: null }
+        },
+        select: {
+          documentType: true,
+          externalNumber: true,
+          issuedAt: true,
+          providerData: true,
+          issuerSnapshot: true
+        },
+        orderBy: [{ issuedAt: 'asc' }, { id: 'asc' }],
+        take: FiscalLimits.FOLLOWED_NOTES_MAX
+      })
+    )
+    const named: FiscalCreditedDocument[] = []
+    for (const note of notes) {
+      if (note.externalNumber === null || note.issuedAt === null) continue
+      if (!sameIssuer(record(note.issuerSnapshot), issuer)) continue
+      named.push(
+        this.creditedOf({ ...note, externalNumber: note.externalNumber, issuedAt: note.issuedAt })
+      )
+    }
+    return named
   }
 
   // The sale document a credit note cancels (part of), in the words the provider gave it when it accepted it

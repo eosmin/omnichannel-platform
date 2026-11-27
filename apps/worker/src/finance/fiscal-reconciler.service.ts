@@ -233,6 +233,21 @@ export class FiscalReconciler {
       await this.enqueue(organizationId, documentId, 1)
       return 'queued'
     }
+    if (item.kind === FiscalSweepKind.REMISSION_NOTE_MISSING) {
+      let documentId: string | null
+      try {
+        documentId = await inSavepoint(() =>
+          this.documents.createRemissionForShipment(organizationId, item.id)
+        )
+      } catch (error) {
+        // The listener of the guide made it between the sweep's read and its insert: the unique index of the live note says so
+        if (isUniqueViolation(error)) return 'exists'
+        throw error
+      }
+      if (documentId === null) return 'declined'
+      await this.enqueue(organizationId, documentId, 1)
+      return 'queued'
+    }
     if (item.kind === FiscalSweepKind.CREDIT_NOTE_MISSING) {
       const documentId = await this.documents.createCreditNoteForReturn(organizationId, item.id)
       if (documentId === null) return 'declined'
@@ -293,6 +308,7 @@ function emptyCounts(): Record<FiscalSweepKind, number> {
     [FiscalSweepKind.SALE_WITHOUT_DOCUMENT]: 0,
     [FiscalSweepKind.STALLED_DOCUMENT]: 0,
     [FiscalSweepKind.CREDIT_NOTE_MISSING]: 0,
+    [FiscalSweepKind.REMISSION_NOTE_MISSING]: 0,
     [FiscalSweepKind.ENTRY_MISMATCH]: 0
   }
 }
