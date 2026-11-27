@@ -64,6 +64,13 @@ export const SvUserAgent = 'PlataformaOmnicanal/1.0'
 // The time the authority gets to answer a document before it counts as no answer (Manual Técnico §3.3: 8 seconds)
 export const SvTimeouts = { AUTH_MS: 8000, RECEPTION_MS: 8000, SIGNER_MS: 10000 } as const
 
+// The question of the probe of the authority (D2d): the consultation of a document by a generation code that cannot exist (the shape of a version 4
+// code, all zeros), for the issuer itself. It is read-only and carries no document, so it makes no number, no seal and no trace in the books of the
+// authority; any answer in the form of the authority (even "there is no such document") says the reception side is up.
+export const SvProbe = {
+  GENERATION_CODE: '00000000-0000-4000-8000-000000000000'
+} as const
+
 // The words of the answers of the authority and of the signing service, and the route of the signing service
 export const SvAnswerStates = {
   PROCESSED: 'PROCESADO',

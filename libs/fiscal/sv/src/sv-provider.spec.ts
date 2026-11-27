@@ -1,7 +1,14 @@
 import { FiscalAuthorityProbeOutcome, FiscalEnvironment } from '@platform/core/domain'
 
 import { activityName, isIdentityDocument } from './sv-catalog'
-import { SvBuildErrors, SvCredentialKeys, SvEndpoints, SvVoidRefusals } from './sv-constants'
+import {
+  SvBuildErrors,
+  SvCredentialKeys,
+  SvDocumentTypes,
+  SvEndpoints,
+  SvProbe,
+  SvVoidRefusals
+} from './sv-constants'
 import { svProvider } from './sv-provider'
 import type { SvSigner } from './sv-signer'
 import { ISSUER, sale } from './testing/sv-fixtures'
@@ -207,7 +214,8 @@ describe('the probe of the authority (D2c)', () => {
   })
 
   it('says reachable when the authority gives a token, and unreachable when it does not answer', async () => {
-    const up = respond(200, { status: 'OK', body: { token: 'Bearer t' } })
+    // The login and the consultation both answer in the form of the authority
+    const up = respond(200, { status: 'OK', body: { token: 'Bearer t' }, estado: 'PROCESADO' })
     const reachable = svProvider({ signer: NO_SIGNER, fetch: up.fetch })
     expect(await reachable.probeAuthority?.(ctx(CREDENTIALS))).toBe(
       FiscalAuthorityProbeOutcome.REACHABLE
@@ -229,5 +237,94 @@ describe('the probe of the authority (D2c)', () => {
     const bare = svProvider({ signer: NO_SIGNER, fetch: none.fetch })
     expect(await bare.probeAuthority?.(ctx({}))).toBe(FiscalAuthorityProbeOutcome.INCONCLUSIVE)
     expect(none.calls()).toBe(0)
+  })
+
+  // D2d: the login alone is not the authority answering. The reception side is asked a read-only question that carries no document, and
+  // only an answer that has the shape of the authority's counts.
+  describe('the reception side', () => {
+    const LOGIN = { status: 200, body: { status: 'OK', body: { token: 'Bearer t' } } }
+    type Answer = { status: number; body: unknown } | 'network' | 'timeout' | 'page'
+    // The authentication answers with a token; the consultation answers what the case says
+    const authority = (consult: Answer) => {
+      const seen: { url: string; body: unknown }[] = []
+      const fetch = (url: string, init: { body?: string }) => {
+        const isLogin = url.endsWith(SvEndpoints[FiscalEnvironment.SANDBOX].auth)
+        // The login is a form; the other calls are JSON
+        seen.push({
+          url,
+          body: init.body === undefined || isLogin ? null : JSON.parse(init.body)
+        })
+        if (isLogin) {
+          return Promise.resolve({
+            status: LOGIN.status,
+            text: () => Promise.resolve(JSON.stringify(LOGIN.body))
+          })
+        }
+        if (consult === 'network') return Promise.reject(new TypeError('fetch failed'))
+        if (consult === 'timeout') {
+          return Promise.reject(Object.assign(new Error('timed out'), { name: 'TimeoutError' }))
+        }
+        if (consult === 'page') {
+          return Promise.resolve({ status: 200, text: () => Promise.resolve('<html>proxy</html>') })
+        }
+        return Promise.resolve({
+          status: consult.status,
+          text: () => Promise.resolve(JSON.stringify(consult.body))
+        })
+      }
+      return { fetch: fetch as never, seen }
+    }
+    const probe = (consult: Answer) => {
+      const fake = authority(consult)
+      const provider = svProvider({ signer: NO_SIGNER, fetch: fake.fetch })
+      return { fake, outcome: provider.probeAuthority?.(ctx(CREDENTIALS)) }
+    }
+
+    it('says reachable when the reception side answers, even to say that the document it was asked about does not exist', async () => {
+      const { fake, outcome } = probe({
+        status: 400,
+        body: {
+          estado: 'RECHAZADO',
+          codigoMsg: '014',
+          descripcionMsg: 'NO EXISTE UN REGISTRO CON ESTE DATO'
+        }
+      })
+      expect(await outcome).toBe(FiscalAuthorityProbeOutcome.REACHABLE)
+      // Only the consultation of a code that cannot exist: no document, no event
+      const consult = fake.seen.filter(call =>
+        call.url.endsWith(SvEndpoints[FiscalEnvironment.SANDBOX].consult)
+      )
+      expect(consult).toHaveLength(1)
+      expect(consult[0]?.body).toEqual({
+        nitEmisor: expect.any(String) as string,
+        tdte: SvDocumentTypes.INVOICE,
+        codigoGeneracion: SvProbe.GENERATION_CODE
+      })
+      expect(
+        fake.seen.some(call => call.url.endsWith(SvEndpoints[FiscalEnvironment.SANDBOX].reception))
+      ).toBe(false)
+    })
+
+    it.each<[string, Answer]>([
+      ['a fault of the service (503)', { status: 503, body: { status: 'ERROR' } }],
+      ['a fault of the service (500)', { status: 500, body: {} }],
+      ['a token it does not take (401)', { status: 401, body: { status: 'ERROR' } }],
+      ['no right on the route (403)', { status: 403, body: { status: 'ERROR' } }],
+      [
+        'a gateway that does not know the route (404)',
+        { status: 404, body: { error: 'Not Found' } }
+      ],
+      ['a rate limit of a gateway (429)', { status: 429, body: { message: 'Too Many Requests' } }],
+      ['a record that is not the authority talking', { status: 200, body: { message: 'ok' } }],
+      ['a list', { status: 200, body: [] }],
+      ['a page of a proxy that is no answer of the authority', 'page'],
+      ['no connection', 'network'],
+      ['no answer in time', 'timeout']
+    ])(
+      'says unreachable when the login answers and the reception side gives %s',
+      async (_name, answer) => {
+        expect(await probe(answer).outcome).toBe(FiscalAuthorityProbeOutcome.UNREACHABLE)
+      }
+    )
   })
 })
