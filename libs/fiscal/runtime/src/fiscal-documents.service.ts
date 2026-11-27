@@ -279,13 +279,13 @@ const SELECT = {
 const partyKey = (party: FiscalVoidParty | undefined): string[] | null =>
   party === undefined ? null : [party.name.trim(), party.idType.trim(), party.idNumber.trim()]
 
-// What a person gives to invalidate a document besides the reason (the screen draws the fields from the manifest of the provider)
 // The code and the moment of the invalidation event of a document: fixed with the document at the first attempt (D14c)
 interface VoidEvent {
   readonly code: string
   readonly at: Date
 }
 
+// What a person gives to invalidate a document besides the reason (the screen draws the fields from the manifest of the provider)
 export interface FiscalVoidInput {
   readonly kind?: FiscalVoidKind
   readonly responsible?: FiscalVoidParty
@@ -3197,7 +3197,7 @@ export class FiscalDocumentsService {
       }
       const made: VoidEvent = { code: randomUUID().toUpperCase(), at: now }
       await tx.fiscalDocument.update({
-        where: { id },
+        where: { id, organizationId },
         data: { voidEventCode: made.code, voidEventAt: made.at }
       })
       return made

@@ -2,13 +2,14 @@ import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import pg from 'pg'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import { CredentialCipher } from '@platform/core/crypto'
 import { DatabaseNull } from '@platform/core/database'
-import type { OwnerClient } from '@platform/core/database-testing'
+import { connectionUrls, DatabaseRoles, type OwnerClient } from '@platform/core/database-testing'
 import {
   FiscalConflictReasons,
   FiscalDocumentStatus,
@@ -1558,6 +1559,138 @@ describe('The fiscal documents (Step 4B.7)', () => {
         const row = await rowOf(documentId)
         expect(row.status).toBe(FiscalDocumentStatus.VOIDED)
         expect([row.voidEventCode, row.voidEventAt]).toEqual([null, null])
+      })
+
+      // The guard and the check of the table, as the two roles that write it (one statement per transaction, always rolled back: a statement
+      // that fails aborts its transaction). Taking a column out of the list of the guard, or the check, must fail here.
+      describe.each([DatabaseRoles.APP, DatabaseRoles.WORKER])('as the role %s', role => {
+        const raw = new pg.Client({ connectionString: connectionUrls().owner })
+        beforeAll(async () => {
+          await raw.connect()
+        })
+        afterAll(async () => {
+          await raw.end().catch(() => undefined)
+        })
+        // The outcome of one statement as that role: the rows it changed, or the message the database refused it with
+        const run = async (
+          sql: string,
+          values: unknown[]
+        ): Promise<{ rows: number } | { refused: string }> => {
+          await raw.query('BEGIN')
+          try {
+            await raw.query(`SET LOCAL ROLE ${role}`)
+            const result = await raw.query(sql, values)
+            return { rows: result.rowCount ?? 0 }
+          } catch (error) {
+            return { refused: (error as Error).message }
+          } finally {
+            await raw.query('ROLLBACK').catch(() => undefined)
+          }
+        }
+        const refusedWith = (pattern: RegExp): { refused: string } => ({
+          refused: expect.stringMatching(pattern) as string
+        })
+        const EVENT = ['AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA']
+        const update = (set: string, values: unknown[], id: string) =>
+          run(`UPDATE fiscal_documents SET ${set} WHERE id = $${values.length + 1}`, [
+            ...values,
+            id
+          ])
+        const dropRow = (id: string) => run('DEL' + 'ETE FROM fiscal_documents WHERE id = $1', [id])
+        const gone = refusedWith(/never deleted|permission denied/)
+
+        it('lets an accepted row change the event and nothing else, and never be removed', async () => {
+          const documentId = await accepted()
+          expect(
+            await update('void_event_code = $1, void_event_at = now()', EVENT, documentId)
+          ).toEqual({ rows: 1 })
+          expect(
+            await update(
+              'void_event_code = $1, void_event_at = now(), void_claim_key = $2, void_claim_until = now()',
+              [...EVENT, 'k'],
+              documentId
+            )
+          ).toEqual({ rows: 1 })
+          for (const set of [
+            'total_cents = 1',
+            "issuer_snapshot = '{}'::jsonb",
+            "external_number = 'x'",
+            "status = 'queued'"
+          ]) {
+            expect(await update(set, [], documentId)).toEqual(refusedWith(/immutable/))
+          }
+          // A change next to the event is refused as a whole
+          expect(
+            await update(
+              'void_event_code = $1, void_event_at = now(), total_cents = 1',
+              EVENT,
+              documentId
+            )
+          ).toEqual(refusedWith(/immutable/))
+          expect(await dropRow(documentId)).toEqual(gone)
+        })
+
+        it('lets a voided row change nothing, not even the event columns to NULL', async () => {
+          const documentId = await accepted()
+          const voided = await asAdminA()
+            .post(ApiRoutes.fiscal.documents.void(documentId))
+            .send({ reason: 'wrong customer' })
+          expect(voided.status).toBe(OK)
+          for (const set of [
+            'void_event_code = NULL',
+            'void_event_at = NULL',
+            'void_event_code = NULL, void_event_at = NULL',
+            'total_cents = 1'
+          ]) {
+            expect(await update(set, [], documentId)).toEqual(
+              refusedWith(/voided fiscal document does not change/)
+            )
+          }
+          expect(await dropRow(documentId)).toEqual(gone)
+        })
+
+        it('holds the check of the event: both columns or neither, 1 to 64 characters, accepted only', async () => {
+          const documentId = await accepted()
+          const check = refusedWith(/fiscal_documents_void_event_chk/)
+          expect(await update('void_event_code = $1', EVENT, documentId)).toEqual(check)
+          expect(await update('void_event_at = now()', [], documentId)).toEqual(check)
+          expect(
+            await update(
+              'void_event_code = $1, void_event_at = now()',
+              ['A'.repeat(65)],
+              documentId
+            )
+          ).toEqual(check)
+          expect(
+            await update('void_event_code = $1, void_event_at = now()', [''], documentId)
+          ).toEqual(check)
+          expect(
+            await update(
+              'void_event_code = $1, void_event_at = now()',
+              ['A'.repeat(64)],
+              documentId
+            )
+          ).toEqual({ rows: 1 })
+          // A document voided with its event left in place, and an event on a document that is not accepted
+          expect(
+            await update(
+              "status = 'voided', void_reason = 'r', voided_at = now(), void_event_code = $1, void_event_at = now()",
+              EVENT,
+              documentId
+            )
+          ).toEqual(check)
+          await owner.fiscalDocument.update({
+            where: { id: documentId },
+            data: { voidEventCode: EVENT[0] ?? '', voidEventAt: new Date() }
+          })
+          expect(
+            await update("status = 'voided', void_reason = 'r', voided_at = now()", [], documentId)
+          ).toEqual(check)
+          const queued = await sale()
+          expect(
+            await update('void_event_code = $1, void_event_at = now()', EVENT, queued.documentId)
+          ).toEqual(check)
+        })
       })
 
       it('lets the database change them only on an accepted document, both together', async () => {
