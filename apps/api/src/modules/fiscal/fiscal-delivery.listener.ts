@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
-import { type EventContext, InEventOrganization } from '@platform/core/database'
+import { EventContext, InEventOrganization } from '@platform/core/database'
 import { errorName } from '@platform/core/errors'
 import { Events, type FiscalDocumentAcceptedPayload } from '@platform/core/events'
 

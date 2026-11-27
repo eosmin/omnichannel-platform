@@ -23,6 +23,13 @@ function build(deliver: jest.Mock, recordFailure: jest.Mock = jest.fn()) {
 }
 
 describe('FiscalDeliveryListener', () => {
+  // Nest reads the constructor types at run time: a type-only import leaves one `undefined` and the api does not start
+  it('keeps the type of every constructor parameter for the injector', () => {
+    const types = Reflect.getMetadata('design:paramtypes', FiscalDeliveryListener) as unknown[]
+    expect(types).toHaveLength(3)
+    expect(types.every(type => typeof type === 'function' && type !== Object)).toBe(true)
+  })
+
   beforeEach(() => jest.useFakeTimers())
   afterEach(() => jest.useRealTimers())
 
