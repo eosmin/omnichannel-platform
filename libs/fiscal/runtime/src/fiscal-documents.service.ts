@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
@@ -278,6 +278,12 @@ const SELECT = {
 // The people of a request as the key counts them: without the blanks around the words, as a provider reads them
 const partyKey = (party: FiscalVoidParty | undefined): string[] | null =>
   party === undefined ? null : [party.name.trim(), party.idType.trim(), party.idNumber.trim()]
+
+// The code and the moment of the invalidation event of a document: fixed with the document at the first attempt (D14c)
+interface VoidEvent {
+  readonly code: string
+  readonly at: Date
+}
 
 // What a person gives to invalidate a document besides the reason (the screen draws the fields from the manifest of the provider)
 export interface FiscalVoidInput {
@@ -2472,7 +2478,8 @@ export class FiscalDocumentsService {
       ...(input.requester === undefined ? {} : { requester: input.requester }),
       ...(replacement === undefined ? {} : { replacement })
     }
-    const contextOf = (attempt: number): ProviderContext => ({
+    // The key is made from the request; the code and the moment of the event are not: they are fixed with the document when the claim is taken
+    const contextOf = (attempt: number, event?: VoidEvent): ProviderContext => ({
       issuer: this.issuerOfSnapshot(doc.issuerSnapshot),
       credentials,
       // One key per document and reason: a double click, or a request asked again after an answer that was lost, is the same
@@ -2490,7 +2497,10 @@ export class FiscalDocumentsService {
         )
         .digest('hex')
         .slice(0, 16)}`,
-      attempt
+      attempt,
+      ...(event === undefined
+        ? {}
+        : { voidEvent: { code: event.code, at: event.at.toISOString() } })
     })
     // The authority may have the document invalidated already (an earlier request whose answer was lost, or a void made elsewhere):
     // asked first, so that a second invalidation is never sent for it. A provider that cannot tell leaves it to the answer of `void`.
@@ -2500,18 +2510,18 @@ export class FiscalDocumentsService {
     // reach the authority at once. The claim is taken under the row lock before the provider is asked; a request with the same key (a double
     // click, an answer that was lost) is the same invalidation and goes on, any other waits for the lease or for the answer of this one.
     const voidKey = contextOf(1).idempotencyKey
-    await this.claimVoid(organizationId, id, voidKey, guard)
+    const event = await this.claimVoid(organizationId, id, voidKey, guard)
     let recovered = false
     let outcome: VoidResult | null = null
-    outcome = await this.consultedVoid(provider, id, stored, contextOf(1))
+    outcome = await this.consultedVoid(provider, id, stored, contextOf(1, event))
     if (outcome !== null) recovered = true
     else {
       outcome = await this.attempt('void', id, () =>
-        provider.void(stored, reason, contextOf(1), details)
+        provider.void(stored, reason, contextOf(1, event), details)
       )
       // No answer to the invalidation: it may have reached the authority, so it is asked once before the person is told to try again
       if (outcome === null) {
-        outcome = await this.consultedVoid(provider, id, stored, contextOf(2))
+        outcome = await this.consultedVoid(provider, id, stored, contextOf(2, event))
         recovered = outcome !== null
       }
     }
@@ -2529,7 +2539,10 @@ export class FiscalDocumentsService {
         organizationId,
         id,
         voidKey,
-        outcome.byAuthority === true ? new Date() : undefined
+        outcome.byAuthority === true ? new Date() : undefined,
+        // The event is kept for the retry only when the authority refused it for another reason than its own code: a refusal that never
+        // left the provider sent nothing, and one about the code asks for another
+        { keepEvent: outcome.byAuthority === true && outcome.eventCodeRefused !== true }
       )
       throw new PlatformException(
         ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -2552,6 +2565,9 @@ export class FiscalDocumentsService {
           // The window of a refused invalidation ends with the invalidation that was accepted
           voidRejectedAt: null,
           voidRejectionWarnedAt: null,
+          // The event is done: its code and moment go with the window
+          voidEventCode: null,
+          voidEventAt: null,
           voidReason: plainText(reason).slice(0, FiscalLimits.VOID_REASON_MAX_LENGTH),
           voidedBy: actor.userId,
           voidedAt: new Date(),
@@ -3126,8 +3142,8 @@ export class FiscalDocumentsService {
     id: string,
     key: string,
     guard: FiscalReachGuard
-  ): Promise<void> {
-    await this.inTx(organizationId, async tx => {
+  ): Promise<VoidEvent> {
+    return this.inTx(organizationId, async tx => {
       // The reach is checked again in the unit that takes the claim, beside the write
       await guard()
       const locked = await this.lock(tx, organizationId, id)
@@ -3158,6 +3174,33 @@ export class FiscalDocumentsService {
         UPDATE fiscal_documents
         SET void_claim_key = ${key}, void_claim_until = now() + make_interval(secs => ${leaseSeconds})
         WHERE id = ${id} AND organization_id = ${organizationId}`
+      // The code and the moment of the event are fixed here, BEFORE anything is sent, and under the row lock: a retry reads them back. They
+      // are reused while the event is the one the person is correcting: inside the 24 hours that run from the refusal the authority
+      // communicated, or, when nothing was refused (no answer yet), from the first attempt. After that the event is a new one.
+      const now = new Date()
+      // (a refusal that is older than the event belongs to an event that was left behind: the later of the two counts)
+      const since =
+        locked.voidEventAt !== null &&
+        locked.voidRejectedAt !== null &&
+        locked.voidRejectedAt > locked.voidEventAt
+          ? locked.voidRejectedAt
+          : locked.voidEventAt
+      const kept = rejectionDeadline(since, now)
+      if (
+        locked.voidEventCode !== null &&
+        locked.voidEventAt !== null &&
+        now.getTime() - locked.voidEventAt.getTime() < FiscalRejectionRetry.VOID_EVENT_MAX_AGE_MS &&
+        kept !== null &&
+        kept.state !== FiscalRejectionDeadlineState.EXPIRED
+      ) {
+        return { code: locked.voidEventCode, at: locked.voidEventAt }
+      }
+      const made: VoidEvent = { code: randomUUID().toUpperCase(), at: now }
+      await tx.fiscalDocument.update({
+        where: { id, organizationId },
+        data: { voidEventCode: made.code, voidEventAt: made.at }
+      })
+      return made
     })
   }
 
@@ -3167,7 +3210,8 @@ export class FiscalDocumentsService {
     organizationId: string,
     id: string,
     key: string,
-    refusedAt?: Date
+    refusedAt: Date | undefined,
+    { keepEvent }: { keepEvent: boolean }
   ): Promise<void> {
     try {
       await this.inUnit(organizationId, () =>
@@ -3181,6 +3225,7 @@ export class FiscalDocumentsService {
           data: {
             voidClaimKey: null,
             voidClaimUntil: null,
+            ...(keepEvent ? {} : { voidEventCode: null, voidEventAt: null }),
             ...(refusedAt === undefined
               ? {}
               : { voidRejectedAt: refusedAt, voidRejectionWarnedAt: null })
@@ -3195,7 +3240,7 @@ export class FiscalDocumentsService {
       } else {
         this.logger.error(
           fields,
-          'the refusal of an invalidation was not kept: its 24-hour window has no start'
+          'the refusal of an invalidation was not kept: its 24-hour window has no start, and its event keeps the code it had'
         )
       }
     }
