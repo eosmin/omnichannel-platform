@@ -52,6 +52,7 @@ import { digitsOf } from './sv-parties'
 import {
   classifyEventAnswer,
   classifyReception,
+  eventCodeFault,
   type SvEventAnswer,
   type SvReception
 } from './sv-responses'
@@ -326,8 +327,10 @@ export async function voidDocument(
     reason,
     details,
     // The same request is the same event: a second call after a lost answer carries the generation code the authority has already seen
-    code: invalidationCode(ctx.idempotencyKey),
-    now: new Date((deps.now ?? Date.now)()).toISOString()
+    // The event a person corrects and sends again keeps the code and the moment it had (Normativa DTE, apartado 10): core gives them, fixed at
+    // the first attempt. The deadline, the date and the hour of the event are those of that moment, not of the retry.
+    code: ctx.voidEvent?.code ?? invalidationCode(ctx.idempotencyKey),
+    now: ctx.voidEvent?.at ?? new Date((deps.now ?? Date.now)()).toISOString()
   })
   if (!built.ok) return notVoided(built.reason)
   const environment = ctx.issuer.environment
@@ -386,11 +389,25 @@ export async function voidDocument(
       }
       // It holds the document as processed: the event is not in effect, and the person is told the authority's code
       if (held.state === FiscalVoidConsultState.NOT_VOIDED) {
-        return { voided: false, reason: answer.code, response: answer.body, byAuthority: true }
+        return {
+          voided: false,
+          reason: answer.code,
+          response: answer.body,
+          byAuthority: true,
+          // The authority holds a record with this event's code and the document is still processed: the code belongs to something else, and
+          // that is so whether or not the answer names the field
+          eventCodeRefused: true
+        }
       }
       throw new SvTransportError(SvTransportFailures.NETWORK)
     }
-    return { voided: false, reason: answer.code, response: answer.body, byAuthority: true }
+    return {
+      voided: false,
+      reason: answer.code,
+      response: answer.body,
+      byAuthority: true,
+      ...(eventCodeFault(answer.code, answer.body) ? { eventCodeRefused: true } : {})
+    }
   }
   // The token was refused twice: not a verdict on the document
   throw new SvTransportError(SvTransportFailures.NETWORK)
