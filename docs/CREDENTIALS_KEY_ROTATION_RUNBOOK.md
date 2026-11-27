@@ -15,6 +15,7 @@ column of the schema is in one of the two, or is declared in `sealed-columns.spe
 | Column | Re-sealed |
 | --- | --- |
 | `fiscal_documents.receiver_encrypted`, `built_payload_encrypted` | yes (live, accepted and voided, through the function the guard recognises) |
+| `fiscal_documents.void_event_encrypted` (the signed event of an invalidation) | yes (voided documents only, through `fiscal_reseal_void_event`) |
 | `customer_fiscal_data.data_encrypted` | yes |
 | `fiscal_issuers.credentials_encrypted` | yes |
 | `fiscal_contingencies.responsible_encrypted` | yes |
@@ -134,7 +135,7 @@ except the backup.
   current are only skipped and do not count): a larger organization takes more than one night, and `truncated: true` says the run stopped
   at the cap. Never retire the previous key while `truncated` is true.
 - The guard of a decided fiscal document (and of a reported contingency) is not relaxed for anything but this job: only the functions
-  `fiscal_reseal_document` and `fiscal_reseal_contingency` (the worker role alone) can swap the two sealed columns, and only for the same content (the job checks that the new value opens to the same text before it
+  `fiscal_reseal_document`, `fiscal_reseal_void_event` and `fiscal_reseal_contingency` (the worker role alone) can swap the sealed columns, and only for the same content (the job checks that the new value opens to the same text before it
   writes).
 - The credentials job writes through plain updates guarded by the old bytes (compare-and-swap) and the context of the organization: the
   tables it touches have no guard like the fiscal one, so it needs no function of the migrator and opens no door. A row changed by a person
