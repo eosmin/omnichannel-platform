@@ -39,10 +39,12 @@ export function fiscalActionsOf(
   asksReplacementFirst = false
 ): FiscalDocumentActions {
   const sale = document.kind === FiscalDocumentKind.SALE
+  // The server's rule: a remission note takes the receiver like a sale document and is never replaced
+  const remission = document.kind === FiscalDocumentKind.REMISSION_NOTE
   const refused = document.status === FiscalDocumentStatus.REJECTED
   const queued = document.status === FiscalDocumentStatus.QUEUED
   return {
-    editReceiver: sale && (refused || (queued && document.attempts === 0)),
+    editReceiver: (sale || remission) && (refused || (queued && document.attempts === 0)),
     retry: refused || queued,
     void: document.status === FiscalDocumentStatus.ACCEPTED,
     replaceFirst:
@@ -54,6 +56,7 @@ export function fiscalActionsOf(
       !replacedIds.has(document.id),
     replace:
       document.status === FiscalDocumentStatus.VOIDED &&
+      !remission &&
       (sale ? !replacedIds.has(document.id) : true),
     confirmIssuerChange:
       refused &&

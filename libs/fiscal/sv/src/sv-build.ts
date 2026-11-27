@@ -24,6 +24,7 @@ import {
   SvCurrency,
   SvDebitableDocuments,
   SvDefaultPaymentForm,
+  SvDefaultRemissionActivity,
   SvDefaultRemissionTitle,
   SvDeferredTerm,
   SvDocumentTypes,
@@ -313,7 +314,10 @@ function businessReceiver(
 // The receiver of a remission note: the person the goods are sent to, by any identity document, with the activity and the address the schema
 // asks for, and the title the goods are sent under (CAT-025). No registration number is needed: it goes as null when there is none.
 function remissionReceiver(receiver: FiscalReceiver): Record<string, unknown> {
-  const business = businessReceiver(receiver, 'tipoDocumento')
+  const activity = lacks(receiver.economicActivity)
+    ? SvDefaultRemissionActivity
+    : receiver.economicActivity
+  const business = businessReceiver({ ...receiver, economicActivity: activity }, 'tipoDocumento')
   return {
     ...business,
     nrc: registrationDigits(receiver.registrationId),

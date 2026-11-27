@@ -47,12 +47,8 @@ describe('the manifest of the provider', () => {
     expect(remission?.remissionNote).toBe(true)
     expect(remission?.creditNote).toBeUndefined()
     expect(remission?.debitNote).toBeUndefined()
-    expect(remission?.requiredReceiverFields).toEqual([
-      'name',
-      'taxId',
-      'economicActivity',
-      'address'
-    ])
+    // No economic activity: a final consumer has none, and the note says "other" for them
+    expect(remission?.requiredReceiverFields).toEqual(['name', 'taxId', 'address'])
     expect(taxCredit?.remissionNote).toBeUndefined()
     // The purchase from an excluded subject: the seller is no taxpayer (no registration number, no activity), and it is no sale
     expect(excluded?.requiredReceiverFields).toEqual(['name', 'taxId', 'address'])

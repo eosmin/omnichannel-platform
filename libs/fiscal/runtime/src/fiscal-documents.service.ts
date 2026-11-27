@@ -39,7 +39,9 @@ import {
   hasReceivedUnits,
   OrderReturnStatus,
   OrderStatus,
-  SealedValueKind
+  SealedValueKind,
+  ShipmentKind,
+  ShipmentStatus
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -75,6 +77,7 @@ import {
   declaresSequence,
   documentDetailOf,
   documentLines,
+  entryKeyOfDocument,
   type FiscalDocumentDetail,
   fiscalDocumentUuid,
   type FiscalDocumentActions,
@@ -144,6 +147,8 @@ export interface FiscalDocumentView {
   // A sale document, or the credit note of a return; a credit note names its return (null for an order that came back as a whole) and
   // the sale document it cancels (part of), and a sale document made again names the voided one it replaces
   kind: FiscalDocumentKind
+  // A remission note: the guide it backs; null for every other kind
+  shipmentId: string | null
   returnId: string | null
   parentDocumentId: string | null
   replacesDocumentId: string | null
@@ -218,11 +223,26 @@ function copiedMasksOf(row: Omit<SaleReceiver, 'id'>): {
   }
 }
 
+// The states of a guide whose goods are on their way or were: from the label to the delivery and the way back. Not a guide being made, one
+// that failed, one in the middle of a cancellation or cancelled, nor one whose outcome is unknown: they back nothing, and a note made for
+// them (a retry, a backfill) would back goods that do not travel.
+const SHIPMENT_STATES_THAT_BACK_GOODS: readonly string[] = [
+  ShipmentStatus.LABEL_CREATED,
+  ShipmentStatus.PICKED_UP,
+  ShipmentStatus.IN_TRANSIT,
+  ShipmentStatus.OUT_FOR_DELIVERY,
+  ShipmentStatus.FAILED_ATTEMPT,
+  ShipmentStatus.DELIVERED,
+  ShipmentStatus.RETURNING,
+  ShipmentStatus.RETURNED
+]
+
 const SELECT = {
   id: true,
   storeId: true,
   orderId: true,
   kind: true,
+  shipmentId: true,
   returnId: true,
   parentDocumentId: true,
   replacesDocumentId: true,
@@ -463,6 +483,74 @@ export class FiscalDocumentsService {
     })
   }
 
+  // ---------------------------------------------------------------- a dispatch makes a remission note
+
+  // A guide was made for an order: its remission note, which backs the goods on their way when the sale document does not exist yet. It is
+  // made only when the issuer makes the sale document on delivery (`issueOn` DELIVERED): when it is made at the dispatch the sale document
+  // itself backs the goods and no note is needed. One note per guide, the live one never twice (the unique index decides when two events race),
+  // and a voided one is made again by a person, never by the next event. The receiver is the customer's, and the address is the delivery
+  // address of the order. Returns the id to enqueue, or null.
+  async createRemissionForShipment(
+    organizationId: string,
+    shipmentId: string
+  ): Promise<string | null> {
+    return this.onceOnly(() =>
+      this.inTx(organizationId, async tx => {
+        const shipment = await tx.shipment.findFirst({
+          where: { id: shipmentId, store: { organizationId } },
+          select: { id: true, storeId: true, orderId: true, kind: true, status: true }
+        })
+        // The guide of a return brings goods back to the sender: no note backs them. A guide that was never made, or was cancelled, backs nothing.
+        if (shipment === null || shipment.kind !== (ShipmentKind.OUTBOUND as string)) return null
+        if (!SHIPMENT_STATES_THAT_BACK_GOODS.includes(shipment.status)) return null
+        const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
+        if (issuer === null || issuer.issueOn !== (FiscalIssueOn.DELIVERED as string)) return null
+        // Any note of the guide, voided or not: a voided one is made again by a person
+        const existing = await tx.fiscalDocument.findFirst({
+          where: { organizationId, shipmentId, kind: FiscalDocumentKind.REMISSION_NOTE },
+          select: { id: true }
+        })
+        if (existing !== null) return null
+        const sale = await this.readSale(tx, organizationId, shipment.orderId)
+        if (sale === null || sale.storeId !== shipment.storeId) return null
+        if (sale.taxSnapshotMissing) {
+          // No number is taken and no document is made: the tax of the order must be completed first
+          this.logger.warn(
+            { shipmentId },
+            'no remission note was made: the order has no tax snapshot'
+          )
+          return null
+        }
+        const sequenceNumber = await this.takeSequence(tx, organizationId)
+        const created = await tx.fiscalDocument.create({
+          data: {
+            organizationId,
+            storeId: sale.storeId,
+            orderId: shipment.orderId,
+            shipmentId,
+            kind: FiscalDocumentKind.REMISSION_NOTE,
+            // No entry of the books: the note is no sale
+            journalEntryId: null,
+            sequenceNumber,
+            documentType: FiscalPendingDocumentType,
+            status: FiscalDocumentStatus.QUEUED,
+            providerId: issuer.providerId,
+            environment: issuer.environment,
+            issuerSnapshot: toJson(this.issuerInput(issuer)),
+            linesSnapshot: sale.linesSnapshot,
+            receiverEncrypted: new Uint8Array(this.cipher.seal(receiverRecord(sale.receiver))),
+            ...maskColumnsOf(sale.receiver),
+            currency: sale.currency,
+            totalCents: sale.totalCents,
+            taxCents: sale.taxCents
+          },
+          select: { id: true }
+        })
+        return created.id
+      })
+    )
+  }
+
   // The sale as the order has it now: the lines with the tax snapshot of Step 4B.3b, the amounts of the order and its customer as the
   // receiver. The amounts are the order's own, never recomputed here.
   // `withFiscalData` is false where the receiver is not taken from the sale (a retry keeps the receiver of the document, a replacement the one
@@ -604,15 +692,11 @@ export class FiscalDocumentsService {
     return taken.nextSequence - 1
   }
 
-  // The key of the entry of the books a document belongs to: the sale, or the return its credit note is for. The link is made by this key,
-  // never by copying amounts.
+  // The key of the entry of a sale document or of a credit note (a remission note has none: the acceptance asks `entryKeyOfDocument`)
   private entryKeyOf(doc: { kind: string; orderId: string; returnId: string | null }): string {
-    if (doc.kind !== (FiscalDocumentKind.CREDIT_NOTE as string)) {
-      return FinancePostingKey.ORDER_SALE(doc.orderId)
-    }
-    return doc.returnId === null
-      ? FinancePostingKey.ORDER_RETURN(doc.orderId)
-      : FinancePostingKey.RETURN_RESTOCK(doc.returnId)
+    const key = entryKeyOfDocument(doc)
+    if (key === null) throw new Error('a remission note has no entry of the books')
+    return key
   }
 
   // ---------------------------------------------------------------- a return makes a credit note
@@ -677,7 +761,9 @@ export class FiscalDocumentsService {
     } catch (error) {
       if (isUniqueViolation(error)) {
         // Said, not swallowed: another unique rule of the table would be hidden here otherwise
-        this.logger.warn('a credit note was not made again: the database says it already exists')
+        this.logger.warn(
+          'a fiscal document was not made again: the database says it already exists'
+        )
         return null
       }
       throw error
@@ -1712,10 +1798,14 @@ export class FiscalDocumentsService {
         return false
       }
       // The sale entry may have posted after the document was made: the link is made now, never by copying its amounts
-      const entry = await tx.journalEntry.findFirst({
-        where: { organizationId, idempotencyKey: this.entryKeyOf(doc) },
-        select: { id: true }
-      })
+      const entryKey = entryKeyOfDocument(doc)
+      const entry =
+        entryKey === null
+          ? null
+          : await tx.journalEntry.findFirst({
+              where: { organizationId, idempotencyKey: entryKey },
+              select: { id: true }
+            })
       await tx.fiscalDocument.update({
         where: { id: documentId },
         data: {
@@ -3239,6 +3329,7 @@ export class FiscalDocumentsService {
     storeId: string
     orderId: string
     kind: string
+    shipmentId: string | null
     returnId: string | null
     parentDocumentId: string | null
     replacesDocumentId: string | null
@@ -3284,6 +3375,7 @@ export class FiscalDocumentsService {
       storeId: row.storeId,
       orderId: row.orderId,
       kind,
+      shipmentId: row.shipmentId,
       returnId: row.returnId,
       parentDocumentId: row.parentDocumentId,
       replacesDocumentId: row.replacesDocumentId,

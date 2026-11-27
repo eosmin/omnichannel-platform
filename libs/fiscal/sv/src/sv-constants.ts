@@ -369,6 +369,12 @@ export const SvRemissionTitles = {
 export type SvRemissionTitle = (typeof SvRemissionTitles)[keyof typeof SvRemissionTitles]
 export const SvDefaultRemissionTitle: SvRemissionTitle = SvRemissionTitles.TRANSFER
 
+// The economic activity (CAT-019) the receiver of a remission note carries when the customer declares none: the schema asks for one as text and
+// a final consumer has none. "Other" is the code the catalog offers for natural persons (section "employees and other natural persons").
+// **[ACCOUNTANT / AUTHORITY]** No text of the authority says which code a final consumer takes: this is the reasonable technical choice, to
+// confirm with the 50 minimum tests of the sandbox and with a question to the authority. Change this one constant to adopt another.
+export const SvDefaultRemissionActivity = '10005'
+
 // How long after the generation of a tax credit document a credit or debit note may name it (Normativa DTE v2.0, Anexo IV, field 17 rule
 // 2 c): three calendar months, the last day included, counted on the dates the documents carry (`fecEmi`). **[ACCOUNTANT]** The manual
 // adds "except the legal exceptions", which are not known: no exception is applied, a note out of time is refused before it is sent.

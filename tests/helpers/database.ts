@@ -11,7 +11,7 @@ import {
 
 import { REDIS_URL } from '../../apps/api/src/testing/test-env'
 import { purgeCarrierGuides } from '../builders/carrier-guides'
-import { purgeFinance } from '../builders/finance'
+import { purgeFinance, purgeRemissionNotes } from '../builders/finance'
 
 // Everything a run creates carries this prefix, and cleanUp removes exactly that. Nothing here
 // truncates a table or touches a row it did not create, so the suites are safe to run against any
@@ -90,6 +90,9 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   await owner.codRemittanceLine.deleteMany({ where: ofRun })
   // The ledger of guides restricts the shipment a consume or a refund is about, and is append-only even for the owner
   await purgeCarrierGuides(owner, ofRun)
+  // The remission note of a guide (a fiscal document) restricts the deletion of its shipment: the notes of the run go first, by themselves
+  // (the books go later, because the remittances that name their accounts are still there)
+  await purgeRemissionNotes(owner, prefix)
   await owner.shipment.deleteMany({ where: ofRun })
   await owner.codRemittance.deleteMany({ where: ofRun })
   // A profile is pointed at by the remittances an import made, so it goes after them

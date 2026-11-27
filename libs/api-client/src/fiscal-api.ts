@@ -32,6 +32,8 @@ const documentSchema = z.object({
   storeId: z.string(),
   orderId: z.string(),
   kind: z.enum(FiscalDocumentKind),
+  // A remission note: the guide it backs; null for every other kind
+  shipmentId: z.string().nullable(),
   returnId: z.string().nullable(),
   parentDocumentId: z.string().nullable(),
   replacesDocumentId: z.string().nullable(),

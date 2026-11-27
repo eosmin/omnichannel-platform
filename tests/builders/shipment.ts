@@ -31,6 +31,8 @@ export interface ShipmentInput {
   deliveredAt?: Date
   // The guide of a return (TDD_17 §4.11): it belongs to the order of that return
   returnOf?: { returnId: string; orderId: string }
+  // The guide of an order that already exists (the default is a new order of its own)
+  orderId?: string
 }
 
 // A shipment of a store with its order, its `local` connection and the first row of its history, written as the owner: the
@@ -43,10 +45,15 @@ export async function createShipment(
   if (input.codStatus !== undefined && input.codAmountCents === undefined) {
     throw new Error('createShipment: codStatus needs codAmountCents')
   }
+  if (input.returnOf !== undefined && input.orderId !== undefined) {
+    throw new Error('createShipment: a guide of a return belongs to the order of its return')
+  }
   const order =
-    input.returnOf === undefined
-      ? await createOrder(owner, { storeId: input.storeId, status: 'CONFIRMED' })
-      : { id: input.returnOf.orderId }
+    input.returnOf !== undefined
+      ? { id: input.returnOf.orderId }
+      : input.orderId !== undefined
+        ? { id: input.orderId }
+        : await createOrder(owner, { storeId: input.storeId, status: 'CONFIRMED' })
   const connection =
     input.connectionId === undefined
       ? await createCarrierConnection(owner, {

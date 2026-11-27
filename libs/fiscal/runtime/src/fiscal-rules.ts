@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import {
+  FinancePostingKey,
   FiscalDocumentImmutableStatuses,
   FiscalDocumentKind,
   FiscalDocumentStatus,
@@ -26,6 +27,22 @@ import type {
 } from '@platform/fiscal/sdk'
 
 // The pure rules of the lifecycle of a fiscal document (TDD_18 §8.3): no database, no provider.
+
+// The key of the entry of the books a document belongs to: the sale, or the return its credit note is for; none for a remission note, which
+// is no sale and never carries an entry. The link is made by this key, never by copying amounts.
+export function entryKeyOfDocument(doc: {
+  kind: string
+  orderId: string
+  returnId: string | null
+}): string | null {
+  if (doc.kind === (FiscalDocumentKind.REMISSION_NOTE as string)) return null
+  if (doc.kind !== (FiscalDocumentKind.CREDIT_NOTE as string)) {
+    return FinancePostingKey.ORDER_SALE(doc.orderId)
+  }
+  return doc.returnId === null
+    ? FinancePostingKey.ORDER_RETURN(doc.orderId)
+    : FinancePostingKey.RETURN_RESTOCK(doc.returnId)
+}
 
 export const canTransition = (from: FiscalDocumentStatus, to: FiscalDocumentStatus): boolean =>
   FiscalDocumentStatusTransitions[from].includes(to)
@@ -103,13 +120,17 @@ export function allowedActionsOf(document: {
   replacedByDocumentId: string | null
 }): FiscalDocumentActions {
   const sale = document.kind === FiscalDocumentKind.SALE
+  // A remission note takes the receiver like a sale document (the goods need to say who they go to, and a person completes it), but it is
+  // not replaced: the one of a voided note is made again from the guide, never as a replacement
+  const remission = document.kind === FiscalDocumentKind.REMISSION_NOTE
   const refused = document.status === FiscalDocumentStatus.REJECTED
   return {
-    editReceiver: sale && receiverEditable(document.status, document.attempts),
+    editReceiver: (sale || remission) && receiverEditable(document.status, document.attempts),
     retry: retryable(document.status),
     void: document.status === FiscalDocumentStatus.ACCEPTED,
     replace:
       document.status === FiscalDocumentStatus.VOIDED &&
+      !remission &&
       (sale ? document.replacedByDocumentId === null : true),
     confirmIssuerChange:
       refused &&

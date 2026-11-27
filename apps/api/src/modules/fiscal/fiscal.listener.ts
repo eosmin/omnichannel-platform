@@ -8,7 +8,8 @@ import { errorName } from '@platform/core/errors'
 import {
   Events,
   type OrderStatusChangedPayload,
-  type ReturnEventPayload
+  type ReturnEventPayload,
+  type ShipmentEventPayload
 } from '@platform/core/events'
 import { FiscalDocumentsService } from '@platform/fiscal/runtime'
 
@@ -45,6 +46,28 @@ export class FiscalListener {
       this.logger.error(
         { err: errorName(error), returnId: payload.returnId },
         'the credit note of a return was not made'
+      )
+    }
+  }
+
+  // A guide was made for an order: its remission note, when the issuer makes the sale document on delivery (the note backs the goods on
+  // their way, as there is no sale document yet). Whatever carrier or channel made the guide, the event says only the ids. Like the sale, a
+  // failure here never reaches the dispatch. A note that was made and not queued (the queue failed) is found by the sweep of stalled
+  // documents; a guide that got no note at all waits for the nightly check of the dispatches, which is the debt written in the plan.
+  @OnEvent(Events.SHIPMENT_CREATED)
+  async onShipmentCreated(payload: ShipmentEventPayload): Promise<void> {
+    try {
+      const organizationId = await this.organizationOf(payload.storeId)
+      if (organizationId === null) return
+      const documentId = await this.events.inOrganizationOfStore(payload.storeId, () =>
+        this.documents.createRemissionForShipment(organizationId, payload.shipmentId)
+      )
+      if (documentId !== undefined && documentId !== null)
+        await this.queue.enqueue(organizationId, documentId, 1)
+    } catch (error) {
+      this.logger.error(
+        { err: errorName(error), shipmentId: payload.shipmentId },
+        'the remission note of a guide was not made'
       )
     }
   }
