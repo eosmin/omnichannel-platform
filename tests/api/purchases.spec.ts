@@ -992,6 +992,110 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       })
     })
 
+    it('reads the receipts of its own organization alone, whoever else received in the same month', async () => {
+      // Organization B receives, in the same month, a bill with its document and another that would be a refusal for lack of one: neither is
+      // organization A's, and the test database applies no row-level security, so only the filter of the code keeps them out
+      const sellerB = (
+        await asAdminB()
+          .post(ApiRoutes.suppliers.create)
+          .send({ name: `Supplier B ${randomUUID().slice(0, 8)}`, paymentTermsDays: 30 })
+      ).body as { id: string }
+      const productB = await createProduct(owner, { storeId: ctx.storeB.id })
+      const orderB = async () => {
+        const created = await asAdminB()
+          .post(ApiRoutes.purchaseOrders.create)
+          .send({
+            idempotencyKey: key(),
+            supplierId: sellerB.id,
+            warehouseId: ctx.warehouseB.id,
+            lines: [{ productId: productB.id, quantity: 4, unitCostCents: 250 }]
+          })
+        expect(created.status).toBe(CREATED)
+        const placed = await asAdminB().post(
+          ApiRoutes.purchaseOrders.order((created.body as OrderBody).id)
+        )
+        return placed.body as OrderBody
+      }
+      const [withDocument, bare] = [await orderB(), await orderB()]
+      const foreign = await receive(
+        withDocument.id,
+        {
+          receivedOn: '2026-05-10',
+          supplierDocumentNumber: `B-${key()}`,
+          fiscalDocument: doc({ issuedOn: '2026-05-04' }),
+          lines: [{ orderLineId: withDocument.lines[0]?.id, quantity: 4 }]
+        },
+        asAdminB()
+      )
+      expect(foreign.status).toBe(CREATED)
+      const missing = await receive(
+        bare.id,
+        {
+          receivedOn: '2026-05-11',
+          supplierDocumentNumber: `B-${key()}`,
+          lines: [{ orderLineId: bare.lines[0]?.id, quantity: 4 }]
+        },
+        asAdminB()
+      )
+      expect(missing.status).toBe(CREATED)
+
+      const seller = await supplier()
+      const own = await placedOrder(seller.id)
+      const mine = await receive(own.id, {
+        receivedOn: '2026-05-12',
+        supplierDocumentNumber: `A-${key()}`,
+        fiscalDocument: doc({ issuedOn: '2026-05-04' }),
+        lines: own.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity }))
+      })
+      expect(mine.status).toBe(CREATED)
+
+      const answer = await taken(2026, 5)
+      expect(answer.status).toBe(OK)
+      expect(handed[0]?.map(purchase => purchase.receiptId)).toEqual([
+        ((mine.body as OrderBody).receipts[0] as { id: string }).id
+      ])
+    })
+
+    it('changes the digest of the sources when a document is changed after the file was taken, and keeps it when nothing changed', async () => {
+      const month = { year: 2026, month: 6 }
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const received = await receive(order.id, {
+        receivedOn: '2026-06-10',
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: doc({ issuedOn: '2026-06-03' }),
+        lines: order.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity }))
+      })
+      const [bill] = (received.body as OrderBody).receipts
+      expect((await taken(month.year, month.month)).status).toBe(OK)
+      expect((await taken(month.year, month.month)).status).toBe(OK)
+      const changed = await asAdminA()
+        .put(ApiRoutes.purchaseOrders.receiptDocument(order.id, bill?.id ?? ''))
+        .send({ fiscalDocument: doc({ issuedOn: '2026-06-03', costType: '4' }) })
+      expect(changed.status).toBe(OK)
+      expect((await taken(month.year, month.month)).status).toBe(OK)
+
+      const entries = await waitForAuditEntries(
+        owner,
+        {
+          organizationId: ctx.orgA.id,
+          action: AuditAction.FISCAL_ANNEX_EXPORTED,
+          AND: [
+            { metadata: { path: ['annex'], equals: ANNEX } },
+            { metadata: { path: ['month'], equals: month.month } }
+          ]
+        },
+        3
+      )
+      const digests = entries.map(
+        entry => (entry.metadata as Record<string, string>)['sourcesSha256']
+      )
+      expect(digests).toHaveLength(3)
+      expect(digests[0]).toMatch(/^[0-9a-f]{64}$/u)
+      expect(digests[1]).toBe(digests[0])
+      expect(digests[2]).not.toBe(digests[0])
+    })
+
     it('does not take the annex out for a person who does not read the documents of every store', async () => {
       const narrow = await asRole('annex-purchases-narrow', [
         Permissions.FISCAL_VIEW,
