@@ -3354,29 +3354,32 @@ model FiscalDocument {
 // is deleted and only moves forward: OPEN, CLOSED (the window ended, the event that reports it is not accepted yet), REPORTED (the
 // authority took the event; the documents of the lot go out from then, inside the window the provider declares).
 model FiscalContingency {
-  id                   String    @id @default(uuid())
-  organizationId       String    @map("organization_id")
-  providerId           String    @map("provider_id")
-  environment          String // FiscalEnvironment
-  status               String // FiscalContingencyStatus
-  origin               String // FiscalContingencyOrigin
-  reason               String // one of the reasons the provider's manifest declares: the provider's words, never read by core
-  motive               String? // what the person wrote about it
-  responsibleEncrypted Bytes?    @map("responsible_encrypted") // who answers for the establishment (name and identity document), sealed: given when it is ended
-  eventCode            String    @unique @map("event_code") // the stable identifier of the event that reports it, in the shape of a random UUID
-  startedAt            DateTime  @map("started_at")
-  endedAt              DateTime? @map("ended_at")
-  reportedAt           DateTime? @map("reported_at") // when the authority took the event
-  windowEndsAt         DateTime? @map("window_ends_at") // the last instant to send the documents of the lot (the provider's window after `reportedAt`)
-  warnedAt             DateTime? @map("warned_at") // the person was told the window is closing
-  providerData         Json?     @map("provider_data") // opaque to core: the seal the authority gave the event
-  response             Json? // what the authority answered
-  reportAttempts       Int       @default(0) @map("report_attempts")
-  lastReportError      String?   @map("last_report_error") // a code, never data
-  openedBy             String?   @map("opened_by") // a user, null when the lifecycle opened it
-  closedBy             String?   @map("closed_by")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  id                      String    @id @default(uuid())
+  organizationId          String    @map("organization_id")
+  providerId              String    @map("provider_id")
+  environment             String // FiscalEnvironment
+  status                  String // FiscalContingencyStatus
+  origin                  String // FiscalContingencyOrigin
+  reason                  String // one of the reasons the provider's manifest declares: the provider's words, never read by core
+  motive                  String? // what the person wrote about it
+  responsibleEncrypted    Bytes?    @map("responsible_encrypted") // who answers for the establishment (name and identity document), sealed: given when it is ended
+  eventCode               String    @unique @map("event_code") // the stable identifier of the event that reports it, in the shape of a random UUID
+  startedAt               DateTime  @map("started_at")
+  endedAt                 DateTime? @map("ended_at")
+  reportedAt              DateTime? @map("reported_at") // when the authority took the event
+  windowEndsAt            DateTime? @map("window_ends_at") // the last instant to send the documents of the lot (the provider's window after `reportedAt`)
+  warnedAt                DateTime? @map("warned_at") // the person was told the window is closing
+  restoredAt              DateTime? @map("restored_at") // the first instant the probe found the authority answering while it was open (an upper bound of the real end)
+  probeHaltedFingerprint  String?   @map("probe_halted_fingerprint") // a fingerprint of the sealed credentials the authority refused: no probe asks again while the issuer holds the same ones
+  technicalReportWarnedAt DateTime? @map("technical_report_warned_at") // the person was told a technical report is due ahead of the event
+  providerData            Json?     @map("provider_data") // opaque to core: the seal the authority gave the event
+  response                Json? // what the authority answered
+  reportAttempts          Int       @default(0) @map("report_attempts")
+  lastReportError         String?   @map("last_report_error") // a code, never data
+  openedBy                String?   @map("opened_by") // a user, null when the lifecycle opened it
+  closedBy                String?   @map("closed_by")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   documents    FiscalDocument[]

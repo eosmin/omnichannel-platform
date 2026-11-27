@@ -100,6 +100,8 @@ export const JobNames = {
   SUBMIT_FISCAL_DOCUMENT: 'submit-fiscal-document',
   // Reports a contingency of an issuer to the authority, so that the documents made in it can be sent (Step 4B.7c-7)
   REPORT_FISCAL_CONTINGENCY: 'report-fiscal-contingency',
+  // Asks the authority whether it answers while a contingency is open, and ends the contingency when it does (D2c)
+  PROBE_FISCAL_CONTINGENCY: 'probe-fiscal-contingency',
   CREATE_SHIPMENTS: 'create-shipments', // One batch
   BULK_LABELS_MERGE: 'bulk-labels-merge',
   CANCEL_SHIPMENT: 'cancel-shipment',
@@ -197,6 +199,10 @@ export const submitFiscalDocumentJobId = (documentId: string, submission: number
 // number of the ask counts (dashes, no colon)
 export const reportFiscalContingencyJobId = (contingencyId: string, ask: number): string =>
   `${JobNames.REPORT_FISCAL_CONTINGENCY}-${contingencyId}-${ask}`
+
+// The scheduler of the probe of one open contingency (one per contingency: asked again, it is the same scheduler). Dashes, no colon.
+export const probeFiscalContingencySchedulerId = (contingencyId: string): string =>
+  `${JobNames.PROBE_FISCAL_CONTINGENCY}-${contingencyId}`
 
 // One retention run per store and local day: the hourly scheduler run twice in the same hour (or the store's hour of
 // 03:00 seen twice around a change of the clock) asks for the same job (dashes, no colon)

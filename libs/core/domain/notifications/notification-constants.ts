@@ -66,6 +66,13 @@ export const NotificationTypes = {
   FISCAL_CONTINGENCY_OPENED: 'fiscal.contingency_opened',
   FISCAL_CONTINGENCY_REPORT_FAILED: 'fiscal.contingency_report_failed',
   FISCAL_CONTINGENCY_WINDOW_CLOSING: 'fiscal.contingency_window_closing',
+  // The authority answers again: the contingency was closed by the platform, or a person must close it (D2c)
+  FISCAL_CONTINGENCY_CLOSED_BY_SYSTEM: 'fiscal.contingency_closed_by_system',
+  FISCAL_CONTINGENCY_RESTORED: 'fiscal.contingency_restored',
+  // The authority refused the credentials while it was probed: nothing asks it again until they change
+  FISCAL_CONTINGENCY_PROBE_HALTED: 'fiscal.contingency_probe_halted',
+  // A contingency open for days: the authority asks for a technical report before the event is sent
+  FISCAL_CONTINGENCY_TECHNICAL_REPORT: 'fiscal.contingency_technical_report',
   EXPORT_READY: 'export.ready',
   EXPORT_FAILED: 'export.failed',
   MEDIA_INFECTED: 'media.infected',
