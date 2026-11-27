@@ -4,10 +4,12 @@ import {
   FiscalEnvironment,
   FiscalLimits,
   FiscalSubmitOutcome,
-  FiscalVoidConsultState
+  FiscalVoidConsultState,
+  PurchaseDocumentProblems
 } from '@platform/core/domain'
 import type {
   BuiltDocument,
+  FiscalPurchaseDocumentInput,
   ConsultResult,
   FiscalBuildInput,
   FiscalDocumentProvider,
@@ -43,6 +45,8 @@ export const SimulatorDocumentTypes = {
 } as const
 export const SimulatorRules = {
   REJECT: 'REJECT',
+  // The one class of purchase document the simulator refuses, so a test reaches the rule of a provider on it
+  INVALID_PURCHASE_CLASS: '9',
   UNAVAILABLE: 'UNAVAILABLE',
   LOST: 'LOST',
   VOID_LOST: 'VOID_LOST',
@@ -121,6 +125,13 @@ export class SimulatorProvider implements FiscalDocumentProvider {
   validateReceiver(receiver: FiscalReceiver): readonly FiscalReceiverProblem[] {
     return receiver.taxId !== null && /\s/.test(receiver.taxId)
       ? [{ field: 'taxId', code: SimulatorRules.TAX_ID_WITH_SPACES }]
+      : []
+  }
+
+  // The supplier's document of a purchase: the simulator refuses only the class it names, so the wiring to the provider can be tested
+  validatePurchaseDocument(input: FiscalPurchaseDocumentInput): readonly string[] {
+    return input.documentClass === SimulatorRules.INVALID_PURCHASE_CLASS
+      ? [PurchaseDocumentProblems.CLASS_INVALID]
       : []
   }
 

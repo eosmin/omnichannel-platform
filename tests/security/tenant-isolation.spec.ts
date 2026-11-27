@@ -2141,6 +2141,24 @@ const resources: IsolationResource[] = [
     }),
     ...purchaseRowChecks
   },
+  // The supplier's document of a receipt (D4b): a row of its own, reached through its order like the receipt it belongs to
+  {
+    name: 'purchaseReceiptDocument',
+    create: async (owner, { storeId }) => {
+      const receipt = await createReceiptOf(owner, storeId)
+      const row = await owner.purchaseReceiptDocument.create({
+        data: {
+          organizationId: await organizationOfStore(owner, storeId),
+          receiptId: receipt.receiptId,
+          createdBy: 'isolation-suite',
+          annexExclusion: 'not_deductible'
+        }
+      })
+      orderOfPurchaseRow.set(row.id, orderOfPurchaseRow.get(receipt.receiptId) ?? '')
+      return { id: row.id }
+    },
+    ...purchaseRowChecks
+  },
   {
     name: 'purchaseReceiptLine',
     create: async (owner, { storeId }) => ({
@@ -3727,6 +3745,32 @@ describe('Tenant isolation', () => {
       expect(
         (await owner.purchaseOrder.findUniqueOrThrow({ where: { id: foreign.id } })).status
       ).toBe(PurchaseOrderStatus.DRAFT)
+    })
+
+    it('of another organization cannot have the document of a receipt completed or left out of the annex', async () => {
+      const foreign = await createReceiptOf(owner, ctx.storeB.id)
+      const orderId = orderOfPurchaseRow.get(foreign.receiptId) ?? ''
+      const route = ApiRoutes.purchaseOrders.receiptDocument(orderId, foreign.receiptId)
+      const agent = api(app, ctx.adminA, ctx.storeA)
+
+      const attempts = [
+        await agent.put(route).send({
+          fiscalDocument: {
+            documentClass: '1',
+            documentType: '03',
+            origin: 'internal',
+            expenseClass: '2',
+            sector: '2',
+            costType: '1'
+          }
+        }),
+        await agent.put(route).send({ annexExclusion: 'not_deductible' })
+      ]
+
+      expect(attempts.map(attempt => attempt.status)).toEqual([404, 404])
+      expect(
+        await owner.purchaseReceiptDocument.count({ where: { receiptId: foreign.receiptId } })
+      ).toBe(0)
     })
   })
 

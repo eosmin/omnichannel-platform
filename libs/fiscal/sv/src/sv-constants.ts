@@ -561,3 +561,48 @@ export const SvAnnexErrors = {
   // A figure of a document is not a whole number of cents, or a field the file needs is missing or unreadable
   UNREADABLE: 'annex_document_unreadable'
 } as const
+
+// The supplier's document in the annex of purchases of the return (manual of annexes F-07 v14, annex 3): the class and the type of the
+// document, the classification of the cost or expense for the income tax (columns Q to T, from 2024-02) and the combinations the loader accepts
+export const SvPurchaseClass = {
+  PRINTED: '1',
+  SINGLE_FORM: '2',
+  OTHER: '3',
+  DTE: '4'
+} as const
+
+export const SvPurchaseType = {
+  TAX_CREDIT: '03',
+  CREDIT_NOTE: '05',
+  DEBIT_NOTE: '06',
+  EXPORT_INVOICE: '11',
+  CUSTOMS_DECLARATION: '12',
+  PAYMENT_ORDER: '13'
+} as const
+
+// The classes 1, 2 and 4 hold the documents of a supplier; the class 3 only the two documents of the customs and of the treasury
+export const SV_PURCHASE_SUPPLIER_TYPES: readonly string[] = [
+  SvPurchaseType.TAX_CREDIT,
+  SvPurchaseType.CREDIT_NOTE,
+  SvPurchaseType.DEBIT_NOTE,
+  SvPurchaseType.EXPORT_INVOICE
+]
+export const SV_PURCHASE_OTHER_TYPES: readonly string[] = [
+  SvPurchaseType.CUSTOMS_DECLARATION,
+  SvPurchaseType.PAYMENT_ORDER
+]
+
+export const SvPurchaseClassification = {
+  COST: '1',
+  EXPENSE: '2',
+  SECTOR_INDUSTRY: '1',
+  SECTORS: ['1', '2', '3', '4'],
+  // Column T by class and sector (the table of the manual, p.21)
+  COST_TYPES_INDUSTRY: ['4', '5', '6', '7'],
+  COST_TYPES_OTHER_SECTORS: ['4', '5'],
+  EXPENSE_TYPES: ['1', '2', '3']
+} as const
+
+// The code of generation of a DTE: a UUID, written with dashes by the person and without them in the file
+export const SV_GENERATION_CODE =
+  /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/u

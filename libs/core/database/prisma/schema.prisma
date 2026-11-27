@@ -22,42 +22,43 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  stores                 Store[]
-  memberships            Membership[]
-  invitations            Invitation[]
-  dataSubjectRequests    DataSubjectRequest[]
-  warehouses             Warehouse[]
-  stockCounts            StockCount[]
-  stockTransfers         StockTransfer[]
-  financeSettings        FinanceSettings?
-  ledgerAccounts         LedgerAccount[]
-  taxRates               TaxRate[]
-  accountRoles           AccountRoleMapping[]
-  paymentAccounts        PaymentMethodAccount[]
-  fiscalPeriods          FiscalPeriod[]
-  fiscalIssuer           FiscalIssuer?
-  fiscalSequences        FiscalSequence[]
-  fiscalContingencies    FiscalContingency[]
-  fiscalDocuments        FiscalDocument[]
-  fiscalDeliveries       FiscalDelivery[]
-  financeBookLayouts     FinanceBookLayout[]
-  financeBookSnapshots   FinanceBookSnapshot[]
-  journalEntries         JournalEntry[]
-  journalLines           JournalLine[]
-  periodBalances         AccountPeriodBalance[]
-  postingFailures        FinancePostingFailure[]
-  chainIncidents         FinanceChainIncident[]
-  bankProfiles           BankImportProfile[]
-  bankImports            BankStatementImport[]
-  bankLines              BankStatementLine[]
-  reconciliationMatches  ReconciliationMatch[]
-  financeTransactions    FinanceTransaction[]
-  suppliers              Supplier[]
-  purchaseOrders         PurchaseOrder[]
-  purchaseReceipts       PurchaseReceipt[]
-  supplierPayments       SupplierPayment[]
-  supplierPaymentReturns SupplierPaymentReturn[]
-  plugins                Plugin[]
+  stores                   Store[]
+  memberships              Membership[]
+  invitations              Invitation[]
+  dataSubjectRequests      DataSubjectRequest[]
+  warehouses               Warehouse[]
+  stockCounts              StockCount[]
+  stockTransfers           StockTransfer[]
+  financeSettings          FinanceSettings?
+  ledgerAccounts           LedgerAccount[]
+  taxRates                 TaxRate[]
+  accountRoles             AccountRoleMapping[]
+  paymentAccounts          PaymentMethodAccount[]
+  fiscalPeriods            FiscalPeriod[]
+  fiscalIssuer             FiscalIssuer?
+  fiscalSequences          FiscalSequence[]
+  fiscalContingencies      FiscalContingency[]
+  fiscalDocuments          FiscalDocument[]
+  fiscalDeliveries         FiscalDelivery[]
+  financeBookLayouts       FinanceBookLayout[]
+  financeBookSnapshots     FinanceBookSnapshot[]
+  journalEntries           JournalEntry[]
+  journalLines             JournalLine[]
+  periodBalances           AccountPeriodBalance[]
+  postingFailures          FinancePostingFailure[]
+  chainIncidents           FinanceChainIncident[]
+  bankProfiles             BankImportProfile[]
+  bankImports              BankStatementImport[]
+  bankLines                BankStatementLine[]
+  reconciliationMatches    ReconciliationMatch[]
+  financeTransactions      FinanceTransaction[]
+  suppliers                Supplier[]
+  purchaseOrders           PurchaseOrder[]
+  purchaseReceipts         PurchaseReceipt[]
+  purchaseReceiptDocuments PurchaseReceiptDocument[]
+  supplierPayments         SupplierPayment[]
+  supplierPaymentReturns   SupplierPaymentReturn[]
+  plugins                  Plugin[]
 
   @@map("organizations")
 }
@@ -2913,12 +2914,13 @@ model PurchaseReceipt {
   createdBy              String   @map("created_by")
   createdAt              DateTime @default(now()) @map("created_at")
 
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  order        PurchaseOrder         @relation(fields: [organizationId, purchaseOrderId], references: [organizationId, id], onDelete: Restrict)
-  supplier     Supplier              @relation(fields: [organizationId, supplierId], references: [organizationId, id], onDelete: Restrict)
-  entry        JournalEntry          @relation("ReceiptEntry", fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  order        PurchaseOrder            @relation(fields: [organizationId, purchaseOrderId], references: [organizationId, id], onDelete: Restrict)
+  supplier     Supplier                 @relation(fields: [organizationId, supplierId], references: [organizationId, id], onDelete: Restrict)
+  entry        JournalEntry             @relation("ReceiptEntry", fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
   lines        PurchaseReceiptLine[]
   payments     SupplierPayment[]
+  document     PurchaseReceiptDocument?
 
   @@unique([organizationId, id])
   @@unique([organizationId, clientKey])
@@ -2926,6 +2928,33 @@ model PurchaseReceipt {
   @@index([organizationId, supplierId, dueOn])
   @@index([purchaseOrderId])
   @@map("purchase_receipts")
+}
+
+// The supplier's document of a receipt as the annex of purchases of the return reads it (D4b), or the mark that the annex leaves the receipt out.
+// A receipt is never edited, so this is a row of its own: one for a receipt, written with it or after the fact. The codes are the provider's.
+// Partial unique index purchase_receipt_documents_organization_id_generation_code_key (organization_id, generation_code) WHERE generation_code IS NOT NULL:
+// raw SQL in its migration, as the checks that say a row is either a document or a mark.
+model PurchaseReceiptDocument {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  receiptId      String   @map("receipt_id")
+  documentClass  String?  @map("document_class")
+  documentType   String?  @map("document_type")
+  generationCode String?  @map("generation_code")
+  purchaseOrigin String?  @map("purchase_origin")
+  expenseClass   String?  @map("expense_class")
+  sector         String?
+  costType       String?  @map("cost_type")
+  annexExclusion String?  @map("annex_exclusion")
+  createdBy      String   @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  receipt      PurchaseReceipt @relation(fields: [organizationId, receiptId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, receiptId])
+  @@map("purchase_receipt_documents")
 }
 
 // What one line of a receipt took in: the units, the cost of one before tax and the stock movement that raised the level.

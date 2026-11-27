@@ -1,6 +1,7 @@
 import type { PurchaseOrderLineView, PurchaseOrderView, SupplierView } from '@platform/api-client'
 import {
   closePurchaseOrderSchema,
+  completeReceiptDocumentSchema,
   createPurchaseOrderSchema,
   createSupplierSchema,
   PurchaseOrderStatus,
@@ -18,6 +19,10 @@ import {
   createSupplierInputOf,
   dayOfDate,
   decimalOfCentsText,
+  documentInputOf,
+  DocumentFields,
+  documentProblem,
+  emptyDocumentDraft,
   emptyOrderHeaderDraft,
   emptyPaymentDraft,
   emptySupplierDraft,
@@ -34,6 +39,7 @@ import {
   pendingOf,
   receiveDraftOf,
   receiveInputOf,
+  ReceiveFields,
   receiveProblem,
   supplierDraftOf,
   supplierProblem,
@@ -357,6 +363,67 @@ describe('receiving', () => {
     expect(notCredited.taxCreditable).toBe(false)
     expect(receivePurchaseOrderSchema.safeParse(notCredited).success).toBe(true)
     expect('taxCreditable' in input).toBe(false)
+  })
+
+  describe('the supplier document of the annex (D4b)', () => {
+    const written = {
+      ...emptyDocumentDraft(),
+      documentClass: '4',
+      documentType: '03',
+      generationCode: ' 0b7e1c2a-6f34-4d8e-9a51-3c2d7e8f9a10 ',
+      expenseClass: '1',
+      sector: '2',
+      costType: '5'
+    }
+
+    it('is left out of the request when nothing was written, and never a partial one', () => {
+      const draft = receiveDraftOf(two, '2026-11-16')
+      expect(documentProblem(draft.document)).toBeNull()
+      expect('fiscalDocument' in receiveInputOf(two, draft, KEY)).toBe(false)
+      const partial = { ...emptyDocumentDraft(), documentClass: '4' }
+      expect(documentProblem(partial)).toBe(DocumentFields.TYPE)
+      expect(receiveProblem(two, { ...draft, document: partial })).toEqual({
+        field: ReceiveFields.FISCAL_DOCUMENT,
+        lineId: null
+      })
+    })
+
+    it('is sent trimmed, in the shape of the api, for a receipt and for a completion', () => {
+      const draft = { ...receiveDraftOf(two, '2026-11-16'), document: written }
+      expect(receiveProblem(two, draft)).toBeNull()
+      const input = receiveInputOf(two, draft, KEY)
+      expect(input.fiscalDocument).toEqual({
+        documentClass: '4',
+        documentType: '03',
+        generationCode: '0b7e1c2a-6f34-4d8e-9a51-3c2d7e8f9a10',
+        origin: 'internal',
+        expenseClass: '1',
+        sector: '2',
+        costType: '5'
+      })
+      expect(receivePurchaseOrderSchema.safeParse(input).success).toBe(true)
+      const fiscalDocument = documentInputOf(written)
+      expect(completeReceiptDocumentSchema.safeParse({ fiscalDocument }).success).toBe(true)
+    })
+
+    it('does not drop an origin that is not the default: it is a choice that asks for the rest', () => {
+      const draft = { ...receiveDraftOf(two, '2026-11-16') }
+      const imported = { ...emptyDocumentDraft(), origin: 'import_goods' as const }
+      expect(documentProblem(imported)).toBe(DocumentFields.CLASS)
+      expect(receiveProblem(two, { ...draft, document: imported })?.field).toBe(
+        ReceiveFields.FISCAL_DOCUMENT
+      )
+    })
+
+    it('leaves the code of generation out when there is none, and refuses one with a character it cannot hold', () => {
+      expect(documentInputOf({ ...written, generationCode: '' })).not.toHaveProperty(
+        'generationCode'
+      )
+      expect(documentProblem({ ...written, generationCode: 'a b' })).toBe(
+        DocumentFields.GENERATION_CODE
+      )
+      expect(documentProblem({ ...written, costType: 'x' })).toBe(DocumentFields.COST_TYPE)
+    })
   })
 })
 

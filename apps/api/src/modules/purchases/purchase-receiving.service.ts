@@ -43,13 +43,14 @@ import {
 } from '@platform/core/finance'
 import { financeRefusal, LedgerService } from '@platform/core/finance-ledger'
 import { InventoryService } from '@platform/core/inventory'
+import { FiscalPurchaseDocumentService } from '@platform/fiscal/runtime'
 
 import { lockScope } from '../finance/finance.support'
 import type { Actor } from '../tenancy'
 
 import { PurchaseOrdersService } from './purchase-orders.service'
 import { seesEveryLine, visibleStoreIdsIn } from './purchases.reach'
-import type { ReceivePurchaseOrderBody } from './purchases.schemas'
+import type { CompleteReceiptDocumentBody, ReceivePurchaseOrderBody } from './purchases.schemas'
 import { invalidPurchase, invalidTransition, latestDay, roleAccount } from './purchases.support'
 import type { OrderView } from './purchases.views'
 
@@ -73,7 +74,8 @@ export class PurchaseReceivingService {
     private readonly inventory: InventoryService,
     private readonly events: DomainEvents,
     private readonly audit: AuditService,
-    private readonly orders: PurchaseOrdersService
+    private readonly orders: PurchaseOrdersService,
+    private readonly documents: FiscalPurchaseDocumentService
   ) {}
 
   async receive(
@@ -219,6 +221,11 @@ export class PurchaseReceivingService {
       ...(body.receivedOn > latestDay() ? [PurchaseRule.DATE_IN_FUTURE] : [])
     ]
     if (problems.length > 0) throw invalidPurchase(problems)
+    // The data of the supplier's document, when sent, is right by the rules of the provider and is not another receipt's
+    const fiscal = body.fiscalDocument
+    if (fiscal !== undefined) {
+      await this.checkDocument(tx, organizationId, fiscal, document, null)
+    }
     // Several receipts of ONE order may share the supplier's invoice (it arrives in parts); the same invoice on another order would
     // credit its tax twice, so it is refused [ACCOUNTANT]
     if (document !== null) {
@@ -332,6 +339,11 @@ export class PurchaseReceivingService {
         createdBy: actor.userId
       }
     })
+    if (fiscal !== undefined) {
+      await tx.purchaseReceiptDocument.create({
+        data: { organizationId, receiptId, createdBy: actor.userId, ...documentColumns(fiscal) }
+      })
+    }
     await tx.purchaseReceiptLine.createMany({
       data: chosen.map((line, index) => ({
         organizationId,
@@ -378,6 +390,137 @@ export class PurchaseReceivingService {
     }
   }
 
+  // Completes the data of the supplier's document of a receipt written before (or without it), or marks the receipt as left out of the annex
+  // of purchases. The money of the receipt and its entry are never touched: only the columns that say how the annex reads it.
+  async completeDocument(
+    organizationId: string,
+    orderId: string,
+    receiptId: string,
+    body: CompleteReceiptDocumentBody,
+    actor: Actor
+  ): Promise<OrderView> {
+    await this.prisma.transaction(async tx => {
+      await lockScope(tx, `${organizationId}:purchase:${orderId}`)
+      const receipt = await tx.purchaseReceipt.findFirst({
+        where: { id: receiptId, purchaseOrderId: orderId, organizationId },
+        select: {
+          id: true,
+          supplierDocumentNumber: true,
+          taxCreditable: true,
+          document: { select: { documentType: true } }
+        }
+      })
+      if (receipt === null) throw resourceNotFound('purchase receipt')
+      // As to receive it: a receipt is the caller's only if every line of it is of a store the caller sees
+      const receiptLines = await tx.purchaseReceiptLine.findMany({
+        where: { organizationId, receiptId },
+        select: { storeId: true }
+      })
+      const visible = await visibleStoreIdsIn(tx, organizationId, actor.userId)
+      if (!seesEveryLine(receiptLines, visible)) {
+        throw resourceConflict('a line of the receipt is of a store the caller does not see', {
+          conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
+        })
+      }
+      if ('fiscalDocument' in body) {
+        await this.checkDocument(
+          tx,
+          organizationId,
+          body.fiscalDocument,
+          receipt.supplierDocumentNumber,
+          receipt.id
+        )
+        const columns = { ...documentColumns(body.fiscalDocument), annexExclusion: null }
+        await tx.purchaseReceiptDocument.upsert({
+          where: { organizationId_receiptId: { organizationId, receiptId: receipt.id } },
+          create: { organizationId, receiptId: receipt.id, createdBy: actor.userId, ...columns },
+          update: columns
+        })
+      } else {
+        // A receipt that claims the tax as input VAT has a document that the annex declares: it is not left out
+        if (receipt.taxCreditable || receipt.document?.documentType != null) {
+          throw resourceConflict(
+            'a receipt with a document to declare is not left out of the annex',
+            {
+              conflict: PurchaseConflicts.ANNEX_EXCLUSION_WITH_DOCUMENT
+            }
+          )
+        }
+        const columns = {
+          ...documentColumns(undefined),
+          annexExclusion: body.annexExclusion
+        }
+        await tx.purchaseReceiptDocument.upsert({
+          where: { organizationId_receiptId: { organizationId, receiptId: receipt.id } },
+          create: { organizationId, receiptId: receipt.id, createdBy: actor.userId, ...columns },
+          update: columns
+        })
+      }
+    })
+    this.audit.log({
+      action: AuditAction.PURCHASE_RECEIPT_DOCUMENT_COMPLETED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: PurchaseResourceTypes.PURCHASE_RECEIPT,
+      resourceId: receiptId,
+      metadata: {
+        purchaseOrderId: orderId,
+        ...('annexExclusion' in body
+          ? { annexExclusion: body.annexExclusion }
+          : { completed: true })
+      },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return this.orders.get(organizationId, orderId, actor)
+  }
+
+  // The rules of the provider on the document, and that its code of generation is on no other receipt of the organization
+  private async checkDocument(
+    tx: PrismaTransaction,
+    organizationId: string,
+    fiscal: NonNullable<ReceivePurchaseOrderBody['fiscalDocument']>,
+    documentNumber: string | null,
+    receiptId: string | null
+  ): Promise<void> {
+    const found = await this.documents.problems(tx, organizationId, {
+      documentClass: fiscal.documentClass,
+      documentType: fiscal.documentType,
+      generationCode: fiscal.generationCode ?? null,
+      documentNumber,
+      origin: fiscal.origin,
+      expenseClass: fiscal.expenseClass,
+      sector: fiscal.sector,
+      costType: fiscal.costType
+    })
+    if (found.length > 0) {
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_INVALID_INPUT,
+        'the document of the purchase breaks a rule of the provider',
+        HttpStatusCodes.BAD_REQUEST,
+        { problems: found }
+      )
+    }
+    const code = normalizedCode(fiscal.generationCode)
+    if (code === null) return
+    // Two requests with one code do not both pass
+    await lockScope(tx, `${organizationId}:generation_code:${code}`)
+    const other = await tx.purchaseReceiptDocument.findFirst({
+      where: {
+        organizationId,
+        generationCode: code,
+        ...(receiptId === null ? {} : { receiptId: { not: receiptId } })
+      },
+      select: { id: true }
+    })
+    if (other !== null) {
+      throw resourceConflict('the document is already on another receipt', {
+        conflict: PurchaseConflicts.GENERATION_CODE_IN_USE
+      })
+    }
+  }
+
   // The same key with the same content is the same request; with another content it is a mistake of the client
   private async sameReceive(
     tx: PrismaTransaction,
@@ -387,7 +530,22 @@ export class PurchaseReceivingService {
   ): Promise<boolean> {
     const receipt = await tx.purchaseReceipt.findFirst({
       where: { id: receiptId, organizationId },
-      select: { receivedOn: true, supplierDocumentNumber: true, taxCreditable: true }
+      select: {
+        receivedOn: true,
+        supplierDocumentNumber: true,
+        taxCreditable: true,
+        document: {
+          select: {
+            documentClass: true,
+            documentType: true,
+            generationCode: true,
+            purchaseOrigin: true,
+            expenseClass: true,
+            sector: true,
+            costType: true
+          }
+        }
+      }
     })
     const lines = await tx.purchaseReceiptLine.findMany({
       where: { organizationId, receiptId },
@@ -399,10 +557,52 @@ export class PurchaseReceivingService {
       dateToDay(receipt.receivedOn) === body.receivedOn &&
       receipt.supplierDocumentNumber === document &&
       receipt.taxCreditable === (body.taxCreditable ?? document !== null) &&
+      (body.fiscalDocument === undefined ||
+        sameDocument(receipt.document, documentColumns(body.fiscalDocument))) &&
       lines.length === body.lines.length &&
       body.lines.every(sent =>
         lines.some(line => line.orderLineId === sent.orderLineId && line.quantity === sent.quantity)
       )
     )
   }
+}
+
+// The code of generation of a received document is stored in capitals, the way the authority writes it
+const normalizedCode = (code: string | undefined): string | null =>
+  code === undefined ? null : code.toUpperCase()
+
+interface DocumentColumns {
+  documentClass: string | null
+  documentType: string | null
+  generationCode: string | null
+  purchaseOrigin: string | null
+  expenseClass: string | null
+  sector: string | null
+  costType: string | null
+}
+
+// The columns of a receipt that hold the supplier's document: all null when none was sent
+function documentColumns(fiscal: ReceivePurchaseOrderBody['fiscalDocument']): DocumentColumns {
+  return {
+    documentClass: fiscal?.documentClass ?? null,
+    documentType: fiscal?.documentType ?? null,
+    generationCode: normalizedCode(fiscal?.generationCode),
+    purchaseOrigin: fiscal?.origin ?? null,
+    expenseClass: fiscal?.expenseClass ?? null,
+    sector: fiscal?.sector ?? null,
+    costType: fiscal?.costType ?? null
+  }
+}
+
+function sameDocument(stored: DocumentColumns | null, sent: DocumentColumns): boolean {
+  const has = stored ?? documentColumns(undefined)
+  return (
+    has.documentClass === sent.documentClass &&
+    has.documentType === sent.documentType &&
+    has.generationCode === sent.generationCode &&
+    has.purchaseOrigin === sent.purchaseOrigin &&
+    has.expenseClass === sent.expenseClass &&
+    has.sector === sent.sector &&
+    has.costType === sent.costType
+  )
 }

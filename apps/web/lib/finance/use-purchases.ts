@@ -38,6 +38,8 @@ import {
   type ReceivePurchaseOrderInput,
   type RecordPaymentReturnInput,
   type RecordSupplierPaymentInput,
+  completePurchaseReceiptDocument,
+  type CompleteReceiptDocumentInput,
   receivePurchaseOrder,
   recordPurchaseOrderPayment,
   recordSupplierPayment,
@@ -241,6 +243,16 @@ export const useReceivePurchaseOrder = (
 ): Write<{ id: string; input: ReceivePurchaseOrderInput }, PurchaseOrderView> =>
   usePurchaseWrite(storeId, value =>
     receivePurchaseOrder(apiClient, storeId, value.id, value.input)
+  )
+
+export const useCompleteReceiptDocument = (
+  storeId: string
+): Write<
+  { id: string; receiptId: string; input: CompleteReceiptDocumentInput },
+  PurchaseOrderView
+> =>
+  usePurchaseWrite(storeId, value =>
+    completePurchaseReceiptDocument(apiClient, storeId, value.id, value.receiptId, value.input)
   )
 
 export const useClosePurchaseOrder = (

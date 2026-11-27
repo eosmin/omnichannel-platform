@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { FinanceLimits } from './finance-constants'
 import { isIsoDate } from './ledger-days'
-import { PurchaseLimits } from './purchase-constants'
+import { PURCHASE_ANNEX_EXCLUSIONS, PURCHASE_ORIGINS, PurchaseLimits } from './purchase-constants'
 import { lowercasedUuidSchema, singleLineText } from './validation'
 
 // The bodies of the purchase routes (TDD_18 §2.7, §12), in the shared lib: the api validates with them and the web checks what each
@@ -84,6 +84,34 @@ export const updatePurchaseOrderSchema = z
   })
   .refine(body => Object.values(body).some(value => value !== undefined), nothingToChange)
 
+// The supplier's document as the annex of purchases of the return reads it (D4b). Core only bounds the SHAPE of each value (short digits, a
+// code of generation of letters, digits and dashes); what the codes mean and which combinations are valid is the provider's rule, checked
+// when it is written (`FiscalDocumentProvider.validatePurchaseDocument`)
+const documentCode = z
+  .string()
+  .regex(new RegExp(`^[0-9]{1,${PurchaseLimits.DOCUMENT_CODE_MAX_LENGTH}}$`))
+export const purchaseFiscalDocumentSchema = z.strictObject({
+  documentClass: documentCode,
+  documentType: documentCode,
+  // Only a received electronic document has one
+  generationCode: z
+    .string()
+    .regex(new RegExp(`^[A-Za-z0-9-]{1,${PurchaseLimits.GENERATION_CODE_MAX_LENGTH}}$`))
+    .optional(),
+  origin: z.enum(PURCHASE_ORIGINS),
+  // The classification of the cost or expense for the income tax: class (cost or expense), sector and type
+  expenseClass: documentCode,
+  sector: documentCode,
+  costType: documentCode
+})
+export type PurchaseFiscalDocumentBody = z.infer<typeof purchaseFiscalDocumentSchema>
+
+// Completing a receipt: the data of its document, or the mark that the annex leaves it out (and why). Never both
+export const completeReceiptDocumentSchema = z.union([
+  z.strictObject({ fiscalDocument: purchaseFiscalDocumentSchema }),
+  z.strictObject({ annexExclusion: z.enum(PURCHASE_ANNEX_EXCLUSIONS) })
+])
+
 // What arrives: the lines of the order it takes in and how many units of each. The cost and the tax are the order's, never the client's
 export const receivePurchaseOrderSchema = z.strictObject({
   idempotencyKey: purchaseIdempotencyKey,
@@ -91,6 +119,7 @@ export const receivePurchaseOrderSchema = z.strictObject({
   supplierDocumentNumber: singleLineText(FinanceLimits.DOCUMENT_NUMBER_MAX_LENGTH, 1).optional(),
   // Whether the tax of the bill is input VAT. Left out, it is when the supplier's document number is given [ACCOUNTANT]
   taxCreditable: z.boolean().optional(),
+  fiscalDocument: purchaseFiscalDocumentSchema.optional(),
   lines: z
     .array(z.strictObject({ orderLineId: lowercasedUuidSchema, quantity }))
     .min(1)
