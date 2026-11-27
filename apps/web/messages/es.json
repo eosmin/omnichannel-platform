@@ -8616,6 +8616,14 @@
           "representation": {
             "label": "Representación gráfica para el cliente",
             "hint": "El PDF con el código QR de consulta que se entrega al cliente junto con el archivo del documento."
+          },
+          "void_dte_file": {
+            "label": "Archivo del evento de invalidación para el cliente",
+            "hint": "El archivo JSON del evento de invalidación con su firma y el sello de la autoridad, tal como se entrega al cliente."
+          },
+          "void_representation": {
+            "label": "Representación gráfica de la invalidación para el cliente",
+            "hint": "El PDF del evento de invalidación que se entrega al cliente junto con el archivo del evento."
           }
         }
       },

@@ -42,7 +42,10 @@ const KIND_STATES: Record<FiscalEvidenceKind, readonly FiscalDocumentStatus[]> =
   // What the receiver is given, made from the document as the authority accepted it (it stays when the document is voided: the receiver
   // keeps what they were given, and the invalidation is its own event)
   [FiscalEvidenceKind.DTE_FILE]: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.VOIDED],
-  [FiscalEvidenceKind.REPRESENTATION]: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.VOIDED]
+  [FiscalEvidenceKind.REPRESENTATION]: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.VOIDED],
+  // What the receiver is owed for the invalidation: made from the event the issuer signed, which exists only once the document is voided
+  [FiscalEvidenceKind.VOID_DTE_FILE]: [FiscalDocumentStatus.VOIDED],
+  [FiscalEvidenceKind.VOID_REPRESENTATION]: [FiscalDocumentStatus.VOIDED]
 }
 
 // The columns of a document a file of evidence is made from
@@ -57,6 +60,7 @@ interface EvidenceRow {
   readonly voidReason: string | null
   readonly voidedAt: Date | null
   readonly voidResponse: unknown
+  readonly voidEventEncrypted: Uint8Array | null
   readonly issuedAt: Date | null
   readonly createdAt: Date
   readonly sequenceNumber: number
@@ -265,6 +269,7 @@ export class FiscalEvidenceService {
           voidReason: true,
           voidedAt: true,
           voidResponse: true,
+          voidEventEncrypted: true,
           issuedAt: true,
           createdAt: true
         }
@@ -274,7 +279,10 @@ export class FiscalEvidenceService {
     const made =
       kind === FiscalEvidenceKind.DTE_FILE || kind === FiscalEvidenceKind.REPRESENTATION
         ? await this.deliveryFileOf(kind, doc)
-        : this.jsonFileOf(kind, doc)
+        : kind === FiscalEvidenceKind.VOID_DTE_FILE ||
+            kind === FiscalEvidenceKind.VOID_REPRESENTATION
+          ? await this.voidFileOf(kind, doc)
+          : this.jsonFileOf(kind, doc)
     if (made === null) return null
     if (made.bytes.byteLength > FiscalLimits.EVIDENCE_MAX_BYTES) {
       this.logger.error(
@@ -337,6 +345,77 @@ export class FiscalEvidenceService {
       }
       return null
     }
+  }
+
+  // What the receiver is owed for the invalidation: made by the provider from the event the issuer signed (sealed in the row) and the answer
+  // of the authority, which holds the seal. A document with no event of ours (the authority already held the invalidation, or it was voided
+  // before the event was kept) has none to give, and nothing is invented from the answer: the file of an event is never made incomplete.
+  private async voidFileOf(kind: FiscalEvidenceKind, doc: EvidenceRow): Promise<MadeFile | null> {
+    // Nothing of the built document is opened: the event and the answer hold all that is drawn, so a payload that cannot be opened never
+    // keeps the receiver from what the invalidation owes
+    const event = this.openedVoidEvent(doc)
+    const provider = this.registry.find(doc.providerId)
+    if (event === null || provider?.representVoid === undefined) return null
+    try {
+      const representation = provider.representVoid({
+        documentType: doc.documentType,
+        externalNumber: doc.externalNumber,
+        providerData: doc.providerData === null ? null : record(toJson(doc.providerData)),
+        voidEvent: event,
+        voidResponse: doc.voidResponse === null ? null : record(toJson(doc.voidResponse))
+      })
+      if (representation === null) return null
+      if (kind === FiscalEvidenceKind.VOID_DTE_FILE) {
+        if (representation.file === null) return null
+        return {
+          bytes: Buffer.from(JSON.stringify(representation.file.content), 'utf8'),
+          filename: representation.file.filename
+        }
+      }
+      return {
+        bytes: await renderRepresentationPdf(representation, doc.voidedAt ?? doc.createdAt),
+        filename: `${representation.name}.pdf`
+      }
+    } catch (error) {
+      this.logger.error(
+        { documentId: doc.id, kind, err: errorName(error) },
+        'the representation of the invalidation of a fiscal document could not be made'
+      )
+      if (error instanceof RepresentationTooLargeError) {
+        throw resourceConflict('the representation of this invalidation is too large to be drawn', {
+          reason: FiscalConflictReasons.REPRESENTATION_TOO_LARGE
+        })
+      }
+      return null
+    }
+  }
+
+  // The signed event of the invalidation, opened as the content and the signature it was sealed with; null when the row holds none or it cannot
+  // be opened or is not that shape
+  private openedVoidEvent(
+    doc: EvidenceRow
+  ): { content: Record<string, unknown>; signature: string } | null {
+    if (doc.voidEventEncrypted === null) return null
+    let opened: Record<string, unknown>
+    try {
+      opened = openSealed(
+        this.cipher,
+        this.logger,
+        doc.voidEventEncrypted,
+        SealedValueKind.VOID_EVENT,
+        { documentId: doc.id }
+      )
+    } catch {
+      return null
+    }
+    const content = opened['event']
+    const signature = opened['signature']
+    return typeof content === 'object' &&
+      content !== null &&
+      !Array.isArray(content) &&
+      typeof signature === 'string'
+      ? { content: content as Record<string, unknown>, signature }
+      : null
   }
 
   // The built document, opened; null when the sealed copy is missing or cannot be opened

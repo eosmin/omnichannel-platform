@@ -439,6 +439,14 @@ export interface StoredFiscalDocument {
   readonly payload: Readonly<Record<string, unknown>>
 }
 
+// The invalidated document as the provider needs it to draw what the receiver is owed: its type and number, the event of the
+// invalidation as the issuer signed it, and what the authority answered to it (where its seal is). Nothing is rebuilt: a void with no event of
+// our own (the authority already held it) has none of these to give, and is never drawn.
+export interface StoredVoidedDocument extends Omit<StoredFiscalDocument, 'payload'> {
+  readonly voidEvent: VoidEvent
+  readonly voidResponse: Readonly<Record<string, unknown>> | null
+}
+
 export interface ContingencyPolicy {
   // What a person reads about what the provider does while the authority is down (the queue keeps the document and retries)
   readonly description: string
@@ -615,6 +623,10 @@ export interface FiscalDocumentProvider {
   // the data the provider wrote when the authority accepted it), so the same document always gives the same representation, whatever
   // changes later in the order or the issuer. Null for a type the provider has no representation for. A provider without it has none.
   represent?(doc: StoredFiscalDocument): FiscalRepresentation | null
+  // Pure, optional: what the receiver is owed when the document is VOIDED (the event of the invalidation, drawn and as the authority defines its
+  // file), made only from the document and the event as they were kept, so it is always the same. Null when the provider cannot make a
+  // complete one (the event or the seal is not what it needs): an incomplete file is never made. A provider without it has none.
+  representVoid?(doc: StoredVoidedDocument): FiscalRepresentation | null
   // Optional: the annexes of the periodic return of the provider's country, made from the documents of a month (see `FiscalAnnexExporter`).
   readonly annexes?: FiscalAnnexExporter
   // Pure: the sale and the issuer become the document (the choice of the type is the provider's rule)

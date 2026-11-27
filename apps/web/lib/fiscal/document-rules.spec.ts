@@ -134,6 +134,32 @@ describe('what a person may do with a fiscal document', () => {
     ).toEqual([...base, FiscalEvidenceKind.DTE_FILE, FiscalEvidenceKind.REPRESENTATION])
   })
 
+  it('offers a voided document the files of its invalidation only when the api says they exist, and never to a document that is not voided', () => {
+    const voided = { status: FiscalDocumentStatus.VOIDED }
+    const base = [
+      FiscalEvidenceKind.DOCUMENT,
+      FiscalEvidenceKind.RESPONSE,
+      FiscalEvidenceKind.VOID_RESPONSE
+    ]
+    expect(fiscalEvidenceKindsOf(voided, [FiscalEvidenceKind.DTE_FILE])).toEqual([
+      ...base,
+      FiscalEvidenceKind.DTE_FILE
+    ])
+    expect(
+      fiscalEvidenceKindsOf(voided, [
+        FiscalEvidenceKind.VOID_REPRESENTATION,
+        FiscalEvidenceKind.VOID_DTE_FILE
+      ])
+    ).toEqual([...base, FiscalEvidenceKind.VOID_DTE_FILE, FiscalEvidenceKind.VOID_REPRESENTATION])
+    const all = Object.values(FiscalEvidenceKind)
+    for (const status of [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.QUEUED]) {
+      expect(fiscalEvidenceKindsOf({ status }, all)).not.toContain(FiscalEvidenceKind.VOID_DTE_FILE)
+      expect(fiscalEvidenceKindsOf({ status }, all)).not.toContain(
+        FiscalEvidenceKind.VOID_REPRESENTATION
+      )
+    }
+  })
+
   it('offers the hand delivery only while the files are owed and exist: the files need both, the paper the picture alone', () => {
     const view = (over: Partial<FiscalDeliveryView>): FiscalDeliveryView => ({
       documentId: 'd',

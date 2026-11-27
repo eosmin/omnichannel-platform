@@ -400,8 +400,8 @@ export async function confirmFiscalIssuerChange(
   })
 }
 
-// How the files of an accepted document reached its receiver (the route and a reason code, never an address) and which of the two files of
-// the receiver exist. `pending`: no delivery row yet (it runs when the document is accepted; the daily check publishes it again if lost).
+// How the files of an accepted document reached its receiver (the route and a reason code, never an address) and which files of the receiver
+// exist (the two of the document and, once it is voided, the two of its invalidation). `pending`: no delivery row yet (it runs when the document is accepted; the daily check publishes it again if lost).
 const deliverySchema = z.object({
   documentId: z.string(),
   state: z.enum([FiscalDeliveryPending, ...Object.values(FiscalDeliveryStatus)]),
