@@ -4,6 +4,7 @@ import { QueuesPlatformModule } from '@platform/core/http'
 import { OutboundQueue } from '@platform/core/messaging'
 import { FiscalRuntimeModule } from '@platform/fiscal/runtime'
 
+import { ChannelRegistryModule } from '../channel-registry'
 import { ConversationsModule } from '../conversations'
 import { MediaModule } from '../media/media.module'
 import { OrderMessagesModule } from '../order-messages/order-messages.module'
@@ -25,6 +26,7 @@ import { FiscalListener } from './fiscal.listener'
 // providers are `libs/fiscal/runtime`, which the worker also runs.
 @Module({
   imports: [
+    ChannelRegistryModule,
     ConversationsModule,
     FiscalRuntimeModule,
     MediaModule,
