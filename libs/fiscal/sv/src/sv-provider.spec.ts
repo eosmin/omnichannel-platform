@@ -215,7 +215,12 @@ describe('the probe of the authority (D2c)', () => {
 
   it('says reachable when the authority gives a token, and unreachable when it does not answer', async () => {
     // The login and the consultation both answer in the form of the authority
-    const up = respond(200, { status: 'OK', body: { token: 'Bearer t' }, estado: 'PROCESADO' })
+    const up = respond(200, {
+      status: 'OK',
+      body: { token: 'Bearer t' },
+      estado: 'PROCESADO',
+      codigoMsg: '001'
+    })
     const reachable = svProvider({ signer: NO_SIGNER, fetch: up.fetch })
     expect(await reachable.probeAuthority?.(ctx(CREDENTIALS))).toBe(
       FiscalAuthorityProbeOutcome.REACHABLE
@@ -317,6 +322,33 @@ describe('the probe of the authority (D2c)', () => {
       ['a rate limit of a gateway (429)', { status: 429, body: { message: 'Too Many Requests' } }],
       ['a record that is not the authority talking', { status: 200, body: { message: 'ok' } }],
       ['a list', { status: 200, body: [] }],
+      [
+        'a 404 whose body has the marks of the authority',
+        { status: 404, body: { estado: 'RECHAZADO', codigoMsg: '014' } }
+      ],
+      [
+        'a 429 whose body has the marks of the authority',
+        { status: 429, body: { estado: 'RECHAZADO', codigoMsg: '014' } }
+      ],
+      [
+        'a 408 whose body has the marks of the authority',
+        { status: 408, body: { estado: 'RECHAZADO', codigoMsg: '014' } }
+      ],
+      ['a 400 of a gateway: { error }', { status: 400, body: { error: 'Bad Request' } }],
+      ['a 400 of a gateway: { message }', { status: 400, body: { message: 'x' } }],
+      [
+        "a 400 with a state that is not the authority's",
+        { status: 400, body: { estado: 'BLOCKED', codigoMsg: '014' } }
+      ],
+      [
+        'a 400 with the state of the login and not of the reception',
+        { status: 400, body: { estado: 'ERROR', codigoMsg: '014' } }
+      ],
+      ['a 400 with a state and no code', { status: 400, body: { estado: 'RECHAZADO' } }],
+      [
+        'a 400 with a code that is not three digits',
+        { status: 400, body: { estado: 'RECHAZADO', codigoMsg: 'blocked' } }
+      ],
       ['a page of a proxy that is no answer of the authority', 'page'],
       ['no connection', 'network'],
       ['no answer in time', 'timeout']

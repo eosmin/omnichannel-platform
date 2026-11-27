@@ -64,13 +64,6 @@ export const SvUserAgent = 'PlataformaOmnicanal/1.0'
 // The time the authority gets to answer a document before it counts as no answer (Manual Técnico §3.3: 8 seconds)
 export const SvTimeouts = { AUTH_MS: 8000, RECEPTION_MS: 8000, SIGNER_MS: 10000 } as const
 
-// The question of the probe of the authority (D2d): the consultation of a document by a generation code that cannot exist (the shape of a version 4
-// code, all zeros), for the issuer itself. It is read-only and carries no document, so it makes no number, no seal and no trace in the books of the
-// authority; any answer in the form of the authority (even "there is no such document") says the reception side is up.
-export const SvProbe = {
-  GENERATION_CODE: '00000000-0000-4000-8000-000000000000'
-} as const
-
 // The words of the answers of the authority and of the signing service, and the route of the signing service
 export const SvAnswerStates = {
   PROCESSED: 'PROCESADO',
@@ -83,6 +76,21 @@ export const SvAnswerStates = {
   ERROR: 'ERROR'
 } as const
 export const SvSignerRoute = '/firmardocumento/'
+
+// The question of the probe of the authority (D2d): the consultation of a document by a generation code that cannot exist (the shape of a version 4
+// code, all zeros), for the issuer itself. It is read-only and carries no document, so it makes no number, no seal and no trace in the books of the
+// authority; any answer in the form of the authority (even "there is no such document") says the reception side is up.
+export const SvProbe = {
+  GENERATION_CODE: '00000000-0000-4000-8000-000000000000',
+  // The states the reception side gives in its own answers (not those of the login or of the signing service, `OK` and `ERROR`): an answer of
+  // the probe is believed only with one of these and a code of three digits (`SvCodePatterns.RESPONSE_CODE`)
+  ANSWER_STATES: [
+    SvAnswerStates.PROCESSED,
+    SvAnswerStates.RECEIVED,
+    SvAnswerStates.INVALIDATED,
+    SvAnswerStates.REFUSED
+  ] as readonly string[]
+} as const
 
 // The environments this provider lets an issuer choose. **Only the sandbox until the owner authorizes production (Step 4B.7c-8)**: the
 // invalidation exists since Step 4B.7c-4, but the real environment also needs its own configuration, apart from the sandbox's.
@@ -456,7 +464,9 @@ export const SvCodePatterns = {
   REGISTRATION: /^\d{2,8}$/,
   // The generation code of a document or an event: a UUID in capitals
   GENERATION_CODE: /^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$/,
-  CONTROL_NUMBER: /^DTE-\d{2}-[MBSP]\d{3}P\d{3}-\d{15}$/
+  CONTROL_NUMBER: /^DTE-\d{2}-[MBSP]\d{3}P\d{3}-\d{15}$/,
+  // The code of a response of the authority (`codigoMsg`): three digits
+  RESPONSE_CODE: /^\d{3}$/
 } as const
 
 // Why this provider refuses to build a document, in codes of its own (the error carries no customer data)

@@ -594,12 +594,17 @@ export async function probeAuthority(
       deps.auth.forget(environment, identity.nit, identity.apiPassword, login.token)
       return FiscalAuthorityProbeOutcome.UNREACHABLE
     }
-    // Only what the authority itself says counts: a document found (200), or a refusal that names the state or the code (400, as for a
-    // document that does not exist). A 404, a 408, a 429, a body that is not a record, or one with neither field is a gateway or a proxy talking,
-    // never proof that the documents are taken, so the contingency goes on
+    // Only what the authority itself says counts: a document found (200), or a refusal (400, as for a document that does not exist), with BOTH
+    // marks of its answers: a state of its own words and a code of three digits. A 404, a 408, a 429, a body that is not a record, or a gateway
+    // or a WAF that answers 400 with a state or a message of its own, is not proof that the documents are taken, so the contingency goes on
     const body = recordOf(result.json)
+    const state = textOf(body['estado'])
+    const code = codeOf(body['codigoMsg'])
     const speaksAsTheAuthority =
-      textOf(body['estado']) !== null || codeOf(body['codigoMsg']) !== null
+      state !== null &&
+      SvProbe.ANSWER_STATES.includes(state) &&
+      code !== null &&
+      SvCodePatterns.RESPONSE_CODE.test(code)
     return (result.status === 200 || result.status === 400) && speaksAsTheAuthority
       ? FiscalAuthorityProbeOutcome.REACHABLE
       : FiscalAuthorityProbeOutcome.UNREACHABLE
