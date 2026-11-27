@@ -30,6 +30,7 @@ import {
   type FiscalAnnexPurchase
 } from '@platform/fiscal/sdk'
 
+import { splitReceiptLines } from './fiscal-annex-purchase-lines'
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
 import { record, toJson } from './json'
 import { openSealed } from './sealed-open'
@@ -310,13 +311,9 @@ export class FiscalAnnexService {
           missing.push(row.id)
           continue
         }
-        const taxed = row.lines.filter(line => line.taxCents > 0)
-        const sum = (items: readonly { subtotalCents: number }[]): number =>
-          items.reduce((total, item) => total + item.subtotalCents, 0)
-        const taxedTax = taxed.reduce((total, item) => total + item.taxCents, 0)
-        const exemptBase = sum(row.lines.filter(line => line.taxCents === 0))
         // The lines are what the ledger posted: they add up to the receipt, or the receipt is not read
-        if (taxedTax !== row.taxCents || sum(taxed) + exemptBase !== row.subtotalCents) {
+        const split = splitReceiptLines(row.lines, row)
+        if (split === null) {
           inconsistent.push(row.id)
           continue
         }
@@ -328,10 +325,10 @@ export class FiscalAnnexService {
           supplierTaxId: row.supplier.taxId,
           documentNumber: row.supplierDocumentNumber,
           taxCreditable: row.taxCreditable,
-          taxedBaseCents: sum(taxed),
-          taxedLines: taxed.length,
-          taxCents: taxedTax,
-          exemptBaseCents: exemptBase,
+          taxedBaseCents: split.taxedBaseCents,
+          taxedLines: split.taxedLines,
+          taxCents: split.taxCents,
+          exemptBaseCents: split.exemptBaseCents,
           document: {
             issuedOn: day(doc.issuedOn),
             receivedOn: day(row.receivedOn),

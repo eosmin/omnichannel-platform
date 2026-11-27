@@ -1096,6 +1096,37 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       expect(digests[2]).not.toBe(digests[0])
     })
 
+    it('does not read a receipt whose lines do not add up to it, and names it', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const received = await receive(order.id, {
+        receivedOn: '2026-07-10',
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: doc({ issuedOn: '2026-07-03' }),
+        lines: order.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity }))
+      })
+      const [bill] = (received.body as OrderBody).receipts
+      expect((await taken(2026, 7)).status).toBe(OK)
+      // The ledger never lets a line of a receipt change; the test does it as the owner, with the guard of the table off for the statement
+      // alone, to stand for a receipt whose lines were not what it says (a restore, a repair by hand)
+      // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+      await owner.$transaction(async tx => {
+        await tx.$executeRawUnsafe('ALTER TABLE purchase_receipt_lines DISABLE TRIGGER USER')
+        await tx.$executeRawUnsafe(
+          `UPDATE purchase_receipt_lines SET tax_cents = tax_cents + 1 WHERE receipt_id = '${bill?.id ?? ''}' AND tax_cents > 0`
+        )
+        await tx.$executeRawUnsafe('ALTER TABLE purchase_receipt_lines ENABLE TRIGGER USER')
+      })
+      const refused = await taken(2026, 7)
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorOf(refused).metadata).toMatchObject({
+        reason: FiscalConflictReasons.ANNEX_REFUSED,
+        code: FiscalAnnexRefusals.PURCHASE_LINES_INCONSISTENT,
+        count: 1,
+        ids: [bill?.id]
+      })
+    })
+
     it('does not take the annex out for a person who does not read the documents of every store', async () => {
       const narrow = await asRole('annex-purchases-narrow', [
         Permissions.FISCAL_VIEW,
