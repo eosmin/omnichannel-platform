@@ -129,7 +129,7 @@ export const PurchaseConflicts = {
   PAYMENT_VOIDED: 'payment_voided',
   // The entry of a receipt or a payment is reversed through the purchase (its permission, its audit row), never alone
   ENTRY_OWNED_BY_PURCHASE: 'entry_owned_by_purchase',
-  // The supplier's document of a receipt is already on another receipt of the organization (the same DTE twice would be declared twice)
+  // The supplier's document of a receipt is already on another receipt of the organization (the same electronic document twice would be declared twice)
   GENERATION_CODE_IN_USE: 'generation_code_in_use',
   // A receipt with a document to declare cannot also be marked as left out of the annex
   ANNEX_EXCLUSION_WITH_DOCUMENT: 'annex_exclusion_with_document'
