@@ -359,7 +359,7 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
           ambiente?: string
           documento?: string
         }
-        const refusal = (code: string): void =>
+        const refusal = (code: string, observations: string[] | null = null): void =>
           send(response, 400, {
             version: 3,
             ambiente: body.ambiente,
@@ -368,7 +368,7 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
             fhProcesamiento: null,
             codigoMsg: code,
             descripcionMsg: 'REFUSED',
-            observaciones: null
+            observaciones: observations
           })
         const event = verifyJws(String(body.documento))
         if (
@@ -391,7 +391,12 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
         const known = received.get(original.codigoGeneracion)
         // The document must be there, with the seal the authority gave it
         if (known === undefined || known.seal !== original.selloRecibido) return refusal('014')
-        if (eventCodes.has(eventCode)) return refusal('004')
+        // An event with a code the authority holds already says so naming the field (the shape of the real answer is to be confirmed)
+        if (eventCodes.has(eventCode)) {
+          return refusal('004', [
+            '[identificacion.codigoGeneracion] YA EXISTE UN REGISTRO CON ESE VALOR'
+          ])
+        }
         if (invalidated.has(original.codigoGeneracion)) return refusal('053')
         // A correction and another reason name a replacement the authority has
         if (motivo.tipoAnulacion !== 2 && !received.has(String(original.codigoGeneracionR))) {

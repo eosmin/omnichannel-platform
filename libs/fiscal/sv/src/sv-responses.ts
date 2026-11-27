@@ -15,6 +15,12 @@ export const SvTransientCodes: ReadonlySet<number> = new Set([22, 99, 101])
 // accepted before an answer was lost gets when it is sent again. It is not a refusal of the document: the authority is asked about it.
 export const SvDuplicateCodes: ReadonlySet<number> = new Set([4])
 
+// The codes that, with the field `identificacion.codigoGeneracion` in the answer, say the refusal is about the generation code of the event itself:
+// 4 (a record with that value exists), 6 (the value is not valid) and 25 (Manual Tecnológico, tables of response codes). **[TO CONFIRM IN THE
+// SANDBOX]** where the answer names the field (`observaciones` and `descripcionMsg` are read).
+export const SvEventCodeFaultCodes: ReadonlySet<number> = new Set([4, 6, 25])
+export const SvEventCodeField = 'identificacion.codigoGeneracion'
+
 export const SvTokenCodes: ReadonlySet<number> = new Set([107, 108, 109])
 export const SvCredentialCodes: ReadonlySet<number> = new Set([100, 102, 103, 106])
 
@@ -144,4 +150,18 @@ export function classifyReception(status: number, json: unknown): SvReception {
     }
   }
   return classifyFailure(status, body)
+}
+
+// Whether a refusal of an event is about its own generation code. The Normativa (apartado 10) lets a corrected event keep the code of the refused
+// one "salvo que el motivo de rechazo se deba a dicho Código": only then is a new one made. A code of those above without the field named is a
+// refusal about something else (6 is also a schema error), so the code is kept.
+export function eventCodeFault(code: string, body: Readonly<Record<string, unknown>>): boolean {
+  if (!SvEventCodeFaultCodes.has(codeNumber(code))) return false
+  const observations = Array.isArray(body['observaciones'])
+    ? (body['observaciones'] as unknown[])
+    : []
+  const texts = [textOf(body['descripcionMsg']), ...observations.map(item => textOf(item))]
+  return texts.some(
+    text => text !== null && text.toLowerCase().includes(SvEventCodeField.toLowerCase())
+  )
 }

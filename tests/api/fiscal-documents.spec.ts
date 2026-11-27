@@ -1388,6 +1388,208 @@ describe('The fiscal documents (Step 4B.7)', () => {
       })
     })
 
+    // D14c: the event a person corrects and sends again carries the code and the moment it had (Normativa DTE v2.0, apartado 10)
+    describe('the code and the moment of an invalidation event that is sent again', () => {
+      const HOUR = 60 * 60 * 1000
+      type Seen = { code: string; at: string; keyReason: string }
+      const provider = (): NonNullable<ReturnType<FiscalProviderRegistry['find']>> => {
+        const found = app.get(FiscalProviderRegistry).find(SIMULATOR_PROVIDER_ID)
+        if (found === undefined) throw new Error('the simulator is registered in test')
+        return found
+      }
+      const accepted = async (): Promise<string> => {
+        const { documentId } = await sale()
+        await documents.submit(ctx.orgA.id, documentId)
+        return documentId
+      }
+      const rowOf = (id: string) => owner.fiscalDocument.findUniqueOrThrow({ where: { id } })
+      // One attempt of the person: the provider answers `answer` and the event it was given is returned (and what the row held while it ran)
+      const attempt = async (
+        documentId: string,
+        reason: string,
+        answer: { voided: boolean; byAuthority?: boolean; eventCodeRefused?: boolean }
+      ): Promise<{
+        seen: Seen
+        held: { code: string | null; at: Date | null }
+        status: number
+      }> => {
+        let seen: Seen | undefined
+        let held: { code: string | null; at: Date | null } = { code: null, at: null }
+        const spy = jest
+          .spyOn(provider(), 'void')
+          .mockImplementation(async (_doc, why, context) => {
+            const row = await rowOf(documentId)
+            held = { code: row.voidEventCode, at: row.voidEventAt }
+            seen = {
+              code: context.voidEvent?.code ?? '',
+              at: context.voidEvent?.at ?? '',
+              keyReason: why
+            }
+            return { reason: '020', ...answer }
+          })
+        try {
+          const res = await asAdminA()
+            .post(ApiRoutes.fiscal.documents.void(documentId))
+            .send({ reason })
+          if (seen === undefined) throw new Error('the provider was not asked')
+          return { seen, held, status: res.status }
+        } finally {
+          spy.mockRestore()
+        }
+      }
+
+      it('keeps the code and the moment with the document BEFORE the event is sent, and gives the provider those', async () => {
+        const documentId = await accepted()
+        const first = await attempt(documentId, 'wrong customer', {
+          voided: false,
+          byAuthority: true
+        })
+        expect(first.seen.code).toMatch(
+          /^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/
+        )
+        // While the provider ran, the row already held the very same code and moment
+        expect(first.held.code).toBe(first.seen.code)
+        expect(first.held.at?.toISOString()).toBe(first.seen.at)
+        const row = await rowOf(documentId)
+        expect([row.voidEventCode, row.voidEventAt?.toISOString()]).toEqual([
+          first.seen.code,
+          first.seen.at
+        ])
+      })
+
+      it('sends the same code and the same moment when the refused event is corrected and sent again', async () => {
+        const documentId = await accepted()
+        const first = await attempt(documentId, 'wrong customer', {
+          voided: false,
+          byAuthority: true
+        })
+        const second = await attempt(documentId, 'the customer asked for it', {
+          voided: false,
+          byAuthority: true
+        })
+        // Another reason makes another request for the provider, and the same event for the authority
+        expect(second.seen.keyReason).not.toBe(first.seen.keyReason)
+        expect(second.seen.code).toBe(first.seen.code)
+        expect(second.seen.at).toBe(first.seen.at)
+      })
+
+      it('keeps the moment of the first attempt when the retry is another day, and makes a new event once the 24 hours are over', async () => {
+        const documentId = await accepted()
+        const first = await attempt(documentId, 'a', { voided: false, byAuthority: true })
+        // The first attempt and its refusal were 20 hours ago
+        const past = new Date(Date.now() - 20 * HOUR)
+        await owner.fiscalDocument.update({
+          where: { id: documentId },
+          data: { voidEventAt: past, voidRejectedAt: past }
+        })
+        const retry = await attempt(documentId, 'b', { voided: false, byAuthority: true })
+        expect(retry.seen.code).toBe(first.seen.code)
+        expect(retry.seen.at).toBe(past.toISOString())
+        // 25 hours ago: the window to correct it is over, so it is a new event (this refusal restarts the window)
+        const old = new Date(Date.now() - 25 * HOUR)
+        await owner.fiscalDocument.update({
+          where: { id: documentId },
+          data: { voidEventAt: old, voidRejectedAt: old }
+        })
+        const fresh = await attempt(documentId, 'c', { voided: false, byAuthority: true })
+        expect(fresh.seen.code).not.toBe(first.seen.code)
+        expect(new Date(fresh.seen.at).getTime()).toBeGreaterThan(old.getTime() + 24 * HOUR)
+      })
+
+      it('makes a new event when the first attempt is older than the cap, however recent the last refusal is', async () => {
+        const documentId = await accepted()
+        const first = await attempt(documentId, 'a', { voided: false, byAuthority: true })
+        // Refused again and again every day: the window is open, but the event was first made four days ago
+        await owner.fiscalDocument.update({
+          where: { id: documentId },
+          data: { voidEventAt: new Date(Date.now() - 96 * HOUR), voidRejectedAt: new Date() }
+        })
+        const next = await attempt(documentId, 'b', { voided: false, byAuthority: true })
+        expect(next.seen.code).not.toBe(first.seen.code)
+      })
+
+      it('keeps them when nothing was answered, and the next attempt is the same event', async () => {
+        const documentId = await accepted()
+        const spy = jest.spyOn(provider(), 'void').mockRejectedValue(new Error('no answer'))
+        try {
+          await asAdminA().post(ApiRoutes.fiscal.documents.void(documentId)).send({ reason: 'a' })
+        } finally {
+          spy.mockRestore()
+        }
+        const kept = await rowOf(documentId)
+        expect(kept.voidEventCode).not.toBeNull()
+        // The claim is held until its lease ends: the lease is over for the next attempt
+        await owner.fiscalDocument.update({
+          where: { id: documentId },
+          data: { voidClaimKey: null, voidClaimUntil: null }
+        })
+        const next = await attempt(documentId, 'b', { voided: false, byAuthority: true })
+        expect(next.seen.code).toBe(kept.voidEventCode)
+      })
+
+      it('makes another code only when the authority refused the code itself', async () => {
+        const documentId = await accepted()
+        const first = await attempt(documentId, 'a', {
+          voided: false,
+          byAuthority: true,
+          eventCodeRefused: true
+        })
+        const cleared = await rowOf(documentId)
+        expect([cleared.voidEventCode, cleared.voidEventAt]).toEqual([null, null])
+        // The refusal still opened the window to correct and send it again
+        expect(cleared.voidRejectedAt).not.toBeNull()
+        const second = await attempt(documentId, 'a', { voided: false, byAuthority: true })
+        expect(second.seen.code).not.toBe(first.seen.code)
+      })
+
+      it('forgets the event when the provider stopped before sending anything: nothing was refused', async () => {
+        const documentId = await accepted()
+        await attempt(documentId, 'a', { voided: false, byAuthority: false })
+        const row = await rowOf(documentId)
+        expect([row.voidEventCode, row.voidEventAt]).toEqual([null, null])
+      })
+
+      it('clears them when the invalidation is accepted', async () => {
+        const documentId = await accepted()
+        await attempt(documentId, 'a', { voided: false, byAuthority: true })
+        expect((await rowOf(documentId)).voidEventCode).not.toBeNull()
+        const done = await attempt(documentId, 'a', { voided: true })
+        expect(done.status).toBe(OK)
+        const row = await rowOf(documentId)
+        expect(row.status).toBe(FiscalDocumentStatus.VOIDED)
+        expect([row.voidEventCode, row.voidEventAt]).toEqual([null, null])
+      })
+
+      it('lets the database change them only on an accepted document, both together', async () => {
+        const documentId = await accepted()
+        await expect(
+          owner.fiscalDocument.update({
+            where: { id: documentId },
+            data: { voidEventCode: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA', voidEventAt: new Date() }
+          })
+        ).resolves.toBeDefined()
+        // The code without its moment, or an empty one, is no event
+        await expect(
+          owner.fiscalDocument.update({ where: { id: documentId }, data: { voidEventAt: null } })
+        ).rejects.toThrow()
+        await expect(
+          owner.fiscalDocument.update({ where: { id: documentId }, data: { voidEventCode: '' } })
+        ).rejects.toThrow()
+        // Any other column of an accepted row is still immutable
+        await expect(
+          owner.fiscalDocument.update({ where: { id: documentId }, data: { totalCents: 1 } })
+        ).rejects.toThrow(/immutable/)
+        // A document that is not accepted has no event to send again
+        const queued = await sale()
+        await expect(
+          owner.fiscalDocument.update({
+            where: { id: queued.documentId },
+            data: { voidEventCode: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA', voidEventAt: new Date() }
+          })
+        ).rejects.toThrow()
+      })
+    })
+
     // HC-205: the key of an invalidation carries its reason, so a second request with another reason must not reach the authority while
     // the first one holds the document
     // Step 7.3-S11a: the claim of a submission has an owner. An attempt that was taken over (its lease ended) can no longer decide the
