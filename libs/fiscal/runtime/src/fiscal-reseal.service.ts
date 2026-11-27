@@ -75,8 +75,8 @@ const emptyReport = (enabled: boolean): FiscalResealReport => ({
 // before writing it, it writes by compare-and-swap (the old bytes are in the WHERE), and it is idempotent: a value that already opens with
 // the current key is skipped, so a run that stopped half way, or runs twice, ends in the same state. It runs only while a previous key is held.
 //
-// Covered: the receiver and the built payload of the fiscal documents (a decided document goes through the function of the migration that the
-// guard recognises; nothing else can change it), the fiscal data of the customers, the credentials of the issuer and the responsible of a
+// Covered: the receiver and the built payload of the fiscal documents and the signed event of a voided one (a decided document goes through the
+// function of the migration that the guard recognises; nothing else can change it), the fiscal data of the customers, the credentials of the issuer and the responsible of a
 // contingency. NOT covered (Step 7.3-S11c): the sealed values outside the fiscal area; the previous key does not serve them.
 @Injectable()
 export class FiscalResealService {
@@ -100,7 +100,8 @@ export class FiscalResealService {
       SealedValueKind.ISSUER_CREDENTIALS,
       SealedValueKind.CUSTOMER_DATA,
       SealedValueKind.RESPONSIBLE,
-      SealedValueKind.RECEIVER
+      SealedValueKind.RECEIVER,
+      SealedValueKind.VOID_EVENT
     ] as const
     for (const kind of kinds) {
       let after: string | undefined
@@ -262,6 +263,17 @@ export class FiscalResealService {
           payload: r.builtPayloadEncrypted
         }))
       }
+      case SealedValueKind.VOID_EVENT: {
+        const rows = await client.fiscalDocument.findMany({
+          where: { organizationId, voidEventEncrypted: { not: null }, ...cursor },
+          select: { id: true, voidEventEncrypted: true },
+          orderBy: { id: 'asc' },
+          take
+        })
+        return rows.flatMap(r =>
+          r.voidEventEncrypted === null ? [] : [{ id: r.id, sealed: r.voidEventEncrypted }]
+        )
+      }
       case SealedValueKind.CUSTOMER_DATA: {
         const rows = await client.customerFiscalData.findMany({
           where: { store: { organizationId }, ...cursor },
@@ -353,6 +365,12 @@ export class FiscalResealService {
           ) AS changed`
         return answer[0]?.changed === true
       }
+      case SealedValueKind.VOID_EVENT: {
+        // A voided document cannot be updated by a table write: the function of the migration swaps this one column and nothing else
+        const answer = await client.$queryRaw<{ changed: boolean }[]>`
+          SELECT fiscal_reseal_void_event(${organizationId}, ${row.id}, ${row.sealed}::bytea, ${next}::bytea) AS changed`
+        return answer[0]?.changed === true
+      }
       case SealedValueKind.CUSTOMER_DATA:
         return (
           (
@@ -394,6 +412,7 @@ function resourceTypeOf(kind: SealedValueKind): string {
   switch (kind) {
     case SealedValueKind.RECEIVER:
     case SealedValueKind.BUILT_PAYLOAD:
+    case SealedValueKind.VOID_EVENT:
       return FiscalResourceTypes.DOCUMENT
     case SealedValueKind.CUSTOMER_DATA:
       return FiscalResourceTypes.CUSTOMER_DATA

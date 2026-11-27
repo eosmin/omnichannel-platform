@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import { PinoLogger } from 'nestjs-pino'
 import pg from 'pg'
 
 import { ApiRoutes } from '@platform/core/api'
@@ -19,7 +20,8 @@ import {
   FiscalRejectionDeadlineState,
   FiscalRejectionReasons,
   FiscalVoidKind,
-  OrderStatus
+  OrderStatus,
+  VoidEventStates
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -1726,6 +1728,121 @@ describe('The fiscal documents (Step 4B.7)', () => {
             data: { voidEventCode: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA', voidEventAt: new Date() }
           })
         ).rejects.toThrow()
+      })
+
+      // D13b-2b-1: the event the issuer signed is kept sealed, by the statement that voids the document and by nothing else
+      describe('the signed event of the invalidation', () => {
+        const SIGNED = {
+          content: { codigoGeneracion: 'SIGNED-EVENT-FIXTURE' },
+          signature: 'hdr.pay.sig'
+        }
+        const openEvent = (bytes: Uint8Array | null) =>
+          bytes === null ? null : app.get(CredentialCipher).open(bytes)
+        const voidWith = async (
+          documentId: string,
+          answer: { voided: boolean; byAuthority?: boolean; event?: typeof SIGNED }
+        ) => {
+          const spy = jest.spyOn(provider(), 'void').mockResolvedValue({
+            reason: '020',
+            response: { selloRecibido: 'S'.repeat(40) },
+            ...answer
+          })
+          try {
+            return await asAdminA()
+              .post(ApiRoutes.fiscal.documents.void(documentId))
+              .send({ reason: 'wrong customer' })
+          } finally {
+            spy.mockRestore()
+          }
+        }
+
+        it('seals what the provider signed, in the statement that voids, and keeps nothing readable in the row', async () => {
+          const documentId = await accepted()
+          expect((await voidWith(documentId, { voided: true, event: SIGNED })).status).toBe(OK)
+          const row = await rowOf(documentId)
+          expect(row.status).toBe(FiscalDocumentStatus.VOIDED)
+          expect(openEvent(row.voidEventEncrypted)).toEqual({
+            event: SIGNED.content,
+            signature: SIGNED.signature
+          })
+          // Sealed: neither the signature nor the content is in the bytes
+          const bytes = Buffer.from(row.voidEventEncrypted ?? new Uint8Array())
+          expect(bytes.includes(Buffer.from(SIGNED.signature))).toBe(false)
+          expect(bytes.includes(Buffer.from('SIGNED-EVENT-FIXTURE'))).toBe(false)
+          const trail = await waitForAuditEntries(owner, {
+            action: AuditAction.FISCAL_DOCUMENT_VOIDED,
+            resourceId: documentId
+          })
+          expect(trail[0]?.metadata).toMatchObject({ voidEvent: VoidEventStates.KEPT })
+        })
+
+        it('keeps none when the authority refuses, and a retry keeps only the event of the attempt it accepted', async () => {
+          const documentId = await accepted()
+          const old = { content: { codigoGeneracion: 'OLD-EVENT' }, signature: 'old.old.old' }
+          const refused = await voidWith(documentId, {
+            voided: false,
+            byAuthority: true,
+            event: old
+          })
+          expect(refused.status).toBe(CONFLICT)
+          expect((await rowOf(documentId)).voidEventEncrypted).toBeNull()
+          expect((await voidWith(documentId, { voided: true, event: SIGNED })).status).toBe(OK)
+          expect(openEvent((await rowOf(documentId)).voidEventEncrypted)).toEqual({
+            event: SIGNED.content,
+            signature: SIGNED.signature
+          })
+        })
+
+        it('keeps none for an invalidation the authority already held (no event of ours to give)', async () => {
+          const documentId = await accepted()
+          expect((await voidWith(documentId, { voided: true })).status).toBe(OK)
+          const row = await rowOf(documentId)
+          expect(row.status).toBe(FiscalDocumentStatus.VOIDED)
+          expect(row.voidEventEncrypted).toBeNull()
+          const trail = await waitForAuditEntries(owner, {
+            action: AuditAction.FISCAL_DOCUMENT_VOIDED,
+            resourceId: documentId
+          })
+          expect(trail[0]?.metadata).toMatchObject({ voidEvent: VoidEventStates.NONE })
+        })
+
+        it('voids all the same when the event cannot be sealed, and leaves no trace of it in the logs', async () => {
+          const documentId = await accepted()
+          const logged: string[] = []
+          const capture = (...args: unknown[]) => logged.push(JSON.stringify(args))
+          const spies = (['error', 'warn', 'info'] as const).map(level =>
+            jest.spyOn(PinoLogger.prototype, level).mockImplementation(capture as never)
+          )
+          try {
+            const unreadable = { content: { big: BigInt(1) }, signature: 'secret.sig.value' }
+            expect(
+              (await voidWith(documentId, { voided: true, event: unreadable as never })).status
+            ).toBe(OK)
+          } finally {
+            spies.forEach(spy => spy.mockRestore())
+          }
+          // The fault was logged (so it is not silent) and said nothing of the event
+          expect(logged.join('')).toMatch(/could not be sealed/)
+          const row = await rowOf(documentId)
+          expect(row.status).toBe(FiscalDocumentStatus.VOIDED)
+          expect(row.voidEventEncrypted).toBeNull()
+          expect(logged.join('')).not.toMatch(/secret\.sig\.value|BigInt/)
+          const trail = await waitForAuditEntries(owner, {
+            action: AuditAction.FISCAL_DOCUMENT_VOIDED,
+            resourceId: documentId
+          })
+          expect(trail[0]?.metadata).toMatchObject({ voidEvent: VoidEventStates.NOT_SEALED })
+        })
+
+        it('refuses a sealed event on a document that is not voided, whoever writes it', async () => {
+          const documentId = await accepted()
+          await expect(
+            owner.fiscalDocument.update({
+              where: { id: documentId },
+              data: { voidEventEncrypted: new Uint8Array([1, 2, 3]) }
+            })
+          ).rejects.toThrow()
+        })
       })
     })
 

@@ -3371,6 +3371,7 @@ model FiscalDocument {
   voidEventAt           DateTime? @map("void_event_at") // the moment of that first attempt: the date, the hour and the deadline of the event are counted from it, not from the retry; null exactly when voidEventCode is
   claimToken            String?   @map("claim_token") // the owner of the claim of a submission (random, written with the claim, compared by every write of that attempt); null when nobody holds it
   voidResponse          Json?     @map("void_response") // what the authority answered to the invalidation: the evidence of the void, kept apart because the accepted row cannot change
+  voidEventEncrypted    Bytes?    @map("void_event_encrypted") // the event of the invalidation as the issuer signed it (the content and its signature), sealed with the credentials key; written by the statement that voids the document, never by a retry, and null when the authority answered by a consultation (the event is not ours to give)
   issuedAt              DateTime? @map("issued_at")
   contingencyId         String?   @map("contingency_id") // set when the document was made in contingency (the deferred model); fixed for ever once it is
   createdAt             DateTime  @default(now()) @map("created_at")

@@ -81,7 +81,9 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
   async function makeDocument(
     status: string,
     sealer: CredentialCipher,
-    content: Record<string, unknown>
+    content: Record<string, unknown>,
+    // The signed event of a voided document, sealed with `eventSealer` (its own key, so a case can hold one nobody opens)
+    event?: { sealer: CredentialCipher; content: Record<string, unknown> }
   ): Promise<string> {
     const order = await createOrder(owner, { storeId: ctx.storeA.id })
     const row = await owner.fiscalDocument.create({
@@ -108,7 +110,10 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
         // What the table asks of a voided document
         ...(status === 'voided'
           ? { voidReason: 'reseal fixture', voidedBy: randomUUID(), voidedAt: new Date() }
-          : {})
+          : {}),
+        ...(event === undefined
+          ? {}
+          : { voidEventEncrypted: new Uint8Array(event.sealer.seal(event.content)) })
       },
       select: { id: true }
     })
@@ -188,6 +193,34 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
     const again = await service(rotated()).run(ctx.orgA.id, unit)
     expect(again).toMatchObject({ resealed: 0, failed: {}, conflicts: 0 })
     expect(again.current).toBe(6)
+  })
+
+  it('seals again the signed event of a voided document: the new key opens it to the same content, the guard still refuses any other change, and a repeat writes nothing', async () => {
+    const content = { event: { codigoGeneracion: 'EVENT-FIXTURE' }, signature: 'aaa.bbb.ccc' }
+    const voided = await makeDocument(
+      'voided',
+      oldCipher,
+      { taxId: 'VOIDED-EVENT-TAX' },
+      {
+        sealer: oldCipher,
+        content
+      }
+    )
+    audited.length = 0
+
+    const report = await service(rotated()).run(ctx.orgA.id, unit)
+
+    expect(report.resealed).toBeGreaterThanOrEqual(2)
+    const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: voided } })
+    expect(newCipher.open(row.voidEventEncrypted ?? new Uint8Array())).toEqual(content)
+    expect(() => oldCipher.open(row.voidEventEncrypted ?? new Uint8Array())).toThrow()
+    // The receiver, the payload and the event of the document: one entry per kind of value, never a value
+    expect(audited.length).toBeGreaterThanOrEqual(2)
+    expect(JSON.stringify(audited)).not.toMatch(/EVENT-FIXTURE|aaa\.bbb|VOIDED-EVENT-TAX/)
+    expect(row.status).toBe('voided')
+
+    const again = await service(rotated()).run(ctx.orgA.id, unit)
+    expect(again).toMatchObject({ resealed: 0, conflicts: 0 })
   })
 
   it('leaves a value that opens with neither key byte for byte as it was, counts it and goes on with the rest', async () => {
@@ -375,6 +408,7 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
         [
           'receiver_encrypted',
           'built_payload_encrypted',
+          'void_event_encrypted',
           'receiver_name_masked',
           'receiver_tax_id_masked',
           'receiver_masked_at',
@@ -592,7 +626,12 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
        WHERE n.nspname = 'public' AND p.prosecdef AND replace(p.prosrc, '"', '') ~* 'fiscal_(documents|contingencies)'
        ORDER BY p.proname`
     // The three that write, and none that only read exist today
-    const EXPECTED = ['fiscal_mask_document', 'fiscal_reseal_contingency', 'fiscal_reseal_document']
+    const EXPECTED = [
+      'fiscal_mask_document',
+      'fiscal_reseal_contingency',
+      'fiscal_reseal_document',
+      'fiscal_reseal_void_event'
+    ]
 
     it.each([
       ['UPDATE ONLY', 'UPDATE ONLY fiscal_documents SET total_cents = 1'],
@@ -803,5 +842,29 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
       [FiscalReseal.FUNCTION]
     )
     expect(migration.rows[0]?.src).toContain(`'${FiscalReseal.SETTING}'`)
+  })
+
+  // Last on purpose: it leaves a value nobody opens, which the cases that count failures must not find
+  it('leaves the event that opens with neither key byte for byte as it was, and counts it', async () => {
+    const voided = await makeDocument(
+      'voided',
+      oldCipher,
+      { taxId: 'EVENT-LOST-TAX' },
+      {
+        sealer: stranger,
+        content: { event: {}, signature: 'x.y.z' }
+      }
+    )
+    const before = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: voided } })
+
+    const report = await service(rotated()).run(ctx.orgA.id, unit)
+
+    expect(report.failed['key_mismatch']).toBeGreaterThanOrEqual(1)
+    const after = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: voided } })
+    expect(
+      Buffer.from(after.voidEventEncrypted ?? new Uint8Array()).equals(
+        Buffer.from(before.voidEventEncrypted ?? new Uint8Array())
+      )
+    ).toBe(true)
   })
 })

@@ -110,6 +110,8 @@ export const WRITING_FUNCTION_NAMES: readonly string[] = [
   // the re-seal of a rotation of the credentials key (Step 7.3-S11b): the swap of the sealed columns of a fiscal document or contingency
   'fiscal_reseal_document',
   'fiscal_reseal_contingency',
+  // the sealed event of an invalidation of a voided document (D13b-2b-1), through the same door of the guard
+  'fiscal_reseal_void_event',
   // the masked receiver of a fiscal document (Step 7.3-S11b-2), through the same door of the guard
   'fiscal_mask_document'
 ]

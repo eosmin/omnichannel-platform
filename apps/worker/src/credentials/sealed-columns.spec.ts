@@ -23,6 +23,7 @@ const SEALED_BY_THE_FISCAL_RESEAL = [
   'FiscalIssuer.credentialsEncrypted',
   'FiscalDocument.receiverEncrypted',
   'FiscalDocument.builtPayloadEncrypted',
+  'FiscalDocument.voidEventEncrypted',
   'FiscalContingency.responsibleEncrypted'
 ]
 // Bytes columns that hold no value sealed with the platform key (none today)

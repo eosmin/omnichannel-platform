@@ -382,7 +382,13 @@ export async function voidDocument(
     }
     if (answer.kind === 'credentials') return notVoided(SvVoidRefusals.CREDENTIALS_REJECTED)
     if (answer.kind === 'transient') throw new SvTransportError(SvTransportFailures.NETWORK)
-    if (answer.kind === 'accepted') return { voided: true, response: answer.body }
+    if (answer.kind === 'accepted') {
+      return {
+        voided: true,
+        response: answer.body,
+        event: { content: built.event, signature: signed.jws }
+      }
+    }
     if (answer.kind === 'duplicate') {
       // The authority has this very event (an earlier call whose answer was lost): it is asked what it holds, and a document it has
       // invalidated is the voided one this call wanted. Anything else is no answer yet: core asks again, nothing is told as refused.

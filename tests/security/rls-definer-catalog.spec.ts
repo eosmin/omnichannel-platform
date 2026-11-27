@@ -66,6 +66,8 @@ const DEFINER_FUNCTIONS: Readonly<Record<string, readonly string[] | typeof TRIG
   rls_avatar_media_keys: [WORKER],
   // the re-seal of a rotation of the credentials key (Step 7.3-S11b): swaps the two sealed columns of a fiscal document, the worker only
   fiscal_reseal_document: [WORKER],
+  // Swaps the sealed event of one voided document by compare-and-swap, through the door of the guard (D13b-2b-1)
+  fiscal_reseal_void_event: [WORKER],
   fiscal_reseal_contingency: [WORKER],
   // the masked receiver of a fiscal document (Step 7.3-S11b-2): writes the three masked columns, through the door of the guard, the worker only
   fiscal_mask_document: [WORKER]
