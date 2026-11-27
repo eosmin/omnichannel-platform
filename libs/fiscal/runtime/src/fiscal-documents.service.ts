@@ -1877,6 +1877,27 @@ export class FiscalDocumentsService {
     }
   }
 
+  // The signed event of an invalidation, sealed with the credentials key. It holds the receiver's data and the issuer's signature: it is never
+  // logged, and a fault in sealing it never decides the void (the authority has voided the document already): the event is then not kept, and
+  // the delivery says so instead of making a file up.
+  private sealVoidEvent(
+    documentId: string,
+    event: VoidResult['event']
+  ): Uint8Array<ArrayBuffer> | null {
+    if (event === undefined) return null
+    try {
+      return new Uint8Array(
+        this.cipher.seal({ event: toJson(event.content), signature: event.signature })
+      )
+    } catch (error) {
+      this.logger.error(
+        { documentId, err: errorName(error) },
+        'the signed event of an invalidation could not be sealed and was not kept'
+      )
+      return null
+    }
+  }
+
   // The document as the provider built it holds the receiver's data (name, tax id, address): it is sealed like the receiver
   private sealPayload(payload: Readonly<Record<string, unknown>>): Uint8Array<ArrayBuffer> {
     return new Uint8Array(this.cipher.seal(this.safeJson(payload) as Record<string, unknown>))
@@ -2570,6 +2591,9 @@ export class FiscalDocumentsService {
         { reason: (outcome.reason ?? '').slice(0, FiscalLimits.REASON_MAX_LENGTH) || null }
       )
     }
+    // The event this very call signed and the authority accepted, sealed: written by the statement that voids the document and by nothing else, so
+    // an attempt the authority refused, or one answered by a consultation (no event of ours), never leaves one behind
+    const sealedEvent = this.sealVoidEvent(id, outcome.event)
     await this.inTx(organizationId, async tx => {
       const locked = await this.lock(tx, organizationId, id)
       if (locked.status !== (FiscalDocumentStatus.ACCEPTED as string)) {
@@ -2578,6 +2602,7 @@ export class FiscalDocumentsService {
       await tx.fiscalDocument.update({
         where: { id },
         data: {
+          ...(sealedEvent === null ? {} : { voidEventEncrypted: sealedEvent }),
           status: FiscalDocumentStatus.VOIDED,
           voidClaimKey: null,
           voidClaimUntil: null,

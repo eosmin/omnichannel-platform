@@ -1727,6 +1727,104 @@ describe('The fiscal documents (Step 4B.7)', () => {
           })
         ).rejects.toThrow()
       })
+
+      // D13b-2b-1: the event the issuer signed is kept sealed, by the statement that voids the document and by nothing else
+      describe('the signed event of the invalidation', () => {
+        const SIGNED = {
+          content: { codigoGeneracion: 'SIGNED-EVENT-FIXTURE' },
+          signature: 'hdr.pay.sig'
+        }
+        const openEvent = (bytes: Uint8Array | null) =>
+          bytes === null ? null : app.get(CredentialCipher).open(bytes)
+        const voidWith = async (
+          documentId: string,
+          answer: { voided: boolean; byAuthority?: boolean; event?: typeof SIGNED }
+        ) => {
+          const spy = jest.spyOn(provider(), 'void').mockResolvedValue({
+            reason: '020',
+            response: { selloRecibido: 'S'.repeat(40) },
+            ...answer
+          })
+          try {
+            return await asAdminA()
+              .post(ApiRoutes.fiscal.documents.void(documentId))
+              .send({ reason: 'wrong customer' })
+          } finally {
+            spy.mockRestore()
+          }
+        }
+
+        it('seals what the provider signed, in the statement that voids, and keeps nothing readable in the row', async () => {
+          const documentId = await accepted()
+          expect((await voidWith(documentId, { voided: true, event: SIGNED })).status).toBe(OK)
+          const row = await rowOf(documentId)
+          expect(row.status).toBe(FiscalDocumentStatus.VOIDED)
+          expect(openEvent(row.voidEventEncrypted)).toEqual({
+            event: SIGNED.content,
+            signature: SIGNED.signature
+          })
+          // Sealed: neither the signature nor the content is in the bytes
+          const bytes = Buffer.from(row.voidEventEncrypted ?? new Uint8Array())
+          expect(bytes.includes(Buffer.from(SIGNED.signature))).toBe(false)
+          expect(bytes.includes(Buffer.from('SIGNED-EVENT-FIXTURE'))).toBe(false)
+        })
+
+        it('keeps none when the authority refuses, and a retry keeps only the event of the attempt it accepted', async () => {
+          const documentId = await accepted()
+          const old = { content: { codigoGeneracion: 'OLD-EVENT' }, signature: 'old.old.old' }
+          const refused = await voidWith(documentId, {
+            voided: false,
+            byAuthority: true,
+            event: old
+          })
+          expect(refused.status).toBe(CONFLICT)
+          expect((await rowOf(documentId)).voidEventEncrypted).toBeNull()
+          expect((await voidWith(documentId, { voided: true, event: SIGNED })).status).toBe(OK)
+          expect(openEvent((await rowOf(documentId)).voidEventEncrypted)).toEqual({
+            event: SIGNED.content,
+            signature: SIGNED.signature
+          })
+        })
+
+        it('keeps none for an invalidation the authority already held (no event of ours to give)', async () => {
+          const documentId = await accepted()
+          expect((await voidWith(documentId, { voided: true })).status).toBe(OK)
+          const row = await rowOf(documentId)
+          expect(row.status).toBe(FiscalDocumentStatus.VOIDED)
+          expect(row.voidEventEncrypted).toBeNull()
+        })
+
+        it('voids all the same when the event cannot be sealed, and leaves no trace of it in the logs', async () => {
+          const documentId = await accepted()
+          const logged: string[] = []
+          const capture = (...args: unknown[]) => logged.push(JSON.stringify(args))
+          const spies = ['log', 'error', 'warn', 'info'].map(level =>
+            jest.spyOn(console, level as 'log').mockImplementation(capture)
+          )
+          try {
+            const unreadable = { content: { big: BigInt(1) }, signature: 'secret.sig.value' }
+            expect(
+              (await voidWith(documentId, { voided: true, event: unreadable as never })).status
+            ).toBe(OK)
+          } finally {
+            spies.forEach(spy => spy.mockRestore())
+          }
+          const row = await rowOf(documentId)
+          expect(row.status).toBe(FiscalDocumentStatus.VOIDED)
+          expect(row.voidEventEncrypted).toBeNull()
+          expect(logged.join('')).not.toMatch(/secret\.sig\.value/)
+        })
+
+        it('refuses a sealed event on a document that is not voided, whoever writes it', async () => {
+          const documentId = await accepted()
+          await expect(
+            owner.fiscalDocument.update({
+              where: { id: documentId },
+              data: { voidEventEncrypted: new Uint8Array([1, 2, 3]) }
+            })
+          ).rejects.toThrow()
+        })
+      })
     })
 
     // HC-205: the key of an invalidation carries its reason, so a second request with another reason must not reach the authority while

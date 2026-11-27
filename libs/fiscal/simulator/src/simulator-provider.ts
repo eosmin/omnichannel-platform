@@ -248,7 +248,15 @@ export class SimulatorProvider implements FiscalDocumentProvider {
         byAuthority: true
       })
     }
-    return Promise.resolve({ voided: true, response: { voided: true } })
+    // The event it "signed": what the lifecycle seals and keeps for the delivery of the invalidation (nothing a real authority would read)
+    return Promise.resolve({
+      voided: true,
+      response: { voided: true },
+      event: {
+        content: { simulated: true, externalNumber: doc.externalNumber },
+        signature: `sim-signature-${doc.externalNumber}`
+      }
+    })
   }
 
   private numberOf(ctx: ProviderContext): string {

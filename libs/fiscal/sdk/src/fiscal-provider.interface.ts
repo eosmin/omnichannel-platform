@@ -388,8 +388,20 @@ export type SubmitResult =
   // The authority is down or did not answer: the document stays queued
   | { readonly outcome: FiscalSubmitOutcome.UNAVAILABLE }
 
+// The event of an invalidation as the issuer signed and sent it: what the receiver is owed with the seal of the authority (the seal is in the
+// answer, `response`). Core seals it and keeps it with the document; it never reads it and never logs it.
+export interface VoidEvent {
+  // The event as the provider built it (what it signed)
+  readonly content: Readonly<Record<string, unknown>>
+  // What the authority was sent and signed: the provider's own form (a compact JWS for El Salvador), kept as one string
+  readonly signature: string
+}
+
 export interface VoidResult {
   readonly voided: boolean
+  // Only when THIS call signed the event and the authority accepted it. An invalidation the authority already held (answered by a
+  // consultation) has no event of its own to give: none is invented from the answer.
+  readonly event?: VoidEvent
   readonly reason?: string
   // True when the AUTHORITY refused the invalidation (the answer is its own), false or absent when the provider stopped before sending
   // anything. Only a refusal of the authority starts the window to correct and send the event again.

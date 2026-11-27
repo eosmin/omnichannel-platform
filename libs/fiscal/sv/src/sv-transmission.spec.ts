@@ -520,6 +520,9 @@ describe('the client of the authority', () => {
         documento: { tipoDte: '01', codigoGeneracionR: null },
         motivo: { tipoAnulacion: 2, motivoAnulacion: 'Datos equivocados' }
       })
+      // The event it signed comes back for core to seal: the very content the authority received, with the signature it was sent
+      expect(result.event?.content).toEqual(authority.stats.lastEvent)
+      expect(result.event?.signature.length).toBeGreaterThan(0)
       // Neither password travels back in what core keeps
       expect(JSON.stringify(result)).not.toContain(FAKE.API_PASSWORD)
       expect(JSON.stringify(result)).not.toContain(FAKE.KEY_PASSWORD)
@@ -596,6 +599,8 @@ describe('the client of the authority', () => {
       const again = await provider.void(lost, 'a', { ...ctx, attempt: 2 }, details)
       expect(again.voided).toBe(true)
       expect(again.response).toMatchObject({ estado: 'INVALIDADO' })
+      // Answered by the consultation: the authority's own event, not one of ours, so none is given
+      expect(again.event).toBeUndefined()
     })
 
     it('does not believe an answer about another document', async () => {

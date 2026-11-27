@@ -581,6 +581,7 @@ export const FiscalSweepLimits = {
 export const SealedValueKind = {
   RECEIVER: 'receiver',
   BUILT_PAYLOAD: 'built-payload',
+  VOID_EVENT: 'void-event',
   ISSUER_CREDENTIALS: 'issuer-credentials',
   CUSTOMER_DATA: 'customer-data',
   RESPONSIBLE: 'responsible'
@@ -598,6 +599,8 @@ export const SealedOpenLog = {
 // function that swaps the sealed columns of a decided document and the transaction-local setting that only that function turns on
 export const FiscalReseal = {
   FUNCTION: 'fiscal_reseal_document',
+  // The function that swaps the sealed event of a voided document (the same door of the guard)
+  VOID_EVENT_FUNCTION: 'fiscal_reseal_void_event',
   SETTING: 'app.fiscal_reseal',
   // Rows read and swapped per page of one organization, and the most one run of one organization touches (the next run goes on)
   PAGE_SIZE: 100,
