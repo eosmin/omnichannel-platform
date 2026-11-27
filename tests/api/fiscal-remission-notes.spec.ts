@@ -307,6 +307,17 @@ describe('The remission note of a dispatch (D3b-2)', () => {
       ).rejects.toThrow(/chk_fiscal_documents_shipment_only_remission|check constraint/i)
     })
 
+    it('has the composite foreign key to the guide, restricting its deletion (the scope trigger answers first, so only the catalog proves it)', async () => {
+      const rows = await owner.$queryRaw<{ columns: number; onDelete: string }[]>`
+        SELECT array_length(conkey, 1) AS "columns", confdeltype::text AS "onDelete"
+        FROM pg_constraint
+        WHERE conname = 'fiscal_documents_store_id_shipment_id_fkey'
+          AND conrelid = 'fiscal_documents'::regclass
+          AND confrelid = 'shipments'::regclass`
+      // Two columns (the store and the guide) and RESTRICT ('r'): the guide of a note can never be deleted
+      expect(rows).toEqual([{ columns: 2, onDelete: 'r' }])
+    })
+
     it('leaves room for the note of a guide again once the one before was voided', async () => {
       const order = await dispatchedOrder()
       const shipment = await guide(order.id)
