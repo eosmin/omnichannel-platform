@@ -2926,6 +2926,7 @@ model PurchaseReceipt {
   @@unique([organizationId, clientKey])
   @@unique([organizationId, entryId])
   @@index([organizationId, supplierId, dueOn])
+  @@index([organizationId, receivedOn])
   @@index([purchaseOrderId])
   @@map("purchase_receipts")
 }
@@ -2935,20 +2936,21 @@ model PurchaseReceipt {
 // Partial unique index purchase_receipt_documents_organization_id_generation_code_key (organization_id, generation_code) WHERE generation_code IS NOT NULL:
 // raw SQL in its migration, as the checks that say a row is either a document or a mark.
 model PurchaseReceiptDocument {
-  id             String   @id @default(uuid())
-  organizationId String   @map("organization_id")
-  receiptId      String   @map("receipt_id")
-  documentClass  String?  @map("document_class")
-  documentType   String?  @map("document_type")
-  generationCode String?  @map("generation_code")
-  purchaseOrigin String?  @map("purchase_origin")
-  expenseClass   String?  @map("expense_class")
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  receiptId      String    @map("receipt_id")
+  documentClass  String?   @map("document_class")
+  issuedOn       DateTime? @map("issued_on") @db.Date
+  documentType   String?   @map("document_type")
+  generationCode String?   @map("generation_code")
+  purchaseOrigin String?   @map("purchase_origin")
+  expenseClass   String?   @map("expense_class")
   sector         String?
-  costType       String?  @map("cost_type")
-  annexExclusion String?  @map("annex_exclusion")
-  createdBy      String   @map("created_by")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+  costType       String?   @map("cost_type")
+  annexExclusion String?   @map("annex_exclusion")
+  createdBy      String    @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   receipt      PurchaseReceipt @relation(fields: [organizationId, receiptId], references: [organizationId, id], onDelete: Restrict)

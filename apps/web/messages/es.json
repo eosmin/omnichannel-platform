@@ -7718,6 +7718,8 @@
           "leftOut": "Fuera del anexo"
         },
         "fields": {
+          "issuedOn": "Fecha de emisión",
+          "issuedOnHint": "El día impreso en el documento del proveedor, no el día en que llegó.",
           "documentClass": "Clase de documento",
           "documentType": "Tipo de documento",
           "generationCode": "Código de generación",
@@ -7743,6 +7745,7 @@
           }
         },
         "problems": {
+          "issuedOn": "Escriba un día real como año-mes-día.",
           "empty": "Escriba los datos del documento, o elija dejarlo fuera.",
           "documentClass": "Escriba la clase de documento como número.",
           "documentType": "Escriba el tipo de documento como número.",
@@ -7837,6 +7840,8 @@
         "entry_owned_by_purchase": "Este asiento es de una compra: cámbialo desde la compra."
       },
       "rules": {
+        "issued_after_receipt": "El documento no puede estar emitido después del día en que llegó.",
+        "issued_too_old": "El documento es más antiguo que los tres períodos que la declaración aún admite.",
         "class_invalid": "La clase de documento no es válida.",
         "type_invalid": "El tipo de documento no es válido.",
         "class_type_mismatch": "Esa clase de documento no va con ese tipo.",

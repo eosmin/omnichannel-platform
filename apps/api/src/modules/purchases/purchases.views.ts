@@ -78,6 +78,7 @@ export const RECEIPT_SELECT = {
   taxCreditable: true,
   document: {
     select: {
+      issuedOn: true,
       documentClass: true,
       documentType: true,
       generationCode: true,
@@ -117,6 +118,7 @@ export interface ReceiptRow {
   supplierDocumentNumber: string | null
   taxCreditable: boolean
   document: {
+    issuedOn: Date | null
     documentClass: string | null
     documentType: string | null
     generationCode: string | null
@@ -154,6 +156,7 @@ export interface ReceiptView {
   dueOn: string
   supplierDocumentNumber: string | null
   taxCreditable: boolean
+  issuedOn: string | null
   documentClass: string | null
   documentType: string | null
   generationCode: string | null
@@ -180,6 +183,7 @@ export const receiptView = (row: ReceiptRow, lines: ReceiptLineRow[]): ReceiptVi
   dueOn: dateToDay(row.dueOn),
   supplierDocumentNumber: row.supplierDocumentNumber,
   taxCreditable: row.taxCreditable,
+  issuedOn: row.document?.issuedOn == null ? null : dateToDay(row.document.issuedOn),
   documentClass: row.document?.documentClass ?? null,
   documentType: row.document?.documentType ?? null,
   generationCode: row.document?.generationCode ?? null,

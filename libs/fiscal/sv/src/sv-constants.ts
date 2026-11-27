@@ -524,7 +524,9 @@ export const SvAnnexIds = {
   // Anexo 2: sales to final consumers (01), one row for each day and type
   SALES_CONSUMERS: 'sales-consumers',
   // Anexo of voided documents ("Documentos Emitidos Anulados y Extraviados": the voided ones only, a DTE has no lost ones)
-  VOIDED: 'voided'
+  VOIDED: 'voided',
+  // Anexo 3: the purchases of the month, made from the receipts of the purchases and not from the documents
+  PURCHASES: 'purchases'
 } as const
 
 export const SvAnnex = {
@@ -535,6 +537,7 @@ export const SvAnnex = {
   // The last column of the sales annexes: the number of the annex (manual V14, p.8 and p.14)
   NUMBER_TAXPAYERS: '1',
   NUMBER_CONSUMERS: '2',
+  NUMBER_PURCHASES: '3',
   // The columns of rent (R and S of the annex 1, U and V of the annex 2) exist from this period; before it they hold "0" (p.5 and p.11)
   RENT_COLUMNS_FROM: '2025-01',
   RENT_NOT_APPLICABLE: '0',
@@ -544,6 +547,18 @@ export const SvAnnex = {
   OPERATION_NOT_TAXED: '2',
   OPERATION_MIXED: '4',
   INCOME_COMMERCIAL: '3',
+  // The annex of purchases (manual V14, p.17-20): the columns Q to T (operation, classification, sector, type of cost) exist from this period;
+  // before it they hold "0". The operation: 1 taxed, 2 not taxed, 4 mixed (the accountant decides 3, excluded)
+  PURCHASE_CLASSIFICATION_FROM: '2024-02',
+  // The documents of the customs (12) and of the treasury (13) name the supplier by the treasury: its tax number and its name (p.18)
+  TREASURY_TAX_NUMBER: '06140108140066',
+  TREASURY_NAME: 'Dirección General de Tesorería',
+  // The credit of a purchase is this share of its taxed operations (column N, p.19), in percent. The ledger rounds the tax of each line on its
+  // own, so what it kept may differ from the share of the whole by up to this many cents for each taxed line (and at least one); a figure that
+  // differs by more is refused, never adjusted
+  CREDIT_PERCENT: 13n,
+  CREDIT_TOLERANCE_CENTS_PER_LINE: 1,
+  DOCUMENT_NUMBER_MAX_LENGTH: 100,
   // Voided: "tipo de detalle" D is a DTE that was invalidated (p.60-62); desde/hasta and the preprinted range are 0 in a DTE
   DETAIL_DTE_INVALIDATED: 'D',
   ZERO: '0',
@@ -567,7 +582,13 @@ export const SvAnnexErrors = {
   // A document of the month has no seal yet (made in contingency and not reported): the annex waits for it
   UNSEALED: 'annex_document_unsealed',
   // A figure of a document is not a whole number of cents, or a field the file needs is missing or unreadable
-  UNREADABLE: 'annex_document_unreadable'
+  UNREADABLE: 'annex_document_unreadable',
+  // A purchase of the month whose supplier's document breaks a rule of the manual (it is checked again here: what was saved before the issuer
+  // existed was not), whose supplier has no tax number the annex can write, or whose tax is not the credit of its taxed operations: the ids of the
+  // receipts go with the code, so the staff can find them
+  PURCHASE_DOCUMENT: 'annex_purchase_document',
+  PURCHASE_SUPPLIER: 'annex_purchase_supplier',
+  PURCHASE_AMOUNTS: 'annex_purchase_amounts'
 } as const
 
 // The supplier's document in the annex of purchases of the return (manual of annexes F-07 v14, annex 3): the class and the type of the

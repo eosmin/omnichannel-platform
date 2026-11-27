@@ -34,6 +34,16 @@ export function PurchaseDocumentFields({
     <fieldset className="grid gap-3 rounded-md border p-3" data-testid="purchase-document-fields">
       <legend className="px-1 text-sm font-medium">{t('legend')}</legend>
       <p className="text-muted-foreground text-xs">{t('intro')}</p>
+      <TextField
+        label={t('fields.issuedOn')}
+        value={draft.issuedOn}
+        type="date"
+        maxLength={10}
+        disabled={disabled}
+        hint={t('fields.issuedOnHint')}
+        problem={text(DocumentFields.ISSUED_ON)}
+        onChange={issuedOn => onChange({ issuedOn })}
+      />
       <div className="grid grid-cols-2 gap-3">
         <TextField
           label={t('fields.documentClass')}

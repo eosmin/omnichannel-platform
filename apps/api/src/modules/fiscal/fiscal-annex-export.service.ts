@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
@@ -6,7 +8,7 @@ import { Permissions } from '@platform/core/auth'
 import { JobContext, PrismaService } from '@platform/core/database'
 import { FiscalLimits, FiscalResourceTypes } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import { type FiscalAnnexFile, FiscalAnnexService } from '@platform/fiscal/runtime'
+import { type FiscalAnnexResult, FiscalAnnexService } from '@platform/fiscal/runtime'
 
 import type { Actor } from '../tenancy'
 
@@ -17,7 +19,7 @@ import type { AnnexQuery } from './fiscal.schemas'
 // whole organization, so it is only for who can read the fiscal documents of EVERY store of it (a declaration is the organization's: a
 // file of the stores a person reaches would be a wrong one, and a 404 on a missing store would only hide that), it is made in the request
 // and handed back to it (never kept, never cached, never logged), and each one leaves an audit row that names who, the month, the annex and
-// the count of rows, never a row.
+// the count of rows, never a row (and, for the purchases, what was left out of the file, and the digests that let a later change be traced).
 @Injectable()
 export class FiscalAnnexExportService {
   constructor(
@@ -33,7 +35,7 @@ export class FiscalAnnexExportService {
     annexId: string,
     query: AnnexQuery,
     actor: Actor
-  ): Promise<FiscalAnnexFile> {
+  ): Promise<FiscalAnnexResult> {
     await this.assertReachesEveryStore(organizationId, actor.userId)
     const file = await this.annexes.build(organizationId, annexId, query)
     this.audit.log({
@@ -43,7 +45,17 @@ export class FiscalAnnexExportService {
       storeId: actor.storeId,
       resourceType: FiscalResourceTypes.ANNEX,
       resourceId: organizationId,
-      metadata: { annex: annexId, year: query.year, month: query.month, rows: file.rows },
+      // What the audit keeps of a file: how many rows, what was left out and how many, and two digests (the bytes, and the documents it was
+      // made from with the instant each was last written), never a row. A document changed after this row is found by the trail of its own change
+      metadata: {
+        annex: annexId,
+        year: query.year,
+        month: query.month,
+        rows: file.rows,
+        contentSha256: createHash('sha256').update(file.content).digest('hex'),
+        ...(file.sourcesSha256 === undefined ? {} : { sourcesSha256: file.sourcesSha256 }),
+        ...(file.notices === undefined ? {} : { notices: file.notices })
+      },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })

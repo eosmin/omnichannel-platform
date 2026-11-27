@@ -368,6 +368,7 @@ describe('receiving', () => {
   describe('the supplier document of the annex (D4b)', () => {
     const written = {
       ...emptyDocumentDraft(),
+      issuedOn: '2026-11-10',
       documentClass: '4',
       documentType: '03',
       generationCode: ' 0b7e1c2a-6f34-4d8e-9a51-3c2d7e8f9a10 ',
@@ -381,7 +382,8 @@ describe('receiving', () => {
       expect(documentProblem(draft.document)).toBeNull()
       expect('fiscalDocument' in receiveInputOf(two, draft, KEY)).toBe(false)
       const partial = { ...emptyDocumentDraft(), documentClass: '4' }
-      expect(documentProblem(partial)).toBe(DocumentFields.TYPE)
+      expect(documentProblem(partial)).toBe(DocumentFields.ISSUED_ON)
+      expect(documentProblem({ ...partial, issuedOn: '2026-11-10' })).toBe(DocumentFields.TYPE)
       expect(receiveProblem(two, { ...draft, document: partial })).toEqual({
         field: ReceiveFields.FISCAL_DOCUMENT,
         lineId: null
@@ -393,6 +395,7 @@ describe('receiving', () => {
       expect(receiveProblem(two, draft)).toBeNull()
       const input = receiveInputOf(two, draft, KEY)
       expect(input.fiscalDocument).toEqual({
+        issuedOn: '2026-11-10',
         documentClass: '4',
         documentType: '03',
         generationCode: '0b7e1c2a-6f34-4d8e-9a51-3c2d7e8f9a10',
@@ -409,7 +412,7 @@ describe('receiving', () => {
     it('does not drop an origin that is not the default: it is a choice that asks for the rest', () => {
       const draft = { ...receiveDraftOf(two, '2026-11-16') }
       const imported = { ...emptyDocumentDraft(), origin: 'import_goods' as const }
-      expect(documentProblem(imported)).toBe(DocumentFields.CLASS)
+      expect(documentProblem(imported)).toBe(DocumentFields.ISSUED_ON)
       expect(receiveProblem(two, { ...draft, document: imported })?.field).toBe(
         ReceiveFields.FISCAL_DOCUMENT
       )

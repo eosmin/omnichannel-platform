@@ -3756,6 +3756,7 @@ describe('Tenant isolation', () => {
       const attempts = [
         await agent.put(route).send({
           fiscalDocument: {
+            issuedOn: '2026-11-01',
             documentClass: '1',
             documentType: '03',
             origin: 'internal',

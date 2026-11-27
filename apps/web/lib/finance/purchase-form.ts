@@ -358,6 +358,8 @@ export function orderActionsOf(
 // The supplier's document as the annex of purchases of the return reads it (D4b). The codes are the provider's: the form only carries them,
 // and the api says what is wrong in them. Left blank, nothing is sent and the receipt is completed later.
 export interface DocumentDraft {
+  // The day the supplier issued the document, YYYY-MM-DD
+  issuedOn: string
   documentClass: string
   documentType: string
   generationCode: string
@@ -368,6 +370,7 @@ export interface DocumentDraft {
 }
 
 export const emptyDocumentDraft = (): DocumentDraft => ({
+  issuedOn: '',
   documentClass: '',
   documentType: '',
   generationCode: '',
@@ -383,6 +386,7 @@ const DOCUMENT_CODE = new RegExp(`^[0-9]{1,${PurchaseLimits.DOCUMENT_CODE_MAX_LE
 export const documentTouched = (draft: DocumentDraft): boolean =>
   draft.origin !== PurchaseOrigins.INTERNAL ||
   [
+    draft.issuedOn,
     draft.documentClass,
     draft.documentType,
     draft.generationCode,
@@ -392,6 +396,7 @@ export const documentTouched = (draft: DocumentDraft): boolean =>
   ].some(value => value.trim() !== '')
 
 export const DocumentFields = {
+  ISSUED_ON: 'issuedOn',
   CLASS: 'documentClass',
   TYPE: 'documentType',
   GENERATION_CODE: 'generationCode',
@@ -405,6 +410,7 @@ export type DocumentField = (typeof DocumentFields)[keyof typeof DocumentFields]
 // the provider on the combinations are the api's)
 export function documentProblem(draft: DocumentDraft): DocumentField | null {
   if (!documentTouched(draft)) return null
+  if (!isIsoDate(draft.issuedOn.trim())) return DocumentFields.ISSUED_ON
   for (const field of [
     DocumentFields.CLASS,
     DocumentFields.TYPE,
@@ -425,6 +431,7 @@ export function documentInputOf(draft: DocumentDraft): PurchaseFiscalDocumentBod
   if (!documentTouched(draft)) return undefined
   const code = draft.generationCode.trim()
   return {
+    issuedOn: draft.issuedOn.trim(),
     documentClass: draft.documentClass.trim(),
     documentType: draft.documentType.trim(),
     ...(code === '' ? {} : { generationCode: code }),

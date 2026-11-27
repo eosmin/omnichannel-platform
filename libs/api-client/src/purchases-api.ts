@@ -76,6 +76,7 @@ const receiptSchema = z.object({
   dueOn: z.string(),
   supplierDocumentNumber: z.string().nullable(),
   taxCreditable: z.boolean(),
+  issuedOn: z.string().nullable(),
   documentClass: z.string().nullable(),
   documentType: z.string().nullable(),
   generationCode: z.string().nullable(),

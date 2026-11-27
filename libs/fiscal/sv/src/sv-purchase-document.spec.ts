@@ -6,6 +6,8 @@ import { purchaseDocumentProblems } from './sv-purchase-document'
 const CODE = '0B7E1C2A-6F34-4D8E-9A51-3C2D7E8F9A10'
 
 const input = (extra: Partial<FiscalPurchaseDocumentInput> = {}): FiscalPurchaseDocumentInput => ({
+  issuedOn: '2026-11-05',
+  receivedOn: '2026-11-10',
   documentClass: '4',
   documentType: '03',
   generationCode: CODE,
@@ -73,6 +75,24 @@ describe('purchaseDocumentProblems (annex 3 of the manual of annexes F-07)', () 
     )
     expect(purchaseDocumentProblems(input({ documentClass: '1' }))).toContain(
       PurchaseDocumentProblems.GENERATION_CODE_NOT_ELECTRONIC
+    )
+  })
+
+  it('holds the day of issue between three periods before the day of arrival and that day itself', () => {
+    expect(purchaseDocumentProblems(input({ issuedOn: '2026-11-10' }))).toEqual([])
+    expect(purchaseDocumentProblems(input({ issuedOn: '2026-08-01' }))).toEqual([])
+    expect(purchaseDocumentProblems(input({ issuedOn: '2026-07-31' }))).toContain(
+      PurchaseDocumentProblems.ISSUED_TOO_OLD
+    )
+    // The year turns: a document of October reaches a receipt of January
+    expect(
+      purchaseDocumentProblems(input({ issuedOn: '2025-10-15', receivedOn: '2026-01-02' }))
+    ).toEqual([])
+    expect(
+      purchaseDocumentProblems(input({ issuedOn: '2025-09-30', receivedOn: '2026-01-02' }))
+    ).toContain(PurchaseDocumentProblems.ISSUED_TOO_OLD)
+    expect(purchaseDocumentProblems(input({ issuedOn: '2026-11-11' }))).toContain(
+      PurchaseDocumentProblems.ISSUED_AFTER_RECEIPT
     )
   })
 
