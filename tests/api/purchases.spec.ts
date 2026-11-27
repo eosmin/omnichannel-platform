@@ -5,10 +5,14 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
-import type { OwnerClient } from '@platform/core/database-testing'
+import { DatabaseRoles, type OwnerClient } from '@platform/core/database-testing'
 import {
   AccountType,
   FinanceConflicts,
+  FiscalAnnexHeaders,
+  FiscalAnnexNotices,
+  FiscalAnnexRefusals,
+  FiscalConflictReasons,
   FinanceCountryCodes,
   FiscalEnvironment,
   FiscalIssueOn,
@@ -20,6 +24,12 @@ import {
   PurchaseOrderStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { FiscalProviderRegistry } from '@platform/fiscal/runtime'
+import {
+  FiscalAnnexError,
+  type FiscalAnnexExporter,
+  type FiscalAnnexPurchase
+} from '@platform/fiscal/sdk'
 import { SIMULATOR_PROVIDER_ID } from '@platform/fiscal/simulator'
 
 import { createProduct } from '../builders'
@@ -473,6 +483,7 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
 
   describe('the supplier document of a receipt (D4b)', () => {
     const document = (extra: Record<string, unknown> = {}) => ({
+      issuedOn: TODAY,
       documentClass: '4',
       documentType: '03',
       generationCode: randomUUID(),
@@ -534,6 +545,31 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       expect((retry.body as OrderBody).receipts).toHaveLength(1)
     })
 
+    it('refuses a document issued after the day it arrived, and one with no day of issue', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const later = await receive(order.id, {
+        receivedOn: isoDay(-3),
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: document({ issuedOn: isoDay(-2) }),
+        lines: firstLine(order)
+      })
+      expect(later.status).toBe(BAD_REQUEST)
+      expect(errorOf(later).metadata).toMatchObject({
+        problems: [PurchaseDocumentProblems.ISSUED_AFTER_RECEIPT]
+      })
+      const bare = Object.fromEntries(
+        Object.entries(document()).filter(([name]) => name !== 'issuedOn')
+      )
+      const none = await receive(order.id, {
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: bare,
+        lines: firstLine(order)
+      })
+      expect(none.status).toBe(BAD_REQUEST)
+      expect(await owner.purchaseReceipt.count({ where: { purchaseOrderId: order.id } })).toBe(0)
+    })
+
     it('refuses what the provider finds wrong and leaves nothing behind', async () => {
       const seller = await supplier()
       const order = await placedOrder(seller.id)
@@ -592,10 +628,12 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         documentType: '03',
         annexExclusion: null
       })
+      // A receipt that credits no tax may be left out even after its document was written (the audit row keeps the document it had)
       const left = await asAdminA().put(route).send({ annexExclusion: 'not_deductible' })
-      expect(left.status).toBe(CONFLICT)
-      expect(errorOf(left).metadata).toMatchObject({
-        conflict: PurchaseConflicts.ANNEX_EXCLUSION_WITH_DOCUMENT
+      expect(left.status).toBe(OK)
+      expect((left.body as OrderBody).receipts[0]).toMatchObject({
+        documentType: null,
+        annexExclusion: 'not_deductible'
       })
       const audited = await waitForAuditEntries(
         owner,
@@ -604,9 +642,9 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
           action: AuditAction.PURCHASE_RECEIPT_DOCUMENT_COMPLETED,
           resourceId: bare?.id ?? ''
         },
-        2
+        3
       )
-      expect(audited).toHaveLength(2)
+      expect(audited).toHaveLength(3)
     })
 
     it('keeps in the trail what the document said before it was changed', async () => {
@@ -646,15 +684,15 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
           await owner.$queryRaw<{ allowed: boolean }[]>`
             SELECT has_table_privilege(${role}, 'purchase_receipt_documents', ${privilege}) AS allowed`
         )[0]?.allowed === true
-      expect(await has('platform_worker', 'SELECT')).toBe(true)
+      expect(await has(DatabaseRoles.WORKER, 'SELECT')).toBe(true)
       for (const privilege of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
-        expect(await has('platform_worker', privilege)).toBe(false)
+        expect(await has(DatabaseRoles.WORKER, privilege)).toBe(false)
       }
-      expect(await has('platform_app', 'SELECT')).toBe(true)
-      expect(await has('platform_app', 'INSERT')).toBe(true)
-      expect(await has('platform_app', 'UPDATE')).toBe(true)
-      expect(await has('platform_app', 'DELETE')).toBe(false)
-      expect(await has('platform_app', 'TRUNCATE')).toBe(false)
+      expect(await has(DatabaseRoles.APP, 'SELECT')).toBe(true)
+      expect(await has(DatabaseRoles.APP, 'INSERT')).toBe(true)
+      expect(await has(DatabaseRoles.APP, 'UPDATE')).toBe(true)
+      expect(await has(DatabaseRoles.APP, 'DELETE')).toBe(false)
+      expect(await has(DatabaseRoles.APP, 'TRUNCATE')).toBe(false)
     })
 
     it('does not let a caller complete the document of a receipt that has a line of a store they do not see', async () => {
@@ -700,6 +738,404 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       expect(refused.status).toBe(CONFLICT)
       const foreign = await asAdminB().put(route).send({ fiscalDocument: document() })
       expect(foreign.status).toBe(NOT_FOUND)
+    })
+  })
+
+  // The annex of purchases of the return (D4b-2): what is read from the receipts of the organization, what is left out and counted, and that
+  // a month with receipts that miss their document is refused with how many and which. The columns of the real exporter are pinned by
+  // `libs/fiscal/sv/src/sv-annexes-purchases.spec.ts`; here the provider is the simulator with an exporter of the spec's own that records
+  // what it was handed. The months are old ones (February and March 2026): the other tests of the file receive today, so they never mix.
+  describe('the annex of purchases of the return (D4b-2)', () => {
+    const ANNEX = 'fake-purchases'
+    let handed: FiscalAnnexPurchase[][]
+    let behaviour: 'rows' | 'refuse'
+    const exporter: FiscalAnnexExporter = {
+      ids: [ANNEX],
+      purchaseIds: [ANNEX],
+      build: () => null,
+      buildPurchases(id, period, purchases) {
+        handed.push([...purchases])
+        if (behaviour === 'refuse') throw new FiscalAnnexError('cause_code', ['z-1', 'a-1'])
+        return {
+          id,
+          filename: `purchases-${period.year}-${period.month}.csv`,
+          rows: purchases.length,
+          content: purchases.map(() => 'row').join('\r\n')
+        }
+      }
+    }
+    beforeAll(() => {
+      const registry = app.get(FiscalProviderRegistry)
+      const real = registry.find.bind(registry)
+      jest.spyOn(registry, 'find').mockImplementation(id => {
+        const provider = real(id)
+        return provider === undefined || provider.id !== SIMULATOR_PROVIDER_ID
+          ? provider
+          : (Object.create(provider, { annexes: { value: exporter } }) as typeof provider)
+      })
+    })
+    afterAll(() => {
+      jest.restoreAllMocks()
+    })
+    beforeEach(() => {
+      handed = []
+      behaviour = 'rows'
+    })
+    let readerApi: ReturnType<typeof api> | null = null
+    const reader = async () => {
+      if (readerApi !== null) return readerApi
+      const permissions = [
+        Permissions.FISCAL_VIEW,
+        Permissions.FINANCE_VIEW,
+        Permissions.FINANCE_EXPORT
+      ]
+      const first = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'annex-purchases-reader',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions
+      })
+      await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'annex-purchases-reader',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA2.id,
+        permissions
+      })
+      readerApi = api(app, first, ctx.storeA)
+      return readerApi
+    }
+    const taken = async (year: number, month: number) =>
+      (await reader()).get(`${ApiRoutes.fiscal.annex(ANNEX)}?year=${year}&month=${month}`)
+    const doc = (extra: Record<string, unknown> = {}) => ({
+      issuedOn: '2026-02-05',
+      documentClass: '4',
+      documentType: '03',
+      generationCode: randomUUID(),
+      origin: 'internal',
+      expenseClass: '1',
+      sector: '2',
+      costType: '5',
+      ...extra
+    })
+
+    it('hands the provider the receipts of the month with their lines split by tax, counts what is left out, and audits digests and counts and no row', async () => {
+      const seller = await supplier({ name: 'Annex Supplier Ñ', taxId: '0614-010101-101-3' })
+      // A bill of the taxed line (10 x 5.00 at 13 %) and the exempt one (4 x 2.50), with its document
+      const declared = await placedOrder(seller.id)
+      const first = await receive(declared.id, {
+        receivedOn: '2026-02-10',
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: doc(),
+        lines: declared.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity }))
+      })
+      expect(first.status).toBe(CREATED)
+      // A bill of the exempt line alone, with no document and no credit: counted, never a refusal
+      const plain = await placedOrder(seller.id)
+      const second = await receive(plain.id, {
+        receivedOn: '2026-02-11',
+        lines: [{ orderLineId: plain.lines[1]?.id, quantity: 4 }]
+      })
+      expect(second.status).toBe(CREATED)
+      // A bill with tax and no credit, left out on purpose
+      const out = await placedOrder(seller.id)
+      const third = await receive(out.id, {
+        receivedOn: '2026-02-12',
+        lines: [{ orderLineId: out.lines[0]?.id, quantity: 2 }]
+      })
+      const [bill] = (third.body as OrderBody).receipts
+      expect(
+        (
+          await asAdminA()
+            .put(ApiRoutes.purchaseOrders.receiptDocument(out.id, bill?.id ?? ''))
+            .send({ annexExclusion: 'not_deductible' })
+        ).status
+      ).toBe(OK)
+
+      const answer = await taken(2026, 2)
+      expect(answer.status).toBe(OK)
+      expect(answer.headers['cache-control']).toBe('no-store')
+      expect(answer.headers[FiscalAnnexHeaders.NOTICES.toLowerCase()]).toBe(
+        `${FiscalAnnexNotices.LEFT_OUT}=1,${FiscalAnnexNotices.NO_DOCUMENT_NO_CREDIT}=1`
+      )
+      expect(handed).toHaveLength(1)
+      expect(handed[0]).toHaveLength(1)
+      expect(handed[0]?.[0]).toMatchObject({
+        receivedOn: '2026-02-10',
+        supplierName: 'Annex Supplier Ñ',
+        supplierTaxId: '0614-010101-101-3',
+        taxCreditable: true,
+        taxedBaseCents: 5000,
+        taxCents: 650,
+        exemptBaseCents: 1000,
+        document: { issuedOn: '2026-02-05', documentType: '03', origin: 'internal' }
+      })
+      const [entry] = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
+        action: AuditAction.FISCAL_ANNEX_EXPORTED,
+        metadata: { path: ['annex'], equals: ANNEX }
+      })
+      expect(entry?.metadata).toMatchObject({
+        annex: ANNEX,
+        year: 2026,
+        month: 2,
+        rows: 1,
+        notices: {
+          [FiscalAnnexNotices.NO_DOCUMENT_NO_CREDIT]: 1,
+          [FiscalAnnexNotices.LEFT_OUT]: 1
+        }
+      })
+      const metadata = entry?.metadata as Record<string, unknown>
+      expect(metadata['contentSha256']).toMatch(/^[0-9a-f]{64}$/u)
+      expect(metadata['sourcesSha256']).toMatch(/^[0-9a-f]{64}$/u)
+      expect(JSON.stringify(metadata)).not.toContain('Annex Supplier')
+      // The same documents give the same digest of the sources: a document written again after the file changes it
+      const again = await taken(2026, 2)
+      expect(again.status).toBe(OK)
+    })
+
+    it('counts a receipt left out with a document apart, so a documented purchase is never hidden quietly', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const received = await receive(order.id, {
+        receivedOn: '2026-04-10',
+        supplierDocumentNumber: `N-${key()}`,
+        taxCreditable: false,
+        lines: [{ orderLineId: order.lines[1]?.id, quantity: 4 }]
+      })
+      const [bill] = (received.body as OrderBody).receipts
+      const out = await asAdminA()
+        .put(ApiRoutes.purchaseOrders.receiptDocument(order.id, bill?.id ?? ''))
+        .send({ annexExclusion: 'excluded_subject' })
+      expect(out.status).toBe(OK)
+      const answer = await taken(2026, 4)
+      expect(answer.status).toBe(OK)
+      expect(answer.headers[FiscalAnnexHeaders.NOTICES.toLowerCase()]).toBe(
+        `${FiscalAnnexNotices.LEFT_OUT}=1,${FiscalAnnexNotices.LEFT_OUT_WITH_DOCUMENT}=1`
+      )
+      expect(handed[0]).toEqual([])
+    })
+
+    it('refuses a month with receipts that miss their document, with how many and the first ones, and no data of them', async () => {
+      const seller = await supplier({ name: 'Never Shown Supplier' })
+      const ids: string[] = []
+      for (const day of ['2026-03-03', '2026-03-04']) {
+        const order = await placedOrder(seller.id)
+        const received = await receive(order.id, {
+          receivedOn: day,
+          supplierDocumentNumber: `N-${key()}`,
+          lines: [{ orderLineId: order.lines[0]?.id, quantity: 1 }]
+        })
+        ids.push(((received.body as OrderBody).receipts[0] as { id: string }).id)
+      }
+      // A document written before the day of issue was asked for: it has the rest but no day, and is not made up
+      const old = await placedOrder(seller.id)
+      const oldReceived = await receive(old.id, {
+        receivedOn: '2026-03-05',
+        supplierDocumentNumber: `N-${key()}`,
+        lines: [{ orderLineId: old.lines[0]?.id, quantity: 1 }]
+      })
+      const oldId = ((oldReceived.body as OrderBody).receipts[0] as { id: string }).id
+      await owner.purchaseReceiptDocument.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          receiptId: oldId,
+          createdBy: 'spec',
+          documentClass: '4',
+          documentType: '03',
+          generationCode: randomUUID().toUpperCase(),
+          purchaseOrigin: 'internal',
+          expenseClass: '1',
+          sector: '2',
+          costType: '5'
+        }
+      })
+      ids.push(oldId)
+
+      const refused = await taken(2026, 3)
+      expect(refused.status).toBe(CONFLICT)
+      const metadata = errorOf(refused).metadata
+      expect(metadata).toMatchObject({
+        reason: FiscalConflictReasons.ANNEX_REFUSED,
+        code: FiscalAnnexRefusals.PURCHASE_DOCUMENT_MISSING,
+        count: 3,
+        ids: [...ids].sort()
+      })
+      expect(JSON.stringify(refused.body)).not.toContain('Never Shown')
+      expect(handed).toEqual([])
+
+      // Completing one of them leaves the rest named
+      const first = await asAdminA()
+        .put(
+          ApiRoutes.purchaseOrders.receiptDocument(
+            (await owner.purchaseReceipt.findUniqueOrThrow({ where: { id: ids[0] } }))
+              .purchaseOrderId,
+            ids[0] ?? ''
+          )
+        )
+        .send({ fiscalDocument: doc({ issuedOn: '2026-03-02' }) })
+      expect(first.status).toBe(OK)
+      const next = await taken(2026, 3)
+      expect(errorOf(next).metadata).toMatchObject({ count: 2 })
+    })
+
+    it('passes on the receipts a provider names when it refuses the month, a few of them and in order', async () => {
+      behaviour = 'refuse'
+      const refused = await taken(2026, 2)
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorOf(refused).metadata).toMatchObject({
+        reason: FiscalConflictReasons.ANNEX_REFUSED,
+        code: 'cause_code',
+        count: 2,
+        ids: ['a-1', 'z-1']
+      })
+    })
+
+    it('reads the receipts of its own organization alone, whoever else received in the same month', async () => {
+      // Organization B receives, in the same month, a bill with its document and another that would be a refusal for lack of one: neither is
+      // organization A's, and the test database applies no row-level security, so only the filter of the code keeps them out
+      const sellerB = (
+        await asAdminB()
+          .post(ApiRoutes.suppliers.create)
+          .send({ name: `Supplier B ${randomUUID().slice(0, 8)}`, paymentTermsDays: 30 })
+      ).body as { id: string }
+      const productB = await createProduct(owner, { storeId: ctx.storeB.id })
+      const orderB = async () => {
+        const created = await asAdminB()
+          .post(ApiRoutes.purchaseOrders.create)
+          .send({
+            idempotencyKey: key(),
+            supplierId: sellerB.id,
+            warehouseId: ctx.warehouseB.id,
+            lines: [{ productId: productB.id, quantity: 4, unitCostCents: 250 }]
+          })
+        expect(created.status).toBe(CREATED)
+        const placed = await asAdminB().post(
+          ApiRoutes.purchaseOrders.order((created.body as OrderBody).id)
+        )
+        return placed.body as OrderBody
+      }
+      const [withDocument, bare] = [await orderB(), await orderB()]
+      const foreign = await receive(
+        withDocument.id,
+        {
+          receivedOn: '2026-05-10',
+          supplierDocumentNumber: `B-${key()}`,
+          fiscalDocument: doc({ issuedOn: '2026-05-04' }),
+          lines: [{ orderLineId: withDocument.lines[0]?.id, quantity: 4 }]
+        },
+        asAdminB()
+      )
+      expect(foreign.status).toBe(CREATED)
+      const missing = await receive(
+        bare.id,
+        {
+          receivedOn: '2026-05-11',
+          supplierDocumentNumber: `B-${key()}`,
+          lines: [{ orderLineId: bare.lines[0]?.id, quantity: 4 }]
+        },
+        asAdminB()
+      )
+      expect(missing.status).toBe(CREATED)
+
+      const seller = await supplier()
+      const own = await placedOrder(seller.id)
+      const mine = await receive(own.id, {
+        receivedOn: '2026-05-12',
+        supplierDocumentNumber: `A-${key()}`,
+        fiscalDocument: doc({ issuedOn: '2026-05-04' }),
+        lines: own.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity }))
+      })
+      expect(mine.status).toBe(CREATED)
+
+      const answer = await taken(2026, 5)
+      expect(answer.status).toBe(OK)
+      expect(handed[0]?.map(purchase => purchase.receiptId)).toEqual([
+        ((mine.body as OrderBody).receipts[0] as { id: string }).id
+      ])
+    })
+
+    it('changes the digest of the sources when a document is changed after the file was taken, and keeps it when nothing changed', async () => {
+      const month = { year: 2026, month: 6 }
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const received = await receive(order.id, {
+        receivedOn: '2026-06-10',
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: doc({ issuedOn: '2026-06-03' }),
+        lines: order.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity }))
+      })
+      const [bill] = (received.body as OrderBody).receipts
+      expect((await taken(month.year, month.month)).status).toBe(OK)
+      expect((await taken(month.year, month.month)).status).toBe(OK)
+      const changed = await asAdminA()
+        .put(ApiRoutes.purchaseOrders.receiptDocument(order.id, bill?.id ?? ''))
+        .send({ fiscalDocument: doc({ issuedOn: '2026-06-03', costType: '4' }) })
+      expect(changed.status).toBe(OK)
+      expect((await taken(month.year, month.month)).status).toBe(OK)
+
+      const entries = await waitForAuditEntries(
+        owner,
+        {
+          organizationId: ctx.orgA.id,
+          action: AuditAction.FISCAL_ANNEX_EXPORTED,
+          AND: [
+            { metadata: { path: ['annex'], equals: ANNEX } },
+            { metadata: { path: ['month'], equals: month.month } }
+          ]
+        },
+        3
+      )
+      const digests = entries.map(
+        entry => (entry.metadata as Record<string, string>)['sourcesSha256']
+      )
+      expect(digests).toHaveLength(3)
+      expect(digests[0]).toMatch(/^[0-9a-f]{64}$/u)
+      expect(digests[1]).toBe(digests[0])
+      expect(digests[2]).not.toBe(digests[0])
+    })
+
+    it('does not read a receipt whose lines do not add up to it, and names it', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const received = await receive(order.id, {
+        receivedOn: '2026-07-10',
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: doc({ issuedOn: '2026-07-03' }),
+        lines: order.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity }))
+      })
+      const [bill] = (received.body as OrderBody).receipts
+      expect((await taken(2026, 7)).status).toBe(OK)
+      // The ledger never lets a line of a receipt change; the test does it as the owner, with the guard of the table off for the statement
+      // alone, to stand for a receipt whose lines were not what it says (a restore, a repair by hand)
+      // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+      await owner.$transaction(async tx => {
+        await tx.$executeRawUnsafe('ALTER TABLE purchase_receipt_lines DISABLE TRIGGER USER')
+        await tx.$executeRawUnsafe(
+          `UPDATE purchase_receipt_lines SET tax_cents = tax_cents + 1 WHERE receipt_id = '${bill?.id ?? ''}' AND tax_cents > 0`
+        )
+        await tx.$executeRawUnsafe('ALTER TABLE purchase_receipt_lines ENABLE TRIGGER USER')
+      })
+      const refused = await taken(2026, 7)
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorOf(refused).metadata).toMatchObject({
+        reason: FiscalConflictReasons.ANNEX_REFUSED,
+        code: FiscalAnnexRefusals.PURCHASE_LINES_INCONSISTENT,
+        count: 1,
+        ids: [bill?.id]
+      })
+    })
+
+    it('does not take the annex out for a person who does not read the documents of every store', async () => {
+      const narrow = await asRole('annex-purchases-narrow', [
+        Permissions.FISCAL_VIEW,
+        Permissions.FINANCE_VIEW,
+        Permissions.FINANCE_EXPORT
+      ])
+      const denied = await narrow.get(`${ApiRoutes.fiscal.annex(ANNEX)}?year=2026&month=2`)
+      expect(denied.status).toBe(FORBIDDEN)
+      expect(handed).toEqual([])
     })
   })
 

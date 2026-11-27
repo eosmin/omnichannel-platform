@@ -72,7 +72,7 @@ function CompleteForm({
   const [problem, setProblem] = useState(false)
   const [refusal, setRefusal] = useState<string | null>(null)
   // A receipt that credits the tax has a document to declare: only one that does not may be left out
-  const mayLeaveOut = !receipt.taxCreditable && receipt.documentType === null
+  const mayLeaveOut = !receipt.taxCreditable
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()

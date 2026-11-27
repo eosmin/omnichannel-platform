@@ -27,7 +27,7 @@ import type {
 
 import { ACTIVITIES } from './catalogs/activities'
 import { IDENTITY_DOCUMENTS } from './catalogs/identity-documents'
-import { svAnnexes } from './sv-annexes'
+import { svAnnexes } from './sv-annex-exporter'
 import { SvAuthenticator } from './sv-auth'
 import { buildDocument, resolveDocumentType } from './sv-build'
 import {

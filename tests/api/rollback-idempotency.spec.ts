@@ -20,7 +20,12 @@ const IDEMPOTENT = [
   ['20261217100000_finance_receipts.rollback.sql', 'media', 'finance_transaction_id'],
   ['20270208100000_fiscal_delivery_by_hand.rollback.sql', 'fiscal_deliveries', 'hand_means'],
   ['20270208100000_fiscal_delivery_by_hand.rollback.sql', 'fiscal_deliveries', 'handed_over_by'],
-  ['20270208100000_fiscal_delivery_by_hand.rollback.sql', 'fiscal_deliveries', 'handed_over_at']
+  ['20270208100000_fiscal_delivery_by_hand.rollback.sql', 'fiscal_deliveries', 'handed_over_at'],
+  [
+    '20270211100000_purchase_document_issued_on.rollback.sql',
+    'purchase_receipt_documents',
+    'issued_on'
+  ]
 ] as const
 
 // The script has its own BEGIN and COMMIT: the case wraps it in the transaction it throws away
@@ -60,6 +65,51 @@ describe('Rollbacks that are safe to run twice', () => {
       // The first run did its work: the column the migration added is gone
       expect(await hasColumn(table, column)).toBe(false)
       // The second run finds the first one's work done
+      await client.query(sql)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+  })
+  // The rollback of the day of issue drops the column and the index of the month and keeps every row: a document keeps its codes, a mark keeps
+  // its reason, and the second run finds nothing to do. Rows are written with the foreign keys off for the transaction, never committed.
+  it('20270211100000_purchase_document_issued_on.rollback.sql keeps the documents and the marks, and runs a second time on the result', async () => {
+    const sql = body('20270211100000_purchase_document_issued_on.rollback.sql')
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL session_replication_role = replica')
+      await client.query(
+        `INSERT INTO purchase_receipt_documents (id, organization_id, receipt_id, issued_on, document_class, document_type, generation_code, purchase_origin, expense_class, sector, cost_type, annex_exclusion, created_by)
+         VALUES ('rb-d1', 'o', 'r1', '2026-02-05', '4', '03', 'RB-CODE-1', 'internal', '1', '2', '5', NULL, 'u'),
+                ('rb-d2', 'o', 'r2', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'not_deductible', 'u')`
+      )
+      expect(
+        (
+          await client.query(
+            `SELECT to_regclass('purchase_receipts_organization_id_received_on_idx') AS found`
+          )
+        ).rows[0]
+      ).toEqual({ found: 'purchase_receipts_organization_id_received_on_idx' })
+      await client.query(sql)
+      expect(await hasColumn('purchase_receipt_documents', 'issued_on')).toBe(false)
+      expect(
+        (
+          await client.query(
+            `SELECT to_regclass('purchase_receipts_organization_id_received_on_idx') AS found`
+          )
+        ).rows[0]
+      ).toEqual({ found: null })
+      const rows = await client.query(
+        `SELECT id, document_type, generation_code, annex_exclusion FROM purchase_receipt_documents WHERE id LIKE 'rb-d%' ORDER BY id`
+      )
+      expect(rows.rows).toEqual([
+        { id: 'rb-d1', document_type: '03', generation_code: 'RB-CODE-1', annex_exclusion: null },
+        {
+          id: 'rb-d2',
+          document_type: null,
+          generation_code: null,
+          annex_exclusion: 'not_deductible'
+        }
+      ])
       await client.query(sql)
     } finally {
       await client.query('ROLLBACK')

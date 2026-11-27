@@ -7726,6 +7726,8 @@
           "leftOut": "Left out of the annex"
         },
         "fields": {
+          "issuedOn": "Issued on",
+          "issuedOnHint": "The day printed on the supplier document, not the day it arrived.",
           "documentClass": "Class of document",
           "documentType": "Type of document",
           "generationCode": "Generation code",
@@ -7751,6 +7753,7 @@
           }
         },
         "problems": {
+          "issuedOn": "Write a real day as year-month-day.",
           "empty": "Write the data of the document, or choose to leave it out.",
           "documentClass": "Write the class of document as a number.",
           "documentType": "Write the type of document as a number.",
@@ -7845,6 +7848,8 @@
         "entry_owned_by_purchase": "This entry belongs to a purchase: change it from the purchase."
       },
       "rules": {
+        "issued_after_receipt": "The document cannot be issued after the day it arrived.",
+        "issued_too_old": "The document is older than the three periods the return can still take.",
         "class_invalid": "The class of document is not valid.",
         "type_invalid": "The type of document is not valid.",
         "class_type_mismatch": "That class of document does not go with that type.",

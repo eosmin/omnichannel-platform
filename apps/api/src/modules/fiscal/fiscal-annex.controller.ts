@@ -4,6 +4,7 @@ import type { Response } from 'express'
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import { FiscalAnnexHeaders } from '@platform/core/domain'
 import { ExportContentTypes } from '@platform/core/exports'
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -56,6 +57,16 @@ export class FiscalAnnexController {
     // The name is the provider's and has only letters, digits, dashes and one dot
     res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`)
     res.setHeader('Cache-Control', 'no-store')
+    // What the file leaves out on purpose, counted (never named): the accountant sees it
+    const notices = Object.entries(file.notices ?? {}).sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0
+    )
+    if (notices.length > 0) {
+      res.setHeader(
+        FiscalAnnexHeaders.NOTICES,
+        notices.map(([code, count]) => `${code}=${count}`).join(',')
+      )
+    }
     return file.content
   }
 }

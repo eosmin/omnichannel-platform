@@ -236,7 +236,9 @@ describe('The annexes of the periodic return (D4a)', () => {
       annex: ANNEX_ID,
       year: now.getUTCFullYear(),
       month: now.getUTCMonth() + 1,
-      rows: expect.any(Number) as number
+      rows: expect.any(Number) as number,
+      // The digest of the bytes, never the bytes: a sales annex has no sources and no notices
+      contentSha256: expect.stringMatching(/^[0-9a-f]{64}$/u) as string
     })
     expect(JSON.stringify(entry)).not.toContain(RECEIVER_TAX_ID)
     expect(JSON.stringify(entry)).not.toContain('Ana Receiver')
