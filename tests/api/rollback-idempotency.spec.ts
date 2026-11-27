@@ -17,7 +17,10 @@ const IDEMPOTENT = [
   ['20261215120000_plugin_webhooks.rollback.sql', 'plugin_installations', 'webhook_secret'],
   ['20261215120000_plugin_webhooks.rollback.sql', 'webhook_deliveries', 'plugin_installation_id'],
   ['20261217100000_finance_receipts.rollback.sql', 'finance_transactions', 'document_media_id'],
-  ['20261217100000_finance_receipts.rollback.sql', 'media', 'finance_transaction_id']
+  ['20261217100000_finance_receipts.rollback.sql', 'media', 'finance_transaction_id'],
+  ['20270208100000_fiscal_delivery_by_hand.rollback.sql', 'fiscal_deliveries', 'hand_means'],
+  ['20270208100000_fiscal_delivery_by_hand.rollback.sql', 'fiscal_deliveries', 'handed_over_by'],
+  ['20270208100000_fiscal_delivery_by_hand.rollback.sql', 'fiscal_deliveries', 'handed_over_at']
 ] as const
 
 // The script has its own BEGIN and COMMIT: the case wraps it in the transaction it throws away
@@ -57,6 +60,35 @@ describe('Rollbacks that are safe to run twice', () => {
       // The first run did its work: the column the migration added is gone
       expect(await hasColumn(table, column)).toBe(false)
       // The second run finds the first one's work done
+      await client.query(sql)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+  })
+  // The rollback of the hand delivery changes data: the rows recorded by hand go back to not sent, the second run finds none and does not fail
+  // on the columns the first one dropped. Rows are written with the foreign keys off for the transaction (the owner), and never committed.
+  it('20270208100000_fiscal_delivery_by_hand.rollback.sql puts the hand deliveries back, and runs a second time on the result', async () => {
+    const sql = body('20270208100000_fiscal_delivery_by_hand.rollback.sql')
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL session_replication_role = replica')
+      await client.query(
+        `INSERT INTO fiscal_deliveries (id, organization_id, store_id, document_id, order_id, status, route, reason, hand_means, handed_over_by, handed_over_at)
+         VALUES ('rb-1', 'o', 's', 'd1', 'o1', 'sent', 'manual', 'no_channel', 'download', 'u', now()),
+                ('rb-2', 'o', 's', 'd2', 'o2', 'sent', 'manual', NULL, 'paper', 'u', now()),
+                ('rb-3', 'o', 's', 'd3', 'o3', 'sent', 'email', NULL, NULL, NULL, NULL),
+                ('rb-4', 'o', 's', 'd4', 'o4', 'not_sent', 'none', 'too_large', NULL, NULL, NULL)`
+      )
+      await client.query(sql)
+      const rows = await client.query(
+        `SELECT id, status, route, reason FROM fiscal_deliveries WHERE id LIKE 'rb-%' ORDER BY id`
+      )
+      expect(rows.rows).toEqual([
+        { id: 'rb-1', status: 'not_sent', route: 'none', reason: 'no_channel' },
+        { id: 'rb-2', status: 'not_sent', route: 'none', reason: 'files_unavailable' },
+        { id: 'rb-3', status: 'sent', route: 'email', reason: null },
+        { id: 'rb-4', status: 'not_sent', route: 'none', reason: 'too_large' }
+      ])
       await client.query(sql)
     } finally {
       await client.query('ROLLBACK')
