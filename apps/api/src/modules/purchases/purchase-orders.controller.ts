@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Req
+} from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
@@ -29,7 +40,9 @@ import {
   listPaymentsQuerySchema,
   type ListPurchaseOrdersQuery,
   listPurchaseOrdersQuerySchema,
+  type CompleteReceiptDocumentBody,
   type ReceivePurchaseOrderBody,
+  completeReceiptDocumentSchema,
   receivePurchaseOrderSchema,
   type RecordPaymentBody,
   recordPaymentSchema,
@@ -140,6 +153,29 @@ export class PurchaseOrdersController {
     @Req() req: AuthenticatedRequest
   ): Promise<OrderView> {
     return this.receiving.receive(organization.id, orderId, body, actorOf(user, store, req))
+  }
+
+  // The data of the supplier's document of a receipt, for the annex of purchases of the return: completed after the fact, or the receipt
+  // marked as left out of the annex. The money and the entry of the receipt are never touched.
+  @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
+  @Put(ApiRoutes.purchaseOrders.receiptDocument(':id', ':receiptId'))
+  completeReceiptDocument(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) orderId: string,
+    @Param('receiptId', id()) receiptId: string,
+    @Body(new ZodValidationPipe(completeReceiptDocumentSchema)) body: CompleteReceiptDocumentBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<OrderView> {
+    return this.receiving.completeDocument(
+      organization.id,
+      orderId,
+      receiptId,
+      body,
+      actorOf(user, store, req)
+    )
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)

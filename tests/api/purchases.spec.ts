@@ -16,6 +16,7 @@ import {
   NormalSide,
   PartyType,
   PurchaseConflicts,
+  PurchaseDocumentProblems,
   PurchaseOrderStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -46,6 +47,8 @@ interface ReceiptBody {
   totalCents: number
   dueOn: string
   taxCreditable: boolean
+  documentType: string | null
+  annexExclusion: string | null
   entryId: string
   lines: { quantity: number; movementId: string }[]
 }
@@ -465,6 +468,238 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         (await receive(order.id, { lines: [{ orderLineId: order.lines[0]?.id, quantity: 1 }] }))
           .status
       ).toBe(CONFLICT)
+    })
+  })
+
+  describe('the supplier document of a receipt (D4b)', () => {
+    const document = (extra: Record<string, unknown> = {}) => ({
+      documentClass: '4',
+      documentType: '03',
+      generationCode: randomUUID(),
+      origin: 'internal',
+      expenseClass: '1',
+      sector: '2',
+      costType: '5',
+      ...extra
+    })
+    const firstLine = (order: OrderBody) => [{ orderLineId: order.lines[0]?.id, quantity: 2 }]
+
+    it('keeps the document on the receipt, in capitals, and reads a retry as the same receipt', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const fiscalDocument = document()
+      const body = {
+        idempotencyKey: key(),
+        receivedOn: TODAY,
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument,
+        lines: firstLine(order)
+      }
+      const first = await asAdminA().post(ApiRoutes.purchaseOrders.receive(order.id)).send(body)
+      expect(first.status).toBe(CREATED)
+      const [receipt] = (first.body as OrderBody).receipts
+      expect(receipt).toMatchObject({
+        documentClass: '4',
+        documentType: '03',
+        generationCode: fiscalDocument.generationCode.toUpperCase(),
+        purchaseOrigin: 'internal',
+        expenseClass: '1',
+        sector: '2',
+        costType: '5',
+        annexExclusion: null
+      })
+      const retry = await asAdminA().post(ApiRoutes.purchaseOrders.receive(order.id)).send(body)
+      expect(retry.status).toBe(CREATED)
+      expect((retry.body as OrderBody).receipts).toHaveLength(1)
+      const other = await asAdminA()
+        .post(ApiRoutes.purchaseOrders.receive(order.id))
+        .send({ ...body, fiscalDocument: { ...fiscalDocument, costType: '4' } })
+      expect(other.status).toBe(CONFLICT)
+      expect(errorOf(other).metadata).toMatchObject({ conflict: PurchaseConflicts.KEY_REUSED })
+    })
+
+    it('still answers the retry of a receipt that was completed afterwards, with the first receipt', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const body = { idempotencyKey: key(), receivedOn: TODAY, lines: firstLine(order) }
+      const first = await asAdminA().post(ApiRoutes.purchaseOrders.receive(order.id)).send(body)
+      expect(first.status).toBe(CREATED)
+      const [bare] = (first.body as OrderBody).receipts
+      const done = await asAdminA()
+        .put(ApiRoutes.purchaseOrders.receiptDocument(order.id, bare?.id ?? ''))
+        .send({ annexExclusion: 'excluded_subject' })
+      expect(done.status).toBe(OK)
+      const retry = await asAdminA().post(ApiRoutes.purchaseOrders.receive(order.id)).send(body)
+      expect(retry.status).toBe(CREATED)
+      expect((retry.body as OrderBody).receipts).toHaveLength(1)
+    })
+
+    it('refuses what the provider finds wrong and leaves nothing behind', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const refused = await receive(order.id, {
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: document({ documentClass: '9' }),
+        lines: firstLine(order)
+      })
+      expect(refused.status).toBe(BAD_REQUEST)
+      expect(errorOf(refused).metadata).toMatchObject({
+        problems: [PurchaseDocumentProblems.CLASS_INVALID]
+      })
+      expect(await owner.purchaseReceipt.count({ where: { purchaseOrderId: order.id } })).toBe(0)
+    })
+
+    it('does not take one electronic document twice in the organization', async () => {
+      const seller = await supplier()
+      const [one, two] = [await placedOrder(seller.id), await placedOrder(seller.id)]
+      const fiscalDocument = document()
+      const ok = await receive(one.id, {
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument,
+        lines: firstLine(one)
+      })
+      expect(ok.status).toBe(CREATED)
+      const again = await receive(two.id, {
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: {
+          ...fiscalDocument,
+          generationCode: fiscalDocument.generationCode.toLowerCase()
+        },
+        lines: firstLine(two)
+      })
+      expect(again.status).toBe(CONFLICT)
+      expect(errorOf(again).metadata).toMatchObject({
+        conflict: PurchaseConflicts.GENERATION_CODE_IN_USE
+      })
+    })
+
+    it('completes a receipt written without it, and marks one that has no document to declare as left out', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const received = await receive(order.id, { lines: firstLine(order) })
+      const [bare] = (received.body as OrderBody).receipts
+      expect(bare).toMatchObject({ documentType: null, taxCreditable: false })
+      const route = ApiRoutes.purchaseOrders.receiptDocument(order.id, bare?.id ?? '')
+
+      const out = await asAdminA().put(route).send({ annexExclusion: 'excluded_subject' })
+      expect(out.status).toBe(OK)
+      expect((out.body as OrderBody).receipts[0]?.annexExclusion).toBe('excluded_subject')
+
+      // Writing the document takes the mark away: a receipt is either declared or left out
+      const done = await asAdminA().put(route).send({ fiscalDocument: document() })
+      expect(done.status).toBe(OK)
+      expect((done.body as OrderBody).receipts[0]).toMatchObject({
+        documentType: '03',
+        annexExclusion: null
+      })
+      const left = await asAdminA().put(route).send({ annexExclusion: 'not_deductible' })
+      expect(left.status).toBe(CONFLICT)
+      expect(errorOf(left).metadata).toMatchObject({
+        conflict: PurchaseConflicts.ANNEX_EXCLUSION_WITH_DOCUMENT
+      })
+      const audited = await waitForAuditEntries(
+        owner,
+        {
+          organizationId: ctx.orgA.id,
+          action: AuditAction.PURCHASE_RECEIPT_DOCUMENT_COMPLETED,
+          resourceId: bare?.id ?? ''
+        },
+        2
+      )
+      expect(audited).toHaveLength(2)
+    })
+
+    it('keeps in the trail what the document said before it was changed', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const first = document()
+      const received = await receive(order.id, {
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: first,
+        lines: firstLine(order)
+      })
+      const [receipt] = (received.body as OrderBody).receipts
+      const second = document({ costType: '4', generationCode: randomUUID() })
+      const changed = await asAdminA()
+        .put(ApiRoutes.purchaseOrders.receiptDocument(order.id, receipt?.id ?? ''))
+        .send({ fiscalDocument: second })
+      expect(changed.status).toBe(OK)
+      const [entry] = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
+        action: AuditAction.PURCHASE_RECEIPT_DOCUMENT_COMPLETED,
+        resourceId: receipt?.id ?? ''
+      })
+      expect(entry?.metadata).toMatchObject({
+        previous: {
+          documentType: '03',
+          costType: '5',
+          generationCode: first.generationCode.toUpperCase(),
+          annexExclusion: null
+        },
+        current: { costType: '4' }
+      })
+    })
+
+    it('gives the worker no way to write a supplier document and the application no way to delete one', async () => {
+      const has = async (role: string, privilege: string): Promise<boolean> =>
+        (
+          await owner.$queryRaw<{ allowed: boolean }[]>`
+            SELECT has_table_privilege(${role}, 'purchase_receipt_documents', ${privilege}) AS allowed`
+        )[0]?.allowed === true
+      expect(await has('platform_worker', 'SELECT')).toBe(true)
+      for (const privilege of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+        expect(await has('platform_worker', privilege)).toBe(false)
+      }
+      expect(await has('platform_app', 'SELECT')).toBe(true)
+      expect(await has('platform_app', 'INSERT')).toBe(true)
+      expect(await has('platform_app', 'UPDATE')).toBe(true)
+      expect(await has('platform_app', 'DELETE')).toBe(false)
+      expect(await has('platform_app', 'TRUNCATE')).toBe(false)
+    })
+
+    it('does not let a caller complete the document of a receipt that has a line of a store they do not see', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const received = await receive(order.id, { lines: firstLine(order) })
+      const [receipt] = (received.body as OrderBody).receipts
+      const buyerOfOtherStore = api(
+        app,
+        await actorWithPermissions(owner, app, {
+          prefix,
+          name: 'buyer-store-a2-document',
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA2.id,
+          permissions: [Permissions.FINANCE_MANAGE_PURCHASES]
+        }),
+        ctx.storeA2
+      )
+      const route = ApiRoutes.purchaseOrders.receiptDocument(order.id, receipt?.id ?? '')
+      for (const body of [{ fiscalDocument: document() }, { annexExclusion: 'excluded_subject' }]) {
+        const refused = await buyerOfOtherStore.put(route).send(body)
+        expect(refused.status).toBe(CONFLICT)
+        expect(errorOf(refused).metadata).toMatchObject({
+          conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
+        })
+      }
+      expect(await owner.purchaseReceiptDocument.count({ where: { receiptId: receipt?.id } })).toBe(
+        0
+      )
+    })
+
+    it('does not leave out a receipt that credits the tax, and does not touch a receipt of another organization', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const received = await receive(order.id, {
+        supplierDocumentNumber: `N-${key()}`,
+        lines: firstLine(order)
+      })
+      const [credited] = (received.body as OrderBody).receipts
+      expect(credited?.taxCreditable).toBe(true)
+      const route = ApiRoutes.purchaseOrders.receiptDocument(order.id, credited?.id ?? '')
+      const refused = await asAdminA().put(route).send({ annexExclusion: 'not_deductible' })
+      expect(refused.status).toBe(CONFLICT)
+      const foreign = await asAdminB().put(route).send({ fiscalDocument: document() })
+      expect(foreign.status).toBe(NOT_FOUND)
     })
   })
 

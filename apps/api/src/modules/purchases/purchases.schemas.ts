@@ -10,6 +10,7 @@ import {
 } from '@platform/core/domain'
 import {
   closePurchaseOrderSchema,
+  completeReceiptDocumentSchema,
   createPurchaseOrderSchema,
   createSupplierSchema,
   receivePurchaseOrderSchema,
@@ -26,6 +27,7 @@ import { cursorSchema } from '../customers/list-cursor'
 // The bodies are the shared lib's (the web checks its forms against them); the api keeps its names for them
 export {
   closePurchaseOrderSchema,
+  completeReceiptDocumentSchema,
   createPurchaseOrderSchema,
   createSupplierSchema,
   receivePurchaseOrderSchema,
@@ -76,6 +78,7 @@ export type CreatePurchaseOrderBody = z.infer<typeof createPurchaseOrderSchema>
 export type UpdatePurchaseOrderBody = z.infer<typeof updatePurchaseOrderSchema>
 export type ListPurchaseOrdersQuery = z.infer<typeof listPurchaseOrdersQuerySchema>
 export type ReceivePurchaseOrderBody = z.infer<typeof receivePurchaseOrderSchema>
+export type CompleteReceiptDocumentBody = z.infer<typeof completeReceiptDocumentSchema>
 export type ClosePurchaseOrderBody = z.infer<typeof closePurchaseOrderSchema>
 export type RecordPaymentBody = z.infer<typeof recordPaymentSchema>
 export type RecordPaymentReturnBody = z.infer<typeof recordPaymentReturnSchema>
