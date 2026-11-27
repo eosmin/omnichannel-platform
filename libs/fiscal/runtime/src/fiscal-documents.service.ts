@@ -3343,9 +3343,10 @@ export class FiscalDocumentsService {
 
   // The guide was cancelled: the remission notes that back its goods and are accepted stay alive (an invalidation is a legal act with a window
   // of a few days, and a person decides it), so the people who manage the documents are told the last day to void each one (D3b-3). The
-  // deadline is the provider's rule, read from the document as it was kept; a provider that gives none, and a window that is over, tell nobody
-  // (there is nothing to do by a date nobody knows, or that passed). Idempotent: the notice is sent once for each document until it is read.
-  // Returns how many notes were announced.
+  // deadline is the provider's rule, read from the document as it was kept (`announceNote`): a provider that gives none still tells the person,
+  // with no date, and only a window that is over tells nobody (there is nothing left to do by a date that passed). A note accepted after the
+  // guide was cancelled is told from its acceptance. Idempotent: the notice is sent once for each document until it is read. Returns how many
+  // notes were announced.
   async announceNotesOfCancelledGuide(
     organizationId: string,
     shipmentId: string,
