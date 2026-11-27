@@ -171,4 +171,7 @@ export const NotificationResourceTypes = {
   CONVERSATION: 'conversation',
   MESSAGE: 'message'
 } as const
+// The reasons the text of a notice of the fiscal documents has a sentence for (`reason.<CODE>` under its message key)
+export const FiscalNoticeReasons = { NO_DEADLINE: 'NO_DEADLINE' } as const
+
 export const NotificationParamKeys = { CUSTOMER: 'customer', MEMBER: 'member' } as const

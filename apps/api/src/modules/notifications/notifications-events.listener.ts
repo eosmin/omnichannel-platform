@@ -90,6 +90,7 @@ import { conversationReaders, isHiddenStatus } from '@platform/core/messaging'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import {
+  FiscalNoticeReasons,
   NotificationParamKeys,
   NotificationResourceTypes,
   type NotificationType,
@@ -672,7 +673,9 @@ export class NotificationsEventsListener {
       payload.documentId,
       NotificationTypes.FISCAL_REMISSION_VOID_DEADLINE,
       FiscalResourceTypes.DOCUMENT,
-      { date: `${payload.deadline.slice(0, 16).replace('T', ' ')} UTC` }
+      payload.deadline === null
+        ? { reason: FiscalNoticeReasons.NO_DEADLINE }
+        : { date: `${payload.deadline.slice(0, 16).replace('T', ' ')} UTC` }
     )
   }
 

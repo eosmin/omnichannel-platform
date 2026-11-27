@@ -424,14 +424,15 @@ export interface FiscalRetransmitDeadlinePayload {
   expired: boolean
 }
 
-// A guide was cancelled and its remission note is still accepted: ids and the last instant a person can void the note (ISO 8601)
+// A guide was cancelled and its remission note is still accepted: ids and the last instant a person can void the note (ISO 8601), or null
 export interface FiscalRemissionVoidDeadlinePayload {
   organizationId: string
   storeId: string
   documentId: string
   orderId: string
   shipmentId: string
-  deadline: string
+  // Null when the provider cannot tell it: the notice then says no date
+  deadline: string | null
 }
 
 // The daily check found sale documents that disagree with their entry (Step 4B.8b-2b): the organization, the first of them and how many,

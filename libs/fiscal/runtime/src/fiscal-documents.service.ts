@@ -1809,7 +1809,9 @@ export class FiscalDocumentsService {
           returnId: true,
           status: true,
           createdAt: true,
-          claimToken: true
+          claimToken: true,
+          shipmentId: true,
+          providerId: true
         }
       })
       // Another attempt decided first (this one was taken over): what is decided is not decided twice
@@ -1857,6 +1859,34 @@ export class FiscalDocumentsService {
         documentId,
         orderId: doc.orderId
       })
+      // A guide cancelled before its note was accepted (the cancellation found nothing accepted to tell about): the note is alive now and backs
+      // goods that do not travel, so the person is told here, once, with the same notice and the same deduplication
+      if (doc.kind === (FiscalDocumentKind.REMISSION_NOTE as string) && doc.shipmentId !== null) {
+        const shipment = await tx.shipment.findFirst({
+          where: { id: doc.shipmentId, store: { organizationId } },
+          select: { status: true }
+        })
+        if (shipment?.status === (ShipmentStatus.CANCELLED as string)) {
+          this.announceNote(
+            tx,
+            organizationId,
+            {
+              id: documentId,
+              storeId: doc.storeId,
+              orderId: doc.orderId,
+              providerId: doc.providerId
+            },
+            doc.shipmentId,
+            {
+              documentType: built.documentType,
+              externalNumber: result.externalNumber,
+              providerData: providerData === undefined ? null : record(providerData),
+              payload: built.payload
+            },
+            new Date()
+          )
+        }
+      }
       return true
     })
     // The evidence is kept once the acceptance is committed; it never decides the document (`keepAll` swallows its own failures)
@@ -3271,6 +3301,46 @@ export class FiscalDocumentsService {
     return { id: made, creditNoteIds: [] }
   }
 
+  // The notice of the last day to void an accepted remission note whose guide is cancelled (D3b-3b), in the transaction of its caller. The
+  // deadline is the provider's; when it cannot be told (the document cannot be opened, the hour of the seal was not kept, the provider
+  // fails on it) the notice still goes, with no date, so a person decides: a note that backs goods that do not travel must not stay alive in
+  // silence. A window that is already over tells nobody (there is nothing left to do by a date). Returns whether a notice was published.
+  private announceNote(
+    tx: PrismaTransaction,
+    organizationId: string,
+    note: { id: string; storeId: string; orderId: string; providerId: string },
+    shipmentId: string,
+    stored: StoredFiscalDocument | null,
+    now: Date
+  ): boolean {
+    let deadline: string | null
+    try {
+      deadline =
+        stored === null
+          ? null
+          : (this.providers.find(note.providerId)?.voidDeadline?.(stored) ?? null)
+    } catch {
+      // A provider that cannot read one document must not leave the others untold
+      deadline = null
+    }
+    if (deadline !== null && new Date(deadline).getTime() <= now.getTime()) {
+      this.logger.warn(
+        { documentId: note.id },
+        'the window to void the remission note of a cancelled guide is over'
+      )
+      return false
+    }
+    this.events.publish(tx, Events.FISCAL_REMISSION_VOID_DEADLINE, {
+      organizationId,
+      storeId: note.storeId,
+      documentId: note.id,
+      orderId: note.orderId,
+      shipmentId,
+      deadline
+    })
+    return true
+  }
+
   // The guide was cancelled: the remission notes that back its goods and are accepted stay alive (an invalidation is a legal act with a window
   // of a few days, and a person decides it), so the people who manage the documents are told the last day to void each one (D3b-3). The
   // deadline is the provider's rule, read from the document as it was kept; a provider that gives none, and a window that is over, tell nobody
@@ -3312,33 +3382,9 @@ export class FiscalDocumentsService {
       for (const note of notes) {
         // A note whose invalidation is being sent now needs no notice
         if (note.voidClaimUntil !== null && note.voidClaimUntil.getTime() > now.getTime()) continue
-        const stored = this.storedOf(note)
-        let deadline: string | null
-        try {
-          deadline =
-            stored === null
-              ? null
-              : (this.providers.find(note.providerId)?.voidDeadline?.(stored) ?? null)
-        } catch {
-          // A provider that cannot read one document must not leave the others untold
-          deadline = null
+        if (this.announceNote(tx, organizationId, note, shipmentId, this.storedOf(note), now)) {
+          told += 1
         }
-        if (deadline === null || new Date(deadline).getTime() <= now.getTime()) {
-          this.logger.warn(
-            { documentId: note.id },
-            'the remission note of a cancelled guide has no window to void it that a person can still use'
-          )
-          continue
-        }
-        this.events.publish(tx, Events.FISCAL_REMISSION_VOID_DEADLINE, {
-          organizationId,
-          storeId: note.storeId,
-          documentId: note.id,
-          orderId: note.orderId,
-          shipmentId,
-          deadline
-        })
-        told += 1
       }
       return told
     })

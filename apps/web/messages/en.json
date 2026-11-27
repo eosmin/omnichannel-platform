@@ -1299,7 +1299,10 @@
       },
       "remission_void_deadline": {
         "title": "Void the remission note of a cancelled guide",
-        "body": "A guide was cancelled whose remission note was already accepted, and the note is still alive. Open the document and void it by {date} (UTC time) at the latest: after that date the authority no longer allows it."
+        "body": "A guide was cancelled whose remission note was already accepted, and the note is still alive. Open the document and void it by {date} (UTC time) at the latest: after that date the authority no longer allows it.",
+        "reason": {
+          "NO_DEADLINE": "A guide was cancelled whose remission note was already accepted, and the note is still alive. The last day could not be worked out: open the document and void it as soon as you can, because the authority gives only a few days to do it."
+        }
       },
       "entry_mismatch": {
         "title": "A fiscal document disagrees with the books",

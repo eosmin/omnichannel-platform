@@ -1299,7 +1299,10 @@
       },
       "remission_void_deadline": {
         "title": "Anula la nota de remisión de una guía cancelada",
-        "body": "Se canceló una guía cuya nota de remisión ya fue aceptada, y la nota sigue vigente. Abre el documento y anúlalo a más tardar el {date} (hora UTC): después de esa fecha la autoridad ya no lo permite."
+        "body": "Se canceló una guía cuya nota de remisión ya fue aceptada, y la nota sigue vigente. Abre el documento y anúlalo a más tardar el {date} (hora UTC): después de esa fecha la autoridad ya no lo permite.",
+        "reason": {
+          "NO_DEADLINE": "Se canceló una guía cuya nota de remisión ya fue aceptada, y la nota sigue vigente. No se pudo calcular la fecha límite: abre el documento y anúlala cuanto antes, porque la autoridad da pocos días para hacerlo."
+        }
       },
       "entry_mismatch": {
         "title": "Un documento fiscal no coincide con los libros",
