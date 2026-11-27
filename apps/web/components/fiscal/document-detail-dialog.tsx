@@ -179,7 +179,7 @@ function DocumentBody({
         <p className="text-muted-foreground text-xs">{t('receiver.minimized')}</p>
       </section>
       <SealedDetail detail={document.detail} />
-      <EvidencePanel document={document} />
+      <EvidencePanel document={document} canManage={canManage} />
       <p className="text-muted-foreground text-xs">{t('immutable')}</p>
       {canManage ? (
         <Actions

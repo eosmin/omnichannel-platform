@@ -4,11 +4,16 @@ import { ApiRoutes } from '@platform/core/api'
 import {
   FiscalDocumentKind,
   FiscalDocumentStatus,
+  FiscalDeliveryPending,
+  FiscalDeliveryRoute,
+  FiscalDeliveryStatus,
   FiscalEnvironment,
-  type FiscalEvidenceKind,
+  FiscalEvidenceKind,
+  FiscalHandMeans,
   FiscalIssueOn,
   type FiscalReceiverPatchBody,
   FiscalVoidKind,
+  type HandOverFiscalDeliveryBody,
   type PutFiscalIssuerBody,
   type VoidFiscalDocumentBody
 } from '@platform/core/domain'
@@ -393,4 +398,49 @@ export async function confirmFiscalIssuerChange(
     schema: queuedEnvelopeSchema,
     storeId
   })
+}
+
+// How the files of an accepted document reached its receiver (the route and a reason code, never an address) and which of the two files of
+// the receiver exist. `pending`: no delivery row yet (it runs when the document is accepted; the daily check publishes it again if lost).
+const deliverySchema = z.object({
+  documentId: z.string(),
+  state: z.enum([FiscalDeliveryPending, ...Object.values(FiscalDeliveryStatus)]),
+  route: z.enum(FiscalDeliveryRoute).nullable(),
+  reason: z.string().nullable(),
+  means: z.enum(FiscalHandMeans).nullable(),
+  handedOverAt: z.string().nullable(),
+  files: z.array(z.enum(FiscalEvidenceKind))
+})
+export type FiscalDeliveryView = z.output<typeof deliverySchema>
+const deliveryEnvelopeSchema = z.object({ data: deliverySchema })
+
+export async function fetchFiscalDelivery(
+  client: ApiClient,
+  storeId: string,
+  id: string,
+  signal?: AbortSignal
+): Promise<FiscalDeliveryView> {
+  const answer = await client.request(ApiRoutes.fiscal.documents.delivery(encodeURIComponent(id)), {
+    schema: deliveryEnvelopeSchema,
+    storeId,
+    signal
+  })
+  return answer.data
+}
+
+// A person records that they gave the files to the receiver by hand (the download is the route of the evidence). Closes a delivery that
+// could not be sent; the api answers 409 for one the system delivered already.
+export async function handOverFiscalDelivery(
+  client: ApiClient,
+  storeId: string,
+  id: string,
+  body: HandOverFiscalDeliveryBody
+): Promise<FiscalDeliveryView> {
+  const answer = await client.request(ApiRoutes.fiscal.documents.delivery(encodeURIComponent(id)), {
+    method: 'POST',
+    body,
+    schema: deliveryEnvelopeSchema,
+    storeId
+  })
+  return answer.data
 }

@@ -421,6 +421,51 @@ describe('OrphanMediaCleaner', () => {
     expect(await storage.head(exportKey)).not.toBeNull()
   })
 
+  describe('the files of an order', () => {
+    // Past the TTL of an order file, which is longer than the one of an upload: a copy a delivery is still writing is not taken
+    const afterOrderTtl = () =>
+      new Date(Date.now() + (UploadLimits.ORPHAN_ORDER_FILE_TTL_HOURS + 1) * HOUR_MS)
+
+    async function orderRow(key: string, id: string): Promise<void> {
+      await owner.query(
+        `INSERT INTO media (id, store_id, purpose, key, filename, content_type, file_size, status, created_at)
+         VALUES ($1, $2, 'order', $3, 'f.pdf', 'application/pdf', 1, 'clean', now() - interval '2 hours')`,
+        [id, storeId, key]
+      )
+    }
+
+    it('deletes a copy no row names once it is past the TTL, and keeps the one a row names', async () => {
+      const orderId = randomUUID()
+      const keptId = randomUUID()
+      const kept = await object(StorageKeys.order(storeId, orderId, keptId, 'kept.pdf'))
+      await orderRow(kept, keptId)
+      const stray = await object(StorageKeys.order(storeId, orderId, randomUUID(), 'stray.pdf'))
+
+      await sweep(afterOrderTtl())
+
+      expect(await storage.head(stray)).toBeNull()
+      expect(await storage.head(kept)).not.toBeNull()
+    })
+
+    it('keeps a copy past the TTL of an upload but not of an order: the process that writes it may be retrying', async () => {
+      const young = await object(StorageKeys.order(storeId, randomUUID(), randomUUID(), 'new.pdf'))
+
+      await sweep(later())
+
+      expect(await storage.head(young)).not.toBeNull()
+    })
+
+    it('never takes a key that is not shaped as an order file of ours, whatever its age', async () => {
+      const odd = await object(`stores/${storeId}/orders/not-an-order/not-a-media/odd.pdf`)
+      const short = await object(`stores/${storeId}/orders/${randomUUID()}/${randomUUID()}`)
+
+      await sweep(afterOrderTtl())
+
+      expect(await storage.head(odd)).not.toBeNull()
+      expect(await storage.head(short)).not.toBeNull()
+    })
+  })
+
   it('deletes the file an infected row left behind', async () => {
     const key = await object(StorageKeys.message(storeId, randomUUID(), 'virus.txt'))
     const id = await row('infected', key)

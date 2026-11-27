@@ -43,12 +43,15 @@ import {
 } from '../tenancy'
 
 import { FiscalEvidenceUrlsService } from './fiscal-evidence-urls.service'
+import { type FiscalDeliveryView, FiscalHandDeliveryService } from './fiscal-hand-delivery.service'
 import { FiscalReachService } from './fiscal-reach.service'
 import { FiscalSubmissionQueue } from './fiscal-submission.queue'
 import {
   type ConfirmIssuerChangeBody,
   confirmIssuerChangeSchema,
   evidenceKindSchema,
+  type HandOverBody,
+  handOverSchema,
   idSchema,
   type ListDocumentsQuery,
   listDocumentsQuerySchema,
@@ -79,6 +82,7 @@ export class FiscalController {
     private readonly sweep: FiscalSweepService,
     private readonly queue: FiscalSubmissionQueue,
     private readonly evidenceUrls: FiscalEvidenceUrlsService,
+    private readonly handDelivery: FiscalHandDeliveryService,
     private readonly reach: FiscalReachService,
     private readonly logger: PinoLogger
   ) {
@@ -237,6 +241,52 @@ export class FiscalController {
         kind,
         actorOf(user, store, req),
         granted
+      )
+    }
+  }
+
+  // How the files of an accepted document reached its receiver and which of them exist: what the panel needs to offer the hand delivery
+  @RequirePermissions(Permissions.FISCAL_VIEW)
+  @NoStore()
+  @NoTenantTransaction(
+    'reads a document of the organization that may belong to another store than the one of the header: the service reads in a unit of its own, in the context of the whole organization, and checks the reach of the person (HC-128) inside it'
+  )
+  @Get(ApiRoutes.fiscal.documents.delivery(':id'))
+  async delivery(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) documentId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<{ data: FiscalDeliveryView }> {
+    return {
+      data: await this.handDelivery.read(organization.id, documentId, actorOf(user, store, req))
+    }
+  }
+
+  // A person records that they gave the files to the receiver by hand (downloaded from the evidence route, or on paper at the customer's
+  // request): closes the duty a delivery that could not be sent leaves. No public route: the person is a member of the store.
+  @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @NoStore()
+  @NoTenantTransaction(
+    'writes the delivery of a document of the organization that may belong to another store than the one of the header: the service writes in units of its own, each in the context of the whole organization, and checks the reach of the person (HC-128) inside them'
+  )
+  @Post(ApiRoutes.fiscal.documents.delivery(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  async handOver(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) documentId: string,
+    @Body(new ZodValidationPipe(handOverSchema)) body: HandOverBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<{ data: FiscalDeliveryView }> {
+    return {
+      data: await this.handDelivery.handOver(
+        organization.id,
+        documentId,
+        body,
+        actorOf(user, store, req)
       )
     }
   }

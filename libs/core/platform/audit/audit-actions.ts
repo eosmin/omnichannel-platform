@@ -263,6 +263,8 @@ export const AuditAction = {
   // The files of an accepted document given to its receiver (route and reason only, never the receiver's data), or nothing could carry them
   FISCAL_DELIVERY_SENT: 'fiscal.delivery_sent',
   FISCAL_DELIVERY_NOT_SENT: 'fiscal.delivery_not_sent',
+  // A person recorded that they gave the files to the receiver by hand (the means only, never the receiver's data)
+  FISCAL_DELIVERY_HANDED_OVER: 'fiscal.delivery_handed_over',
   // A file of the periodic return (an annex of the monthly VAT return) was taken out: who, the month, which annex and how many rows, never a row
   FISCAL_ANNEX_EXPORTED: 'fiscal.annex_exported',
   // A sealed fiscal value sealed again with the current key after a rotation (the platform is the actor; the kind and the row, never the value)

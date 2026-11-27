@@ -6,6 +6,7 @@ import {
   FiscalEvidenceKind,
   fiscalIdSchema,
   fiscalReceiverPatchSchema,
+  handOverFiscalDeliverySchema,
   FiscalSweepKind,
   FiscalSweepLimits,
   listFiscalDocumentsQuerySchema,
@@ -14,6 +15,7 @@ import {
   putFiscalIssuerSchema,
   type ConfirmFiscalIssuerChangeBody,
   type FiscalReceiverPatchBody,
+  type HandOverFiscalDeliveryBody,
   type ListFiscalDocumentsQuery,
   type PutFiscalIssuerBody,
   type VoidFiscalDocumentBody,
@@ -31,6 +33,9 @@ export const receiverPatchSchema = fiscalReceiverPatchSchema
 export type ReceiverPatchBody = FiscalReceiverPatchBody
 export const voidDocumentSchema = voidFiscalDocumentSchema
 export type VoidDocumentBody = VoidFiscalDocumentBody
+
+export const handOverSchema = handOverFiscalDeliverySchema
+export type HandOverBody = HandOverFiscalDeliveryBody
 
 export const evidenceKindSchema = z.enum(FiscalEvidenceKind)
 
