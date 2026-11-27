@@ -585,6 +585,10 @@ export interface FiscalDocumentProvider {
   // elsewhere, or by an earlier request whose answer was lost) and after a void that got no answer. Optional: a provider that cannot tell
   // leaves it out and core goes by the answer of `void` alone.
   consultVoid?(doc: StoredFiscalDocument, ctx: ProviderContext): Promise<VoidConsultResult>
+  // Pure, optional: the last instant (ISO 8601) at which the authority still accepts the invalidation of this ACCEPTED document, from what was
+  // kept of it, or null when it cannot be told (the hour of the seal was not kept, the rule needs a list that is missing). Core uses it to tell
+  // a person how long they have; it never refuses a void by it (the authority has the last word). A provider without it gives no deadline.
+  voidDeadline?(doc: StoredFiscalDocument): string | null
   readonly contingency?: ContingencyPolicy
   // Signs a document built in the deferred model and says whether it can be kept for the report (Step 4B.7c-7). Sends nothing. Required
   // when the manifest declares `contingencyMode`.

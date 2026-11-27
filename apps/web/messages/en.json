@@ -122,6 +122,7 @@
           "retransmit_deadline": "Resend window of a refused fiscal document",
           "delivery_not_sent": "Fiscal document not delivered",
           "void_retransmit_deadline": "Resend window of a refused invalidation",
+          "remission_void_deadline": "Void the remission note of a cancelled guide",
           "entry_mismatch": "Fiscal document disagrees with the books",
           "contingency_opened": "Fiscal contingency started",
           "contingency_report_failed": "Fiscal contingency not reported",
@@ -1295,6 +1296,13 @@
       "void_retransmit_deadline": {
         "title": "The window to resend an invalidation is closing",
         "body": "The authority refused the invalidation of a fiscal document and the 24 hours to correct it and send it again are closing or over. Open the document, fix the invalidation and send it again: the document stays accepted until the authority takes it."
+      },
+      "remission_void_deadline": {
+        "title": "Void the remission note of a cancelled guide",
+        "body": "A guide was cancelled whose remission note was already accepted, and the note is still alive. Open the document and void it by {date} (UTC time) at the latest: after that date the authority no longer allows it.",
+        "reason": {
+          "NO_DEADLINE": "A guide was cancelled whose remission note was already accepted, and the note is still alive. The last day could not be worked out: open the document and void it as soon as you can, because the authority gives only a few days to do it."
+        }
       },
       "entry_mismatch": {
         "title": "A fiscal document disagrees with the books",

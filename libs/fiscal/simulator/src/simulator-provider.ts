@@ -59,6 +59,9 @@ const FAKE_KEY = 'simulator-key-not-a-secret'
 
 // No state: every answer is a function of the receiver and of the key and the attempt of the call, so a worker that restarts, or another
 // process, answers what the first one would have. The authority "received" a LOST document on its first attempt and knows it from then on.
+// How long after it is asked the simulator says a document may still be invalidated
+export const SimulatorVoidWindowMs = 4 * 24 * 60 * 60 * 1000
+
 export class SimulatorProvider implements FiscalDocumentProvider {
   readonly id = SIMULATOR_PROVIDER_ID
   readonly countryCode = 'XX'
@@ -233,6 +236,12 @@ export class SimulatorProvider implements FiscalDocumentProvider {
       })
     }
     return Promise.resolve({ state: FiscalVoidConsultState.NOT_VOIDED })
+  }
+
+  // The simulator keeps no seal day, so its window is counted from the moment it is asked: four days ahead, like the window of a remission note
+  // of the first real provider. It exists so the notice of the last day to void a document can be exercised end to end.
+  voidDeadline(): string | null {
+    return new Date(Date.now() + SimulatorVoidWindowMs).toISOString()
   }
 
   void(doc: StoredFiscalDocument, reason: string): Promise<VoidResult> {

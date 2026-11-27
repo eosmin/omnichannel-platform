@@ -122,6 +122,7 @@
           "retransmit_deadline": "Plazo de reenvío de un documento fiscal rechazado",
           "delivery_not_sent": "Documento fiscal no entregado",
           "void_retransmit_deadline": "Plazo de reenvío de una invalidación rechazada",
+          "remission_void_deadline": "Anular la nota de remisión de una guía cancelada",
           "entry_mismatch": "Un documento fiscal no coincide con los libros",
           "contingency_opened": "Contingencia fiscal iniciada",
           "contingency_report_failed": "Contingencia fiscal sin reportar",
@@ -1295,6 +1296,13 @@
       "void_retransmit_deadline": {
         "title": "Se acaba el plazo de reenvío de una invalidación",
         "body": "La autoridad rechazó la invalidación de un documento fiscal y el plazo de 24 horas para corregirla y reenviarla se acaba o ya pasó. Abre el documento, corrige la invalidación y envíala de nuevo: el documento sigue aceptado hasta que la autoridad la reciba."
+      },
+      "remission_void_deadline": {
+        "title": "Anula la nota de remisión de una guía cancelada",
+        "body": "Se canceló una guía cuya nota de remisión ya fue aceptada, y la nota sigue vigente. Abre el documento y anúlalo a más tardar el {date} (hora UTC): después de esa fecha la autoridad ya no lo permite.",
+        "reason": {
+          "NO_DEADLINE": "Se canceló una guía cuya nota de remisión ya fue aceptada, y la nota sigue vigente. No se pudo calcular la fecha límite: abre el documento y anúlala cuanto antes, porque la autoridad da pocos días para hacerlo."
+        }
       },
       "entry_mismatch": {
         "title": "Un documento fiscal no coincide con los libros",

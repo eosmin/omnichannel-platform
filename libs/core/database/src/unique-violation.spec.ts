@@ -32,4 +32,11 @@ describe('isUniqueViolationOf', () => {
     expect(isUniqueViolationOf(new Error('uq_a'), 'uq_a')).toBe(false)
     expect(isUniqueViolationOf(null, 'uq_a')).toBe(false)
   })
+
+  it('answers false, and does not throw, for details that cannot be written as text', () => {
+    const loop: Record<string, unknown> = {}
+    loop['self'] = loop
+    expect(isUniqueViolationOf(violation('x', loop), 'uq_a')).toBe(false)
+    expect(isUniqueViolationOf(violation('x', { size: BigInt(1) }), 'uq_a')).toBe(false)
+  })
 })
