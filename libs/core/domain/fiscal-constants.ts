@@ -68,7 +68,16 @@ export const FiscalAnnexLimits = {
   LAST_YEAR: 2100
 } as const
 
+// The names of the unique indexes of the fiscal documents that code answers to (the migration says each)
+export const FiscalIndexNames = {
+  // One live remission note per guide
+  LIVE_REMISSION_OF_SHIPMENT: 'uq_fiscal_documents_live_remission_of_shipment'
+} as const
+
 export const FiscalLimits = {
+  // The remission notes of an order a sale document is offered to name (the provider names the few its authority takes): a bound for the read,
+  // above the most guides an order has
+  FOLLOWED_NOTES_MAX: 50,
   // The limits of the context of the organization that ONE unit of fiscal work opens in a job (a claim, an answer of the authority, a page of
   // the sweep). The call to the authority is never inside one, so a unit holds the database for the rows only. 30 s (twice the 15 s of a
   // request) because the page of the entry check reads up to ENTRY_SCAN_MAX documents in one unit; a row lock never waits that long
@@ -470,7 +479,12 @@ export const FiscalConflictReasons = {
   // The return of a credit note has a live note already
   NOTE_ALREADY_REPLACED: 'note_already_replaced',
   // The order has no tax snapshot (it was made before the tax columns): no sale document is made of it with a tax of 0
-  TAX_SNAPSHOT_MISSING: 'tax_snapshot_missing'
+  TAX_SNAPSHOT_MISSING: 'tax_snapshot_missing',
+  // A remission note that is made again for a guide that is not on its way (cancelled, failed, or never made) or whose issuer no longer makes
+  // the note: there are no goods for it to back
+  NOTE_GUIDE_NOT_ACTIVE: 'note_guide_not_active',
+  // The guide of a remission note has a live note already (a voided note is made again once)
+  REMISSION_ALREADY_REPLACED: 'remission_already_replaced'
 } as const
 
 // The type of a document that has not been built yet: the provider picks the real one when it builds (its rule, not core's)
@@ -533,7 +547,10 @@ export enum FiscalSweepKind {
   // A return that was received on a documented sale and has no credit note
   CREDIT_NOTE_MISSING = 'credit_note_missing',
   // A sale document whose total or tax differs from the entry of the books that holds the same sale: only a person looks at it
-  ENTRY_MISMATCH = 'entry_mismatch'
+  ENTRY_MISMATCH = 'entry_mismatch',
+  // A guide whose goods travel (outbound, in a state that backs them) of an issuer that makes the sale document on delivery, and that has no
+  // remission note at all: the event of the guide is not repeated, so a listener that failed leaves it with none
+  REMISSION_NOTE_MISSING = 'remission_note_missing'
 }
 
 // What differs between a sale document and its entry

@@ -25,6 +25,20 @@ export class FiscalProviderRegistry {
       ) {
         throw new Error(`the document types of the fiscal provider ${provider.id} are not valid`)
       }
+      // A type is at most one of the notes of a document (a credit note, a debit note, a remission note) or a purchase: the manifest says what
+      // `build` picks for each kind, and a type that is two of them would be picked for both
+      if (
+        provider.manifest.documentTypes.some(
+          type =>
+            [type.creditNote, type.debitNote, type.remissionNote, type.purchase].filter(
+              flag => flag === true
+            ).length > 1
+        )
+      ) {
+        throw new Error(
+          `a document type of the fiscal provider ${provider.id} is more than one of a credit note, a debit note, a remission note and a purchase`
+        )
+      }
       // A provider that numbers by document type is asked for the type before `build`: one that cannot answer would never be numbered
       if (
         provider.manifest.sequence?.perDocumentType === true &&
