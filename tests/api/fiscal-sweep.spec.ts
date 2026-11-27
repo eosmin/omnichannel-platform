@@ -24,7 +24,8 @@ import {
   InventoryMovementType,
   MediaStatus,
   OrderReturnStatus,
-  OrderStatus
+  OrderStatus,
+  ShipmentStatus
 } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events, type FiscalEntryMismatchPayload } from '@platform/core/events'
@@ -40,7 +41,7 @@ import {
 import { SIMULATOR_PROVIDER_ID } from '@platform/fiscal/simulator'
 
 import { FiscalReconciler } from '../../apps/worker/src/finance/fiscal-reconciler.service'
-import { createCarrierConnection, createOrder } from '../builders'
+import { createCarrierConnection, createOrder, createShipment } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -615,6 +616,213 @@ describe('The check of the fiscal documents', () => {
           where: { organizationId: ctx.orgA.id, sourceId: sale.id }
         })
       ).toBe(1)
+    })
+  })
+
+  describe('a guide with no remission note (D3b-3)', () => {
+    // An order that left with a guide and no sale document yet: what an issuer that makes the sale document on delivery has in the road
+    async function dispatched(status: ShipmentStatus = ShipmentStatus.IN_TRANSIT) {
+      const order = await deliveredOrder()
+      await owner.order.update({
+        where: { id: order.id },
+        data: { status: OrderStatus.SHIPPED, deliveredAt: null }
+      })
+      const guide = await createShipment(owner, {
+        storeId: ctx.storeA.id,
+        orderId: order.id,
+        status
+      })
+      return { order, guide }
+    }
+    const rawNote = (orderId: string, shipmentId: string, status: string) =>
+      owner.fiscalDocument.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          orderId,
+          shipmentId,
+          kind: FiscalDocumentKind.REMISSION_NOTE,
+          sequenceNumber: 1_800_000_000 + Math.floor(Math.random() * 90_000_000),
+          documentType: 'pending',
+          status,
+          ...(status === (FiscalDocumentStatus.VOIDED as string)
+            ? { voidedAt: new Date(), voidReason: 'wrong data' }
+            : {}),
+          providerId: SIMULATOR_PROVIDER_ID,
+          environment: 'sandbox',
+          issuerSnapshot: {},
+          linesSnapshot: { lines: [] },
+          receiverEncrypted: Buffer.from('x'),
+          totalCents: 1,
+          taxCents: 0
+        }
+      })
+
+    it('is found when the goods travel and nothing backs them, and not when something does or nothing travels', async () => {
+      // The go-live of the issuer: a sale document of the environment
+      await documentedSale()
+      const lost = await dispatched()
+      const delivered = await dispatched(ShipmentStatus.DELIVERED)
+      const cancelled = await dispatched(ShipmentStatus.CANCELLED)
+      const failed = await dispatched(ShipmentStatus.FAILED)
+      const live = await dispatched()
+      await rawNote(live.order.id, live.guide.id, FiscalDocumentStatus.ACCEPTED)
+      // A voided note is a person's decision: the sweep does not make another behind them
+      const voided = await dispatched()
+      await rawNote(voided.order.id, voided.guide.id, FiscalDocumentStatus.VOIDED)
+      // The sale document backs the goods once it exists
+      const sold = await dispatched()
+      await owner.fiscalDocument.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          orderId: sold.order.id,
+          sequenceNumber: 1_700_000_000 + Math.floor(Math.random() * 90_000_000),
+          documentType: 'pending',
+          status: FiscalDocumentStatus.QUEUED,
+          providerId: SIMULATOR_PROVIDER_ID,
+          environment: 'sandbox',
+          issuerSnapshot: {},
+          linesSnapshot: { lines: [] },
+          receiverEncrypted: Buffer.from('x'),
+          totalCents: 1,
+          taxCents: 0
+        }
+      })
+      // A guide of the time before the issuer went live is history nobody asked to document
+      const history = await dispatched()
+      await owner.shipment.update({
+        where: { id: history.guide.id },
+        data: { createdAt: new Date(Date.now() - 200 * DAY_MS) }
+      })
+      const found = (await sweep.find(ctx.orgA.id, FiscalSweepKind.REMISSION_NOTE_MISSING)).data
+      const ids = found.map(item => item.id)
+      expect(ids).toContain(lost.guide.id)
+      expect(ids).toContain(delivered.guide.id)
+      for (const other of [cancelled, failed, live, voided, sold, history]) {
+        expect(ids).not.toContain(other.guide.id)
+      }
+      expect(found.find(item => item.id === lost.guide.id)).toMatchObject({
+        kind: FiscalSweepKind.REMISSION_NOTE_MISSING,
+        orderId: lost.order.id
+      })
+      // An organization that issues nothing sees none of them
+      expect(await idsOf(FiscalSweepKind.REMISSION_NOTE_MISSING, ctx.orgB.id)).toEqual([])
+      // What this case left in the road must not be made by the nights of the cases after it
+      await owner.shipment.updateMany({
+        where: { id: { in: [lost.guide.id, delivered.guide.id] } },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+    })
+
+    it('does not look at the guide of a cancelled order, nor at the guide of a return (the goods come back: no note backs them)', async () => {
+      const cancelled = await dispatched()
+      await owner.order.update({
+        where: { id: cancelled.order.id },
+        data: { status: OrderStatus.CANCELLED }
+      })
+      // The order of a return has an outbound guide that is not on its way any more, and the guide of the return that is
+      const sent = await dispatched()
+      await owner.shipment.update({
+        where: { id: sent.guide.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+      const ret = await owner.orderReturn.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderId: sent.order.id,
+          type: 'refund',
+          reason: 'DEFECTIVE',
+          status: 'requested',
+          shippingPayer: 'sender',
+          createdBy: (
+            await owner.membership.findFirstOrThrow({
+              where: { storeId: ctx.storeA.id },
+              select: { userId: true }
+            })
+          ).userId
+        },
+        select: { id: true }
+      })
+      const back = await createShipment(owner, {
+        storeId: ctx.storeA.id,
+        returnOf: { returnId: ret.id, orderId: sent.order.id },
+        status: ShipmentStatus.IN_TRANSIT
+      })
+      const ids = await idsOf(FiscalSweepKind.REMISSION_NOTE_MISSING)
+      expect(ids).not.toContain(cancelled.guide.id)
+      expect(ids).not.toContain(back.id)
+      // A note is never made for either: the service answers nothing, so the sweep never has one to ask for
+      expect(await documents.createRemissionForShipment(ctx.orgA.id, back.id)).toBeNull()
+      // The guide of an order that was cancelled while the goods travel still backs them when the service is asked: only the night skips it
+      // (the note covers goods in transit; a person voids it if the goods come back)
+      expect(
+        await documents.createRemissionForShipment(ctx.orgA.id, cancelled.guide.id)
+      ).not.toBeNull()
+    })
+
+    it('is made by the lifecycle and queued as one submission, once whatever the number of nights', async () => {
+      const lost = await dispatched()
+      const run = reconciler()
+      const first = await run.reconciler.reconcile(ctx.orgA.id)
+      expect(first.queued).toBeGreaterThanOrEqual(1)
+      const made = await owner.fiscalDocument.findMany({
+        where: { shipmentId: lost.guide.id, kind: FiscalDocumentKind.REMISSION_NOTE }
+      })
+      expect(made).toHaveLength(1)
+      expect(made[0]).toMatchObject({
+        status: FiscalDocumentStatus.QUEUED,
+        orderId: lost.order.id,
+        journalEntryId: null
+      })
+      const job = run.heavy.jobs.find(
+        entry => entry.opts?.jobId === submitFiscalDocumentJobId(made[0]?.id ?? '', 1)
+      )
+      expect(job?.data).toEqual({ organizationId: ctx.orgA.id, documentId: made[0]?.id })
+      // The next night finds it backed: no second note
+      await run.reconciler.reconcile(ctx.orgA.id)
+      expect(await idsOf(FiscalSweepKind.REMISSION_NOTE_MISSING)).not.toContain(lost.guide.id)
+      expect(
+        await owner.fiscalDocument.count({
+          where: { shipmentId: lost.guide.id, kind: FiscalDocumentKind.REMISSION_NOTE }
+        })
+      ).toBe(1)
+    })
+
+    it('takes a note that the listener made first as the answer, not as a fault', async () => {
+      const lost = await dispatched()
+      const listenerWon = await documents.createRemissionForShipment(ctx.orgA.id, lost.guide.id)
+      expect(listenerWon).not.toBeNull()
+      const run = reconciler()
+      const report = await run.reconciler.reconcile(ctx.orgA.id)
+      expect(report.unresolved).toBe(0)
+      expect(
+        await owner.fiscalDocument.count({
+          where: { shipmentId: lost.guide.id, kind: FiscalDocumentKind.REMISSION_NOTE }
+        })
+      ).toBe(1)
+    })
+
+    it('looks at no issuer that makes the sale document at the dispatch', async () => {
+      const lost = await dispatched()
+      await owner.fiscalIssuer.update({
+        where: { organizationId: ctx.orgA.id },
+        data: { issueOn: FiscalIssueOn.SHIPPED }
+      })
+      try {
+        expect(await idsOf(FiscalSweepKind.REMISSION_NOTE_MISSING)).toEqual([])
+      } finally {
+        await owner.fiscalIssuer.update({
+          where: { organizationId: ctx.orgA.id },
+          data: { issueOn: FiscalIssueOn.DELIVERED }
+        })
+      }
+      // The control: the same guide is found with the issuer on delivery
+      expect(await idsOf(FiscalSweepKind.REMISSION_NOTE_MISSING)).toContain(lost.guide.id)
+      await owner.shipment.update({
+        where: { id: lost.guide.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
     })
   })
 

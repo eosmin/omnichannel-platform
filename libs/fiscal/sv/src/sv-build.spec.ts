@@ -1420,3 +1420,85 @@ describe.each([
     ).toBe(SvBuildErrors.CREDITED_DOCUMENT_UNKNOWN)
   })
 })
+
+// A sale document names the remission notes that backed its goods (Anexo IV, fields 14, 16 and 17)
+describe('a sale document that follows remission notes', () => {
+  // The notes are the ones core offers: accepted, of the order. 2026-11-17T03:30Z is the 16th of November in El Salvador.
+  const note = (suffix: number, date: string, over: Record<string, unknown> = {}) => ({
+    ...credited({
+      [SvProviderDataKeys.GENERATION_CODE]: `AC54E9DB-79C5-42CE-B430-${String(suffix).padStart(12, '0')}`,
+      [SvProviderDataKeys.ISSUE_DATE]: date,
+      ...over
+    }),
+    documentType: '04'
+  })
+  const invoice = (
+    follows: ReturnType<typeof note>[],
+    over: Partial<ReturnType<typeof sale>> = {}
+  ) => sale({ follows, ...over })
+  const taxCredit = (
+    follows: ReturnType<typeof note>[],
+    over: Partial<ReturnType<typeof sale>> = {}
+  ) => sale({ follows, receiver: BUSINESS, ...over })
+
+  it('names a note of the same period on an invoice and on a tax credit document, as the official schema takes it', () => {
+    for (const make of [invoice, taxCredit]) {
+      const built = build(make([note(1, '2026-11-10')]))
+      expect(schemaErrors(built.documentType, built.payload)).toEqual([])
+      expect((built.payload as unknown as Payload).documentoRelacionado).toEqual([
+        {
+          tipoDocumento: '04',
+          tipoGeneracion: 2,
+          numeroDocumento: 'AC54E9DB-79C5-42CE-B430-000000000001',
+          fechaEmision: '2026-11-10'
+        }
+      ])
+    }
+  })
+
+  it('names nothing when there are no notes, or when none is allowed, and never refuses the sale for it', () => {
+    expect(payloadOf(invoice([]))['documentoRelacionado']).toBeNull()
+    expect(payloadOf(sale())['documentoRelacionado']).toBeNull()
+    expect(payloadOf(invoice([note(1, '2026-10-01')]))['documentoRelacionado']).toBeNull()
+  })
+
+  it('names a note of the month before only until the third day after that month (rule 2 a)', () => {
+    // A note of the last day of October: the document of the 3rd of November is in time, the one of the 4th is not
+    const named = (madeAt: string) =>
+      payloadOf(invoice([note(1, '2026-10-31')], { issuedAt: madeAt }))['documentoRelacionado']
+    expect(named('2026-11-04T01:00:00.000Z')).not.toBeNull() // 3 November, 19:00 in El Salvador
+    expect(named('2026-11-04T07:00:00.000Z')).toBeNull() // 4 November, 01:00 in El Salvador
+  })
+
+  it('leaves out a note dated after the document, other types, a note without its code and a repeated one', () => {
+    const list = [
+      note(1, '2026-11-20'),
+      { ...note(2, '2026-11-10'), documentType: '03' },
+      note(3, '2026-11-10', { [SvProviderDataKeys.GENERATION_CODE]: undefined }),
+      note(4, '2026-11-10', { [SvProviderDataKeys.ISSUE_DATE]: 'yesterday' }),
+      note(5, '2026-11-10'),
+      note(5, '2026-11-10')
+    ]
+    const related = payloadOf(invoice(list))['documentoRelacionado']
+    expect(related?.map(item => item['numeroDocumento'])).toEqual([
+      'AC54E9DB-79C5-42CE-B430-000000000005'
+    ])
+  })
+
+  it('names at most the five the schema of an invoice takes, the oldest first', () => {
+    const list = [1, 2, 3, 4, 5, 6, 7].map(n => note(n, '2026-11-10'))
+    const built = build(invoice(list))
+    expect(schemaErrors(built.documentType, built.payload)).toEqual([])
+    const related = (built.payload as unknown as Payload).documentoRelacionado
+    expect(related?.map(item => item['numeroDocumento'])).toEqual(
+      [1, 2, 3, 4, 5].map(n => `AC54E9DB-79C5-42CE-B430-${String(n).padStart(12, '0')}`)
+    )
+  })
+
+  it('does not change the notes that name the document they change', () => {
+    const built = build(creditNote({ follows: [note(1, '2026-11-10')] }))
+    expect((built.payload as unknown as Payload).documentoRelacionado).toEqual([
+      expect.objectContaining({ tipoDocumento: '03' })
+    ])
+  })
+})

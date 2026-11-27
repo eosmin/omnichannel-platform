@@ -34,7 +34,7 @@ const base = {
 const none = new Set<string>()
 
 describe('what a person may do with a fiscal document', () => {
-  it('completes the receiver of a remission note and voids it, but never replaces it (the api refuses it)', () => {
+  it('completes the receiver of a remission note, voids it, and makes a voided one again for its guide', () => {
     const note = { ...base, kind: FiscalDocumentKind.REMISSION_NOTE }
     expect(
       fiscalActionsOf({ ...note, status: FiscalDocumentStatus.REJECTED, attempts: 2 }, none)
@@ -45,8 +45,8 @@ describe('what a person may do with a fiscal document', () => {
     ).toBe(true)
     expect(fiscalActionsOf(note, none).void).toBe(true)
     const voided = { ...note, status: FiscalDocumentStatus.VOIDED }
-    expect(fiscalActionsOf(voided, none).replace).toBe(false)
-    // Nor made first: that is only for the sale document
+    expect(fiscalActionsOf(voided, none).replace).toBe(true)
+    // Not made first: that is only for the sale document
     expect(fiscalActionsOf(note, none, true).replaceFirst).toBe(false)
   })
 

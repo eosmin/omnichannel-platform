@@ -41,7 +41,8 @@ export function fiscalActionsOf(
   asksReplacementFirst = false
 ): FiscalDocumentActions {
   const sale = document.kind === FiscalDocumentKind.SALE
-  // The server's rule: a remission note takes the receiver like a sale document and is never replaced
+  // The server's rule: a remission note takes the receiver like a sale document, and a voided one is made again for its guide (the server
+  // refuses it with a reason when the goods no longer travel or the guide has a live note)
   const remission = document.kind === FiscalDocumentKind.REMISSION_NOTE
   const refused = document.status === FiscalDocumentStatus.REJECTED
   const queued = document.status === FiscalDocumentStatus.QUEUED
@@ -58,7 +59,6 @@ export function fiscalActionsOf(
       !replacedIds.has(document.id),
     replace:
       document.status === FiscalDocumentStatus.VOIDED &&
-      !remission &&
       (sale ? !replacedIds.has(document.id) : true),
     confirmIssuerChange:
       refused &&

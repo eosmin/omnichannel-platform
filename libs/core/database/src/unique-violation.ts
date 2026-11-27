@@ -11,6 +11,16 @@ export function isUniqueViolation(error: unknown): boolean {
   )
 }
 
+// A unique violation of ONE index or constraint, by its name: the message of the error names it and so do the details the driver adds to it.
+// Any other unique rule of the table is not this one, and a caller that treats "the row exists already" as the answer must not hide it.
+export function isUniqueViolationOf(error: unknown, constraint: string): boolean {
+  if (!isUniqueViolation(error)) return false
+  const message = error instanceof Error ? error.message : ''
+  // The own fields of the error (the code and the details of the driver) as text
+  const details = JSON.stringify({ ...(error as object) })
+  return message.includes(constraint) || details.includes(constraint)
+}
+
 // Prisma's code for "a foreign key constraint failed": a row that something else points to was deleted (or one that
 // points to a row that is gone was written). Same shape check as above.
 const FOREIGN_KEY_FAILED = 'P2003'

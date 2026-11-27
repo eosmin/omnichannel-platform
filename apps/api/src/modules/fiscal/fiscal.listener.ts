@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
-import { EventContext, PrismaService } from '@platform/core/database'
-import { FiscalIssueOn, OrderStatus } from '@platform/core/domain'
+import { EventContext, isUniqueViolationOf, PrismaService } from '@platform/core/database'
+import { FiscalIndexNames, FiscalIssueOn, OrderStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import {
   Events,
@@ -65,6 +65,14 @@ export class FiscalListener {
       if (documentId !== undefined && documentId !== null)
         await this.queue.enqueue(organizationId, documentId, 1)
     } catch (error) {
+      // Two replicas answered the same event: the one that lost finds the note made, which is the answer and no fault
+      if (isUniqueViolationOf(error, FiscalIndexNames.LIVE_REMISSION_OF_SHIPMENT)) {
+        this.logger.warn(
+          { shipmentId: payload.shipmentId },
+          'the remission note of a guide was made by another replica'
+        )
+        return
+      }
       this.logger.error(
         { err: errorName(error), shipmentId: payload.shipmentId },
         'the remission note of a guide was not made'
