@@ -28,9 +28,11 @@ import {
   SvContingencyRefusals,
   SvCodePatterns,
   SvCredentialKeys,
+  SvDocumentTypes,
   SvEndpoints,
   SvEnvironmentCodes,
   SvInvalidation,
+  SvProbe,
   SvProviderDataKeys,
   SvRejectionReasons,
   SvTimeouts,
@@ -41,6 +43,7 @@ import { buildContingencyEvent } from './sv-contingency'
 import { readDeferred } from './sv-contingency-reason'
 import {
   callSv,
+  codeOf,
   recordOf,
   SvTransportError,
   SvTransportFailures,
@@ -548,20 +551,67 @@ export function authorityInstant(text: string | null): number | null {
     : null
 }
 
-// Whether the authority answers now (D2c). A fresh login: the authentication service is the one every call of this provider needs first, and a
-// token kept in memory is never taken for an answer. It does not reach the reception service (the manual's documented calls there all carry a
-// document), so an outage of that service alone is not seen: the person who ends the contingency by hand, and the report that follows, are the
-// check of it. A password the authority refused is reported as such and never asked again by the caller.
+// Whether the authority answers now (D2c, D2d). Two things are asked, in this order. A fresh login: the authentication service is the one every
+// call of this provider needs first, and a token kept in memory is never taken for an answer. Then, with that token, the reception side: a
+// consultation of a document by a generation code that cannot exist (`SvProbe`). The manual's documented calls of the reception service all carry
+// a document, and a document is never sent to find out whether the service is up (it would take a number, ask for a seal and leave a trace in
+// the books of the authority); the consultation is read-only, carries none, and any answer in the form of the authority (a document found, or
+// "there is no such document") says the side that receives the documents is up. A fault of the service (5xx), a token it does not take, no
+// connection, no answer in time, or a page that is not the authority's, is no answer: the contingency goes on. A password the authority refused
+// is reported as such and never asked again by the caller.
 export async function probeAuthority(
   deps: SvTransmissionDeps,
   ctx: ProviderContext
 ): Promise<FiscalAuthorityProbeOutcome> {
   const identity = identityOf(ctx.issuer, ctx.credentials)
   if (identity === null) return FiscalAuthorityProbeOutcome.INCONCLUSIVE
-  const login = await deps.auth.probe(ctx.issuer.environment, identity.nit, identity.apiPassword)
-  if (login.kind === 'token') return FiscalAuthorityProbeOutcome.REACHABLE
+  const environment = ctx.issuer.environment
+  const login = await deps.auth.probe(environment, identity.nit, identity.apiPassword)
   if (login.kind === 'rejected') return FiscalAuthorityProbeOutcome.CREDENTIALS_REJECTED
-  return FiscalAuthorityProbeOutcome.UNREACHABLE
+  if (login.kind !== 'token') return FiscalAuthorityProbeOutcome.UNREACHABLE
+  const endpoints = (deps.endpoints ?? SvEndpoints)[environment]
+  try {
+    const result = await callSv(
+      deps.fetch,
+      `${endpoints.baseUrl}${endpoints.consult}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: login.token,
+          'Content-Type': 'application/json',
+          'User-Agent': deps.userAgent ?? SvUserAgent
+        },
+        body: JSON.stringify({
+          nitEmisor: identity.nit,
+          tdte: SvDocumentTypes.INVOICE,
+          codigoGeneracion: SvProbe.GENERATION_CODE
+        })
+      },
+      deps.receptionTimeoutMs ?? SvTimeouts.RECEPTION_MS
+    )
+    if (result.status === 401 || result.status === 403) {
+      // The token it gave a moment ago is not taken by the side that receives: that is not an answer about the documents
+      deps.auth.forget(environment, identity.nit, identity.apiPassword, login.token)
+      return FiscalAuthorityProbeOutcome.UNREACHABLE
+    }
+    // Only what the authority itself says counts: a document found (200), or a refusal (400, as for a document that does not exist), with BOTH
+    // marks of its answers: a state of its own words and a code of three digits. A 404, a 408, a 429, a body that is not a record, or a gateway
+    // or a WAF that answers 400 with a state or a message of its own, is not proof that the documents are taken, so the contingency goes on
+    const body = recordOf(result.json)
+    const state = textOf(body['estado'])
+    const code = codeOf(body['codigoMsg'])
+    const speaksAsTheAuthority =
+      state !== null &&
+      SvProbe.ANSWER_STATES.includes(state) &&
+      code !== null &&
+      SvCodePatterns.RESPONSE_CODE.test(code)
+    return (result.status === 200 || result.status === 400) && speaksAsTheAuthority
+      ? FiscalAuthorityProbeOutcome.REACHABLE
+      : FiscalAuthorityProbeOutcome.UNREACHABLE
+  } catch (error) {
+    if (error instanceof SvTransportError) return FiscalAuthorityProbeOutcome.UNREACHABLE
+    throw error
+  }
 }
 
 // Reports a contingency: the event is signed and sent, and the window to send its documents runs from the moment the authority took it. The
