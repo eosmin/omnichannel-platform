@@ -609,6 +609,83 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       expect(audited).toHaveLength(2)
     })
 
+    it('keeps in the trail what the document said before it was changed', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const first = document()
+      const received = await receive(order.id, {
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: first,
+        lines: firstLine(order)
+      })
+      const [receipt] = (received.body as OrderBody).receipts
+      const second = document({ costType: '4', generationCode: randomUUID() })
+      const changed = await asAdminA()
+        .put(ApiRoutes.purchaseOrders.receiptDocument(order.id, receipt?.id ?? ''))
+        .send({ fiscalDocument: second })
+      expect(changed.status).toBe(OK)
+      const [entry] = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
+        action: AuditAction.PURCHASE_RECEIPT_DOCUMENT_COMPLETED,
+        resourceId: receipt?.id ?? ''
+      })
+      expect(entry?.metadata).toMatchObject({
+        previous: {
+          documentType: '03',
+          costType: '5',
+          generationCode: first.generationCode.toUpperCase(),
+          annexExclusion: null
+        },
+        current: { costType: '4' }
+      })
+    })
+
+    it('gives the worker no way to write a supplier document and the application no way to delete one', async () => {
+      const has = async (role: string, privilege: string): Promise<boolean> =>
+        (
+          await owner.$queryRaw<{ allowed: boolean }[]>`
+            SELECT has_table_privilege(${role}, 'purchase_receipt_documents', ${privilege}) AS allowed`
+        )[0]?.allowed === true
+      expect(await has('platform_worker', 'SELECT')).toBe(true)
+      for (const privilege of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+        expect(await has('platform_worker', privilege)).toBe(false)
+      }
+      expect(await has('platform_app', 'SELECT')).toBe(true)
+      expect(await has('platform_app', 'INSERT')).toBe(true)
+      expect(await has('platform_app', 'UPDATE')).toBe(true)
+      expect(await has('platform_app', 'DELETE')).toBe(false)
+      expect(await has('platform_app', 'TRUNCATE')).toBe(false)
+    })
+
+    it('does not let a caller complete the document of a receipt that has a line of a store they do not see', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const received = await receive(order.id, { lines: firstLine(order) })
+      const [receipt] = (received.body as OrderBody).receipts
+      const buyerOfOtherStore = api(
+        app,
+        await actorWithPermissions(owner, app, {
+          prefix,
+          name: 'buyer-store-a2-document',
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA2.id,
+          permissions: [Permissions.FINANCE_MANAGE_PURCHASES]
+        }),
+        ctx.storeA2
+      )
+      const route = ApiRoutes.purchaseOrders.receiptDocument(order.id, receipt?.id ?? '')
+      for (const body of [{ fiscalDocument: document() }, { annexExclusion: 'excluded_subject' }]) {
+        const refused = await buyerOfOtherStore.put(route).send(body)
+        expect(refused.status).toBe(CONFLICT)
+        expect(errorOf(refused).metadata).toMatchObject({
+          conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
+        })
+      }
+      expect(await owner.purchaseReceiptDocument.count({ where: { receiptId: receipt?.id } })).toBe(
+        0
+      )
+    })
+
     it('does not leave out a receipt that credits the tax, and does not touch a receipt of another organization', async () => {
       const seller = await supplier()
       const order = await placedOrder(seller.id)

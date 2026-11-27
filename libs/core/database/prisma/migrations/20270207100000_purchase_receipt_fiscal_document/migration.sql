@@ -59,8 +59,10 @@ ALTER TABLE "purchase_receipt_documents" ADD CONSTRAINT "purchase_receipt_docume
 ALTER TABLE "purchase_receipt_documents" ADD CONSTRAINT "purchase_receipt_documents_receipt_fkey"
     FOREIGN KEY ("organization_id", "receipt_id") REFERENCES "purchase_receipts"("organization_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- The application roles never delete a row: a document is replaced or marked, and the table never loses what was declared
+-- The application never deletes a row (a document is replaced or marked, and the table never loses what was declared) and the worker only reads
+-- it: nothing the worker runs writes a document, so it holds no INSERT or UPDATE
 REVOKE DELETE, TRUNCATE ON TABLE purchase_receipt_documents FROM platform_app, platform_worker;
+REVOKE INSERT, UPDATE ON TABLE purchase_receipt_documents FROM platform_worker;
 
 -- The policy of a table of an organization (TDD_01 section 3.2, layer 3), declared here; it binds nobody until the owner turns enforcement on
 SELECT rls_apply_policy('purchase_receipt_documents', 'organization');

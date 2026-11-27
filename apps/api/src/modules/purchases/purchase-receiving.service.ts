@@ -399,7 +399,7 @@ export class PurchaseReceivingService {
     body: CompleteReceiptDocumentBody,
     actor: Actor
   ): Promise<OrderView> {
-    await this.prisma.transaction(async tx => {
+    const previous = await this.prisma.transaction(async tx => {
       await lockScope(tx, `${organizationId}:purchase:${orderId}`)
       const receipt = await tx.purchaseReceipt.findFirst({
         where: { id: receiptId, purchaseOrderId: orderId, organizationId },
@@ -407,7 +407,18 @@ export class PurchaseReceivingService {
           id: true,
           supplierDocumentNumber: true,
           taxCreditable: true,
-          document: { select: { documentType: true } }
+          document: {
+            select: {
+              documentClass: true,
+              documentType: true,
+              generationCode: true,
+              purchaseOrigin: true,
+              expenseClass: true,
+              sector: true,
+              costType: true,
+              annexExclusion: true
+            }
+          }
         }
       })
       if (receipt === null) throw resourceNotFound('purchase receipt')
@@ -456,6 +467,8 @@ export class PurchaseReceivingService {
           update: columns
         })
       }
+      // What the row said before: the audit keeps it, so a document that was declared and then changed leaves a trace
+      return receipt.document
     })
     this.audit.log({
       action: AuditAction.PURCHASE_RECEIPT_DOCUMENT_COMPLETED,
@@ -466,9 +479,10 @@ export class PurchaseReceivingService {
       resourceId: receiptId,
       metadata: {
         purchaseOrderId: orderId,
-        ...('annexExclusion' in body
-          ? { annexExclusion: body.annexExclusion }
-          : { completed: true })
+        // The codes of a document are not personal data: the values it had before and the ones it has now are in the row of the trail
+        previous,
+        current:
+          'annexExclusion' in body ? { annexExclusion: body.annexExclusion } : body.fiscalDocument
       },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
