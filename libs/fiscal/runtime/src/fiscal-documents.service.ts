@@ -1877,7 +1877,8 @@ export class FiscalDocumentsService {
     }
   }
 
-  // The signed event of an invalidation, sealed with the credentials key. It holds the receiver's data and the issuer's signature: it is never
+  // The signed event of an invalidation, sealed with the credentials key as the provider signed it (never scrubbed or rewritten: the content must
+  // match the signature it travels with). It holds the receiver's data and the issuer's signature: it is never
   // logged, and a fault in sealing it never decides the void (the authority has voided the document already): the event is then not kept, and
   // the delivery says so instead of making a file up.
   private sealVoidEvent(
@@ -1886,9 +1887,7 @@ export class FiscalDocumentsService {
   ): Uint8Array<ArrayBuffer> | null {
     if (event === undefined) return null
     try {
-      return new Uint8Array(
-        this.cipher.seal({ event: toJson(event.content), signature: event.signature })
-      )
+      return new Uint8Array(this.cipher.seal({ event: event.content, signature: event.signature }))
     } catch (error) {
       this.logger.error(
         { documentId, err: errorName(error) },
@@ -2594,6 +2593,10 @@ export class FiscalDocumentsService {
     // The event this very call signed and the authority accepted, sealed: written by the statement that voids the document and by nothing else, so
     // an attempt the authority refused, or one answered by a consultation (no event of ours), never leaves one behind
     const sealedEvent = this.sealVoidEvent(id, outcome.event)
+    // Whether the event was kept goes in the trail of the void, so "the event was lost" (the provider gave one and it could not be sealed) is
+    // told from "there never was one of ours" (the authority already held the invalidation)
+    const eventState =
+      sealedEvent !== null ? 'kept' : outcome.event === undefined ? 'none' : 'not_sealed'
     await this.inTx(organizationId, async tx => {
       const locked = await this.lock(tx, organizationId, id)
       if (locked.status !== (FiscalDocumentStatus.ACCEPTED as string)) {
@@ -2632,6 +2635,8 @@ export class FiscalDocumentsService {
       metadata: {
         externalNumber: doc.externalNumber,
         recoveredFromAuthority: recovered,
+        // kept | none (the authority already held it) | not_sealed (the provider gave one and it could not be sealed)
+        voidEvent: eventState,
         // What the person declared (the numbers of the identity documents stay out of the trail: they are customer data)
         ...(input.kind === undefined ? {} : { voidKind: input.kind }),
         ...(input.replacementDocumentId === undefined

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import { PinoLogger } from 'nestjs-pino'
 import pg from 'pg'
 
 import { ApiRoutes } from '@platform/core/api'
@@ -1767,6 +1768,11 @@ describe('The fiscal documents (Step 4B.7)', () => {
           const bytes = Buffer.from(row.voidEventEncrypted ?? new Uint8Array())
           expect(bytes.includes(Buffer.from(SIGNED.signature))).toBe(false)
           expect(bytes.includes(Buffer.from('SIGNED-EVENT-FIXTURE'))).toBe(false)
+          const trail = await waitForAuditEntries(owner, {
+            action: AuditAction.FISCAL_DOCUMENT_VOIDED,
+            resourceId: documentId
+          })
+          expect(trail[0]?.metadata).toMatchObject({ voidEvent: 'kept' })
         })
 
         it('keeps none when the authority refuses, and a retry keeps only the event of the attempt it accepted', async () => {
@@ -1792,14 +1798,19 @@ describe('The fiscal documents (Step 4B.7)', () => {
           const row = await rowOf(documentId)
           expect(row.status).toBe(FiscalDocumentStatus.VOIDED)
           expect(row.voidEventEncrypted).toBeNull()
+          const trail = await waitForAuditEntries(owner, {
+            action: AuditAction.FISCAL_DOCUMENT_VOIDED,
+            resourceId: documentId
+          })
+          expect(trail[0]?.metadata).toMatchObject({ voidEvent: 'none' })
         })
 
         it('voids all the same when the event cannot be sealed, and leaves no trace of it in the logs', async () => {
           const documentId = await accepted()
           const logged: string[] = []
           const capture = (...args: unknown[]) => logged.push(JSON.stringify(args))
-          const spies = ['log', 'error', 'warn', 'info'].map(level =>
-            jest.spyOn(console, level as 'log').mockImplementation(capture)
+          const spies = (['error', 'warn', 'info'] as const).map(level =>
+            jest.spyOn(PinoLogger.prototype, level).mockImplementation(capture as never)
           )
           try {
             const unreadable = { content: { big: BigInt(1) }, signature: 'secret.sig.value' }
@@ -1809,10 +1820,17 @@ describe('The fiscal documents (Step 4B.7)', () => {
           } finally {
             spies.forEach(spy => spy.mockRestore())
           }
+          // The fault was logged (so it is not silent) and said nothing of the event
+          expect(logged.join('')).toMatch(/could not be sealed/)
           const row = await rowOf(documentId)
           expect(row.status).toBe(FiscalDocumentStatus.VOIDED)
           expect(row.voidEventEncrypted).toBeNull()
-          expect(logged.join('')).not.toMatch(/secret\.sig\.value/)
+          expect(logged.join('')).not.toMatch(/secret\.sig\.value|BigInt/)
+          const trail = await waitForAuditEntries(owner, {
+            action: AuditAction.FISCAL_DOCUMENT_VOIDED,
+            resourceId: documentId
+          })
+          expect(trail[0]?.metadata).toMatchObject({ voidEvent: 'not_sealed' })
         })
 
         it('refuses a sealed event on a document that is not voided, whoever writes it', async () => {
