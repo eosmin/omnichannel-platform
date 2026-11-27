@@ -3207,8 +3207,21 @@ export class FiscalDocumentsService {
         select: { id: true }
       })
       if (live !== null) throw alreadyMade()
+      // The sale document backs the goods once it exists (any, voided or not), as `createRemissionForShipment` and the check say
+      const documented = await tx.fiscalDocument.findFirst({
+        where: { organizationId, orderId: shipment.orderId, kind: FiscalDocumentKind.SALE },
+        select: { id: true }
+      })
       const sale = await this.readSale(tx, organizationId, shipment.orderId, false)
       if (sale === null) throw resourceNotFound('order')
+      if (documented !== null || sale.storeId !== shipment.storeId) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'the goods of this remission note are backed by the sale document',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.NOTE_GUIDE_NOT_ACTIVE }
+        )
+      }
       if (sale.taxSnapshotMissing) {
         throw new PlatformException(
           ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,

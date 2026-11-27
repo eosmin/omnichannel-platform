@@ -832,8 +832,7 @@ function relatedDocument(
 
 // The remission notes an invoice or a tax credit document names (Anexo IV, fields 14, 16 and 17). The notes core offers are accepted ones; of
 // them, the document names those that are of the type of a remission note (all of one type), whose generation code and date were kept, that
-// were generated in the tax period of this document or no more than three days before the period ended (rule 2 a: the document is made in the
-// period of the note or within three days after it), once each, and no more than the schema takes. What is left out is left out in silence: the
+// were generated in the tax period of the note or within three days after the period (rule 2 a), once each, and no more than the schema takes. What is left out is left out in silence: the
 // relation is optional (field 14, rule 4: "may name") and a sale is never refused for it.
 function followedNotes(input: FiscalBuildInput): Array<{
   tipoDocumento: string

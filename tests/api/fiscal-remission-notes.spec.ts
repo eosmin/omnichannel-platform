@@ -364,6 +364,21 @@ describe('The remission note of a dispatch (D3b-2)', () => {
       expect(control.status).toBe(OK)
     })
 
+    it('refuses it once the order has its sale document', async () => {
+      const order = await dispatchedOrder()
+      const shipment = await guide(order.id)
+      await created(shipment)
+      const [note] = await noteOf(shipment.id)
+      await voidNote(note?.id ?? '')
+      await owner.fiscalDocument.create({
+        data: rawNote({ orderId: order.id, kind: FiscalDocumentKind.SALE })
+      })
+      const made = await asAdmin().post(ApiRoutes.fiscal.documents.replace(note?.id ?? ''))
+      expect(made.status).toBe(CONFLICT)
+      expect(JSON.stringify(made.body)).toContain('note_guide_not_active')
+      expect(await noteOf(shipment.id)).toHaveLength(1)
+    })
+
     it('never reaches a note of another organization', async () => {
       const order = await dispatchedOrder()
       const shipment = await guide(order.id)
