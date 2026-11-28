@@ -25,6 +25,7 @@ import {
 } from '@platform/core/errors'
 import {
   addMarginRows,
+  grossExchangeView,
   marginBps,
   type MarginMovement,
   marginOfOrder,
@@ -156,8 +157,18 @@ export class FinanceMarginService {
             totalCents: true,
             taxCents: true,
             pricesIncludeTax: true,
+            taxRounding: true,
+            shippingTaxRateBps: true,
+            exchangeCreditMode: true,
             items: {
-              select: { productId: true, quantity: true, unitPriceCents: true, taxCents: true }
+              select: {
+                productId: true,
+                quantity: true,
+                unitPriceCents: true,
+                taxCents: true,
+                taxTreatment: true,
+                taxRateBps: true
+              }
             }
           }
         })
@@ -191,7 +202,13 @@ export class FinanceMarginService {
         const found = new Set(everyOrder.map(order => order.id))
         ordersNotReadable += ids.filter(id => !found.has(id)).length
         for (const order of orders) {
-          const draft: MarginOrder = { ...order, lines: order.items }
+          // The sale entry of the replacement of an exchange is at the full price (`grossExchangeView`): the margin reads the same figures
+          const view = grossExchangeView({ ...order, lines: order.items })
+          if (!view.ok) {
+            ordersNotReadable += 1
+            continue
+          }
+          const draft: MarginOrder = view.order
           const result = marginOfOrder(draft, movementsOf.get(`${order.storeId}:${order.id}`) ?? [])
           if (!result.ok) {
             ordersNotReadable += 1

@@ -449,6 +449,72 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
     })
   })
 
+  // The replacement of an exchange (HC-138): made at the full price its document says $169.50 and $19.50 of tax, with no discount, as its
+  // sale entry does; one made before the mode existed keeps the document it always had
+  describe('the replacement of an exchange', () => {
+    async function replacement(mode: string | null) {
+      const original = await deliveredOrder()
+      const made = await createOrder(owner, { storeId: ctx.storeA.id })
+      await owner.orderItem.update({
+        where: { id: made.itemId },
+        data: {
+          quantity: 1,
+          unitPriceCents: 16950,
+          taxTreatment: 'taxed',
+          taxRateBps: 1300,
+          taxCents: 650
+        }
+      })
+      await owner.order.update({
+        where: { id: made.id },
+        data: {
+          status: OrderStatus.DELIVERED,
+          subtotalCents: 16950,
+          shippingCents: 0,
+          discountCents: 11300,
+          discountReason: 'exchange_credit:r1',
+          totalCents: 5650,
+          taxCents: 650,
+          pricesIncludeTax: true,
+          taxRounding: 'half_up',
+          exchangeOfOrderId: original.id,
+          exchangeCreditMode: mode,
+          deliveredAt: new Date()
+        }
+      })
+      await emitter.emitAsync(Events.ORDER_STATUS_CHANGED, status(made.id, OrderStatus.DELIVERED))
+      const document = await owner.fiscalDocument.findFirstOrThrow({
+        where: { orderId: made.id, kind: FiscalDocumentKind.SALE }
+      })
+      await documents.submit(ctx.orgA.id, document.id)
+      return { id: made.id, itemId: made.itemId, documentId: document.id }
+    }
+
+    it('documents a replacement made at the full price at $169.50 and $19.50 of tax with no discount, and its credit note credits the same', async () => {
+      const order = await replacement('gross')
+      const document = await owner.fiscalDocument.findUniqueOrThrow({
+        where: { id: order.documentId }
+      })
+      expect([document.totalCents, document.taxCents]).toEqual([16950, 1950])
+      expect(document.linesSnapshot).toMatchObject({ discountCents: 0, pricesIncludeTax: true })
+      const returnId = await receivedReturn(order, 1)
+      const note = await noteOf(returnId)
+      expect([note?.totalCents, note?.taxCents]).toEqual([16950, 1950])
+    })
+
+    it.each([null, 'net'])(
+      'keeps the document of a replacement whose mode is %s as it was (the discount, $56.50 and $6.50 of tax)',
+      async mode => {
+        const order = await replacement(mode)
+        const document = await owner.fiscalDocument.findUniqueOrThrow({
+          where: { id: order.documentId }
+        })
+        expect([document.totalCents, document.taxCents]).toEqual([5650, 650])
+        expect(document.linesSnapshot).toMatchObject({ discountCents: 11300 })
+      }
+    )
+  })
+
   describe('the replacement of a voided document', () => {
     it('makes the note of a return that was received while the sale had no live document', async () => {
       const order = await sale(true)

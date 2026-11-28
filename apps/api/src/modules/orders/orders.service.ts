@@ -30,6 +30,7 @@ import {
   isPriceApprovalBlocking,
   nextCalendarDay,
   normalizeNote,
+  ExchangeCreditMode,
   OrderConfirmationChannel,
   type OrderCopyDraft,
   OrderLockScopes,
@@ -639,7 +640,8 @@ export class OrdersService {
   // CONFIRMED (the approval is the customer's confirmation) for the customer of the returned order, reserves stock like any order,
   // and its discount is the credit of the return: written by the system, exempt from the store's discount limit and from the price
   // approval, and never above the products of the replacement. A shipping fee outside the range of the carrier is refused as in any
-  // order. The audit entries leave after the commit (`afterCommit`).
+  // order. The audit entries leave after the commit (`afterCommit`). The order stores what the customer pays (the credit is its discount) and
+  // is marked `gross`: the books and the documents read it as a sale at the full price, the credit consumed from the advances (HC-138).
   async createReplacement(
     tx: PrismaTransaction,
     storeId: string,
@@ -749,6 +751,8 @@ export class OrdersService {
         confirmedByPluginId: by.pluginId,
         confirmedVia: OrderConfirmationChannel.OTHER,
         exchangeOfOrderId: input.ofOrderId,
+        // Booked and documented as a sale at the full price, the credit consumed from the customer's advances (HC-138)
+        exchangeCreditMode: ExchangeCreditMode.GROSS,
         createdBy: by.userId,
         createdByPluginId: by.pluginId
       },
@@ -851,6 +855,27 @@ export class OrdersService {
       // fee and the discount are fixed (refund it and the order is open again). No amount is stored with a payment.
       if (
         (order.paymentStatus as PaymentStatus) === PaymentStatus.COMPLETED &&
+        (body.items !== undefined ||
+          body.shippingCents !== undefined ||
+          body.carrierConnectionId !== undefined ||
+          body.discountCents !== undefined ||
+          body.discountReason !== undefined)
+      ) {
+        throw orderRefusal(ErrorCodes.ORDER_FIELD_NOT_EDITABLE, {
+          fields: ['items', 'shipping', 'discount'].filter(field =>
+            field === 'items'
+              ? body.items !== undefined
+              : field === 'shipping'
+                ? body.shippingCents !== undefined || body.carrierConnectionId !== undefined
+                : body.discountCents !== undefined || body.discountReason !== undefined
+          )
+        })
+      }
+      // The replacement of an exchange made at the full price is booked at the price of its lines and fee with the credit of the return
+      // consumed from the advances (`grossExchangeView`): changing what is sold, the fee or the discount would change what the credit
+      // is read as, so those are fixed (cancel it and make the exchange again). Notes, address and phones stay editable.
+      if (
+        (order.exchangeCreditMode as ExchangeCreditMode | null) === ExchangeCreditMode.GROSS &&
         (body.items !== undefined ||
           body.shippingCents !== undefined ||
           body.carrierConnectionId !== undefined ||

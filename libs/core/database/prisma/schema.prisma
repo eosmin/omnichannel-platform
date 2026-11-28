@@ -845,6 +845,7 @@ model Order {
   confirmedByPluginId              String?   @map("confirmed_by_plugin_id")
   confirmedVia                     String?   @map("confirmed_via") // OrderConfirmationChannel
   exchangeOfOrderId                String?   @map("exchange_of_order_id") // The order this one replaces
+  exchangeCreditMode               String?   @map("exchange_credit_mode") // ExchangeCreditMode: how the books and the documents read the credit of a replacement; null = net (every order made before the column)
   copiedFromOrderId                String?   @map("copied_from_order_id") // The order it was copied from
   freeShipping                     Boolean   @default(false) @map("free_shipping") // Derived and stored on save (TDD_17 §4.13)
   discountReason                   String?   @map("discount_reason")

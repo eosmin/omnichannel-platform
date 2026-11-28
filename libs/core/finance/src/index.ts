@@ -2,6 +2,7 @@
 // `@platform/core/finance-hash`, so that a screen importing a rule of the chart never pulls it into the bundle.
 export * from './account-rules'
 export * from './auto-entry-rules'
+export * from './exchange-gross'
 export * from './entry-rules'
 export * from './movement-cost'
 export * from './legal-books'

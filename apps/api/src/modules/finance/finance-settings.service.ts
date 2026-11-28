@@ -190,6 +190,45 @@ export class FinanceSettingsService {
           })
         }
       }
+      // The VAT report tells a return that came after the window by this very account, so the account that is chosen must be a clean mark:
+      // one with entries already (anything posted there, whatever it was, would be read as a late return and would change a month already
+      // filed) or one that already serves another role (the entries of that role would be read the same way) is refused
+      if (
+        role === (AccountRole.VAT_NON_RECOVERABLE as string) &&
+        current?.accountId !== body.accountId
+      ) {
+        const used =
+          (await tx.journalLine.count({
+            where: { organizationId, accountId: body.accountId }
+          })) > 0 ||
+          (await tx.accountRoleMapping.count({
+            where: { organizationId, accountId: body.accountId, role: { not: role } }
+          })) > 0
+        if (used) {
+          throw resourceConflict('the account for the role is already in use', {
+            conflict: FinanceConflicts.ROLE_TARGET_IN_USE,
+            role,
+            accountId: body.accountId
+          })
+        }
+      }
+      // And the other way: no other role takes the account that marks the late returns, its entries would be read as such
+      if (role !== (AccountRole.VAT_NON_RECOVERABLE as string)) {
+        const marks = await tx.accountRoleMapping.count({
+          where: {
+            organizationId,
+            accountId: body.accountId,
+            role: AccountRole.VAT_NON_RECOVERABLE
+          }
+        })
+        if (marks > 0) {
+          throw resourceConflict('the account for the role is already in use', {
+            conflict: FinanceConflicts.ROLE_TARGET_IN_USE,
+            role,
+            accountId: body.accountId
+          })
+        }
+      }
       await tx.accountRoleMapping.upsert({
         where: { organizationId_role: { organizationId, role } },
         create: { organizationId, role, accountId: body.accountId },

@@ -54,6 +54,7 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
+import { grossExchangeView } from '@platform/core/finance'
 import type {
   BuiltDocument,
   FiscalCreditedDocument,
@@ -594,11 +595,15 @@ export class FiscalDocumentsService {
         storeId: true,
         orderNumber: true,
         currency: true,
+        subtotalCents: true,
         shippingCents: true,
         discountCents: true,
         totalCents: true,
         taxCents: true,
         pricesIncludeTax: true,
+        taxRounding: true,
+        shippingTaxRateBps: true,
+        exchangeCreditMode: true,
         paymentMethod: true,
         paymentStatus: true,
         paymentReference: true,
@@ -622,8 +627,12 @@ export class FiscalDocumentsService {
       }
     })
     if (order === null) return null
-    const lines = documentLines(order.items)
-    const orderTax = order.taxCents ?? 0
+    // The replacement of an exchange made at the full price is documented at the full price, as its entry is (`grossExchangeView`); any
+    // other order, and a replacement made before the mode existed, as it was posted. An order the view cannot read has no document made.
+    const view = grossExchangeView({ ...order, lines: order.items })
+    const sold = view.ok ? view.order : { ...order, lines: order.items }
+    const lines = documentLines(sold.lines)
+    const orderTax = sold.taxCents ?? 0
     const linesTax = lines.reduce((sum, line) => sum + line.taxCents, 0)
     const address: Record<string, string> = {}
     for (const [key, value] of Object.entries(record(order.shippingAddress))) {
@@ -640,6 +649,7 @@ export class FiscalDocumentsService {
     // The fiscal data of the customer, as it is at this moment, is copied into the receiver: the document keeps its own sealed copy and a
     // later change of the customer's data never reaches it
     const taxSnapshotMissing =
+      !view.ok ||
       order.taxCents === null ||
       order.pricesIncludeTax === null ||
       order.items.some(item => item.taxCents === null)
@@ -660,14 +670,14 @@ export class FiscalDocumentsService {
       // note, the legal books and the entry of the sale refuse such an order too (TAX_MISSING)
       taxSnapshotMissing,
       currency: order.currency,
-      totalCents: order.totalCents,
-      taxCents: Math.min(orderTax, order.totalCents),
+      totalCents: sold.totalCents,
+      taxCents: Math.min(orderTax, sold.totalCents),
       receiver,
       linesSnapshot: toJson({
         lines,
-        shippingCents: order.shippingCents,
+        shippingCents: sold.shippingCents,
         shippingTaxCents: Math.max(0, orderTax - linesTax),
-        discountCents: order.discountCents,
+        discountCents: sold.discountCents,
         // null on an order made before the tax columns: its prices are read as tax included, like the order does
         pricesIncludeTax: order.pricesIncludeTax ?? true,
         orderNumber: order.orderNumber,
@@ -896,6 +906,9 @@ export class FiscalDocumentsService {
         totalCents: true,
         taxCents: true,
         pricesIncludeTax: true,
+        taxRounding: true,
+        shippingTaxRateBps: true,
+        exchangeCreditMode: true,
         paymentMethod: true,
         paymentStatus: true,
         paymentReference: true,
@@ -925,6 +938,13 @@ export class FiscalDocumentsService {
       this.logger.warn({ orderId }, 'no credit note was made: the order has no tax snapshot')
       return null
     }
+    // The credit note of a replacement made at the full price credits what its sale document says (`grossExchangeView`); the others as posted
+    const view = grossExchangeView({ ...order, lines: order.items })
+    if (!view.ok) {
+      this.logger.warn({ orderId }, 'no credit note was made: the order does not add up')
+      return null
+    }
+    const sold = view.order
     let before = new Map<string, number>()
     let returned = new Map<string, number>(order.items.map(item => [item.id, item.quantity]))
     if (returnId !== null) {
@@ -962,13 +982,13 @@ export class FiscalDocumentsService {
     }
     const credit = creditNoteSaleOf(
       {
-        subtotalCents: order.subtotalCents,
-        discountCents: order.discountCents,
-        shippingCents: order.shippingCents,
-        totalCents: order.totalCents,
-        taxCents: order.taxCents,
-        pricesIncludeTax: order.pricesIncludeTax,
-        lines: order.items.map(item => ({
+        subtotalCents: sold.subtotalCents,
+        discountCents: sold.discountCents,
+        shippingCents: sold.shippingCents,
+        totalCents: sold.totalCents,
+        taxCents: sold.taxCents,
+        pricesIncludeTax: sold.pricesIncludeTax,
+        lines: sold.lines.map(item => ({
           orderItemId: item.id,
           productName: item.productName,
           variantName: item.variantName,

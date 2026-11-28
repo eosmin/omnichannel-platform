@@ -326,6 +326,60 @@ describe('saleLines (E3)', () => {
     expect(lineOf(result.lines, AccountRole.INVENTORY)).toBeUndefined()
   })
 
+  it('a sale at the full price paid in part by the credit of a return: the carrier owes only what the customer pays, the advances give the rest', () => {
+    const result = saleLines({
+      accounts,
+      amounts,
+      collection: { kind: 'carrier', carrierConnectionId: 'conn-1' },
+      advanceConsumedCents: 1130,
+      costCents: 1934,
+      costFromTransit: true,
+      storeId: STORE
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(sum(result.lines, 'debitCents')).toBe(sum(result.lines, 'creditCents'))
+    expect(lineOf(result.lines, AccountRole.RECEIVABLE_CARRIERS)).toMatchObject({
+      debitCents: 2825 - 1130,
+      partyId: 'conn-1'
+    })
+    expect(lineOf(result.lines, AccountRole.CUSTOMER_ADVANCES)?.debitCents).toBe(1130)
+  })
+
+  it('a prepaid sale at the full price clears the advance of the payment and the advance of the credit, in two lines', () => {
+    const result = saleLines({
+      accounts,
+      amounts,
+      collection: { kind: 'advance' },
+      advanceConsumedCents: 1130,
+      costCents: 0,
+      costFromTransit: false,
+      storeId: STORE
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(
+      result.lines
+        .filter(line => line.debitCents > 0)
+        .map(line => line.debitCents)
+        .sort((x, y) => x - y)
+    ).toEqual([1130, 2825 - 1130])
+    expect(sum(result.lines, 'debitCents')).toBe(sum(result.lines, 'creditCents'))
+  })
+
+  it('a credit consumed above the total of the sale is refused, never forced', () => {
+    const result = saleLines({
+      accounts,
+      amounts,
+      collection: { kind: 'advance' },
+      advanceConsumedCents: 2826,
+      costCents: 0,
+      costFromTransit: false,
+      storeId: STORE
+    })
+    expect(result).toEqual({ ok: false, reason: 'amounts_disagree' })
+  })
+
   it('a prepaid sale clears the advance, and without an E2 the cost leaves inventory itself', () => {
     const result = saleLines({
       accounts,

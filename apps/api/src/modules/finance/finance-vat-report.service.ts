@@ -19,7 +19,7 @@ import {
   VatSide
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import { vatLinesOfOrder } from '@platform/core/finance'
+import { grossExchangeView, vatLinesOfOrder } from '@platform/core/finance'
 import { financeRefusal } from '@platform/core/finance-ledger'
 
 import type { Actor } from '../tenancy'
@@ -222,10 +222,14 @@ export class FinanceVatReportService {
           where: { id: { in: page.map(row => row.id) }, store: { organizationId } },
           select: {
             id: true,
+            subtotalCents: true,
+            totalCents: true,
             discountCents: true,
             shippingCents: true,
             taxCents: true,
             pricesIncludeTax: true,
+            taxRounding: true,
+            exchangeCreditMode: true,
             shippingTaxRateBps: true,
             items: {
               select: {
@@ -248,13 +252,24 @@ export class FinanceVatReportService {
           ordersWithoutTaxSnapshot += 1
           continue
         }
+        // The replacement of an exchange made at the full price declares the sale at the full price, as its entry does (`grossExchangeView`);
+        // any other order, and a replacement made before the mode existed, is read as it was posted
+        const view = grossExchangeView({
+          ...order,
+          lines: order.items.map(item => ({ ...item, taxTreatment: item.taxTreatment }))
+        })
+        if (!view.ok) {
+          ordersNotReadable += 1
+          continue
+        }
+        const sold = view.order
         const lines = vatLinesOfOrder({
-          discountCents: order.discountCents,
-          shippingCents: order.shippingCents,
-          taxCents: order.taxCents,
+          discountCents: sold.discountCents,
+          shippingCents: sold.shippingCents,
+          taxCents: sold.taxCents ?? order.taxCents,
           pricesIncludeTax: order.pricesIncludeTax,
           shippingTaxRateBps: order.shippingTaxRateBps,
-          items: order.items.map(item => ({
+          items: sold.lines.map(item => ({
             unitPriceCents: item.unitPriceCents,
             quantity: item.quantity,
             taxTreatment: item.taxTreatment ?? '',

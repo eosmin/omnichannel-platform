@@ -6,7 +6,12 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { FinanceEventKind, FinanceSourceType, PaymentMethod } from '@platform/core/domain'
+import {
+  ExchangeCreditMode,
+  FinanceEventKind,
+  FinanceSourceType,
+  PaymentMethod
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { JobNames, QueueNames } from '@platform/core/queues'
 
@@ -506,9 +511,30 @@ describe('The returns of an order', () => {
       expect(
         await owner.order.findFirst({
           where: { id: view.replacementOrderId },
-          select: { exchangeOfOrderId: true, confirmedVia: true }
+          select: { exchangeOfOrderId: true, exchangeCreditMode: true, confirmedVia: true }
         })
-      ).toEqual({ exchangeOfOrderId: order.id, confirmedVia: 'other' })
+      ).toEqual({
+        exchangeOfOrderId: order.id,
+        exchangeCreditMode: ExchangeCreditMode.GROSS,
+        confirmedVia: 'other'
+      })
+      // What it sells, its fee and its discount are fixed: the books read it at the full price with the credit consumed from the advances
+      for (const change of [{ discountCents: 0 }, { shippingCents: 100 }]) {
+        const refused = await admin()
+          .patch(ApiRoutes.orders.byId(view.replacementOrderId))
+          .send(change)
+        expect(refused.status).not.toBe(OK)
+        expect((refused.body as { error: { code: string } }).error.code).toBe(
+          ErrorCodes.ORDER_FIELD_NOT_EDITABLE
+        )
+      }
+      expect(
+        (
+          await admin()
+            .patch(ApiRoutes.orders.byId(view.replacementOrderId))
+            .send({ internalNotes: 'leave at the door' })
+        ).status
+      ).toBe(OK)
       // Its stock is reserved like any order's
       expect(await kit.level(other.id, ctx.warehouseA.id)).toMatchObject({
         onHand: 10,

@@ -243,9 +243,16 @@ export function saleLines(input: {
   costCents: number
   // Whether the cost is held in inventory in transit (an entry of E2 exists) or still in inventory
   costFromTransit: boolean
+  // The credit of a return that a replacement at the full price consumes (`grossExchangeView`): part of the debit comes from the customer's
+  // advances, the rest is collected as usual. Zero for any other sale.
+  advanceConsumedCents?: number
   storeId: string
 }): AutoEntry {
   const { amounts, collection, storeId } = input
+  const consumed = input.advanceConsumedCents ?? 0
+  if (consumed < 0 || consumed > amounts.totalCents) {
+    return { ok: false, reason: FinancePostingFailureReason.AMOUNTS_DISAGREE }
+  }
   const lines: DraftLine[] = []
   const add = (
     role: AccountRole,
@@ -270,10 +277,13 @@ export function saleLines(input: {
       ? add(
           AccountRole.RECEIVABLE_CARRIERS,
           'debit',
-          amounts.totalCents,
+          amounts.totalCents - consumed,
           collection.carrierConnectionId
         )
-      : add(AccountRole.CUSTOMER_ADVANCES, 'debit', amounts.totalCents),
+      : add(AccountRole.CUSTOMER_ADVANCES, 'debit', amounts.totalCents - consumed),
+    // What the customer's credit pays: for an advance collection it joins the advance E1 holds (two lines of the same account, each one its own
+    // origin), for a carrier it is the only advance debit
+    add(AccountRole.CUSTOMER_ADVANCES, 'debit', consumed),
     add(AccountRole.SALES_REVENUE, 'credit', amounts.revenueNetCents),
     add(AccountRole.SHIPPING_REVENUE, 'credit', amounts.shippingNetCents),
     add(AccountRole.VAT_OUTPUT, 'credit', amounts.vatCents),

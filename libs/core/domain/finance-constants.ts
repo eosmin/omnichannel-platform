@@ -543,6 +543,9 @@ export const FinanceConflicts = {
   // A role that holds a balance (what is owed, the stock, the tax) keeps its account once the account has entries: the balance would
   // be split between two accounts. The way out is a reclassifying entry, then the change (HC-119)
   ROLE_HAS_HISTORY: 'role_has_history',
+  // The account chosen for the non-recoverable VAT already has entries or already serves another role: the VAT report would take every
+  // past entry on it for a return that came after the window (or the other role's for this one). Only a clean account can be the mark
+  ROLE_TARGET_IN_USE: 'role_target_in_use',
   // The key of a request that registered another transaction: a retry sends the same content, never another
   TRANSACTION_KEY_REUSED: 'transaction_key_reused',
   // A transaction is voided once; the reversing entry is in the journal

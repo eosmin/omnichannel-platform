@@ -317,6 +317,14 @@ export enum OrderConfirmationChannel {
   OTHER = 'other'
 }
 
+// How the books and the fiscal documents read the credit of the replacement of an exchange (column `orders.exchange_credit_mode`). Null is
+// NET: every replacement made before the column, whose entry and documents were posted with the credit as a discount. Only a replacement
+// made after it is GROSS: a sale at the full price, the credit consumed from the customer's advances.
+export enum ExchangeCreditMode {
+  NET = 'net',
+  GROSS = 'gross'
+}
+
 export enum OrderReturnType {
   REFUND = 'refund',
   EXCHANGE = 'exchange'

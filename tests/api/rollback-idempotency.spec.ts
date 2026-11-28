@@ -26,7 +26,8 @@ const IDEMPOTENT = [
     'purchase_receipt_documents',
     'issued_on'
   ],
-  ['20270213100000_fiscal_void_event.rollback.sql', 'fiscal_documents', 'void_event_encrypted']
+  ['20270213100000_fiscal_void_event.rollback.sql', 'fiscal_documents', 'void_event_encrypted'],
+  ['20270221100000_orders_exchange_credit_mode.rollback.sql', 'orders', 'exchange_credit_mode']
 ] as const
 
 // The script has its own BEGIN and COMMIT: the case wraps it in the transaction it throws away
@@ -83,6 +84,54 @@ describe('Rollbacks that are safe to run twice', () => {
       await client.query(sql)
       await client.query(sql)
       expect((await client.query<{ n: number }>(others)).rows[0]).toEqual(before)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+  })
+  // The rollback of the mode of the credit of a replacement drops the column and its check and keeps every order: a replacement keeps its
+  // link to the order it replaces, a plain order is untouched, and the second run finds nothing to do. Rows are written with the foreign
+  // keys off for the transaction, never committed.
+  it('20270221100000_orders_exchange_credit_mode.rollback.sql keeps the orders, with rows holding a mode, and runs a second time on the result', async () => {
+    const sql = body('20270221100000_orders_exchange_credit_mode.rollback.sql')
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL session_replication_role = replica')
+      await client.query(
+        `INSERT INTO orders (id, store_id, customer_id, order_number, subtotal_cents, total_cents, payment_method, created_by, updated_at)
+         VALUES ('rb-o1', 's', 'c', 'RB-1', 1000, 1000, 'cash', 'u', now()),
+                ('rb-o2', 's', 'c', 'RB-2', 1000, 500, 'cash', 'u', now())`
+      )
+      await client.query(
+        `UPDATE orders SET exchange_of_order_id = 'rb-o1', exchange_credit_mode = 'gross' WHERE id = 'rb-o2'`
+      )
+      // The check keeps a mode out of a plain order
+      await expect(
+        client.query(`UPDATE orders SET exchange_credit_mode = 'net' WHERE id = 'rb-o1'`)
+      ).rejects.toThrow(/orders_exchange_credit_mode_check/)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL session_replication_role = replica')
+      await client.query(
+        `INSERT INTO orders (id, store_id, customer_id, order_number, subtotal_cents, total_cents, payment_method, created_by, updated_at)
+         VALUES ('rb-o1', 's', 'c', 'RB-1', 1000, 1000, 'cash', 'u', now()),
+                ('rb-o2', 's', 'c', 'RB-2', 1000, 500, 'cash', 'u', now())`
+      )
+      await client.query(
+        `UPDATE orders SET exchange_of_order_id = 'rb-o1', exchange_credit_mode = 'gross' WHERE id = 'rb-o2'`
+      )
+      await client.query(sql)
+      expect(await hasColumn('orders', 'exchange_credit_mode')).toBe(false)
+      const rows = await client.query(
+        `SELECT id, exchange_of_order_id, total_cents FROM orders WHERE id LIKE 'rb-o%' ORDER BY id`
+      )
+      expect(rows.rows).toEqual([
+        { id: 'rb-o1', exchange_of_order_id: null, total_cents: 1000 },
+        { id: 'rb-o2', exchange_of_order_id: 'rb-o1', total_cents: 500 }
+      ])
+      await client.query(sql)
     } finally {
       await client.query('ROLLBACK')
     }

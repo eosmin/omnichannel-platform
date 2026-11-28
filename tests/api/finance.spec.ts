@@ -762,9 +762,58 @@ describe('The books of an organization', () => {
       }
     })
 
+    it('refuses to point the role of the non-recoverable VAT at an account that already has entries or already serves another role', async () => {
+      const own = accounts['6113'] ?? ''
+      const withEntries = accounts['6108'] ?? ''
+      // The account of the expenses with no category: an expense account that serves another role
+      const another = accounts['6112'] ?? ''
+      const put = (accountId: string) =>
+        asAdminA()
+          .put(ApiRoutes.finance.accountRoles.byRole(AccountRole.VAT_NON_RECOVERABLE))
+          .send({ accountId })
+      // An account with entries: whatever was posted there would be read as a return after the window, and a filed month would change
+      await postEntry(entryBody('6108', CASH, 100))
+      const usedByEntries = await put(withEntries)
+      expect(usedByEntries.status).toBe(CONFLICT)
+      expect(errorOf(usedByEntries).metadata).toMatchObject({
+        conflict: FinanceConflicts.ROLE_TARGET_IN_USE,
+        role: AccountRole.VAT_NON_RECOVERABLE,
+        accountId: withEntries
+      })
+      // An account that serves another role (the uncategorized expense), with no entry of its own on it
+      const usedByRole = await put(another)
+      expect(usedByRole.status).toBe(CONFLICT)
+      expect(errorOf(usedByRole).metadata).toMatchObject({
+        conflict: FinanceConflicts.ROLE_TARGET_IN_USE,
+        accountId: another
+      })
+      const stored = await owner.accountRoleMapping.findUniqueOrThrow({
+        where: {
+          organizationId_role: {
+            organizationId: ctx.orgA.id,
+            role: AccountRole.VAT_NON_RECOVERABLE
+          }
+        }
+      })
+      expect(stored.accountId).toBe(own)
+      // The other way: no other role takes the account that marks the late returns
+      const taken = await asAdminA()
+        .put(ApiRoutes.finance.accountRoles.byRole(AccountRole.UNCATEGORIZED_EXPENSE))
+        .send({ accountId: own })
+      expect(taken.status).toBe(CONFLICT)
+      expect(errorOf(taken).metadata).toMatchObject({
+        conflict: FinanceConflicts.ROLE_TARGET_IN_USE,
+        role: AccountRole.UNCATEGORIZED_EXPENSE,
+        accountId: own
+      })
+      // The account it already has is no move
+      expect((await put(own)).status).toBe(OK)
+    })
+
     it('fixes the role of the non-recoverable VAT to its account by any entry, even when a reclassification leaves it at zero', async () => {
       const own = accounts['6113'] ?? ''
-      const other = accounts['6112'] ?? ''
+      // A clean account: no entry and no other role (the role refuses any other, see the case below)
+      const other = accounts['6104'] ?? ''
       const put = (accountId: string) =>
         asAdminA()
           .put(ApiRoutes.finance.accountRoles.byRole(AccountRole.VAT_NON_RECOVERABLE))

@@ -65,6 +65,7 @@ import {
   settleRemittanceLine
 } from './carrier-entry-rules'
 import type { DraftLine } from './entry-rules'
+import { grossExchangeView } from './exchange-gross'
 import { LedgerService } from './ledger.service'
 import { automaticEntryDate, dateToDay } from './period-rules'
 import {
@@ -551,6 +552,22 @@ export class FinancePostingService {
     return (role: AccountRole): string | null => byRole.get(role) ?? null
   }
 
+  // An order as its sale reads it: at the full price when it is the replacement of an exchange made that way, as it was posted otherwise
+  private saleView(order: NonNullable<Awaited<ReturnType<FinancePostingService['orderOf']>>>) {
+    return grossExchangeView({
+      exchangeCreditMode: order.exchangeCreditMode,
+      subtotalCents: order.subtotalCents,
+      shippingCents: order.shippingCents,
+      discountCents: order.discountCents,
+      totalCents: order.totalCents,
+      taxCents: order.taxCents,
+      pricesIncludeTax: order.pricesIncludeTax,
+      taxRounding: order.taxRounding,
+      shippingTaxRateBps: order.shippingTaxRateBps,
+      lines: order.items
+    })
+  }
+
   private async orderOf(tx: PrismaTransaction, organizationId: string, orderId: string) {
     return tx.order.findFirst({
       where: { id: orderId, store: { organizationId } },
@@ -564,13 +581,25 @@ export class FinancePostingService {
         totalCents: true,
         taxCents: true,
         pricesIncludeTax: true,
+        taxRounding: true,
+        shippingTaxRateBps: true,
+        exchangeCreditMode: true,
         paymentMethod: true,
         paymentStatus: true,
         carrierConnectionId: true,
         shippedAt: true,
         deliveredAt: true,
         store: { select: { timezone: true } },
-        items: { select: { id: true, quantity: true, unitPriceCents: true, taxCents: true } }
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            unitPriceCents: true,
+            taxCents: true,
+            taxTreatment: true,
+            taxRateBps: true
+          }
+        }
       }
     })
   }
@@ -756,20 +785,16 @@ export class FinancePostingService {
     // and was RETURNED since is still a sale: its return is E8, and the sale must exist for the return to reverse it
     if (when === null || order.status === (OrderStatus.CANCELLED as string)) return NOTHING
 
-    const amounts = saleAmounts({
-      subtotalCents: order.subtotalCents,
-      shippingCents: order.shippingCents,
-      discountCents: order.discountCents,
-      totalCents: order.totalCents,
-      taxCents: order.taxCents,
-      pricesIncludeTax: order.pricesIncludeTax,
-      lines: order.items
-    })
+    // The replacement of an exchange made at the full price is a sale at the full price: the credit of the return pays part of it from the
+    // customer's advances (`grossExchangeView`); every other order, and every replacement made before the mode existed, is read as posted
+    const view = this.saleView(order)
+    if (!view.ok) return failed(view.reason)
+    const amounts = saleAmounts(view.order)
     if (!amounts.ok) return failed(amounts.reason)
 
     const isCod = order.paymentMethod === (PaymentMethod.CASH_ON_DELIVERY as string)
     let collection: Parameters<typeof saleLines>[0]['collection']
-    if (amounts.amounts.totalCents === 0) {
+    if (order.totalCents === 0) {
       // Nothing to collect (the replacement of an exchange whose credit covers it, an order with a full discount): no money is owed by a
       // customer or a carrier, E1 had nothing to receive and wrote no entry, so there is no advance to clear, no receivable to open and
       // no credit sale to refuse. The debit of the sale is zero and the entry holds the cost of what left, the only figure such an order
@@ -856,6 +881,7 @@ export class FinancePostingService {
         collection,
         costCents,
         costFromTransit: sent !== null,
+        advanceConsumedCents: view.creditConsumedCents,
         storeId: order.storeId
       })
     }
@@ -1104,18 +1130,22 @@ export class FinancePostingService {
     let reversal: ReturnReversal | null = null
     let shipping: ReturnReversal | null = null
     if (recognized) {
+      // The return of the replacement of an exchange gives back what its sale recognized, at the full price (`grossExchangeView`)
+      const view = this.saleView(order)
+      if (!view.ok) return failed(view.reason)
+      const sold = view.order
       const bases = lineBases({
-        subtotalCents: order.subtotalCents,
-        shippingCents: order.shippingCents,
-        discountCents: order.discountCents,
-        totalCents: order.totalCents,
-        taxCents: order.taxCents,
-        pricesIncludeTax: order.pricesIncludeTax,
-        lines: order.items.map(item => ({
-          orderItemId: item.id,
-          quantity: item.quantity,
-          unitPriceCents: item.unitPriceCents,
-          taxCents: item.taxCents
+        subtotalCents: sold.subtotalCents,
+        shippingCents: sold.shippingCents,
+        discountCents: sold.discountCents,
+        totalCents: sold.totalCents,
+        taxCents: sold.taxCents,
+        pricesIncludeTax: sold.pricesIncludeTax,
+        lines: sold.lines.map((line, index) => ({
+          orderItemId: order.items[index]?.id ?? '',
+          quantity: line.quantity,
+          unitPriceCents: line.unitPriceCents,
+          taxCents: line.taxCents
         }))
       })
       if (!bases.ok) return failed(bases.reason)
@@ -1131,18 +1161,10 @@ export class FinancePostingService {
         item =>
           (facts.before.get(item.id) ?? 0) + (facts.returned.get(item.id) ?? 0) >= item.quantity
       )
-      const sale = saleAmounts({
-        subtotalCents: order.subtotalCents,
-        shippingCents: order.shippingCents,
-        discountCents: order.discountCents,
-        totalCents: order.totalCents,
-        taxCents: order.taxCents,
-        pricesIncludeTax: order.pricesIncludeTax,
-        lines: order.items
-      })
+      const sale = saleAmounts(sold)
       if (!sale.ok) return failed(sale.reason)
       if (backInFull) {
-        const lineTax = order.items.reduce((sum, item) => sum + (item.taxCents ?? 0), 0)
+        const lineTax = sold.lines.reduce((sum, line) => sum + (line.taxCents ?? 0), 0)
         shipping = {
           netCents: sale.amounts.shippingNetCents,
           vatCents: sale.amounts.vatCents - lineTax

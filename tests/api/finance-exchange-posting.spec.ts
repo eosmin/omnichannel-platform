@@ -119,6 +119,10 @@ describe('The sale of an order with nothing to collect (an exchange, a full disc
     method: string
     paymentStatus?: string
     cost?: number | null
+    // The replacement of an exchange: the order it replaces and how its credit is read (null is net, as every order made before the mode)
+    exchange?: { ofOrderId: string; mode: string | null }
+    // The day the goods were delivered (today when absent)
+    deliveredOn?: string
   }): Promise<string> {
     const made = await createOrder(owner, { storeId: ctx.storeA.id })
     await owner.orderItem.update({
@@ -142,10 +146,17 @@ describe('The sale of an order with nothing to collect (an exchange, a full disc
         totalCents: input.totalCents,
         taxCents: input.taxCents,
         pricesIncludeTax: input.pricesIncludeTax,
+        taxRounding: 'half_up',
+        ...(input.exchange === undefined
+          ? {}
+          : {
+              exchangeOfOrderId: input.exchange.ofOrderId,
+              exchangeCreditMode: input.exchange.mode
+            }),
         paymentMethod: input.method,
         paymentStatus: input.paymentStatus ?? 'COMPLETED',
-        shippedAt: NOON(TODAY),
-        deliveredAt: NOON(TODAY)
+        shippedAt: NOON(input.deliveredOn ?? TODAY),
+        deliveredAt: NOON(input.deliveredOn ?? TODAY)
       }
     })
     const item = await owner.orderItem.findFirstOrThrow({
@@ -620,6 +631,327 @@ describe('The sale of an order with nothing to collect (an exchange, a full disc
           .reduce((sum, line) => sum + line.creditCents - line.debitCents, 0)
       expect(balance(AccountRole.CUSTOMER_ADVANCES)).toBe(1130)
       expect(balance(AccountRole.VAT_OUTPUT)).toBe(-130)
+    })
+  })
+
+  // The exchange with a difference as a sale at the full price (HC-138, PR 2 of the accountant's criterion): the original goes back (E8, the
+  // credit to the customer's advances) and the replacement is a sale of $169.50 (base $150.00, tax $19.50) whose debit is what the customer
+  // pays plus the credit consumed from the advances. A replacement made before the mode existed (null) is still read net: the case above.
+  describe('the replacement of an exchange read at the full price', () => {
+    const SOLD_ON_DAY = (daysAgo: number): string =>
+      new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
+
+    // The original sold at $113.00 (tax included, tax $13.00, cost $4.00) and returned in full, its E8 posted. Returns the ids.
+    async function returnedOriginal(
+      deliveredOn: string
+    ): Promise<{ originalId: string; returnId: string }> {
+      const originalId = await delivered({
+        quantity: 1,
+        unitPriceCents: 11300,
+        lineTaxCents: 1300,
+        pricesIncludeTax: true,
+        discountCents: 0,
+        taxCents: 1300,
+        totalCents: 11300,
+        method: 'TRANSFER',
+        deliveredOn
+      })
+      await runEvents(originalId)
+      expect(await linesOfOrder(originalId, FinancePostingKey.ORDER_SALE)).not.toBeNull()
+      const item = await owner.orderItem.findFirstOrThrow({
+        where: { orderId: originalId },
+        select: { id: true, productId: true }
+      })
+      const author = await owner.membership.findFirstOrThrow({
+        where: { storeId: ctx.storeA.id },
+        select: { userId: true }
+      })
+      const returned = await owner.orderReturn.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderId: originalId,
+          type: 'exchange',
+          reason: 'DEFECTIVE',
+          status: OrderReturnStatus.RECEIVED,
+          shippingPayer: 'sender',
+          createdBy: author.userId,
+          receivedAt: new Date()
+        },
+        select: { id: true }
+      })
+      await owner.orderReturnLine.create({
+        data: { storeId: ctx.storeA.id, returnId: returned.id, orderItemId: item.id, quantity: 1 }
+      })
+      await owner.inventoryMovement.create({
+        data: {
+          storeId: ctx.storeA.id,
+          productId: item.productId,
+          warehouseId: ctx.warehouseA.id,
+          type: InventoryMovementType.RETURN_IN,
+          quantity: 1,
+          referenceType: InventoryReferenceType.RETURN,
+          referenceId: returned.id,
+          idempotencyKey: `m-${randomUUID()}`,
+          unitCostCents: null,
+          onHandAfter: 0,
+          reservedAfter: 0
+        }
+      })
+      const e8 = await posting.post({
+        organizationId: ctx.orgA.id,
+        sourceType: FinanceSourceType.RETURN,
+        sourceId: returned.id,
+        kind: FinanceEventKind.RETURN_RESTOCK
+      })
+      expect(e8.outcome).toBe(FinancePostingOutcome.POSTED)
+      return { originalId, returnId: returned.id }
+    }
+
+    // What these sources put on a role, credit less debit
+    async function balanceOf(role: AccountRole, sourceIds: string[]): Promise<number> {
+      const lines = await owner.journalLine.findMany({
+        where: { entry: { organizationId: ctx.orgA.id, sourceId: { in: sourceIds } } },
+        include: { account: { select: { code: true } } }
+      })
+      return lines
+        .filter(line => line.account.code === code(role))
+        .reduce((sum, line) => sum + line.creditCents - line.debitCents, 0)
+    }
+
+    it('posts the sale at $169.50: the customer pays $56.50 and the credit of $113.00 comes out of the advances, which end at zero', async () => {
+      const { originalId, returnId } = await returnedOriginal(TODAY)
+      const replacement = await delivered({
+        quantity: 1,
+        unitPriceCents: 16950,
+        lineTaxCents: 650,
+        pricesIncludeTax: true,
+        discountCents: 11300,
+        taxCents: 650,
+        totalCents: 5650,
+        method: 'TRANSFER',
+        cost: 9000,
+        exchange: { ofOrderId: originalId, mode: 'gross' }
+      })
+      await runEvents(replacement)
+      // E1 received the $56.50 and the sale posted by itself: the debit is the payment (E1's advance) and the credit that the return left
+      expect(await linesOfOrder(replacement, FinancePostingKey.ORDER_SALE)).toEqual(
+        sorted([
+          [code(AccountRole.CUSTOMER_ADVANCES), 5650, 0],
+          [code(AccountRole.CUSTOMER_ADVANCES), 11300, 0],
+          [code(AccountRole.SALES_REVENUE), 0, 15000],
+          [code(AccountRole.VAT_OUTPUT), 0, 1950],
+          [code(AccountRole.COST_OF_GOODS_SOLD), 9000, 0],
+          [code(AccountRole.INVENTORY_IN_TRANSIT), 0, 9000]
+        ])
+      )
+      // The residue of the net reading is gone: advances 0 (the return credited 113.00 and 56.50 came in; the sale cleared 169.50), and the
+      // output tax of the exchange is the $19.50 of the new sale less the $13.00 the return took back
+      expect(await balanceOf(AccountRole.CUSTOMER_ADVANCES, [returnId, replacement])).toBe(0)
+      expect(await balanceOf(AccountRole.VAT_OUTPUT, [returnId, replacement])).toBe(1950 - 1300)
+      await noOpenFailure()
+    })
+
+    it('posts a replacement covered whole by the credit: the advances give the full $113.00 and nothing is collected', async () => {
+      const { originalId, returnId } = await returnedOriginal(TODAY)
+      const replacement = await delivered({
+        quantity: 1,
+        unitPriceCents: 11300,
+        lineTaxCents: 0,
+        pricesIncludeTax: true,
+        discountCents: 11300,
+        taxCents: 0,
+        totalCents: 0,
+        method: 'CASH',
+        exchange: { ofOrderId: originalId, mode: 'gross' }
+      })
+      await runEvents(replacement)
+      expect((await post(replacement, FinanceEventKind.SALE)).outcome).toBe(
+        FinancePostingOutcome.POSTED
+      )
+      expect(await linesOfOrder(replacement, FinancePostingKey.ORDER_SALE)).toEqual(
+        sorted([
+          [code(AccountRole.CUSTOMER_ADVANCES), 11300, 0],
+          [code(AccountRole.SALES_REVENUE), 0, 10000],
+          [code(AccountRole.VAT_OUTPUT), 0, 1300],
+          [code(AccountRole.COST_OF_GOODS_SOLD), 400, 0],
+          [code(AccountRole.INVENTORY_IN_TRANSIT), 0, 400]
+        ])
+      )
+      expect(await balanceOf(AccountRole.CUSTOMER_ADVANCES, [returnId, replacement])).toBe(0)
+      expect(await balanceOf(AccountRole.VAT_OUTPUT, [returnId, replacement])).toBe(0)
+      await noOpenFailure()
+    })
+
+    it('after the three months the return takes its tax to the non-recoverable VAT and the new sale still declares its whole tax', async () => {
+      const { originalId, returnId } = await returnedOriginal(SOLD_ON_DAY(200))
+      const replacement = await delivered({
+        quantity: 1,
+        unitPriceCents: 16950,
+        lineTaxCents: 650,
+        pricesIncludeTax: true,
+        discountCents: 11300,
+        taxCents: 650,
+        totalCents: 5650,
+        method: 'TRANSFER',
+        cost: 9000,
+        exchange: { ofOrderId: originalId, mode: 'gross' }
+      })
+      await runEvents(replacement)
+      expect(await balanceOf(AccountRole.VAT_NON_RECOVERABLE, [returnId])).toBe(-1300)
+      // The output tax of the original stays as declared: the return did not touch it, the new sale adds its own
+      expect(await balanceOf(AccountRole.VAT_OUTPUT, [returnId])).toBe(0)
+      expect(await balanceOf(AccountRole.VAT_OUTPUT, [replacement])).toBe(1950)
+      expect(await balanceOf(AccountRole.CUSTOMER_ADVANCES, [returnId, replacement])).toBe(0)
+      await noOpenFailure()
+    })
+
+    it('gives back at the full price when the replacement itself is returned, what its sale recognized', async () => {
+      const { originalId } = await returnedOriginal(TODAY)
+      const replacement = await delivered({
+        quantity: 1,
+        unitPriceCents: 16950,
+        lineTaxCents: 650,
+        pricesIncludeTax: true,
+        discountCents: 11300,
+        taxCents: 650,
+        totalCents: 5650,
+        method: 'TRANSFER',
+        cost: 9000,
+        exchange: { ofOrderId: originalId, mode: 'gross' }
+      })
+      await runEvents(replacement)
+      const item = await owner.orderItem.findFirstOrThrow({
+        where: { orderId: replacement },
+        select: { id: true, productId: true }
+      })
+      const author = await owner.membership.findFirstOrThrow({
+        where: { storeId: ctx.storeA.id },
+        select: { userId: true }
+      })
+      const back = await owner.orderReturn.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderId: replacement,
+          type: 'refund',
+          reason: 'DEFECTIVE',
+          status: OrderReturnStatus.RECEIVED,
+          shippingPayer: 'sender',
+          createdBy: author.userId,
+          receivedAt: new Date()
+        },
+        select: { id: true }
+      })
+      await owner.orderReturnLine.create({
+        data: { storeId: ctx.storeA.id, returnId: back.id, orderItemId: item.id, quantity: 1 }
+      })
+      await owner.inventoryMovement.create({
+        data: {
+          storeId: ctx.storeA.id,
+          productId: item.productId,
+          warehouseId: ctx.warehouseA.id,
+          type: InventoryMovementType.RETURN_IN,
+          quantity: 1,
+          referenceType: InventoryReferenceType.RETURN,
+          referenceId: back.id,
+          idempotencyKey: `m-${randomUUID()}`,
+          unitCostCents: null,
+          onHandAfter: 0,
+          reservedAfter: 0
+        }
+      })
+      const e8 = await posting.post({
+        organizationId: ctx.orgA.id,
+        sourceType: FinanceSourceType.RETURN,
+        sourceId: back.id,
+        kind: FinanceEventKind.RETURN_RESTOCK
+      })
+      expect(e8.outcome).toBe(FinancePostingOutcome.POSTED)
+      // The sale recognized $150.00 and $19.50: the return reverses exactly that and owes the customer $169.50
+      expect(await balanceOf(AccountRole.SALES_RETURNS, [back.id])).toBe(-15000)
+      expect(await balanceOf(AccountRole.VAT_OUTPUT, [back.id])).toBe(-1950)
+      expect(await balanceOf(AccountRole.CUSTOMER_ADVANCES, [back.id])).toBe(16950)
+    })
+
+    it('reads the replacement at the full price in the margin and in the VAT report, as the sale entry has it', async () => {
+      const { originalId } = await returnedOriginal(TODAY)
+      const reports = async (): Promise<{ revenue: number; tax: number; unread: number }> => {
+        const margin = await api(app, ctx.adminA, ctx.storeA).get(
+          `${ApiRoutes.finance.reports.margin}?from=${TODAY}&to=${TODAY}`
+        )
+        expect(margin.status).toBe(200)
+        const marginBody = margin.body as {
+          ledger: { revenueDifferenceCents: number; costDifferenceCents: number }
+          totals: { revenueCents: number }
+        }
+        // The margin is compared with the ledger by the report itself: a replacement read at another price than its entry shows up here
+        expect(marginBody.ledger).toMatchObject({
+          revenueDifferenceCents: 0,
+          costDifferenceCents: 0
+        })
+        const vat = await api(app, ctx.adminA, ctx.storeA).get(
+          `${ApiRoutes.finance.reports.vat}?from=${TODAY}&to=${TODAY}`
+        )
+        expect(vat.status).toBe(200)
+        const vatBody = vat.body as {
+          rows: { side: string; kind: string; taxCents: number }[]
+          ordersNotReadable: number
+        }
+        const rows = vatBody.rows
+        return {
+          revenue: marginBody.totals.revenueCents,
+          tax: rows
+            .filter(row => row.side === 'output' && row.kind !== 'returns')
+            .reduce((sum, row) => sum + row.taxCents, 0),
+          unread: vatBody.ordersNotReadable
+        }
+      }
+      const before = await reports()
+      const replacement = await delivered({
+        quantity: 1,
+        unitPriceCents: 16950,
+        lineTaxCents: 650,
+        pricesIncludeTax: true,
+        discountCents: 11300,
+        taxCents: 650,
+        totalCents: 5650,
+        method: 'TRANSFER',
+        cost: 9000,
+        exchange: { ofOrderId: originalId, mode: 'gross' }
+      })
+      await runEvents(replacement)
+      const after = await reports()
+      // The sale of the replacement is $150.00 of revenue and $19.50 of output tax in both, and nothing became unreadable
+      expect(after.revenue - before.revenue).toBe(15000)
+      expect(after.tax - before.tax).toBe(1950)
+      expect(after.unread).toBe(before.unread)
+    })
+
+    it('leaves an exchange made before the mode exists exactly as it was posted (net), whatever the discount says', async () => {
+      const { originalId } = await returnedOriginal(TODAY)
+      for (const mode of [null, 'net']) {
+        const replacement = await delivered({
+          quantity: 1,
+          unitPriceCents: 16950,
+          lineTaxCents: 650,
+          pricesIncludeTax: true,
+          discountCents: 11300,
+          taxCents: 650,
+          totalCents: 5650,
+          method: 'TRANSFER',
+          cost: 9000,
+          exchange: { ofOrderId: originalId, mode }
+        })
+        await runEvents(replacement)
+        expect(await linesOfOrder(replacement, FinancePostingKey.ORDER_SALE)).toEqual(
+          sorted([
+            [code(AccountRole.CUSTOMER_ADVANCES), 5650, 0],
+            [code(AccountRole.SALES_REVENUE), 0, 5000],
+            [code(AccountRole.VAT_OUTPUT), 0, 650],
+            [code(AccountRole.COST_OF_GOODS_SOLD), 9000, 0],
+            [code(AccountRole.INVENTORY_IN_TRANSIT), 0, 9000]
+          ])
+        )
+      }
     })
   })
 })
