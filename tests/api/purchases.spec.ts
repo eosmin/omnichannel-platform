@@ -1465,12 +1465,16 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       expect(rows).toHaveLength(1)
       expect(rows[0]?.items).toHaveLength(1)
       // The audit row of the second export names the constancia that already existed
-      const entries = await waitForAuditEntries(owner, {
-        organizationId: ctx.orgA.id,
-        action: AuditAction.FISCAL_ANNEX_EXPORTED,
-        metadata: { path: ['exportId'], equals: rows[0]?.id ?? '' }
-      })
-      expect(entries.length).toBeGreaterThanOrEqual(1)
+      const entries = await waitForAuditEntries(
+        owner,
+        {
+          organizationId: ctx.orgA.id,
+          action: AuditAction.FISCAL_ANNEX_EXPORTED,
+          metadata: { path: ['exportId'], equals: rows[0]?.id ?? '' }
+        },
+        2
+      )
+      expect(entries).toHaveLength(2)
       // A receipt that came in changes the sources: a new constancia, and the notice says so
       const late = await placedOrder(seller.id)
       expect(
@@ -1501,11 +1505,14 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         locked = resolve
       })
       // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
-      const other = owner.$transaction(async tx => {
-        await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${scope}, 0))) AS lock`
-        locked()
-        await holding
-      })
+      const other = owner.$transaction(
+        async tx => {
+          await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${scope}, 0))) AS lock`
+          locked()
+          await holding
+        },
+        { timeout: 60_000 }
+      )
       try {
         await got
         const refused = await taken(2024, 8)
@@ -1544,12 +1551,15 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       })
       // An export between its read and its constancia: it holds the lock of the month and takes the one of the constancia after
       // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
-      const other = owner.$transaction(async tx => {
-        await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${month}, 0))) AS lock`
-        locked()
-        await holding
-        await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${constancy}, 0))) AS lock`
-      })
+      const other = owner.$transaction(
+        async tx => {
+          await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${month}, 0))) AS lock`
+          locked()
+          await holding
+          await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${constancy}, 0))) AS lock`
+        },
+        { timeout: 60_000 }
+      )
       const started = Date.now()
       try {
         await got

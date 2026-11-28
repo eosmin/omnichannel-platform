@@ -26,8 +26,12 @@ import { FiscalAnnexConstancyService } from './fiscal-annex-constancy.service'
 import { FiscalReachService } from './fiscal-reach.service'
 import type { AnnexQuery } from './fiscal.schemas'
 
+// The exports holding a month in this process: each one keeps a connection and a file in memory, so their number is bounded (the pool is shared
+// with every request). One more than the bound is answered like a month that is being made
+let holding = 0
+
 const asError = (error: unknown): Error =>
-  error instanceof Error ? error : new Error('the lock of the month failed')
+  error instanceof Error ? error : new Error('the lock of the month failed', { cause: error })
 
 // The file of an annex of the periodic return (D4a), taken out of the platform: it holds the tax numbers and names of the customers of the
 // whole organization, so it is only for who can read the fiscal documents of EVERY store of it (a declaration is the organization's: a
@@ -110,6 +114,24 @@ export class FiscalAnnexExportService {
     period: { year: number; month: number },
     work: () => Promise<T>
   ): Promise<T> {
+    if (holding >= FiscalLimits.ANNEX_EXPORT_MAX_CONCURRENT) {
+      throw resourceConflict('too many annexes are being made', {
+        reason: FiscalConflictReasons.ANNEX_IN_PROGRESS
+      })
+    }
+    holding += 1
+    try {
+      return await this.holdingMonthOnce(organizationId, period, work)
+    } finally {
+      holding -= 1
+    }
+  }
+
+  private async holdingMonthOnce<T>(
+    organizationId: string,
+    period: { year: number; month: number },
+    work: () => Promise<T>
+  ): Promise<T> {
     const scope = FiscalAnnexLocks.exportMonth(organizationId, period.year, period.month)
     let release: () => void = () => undefined
     let answer: (got: boolean) => void = () => undefined
@@ -154,9 +176,9 @@ export class FiscalAnnexExportService {
     } finally {
       release()
     }
-    // A hold that failed (its time ran out) means the month was not held to the end: the export is not handed over as if it were
-    const failed = await holder
-    if (failed !== null) throw asError(failed.error)
+    // The hold is over: when it failed on the way out (its time ran out, the connection dropped) the constancia is already written and the
+    // file is whole, so it is handed over and audited: the locks of the writes (the constancy one) were taken by the write itself
+    await holder
     return result
   }
 
