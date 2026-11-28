@@ -14,7 +14,9 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 // always rolled back, in the context of the organization and the store that the api and the worker open. Rows are only CREATED through the owner
 // client, so the suite runs the same with row-level security enforced (TEST_RLS_ENFORCE=1). A delivery is a record of what a receiver was given:
 // it is never deleted, and the only change it takes is one not sent becoming a hand delivery, with who and when and nothing else of the row
-// different (the subject included). Taking the guard, a column of its list or the unique key away must fail here.
+// different (the subject included). The worker holds no UPDATE on the table at all (it only inserts, and a hand delivery is a person's act of
+// the api), so for it every update is refused by the privilege before the guard is asked. Taking the guard, a column of its list, the unique key
+// or the revoke away must fail here.
 describe.each([DatabaseRoles.APP, DatabaseRoles.WORKER])(
   'The deliveries of fiscal documents, as the role %s',
   role => {
@@ -59,6 +61,9 @@ describe.each([DatabaseRoles.APP, DatabaseRoles.WORKER])(
     const refusedWith = (pattern: RegExp): { refused: string } => ({
       refused: expect.stringMatching(pattern) as string
     })
+    // What an UPDATE answers: the guard for the api, the missing privilege for the worker
+    const updateRefused = (guard: RegExp): { refused: string } =>
+      refusedWith(role === DatabaseRoles.WORKER ? /permission denied/ : guard)
 
     // A delivery of the given subject, not sent unless said, for a document of its own
     async function delivery(
@@ -104,19 +109,42 @@ describe.each([DatabaseRoles.APP, DatabaseRoles.WORKER])(
     }
     const HAND = `status = 'sent', route = 'manual', hand_means = 'download', handed_over_by = $2, handed_over_at = now()`
 
+    it('is written by an insert under both roles, and only the api may update what it wrote', async () => {
+      const first = await delivery({ subject: 'void', sent: true })
+      const order = await owner.fiscalDocument.findUniqueOrThrow({
+        where: { id: first.documentId },
+        select: { orderId: true }
+      })
+      // The delivery of the document itself, beside the one of its invalidation
+      expect(
+        await run(
+          `INSERT INTO fiscal_deliveries (id, organization_id, store_id, document_id, order_id, subject, status, route)
+           VALUES ($1, $2, $3, $4, $5, 'document', 'sent', 'email')`,
+          [randomUUID(), ctx.orgA.id, ctx.storeA.id, first.documentId, order.orderId]
+        )
+      ).toEqual({ rows: 1 })
+      // The worker has no UPDATE on the table, by privilege and not only by the guard
+      const privileges = await raw.query<{ app: boolean; worker: boolean }>(
+        `SELECT has_table_privilege('platform_app', 'fiscal_deliveries', 'UPDATE') AS app,
+                has_table_privilege('platform_worker', 'fiscal_deliveries', 'UPDATE') AS worker`
+      )
+      expect(privileges.rows[0]).toEqual({ app: true, worker: false })
+    })
+
     it('is never deleted, by anybody', async () => {
       const { id } = await delivery()
       expect(await run('DELETE FROM fiscal_deliveries WHERE id = $1', [id])).toEqual(
-        refusedWith(/is never deleted/)
+        refusedWith(/is never deleted|permission denied/)
       )
       expect(await owner.fiscalDelivery.count({ where: { id } })).toBe(1)
     })
 
     it('lets a delivery that was not sent become a hand delivery, and keeps why it was not sent', async () => {
       const { id } = await delivery()
+      // The api records it; the worker has no UPDATE and records nothing in anybody's name
       expect(
         await run(`UPDATE fiscal_deliveries SET ${HAND} WHERE id = $1`, [id, randomUUID()])
-      ).toEqual({ rows: 1 })
+      ).toEqual(role === DatabaseRoles.WORKER ? refusedWith(/permission denied/) : { rows: 1 })
     })
 
     it('lets the hand delivery of an invalidation be recorded the same way', async () => {
@@ -126,7 +154,7 @@ describe.each([DatabaseRoles.APP, DatabaseRoles.WORKER])(
           `UPDATE fiscal_deliveries SET status = 'sent', route = 'manual', hand_means = 'answer', handed_over_by = $2, handed_over_at = now() WHERE id = $1`,
           [id, randomUUID()]
         )
-      ).toEqual({ rows: 1 })
+      ).toEqual(role === DatabaseRoles.WORKER ? refusedWith(/permission denied/) : { rows: 1 })
     })
 
     it('refuses to change a delivery that was sent, or a hand delivery already recorded', async () => {
@@ -137,14 +165,14 @@ describe.each([DatabaseRoles.APP, DatabaseRoles.WORKER])(
         `created_at = now()`
       ]) {
         expect(await run(`UPDATE fiscal_deliveries SET ${set} WHERE id = $1`, [sent.id])).toEqual(
-          refusedWith(/only changes from not sent to given by hand/)
+          updateRefused(/only changes from not sent to given by hand/)
         )
       }
       const manual = await delivery()
       await owner.$executeRaw`UPDATE fiscal_deliveries SET status = 'sent', route = 'manual', hand_means = 'paper', handed_over_by = 'u', handed_over_at = now() WHERE id = ${manual.id}`
       expect(
         await run(`UPDATE fiscal_deliveries SET hand_means = 'download' WHERE id = $1`, [manual.id])
-      ).toEqual(refusedWith(/only changes from not sent to given by hand/))
+      ).toEqual(updateRefused(/only changes from not sent to given by hand/))
     })
 
     it('lets nothing else of the row move with the hand delivery: not the subject, the document, the store, the reason', async () => {
@@ -161,7 +189,7 @@ describe.each([DatabaseRoles.APP, DatabaseRoles.WORKER])(
             id,
             randomUUID()
           ])
-        ).toEqual(refusedWith(/only changes from not sent to given by hand|violates/))
+        ).toEqual(updateRefused(/only changes from not sent to given by hand|violates/))
       }
       expect(documentId).toBeTruthy()
     })
@@ -173,7 +201,7 @@ describe.each([DatabaseRoles.APP, DatabaseRoles.WORKER])(
           `UPDATE fiscal_deliveries SET status = 'sent', route = 'manual', hand_means = 'download' WHERE id = $1`,
           [id]
         )
-      ).toEqual(refusedWith(/violates check|only changes/))
+      ).toEqual(updateRefused(/violates check|only changes/))
       // A second delivery of the same subject is refused, one of the other subject is the invalidation's own
       await expect(delivery({ documentId })).rejects.toThrow()
       await expect(delivery({ documentId, subject: 'void' })).resolves.toBeDefined()

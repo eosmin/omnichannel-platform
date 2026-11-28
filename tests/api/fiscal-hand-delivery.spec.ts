@@ -486,6 +486,27 @@ describe('The hand delivery of the files of a fiscal document (Step 4B.7d)', () 
       expect(await owner.fiscalDelivery.count({ where: { documentId, route: 'manual' } })).toBe(0)
     })
 
+    it('counts an own file still waiting for its scan: the answer is refused until it is known whether it is deliverable, and free when it is infected', async () => {
+      const waiting = await voidedSale()
+      await notSent(waiting)
+      await answerIsClean(waiting)
+      await withFiles(waiting, [FiscalEvidenceKind.VOID_REPRESENTATION], MediaStatus.PENDING)
+      const refused = await handOver(waiting, FiscalHandMeans.ANSWER, VOID)
+      expect(refused.status).toBe(CONFLICT)
+      expect((refused.body as ErrorBody).error.metadata).toMatchObject({
+        reason: FiscalConflictReasons.DELIVERY_FILES_EXIST
+      })
+      // Found infected it is never given, so the answer is what is left to hand over
+      await owner.media.updateMany({
+        where: {
+          fiscalDocumentId: waiting,
+          fiscalEvidenceKind: FiscalEvidenceKind.VOID_REPRESENTATION
+        },
+        data: { status: MediaStatus.INFECTED }
+      })
+      expect((await handOver(waiting, FiscalHandMeans.ANSWER, VOID)).status).toBe(OK)
+    })
+
     it('refuses what is not owed: the answer for a document delivery, an invalidation of a document that is not voided, and the document files of one that is', async () => {
       const voided = await voidedSale()
       await notSent(voided)

@@ -297,6 +297,12 @@ describe('Rollbacks that are safe to run twice', () => {
       count(
         `SELECT 1 FROM pg_indexes WHERE tablename = 'fiscal_deliveries' AND indexname = '${name}'`
       )
+    const workerCanUpdate = async (): Promise<boolean> =>
+      (
+        await client.query<{ ok: boolean }>(
+          `SELECT has_table_privilege('platform_worker', 'fiscal_deliveries', 'UPDATE') AS ok`
+        )
+      ).rows[0]?.ok === true
     const insert = (id: string, document: string, subject: string): Promise<unknown> =>
       client.query(
         `INSERT INTO fiscal_deliveries (id, organization_id, store_id, document_id, order_id, subject, status, route, reason)
@@ -309,6 +315,8 @@ describe('Rollbacks that are safe to run twice', () => {
       try {
         await client.query('SET LOCAL session_replication_role = replica')
         await insert('rb-s1', 'rb-sd1', 'document')
+        // The migration took UPDATE from the worker
+        expect(await workerCanUpdate()).toBe(false)
         expect(await hasTrigger()).toBe(1)
         expect(await hasFunction()).toBe(1)
         expect(await hasIndex('fiscal_deliveries_document_id_subject_key')).toBe(1)
@@ -319,7 +327,10 @@ describe('Rollbacks that are safe to run twice', () => {
         expect(await hasIndex('fiscal_deliveries_document_id_subject_key')).toBe(0)
         expect(await hasIndex('fiscal_deliveries_document_id_key')).toBe(1)
         expect(await count(`SELECT 1 FROM fiscal_deliveries WHERE id = 'rb-s1'`)).toBe(1)
+        // The worker holds UPDATE on the table again, as before the migration
+        expect(await workerCanUpdate()).toBe(true)
         await client.query(sql)
+        expect(await workerCanUpdate()).toBe(true)
         expect(await hasIndex('fiscal_deliveries_document_id_key')).toBe(1)
       } finally {
         await client.query('ROLLBACK')

@@ -18,6 +18,8 @@ BEGIN
   END IF;
 END
 $$;
+-- The worker holds UPDATE on the table again, as it did before (the grant is idempotent)
+GRANT UPDATE ON fiscal_deliveries TO platform_worker;
 DROP TRIGGER IF EXISTS trg_fiscal_delivery_guard ON fiscal_deliveries;
 DROP FUNCTION IF EXISTS fiscal_delivery_guard();
 ALTER TABLE fiscal_deliveries DROP CONSTRAINT IF EXISTS chk_fiscal_deliveries_void_only;

@@ -49,3 +49,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_fiscal_delivery_guard BEFORE UPDATE OR DELETE ON "fiscal_deliveries"
   FOR EACH ROW EXECUTE FUNCTION fiscal_delivery_guard();
+
+-- The worker only ever INSERTS a delivery (the automatic one, the daily check and the reconciler write nothing here: they publish the event), and a
+-- hand delivery is a person's act of the api. Without UPDATE a worker cannot record one in anybody's name, whatever the guard lets through.
+REVOKE UPDATE ON "fiscal_deliveries" FROM platform_worker;

@@ -184,7 +184,12 @@ export class FiscalHandDeliveryService {
     const files = FiscalDeliveryFileKinds[body.subject]
     // The answer of the authority is what a person hands over when there is no file of ours to give: with one of them made, the files are what
     // the receiver is owed
-    if (body.means === FiscalHandMeans.ANSWER && files.some(kind => kinds.includes(kind))) {
+    // (a file still waiting for its scan counts: it is the receiver's file once it is clean, and the system delivers it then; one that was found
+    // infected is never given, so it leaves the answer free)
+    if (
+      body.means === FiscalHandMeans.ANSWER &&
+      (await this.hasOwnFiles(tx, document.storeId, documentId, files))
+    ) {
       throw resourceConflict('the invalidation has files of its own to be handed over', {
         reason: FiscalConflictReasons.DELIVERY_FILES_EXIST
       })
@@ -253,6 +258,25 @@ export class FiscalHandDeliveryService {
       select: { fiscalEvidenceKind: true }
     })
     return listed.filter(kind => rows.some(row => row.fiscalEvidenceKind === String(kind)))
+  }
+
+  // Whether the invalidation has a file of its own that is or may become deliverable: any state but infected
+  private async hasOwnFiles(
+    tx: Pick<PrismaTransaction, 'media'>,
+    storeId: string,
+    documentId: string,
+    files: readonly FiscalEvidenceKind[]
+  ): Promise<boolean> {
+    return (
+      (await tx.media.count({
+        where: {
+          storeId,
+          fiscalDocumentId: documentId,
+          fiscalEvidenceKind: { in: [...files] },
+          status: { not: MediaStatus.INFECTED }
+        }
+      })) > 0
+    )
   }
 
   private async viewOf(
