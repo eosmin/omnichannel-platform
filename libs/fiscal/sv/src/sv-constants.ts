@@ -515,6 +515,14 @@ export const SvRepresentation = {
   // The 40 characters of the seal are replaced by this when the document has none (a document made in contingency is sealed later)
   NO_SEAL: '-',
   EMPTY: '-',
+  // The graphic representation of the event of an invalidation (Manual Funcional v2.0, XXII, "Evento de Invalidación v3", page 71)
+  VOID_TITLE: 'Evento de invalidación',
+  // CAT-024 (Manual Funcional, page 16), as the authority words it
+  VOID_KINDS: {
+    1: 'Error en la información del Documento Tributario Electrónico a invalidar',
+    2: 'Rescindir de la operación realizada',
+    3: 'Otro'
+  },
   MODELS: { 1: 'Modelo de facturación previo', 2: 'Modelo de facturación diferido' },
   TRANSMISSIONS: { 1: 'Transmisión normal', 2: 'Transmisión por contingencia' },
   // CAT-002: the description of a type of document, as the representation shows it (the type drawn and the type of a related document)
