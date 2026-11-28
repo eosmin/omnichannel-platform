@@ -330,9 +330,17 @@ export class FinanceVatReportService {
           WHERE m.organization_id = ${organizationId}
             AND m.role IN (${AccountRole.VAT_OUTPUT}, ${AccountRole.SALES_RETURNS}, ${AccountRole.SHIPPING_REVENUE})
         ),
+        -- A return that came after the three months of the law does not lower the tax or the sales declared (the criterion of the accountant is in
+        -- a private file): its tax went to the account of the non-recoverable VAT, and the entry is left out here with the reversal of it
         sale_returns AS (
           SELECT e.id FROM journal_entries e
           WHERE e.organization_id = ${organizationId} AND e.type = ${JournalEntryType.SALE_RETURN}
+            AND NOT EXISTS (
+              SELECT 1 FROM journal_lines nl
+              JOIN account_role_mappings nm
+                ON nm.organization_id = nl.organization_id AND nm.account_id = nl.account_id AND nm.role = ${AccountRole.VAT_NON_RECOVERABLE}
+              WHERE nl.entry_id = e.id AND nl.organization_id = e.organization_id
+            )
         ),
         voided AS (
           SELECT e.reverses_entry_id AS id FROM journal_entries e

@@ -324,6 +324,8 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       'purchase_receipt_lines',
       'excluded_subject_purchases',
       'excluded_subject_purchase_lines',
+      'fiscal_annex_export_items',
+      'fiscal_annex_exports',
       'journal_lines',
       'journal_entries',
       'fiscal_periods',
@@ -355,6 +357,8 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     await tx.supplierPayment.deleteMany({ where })
     await tx.excludedSubjectPurchaseLine.deleteMany({ where })
     await tx.excludedSubjectPurchase.deleteMany({ where })
+    await tx.fiscalAnnexExportItem.deleteMany({ where })
+    await tx.fiscalAnnexExport.deleteMany({ where })
     await tx.purchaseReceiptDocument.deleteMany({ where })
     await tx.purchaseReceiptLine.deleteMany({ where })
     await tx.purchaseReceipt.deleteMany({ where })

@@ -11,6 +11,7 @@ import { OrderMessagesModule } from '../order-messages/order-messages.module'
 import { TenancyModule } from '../tenancy'
 
 import { CustomerFiscalDataController } from './customer-fiscal-data.controller'
+import { FiscalAnnexConstancyService } from './fiscal-annex-constancy.service'
 import { FiscalAnnexExportService } from './fiscal-annex-export.service'
 import { FiscalAnnexController } from './fiscal-annex.controller'
 import { FiscalContingencyController } from './fiscal-contingency.controller'
@@ -42,6 +43,7 @@ import { FiscalListener } from './fiscal.listener'
     CustomerFiscalDataController
   ],
   providers: [
+    FiscalAnnexConstancyService,
     FiscalAnnexExportService,
     FiscalDeliveryListener,
     FiscalDeliveryService,

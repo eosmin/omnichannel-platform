@@ -6779,7 +6779,12 @@
           "cod_differences": "Cash on delivery differences",
           "opening_equity": "Opening equity",
           "rounding": "Rounding",
-          "uncategorized_expense": "Uncategorized expense"
+          "uncategorized_expense": "Uncategorized expense",
+          "vat_pending_document": "VAT pending a tax document",
+          "accrued_commissions_undocumented": "Commissions accrued without a document",
+          "income_tax_prepayment": "Income tax prepayment",
+          "vat_card_advance": "VAT advance held by the card gateway",
+          "vat_non_recoverable": "VAT that can no longer be recovered"
         }
       },
       "payments": {
@@ -7837,6 +7842,7 @@
         "document_number_in_use": "That supplier document number is already used on another order.",
         "generation_code_in_use": "That electronic document is already on another receipt.",
         "annex_exclusion_with_document": "A bill that credits tax has a document to declare: it cannot be left out of the annex.",
+        "purchase_document_exported": "A document that an exported annex held is not changed quietly: a rectification with a reason is for who manages the fiscal documents of every store.",
         "payment_exceeds_balance": "The payment is above what is owed to this supplier.",
         "payment_exceeds_receipt": "The payment is above what is open on that bill.",
         "payment_already_voided": "This payment was already voided.",

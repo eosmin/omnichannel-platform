@@ -2277,6 +2277,61 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.excludedSubjectPurchaseLine.count({ where: { id, amountCents: 1000 } })) === 1
   },
+  // What an exported annex of purchases held (D4b-2): append-only rows of the organization that no route reads or changes; the only route that
+  // touches what they protect is the change of the document of a receipt, reached through its order like the receipt it names. Another
+  // organization gets a 404 on it and the row stays.
+  {
+    name: 'fiscalAnnexExport',
+    create: async (owner, { storeId }) => {
+      const receipt = await createReceiptOf(owner, storeId)
+      const row = await owner.fiscalAnnexExport.create({
+        data: {
+          organizationId: await organizationOfStore(owner, storeId),
+          annexId: 'purchases',
+          year: 2100,
+          month: 1,
+          rowCount: 0,
+          contentSha256: 'a'.repeat(64),
+          sourcesSha256: 'b'.repeat(64),
+          exportedBy: 'isolation-suite'
+        }
+      })
+      orderOfPurchaseRow.set(row.id, orderOfPurchaseRow.get(receipt.receiptId) ?? '')
+      return { id: row.id }
+    },
+    ...purchaseRowChecks
+  },
+  {
+    name: 'fiscalAnnexExportItem',
+    create: async (owner, { storeId }) => {
+      const receipt = await createReceiptOf(owner, storeId)
+      const organizationId = await organizationOfStore(owner, storeId)
+      const exported = await owner.fiscalAnnexExport.create({
+        data: {
+          organizationId,
+          annexId: 'purchases',
+          year: 2100,
+          month: 2,
+          rowCount: 0,
+          contentSha256: 'a'.repeat(64),
+          sourcesSha256: 'b'.repeat(64),
+          exportedBy: 'isolation-suite'
+        }
+      })
+      const row = await owner.fiscalAnnexExportItem.create({
+        data: {
+          organizationId,
+          exportId: exported.id,
+          receiptId: receipt.receiptId,
+          sourceSha256: 'c'.repeat(64),
+          included: true
+        }
+      })
+      orderOfPurchaseRow.set(row.id, orderOfPurchaseRow.get(receipt.receiptId) ?? '')
+      return { id: row.id }
+    },
+    ...purchaseRowChecks
+  },
   {
     name: 'purchaseReceiptLine',
     create: async (owner, { storeId }) => ({

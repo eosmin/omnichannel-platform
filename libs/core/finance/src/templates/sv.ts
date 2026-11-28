@@ -56,6 +56,9 @@ export const SvTemplate: FinanceTemplate = {
     posting('1302', 'Inventario en tránsito', ASSET, '13'),
     header('14', 'Impuestos por recuperar', ASSET, '1'),
     posting('1401', 'IVA crédito fiscal', ASSET, '14'),
+    posting('1402', 'IVA pendiente de documentar', ASSET, '14'),
+    posting('1405', 'Pago a cuenta de renta', ASSET, '14'),
+    posting('1406', 'Anticipo de IVA 2 % de tarjetas', ASSET, '14'),
     header('15', 'Anticipos', ASSET, '1'),
     posting('1501', 'Anticipos a proveedores', ASSET, '15'),
     posting('1502', 'Guías prepagadas de transportistas', ASSET, '15'),
@@ -64,6 +67,7 @@ export const SvTemplate: FinanceTemplate = {
     header('21', 'Cuentas por pagar', LIABILITY, '2'),
     posting('2101', 'Proveedores', LIABILITY, '21'),
     posting('2102', 'Transportistas', LIABILITY, '21'),
+    posting('2103', 'Comisiones devengadas sin comprobante', LIABILITY, '21'),
     header('22', 'Impuestos por pagar', LIABILITY, '2'),
     posting('2201', 'IVA débito fiscal', LIABILITY, '22'),
     posting('2202', 'Otros impuestos por pagar', LIABILITY, '22'),
@@ -98,7 +102,8 @@ export const SvTemplate: FinanceTemplate = {
     posting('6109', 'Pérdidas de inventario', EXPENSE, '6'),
     posting('6110', 'Diferencias de contra entrega', EXPENSE, '6'),
     posting('6111', 'Redondeo', EXPENSE, '6'),
-    posting('6112', 'Gastos sin categoría', EXPENSE, '6')
+    posting('6112', 'Gastos sin categoría', EXPENSE, '6'),
+    posting('6113', 'IVA no recuperable', EXPENSE, '6')
   ],
   roles: {
     [AccountRole.CASH_DEFAULT]: '1101',
@@ -124,7 +129,12 @@ export const SvTemplate: FinanceTemplate = {
     [AccountRole.COD_DIFFERENCES]: '6110',
     [AccountRole.OPENING_EQUITY]: '3103',
     [AccountRole.ROUNDING]: '6111',
-    [AccountRole.UNCATEGORIZED_EXPENSE]: '6112'
+    [AccountRole.UNCATEGORIZED_EXPENSE]: '6112',
+    [AccountRole.VAT_PENDING_DOCUMENT]: '1402',
+    [AccountRole.ACCRUED_COMMISSIONS_UNDOCUMENTED]: '2103',
+    [AccountRole.INCOME_TAX_PREPAYMENT]: '1405',
+    [AccountRole.VAT_CARD_ADVANCE]: '1406',
+    [AccountRole.VAT_NON_RECOVERABLE]: '6113'
   },
   paymentMethods: {
     [PaymentMethod.CASH]: '1101',
