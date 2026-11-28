@@ -260,7 +260,7 @@ export class FiscalHandDeliveryService {
     return listed.filter(kind => rows.some(row => row.fiscalEvidenceKind === String(kind)))
   }
 
-  // Whether the invalidation has a file of its own that is or may become deliverable: any state but infected
+  // Whether the invalidation has a file of its own that is or may become deliverable: any state but the two that are never given (infected, unscannable)
   private async hasOwnFiles(
     tx: Pick<PrismaTransaction, 'media'>,
     storeId: string,
@@ -273,7 +273,7 @@ export class FiscalHandDeliveryService {
           storeId,
           fiscalDocumentId: documentId,
           fiscalEvidenceKind: { in: [...files] },
-          status: { not: MediaStatus.INFECTED }
+          status: { notIn: [MediaStatus.INFECTED, MediaStatus.UNSCANNABLE] }
         }
       })) > 0
     )

@@ -507,6 +507,14 @@ describe('The hand delivery of the files of a fiscal document (Step 4B.7d)', () 
       expect((await handOver(waiting, FiscalHandMeans.ANSWER, VOID)).status).toBe(OK)
     })
 
+    it('does not count an own file whose scan gave up: it is never given, so the answer is free', async () => {
+      const gaveUp = await voidedSale()
+      await notSent(gaveUp)
+      await answerIsClean(gaveUp)
+      await withFiles(gaveUp, [FiscalEvidenceKind.VOID_REPRESENTATION], MediaStatus.UNSCANNABLE)
+      expect((await handOver(gaveUp, FiscalHandMeans.ANSWER, VOID)).status).toBe(OK)
+    })
+
     it('refuses what is not owed: the answer for a document delivery, an invalidation of a document that is not voided, and the document files of one that is', async () => {
       const voided = await voidedSale()
       await notSent(voided)
