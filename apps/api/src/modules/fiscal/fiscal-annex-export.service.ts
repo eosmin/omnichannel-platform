@@ -12,6 +12,7 @@ import { type FiscalAnnexResult, FiscalAnnexService } from '@platform/fiscal/run
 
 import type { Actor } from '../tenancy'
 
+import { FiscalAnnexConstancyService } from './fiscal-annex-constancy.service'
 import { FiscalReachService } from './fiscal-reach.service'
 import type { AnnexQuery } from './fiscal.schemas'
 
@@ -24,6 +25,7 @@ import type { AnnexQuery } from './fiscal.schemas'
 export class FiscalAnnexExportService {
   constructor(
     private readonly annexes: FiscalAnnexService,
+    private readonly constancy: FiscalAnnexConstancyService,
     private readonly reach: FiscalReachService,
     private readonly prisma: PrismaService,
     private readonly jobContext: JobContext,
@@ -37,7 +39,22 @@ export class FiscalAnnexExportService {
     actor: Actor
   ): Promise<FiscalAnnexResult> {
     await this.assertReachesEveryStore(organizationId, actor.userId)
-    const file = await this.annexes.build(organizationId, annexId, query)
+    const built = await this.annexes.build(organizationId, annexId, query)
+    const contentSha256 = createHash('sha256').update(built.content).digest('hex')
+    // The constancia of what the file held is written before the file leaves: a file with no constancia is not handed over. A month that
+    // was exported before adds what moved since (counted) to the notices
+    const constancy = await this.constancy.record(
+      organizationId,
+      annexId,
+      query,
+      actor.userId,
+      built,
+      contentSha256
+    )
+    const file: FiscalAnnexResult =
+      constancy === null || Object.keys(constancy.notices).length === 0
+        ? built
+        : { ...built, notices: { ...built.notices, ...constancy.notices } }
     this.audit.log({
       action: AuditAction.FISCAL_ANNEX_EXPORTED,
       actor: { userId: actor.userId },
@@ -52,7 +69,8 @@ export class FiscalAnnexExportService {
         year: query.year,
         month: query.month,
         rows: file.rows,
-        contentSha256: createHash('sha256').update(file.content).digest('hex'),
+        contentSha256,
+        ...(constancy === null ? {} : { exportId: constancy.exportId }),
         ...(file.sourcesSha256 === undefined ? {} : { sourcesSha256: file.sourcesSha256 }),
         ...(file.notices === undefined ? {} : { notices: file.notices })
       },

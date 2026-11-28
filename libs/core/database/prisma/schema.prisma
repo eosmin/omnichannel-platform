@@ -40,6 +40,8 @@ model Organization {
   fiscalContingencies      FiscalContingency[]
   fiscalDocuments          FiscalDocument[]
   fiscalDeliveries         FiscalDelivery[]
+  fiscalAnnexExports       FiscalAnnexExport[]
+  fiscalAnnexExportItems   FiscalAnnexExportItem[]
   financeBookLayouts       FinanceBookLayout[]
   financeBookSnapshots     FinanceBookSnapshot[]
   journalEntries           JournalEntry[]
@@ -2914,13 +2916,14 @@ model PurchaseReceipt {
   createdBy              String   @map("created_by")
   createdAt              DateTime @default(now()) @map("created_at")
 
-  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  order        PurchaseOrder            @relation(fields: [organizationId, purchaseOrderId], references: [organizationId, id], onDelete: Restrict)
-  supplier     Supplier                 @relation(fields: [organizationId, supplierId], references: [organizationId, id], onDelete: Restrict)
-  entry        JournalEntry             @relation("ReceiptEntry", fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
-  lines        PurchaseReceiptLine[]
-  payments     SupplierPayment[]
-  document     PurchaseReceiptDocument?
+  organization           Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  order                  PurchaseOrder            @relation(fields: [organizationId, purchaseOrderId], references: [organizationId, id], onDelete: Restrict)
+  supplier               Supplier                 @relation(fields: [organizationId, supplierId], references: [organizationId, id], onDelete: Restrict)
+  entry                  JournalEntry             @relation("ReceiptEntry", fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
+  lines                  PurchaseReceiptLine[]
+  payments               SupplierPayment[]
+  document               PurchaseReceiptDocument?
+  fiscalAnnexExportItems FiscalAnnexExportItem[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, clientKey])
@@ -2957,6 +2960,46 @@ model PurchaseReceiptDocument {
 
   @@unique([organizationId, receiptId])
   @@map("purchase_receipt_documents")
+}
+
+// What one exported annex of purchases held (D4b-2): the digests of the file and of the receipts it was read from, never a row. Append-only
+// (triggers and revoked privileges in the migration); a later change to a document that an export held is refused unless it is a rectification.
+model FiscalAnnexExport {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  annexId        String   @map("annex_id")
+  year           Int
+  month          Int
+  rowCount       Int      @map("row_count")
+  contentSha256  String   @map("content_sha256")
+  sourcesSha256  String   @map("sources_sha256")
+  exportedBy     String   @map("exported_by")
+  exportedAt     DateTime @default(now()) @map("exported_at")
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  items        FiscalAnnexExportItem[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, annexId, year, month, exportedAt])
+  @@map("fiscal_annex_exports")
+}
+
+// One receipt of the month of an export: the digest of what decided its place in the file, and whether it went into the file or was left out.
+model FiscalAnnexExportItem {
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  exportId       String  @map("export_id")
+  receiptId      String  @map("receipt_id")
+  sourceSha256   String  @map("source_sha256")
+  included       Boolean
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  export       FiscalAnnexExport @relation(fields: [organizationId, exportId], references: [organizationId, id], onDelete: Restrict)
+  receipt      PurchaseReceipt   @relation(fields: [organizationId, receiptId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, exportId, receiptId])
+  @@index([organizationId, receiptId])
+  @@map("fiscal_annex_export_items")
 }
 
 // What one line of a receipt took in: the units, the cost of one before tax and the stock movement that raised the level.

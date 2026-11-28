@@ -116,6 +116,40 @@ describe('Rollbacks that are safe to run twice', () => {
       await client.query('ROLLBACK')
     }
   })
+  // The rollback of the constancia of the exported annexes drops its two append-only tables with rows in them (the triggers refuse a DELETE, never
+  // a DROP) and its function; the second run finds nothing. Rows are written with the foreign keys off for the transaction, never committed.
+  it('20270218100000_fiscal_annex_export_constancy.rollback.sql drops the constancia with its rows, and runs a second time on the result', async () => {
+    const sql = body('20270218100000_fiscal_annex_export_constancy.rollback.sql')
+    const present = async (name: string): Promise<boolean> =>
+      (await client.query<{ found: string | null }>(`SELECT to_regclass($1) AS found`, [name]))
+        .rows[0]?.found != null
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL session_replication_role = replica')
+      await client.query(
+        `INSERT INTO fiscal_annex_exports (id, organization_id, annex_id, year, month, row_count, content_sha256, sources_sha256, exported_by)
+         VALUES ('rb-x1', 'o', 'purchases', 2026, 10, 1, '${'a'.repeat(64)}', '${'b'.repeat(64)}', 'u')`
+      )
+      await client.query(
+        `INSERT INTO fiscal_annex_export_items (id, organization_id, export_id, receipt_id, source_sha256, included)
+         VALUES ('rb-i1', 'o', 'rb-x1', 'r1', '${'c'.repeat(64)}', true)`
+      )
+      expect(await present('fiscal_annex_exports')).toBe(true)
+      await client.query(sql)
+      expect(await present('fiscal_annex_exports')).toBe(false)
+      expect(await present('fiscal_annex_export_items')).toBe(false)
+      expect(
+        (
+          await client.query(
+            `SELECT 1 FROM pg_proc WHERE proname = 'forbid_fiscal_annex_export_change'`
+          )
+        ).rowCount
+      ).toBe(0)
+      await client.query(sql)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+  })
   // The rollback of the hand delivery changes data: the rows recorded by hand go back to not sent, the second run finds none and does not fail
   // on the columns the first one dropped. Rows are written with the foreign keys off for the transaction (the owner), and never committed.
   it('20270208100000_fiscal_delivery_by_hand.rollback.sql puts the hand deliveries back, and runs a second time on the result', async () => {

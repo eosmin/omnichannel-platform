@@ -7837,6 +7837,7 @@
         "document_number_in_use": "Ese número de documento del proveedor ya se usó en otra orden.",
         "generation_code_in_use": "Ese documento electrónico ya está en otro recibo.",
         "annex_exclusion_with_document": "Una factura que acredita impuesto tiene un documento que declarar: no puede quedar fuera del anexo.",
+        "purchase_document_exported": "Un documento que ya entró en un anexo exportado no se cambia sin rastro: la rectificación, con su razón, es de quien administra los documentos fiscales de todas las tiendas.",
         "payment_exceeds_balance": "El pago es mayor que lo que se le debe a este proveedor.",
         "payment_exceeds_receipt": "El pago es mayor que lo que está por pagar de esa factura.",
         "payment_already_voided": "Este pago ya estaba anulado.",
