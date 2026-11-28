@@ -358,6 +358,25 @@ async function createReceiptOf(
   return { orderLineId: orderLine.id, receiptId, receiptLineId }
 }
 // What the rows reached through their order are checked with (see the cases below)
+// A purchase from an excluded subject with its one concept, written as the owner (one statement, so the check of the total, deferred to the
+// commit, sees the header and its concept together)
+const purchaseOfExcludedLine = new Map<string, string>()
+async function createExcludedPurchaseOf(
+  owner: OwnerClient,
+  storeId: string
+): Promise<{ id: string; lineId: string }> {
+  const organizationId = await organizationOfStore(owner, storeId)
+  const id = randomUUID()
+  const lineId = randomUUID()
+  await owner.$executeRaw`
+    WITH header AS (
+      INSERT INTO excluded_subject_purchases (id, organization_id, client_key, purchased_on, seller_document_type, seller_encrypted, amount_cents, vat_withheld_cents, income_tax_withheld_cents, operation_type, expense_class, sector, cost_type, created_by)
+      VALUES (${id}, ${organizationId}, ${`isolation-${id}`}, '2026-11-01'::date, '2', decode('01' || repeat('00', 40), 'hex'), 1000, 0, 100, '1', '2', '2', '1', 'isolation-suite')
+      RETURNING id, organization_id)
+    INSERT INTO excluded_subject_purchase_lines (id, organization_id, purchase_id, line_no, description, kind, amount_cents)
+    SELECT ${lineId}, organization_id, id, 1, 'service', 'service', 1000 FROM header`
+  return { id, lineId }
+}
 const purchaseRowChecks: Omit<IsolationResource, 'name' | 'create'> = {
   scope: 'organization',
   readPath: purchaseOrderPathOf(ApiRoutes.purchaseOrders.byId),
@@ -2205,6 +2224,58 @@ const resources: IsolationResource[] = [
       return { id: row.id }
     },
     ...purchaseRowChecks
+  },
+  // A purchase from an excluded subject (D20b): the organization's, with its own routes; no route changes it (the database refuses any change)
+  {
+    name: 'excludedSubjectPurchase',
+    create: async (owner, { storeId }) => ({
+      id: (await createExcludedPurchaseOf(owner, storeId)).id
+    }),
+    scope: 'organization',
+    readPath: ApiRoutes.excludedSubjectPurchases.byId,
+    listPath: ApiRoutes.excludedSubjectPurchases.list,
+    untouched: async (owner, id) =>
+      (await owner.excludedSubjectPurchase.count({
+        where: { id, incomeTaxWithheldCents: 100, amountCents: 1000 }
+      })) === 1,
+    creation: {
+      path: ApiRoutes.excludedSubjectPurchases.create,
+      body: name => ({
+        idempotencyKey: `iso-${randomUUID()}`,
+        purchasedOn: new Date().toISOString().slice(0, 10),
+        seller: { documentType: '2', documentNumber: '012345678', name },
+        operationType: '1',
+        expenseClass: '2',
+        sector: '2',
+        costType: '1',
+        lines: [{ description: 'service', kind: 'service', amountCents: 1000 }]
+      }),
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.excludedSubjectPurchase.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (
+          await owner.excludedSubjectPurchase.findUnique({
+            where: { id },
+            select: { organizationId: true }
+          })
+        )?.organizationId ?? null
+    }
+  },
+  // The one concept of a purchase from an excluded subject: no route of its own, it is read through its purchase
+  {
+    name: 'excludedSubjectPurchaseLine',
+    create: async (owner, { storeId }) => {
+      const made = await createExcludedPurchaseOf(owner, storeId)
+      purchaseOfExcludedLine.set(made.lineId, made.id)
+      return { id: made.lineId }
+    },
+    scope: 'organization',
+    readPath: id => ApiRoutes.excludedSubjectPurchases.byId(purchaseOfExcludedLine.get(id) ?? id),
+    untouched: async (owner, id) =>
+      (await owner.excludedSubjectPurchaseLine.count({ where: { id, amountCents: 1000 } })) === 1
   },
   // What an exported annex of purchases held (D4b-2): append-only rows of the organization that no route reads or changes; the only route that
   // touches what they protect is the change of the document of a receipt, reached through its order like the receipt it names. Another

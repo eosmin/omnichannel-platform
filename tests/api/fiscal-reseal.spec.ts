@@ -223,6 +223,110 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
     expect(again).toMatchObject({ resealed: 0, conflicts: 0 })
   })
 
+  // A purchase from an excluded subject (D20b): one statement writes the header and its concept, the total is checked when it commits
+  async function makeExcludedPurchase(
+    sealer: CredentialCipher,
+    content: Record<string, unknown>
+  ): Promise<string> {
+    const id = randomUUID()
+    await owner.$executeRaw`
+      WITH header AS (
+        INSERT INTO excluded_subject_purchases (id, organization_id, client_key, purchased_on, seller_document_type, seller_encrypted, amount_cents, vat_withheld_cents, income_tax_withheld_cents, operation_type, expense_class, sector, cost_type, created_by)
+        VALUES (${id}, ${ctx.orgA.id}, ${`reseal-${id}`}, '2026-11-01'::date, '2', ${Buffer.from(sealer.seal(content))}::bytea, 1000, 0, 100, '1', '2', '2', '1', 'reseal-suite')
+        RETURNING id, organization_id)
+      INSERT INTO excluded_subject_purchase_lines (id, organization_id, purchase_id, line_no, description, kind, amount_cents)
+      SELECT ${randomUUID()}, organization_id, id, 1, 'service', 'service', 1000 FROM header`
+    return id
+  }
+
+  // The owner takes a purchase out with the guards off for this alone: a value nobody opens would be counted by every later run of this suite
+  async function removeExcludedPurchase(id: string): Promise<void> {
+    await raw.query('BEGIN')
+    try {
+      await raw.query('ALTER TABLE excluded_subject_purchase_lines DISABLE TRIGGER USER')
+      await raw.query('ALTER TABLE excluded_subject_purchases DISABLE TRIGGER USER')
+      const lines = await raw.query<{ id: string }>(
+        'SELECT id FROM excluded_subject_purchase_lines WHERE purchase_id = $1',
+        [id]
+      )
+      for (const line of lines.rows) {
+        await raw.query('DELETE FROM excluded_subject_purchase_lines WHERE id = $1', [line.id])
+      }
+      await raw.query('DELETE FROM excluded_subject_purchases WHERE id = $1', [id])
+      await raw.query('ALTER TABLE excluded_subject_purchases ENABLE TRIGGER USER')
+      await raw.query('ALTER TABLE excluded_subject_purchase_lines ENABLE TRIGGER USER')
+      await raw.query('COMMIT')
+    } catch (error) {
+      await raw.query('ROLLBACK')
+      throw error
+    }
+  }
+
+  it('seals again the seller of a purchase from an excluded subject: the new key opens it, the old one does not, one nobody opens stays as it was, and a repeat writes nothing', async () => {
+    const content = { documentNumber: '987654321', name: 'Seller Fixture Rotated' }
+    const rotatedId = await makeExcludedPurchase(oldCipher, content)
+    const lostId = await makeExcludedPurchase(stranger, { documentNumber: '1', name: 'Lost' })
+    try {
+      const lostBefore = await owner.excludedSubjectPurchase.findUniqueOrThrow({
+        where: { id: lostId }
+      })
+      audited.length = 0
+
+      const report = await service(rotated()).run(ctx.orgA.id, unit)
+
+      expect(report.failed.key_mismatch).toBeGreaterThanOrEqual(1)
+      const row = await owner.excludedSubjectPurchase.findUniqueOrThrow({
+        where: { id: rotatedId }
+      })
+      expect(newCipher.open(row.sellerEncrypted)).toEqual(content)
+      expect(() => oldCipher.open(row.sellerEncrypted)).toThrow()
+      // Nothing else of the row moved, and what no key opens is byte for byte as it was
+      expect(row).toMatchObject({ amountCents: 1000, incomeTaxWithheldCents: 100 })
+      const lostAfter = await owner.excludedSubjectPurchase.findUniqueOrThrow({
+        where: { id: lostId }
+      })
+      expect(
+        Buffer.from(lostAfter.sellerEncrypted).equals(Buffer.from(lostBefore.sellerEncrypted))
+      ).toBe(true)
+      expect(JSON.stringify(audited)).not.toMatch(/987654321|Seller Fixture Rotated/)
+
+      const again = await service(rotated()).run(ctx.orgA.id, unit)
+      expect(again.resealed).toBe(0)
+      expect(again.conflicts).toBe(0)
+    } finally {
+      await removeExcludedPurchase(lostId)
+    }
+  })
+
+  it('lets nothing but the function change the sealed seller, and only that column', async () => {
+    // Sealed with the current key, so a later run of the rotation finds it current and counts nothing
+    const id = await makeExcludedPurchase(newCipher, { documentNumber: '1', name: 'Guarded' })
+    const sealed = Buffer.from(newCipher.seal({ documentNumber: '1', name: 'Guarded' }))
+    // The owner itself, with no door: refused. With the door's setting on, any other column: refused
+    await expect(
+      owner.$executeRaw`UPDATE excluded_subject_purchases SET seller_encrypted = ${sealed}::bytea WHERE id = ${id}`
+    ).rejects.toThrow(/EXCLUDED_SUBJECT_IMMUTABLE/)
+    await raw.query('BEGIN')
+    try {
+      await raw.query(`SELECT set_config('app.fiscal_reseal', 'on', true)`)
+      await expect(
+        raw.query(`UPDATE excluded_subject_purchases SET amount_cents = 5 WHERE id = $1`, [id])
+      ).rejects.toThrow(/EXCLUDED_SUBJECT_IMMUTABLE/)
+    } finally {
+      await raw.query('ROLLBACK')
+    }
+    // The function is the worker's and nobody else's
+    const has = async (role: string): Promise<boolean> =>
+      (
+        await raw.query<{ allowed: boolean }>(
+          `SELECT has_function_privilege($1, 'fiscal_reseal_excluded_subject(text, text, bytea, bytea)', 'EXECUTE') AS allowed`,
+          [role]
+        )
+      ).rows[0]?.allowed === true
+    expect(await has(DatabaseRoles.WORKER)).toBe(true)
+    expect(await has(DatabaseRoles.APP)).toBe(false)
+  })
+
   it('leaves a value that opens with neither key byte for byte as it was, counts it and goes on with the rest', async () => {
     const lost = await makeDocument('accepted', stranger, { taxId: 'LOST-TAX' })
     const fine = await makeDocument('accepted', oldCipher, { taxId: 'FINE-TAX' })

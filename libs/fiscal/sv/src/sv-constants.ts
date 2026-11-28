@@ -657,6 +657,19 @@ export const SvPurchaseClassification = {
   EXPENSE_TYPES: ['1', '2', '3']
 } as const
 
+// The purchases from an excluded subject in the annex 5 of the return (manual of annexes F-07 v14, p.27-31): the document of the seller (A, B), the
+// VAT withheld at 13 % of the amount when it applies (H) and the type of operation (I); the classification of J to L is the one of the annex 3
+export const SvExcludedSubject = {
+  SELLER_NIT: '1',
+  SELLER_DUI: '2',
+  SELLER_OTHER: '3',
+  NIT_LENGTH: 14,
+  DUI_LENGTH: 9,
+  OTHER_MAX_LENGTH: 14,
+  VAT_WITHHOLDING_BPS: 1300,
+  OPERATION_TYPES: ['1', '2', '3', '4']
+} as const
+
 // The code of generation of a DTE: a UUID, written with dashes by the person and without them in the file
 export const SV_GENERATION_CODE =
   /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/u

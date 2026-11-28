@@ -22,45 +22,47 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  stores                   Store[]
-  memberships              Membership[]
-  invitations              Invitation[]
-  dataSubjectRequests      DataSubjectRequest[]
-  warehouses               Warehouse[]
-  stockCounts              StockCount[]
-  stockTransfers           StockTransfer[]
-  financeSettings          FinanceSettings?
-  ledgerAccounts           LedgerAccount[]
-  taxRates                 TaxRate[]
-  accountRoles             AccountRoleMapping[]
-  paymentAccounts          PaymentMethodAccount[]
-  fiscalPeriods            FiscalPeriod[]
-  fiscalIssuer             FiscalIssuer?
-  fiscalSequences          FiscalSequence[]
-  fiscalContingencies      FiscalContingency[]
-  fiscalDocuments          FiscalDocument[]
-  fiscalDeliveries         FiscalDelivery[]
-  fiscalAnnexExports       FiscalAnnexExport[]
-  fiscalAnnexExportItems   FiscalAnnexExportItem[]
-  financeBookLayouts       FinanceBookLayout[]
-  financeBookSnapshots     FinanceBookSnapshot[]
-  journalEntries           JournalEntry[]
-  journalLines             JournalLine[]
-  periodBalances           AccountPeriodBalance[]
-  postingFailures          FinancePostingFailure[]
-  chainIncidents           FinanceChainIncident[]
-  bankProfiles             BankImportProfile[]
-  bankImports              BankStatementImport[]
-  bankLines                BankStatementLine[]
-  reconciliationMatches    ReconciliationMatch[]
-  financeTransactions      FinanceTransaction[]
-  suppliers                Supplier[]
-  purchaseOrders           PurchaseOrder[]
-  purchaseReceipts         PurchaseReceipt[]
-  purchaseReceiptDocuments PurchaseReceiptDocument[]
-  supplierPayments         SupplierPayment[]
-  supplierPaymentReturns   SupplierPaymentReturn[]
-  plugins                  Plugin[]
+  stores                       Store[]
+  memberships                  Membership[]
+  invitations                  Invitation[]
+  dataSubjectRequests          DataSubjectRequest[]
+  warehouses                   Warehouse[]
+  stockCounts                  StockCount[]
+  stockTransfers               StockTransfer[]
+  financeSettings              FinanceSettings?
+  ledgerAccounts               LedgerAccount[]
+  taxRates                     TaxRate[]
+  accountRoles                 AccountRoleMapping[]
+  paymentAccounts              PaymentMethodAccount[]
+  fiscalPeriods                FiscalPeriod[]
+  fiscalIssuer                 FiscalIssuer?
+  fiscalSequences              FiscalSequence[]
+  fiscalContingencies          FiscalContingency[]
+  fiscalDocuments              FiscalDocument[]
+  fiscalDeliveries             FiscalDelivery[]
+  fiscalAnnexExports           FiscalAnnexExport[]
+  fiscalAnnexExportItems       FiscalAnnexExportItem[]
+  financeBookLayouts           FinanceBookLayout[]
+  financeBookSnapshots         FinanceBookSnapshot[]
+  journalEntries               JournalEntry[]
+  journalLines                 JournalLine[]
+  periodBalances               AccountPeriodBalance[]
+  postingFailures              FinancePostingFailure[]
+  chainIncidents               FinanceChainIncident[]
+  bankProfiles                 BankImportProfile[]
+  bankImports                  BankStatementImport[]
+  bankLines                    BankStatementLine[]
+  reconciliationMatches        ReconciliationMatch[]
+  financeTransactions          FinanceTransaction[]
+  suppliers                    Supplier[]
+  purchaseOrders               PurchaseOrder[]
+  purchaseReceipts             PurchaseReceipt[]
+  purchaseReceiptDocuments     PurchaseReceiptDocument[]
+  excludedSubjectPurchases     ExcludedSubjectPurchase[]
+  excludedSubjectPurchaseLines ExcludedSubjectPurchaseLine[]
+  supplierPayments             SupplierPayment[]
+  supplierPaymentReturns       SupplierPaymentReturn[]
+  plugins                      Plugin[]
 
   @@map("organizations")
 }
@@ -2960,6 +2962,55 @@ model PurchaseReceiptDocument {
 
   @@unique([organizationId, receiptId])
   @@map("purchase_receipt_documents")
+}
+
+// A purchase from an excluded subject (D20b): what the buyer paid to a person who is not a taxpayer of the VAT, against the invoice of an
+// excluded subject the buyer issues. Immutable (a trigger and a revoked UPDATE and DELETE, migration 20270215100000): the source of the annex of
+// the monthly return that declares it. `incomeTaxWithheldCents` has no default on purpose: the service states it every time, from the concepts.
+model ExcludedSubjectPurchase {
+  id                     String   @id @default(uuid())
+  organizationId         String   @map("organization_id")
+  clientKey              String   @map("client_key")
+  purchasedOn            DateTime @map("purchased_on") @db.Date
+  sellerDocumentType     String   @map("seller_document_type")
+  sellerEncrypted        Bytes    @map("seller_encrypted") // the number of the identity document and the name, sealed with the platform key
+  documentSeries         String?  @map("document_series")
+  generationCode         String?  @map("generation_code")
+  amountCents            Int      @map("amount_cents")
+  vatWithheldCents       Int      @map("vat_withheld_cents")
+  incomeTaxWithheldCents Int      @map("income_tax_withheld_cents")
+  operationType          String   @map("operation_type")
+  expenseClass           String   @map("expense_class")
+  sector                 String
+  costType               String   @map("cost_type")
+  createdBy              String   @map("created_by")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lines        ExcludedSubjectPurchaseLine[]
+
+  // The partial unique index on the code of generation and the index of the month are raw SQL of the migration
+  @@unique([organizationId, id])
+  @@unique([organizationId, clientKey])
+  @@map("excluded_subject_purchases")
+}
+
+// What one concept of the purchase paid for: goods or a service (the income tax is withheld on services only).
+model ExcludedSubjectPurchaseLine {
+  id             String @id @default(uuid())
+  organizationId String @map("organization_id")
+  purchaseId     String @map("purchase_id")
+  lineNo         Int    @map("line_no")
+  description    String
+  kind           String
+  amountCents    Int    @map("amount_cents")
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  purchase     ExcludedSubjectPurchase @relation(fields: [organizationId, purchaseId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([purchaseId, lineNo])
+  @@index([organizationId, purchaseId])
+  @@map("excluded_subject_purchase_lines")
 }
 
 // What one exported annex of purchases held (D4b-2): the digests of the file and of the receipts it was read from, never a row. Append-only

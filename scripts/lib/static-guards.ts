@@ -112,6 +112,8 @@ export const WRITING_FUNCTION_NAMES: readonly string[] = [
   'fiscal_reseal_contingency',
   // the sealed event of an invalidation of a voided document (D13b-2b-1), through the same door of the guard
   'fiscal_reseal_void_event',
+  // the sealed seller of a purchase from an excluded subject (D20b), through the same door of the guard
+  'fiscal_reseal_excluded_subject',
   // the masked receiver of a fiscal document (Step 7.3-S11b-2), through the same door of the guard
   'fiscal_mask_document'
 ]
