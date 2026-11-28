@@ -44,8 +44,8 @@ export enum FiscalEvidenceKind {
   VOID_RESPONSE = 'void_response',
   DTE_FILE = 'dte_file',
   REPRESENTATION = 'representation',
-  // What the receiver is given when the document is voided (Normativa DTE v2.0, apartado 11): the event of the invalidation as the issuer
-  // signed it, with the seal of the authority, and its graphic representation. Made once the document is voided, from the sealed event
+  // What the receiver is given when the document is voided: the event of the invalidation as the issuer signed it, with the seal of the
+  // authority, and its graphic representation. Made once the document is voided, from the sealed event
   VOID_DTE_FILE = 'void_dte_file',
   VOID_REPRESENTATION = 'void_representation'
 }
