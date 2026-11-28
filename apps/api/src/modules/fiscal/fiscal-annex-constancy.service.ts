@@ -65,9 +65,23 @@ export class FiscalAnnexConstancyService {
         const last = await client.fiscalAnnexExport.findFirst({
           where: { organizationId, annexId, year: period.year, month: period.month },
           orderBy: [{ exportedAt: 'desc' }, { id: 'desc' }],
-          select: { items: { select: { receiptId: true, sourceSha256: true } } }
+          select: {
+            id: true,
+            contentSha256: true,
+            sourcesSha256: true,
+            items: { select: { receiptId: true, sourceSha256: true } }
+          }
         })
         const notices = last === null ? {} : movedSince(last.items, digests)
+        // The same file made from the same documents as the last export of the month: that constancia already says it. Nothing is written (the
+        // rows are append-only and have no bound, so exporting again and again would only grow them) and its id is the one handed back
+        if (
+          last !== null &&
+          last.contentSha256 === contentSha256 &&
+          last.sourcesSha256 === sourcesSha256
+        ) {
+          return { exportId: last.id, notices }
+        }
         const created = await client.fiscalAnnexExport.create({
           data: {
             organizationId,
