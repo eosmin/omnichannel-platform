@@ -3,6 +3,9 @@ import type {
   BuiltDocument,
   ConsultResult,
   ContingencyPolicy,
+  FiscalBatchConsultResult,
+  FiscalBatchRequest,
+  FiscalBatchSendResult,
   ContingencyReportResult,
   DeferResult,
   FiscalContingencyEvent,
@@ -33,6 +36,7 @@ import { buildDocument, resolveDocumentType } from './sv-build'
 import {
   SV_COUNTRY_CODE,
   SV_PROVIDER_ID,
+  SvBatch,
   SvContingency,
   SvCredentialKeys,
   SvDocumentTypes,
@@ -53,9 +57,11 @@ import { isPlausiblePartyTaxId } from './sv-tax-id'
 import {
   consultDocument,
   consultVoided,
+  consultBatch,
   deferDocument,
   probeAuthority,
   reportContingencyEvent,
+  submitBatch,
   submitDocument,
   voidDocument,
   type SvTransmissionDeps
@@ -191,6 +197,10 @@ export class SvProvider implements FiscalDocumentProvider {
       reportWithinHours: SvContingency.REPORT_WITHIN_HOURS,
       technicalReportAfterDays: SvContingency.TECHNICAL_REPORT_AFTER_DAYS,
       maxDocumentsPerEvent: SvContingency.MAX_DOCUMENTS,
+      batch: {
+        maxDocumentsPerBatch: SvBatch.MAX_DOCUMENTS,
+        maxBatchesPerContingency: SvBatch.MAX_BATCHES
+      },
       requiresResponsible: true
     }
   }
@@ -262,6 +272,18 @@ export class SvProvider implements FiscalDocumentProvider {
     ctx: ProviderContext
   ): Promise<ContingencyReportResult> {
     return reportContingencyEvent(this.deps, event, ctx)
+  }
+
+  submitBatch(request: FiscalBatchRequest, ctx: ProviderContext): Promise<FiscalBatchSendResult> {
+    return submitBatch(this.deps, request, ctx)
+  }
+
+  consultBatch(
+    batchCode: string,
+    request: FiscalBatchRequest,
+    ctx: ProviderContext
+  ): Promise<FiscalBatchConsultResult> {
+    return consultBatch(this.deps, batchCode, request, ctx)
   }
 
   probeAuthority(ctx: ProviderContext): Promise<FiscalAuthorityProbeOutcome> {

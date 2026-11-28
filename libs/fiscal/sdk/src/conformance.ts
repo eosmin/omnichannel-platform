@@ -1,4 +1,8 @@
+import { randomUUID } from 'node:crypto'
+
 import {
+  FiscalBatchConsultState,
+  FiscalBatchSendOutcome,
   FiscalContingencyReportOutcome,
   FiscalDeferOutcome,
   FiscalSubmitOutcome
@@ -159,6 +163,8 @@ export interface ConformanceOptions {
   readonly dryRun: boolean
   // Values that must never appear in the report (passwords, a tax id, a token): the run fails if one does
   readonly secrets?: readonly string[]
+  // Waits between two questions about a lot (D16); a test passes one that does not wait
+  readonly wait?: (ms: number) => Promise<void>
   // A dry run has no accepted parent for a credit note: the provider package says what the note names
   readonly dryRunCredited?: (
     built: BuiltDocument,
@@ -512,14 +518,26 @@ export async function runConformance(
       }
       contingencies.reported += 1
       record(step, null, ConformanceOutcome.REPORTED, null, true)
-      // The event was taken: the documents of the lot go out
+      // The event was taken: the documents of the lot go out, in lots when the authority takes them so (D16), one by one otherwise
+      const decided = await sendInLots(
+        options,
+        step.id,
+        step.documents.flatMap(id => {
+          const doc = held.get(id)
+          return doc === undefined ? [] : [{ id, built: doc.built }]
+        }),
+        contextOf
+      )
       for (const id of step.documents) {
         const doc = held.get(id)
         if (doc === undefined) continue
         const totals = totalsOf(doc.built.documentType)
         let sent: SubmitResult
         try {
-          sent = await options.provider.submit(doc.built, contextOf(id))
+          sent =
+            decided === null
+              ? await options.provider.submit(doc.built, contextOf(id))
+              : (decided.get(id) ?? { outcome: FiscalSubmitOutcome.UNAVAILABLE })
         } catch (error) {
           // One document that breaks does not leave the rest of the lot unsent; it is a failure of its own
           totals.failed += 1
@@ -592,6 +610,83 @@ export async function runConformance(
   }
   assertNoSecrets(report, options.secrets ?? [])
   return report
+}
+
+// How often a lot is asked about, and how many times, before the run says the authority did not finish it
+const LOT_POLL_MS = 3_000
+const LOT_MAX_POLLS = 40
+
+// The documents of a reported contingency sent in lots, each answered with a verdict by the document's id. Null when the provider does not
+// send lots (the caller sends them one by one). A lot the authority did not take, or did not finish, leaves its documents with no verdict
+// (the caller counts them as unanswered); one it refused gives each of them the refusal.
+async function sendInLots(
+  options: ConformanceOptions,
+  stepId: string,
+  documents: readonly { id: string; built: BuiltDocument }[],
+  contextOf: (id: string) => ProviderContext
+): Promise<Map<string, SubmitResult> | null> {
+  const declared = options.provider.manifest.contingencyMode?.batch
+  const submitBatch = options.provider.submitBatch?.bind(options.provider)
+  const consultBatch = options.provider.consultBatch?.bind(options.provider)
+  if (declared === undefined || submitBatch === undefined || consultBatch === undefined) return null
+  const wait =
+    options.wait ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)))
+  const verdicts = new Map<string, SubmitResult>()
+  for (
+    let start = 0, lot = 1;
+    start < documents.length;
+    start += declared.maxDocumentsPerBatch, lot += 1
+  ) {
+    const chunk = documents.slice(start, start + declared.maxDocumentsPerBatch)
+    const request = {
+      sendId: randomUUID(),
+      documents: chunk.map(item => ({
+        documentType: item.built.documentType,
+        externalNumber: null,
+        providerData: null,
+        payload: item.built.payload
+      }))
+    }
+    const context = contextOf(`${stepId}:lot${lot}`)
+    const sent = await submitBatch(request, context)
+    if (sent.outcome === FiscalBatchSendOutcome.REJECTED) {
+      for (const item of chunk) {
+        verdicts.set(item.id, { outcome: FiscalSubmitOutcome.REJECTED, reason: sent.reason })
+      }
+      continue
+    }
+    if (sent.outcome !== FiscalBatchSendOutcome.RECEIVED) continue
+    for (let poll = 0; poll < LOT_MAX_POLLS; poll += 1) {
+      const answer = await consultBatch(sent.batchCode, request, context)
+      if (answer.state === FiscalBatchConsultState.DONE) {
+        for (const verdict of answer.verdicts) {
+          const item = chunk[verdict.index]
+          if (item === undefined) continue
+          // The verdict without its place in the lot: the id of the document says whose it is
+          verdicts.set(
+            item.id,
+            verdict.outcome === FiscalSubmitOutcome.ACCEPTED
+              ? {
+                  outcome: verdict.outcome,
+                  externalNumber: verdict.externalNumber,
+                  ...(verdict.providerData === undefined
+                    ? {}
+                    : { providerData: verdict.providerData }),
+                  ...(verdict.response === undefined ? {} : { response: verdict.response })
+                }
+              : {
+                  outcome: verdict.outcome,
+                  reason: verdict.reason,
+                  ...(verdict.response === undefined ? {} : { response: verdict.response })
+                }
+          )
+        }
+        break
+      }
+      await wait(LOT_POLL_MS)
+    }
+  }
+  return verdicts
 }
 
 // The last gate before a report leaves this module: none of the values that must stay secret may be anywhere in it, as typed or as JSON

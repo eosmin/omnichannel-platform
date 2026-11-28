@@ -26,7 +26,8 @@ const IDEMPOTENT = [
     'purchase_receipt_documents',
     'issued_on'
   ],
-  ['20270213100000_fiscal_void_event.rollback.sql', 'fiscal_documents', 'void_event_encrypted']
+  ['20270213100000_fiscal_void_event.rollback.sql', 'fiscal_documents', 'void_event_encrypted'],
+  ['20270214100000_fiscal_contingency_batch.rollback.sql', 'fiscal_documents', 'batch_id']
 ] as const
 
 // The script has its own BEGIN and COMMIT: the case wraps it in the transaction it throws away
@@ -180,6 +181,54 @@ describe('Rollbacks that are safe to run twice', () => {
       // The row stays: only the sealed event goes with the column
       expect(
         (await client.query(`SELECT 1 FROM fiscal_documents WHERE id = 'rb-doc'`)).rowCount
+      ).toBe(1)
+      await client.query(sql)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+  })
+  // The rollback of the lots: with a lot and a document held in it, the first run takes the column, the check, the table and its guard away and
+  // gives the guard of the documents the form of 20270213100000 (it no longer names the column); the second finds it done. Written with the
+  // triggers off for the transaction (replica role), never committed.
+  it('20270214100000_fiscal_contingency_batch.rollback.sql drops the lots and the column, with a document held in a lot, and runs twice', async () => {
+    const sql = body('20270214100000_fiscal_contingency_batch.rollback.sql')
+    const hasTable = async (): Promise<boolean> =>
+      (
+        await client.query<{ found: string | null }>(
+          `SELECT to_regclass('fiscal_contingency_batches')::text AS found`
+        )
+      ).rows[0]?.found !== null
+    const guardNamesColumn = async (): Promise<boolean> =>
+      (
+        await client.query<{ named: boolean }>(
+          `SELECT prosrc LIKE '%batch_id%' AS named FROM pg_proc WHERE proname = 'fiscal_document_guard'`
+        )
+      ).rows[0]?.named === true
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL session_replication_role = replica')
+      await client.query(
+        `INSERT INTO fiscal_contingencies (id, organization_id, provider_id, environment, status, origin, reason, event_code, started_at, ended_at, reported_at, window_ends_at, updated_at)
+         VALUES ('rb-c', 'o', 'p', 'sandbox', 'reported', 'user', 'r', 'rb-event', now(), now(), now(), now(), now())`
+      )
+      await client.query(
+        `INSERT INTO fiscal_contingency_batches (id, organization_id, contingency_id, sequence, send_id, document_count, updated_at)
+         VALUES ('rb-b', 'o', 'rb-c', 1, 'rb-send', 1, now())`
+      )
+      await client.query(
+        `INSERT INTO fiscal_documents (id, organization_id, store_id, order_id, sequence_number, document_type, status, provider_id, environment,
+           issuer_snapshot, lines_snapshot, receiver_encrypted, total_cents, tax_cents, contingency_id, batch_id, updated_at)
+         VALUES ('rb-doc-b', 'o', 's', 'od', 987654322, 'pending', 'queued', 'simulator', 'sandbox', '{}', '{}', '\\x01', 1, 0, 'rb-c', 'rb-b', now())`
+      )
+      expect(await hasTable()).toBe(true)
+      expect(await guardNamesColumn()).toBe(true)
+      await client.query(sql)
+      expect(await hasColumn('fiscal_documents', 'batch_id')).toBe(false)
+      expect(await hasTable()).toBe(false)
+      expect(await guardNamesColumn()).toBe(false)
+      // The row stays: only the lot goes with the column
+      expect(
+        (await client.query(`SELECT 1 FROM fiscal_documents WHERE id = 'rb-doc-b'`)).rowCount
       ).toBe(1)
       await client.query(sql)
     } finally {

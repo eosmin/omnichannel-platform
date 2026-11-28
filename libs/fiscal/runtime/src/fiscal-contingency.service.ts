@@ -17,6 +17,7 @@ import {
 } from '@platform/core/database'
 import {
   FiscalAuthorityProbeOutcome,
+  FiscalBatchStatus,
   FiscalContingencyAlertKind,
   FiscalContingencyAttachResult,
   FiscalContingencyCodePattern,
@@ -52,6 +53,7 @@ import { Events } from '@platform/core/events'
 import {
   JobNames,
   probeFiscalContingencySchedulerId,
+  processFiscalBatchJobId,
   QueueNames,
   reportFiscalContingencyJobId,
   submitFiscalDocumentJobId
@@ -1409,6 +1411,26 @@ export class FiscalContingencyService {
 
   // The documents of a reported contingency go out through the queue (one job each, the job id keeps a repeat from doubling them)
   private async release(organizationId: string, contingencyId: string): Promise<void> {
+    // A provider whose authority takes the documents of a contingency in lots (D16): the held documents are cut into lots and each lot is one job
+    const row = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalContingency.findFirst({
+        where: { id: contingencyId, organizationId },
+        select: { providerId: true }
+      })
+    )
+    const provider = row === null ? undefined : this.providers.find(row.providerId)
+    const declared = provider?.manifest.contingencyMode?.batch
+    if (
+      provider?.submitBatch !== undefined &&
+      provider.consultBatch !== undefined &&
+      declared !== undefined
+    ) {
+      const lots = await this.cutIntoBatches(organizationId, contingencyId, declared)
+      for (const lot of lots) {
+        await this.enqueueBatchStep(organizationId, lot.id, lot.step)
+      }
+      return
+    }
     const docs = await this.unit(organizationId, () =>
       this.prisma.client.fiscalDocument.findMany({
         where: { organizationId, contingencyId, status: FiscalDocumentStatus.QUEUED },
@@ -1417,6 +1439,105 @@ export class FiscalContingencyService {
       })
     )
     await this.enqueueSubmissions(organizationId, docs, true)
+  }
+
+  // The held documents of a reported contingency, cut into lots in the order they were made (D16). Under the lock of the contingency, and
+  // idempotent: a second run (a second job of the report, the nightly check) finds the lots made and returns the ones not finished. What a
+  // lot holds never changes afterwards (a document is in one lot for good), so the order of its documents is the same on every call about it.
+  private async cutIntoBatches(
+    organizationId: string,
+    contingencyId: string,
+    declared: { maxDocumentsPerBatch: number; maxBatchesPerContingency: number }
+  ): Promise<{ id: string; step: number }[]> {
+    return this.inTx(organizationId, async tx => {
+      await tx.$queryRaw`SELECT id FROM fiscal_contingencies WHERE id = ${contingencyId} AND organization_id = ${organizationId} FOR UPDATE`
+      const made = await tx.fiscalContingencyBatch.count({
+        where: { organizationId, contingencyId }
+      })
+      if (made === 0) {
+        const held = await tx.fiscalDocument.findMany({
+          where: {
+            organizationId,
+            contingencyId,
+            status: FiscalDocumentStatus.QUEUED,
+            batchId: null
+          },
+          select: { id: true },
+          orderBy: { sequenceNumber: 'asc' }
+        })
+        const count = Math.ceil(held.length / declared.maxDocumentsPerBatch)
+        // The registry checks that the lots the authority takes hold the most an event lists: this only keeps a lot that cannot be sent from being made
+        if (count > declared.maxBatchesPerContingency) {
+          throw new Error(
+            'the documents of the contingency need more lots than the authority takes'
+          )
+        }
+        for (
+          let start = 0, sequence = 1;
+          start < held.length;
+          start += declared.maxDocumentsPerBatch, sequence += 1
+        ) {
+          const ids = held.slice(start, start + declared.maxDocumentsPerBatch).map(doc => doc.id)
+          const batch = await tx.fiscalContingencyBatch.create({
+            data: {
+              organizationId,
+              contingencyId,
+              sequence,
+              sendId: randomUUID(),
+              documentCount: ids.length
+            },
+            select: { id: true }
+          })
+          await tx.fiscalDocument.updateMany({
+            where: { organizationId, contingencyId, id: { in: ids }, batchId: null },
+            data: { batchId: batch.id }
+          })
+        }
+      }
+      const open = await tx.fiscalContingencyBatch.findMany({
+        where: {
+          organizationId,
+          contingencyId,
+          status: { not: FiscalBatchStatus.PROCESSED }
+        },
+        select: { id: true, sendAttempts: true, consultAttempts: true },
+        orderBy: { sequence: 'asc' }
+      })
+      return open.map(lot => ({ id: lot.id, step: lot.sendAttempts + lot.consultAttempts }))
+    })
+  }
+
+  // The next step of a lot (D16), as one job: the send, or the question about how it went. The step is part of the job id (a job that waits, runs
+  // or backs off keeps a second of the same step from being added); the failed one of the same id is removed first. After the REAL commit.
+  async enqueueBatchStep(
+    organizationId: string,
+    batchId: string,
+    step: number,
+    delayMs = 0
+  ): Promise<void> {
+    const jobId = processFiscalBatchJobId(batchId, step)
+    await this.prisma.afterCommitStep(this.prisma.client, async () => {
+      const earlier = await this.queue.getJob(jobId)
+      if (earlier !== undefined && (await earlier.isFailed())) await earlier.remove()
+      await this.queue.add(
+        JobNames.PROCESS_FISCAL_BATCH,
+        { organizationId, batchId },
+        { ...fiscalReleasedJobOptions(), ...(delayMs > 0 ? { delay: delayMs } : {}), jobId }
+      )
+    })
+  }
+
+  // A document held in a lot whose job is gone (the attempts of the whole window were spent, the queue lost it) asks the lot again: the
+  // nightly check finds the document stalled, its job comes here, and the lot gets its next step. A lot that is finished asks nothing.
+  async askBatch(organizationId: string, batchId: string): Promise<void> {
+    const lot = await this.unit(organizationId, () =>
+      this.prisma.client.fiscalContingencyBatch.findFirst({
+        where: { id: batchId, organizationId },
+        select: { status: true, sendAttempts: true, consultAttempts: true }
+      })
+    )
+    if (lot === null || (lot.status as FiscalBatchStatus) === FiscalBatchStatus.PROCESSED) return
+    await this.enqueueBatchStep(organizationId, batchId, lot.sendAttempts + lot.consultAttempts)
   }
 
   private async enqueueSubmissions(
@@ -1595,7 +1716,8 @@ export class FiscalContingencyService {
     return { issuer, provider, mode }
   }
 
-  private issuerInput(row: {
+  // (also read by the lots of a reported contingency)
+  issuerInput(row: {
     legalName: string
     taxId: string
     registrationId: string | null

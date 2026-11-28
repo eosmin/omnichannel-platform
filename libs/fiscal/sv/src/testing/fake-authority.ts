@@ -1,4 +1,4 @@
-import { createHash, createSign, createVerify, generateKeyPairSync } from 'node:crypto'
+import { createHash, createSign, createVerify, generateKeyPairSync, randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
@@ -58,6 +58,9 @@ export interface FakeAuthority {
     invalidations: number
     // The events of contingency it received
     contingencies: number
+    // The lots it received (a send it refused counts) and the questions asked about them
+    batches: number
+    batchConsults: number
     consults: number
     signs: number
     userAgents: Set<string>
@@ -68,6 +71,8 @@ export interface FakeAuthority {
     lastEvent: Record<string, unknown> | null
     // The last event of contingency it received, decoded
     lastContingency: Record<string, unknown> | null
+    // The last lot it received, as sent: the send id and the signed documents in order
+    lastBatch: { sendId: string; documents: string[] } | null
     // What reached the address a redirect pointed to (nothing, when redirects are refused)
     capturedBodies: string[]
   }
@@ -82,6 +87,9 @@ export interface FakeAuthority {
   // The event of contingency: taken, refused with a code, or not answered (503)
   contingencyMode: 'normal' | 'refuse' | 'down'
   loginMode: 'normal' | 'rateLimited' | 'redirect'
+  // The lots: how many consultations of a lot are answered "not finished" before it is processed, and whether the reception of lots answers 503
+  batchPendingConsults: number
+  batchDown: boolean
   close(): Promise<void>
 }
 
@@ -111,12 +119,24 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
   // The documents a contingency event listed (by generation code), with the instant the authority took the event: a deferred document is
   // taken only if it is listed. The window of 72 hours is not enforced by this fake.
   const listed = new Map<string, number>()
+  // The lots it took: by the code it gave, the documents it was sent and what it decided of them once it processed the lot
+  const lots = new Map<
+    string,
+    {
+      documents: { jws: string; document: Record<string, unknown> }[]
+      asked: number
+      verdicts: { processed: Record<string, unknown>[]; refused: Record<string, unknown>[] } | null
+    }
+  >()
+  const sendIds = new Set<string>()
   const stats: FakeAuthority['stats'] = {
     logins: 0,
     wrongLogins: 0,
     receptions: 0,
     invalidations: 0,
     contingencies: 0,
+    batches: 0,
+    batchConsults: 0,
     consults: 0,
     signs: 0,
     userAgents: new Set(),
@@ -125,13 +145,16 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
     lastJws: null,
     lastEvent: null,
     lastContingency: null,
+    lastBatch: null,
     capturedBodies: []
   }
   const control = {
     signerDown: false,
     receptionDown: false,
     contingencyMode: 'normal' as 'normal' | 'refuse' | 'down',
-    loginMode: 'normal' as 'normal' | 'rateLimited' | 'redirect'
+    loginMode: 'normal' as 'normal' | 'rateLimited' | 'redirect',
+    batchPendingConsults: 0,
+    batchDown: false
   }
   // The documents that found the authority down once: it answers them on the next attempt
   const wasDown = new Set<string>()
@@ -265,6 +288,151 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
           mensaje: 'RECIBIDO',
           selloRecibido: sealOf(`contingency:${eventCode}`),
           observaciones: []
+        })
+        return
+      }
+
+      if (path === '/fesv/recepcionlote') {
+        stats.batches += 1
+        if (control.batchDown || control.receptionDown) {
+          send(response, 503, { error: 'Service Unavailable' })
+          return
+        }
+        const body = JSON.parse(raw) as {
+          ambiente?: string
+          idEnvio?: string
+          version?: unknown
+          nitEmisor?: string
+          documentos?: unknown
+        }
+        const refusal = (code: string): void =>
+          send(response, 400, {
+            version: 1,
+            ambiente: body.ambiente,
+            estado: 'RECHAZADO',
+            idEnvio: body.idEnvio,
+            codigoLote: null,
+            fhProcesamiento: null,
+            codigoMsg: code,
+            descripcionMsg: 'REFUSED'
+          })
+        // The shape the manual gives: the environment, the send id in capitals (a version 4 UUID), the version, the tax id and 1 to 100 signed documents
+        if (
+          !String(request.headers['content-type']).startsWith('application/json') ||
+          typeof body.idEnvio !== 'string' ||
+          !/^[A-F0-9]{8}-[A-F0-9]{4}-4[A-F0-9]{3}-[89AB][A-F0-9]{3}-[A-F0-9]{12}$/.test(
+            body.idEnvio
+          ) ||
+          body.version !== 1 ||
+          !Array.isArray(body.documentos) ||
+          body.documentos.length < 1 ||
+          body.documentos.length > 100
+        ) {
+          return refusal('094')
+        }
+        if (body.nitEmisor !== FAKE.NIT) return refusal('029')
+        const parsed: { jws: string; document: Record<string, unknown> }[] = []
+        for (const jws of body.documentos) {
+          const document = verifyJws(String(jws))
+          if (document === null) return refusal('033')
+          parsed.push({ jws: String(jws), document })
+        }
+        stats.lastBatch = { sendId: body.idEnvio, documents: parsed.map(item => item.jws) }
+        // A send id the authority holds already is refused as a repeated document is (code 4)
+        if (sendIds.has(body.idEnvio)) return refusal('004')
+        sendIds.add(body.idEnvio)
+        const code = randomUUID().toUpperCase()
+        lots.set(code, { documents: parsed, asked: 0, verdicts: null })
+        send(response, 200, {
+          version: 1,
+          ambiente: body.ambiente,
+          versionApp: 1,
+          estado: 'RECIBIDO',
+          idEnvio: body.idEnvio,
+          codigoLote: code,
+          fhProcesamiento: '17/11/2026 09:00:00',
+          clasificaMsg: '10',
+          codigoMsg: '001',
+          descripcionMsg: 'LOTE RECIBIDO'
+        })
+        return
+      }
+
+      if (path.startsWith('/fesv/recepcion/consultadtelote/')) {
+        stats.batchConsults += 1
+        if (control.batchDown || control.receptionDown) {
+          send(response, 503, { error: 'Service Unavailable' })
+          return
+        }
+        const lot = lots.get(
+          decodeURIComponent(path.slice('/fesv/recepcion/consultadtelote/'.length))
+        )
+        if (lot === undefined) {
+          send(response, 400, {
+            estado: 'RECHAZADO',
+            codigoMsg: '014',
+            descripcionMsg: 'NO EXISTE UN REGISTRO CON ESTE DATO'
+          })
+          return
+        }
+        lot.asked += 1
+        if (lot.verdicts === null && lot.asked <= control.batchPendingConsults) {
+          send(response, 200, {
+            version: 1,
+            estado: 'PROCESANDO',
+            codigoMsg: '001',
+            descripcionMsg: 'LOTE EN PROCESO'
+          })
+          return
+        }
+        if (lot.verdicts === null) {
+          // Processed once, document by document, in the order they were sent
+          const processed: Record<string, unknown>[] = []
+          const refused: Record<string, unknown>[] = []
+          lot.documents.forEach(({ document }, index) => {
+            const id = document['identificacion'] as { codigoGeneracion: string; tipoDte: string }
+            const common = {
+              version: 2,
+              ambiente: '00',
+              versionApp: 2,
+              codigoGeneracion: id.codigoGeneracion,
+              fhProcesamiento: '17/11/2026 09:00:00',
+              index
+            }
+            const receiver = (document['receptor'] ?? {}) as { numDocumento?: string; nit?: string }
+            const who = receiver.numDocumento ?? receiver.nit ?? ''
+            const refuse = (code: string): void => {
+              refused.push({
+                ...common,
+                estado: 'RECHAZADO',
+                selloRecibido: null,
+                clasificaMsg: '20',
+                codigoMsg: code,
+                descripcionMsg: 'REFUSED',
+                observaciones: []
+              })
+            }
+            if (schemaErrors(id.tipoDte, document).length > 0) return refuse('006')
+            if (!listed.has(id.codigoGeneracion)) return refuse('013')
+            if (who === FAKE.REJECT) return refuse('020')
+            if (received.has(id.codigoGeneracion)) return refuse('004')
+            const seal = sealOf(id.codigoGeneracion)
+            received.set(id.codigoGeneracion, { type: id.tipoDte, seal })
+            processed.push({
+              ...common,
+              estado: 'PROCESADO',
+              selloRecibido: seal,
+              clasificaMsg: '10',
+              codigoMsg: '001',
+              descripcionMsg: 'RECIBIDO Y PROCESADO',
+              observaciones: []
+            })
+          })
+          lot.verdicts = { processed, refused }
+        }
+        send(response, 200, {
+          procesados: lot.verdicts.processed,
+          rechazados: lot.verdicts.refused
         })
         return
       }
@@ -475,7 +643,9 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
     reception: '/fesv/recepciondte',
     consult: '/fesv/recepcion/consultadte',
     invalidation: '/fesv/anulardte',
-    contingency: '/fesv/contingencia'
+    contingency: '/fesv/contingencia',
+    batch: '/fesv/recepcionlote',
+    batchConsult: '/fesv/recepcion/consultadtelote'
   }
   return {
     baseUrl,
@@ -489,6 +659,8 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
       invalidated.clear()
       eventCodes.clear()
       listed.clear()
+      lots.clear()
+      sendIds.clear()
       wasDown.clear()
     },
     get signerDown() {
@@ -514,6 +686,18 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
     },
     set contingencyMode(value: 'normal' | 'refuse' | 'down') {
       control.contingencyMode = value
+    },
+    get batchPendingConsults() {
+      return control.batchPendingConsults
+    },
+    set batchPendingConsults(value: number) {
+      control.batchPendingConsults = value
+    },
+    get batchDown() {
+      return control.batchDown
+    },
+    set batchDown(value: boolean) {
+      control.batchDown = value
     },
     close: () =>
       new Promise<void>(resolve => {

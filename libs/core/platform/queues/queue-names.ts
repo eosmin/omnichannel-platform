@@ -100,6 +100,8 @@ export const JobNames = {
   SUBMIT_FISCAL_DOCUMENT: 'submit-fiscal-document',
   // Reports a contingency of an issuer to the authority, so that the documents made in it can be sent (Step 4B.7c-7)
   REPORT_FISCAL_CONTINGENCY: 'report-fiscal-contingency',
+  // One step of a lot of a reported contingency: sends it, or asks the authority how it went (D16)
+  PROCESS_FISCAL_BATCH: 'process-fiscal-batch',
   // Asks the authority whether it answers while a contingency is open, and ends the contingency when it does (D2c)
   PROBE_FISCAL_CONTINGENCY: 'probe-fiscal-contingency',
   CREATE_SHIPMENTS: 'create-shipments', // One batch
@@ -199,6 +201,11 @@ export const submitFiscalDocumentJobId = (documentId: string, submission: number
 // number of the ask counts (dashes, no colon)
 export const reportFiscalContingencyJobId = (contingencyId: string, ask: number): string =>
   `${JobNames.REPORT_FISCAL_CONTINGENCY}-${contingencyId}-${ask}`
+
+// One job for each step of a lot: the send (step 0) and each consultation (step n). The step is part of the id, so a job that waits, runs or
+// backs off keeps a second one of the same step from being added, and the next step is a new job (dashes, no colon)
+export const processFiscalBatchJobId = (batchId: string, step: number): string =>
+  `${JobNames.PROCESS_FISCAL_BATCH}-${batchId}-${step}`
 
 // The scheduler of the probe of one open contingency (one per contingency: asked again, it is the same scheduler). Dashes, no colon.
 export const probeFiscalContingencySchedulerId = (contingencyId: string): string =>

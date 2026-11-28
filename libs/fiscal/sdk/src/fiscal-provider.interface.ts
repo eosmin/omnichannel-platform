@@ -1,5 +1,7 @@
 import type {
   FiscalAuthorityProbeOutcome,
+  FiscalBatchConsultState,
+  FiscalBatchSendOutcome,
   FiscalConsultState,
   FiscalContingencyReportOutcome,
   FiscalDeferOutcome,
@@ -121,8 +123,18 @@ export interface FiscalContingencyDeclaration {
   // end, or to now while it is open). Absent: the authority asks none, and nothing is watched
   readonly technicalReportAfterDays?: number
   readonly maxDocumentsPerEvent: number
+  // How the documents of a reported contingency go to the authority: in lots, when it takes them so (D16). Absent: one by one, as any other
+  // document. When present the provider has `submitBatch` and `consultBatch` (the registry refuses one that declares it and has not).
+  readonly batch?: FiscalBatchDeclaration
   // The authority wants to know who answers for the establishment (the person who ends the contingency gives it)
   readonly requiresResponsible: boolean
+}
+
+// The lots the authority takes: how many documents one lot holds and how many lots one contingency may send (core cuts the documents to
+// these, never to a number of its own)
+export interface FiscalBatchDeclaration {
+  readonly maxDocumentsPerBatch: number
+  readonly maxBatchesPerContingency: number
 }
 
 // What `build` is told when the document is made in contingency: the document is made, signed and kept, and sent after the event
@@ -439,6 +451,46 @@ export interface StoredFiscalDocument {
   readonly payload: Readonly<Record<string, unknown>>
 }
 
+// A lot to send (D16): the documents in the order core keeps them, the same on every call about this lot
+export interface FiscalBatchRequest {
+  // A stable identifier of the send, in the shape of a random UUID (version 4, lowercase): the same on every attempt to send this lot
+  readonly sendId: string
+  readonly documents: readonly StoredFiscalDocument[]
+}
+
+export type FiscalBatchSendResult =
+  | {
+      readonly outcome: FiscalBatchSendOutcome.RECEIVED
+      // The code the authority gave the lot, with which it is asked about afterwards
+      readonly batchCode: string
+      readonly response?: Readonly<Record<string, unknown>>
+    }
+  | {
+      readonly outcome: FiscalBatchSendOutcome.REJECTED
+      // A code, never customer data
+      readonly reason: string
+      readonly response?: Readonly<Record<string, unknown>>
+      // The provider refused it itself and nothing was sent
+      readonly neverSent?: true
+    }
+  | { readonly outcome: FiscalBatchSendOutcome.UNAVAILABLE }
+
+// The verdict of the authority on ONE document of a lot: `index` is its place in `FiscalBatchRequest.documents`
+export type FiscalBatchVerdict = { readonly index: number } & (
+  | Extract<SubmitResult, { readonly outcome: FiscalSubmitOutcome.ACCEPTED }>
+  | Extract<SubmitResult, { readonly outcome: FiscalSubmitOutcome.REJECTED }>
+)
+
+export type FiscalBatchConsultResult =
+  | { readonly state: FiscalBatchConsultState.PENDING }
+  // Only the documents the authority has decided so far need be in the list; a document with no verdict is asked about again. A provider
+  // never repeats an index and never gives one outside the lot.
+  | {
+      readonly state: FiscalBatchConsultState.DONE
+      readonly verdicts: readonly FiscalBatchVerdict[]
+    }
+  | { readonly state: FiscalBatchConsultState.UNAVAILABLE }
+
 export interface ContingencyPolicy {
   // What a person reads about what the provider does while the authority is down (the queue keeps the document and retries)
   readonly description: string
@@ -650,6 +702,15 @@ export interface FiscalDocumentProvider {
     event: FiscalContingencyEvent,
     ctx: ProviderContext
   ): Promise<ContingencyReportResult>
+  // Sends a lot of the documents of a reported contingency (D16). Idempotent by `request.sendId`: a lot the authority took already (its answer was
+  // lost) is answered with the code it holds, never as a second lot. Required when the manifest declares `contingencyMode.batch`.
+  submitBatch?(request: FiscalBatchRequest, ctx: ProviderContext): Promise<FiscalBatchSendResult>
+  // How a lot the authority took went (D16): asked with the code and the same documents, in the same order, as were sent.
+  consultBatch?(
+    batchCode: string,
+    request: FiscalBatchRequest,
+    ctx: ProviderContext
+  ): Promise<FiscalBatchConsultResult>
   // Whether the authority answers a fresh call, asked every few minutes while a contingency is open (D2c). It must reach the authority (a
   // cached token proves nothing), send no document, and never repeat a login the authority refused. Optional: a provider that leaves it out
   // is never probed and its contingencies end only by a person.

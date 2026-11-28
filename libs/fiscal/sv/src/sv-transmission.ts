@@ -1,5 +1,7 @@
 import {
   FiscalAuthorityProbeOutcome,
+  FiscalBatchConsultState,
+  FiscalBatchSendOutcome,
   FiscalConsultState,
   FiscalContingencyReportOutcome,
   FiscalDeferOutcome,
@@ -11,6 +13,9 @@ import type {
   ConsultResult,
   ContingencyReportResult,
   DeferResult,
+  FiscalBatchConsultResult,
+  FiscalBatchRequest,
+  FiscalBatchSendResult,
   FiscalContingencyEvent,
   FiscalIssuerInput,
   FiscalVoidDetails,
@@ -22,8 +27,11 @@ import type {
 } from '@platform/fiscal/sdk'
 
 import { type SvAuthenticator } from './sv-auth'
+import { batchSendBody, classifyBatchConsult, classifyBatchSend, lotCodes } from './sv-batch'
 import {
   SvAnswerStates,
+  SvBatch,
+  SvBatchRefusals,
   SvContingency,
   SvContingencyRefusals,
   SvCodePatterns,
@@ -756,4 +764,153 @@ export async function reportContingencyEvent(
     }
   }
   return { outcome: FiscalContingencyReportOutcome.UNAVAILABLE }
+}
+
+// A lot of the documents of a contingency (Manual Tecnológico V2.0 4.2.2). The documents go as they were signed when they were made in
+// contingency (the signature the event and the receiver already have); one that has none is signed now. One attempt per call: the queue asks again.
+export async function submitBatch(
+  deps: SvTransmissionDeps,
+  request: FiscalBatchRequest,
+  ctx: ProviderContext
+): Promise<FiscalBatchSendResult> {
+  const refuse = (reason: string): FiscalBatchSendResult => ({
+    outcome: FiscalBatchSendOutcome.REJECTED,
+    reason,
+    neverSent: true
+  })
+  const identity = identityOf(ctx.issuer, ctx.credentials)
+  if (identity === null) return refuse(SvRejectionReasons.CREDENTIALS_INCOMPLETE)
+  if (request.documents.length > SvBatch.MAX_DOCUMENTS) {
+    return refuse(SvBatchRefusals.TOO_MANY_DOCUMENTS)
+  }
+  if (lotCodes(request.documents) === null) return refuse(SvBatchRefusals.DOCUMENTS_INVALID)
+  if (!SvCodePatterns.GENERATION_CODE.test(request.sendId.toUpperCase())) {
+    return refuse(SvBatchRefusals.SEND_ID_INVALID)
+  }
+  const environment = ctx.issuer.environment
+  const endpoints = (deps.endpoints ?? SvEndpoints)[environment]
+  const first = await deps.auth.login(environment, identity.nit, identity.apiPassword)
+  if (first.kind === 'rejected') return refuse(SvRejectionReasons.CREDENTIALS_REJECTED)
+  if (first.kind === 'unavailable') return { outcome: FiscalBatchSendOutcome.UNAVAILABLE }
+  const signedDocuments: string[] = []
+  for (const document of request.documents) {
+    const kept = textOf(recordOf(document.providerData)[SvProviderDataKeys.SIGNED_DOCUMENT])
+    if (kept !== null) {
+      signedDocuments.push(kept)
+      continue
+    }
+    const signed = await deps.signer.sign({
+      nit: identity.nit,
+      privateKeyPassword: textOf(ctx.credentials[SvCredentialKeys.CERTIFICATE_PASSWORD]) ?? '',
+      document: document.payload
+    })
+    if (signed.kind === 'unavailable') return { outcome: FiscalBatchSendOutcome.UNAVAILABLE }
+    if (signed.kind === 'rejected') return refuse(SvRejectionReasons.SIGNING_CREDENTIALS_REJECTED)
+    signedDocuments.push(signed.jws)
+  }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const login = await deps.auth.login(environment, identity.nit, identity.apiPassword)
+    if (login.kind === 'rejected') return refuse(SvRejectionReasons.CREDENTIALS_REJECTED)
+    if (login.kind === 'unavailable') return { outcome: FiscalBatchSendOutcome.UNAVAILABLE }
+    let answer: ReturnType<typeof classifyBatchSend>
+    try {
+      const result = await callSv(
+        deps.fetch,
+        `${endpoints.baseUrl}${endpoints.batch}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: login.token,
+            'Content-Type': 'application/json',
+            'User-Agent': deps.userAgent ?? SvUserAgent
+          },
+          body: JSON.stringify(
+            batchSendBody(environment, identity.nit, request.sendId, signedDocuments)
+          )
+        },
+        deps.receptionTimeoutMs ?? SvTimeouts.RECEPTION_MS
+      )
+      answer = classifyBatchSend(result.status, result.json)
+    } catch (error) {
+      if (error instanceof SvTransportError) return { outcome: FiscalBatchSendOutcome.UNAVAILABLE }
+      throw error
+    }
+    if (answer.kind === 'token') {
+      deps.auth.forget(environment, identity.nit, identity.apiPassword, login.token)
+      continue
+    }
+    if (answer.kind === 'credentials') return refuse(SvRejectionReasons.CREDENTIALS_REJECTED)
+    if (answer.kind === 'transient') return { outcome: FiscalBatchSendOutcome.UNAVAILABLE }
+    // The authority holds a lot with this send id already (its answer was lost): the manual gives no way to ask for its code by the send id,
+    // so it is said as it is, and a person decides (a lot is never sent twice under another id: the documents would be refused as duplicates)
+    if (answer.kind === 'duplicate') {
+      return {
+        outcome: FiscalBatchSendOutcome.REJECTED,
+        reason: SvBatchRefusals.SEND_ID_ALREADY_USED,
+        response: answer.body
+      }
+    }
+    if (answer.kind === 'rejected') {
+      return {
+        outcome: FiscalBatchSendOutcome.REJECTED,
+        reason: answer.code,
+        response: answer.body
+      }
+    }
+    return {
+      outcome: FiscalBatchSendOutcome.RECEIVED,
+      batchCode: answer.batchCode,
+      response: answer.body
+    }
+  }
+  return { outcome: FiscalBatchSendOutcome.UNAVAILABLE }
+}
+
+// How a lot went (Manual Tecnológico V2.0 4.3.2): the same documents, in the same order, as were sent
+export async function consultBatch(
+  deps: SvTransmissionDeps,
+  batchCode: string,
+  request: FiscalBatchRequest,
+  ctx: ProviderContext
+): Promise<FiscalBatchConsultResult> {
+  const identity = identityOf(ctx.issuer, ctx.credentials)
+  if (identity === null || !SvCodePatterns.GENERATION_CODE.test(batchCode.toUpperCase())) {
+    return { state: FiscalBatchConsultState.UNAVAILABLE }
+  }
+  const environment = ctx.issuer.environment
+  const endpoints = (deps.endpoints ?? SvEndpoints)[environment]
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const login = await deps.auth.login(environment, identity.nit, identity.apiPassword)
+    if (login.kind !== 'token') return { state: FiscalBatchConsultState.UNAVAILABLE }
+    let answer: ReturnType<typeof classifyBatchConsult>
+    try {
+      const result = await callSv(
+        deps.fetch,
+        `${endpoints.baseUrl}${endpoints.batchConsult}/${encodeURIComponent(batchCode.toUpperCase())}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: login.token,
+            'Content-Type': 'application/json',
+            'User-Agent': deps.userAgent ?? SvUserAgent
+          }
+        },
+        deps.receptionTimeoutMs ?? SvTimeouts.RECEPTION_MS
+      )
+      answer = classifyBatchConsult(result.status, result.json, request.documents)
+    } catch (error) {
+      if (error instanceof SvTransportError) return { state: FiscalBatchConsultState.UNAVAILABLE }
+      throw error
+    }
+    if (answer.kind === 'token') {
+      deps.auth.forget(environment, identity.nit, identity.apiPassword, login.token)
+      continue
+    }
+    if (answer.kind === 'pending') return { state: FiscalBatchConsultState.PENDING }
+    if (answer.kind === 'done') {
+      return { state: FiscalBatchConsultState.DONE, verdicts: answer.verdicts }
+    }
+    return { state: FiscalBatchConsultState.UNAVAILABLE }
+  }
+  return { state: FiscalBatchConsultState.UNAVAILABLE }
 }

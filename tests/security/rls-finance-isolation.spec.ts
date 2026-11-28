@@ -59,6 +59,7 @@ const PHASE_4_TABLES = [
   'fiscal_sequences',
   'fiscal_documents',
   'fiscal_contingencies',
+  'fiscal_contingency_batches',
   'fiscal_deliveries'
 ] as const
 

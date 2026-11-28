@@ -21,6 +21,7 @@ import {
   FiscalContingencyLimits,
   FiscalDeferOutcome,
   FiscalDocumentKind,
+  FiscalBatchStatus,
   FiscalDocumentStatus,
   type FiscalEnvironment,
   FiscalPendingDocumentType,
@@ -64,6 +65,7 @@ import type {
   FiscalVoidDetails,
   FiscalVoidParty,
   StoredFiscalDocument,
+  SubmitResult,
   VoidResult
 } from '@platform/fiscal/sdk'
 
@@ -1021,6 +1023,10 @@ export class FiscalDocumentsService {
   async submit(organizationId: string, documentId: string): Promise<void> {
     const claimed = await this.claim(organizationId, documentId)
     if (claimed === null) return
+    if (typeof claimed === 'object' && 'batched' in claimed && claimed.batched !== undefined) {
+      await this.contingencies.askBatch(organizationId, claimed.batched)
+      return
+    }
     if (claimed === 'busy') {
       // Another attempt claimed it a moment ago: this job fails so that the backoff of the queue asks again after the lease
       throw new FiscalDocumentBusyError('the fiscal document is being submitted by another attempt')
@@ -1702,6 +1708,18 @@ export class FiscalDocumentsService {
       ) {
         return 'busy' as const
       }
+      // A document put in a lot of its contingency (D16) goes with the lot, never alone: while its lot is not finished the document is not
+      // claimed, and the lot is asked for its next step instead (the nightly check finds a lot whose own jobs are gone through its documents)
+      const batchId = doc.batchId
+      if (batchId !== null && status === FiscalDocumentStatus.QUEUED) {
+        const lot = await tx.fiscalContingencyBatch.findFirst({
+          where: { id: batchId, organizationId },
+          select: { status: true }
+        })
+        if (lot !== null && (lot.status as FiscalBatchStatus) !== FiscalBatchStatus.PROCESSED) {
+          return { batched: batchId }
+        }
+      }
       // A document made in a contingency is held until the authority has taken the event that lists it (Step 4B.7c-7): nothing is claimed,
       // and the release of the contingency asks the queue for it
       if (
@@ -1781,6 +1799,60 @@ export class FiscalDocumentsService {
     } catch {
       return { unreadable: true }
     }
+  }
+
+  // The verdict of the authority on one document of a lot (D16), applied the way the answer to a document sent alone is: the document is claimed
+  // (held in its lot, still QUEUED) and then accepted or refused with the same rules. A document that is no longer held in that lot (decided by
+  // another run, taken over) is left as it is. Returns whether the verdict was applied.
+  async settleBatchDocument(
+    organizationId: string,
+    documentId: string,
+    batchId: string,
+    built: BuiltDocument,
+    result: SubmitResult
+  ): Promise<boolean> {
+    if (result.outcome === FiscalSubmitOutcome.UNAVAILABLE) return false
+    const claimToken = await this.inTx(organizationId, async tx => {
+      await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${documentId} AND organization_id = ${organizationId} FOR UPDATE`
+      const taken = newClaimToken()
+      const moved = await tx.fiscalDocument.updateMany({
+        where: {
+          id: documentId,
+          organizationId,
+          batchId,
+          status: FiscalDocumentStatus.QUEUED
+        },
+        data: {
+          status: FiscalDocumentStatus.SUBMITTED,
+          attempts: { increment: 1 },
+          claimToken: taken
+        }
+      })
+      return moved.count === 1 ? taken : null
+    })
+    if (claimToken === null) return false
+    if (result.outcome === FiscalSubmitOutcome.ACCEPTED) {
+      // An acceptance with no number could never be invalidated: it is not kept as one
+      if (!hasNumber(result.externalNumber)) {
+        await this.reject(
+          documentId,
+          organizationId,
+          claimToken,
+          FiscalRejectionReasons.PROVIDER_ANSWER_INVALID
+        )
+        return true
+      }
+      await this.accept(documentId, organizationId, claimToken, built, result)
+      return true
+    }
+    await this.reject(
+      documentId,
+      organizationId,
+      claimToken,
+      typeof result.reason === 'string' ? result.reason : '',
+      { built, response: result.response, byAuthority: true }
+    )
+    return true
   }
 
   private async accept(

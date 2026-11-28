@@ -2,6 +2,7 @@ import { createHash, randomInt, randomUUID } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 
 import type { INestApplication } from '@nestjs/common'
+import pg from 'pg'
 import supertest from 'supertest'
 
 import { ChannelOAuthConfig } from '@platform/channels/connections'
@@ -17,7 +18,12 @@ import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
 import { ConsentPurposes } from '@platform/core/compliance'
 import { signUnsubscribeToken, UnsubscribeScopes } from '@platform/core/crypto'
-import type { OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  DatabaseRoles,
+  rlsEnforcementRequested,
+  type OwnerClient
+} from '@platform/core/database-testing'
 import {
   CarrierId,
   ChannelIds,
@@ -5510,6 +5516,74 @@ describe('Tenant isolation', () => {
 
       expect(moved.status).toBe(200)
       expect((moved.body as { storeId: string }).storeId).toBe(ctx.storeA.id)
+    })
+  })
+
+  // A lot of the documents of a reported contingency (D16) is the organization's and has no route of its own in this step (the worker writes it), so
+  // the checks of the resources, which go through a route, cannot run on it (scripts/isolation-exemptions.ts says so). `fiscalContingencyBatch`
+  // is read here as the role of the app in the context of each organization: the own one reads and changes its lot, and, with the policies
+  // enforced (TEST_RLS_ENFORCE=1, where the policies bind the real tables), another organization reads and changes none of it.
+  describe('the lots of a contingency of an organization', () => {
+    const raw = new pg.Client({ connectionString: connectionUrls().owner })
+    beforeAll(async () => {
+      await raw.connect()
+    })
+    afterAll(async () => {
+      await raw.end().catch(() => undefined)
+    })
+
+    async function asApp(organizationId: string, sql: string, values: unknown[]): Promise<number> {
+      await raw.query('BEGIN')
+      try {
+        await raw.query(`SET LOCAL ROLE ${DatabaseRoles.APP}`)
+        await raw.query(
+          "SELECT set_config('app.store_ids', $1, true), set_config('app.organization_ids', $2, true)",
+          [ctx.storeA.id, organizationId]
+        )
+        return (await raw.query(sql, values)).rowCount ?? 0
+      } finally {
+        await raw.query('ROLLBACK').catch(() => undefined)
+      }
+    }
+
+    it('are read and changed by their own organization, and by no other when the policies bind', async () => {
+      const contingency = await owner.fiscalContingency.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          providerId: 'simulator',
+          environment: 'sandbox',
+          status: 'reported',
+          origin: 'user',
+          reason: 'iso',
+          eventCode: randomUUID(),
+          startedAt: new Date(Date.now() - 3_000),
+          endedAt: new Date(Date.now() - 2_000),
+          reportedAt: new Date(Date.now() - 1_000),
+          windowEndsAt: new Date(Date.now() + 3_600_000)
+        },
+        select: { id: true }
+      })
+      const lot = await owner.fiscalContingencyBatch.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          contingencyId: contingency.id,
+          sequence: 1,
+          sendId: randomUUID(),
+          documentCount: 1,
+          lastError: 'iso_error'
+        },
+        select: { id: true }
+      })
+      const read = 'SELECT 1 FROM fiscal_contingency_batches WHERE id = $1'
+      const change = "UPDATE fiscal_contingency_batches SET last_error = 'hacked' WHERE id = $1"
+      expect(await asApp(ctx.orgA.id, read, [lot.id])).toBe(1)
+      if (rlsEnforcementRequested()) {
+        expect(await asApp(ctx.orgB.id, read, [lot.id])).toBe(0)
+        expect(await asApp(ctx.orgB.id, change, [lot.id])).toBe(0)
+      }
+      expect(
+        (await owner.fiscalContingencyBatch.findUniqueOrThrow({ where: { id: lot.id } })).lastError
+      ).toBe('iso_error')
     })
   })
 

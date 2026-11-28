@@ -11,6 +11,7 @@ export interface SealedRef {
   issuerId?: string
   customerId?: string
   contingencyId?: string
+  batchId?: string
 }
 
 // The values already logged in this window (by what, the row and the cause): the oldest goes when the map is full. A Map keeps the order

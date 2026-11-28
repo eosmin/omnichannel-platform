@@ -19,6 +19,9 @@ export const SvEndpoints: Readonly<
       readonly consult: string
       readonly invalidation: string
       readonly contingency: string
+      // The lots of the documents of a contingency (Manual Tecnológico 4.2.2 and 4.3.2): the send and the consultation by the code of the lot
+      readonly batch: string
+      readonly batchConsult: string
     }
   >
 > = {
@@ -28,7 +31,9 @@ export const SvEndpoints: Readonly<
     reception: '/fesv/recepciondte',
     consult: '/fesv/recepcion/consultadte',
     invalidation: '/fesv/anulardte',
-    contingency: '/fesv/contingencia'
+    contingency: '/fesv/contingencia',
+    batch: '/fesv/recepcionlote',
+    batchConsult: '/fesv/recepcion/consultadtelote'
   },
   [FiscalEnvironment.PRODUCTION]: {
     baseUrl: 'https://api.dtes.mh.gob.sv',
@@ -36,7 +41,9 @@ export const SvEndpoints: Readonly<
     reception: '/fesv/recepciondte',
     consult: '/fesv/recepcion/consultadte',
     invalidation: '/fesv/anulardte',
-    contingency: '/fesv/contingencia'
+    contingency: '/fesv/contingencia',
+    batch: '/fesv/recepcionlote',
+    batchConsult: '/fesv/recepcion/consultadtelote'
   }
 }
 
@@ -63,6 +70,24 @@ export const SvUserAgent = 'PlataformaOmnicanal/1.0'
 
 // The time the authority gets to answer a document before it counts as no answer (Manual Técnico §3.3: 8 seconds)
 export const SvTimeouts = { AUTH_MS: 8000, RECEPTION_MS: 8000, SIGNER_MS: 10000 } as const
+
+// The lots of the documents of a contingency (Manual Tecnológico V2.0 3.2.1, 3.4, 4.2.2, 4.3.2): at most 100 documents a lot and 400 lots; the lots of a
+// contingency are received at any hour (the schedule of the lots is for those who bill in cycles, not for contingency). The `version` of
+// the request ("Versión del JSON Schema de Lotes") is not in the manual: 1 is the version the service answers with. **[TO CONFIRM IN THE SANDBOX]**
+export const SvBatch = {
+  VERSION: 1,
+  MAX_DOCUMENTS: 100,
+  MAX_BATCHES: 400
+} as const
+
+// Why this provider does not send a lot, in codes of its own (nothing was sent)
+export const SvBatchRefusals = {
+  TOO_MANY_DOCUMENTS: 'batch_too_many_documents',
+  DOCUMENTS_INVALID: 'batch_documents_invalid',
+  SEND_ID_INVALID: 'batch_send_id_invalid',
+  // The authority holds a lot with this send id and did not give back its code: nothing in the manual asks it by send id
+  SEND_ID_ALREADY_USED: 'batch_send_id_already_used'
+} as const
 
 // The words of the answers of the authority and of the signing service, and the route of the signing service
 export const SvAnswerStates = {

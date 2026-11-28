@@ -34,6 +34,7 @@ import {
   type ReconcileFinanceJob,
   type ResealCredentialsJob,
   type ProbeFiscalContingencyJob,
+  type ProcessFiscalBatchJob,
   type WarnFiscalDeadlinesJob,
   type ReportFiscalContingencyJob,
   type SubmitFiscalDocumentJob,
@@ -44,6 +45,7 @@ import {
   type VerifyLedgerChainJob
 } from '@platform/core/queues'
 import {
+  FiscalBatchService,
   FiscalContingencyService,
   FiscalDocumentBusyError,
   FiscalDocumentsService
@@ -94,6 +96,7 @@ type HeavyJob =
   | SubmitFiscalDocumentJob
   | ReportFiscalContingencyJob
   | ProbeFiscalContingencyJob
+  | ProcessFiscalBatchJob
 
 const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
   z.object({
@@ -174,6 +177,13 @@ const probeFiscalContingencyJobSchema = exactly<ProbeFiscalContingencyJob>()(
   z.object({
     organizationId: z.uuid(),
     contingencyId: z.uuid(),
+    correlationId: jobCorrelationIdSchema
+  })
+)
+const processFiscalBatchJobSchema = exactly<ProcessFiscalBatchJob>()(
+  z.object({
+    organizationId: z.uuid(),
+    batchId: z.uuid(),
     correlationId: jobCorrelationIdSchema
   })
 )
@@ -265,6 +275,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly fiscalResealer: FiscalResealer,
     private readonly fiscalDocuments: FiscalDocumentsService,
     private readonly fiscalContingencies: FiscalContingencyService,
+    private readonly fiscalBatches: FiscalBatchService,
     private readonly credentialsResealer: CredentialsResealer
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
@@ -395,6 +406,16 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       // contingency is no longer open
       await this.skipIfGone(job, () =>
         this.fiscalContingencies.probe(probe.data.organizationId, probe.data.contingencyId)
+      )
+      return
+    }
+    if (job.name === JobNames.PROCESS_FISCAL_BATCH) {
+      const step = processFiscalBatchJobSchema.safeParse(job.data)
+      if (!step.success) throw new JobRejectedError('the lot job does not fit its schema')
+      // Throws when the authority did not answer or refused the lot, so the queue asks again with its backoff; a step that went forward returns
+      // (the next one is a job of its own)
+      await this.skipIfGone(job, () =>
+        this.fiscalBatches.process(step.data.organizationId, step.data.batchId)
       )
       return
     }
