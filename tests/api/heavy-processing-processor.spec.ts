@@ -35,6 +35,7 @@ describe('HeavyProcessingProcessor', () => {
   const reportContingency = jest.fn().mockResolvedValue('reported')
   const reportContingencyExhausted = jest.fn().mockResolvedValue(undefined)
   const probeContingency = jest.fn().mockResolvedValue('waiting')
+  const processBatch = jest.fn().mockResolvedValue('nothing')
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -66,6 +67,7 @@ describe('HeavyProcessingProcessor', () => {
       warnWindows: warnContingencyWindows,
       probe: probeContingency
     } as never, // the contingency of the issuer: what it is handed is what is tested
+    { process: processBatch } as never, // the lots of a reported contingency: what it is handed is what is tested
     { reconcile: resealCredentials } as never // the re-seal of the sealed credentials of a rotation of the key: what it is handed is what is tested
   )
 
@@ -886,6 +888,42 @@ describe('HeavyProcessingProcessor', () => {
         report({ organizationId: ORG_ID, contingencyId: CONTINGENCY_ID, ...patch })
       ).rejects.toBeInstanceOf(UnrecoverableError)
       expect(reportContingency).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('process-fiscal-batch jobs', () => {
+    const ORG_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const BATCH_ID = '1a11a11a-1111-4111-8111-111111111111'
+    const step = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.PROCESS_FISCAL_BATCH,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 1 }
+      } as unknown as ProcessorJob)
+
+    it('hands the organization and the lot to the service, nothing else', async () => {
+      processBatch.mockClear()
+      await step({ organizationId: ORG_ID, batchId: BATCH_ID, correlationId: 'c' })
+      expect(processBatch).toHaveBeenCalledWith(ORG_ID, BATCH_ID)
+    })
+
+    it('lets the failure of a step reach the queue, so that it is tried again', async () => {
+      processBatch.mockRejectedValueOnce(new Error('the fiscal provider did not answer'))
+      await expect(
+        step({ organizationId: ORG_ID, batchId: BATCH_ID, correlationId: 'c' })
+      ).rejects.toThrow(/did not answer/)
+    })
+
+    it.each([
+      ['a lot that is not an id', { batchId: 'all' }],
+      ['an organization that is not an id', { organizationId: 'mine' }]
+    ])('refuses %s, and sends nothing', async (_label, patch) => {
+      processBatch.mockClear()
+      await expect(
+        step({ organizationId: ORG_ID, batchId: BATCH_ID, ...patch })
+      ).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(processBatch).not.toHaveBeenCalled()
     })
   })
 

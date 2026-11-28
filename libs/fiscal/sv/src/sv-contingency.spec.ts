@@ -266,6 +266,7 @@ describe('the provider against the authority while it is down', () => {
       reportWithinHours: 24,
       technicalReportAfterDays: 3,
       maxDocumentsPerEvent: 1000,
+      batch: { maxDocumentsPerBatch: 100, maxBatchesPerContingency: 400 },
       requiresResponsible: true
     })
   })

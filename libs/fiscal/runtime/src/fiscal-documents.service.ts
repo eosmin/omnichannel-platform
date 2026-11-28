@@ -21,6 +21,7 @@ import {
   FiscalContingencyLimits,
   FiscalDeferOutcome,
   FiscalDocumentKind,
+  FiscalBatchStatus,
   FiscalDocumentStatus,
   type FiscalEnvironment,
   FiscalPendingDocumentType,
@@ -64,6 +65,7 @@ import type {
   FiscalVoidDetails,
   FiscalVoidParty,
   StoredFiscalDocument,
+  SubmitResult,
   VoidResult
 } from '@platform/fiscal/sdk'
 
@@ -1021,6 +1023,10 @@ export class FiscalDocumentsService {
   async submit(organizationId: string, documentId: string): Promise<void> {
     const claimed = await this.claim(organizationId, documentId)
     if (claimed === null) return
+    if (typeof claimed === 'object' && 'batched' in claimed && claimed.batched !== undefined) {
+      await this.contingencies.askBatch(organizationId, claimed.batched)
+      return
+    }
     if (claimed === 'busy') {
       // Another attempt claimed it a moment ago: this job fails so that the backoff of the queue asks again after the lease
       throw new FiscalDocumentBusyError('the fiscal document is being submitted by another attempt')
@@ -1702,6 +1708,18 @@ export class FiscalDocumentsService {
       ) {
         return 'busy' as const
       }
+      // A document put in a lot of its contingency (D16) goes with the lot, never alone: while its lot is not finished the document is not
+      // claimed, and the lot is asked for its next step instead (the nightly check finds a lot whose own jobs are gone through its documents)
+      const batchId = doc.batchId
+      if (batchId !== null) {
+        const lot = await tx.fiscalContingencyBatch.findFirst({
+          where: { id: batchId, organizationId },
+          select: { status: true }
+        })
+        if (lot !== null && (lot.status as FiscalBatchStatus) !== FiscalBatchStatus.PROCESSED) {
+          return { batched: batchId }
+        }
+      }
       // A document made in a contingency is held until the authority has taken the event that lists it (Step 4B.7c-7): nothing is claimed,
       // and the release of the contingency asks the queue for it
       if (
@@ -1781,6 +1799,67 @@ export class FiscalDocumentsService {
     } catch {
       return { unreadable: true }
     }
+  }
+
+  // The verdict of the authority on one document of a lot (D16), applied the way the answer to a document sent alone is: the document is claimed
+  // (held in its lot, still QUEUED) and then accepted or refused with the same rules. A document that is no longer held in that lot (decided by
+  // another run, taken over) is left as it is. Returns whether the verdict was applied.
+  async settleBatchDocument(
+    organizationId: string,
+    documentId: string,
+    batchId: string,
+    built: BuiltDocument,
+    result: SubmitResult
+  ): Promise<boolean> {
+    if (result.outcome === FiscalSubmitOutcome.UNAVAILABLE) return false
+    const claimToken = await this.inTx(organizationId, async tx => {
+      await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${documentId} AND organization_id = ${organizationId} FOR UPDATE`
+      const taken = newClaimToken()
+      const moved = await tx.fiscalDocument.updateMany({
+        where: {
+          id: documentId,
+          organizationId,
+          batchId,
+          // Held in its lot, or in flight with a claim whose lease is over (an earlier step stopped between the claim and the verdict)
+          OR: [
+            { status: FiscalDocumentStatus.QUEUED },
+            {
+              status: FiscalDocumentStatus.SUBMITTED,
+              updatedAt: { lt: new Date(Date.now() - FiscalLimits.CLAIM_LEASE_MS) }
+            }
+          ]
+        },
+        data: {
+          status: FiscalDocumentStatus.SUBMITTED,
+          attempts: { increment: 1 },
+          claimToken: taken
+        }
+      })
+      return moved.count === 1 ? taken : null
+    })
+    if (claimToken === null) return false
+    if (result.outcome === FiscalSubmitOutcome.ACCEPTED) {
+      // An acceptance with no number could never be invalidated: it is not kept as one
+      if (!hasNumber(result.externalNumber)) {
+        await this.reject(
+          documentId,
+          organizationId,
+          claimToken,
+          FiscalRejectionReasons.PROVIDER_ANSWER_INVALID
+        )
+        return true
+      }
+      await this.accept(documentId, organizationId, claimToken, built, result)
+      return true
+    }
+    await this.reject(
+      documentId,
+      organizationId,
+      claimToken,
+      typeof result.reason === 'string' ? result.reason : '',
+      { built, response: result.response, byAuthority: true }
+    )
+    return true
   }
 
   private async accept(
@@ -2235,6 +2314,7 @@ export class FiscalDocumentsService {
       const doc = await this.lock(tx, organizationId, id)
       const status = doc.status as FiscalDocumentStatus
       if (!retryable(status)) throw this.invalid(status)
+      await this.assertBatchFinished(tx, organizationId, doc)
       // A document that waits in the queue and is still kept in a contingency (released) is asked again with the retries of its window; a
       // refused one is made again as any other and leaves the contingency
       const released = status === FiscalDocumentStatus.QUEUED && doc.contingencyId !== null
@@ -2357,6 +2437,7 @@ export class FiscalDocumentsService {
     const submission = await this.inTx(organizationId, async tx => {
       await guard()
       const doc = await this.lock(tx, organizationId, id)
+      await this.assertBatchFinished(tx, organizationId, doc)
       const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
       // The same test as `retry`: the two routes never disagree about what a moved issuer is
       const moved =
@@ -3546,6 +3627,29 @@ export class FiscalDocumentsService {
           'the refusal of an invalidation was not kept: its 24-hour window has no start, and its event keeps the code it had'
         )
       }
+    }
+  }
+
+  // A document refused inside a lot is made again only when its lot is finished: the lot is asked about with the documents it was sent with, in
+  // the same order and with the same generation codes, so a document that changed (or left the contingency) before the lot ended would
+  // break the match of the verdicts. One that is not in a lot, or whose lot is finished, passes.
+  private async assertBatchFinished(
+    tx: PrismaTransaction,
+    organizationId: string,
+    doc: { status: string; batchId: string | null }
+  ): Promise<void> {
+    if (doc.batchId === null || doc.status !== (FiscalDocumentStatus.REJECTED as string)) return
+    const lot = await tx.fiscalContingencyBatch.findFirst({
+      where: { id: doc.batchId, organizationId },
+      select: { status: true }
+    })
+    if (lot !== null && (lot.status as FiscalBatchStatus) !== FiscalBatchStatus.PROCESSED) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'the lot of this document is not finished',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.BATCH_NOT_FINISHED }
+      )
     }
   }
 

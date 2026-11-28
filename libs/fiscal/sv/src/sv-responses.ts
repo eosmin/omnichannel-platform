@@ -76,7 +76,7 @@ export type SvEventAnswer =
 
 // What the authority said when it did not take the document or the event: one reading for both, so a new code is learned once. A status that
 // says the token is bad, a code that says the credentials are, a fault of the moment, a repeated generation code, or a refusal.
-type SvFailure =
+export type SvFailure =
   | { readonly kind: 'token' }
   | { readonly kind: 'credentials' }
   | { readonly kind: 'transient' }
@@ -91,7 +91,10 @@ type SvFailure =
       readonly body: Readonly<Record<string, unknown>>
     }
 
-function classifyFailure(status: number, body: Readonly<Record<string, unknown>>): SvFailure {
+export function classifyFailure(
+  status: number,
+  body: Readonly<Record<string, unknown>>
+): SvFailure {
   if (status === 401 || status === 403) return { kind: 'token' }
   if (status >= 500) return { kind: 'transient' }
   const code = codeOf(body['codigoMsg'])

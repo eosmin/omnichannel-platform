@@ -253,6 +253,8 @@ export const AuditAction = {
   FISCAL_CONTINGENCY_ENTERED: 'fiscal.contingency_entered',
   FISCAL_CONTINGENCY_ENDED: 'fiscal.contingency_ended',
   FISCAL_CONTINGENCY_REPORTED: 'fiscal.contingency_reported',
+  FISCAL_BATCH_SENT: 'fiscal.batch_sent',
+  FISCAL_BATCH_PROCESSED: 'fiscal.batch_processed',
   FISCAL_CONTINGENCY_REPORT_ASKED: 'fiscal.contingency_report_asked',
   // A person gives up the report of a contingency: its documents go out the normal way
   FISCAL_CONTINGENCY_ABANDONED: 'fiscal.contingency_abandoned',
