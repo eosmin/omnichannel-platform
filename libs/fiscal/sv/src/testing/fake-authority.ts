@@ -61,6 +61,8 @@ export interface FakeAuthority {
     // The lots it received (a send it refused counts) and the questions asked about them
     batches: number
     batchConsults: number
+    // The methods of the calls about lots, as they arrived (the manual: POST to send, GET to ask)
+    batchMethods: string[]
     consults: number
     signs: number
     userAgents: Set<string>
@@ -137,6 +139,7 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
     contingencies: 0,
     batches: 0,
     batchConsults: 0,
+    batchMethods: [],
     consults: 0,
     signs: 0,
     userAgents: new Set(),
@@ -294,6 +297,11 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
 
       if (path === '/fesv/recepcionlote') {
         stats.batches += 1
+        stats.batchMethods.push(`${String(request.method)} send`)
+        if (request.method !== 'POST') {
+          send(response, 405, { error: 'Method Not Allowed' })
+          return
+        }
         if (control.batchDown || control.receptionDown) {
           send(response, 503, { error: 'Service Unavailable' })
           return
@@ -360,6 +368,11 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
 
       if (path.startsWith('/fesv/recepcion/consultadtelote/')) {
         stats.batchConsults += 1
+        stats.batchMethods.push(`${String(request.method)} consult`)
+        if (request.method !== 'GET') {
+          send(response, 405, { error: 'Method Not Allowed' })
+          return
+        }
         if (control.batchDown || control.receptionDown) {
           send(response, 503, { error: 'Service Unavailable' })
           return

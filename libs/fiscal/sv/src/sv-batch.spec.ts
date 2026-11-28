@@ -269,6 +269,7 @@ describe('a lot sent to the authority', () => {
     authority.forgetDocuments()
     authority.stats.batches = 0
     authority.stats.batchConsults = 0
+    authority.stats.batchMethods = []
     authority.stats.signs = 0
     authority.batchDown = false
     authority.batchPendingConsults = 0
@@ -433,6 +434,8 @@ describe('a lot sent to the authority', () => {
     // Asked again after it finished: the same verdicts (the authority processed it once)
     const again = await provider.consultBatch(sent.batchCode, request, ctx())
     expect(again).toEqual(done)
+    // The manual: the lot is sent with POST and asked about with GET
+    expect(new Set(authority.stats.batchMethods)).toEqual(new Set(['POST send', 'GET consult']))
   })
 
   it('refuses a document of a lot that no event listed, by its place in the lot', async () => {
