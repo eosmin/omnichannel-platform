@@ -49,6 +49,8 @@ import { FiscalSubmissionQueue } from './fiscal-submission.queue'
 import {
   type ConfirmIssuerChangeBody,
   confirmIssuerChangeSchema,
+  type DeliveryQuery,
+  deliveryQuerySchema,
   evidenceKindSchema,
   type HandOverBody,
   handOverSchema,
@@ -257,10 +259,16 @@ export class FiscalController {
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', id()) documentId: string,
+    @Query(new ZodValidationPipe(deliveryQuerySchema)) query: DeliveryQuery,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: FiscalDeliveryView }> {
     return {
-      data: await this.handDelivery.read(organization.id, documentId, actorOf(user, store, req))
+      data: await this.handDelivery.read(
+        organization.id,
+        documentId,
+        query.subject,
+        actorOf(user, store, req)
+      )
     }
   }
 

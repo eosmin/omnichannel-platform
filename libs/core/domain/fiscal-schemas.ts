@@ -4,6 +4,7 @@ import { FiscalDocumentStatus } from './finance-constants'
 import {
   FiscalCustomerDataLimits,
   FiscalEnvironment,
+  FiscalDeliverySubject,
   FiscalHandMeans,
   FiscalIssueOn,
   FiscalContingencyLimits,
@@ -150,10 +151,29 @@ export const voidFiscalDocumentSchema = z
   .strict()
 export type VoidFiscalDocumentBody = z.output<typeof voidFiscalDocumentSchema>
 
-// A person records that they gave the files of an accepted document to its receiver by hand (the files are downloaded by the route of the
-// evidence): how, and nothing of the receiver
-export const handOverFiscalDeliverySchema = z.object({ means: z.enum(FiscalHandMeans) }).strict()
+// A person records that they gave the files of an accepted document, or of its invalidation (`subject`, the document's by default), to its
+// receiver by hand (the files are downloaded by the route of the evidence): how, and nothing of the receiver
+export const handOverFiscalDeliverySchema = z
+  .object({
+    means: z.enum(FiscalHandMeans),
+    subject: z.enum(FiscalDeliverySubject).default(FiscalDeliverySubject.DOCUMENT)
+  })
+  .strict()
+  // The answer of the authority is handed over for an invalidation only: a document has its own files
+  .refine(
+    body => body.means !== FiscalHandMeans.ANSWER || body.subject === FiscalDeliverySubject.VOID,
+    {
+      path: ['means']
+    }
+  )
 export type HandOverFiscalDeliveryBody = z.output<typeof handOverFiscalDeliverySchema>
+// What a caller sends: the subject is the document's when it is left out
+export type HandOverFiscalDeliveryInput = z.input<typeof handOverFiscalDeliverySchema>
+// Which delivery of a document is read
+export const fiscalDeliveryQuerySchema = z
+  .object({ subject: z.enum(FiscalDeliverySubject).default(FiscalDeliverySubject.DOCUMENT) })
+  .strict()
+export type FiscalDeliveryQuery = z.output<typeof fiscalDeliveryQuerySchema>
 
 // A person starts a contingency of the issuer (Step 4B.7c-7): one of the reasons the provider's manifest declares, and what they say of it
 export const enterFiscalContingencySchema = z

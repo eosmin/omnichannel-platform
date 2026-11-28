@@ -372,6 +372,34 @@ export enum FiscalDeliveryStatus {
   NOT_SENT = 'not_sent'
 }
 
+// What a delivery is for: the files of the document, given when it is accepted, or the files of its invalidation, given when it is voided
+// (the rule on delivering the invalidation event to the receiver). A document has at most one delivery of each.
+export enum FiscalDeliverySubject {
+  DOCUMENT = 'document',
+  VOID = 'void'
+}
+
+// The two files a receiver is given for each delivery, in the order they go, and the state the document is in when each is owed (accepted for
+// its files, voided for those of its invalidation): one table for the delivery, the hand delivery and the panel
+export const FiscalDeliveryFileKinds: Readonly<
+  Record<FiscalDeliverySubject, readonly FiscalEvidenceKind[]>
+> = {
+  [FiscalDeliverySubject.DOCUMENT]: [
+    FiscalEvidenceKind.REPRESENTATION,
+    FiscalEvidenceKind.DTE_FILE
+  ],
+  [FiscalDeliverySubject.VOID]: [
+    FiscalEvidenceKind.VOID_REPRESENTATION,
+    FiscalEvidenceKind.VOID_DTE_FILE
+  ]
+}
+export const FiscalDeliveryOwedStatus: Readonly<
+  Record<FiscalDeliverySubject, FiscalDocumentStatus>
+> = {
+  [FiscalDeliverySubject.DOCUMENT]: FiscalDocumentStatus.ACCEPTED,
+  [FiscalDeliverySubject.VOID]: FiscalDocumentStatus.VOIDED
+}
+
 // The state of the delivery of a document that has no row yet (the system has not delivered it, or the event was lost): the panel and the api
 // say it with this word, which is no row of the table
 export const FiscalDeliveryPending = 'pending' as const
@@ -389,7 +417,10 @@ export enum FiscalDeliveryRoute {
 // writes), or the representation printed on paper at the customer's request (the rule on delivering the files of a document)
 export enum FiscalHandMeans {
   DOWNLOAD = 'download',
-  PAPER = 'paper'
+  PAPER = 'paper',
+  // Only for an invalidation with no event of ours to give (the authority already held it): the answer of the authority, with its code and
+  // seal, downloaded from the evidence and handed over as it is. No file is made for it
+  ANSWER = 'answer'
 }
 
 // Why nothing was sent. Codes only: the receiver's data never goes in a reason.
@@ -401,7 +432,10 @@ export enum FiscalDeliveryReason {
   // The files are larger than what an email carries
   TOO_LARGE = 'too_large',
   // The customer was erased: nobody is left to give them to
-  CUSTOMER_ERASED = 'customer_erased'
+  CUSTOMER_ERASED = 'customer_erased',
+  // An invalidation with no event of ours (the authority already held it, or it was voided before the event was kept) or whose answer has no seal:
+  // no file is made, and a person hands over the answer of the authority
+  VOID_EVENT_UNAVAILABLE = 'void_event_unavailable'
 }
 
 // The largest pair of files an email carries (the sum of the two, before the encoding): above it the person gives them by hand
@@ -568,6 +602,8 @@ export const FiscalConflictReasons = {
   DELIVERY_FILES_MISSING: 'delivery_files_missing',
   // The document is not accepted (voided or not yet decided): its files are not owed to a receiver by this route
   DELIVERY_NOT_OWED: 'delivery_not_owed',
+  // The answer of the authority is handed over only for an invalidation that has no file of ours to give
+  DELIVERY_FILES_EXIST: 'delivery_files_exist',
   // The receiver of a credit note is the one of the document it cancels: it is fixed there
   CREDIT_NOTE_RECEIVER: 'credit_note_receiver',
   // The sealed receiver cannot be read and the change does not carry the whole receiver: it would be merged over nothing and drop what

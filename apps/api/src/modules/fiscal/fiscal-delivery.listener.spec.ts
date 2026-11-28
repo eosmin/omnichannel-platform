@@ -11,7 +11,12 @@ const PAYLOAD = {
   documentId: 'doc-1',
   orderId: 'order-1'
 }
-const INPUT = { organizationId: 'org-1', storeId: 'store-1', documentId: 'doc-1' }
+const INPUT = {
+  organizationId: 'org-1',
+  storeId: 'store-1',
+  documentId: 'doc-1',
+  subject: 'document'
+}
 const logger = { setContext: () => undefined, warn: () => undefined, error: () => undefined }
 
 function build(deliver: jest.Mock, recordFailure: jest.Mock = jest.fn()) {
@@ -71,5 +76,21 @@ describe('FiscalDeliveryListener', () => {
     const done = build(deliver, recordFailure).onAccepted(PAYLOAD)
     await jest.runAllTimersAsync()
     await expect(done).resolves.toBeUndefined()
+  })
+
+  it('gives the files of an invalidation under their own subject, with the same tries and the same record of a failure', async () => {
+    const voided = { ...INPUT, subject: 'void' }
+    const deliver = jest.fn().mockResolvedValue('sent')
+    await build(deliver).onVoided(PAYLOAD)
+    expect(deliver).toHaveBeenCalledTimes(1)
+    expect(deliver).toHaveBeenCalledWith(voided)
+
+    const failing = jest.fn().mockRejectedValue(new Error('queue down'))
+    const recordFailure = jest.fn().mockResolvedValue(undefined)
+    const done = build(failing, recordFailure).onVoided(PAYLOAD)
+    await jest.runAllTimersAsync()
+    await done
+    expect(failing).toHaveBeenCalledTimes(3)
+    expect(recordFailure).toHaveBeenCalledWith(voided)
   })
 })

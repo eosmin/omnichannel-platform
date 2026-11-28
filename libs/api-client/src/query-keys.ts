@@ -447,7 +447,8 @@ export const QueryKeys = {
     documents: (storeId: string, filters: Record<string, string>) =>
       ['fiscal', storeId, 'documents', filters] as const,
     document: (storeId: string, id: string) => ['fiscal', storeId, 'document', id] as const,
-    delivery: (storeId: string, id: string) => ['fiscal', storeId, 'delivery', id] as const
+    delivery: (storeId: string, id: string, subject: string) =>
+      ['fiscal', storeId, 'delivery', id, subject] as const
   },
 
   session: ['session'] as const

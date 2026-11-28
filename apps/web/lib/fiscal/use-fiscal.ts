@@ -37,9 +37,10 @@ import {
   retryFiscalDocument,
   voidFiscalDocument
 } from '@platform/api-client'
+import { FiscalDeliverySubject } from '@platform/core/domain'
 import type {
   FiscalEvidenceKind,
-  HandOverFiscalDeliveryBody,
+  HandOverFiscalDeliveryInput,
   FiscalReceiverPatchBody,
   PutFiscalIssuerBody,
   VoidFiscalDocumentBody
@@ -179,15 +180,17 @@ export const useFiscalEvidenceLink = (
     mutationFn: input => fetchFiscalEvidenceUrls(apiClient, storeId, input.id, input.kind)
   })
 
-// How the files of an accepted document reached its receiver, and which of them exist (a voided document may have none)
+// How the files of an accepted document, or of its invalidation (`subject`), reached its receiver, and which of them exist (a voided document may
+// have none of its own)
 export function useFiscalDelivery(
   storeId: string,
   id: string,
-  enabled: boolean
+  enabled: boolean,
+  subject: FiscalDeliverySubject = FiscalDeliverySubject.DOCUMENT
 ): UseQueryResult<FiscalDeliveryView> {
   return useQuery({
-    queryKey: QueryKeys.fiscal.delivery(storeId, id),
-    queryFn: ({ signal }) => fetchFiscalDelivery(apiClient, storeId, id, signal),
+    queryKey: QueryKeys.fiscal.delivery(storeId, id, subject),
+    queryFn: ({ signal }) => fetchFiscalDelivery(apiClient, storeId, id, signal, subject),
     enabled
   })
 }
@@ -195,5 +198,5 @@ export function useFiscalDelivery(
 // A person records that they gave the files to the receiver by hand
 export const useHandOverFiscalDelivery = (
   storeId: string
-): Write<{ id: string; body: HandOverFiscalDeliveryBody }, FiscalDeliveryView> =>
+): Write<{ id: string; body: HandOverFiscalDeliveryInput }, FiscalDeliveryView> =>
   useFiscalWrite(input => handOverFiscalDelivery(apiClient, storeId, input.id, input.body))

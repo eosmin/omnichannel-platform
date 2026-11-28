@@ -8583,16 +8583,31 @@
           "no_channel": "The customer has no conversation that takes the files and no email.",
           "files_unavailable": "The files could not be read to be sent.",
           "too_large": "The files are larger than what an email carries.",
-          "customer_erased": "The customer was erased: nobody is left to give them to."
+          "customer_erased": "The customer was erased: nobody is left to give them to.",
+          "void_event_unavailable": "There is no invalidation event of ours to deliver: the authority already held the document as invalidated, or it was invalidated before the event was kept."
         },
         "means": {
           "download": "files downloaded",
-          "paper": "paper copy"
+          "paper": "paper copy",
+          "answer": "answer of the authority"
         },
         "howTo": "Download both files above and give them to the customer, or print the graphic representation if the customer asks for it on paper. Then record it here: this closes the pending delivery.",
         "handed": {
           "download": "I gave the files",
-          "paper": "I gave a paper copy"
+          "paper": "I gave a paper copy",
+          "answer": "I handed over the answer of the authority"
+        },
+        "void": {
+          "title": "Delivery of the invalidation to the customer",
+          "description": "The customer is given the invalidation event, with its signature and the seal of the authority, and its graphic representation. The system sends them through the conversation or by email when it can.",
+          "state": {
+            "pending": "The system has not delivered the invalidation files yet.",
+            "channel": "Sent through the customer's conversation.",
+            "email": "Sent by email.",
+            "manual": "Handed over by hand ({means}) on {date}.",
+            "none": "The system could not send the invalidation files. They are still to be given to the customer."
+          },
+          "howTo": "Download the two invalidation files and give them to the customer, or print the graphic representation if they ask for paper. If there are no files of our own, download the answer to the invalidation (it holds the code and the seal of the authority) and hand it over as it is. Then record it here."
         }
       },
       "evidence": {
@@ -8784,6 +8799,7 @@
     }
   },
   "fiscalDelivery": {
-    "text": "Attached are the files of the tax document of your order {order} from {store}: the electronic tax document (DTE) in JSON format and its printable representation in PDF."
+    "text": "Attached are the files of the tax document of your order {order} from {store}: the electronic tax document (DTE) in JSON format and its printable representation in PDF.",
+    "voidText": "The tax document of your order {order} from {store} was invalidated. Attached are the files of the invalidation event: the event in JSON format, with its signature and the reception seal of the authority, and its printable representation in PDF."
   }
 }

@@ -12,6 +12,7 @@ import {
   FiscalDeliveryReason,
   FiscalDeliveryRoute,
   FiscalDeliveryStatus,
+  FiscalDeliverySubject,
   FiscalDocumentKind,
   FiscalEnvironment,
   FiscalEvidenceKind,
@@ -34,6 +35,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 
 const OK = 200
+const BAD_REQUEST = 400
 const FORBIDDEN = 403
 const NOT_FOUND = 404
 const CONFLICT = 409
@@ -44,6 +46,7 @@ interface ErrorBody {
 interface DeliveryBody {
   data: {
     documentId: string
+    subject: string
     state: string
     route: string | null
     reason: string | null
@@ -168,10 +171,14 @@ describe('The hand delivery of the files of a fiscal document (Step 4B.7d)', () 
   }
 
   const both = [FiscalEvidenceKind.REPRESENTATION, FiscalEvidenceKind.DTE_FILE]
-  const read = (documentId: string) =>
-    asAdminA().get(ApiRoutes.fiscal.documents.delivery(documentId))
-  const handOver = (documentId: string, means: FiscalHandMeans) =>
-    asAdminA().post(ApiRoutes.fiscal.documents.delivery(documentId)).send({ means })
+  const read = (documentId: string, subject?: FiscalDeliverySubject) =>
+    asAdminA().get(
+      `${ApiRoutes.fiscal.documents.delivery(documentId)}${subject === undefined ? '' : `?subject=${subject}`}`
+    )
+  const handOver = (documentId: string, means: FiscalHandMeans, subject?: FiscalDeliverySubject) =>
+    asAdminA()
+      .post(ApiRoutes.fiscal.documents.delivery(documentId))
+      .send(subject === undefined ? { means } : { means, subject })
 
   it('says a document the system has not delivered is pending and lists the files that exist', async () => {
     const documentId = await sale(true)
@@ -218,7 +225,7 @@ describe('The hand delivery of the files of a fiscal document (Step 4B.7d)', () 
       means: FiscalHandMeans.DOWNLOAD,
       reason: null
     })
-    const row = await owner.fiscalDelivery.findUniqueOrThrow({ where: { documentId } })
+    const row = await owner.fiscalDelivery.findFirstOrThrow({ where: { documentId } })
     expect(row.handedOverBy).toBe(ctx.adminA.id)
     expect(row.handedOverAt).not.toBeNull()
     await waitForAuditEntries(owner, {
@@ -380,5 +387,154 @@ describe('The hand delivery of the files of a fiscal document (Step 4B.7d)', () 
       ).status
     ).toBe(NOT_FOUND)
     expect(await owner.fiscalDelivery.count({ where: { documentId } })).toBe(0)
+  })
+
+  // The files of an invalidation are a delivery of their own: the same rules, its own subject, and the answer of the authority as the means for
+  // an invalidation with no event of ours to give.
+  describe('the delivery of an invalidation', () => {
+    const VOID = FiscalDeliverySubject.VOID
+    const voidKinds = [FiscalEvidenceKind.VOID_REPRESENTATION, FiscalEvidenceKind.VOID_DTE_FILE]
+
+    async function voidedSale(): Promise<string> {
+      const documentId = await sale(true)
+      const voided = await asAdminA()
+        .post(ApiRoutes.fiscal.documents.void(documentId))
+        .send({ reason: 'wrong customer' })
+      expect(voided.status).toBe(OK)
+      return documentId
+    }
+    // The answer of the authority is made when the document is voided (pending its scan): the scan has passed
+    const answerIsClean = (documentId: string) =>
+      owner.media.updateMany({
+        where: {
+          fiscalDocumentId: documentId,
+          fiscalEvidenceKind: FiscalEvidenceKind.VOID_RESPONSE
+        },
+        data: { status: MediaStatus.CLEAN }
+      })
+    async function notSent(documentId: string): Promise<void> {
+      const document = await owner.fiscalDocument.findUniqueOrThrow({
+        where: { id: documentId },
+        select: { storeId: true, orderId: true }
+      })
+      await owner.fiscalDelivery.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          storeId: document.storeId,
+          documentId,
+          subject: VOID,
+          orderId: document.orderId,
+          status: FiscalDeliveryStatus.NOT_SENT,
+          route: FiscalDeliveryRoute.NONE,
+          reason: FiscalDeliveryReason.VOID_EVENT_UNAVAILABLE
+        }
+      })
+    }
+
+    it('reads the delivery of each subject apart, and lists the answer of the authority beside the files', async () => {
+      const documentId = await voidedSale()
+      const own = (await read(documentId, VOID)).body as DeliveryBody
+      expect(own.data).toMatchObject({ state: 'pending', subject: VOID })
+      const document = (await read(documentId)).body as DeliveryBody
+      expect(document.data).toMatchObject({ state: 'pending', subject: 'document' })
+      await answerIsClean(documentId)
+      expect(((await read(documentId, VOID)).body as DeliveryBody).data.files).toEqual([
+        FiscalEvidenceKind.VOID_RESPONSE
+      ])
+    })
+
+    it('hands over the answer of the authority for an invalidation with no event of ours, keeps why, and leaves the document delivery alone', async () => {
+      const documentId = await voidedSale()
+      await notSent(documentId)
+      await answerIsClean(documentId)
+      const done = await handOver(documentId, FiscalHandMeans.ANSWER, VOID)
+      expect(done.status).toBe(OK)
+      expect((done.body as DeliveryBody).data).toMatchObject({
+        subject: VOID,
+        state: FiscalDeliveryStatus.SENT,
+        route: FiscalDeliveryRoute.MANUAL,
+        means: FiscalHandMeans.ANSWER,
+        reason: FiscalDeliveryReason.VOID_EVENT_UNAVAILABLE
+      })
+      const rows = await owner.fiscalDelivery.findMany({ where: { documentId } })
+      expect(rows.map(row => [row.subject, row.handedOverBy])).toEqual([[VOID, ctx.adminA.id]])
+      expect(((await read(documentId)).body as DeliveryBody).data.state).toBe('pending')
+    })
+
+    it('hands over the two files of the invalidation, or the picture on paper, and only when they exist', async () => {
+      const paper = await voidedSale()
+      await notSent(paper)
+      await withFiles(paper, [FiscalEvidenceKind.VOID_REPRESENTATION])
+      expect((await handOver(paper, FiscalHandMeans.DOWNLOAD, VOID)).status).toBe(CONFLICT)
+      expect((await handOver(paper, FiscalHandMeans.PAPER, VOID)).status).toBe(OK)
+      const both = await voidedSale()
+      await notSent(both)
+      await withFiles(both, voidKinds)
+      expect((await handOver(both, FiscalHandMeans.DOWNLOAD, VOID)).status).toBe(OK)
+    })
+
+    it('refuses the answer of the authority when the invalidation has files of its own to hand over', async () => {
+      const documentId = await voidedSale()
+      await notSent(documentId)
+      await answerIsClean(documentId)
+      await withFiles(documentId, voidKinds)
+      const refused = await handOver(documentId, FiscalHandMeans.ANSWER, VOID)
+      expect(refused.status).toBe(CONFLICT)
+      expect((refused.body as ErrorBody).error.metadata).toMatchObject({
+        reason: FiscalConflictReasons.DELIVERY_FILES_EXIST
+      })
+      expect(await owner.fiscalDelivery.count({ where: { documentId, route: 'manual' } })).toBe(0)
+    })
+
+    it('counts an own file still waiting for its scan: the answer is refused until it is known whether it is deliverable, and free when it is infected', async () => {
+      const waiting = await voidedSale()
+      await notSent(waiting)
+      await answerIsClean(waiting)
+      await withFiles(waiting, [FiscalEvidenceKind.VOID_REPRESENTATION], MediaStatus.PENDING)
+      const refused = await handOver(waiting, FiscalHandMeans.ANSWER, VOID)
+      expect(refused.status).toBe(CONFLICT)
+      expect((refused.body as ErrorBody).error.metadata).toMatchObject({
+        reason: FiscalConflictReasons.DELIVERY_FILES_EXIST
+      })
+      // Found infected it is never given, so the answer is what is left to hand over
+      await owner.media.updateMany({
+        where: {
+          fiscalDocumentId: waiting,
+          fiscalEvidenceKind: FiscalEvidenceKind.VOID_REPRESENTATION
+        },
+        data: { status: MediaStatus.INFECTED }
+      })
+      expect((await handOver(waiting, FiscalHandMeans.ANSWER, VOID)).status).toBe(OK)
+    })
+
+    it('does not count an own file whose scan gave up: it is never given, so the answer is free', async () => {
+      const gaveUp = await voidedSale()
+      await notSent(gaveUp)
+      await answerIsClean(gaveUp)
+      await withFiles(gaveUp, [FiscalEvidenceKind.VOID_REPRESENTATION], MediaStatus.UNSCANNABLE)
+      expect((await handOver(gaveUp, FiscalHandMeans.ANSWER, VOID)).status).toBe(OK)
+    })
+
+    it('refuses what is not owed: the answer for a document delivery, an invalidation of a document that is not voided, and the document files of one that is', async () => {
+      const voided = await voidedSale()
+      await notSent(voided)
+      await answerIsClean(voided)
+      // The answer of the authority belongs to an invalidation: a document has its own files (a bad request, nothing written)
+      expect((await handOver(voided, FiscalHandMeans.ANSWER)).status).toBe(BAD_REQUEST)
+      // A voided document owes no delivery of the document
+      expect((await handOver(voided, FiscalHandMeans.DOWNLOAD)).status).toBe(CONFLICT)
+      // An accepted document owes none of an invalidation
+      const accepted = await sale(true)
+      await withFiles(accepted, [...voidKinds, FiscalEvidenceKind.VOID_RESPONSE])
+      const refused = await handOver(accepted, FiscalHandMeans.ANSWER, VOID)
+      expect(refused.status).toBe(CONFLICT)
+      expect(await owner.fiscalDelivery.count({ where: { documentId: accepted } })).toBe(0)
+      // A means the schema does not know, or a subject it does not know
+      expect(
+        (await asAdminA().post(ApiRoutes.fiscal.documents.delivery(voided)).send({ means: 'x' }))
+          .status
+      ).toBe(BAD_REQUEST)
+      expect((await read(voided, 'other' as FiscalDeliverySubject)).status).toBe(BAD_REQUEST)
+    })
   })
 })

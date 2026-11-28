@@ -6,6 +6,7 @@ import {
   FiscalEvidenceKind,
   fiscalIdSchema,
   fiscalReceiverPatchSchema,
+  fiscalDeliveryQuerySchema,
   handOverFiscalDeliverySchema,
   FiscalSweepKind,
   FiscalSweepLimits,
@@ -15,6 +16,7 @@ import {
   putFiscalIssuerSchema,
   type ConfirmFiscalIssuerChangeBody,
   type FiscalReceiverPatchBody,
+  type FiscalDeliveryQuery,
   type HandOverFiscalDeliveryBody,
   type ListFiscalDocumentsQuery,
   type PutFiscalIssuerBody,
@@ -34,6 +36,8 @@ export type ReceiverPatchBody = FiscalReceiverPatchBody
 export const voidDocumentSchema = voidFiscalDocumentSchema
 export type VoidDocumentBody = VoidFiscalDocumentBody
 
+export const deliveryQuerySchema = fiscalDeliveryQuerySchema
+export type DeliveryQuery = FiscalDeliveryQuery
 export const handOverSchema = handOverFiscalDeliverySchema
 export type HandOverBody = HandOverFiscalDeliveryBody
 

@@ -5,10 +5,14 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useEffect } from 'react'
 
 import { ApiError, type FiscalDocumentView } from '@platform/api-client'
-import { FiscalDocumentStatus, type FiscalEvidenceKind } from '@platform/core/domain'
+import {
+  FiscalDeliverySubject,
+  FiscalDocumentStatus,
+  type FiscalEvidenceKind
+} from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 
-import { fiscalEvidenceKindsOf } from '../../lib/fiscal/document-rules'
+import { fiscalEvidenceKindsOf, hasInvalidationToDeliver } from '../../lib/fiscal/document-rules'
 import { useFiscalDelivery, useFiscalEvidenceLink } from '../../lib/fiscal/use-fiscal'
 import { useFiscalErrorText } from '../../lib/fiscal/use-fiscal-error-text'
 import { useStore } from '../providers/store-context'
@@ -40,6 +44,9 @@ export function EvidencePanel({
     document.id,
     accepted || document.status === FiscalDocumentStatus.VOIDED
   )
+  // The delivery of the invalidation of a voided document is its own (the files of the document were given when it was accepted)
+  const voided = document.status === FiscalDocumentStatus.VOIDED
+  const voidDelivery = useFiscalDelivery(storeId, document.id, voided, FiscalDeliverySubject.VOID)
   const kinds = fiscalEvidenceKindsOf(document, delivery.data?.files ?? [])
   if (kinds.length === 0) return null
   return (
@@ -59,6 +66,9 @@ export function EvidencePanel({
       </section>
       {accepted && delivery.data !== undefined ? (
         <HandDelivery document={document} delivery={delivery.data} canManage={canManage} />
+      ) : null}
+      {voided && voidDelivery.data !== undefined && hasInvalidationToDeliver(voidDelivery.data) ? (
+        <HandDelivery document={document} delivery={voidDelivery.data} canManage={canManage} />
       ) : null}
     </>
   )
