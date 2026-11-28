@@ -869,6 +869,52 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
         expect(await row()).toMatchObject({ baseCents: -500, taxCents: 0, documents: 1 })
       })
 
+      it('leaves out of the report a return that came after the three months, whose tax went to the non-recoverable VAT, and its void', async () => {
+        const role = async (name: string): Promise<string> =>
+          (
+            await owner.accountRoleMapping.findUniqueOrThrow({
+              where: { organizationId_role: { organizationId: ctx.orgA.id, role: name } }
+            })
+          ).accountId
+        const period = await owner.fiscalPeriod.findFirstOrThrow({
+          where: { organizationId: ctx.orgA.id, year: 2026, month: 2 }
+        })
+        const figures = async () => {
+          const body = (await report('2026-02-01', '2026-02-28')).body as ReportBody
+          return {
+            row: body.rows.find(line => line.kind === (VatLineKind.RETURNS as string)),
+            month: body.months.find(line => line.month === '2026-02')
+          }
+        }
+        const before = await figures()
+        const late = await postTestEntry(owner, {
+          organizationId: ctx.orgA.id,
+          periodId: period.id,
+          entryDate: '2026-02-20',
+          type: JournalEntryType.SALE_RETURN,
+          lines: [
+            { accountId: await role('sales_returns'), debitCents: 700 },
+            { accountId: await role('vat_non_recoverable'), debitCents: 91 },
+            { accountId: await role('customer_advances'), creditCents: 791 }
+          ]
+        })
+        // The declared sales and tax are what they were: the return is in the journal and not in the report
+        expect(await figures()).toEqual(before)
+        await postTestEntry(owner, {
+          organizationId: ctx.orgA.id,
+          periodId: period.id,
+          entryDate: '2026-02-21',
+          type: JournalEntryType.REVERSAL,
+          reversesEntryId: late.id,
+          lines: [
+            { accountId: await role('sales_returns'), creditCents: 700 },
+            { accountId: await role('vat_non_recoverable'), creditCents: 91 },
+            { accountId: await role('customer_advances'), debitCents: 791 }
+          ]
+        })
+        expect(await figures()).toEqual(before)
+      })
+
       it('counts a returned order apart, and tells the date the books start from', async () => {
         const order = await place(1130, 1)
         await delivered(order.id, '2027-05-10T15:00:00Z')

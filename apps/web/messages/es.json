@@ -6779,7 +6779,12 @@
           "cod_differences": "Diferencias de contra entrega",
           "opening_equity": "Patrimonio de apertura",
           "rounding": "Redondeo",
-          "uncategorized_expense": "Gasto sin categoría"
+          "uncategorized_expense": "Gasto sin categoría",
+          "vat_pending_document": "IVA pendiente de documentar",
+          "accrued_commissions_undocumented": "Comisiones devengadas sin comprobante",
+          "income_tax_prepayment": "Pago a cuenta de renta",
+          "vat_card_advance": "Anticipo de IVA retenido por la pasarela",
+          "vat_non_recoverable": "IVA que ya no se puede recuperar"
         }
       },
       "payments": {

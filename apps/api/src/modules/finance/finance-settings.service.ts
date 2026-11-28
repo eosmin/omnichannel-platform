@@ -171,7 +171,17 @@ export class FinanceSettingsService {
         // The balance of the role is on its account: pointing the role elsewhere splits it between two (HC-119). Once a
         // reclassifying entry has emptied the account the role moves; the settings row is locked like the ledger does to post
         await lockSettingsRow(tx, organizationId)
-        const held = await netBalanceCents(tx, organizationId, { accountId: current.accountId })
+        // The VAT report tells a return that came after the window by this very account, so the role is fixed by ANY entry on its account,
+        // not by its balance: a reclassifying entry that empties the account must not free it, or the report of a month already filed would
+        // change when the role moved
+        const marksPast =
+          role === (AccountRole.VAT_NON_RECOVERABLE as string) &&
+          (await tx.journalLine.count({
+            where: { organizationId, accountId: current.accountId }
+          })) > 0
+        const held = marksPast
+          ? 1
+          : await netBalanceCents(tx, organizationId, { accountId: current.accountId })
         if (held !== 0) {
           throw resourceConflict('the account of the role holds a balance', {
             conflict: FinanceConflicts.ROLE_HAS_HISTORY,
