@@ -13,10 +13,12 @@ import {
   refundLines,
   returnLines,
   restockCost,
+  returnKeepsVatRight,
   reversalLinesOf,
   reversalOf,
   type RoleAccounts,
   saleAmounts,
+  vatWindowEnd,
   writeOffLines
 } from './index'
 
@@ -362,6 +364,7 @@ describe('returnLines (E8)', () => {
       settlement: { kind: ReturnSettlementKind.ADVANCE },
       restockCostCents: 1200,
       costAgainst: ReturnCostAgainst.COST_OF_GOODS_SOLD,
+      vatRecoverable: true,
       storeId: STORE
     })
     expect(result.ok).toBe(true)
@@ -382,6 +385,7 @@ describe('returnLines (E8)', () => {
       settlement: { kind: ReturnSettlementKind.CARRIER, carrierConnectionId: CARRIER },
       restockCostCents: 0,
       costAgainst: ReturnCostAgainst.COST_OF_GOODS_SOLD,
+      vatRecoverable: true,
       storeId: STORE
     })
     expect(result.ok).toBe(true)
@@ -401,6 +405,7 @@ describe('returnLines (E8)', () => {
       settlement: { kind: ReturnSettlementKind.ADVANCE },
       restockCostCents: 1200,
       costAgainst: ReturnCostAgainst.TRANSIT,
+      vatRecoverable: true,
       storeId: STORE
     })
     expect(result.ok).toBe(true)
@@ -419,6 +424,7 @@ describe('returnLines (E8)', () => {
         settlement: { kind: ReturnSettlementKind.ADVANCE },
         restockCostCents: 0,
         costAgainst: ReturnCostAgainst.TRANSIT,
+        vatRecoverable: true,
         storeId: STORE
       })
     ).toEqual({ ok: true, lines: [] })
@@ -430,6 +436,7 @@ describe('returnLines (E8)', () => {
         settlement: { kind: ReturnSettlementKind.ADVANCE },
         restockCostCents: 0,
         costAgainst: ReturnCostAgainst.COST_OF_GOODS_SOLD,
+        vatRecoverable: true,
         storeId: STORE
       })
     ).toEqual({
@@ -508,6 +515,7 @@ describe('returnLines with the shipping fee (E8)', () => {
       settlement: { kind: ReturnSettlementKind.CARRIER, carrierConnectionId: CARRIER },
       restockCostCents: 0,
       costAgainst: ReturnCostAgainst.COST_OF_GOODS_SOLD,
+      vatRecoverable: true,
       storeId: STORE
     })
     expect(result.ok).toBe(true)
@@ -561,6 +569,93 @@ describe('refundLines (E14, HC-105)', () => {
       ok: false,
       reason: FinancePostingFailureReason.ROLE_NOT_MAPPED,
       role: AccountRole.CUSTOMER_ADVANCES
+    })
+  })
+})
+
+describe('the window of three months for a return to lower the output VAT (E8)', () => {
+  it('ends the same day three months later, and the last day of a shorter month', () => {
+    expect(vatWindowEnd('2026-01-15')).toBe('2026-04-15')
+    expect(vatWindowEnd('2026-01-31')).toBe('2026-04-30')
+    expect(vatWindowEnd('2026-11-30')).toBe('2027-02-28')
+    expect(vatWindowEnd('2026-11-29')).toBe('2027-02-28')
+    // A leap year: 2028 has a 29 February
+    expect(vatWindowEnd('2027-11-30')).toBe('2028-02-29')
+    expect(vatWindowEnd('2027-11-29')).toBe('2028-02-29')
+    expect(vatWindowEnd('2027-11-28')).toBe('2028-02-28')
+    // The year turns over
+    expect(vatWindowEnd('2026-10-31')).toBe('2027-01-31')
+    expect(vatWindowEnd('2026-12-01')).toBe('2027-03-01')
+  })
+
+  it('has no end for what is not a day of the calendar', () => {
+    for (const text of ['', '2026-1-1', '2026-13-01', '2026-02-30', '2027-02-29', '2026-00-10']) {
+      expect([text, vatWindowEnd(text)]).toEqual([text, null])
+    }
+  })
+
+  it('keeps the right on the border day and loses it the day after', () => {
+    expect(returnKeepsVatRight('2026-01-31', '2026-04-30')).toBe(true)
+    expect(returnKeepsVatRight('2026-01-31', '2026-05-01')).toBe(false)
+    expect(returnKeepsVatRight('2026-11-30', '2027-02-28')).toBe(true)
+    expect(returnKeepsVatRight('2026-11-30', '2027-03-01')).toBe(false)
+    expect(returnKeepsVatRight('2027-11-30', '2028-02-29')).toBe(true)
+    expect(returnKeepsVatRight('2027-11-30', '2028-03-01')).toBe(false)
+    // The day of the delivery and an early return are inside
+    expect(returnKeepsVatRight('2026-05-10', '2026-05-10')).toBe(true)
+    expect(returnKeepsVatRight('2026-05-10', '2026-06-01')).toBe(true)
+  })
+
+  it('judges days of the store, not instants: a delivery at 21:00 UTC-6 is the day after in UTC and the border follows the store', () => {
+    // 2026-01-30 23:30 in El Salvador is 2026-01-31 05:30 UTC; the callers pass the day of the store, so the window ends 30 April
+    expect(returnKeepsVatRight('2026-01-30', '2026-04-30')).toBe(true)
+    expect(returnKeepsVatRight('2026-01-30', '2026-05-01')).toBe(false)
+  })
+
+  it('keeps the right when the parcel was never delivered or a day is not a day, as the books did before the rule', () => {
+    expect(returnKeepsVatRight(null, '2030-01-01')).toBe(true)
+    expect(returnKeepsVatRight('nonsense', '2030-01-01')).toBe(true)
+    expect(returnKeepsVatRight('2026-01-31', 'nonsense')).toBe(true)
+  })
+
+  it('posts the tax as a non-recoverable expense outside the window and leaves the output VAT alone', () => {
+    const base = {
+      accounts,
+      reversal: { netCents: 10000, vatCents: 1300 },
+      settlement: { kind: ReturnSettlementKind.ADVANCE } as const,
+      restockCostCents: 6000,
+      costAgainst: ReturnCostAgainst.COST_OF_GOODS_SOLD,
+      storeId: STORE
+    }
+    const inside = returnLines({ ...base, vatRecoverable: true })
+    const outside = returnLines({ ...base, vatRecoverable: false })
+    if (!inside.ok || !outside.ok) throw new Error('both entries must be built')
+    expect(lineOf(inside.lines, AccountRole.VAT_OUTPUT)?.debitCents).toBe(1300)
+    expect(lineOf(inside.lines, AccountRole.VAT_NON_RECOVERABLE)).toBeUndefined()
+    expect(lineOf(outside.lines, AccountRole.VAT_OUTPUT)).toBeUndefined()
+    expect(lineOf(outside.lines, AccountRole.VAT_NON_RECOVERABLE)?.debitCents).toBe(1300)
+    // The customer is owed the same either way, and the entry balances
+    expect(lineOf(outside.lines, AccountRole.CUSTOMER_ADVANCES)?.creditCents).toBe(11300)
+    expect(sum(outside.lines, 'debitCents')).toBe(sum(outside.lines, 'creditCents'))
+  })
+
+  it('names the role when the account of the non-recoverable VAT is not mapped, never falling back to the output VAT', () => {
+    const none: RoleAccounts = role =>
+      role === AccountRole.VAT_NON_RECOVERABLE ? null : `acc-${role}`
+    expect(
+      returnLines({
+        accounts: none,
+        reversal: { netCents: 10000, vatCents: 1300 },
+        settlement: { kind: ReturnSettlementKind.ADVANCE },
+        restockCostCents: 0,
+        costAgainst: ReturnCostAgainst.COST_OF_GOODS_SOLD,
+        vatRecoverable: false,
+        storeId: STORE
+      })
+    ).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.ROLE_NOT_MAPPED,
+      role: AccountRole.VAT_NON_RECOVERABLE
     })
   })
 })

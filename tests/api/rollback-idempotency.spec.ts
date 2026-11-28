@@ -71,6 +71,22 @@ describe('Rollbacks that are safe to run twice', () => {
       await client.query('ROLLBACK')
     }
   })
+  // The rollback of the roles of returns and VAT deletes only the accounts and mappings its migration wrote, and only those with no entries
+  // (the cases with rows are in `finance-returns-vat-roles-migration.spec.ts`): run twice on the database as it is, it must not fail and must
+  // not take a row of any other account
+  it('20270217100000_finance_returns_vat_roles.rollback.sql runs twice and touches only the rows its migration wrote', async () => {
+    const sql = body('20270217100000_finance_returns_vat_roles.rollback.sql')
+    const others = `SELECT count(*)::int AS n FROM ledger_accounts WHERE NOT (code IN ('1402','1405','1406','2103','6113') AND id = md5(organization_id || ':finance_returns_vat:' || code)::uuid::text)`
+    await client.query('BEGIN')
+    try {
+      const before = (await client.query<{ n: number }>(others)).rows[0]
+      await client.query(sql)
+      await client.query(sql)
+      expect((await client.query<{ n: number }>(others)).rows[0]).toEqual(before)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+  })
   // The rollback of the day of issue drops the column and the index of the month and keeps every row: a document keeps its codes, a mark keeps
   // its reason, and the second run finds nothing to do. Rows are written with the foreign keys off for the transaction, never committed.
   it('20270211100000_purchase_document_issued_on.rollback.sql keeps the documents and the marks, and runs a second time on the result', async () => {

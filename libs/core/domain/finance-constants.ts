@@ -207,7 +207,20 @@ export enum AccountRole {
   COD_DIFFERENCES = 'cod_differences',
   OPENING_EQUITY = 'opening_equity',
   ROUNDING = 'rounding',
-  UNCATEGORIZED_EXPENSE = 'uncategorized_expense'
+  UNCATEGORIZED_EXPENSE = 'uncategorized_expense',
+  // The accountant's proposal of 2026-11-27 (criterion kept in a private file, never copied here): accounts that only hold a balance for now,
+  // no automatic entry posts to the first four yet (each is a task of the plan with its owner). A role is born unmapped in an organization
+  // whose chart already uses its code, and the entry that needs it then fails visibly (TDD_18 §6.1).
+  // The VAT of an expense that is owed but not backed by a valid tax document yet; it is kept out of the VAT return until the document comes
+  VAT_PENDING_DOCUMENT = 'vat_pending_document',
+  // A carrier commission accrued and not yet backed by a tax document
+  ACCRUED_COMMISSIONS_UNDOCUMENTED = 'accrued_commissions_undocumented',
+  // The advance payment on income tax (an asset credited against the annual tax, not an expense)
+  INCOME_TAX_PREPAYMENT = 'income_tax_prepayment',
+  // The advance of VAT that a card gateway holds back, only when the gateway really does it
+  VAT_CARD_ADVANCE = 'vat_card_advance',
+  // The output VAT of a return that came back after the window of the law: it no longer lowers the VAT owed and becomes an expense (E8)
+  VAT_NON_RECOVERABLE = 'vat_non_recoverable'
 }
 
 // The roles that hold a balance a reader adds up on one account: moving one of them once its account has entries splits the balance
@@ -223,7 +236,15 @@ export const RolesPinnedByHistory: readonly AccountRole[] = [
   AccountRole.PREPAID_CARRIER_GUIDES,
   AccountRole.VAT_OUTPUT,
   AccountRole.VAT_INPUT,
-  AccountRole.OPENING_EQUITY
+  AccountRole.OPENING_EQUITY,
+  // Balances a reader adds up on one account
+  AccountRole.VAT_PENDING_DOCUMENT,
+  AccountRole.ACCRUED_COMMISSIONS_UNDOCUMENTED,
+  AccountRole.INCOME_TAX_PREPAYMENT,
+  AccountRole.VAT_CARD_ADVANCE,
+  // The VAT report tells a return that came after the window by the account this role maps to: moving it with entries would make a past,
+  // already filed month change (code review of the PR)
+  AccountRole.VAT_NON_RECOVERABLE
 ]
 
 // The other roles, free to move with history on purpose: the defaults of cash and bank only say where a new payment lands (an
@@ -277,7 +298,12 @@ export const AccountTypesOfRole: Readonly<Record<AccountRole, readonly AccountTy
   [AccountRole.COD_DIFFERENCES]: [EXPENSE, COST_OF_SALES, INCOME],
   [AccountRole.OPENING_EQUITY]: [EQUITY],
   [AccountRole.ROUNDING]: [EXPENSE, INCOME],
-  [AccountRole.UNCATEGORIZED_EXPENSE]: [EXPENSE, COST_OF_SALES]
+  [AccountRole.UNCATEGORIZED_EXPENSE]: [EXPENSE, COST_OF_SALES],
+  [AccountRole.VAT_PENDING_DOCUMENT]: [ASSET],
+  [AccountRole.ACCRUED_COMMISSIONS_UNDOCUMENTED]: [LIABILITY],
+  [AccountRole.INCOME_TAX_PREPAYMENT]: [ASSET],
+  [AccountRole.VAT_CARD_ADVANCE]: [ASSET],
+  [AccountRole.VAT_NON_RECOVERABLE]: [EXPENSE]
 }
 
 // What a payment lands in is money held or owed to the business (cash, a bank, a carrier that collects): always an asset

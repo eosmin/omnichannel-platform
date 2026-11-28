@@ -768,6 +768,119 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
         })
       ).toBe(0)
     })
+
+    // The three months of the law (Ley de IVA, art. 62; the criterion of the accountant is in a private file): each return is judged on its
+    // own day against the delivery of the order, both in the time zone of the store
+    const DAY = 86_400_000
+    const setDelivered = (orderId: string, at: Date) =>
+      owner.order.update({ where: { id: orderId }, data: { deliveredAt: at } })
+    const outputTax = async (returnId: string) => {
+      const entry = await entryOf(FinancePostingKey.RETURN_RESTOCK(returnId))
+      const lines = linesOf(entry as NonNullable<typeof entry>)
+      const debit = (role: AccountRole): number =>
+        lines.find(line => line[0] === code(role))?.[1] ?? 0
+      return {
+        output: debit(AccountRole.VAT_OUTPUT),
+        expense: debit(AccountRole.VAT_NON_RECOVERABLE),
+        owed: lines.find(line => line[0] === code(AccountRole.CUSTOMER_ADVANCES))?.[2] ?? 0
+      }
+    }
+
+    it('judges each return of an order on its own day: the first inside the three months lowers the output VAT, the second after them is an expense', async () => {
+      const made = await sold()
+      await setDelivered(made.id, new Date(Date.now() - 150 * DAY))
+      const first = await received(made, {
+        quantity: 1,
+        receivedAt: new Date(Date.now() - 90 * DAY)
+      })
+      const second = await received(made, { quantity: 1, receivedAt: new Date() })
+      expect(
+        (await post(FinanceSourceType.RETURN, first, FinanceEventKind.RETURN_RESTOCK)).outcome
+      ).toBe(FinancePostingOutcome.POSTED)
+      expect(
+        (await post(FinanceSourceType.RETURN, second, FinanceEventKind.RETURN_RESTOCK)).outcome
+      ).toBe(FinancePostingOutcome.POSTED)
+      expect(await outputTax(first)).toEqual({ output: 130, expense: 0, owed: 1130 })
+      // The customer is owed the same and the output VAT is not touched: the tax became an expense of the business
+      expect(await outputTax(second)).toEqual({ output: 0, expense: 130, owed: 1130 })
+    })
+
+    it('counts the border in the time zone of the store: 23:30 of the last day in El Salvador is already the next day in UTC and still inside', async () => {
+      const store = await owner.store.findUniqueOrThrow({
+        where: { id: ctx.storeA.id },
+        select: { timezone: true }
+      })
+      await owner.store.update({
+        where: { id: ctx.storeA.id },
+        data: { timezone: 'America/El_Salvador' }
+      })
+      try {
+        // Delivered 2026-01-30 22:00 there (2026-01-31 04:00 UTC): the window ends on 2026-04-30
+        const inside = await sold()
+        await setDelivered(inside.id, new Date('2026-01-31T04:00:00Z'))
+        const onTime = await received(inside, {
+          quantity: 1,
+          receivedAt: new Date('2026-05-01T05:30:00Z')
+        })
+        const late = await sold()
+        await setDelivered(late.id, new Date('2026-01-31T04:00:00Z'))
+        const tooLate = await received(late, {
+          quantity: 1,
+          receivedAt: new Date('2026-05-01T06:00:00Z')
+        })
+        for (const id of [onTime, tooLate]) {
+          expect(
+            (await post(FinanceSourceType.RETURN, id, FinanceEventKind.RETURN_RESTOCK)).outcome
+          ).toBe(FinancePostingOutcome.POSTED)
+        }
+        expect(await outputTax(onTime)).toMatchObject({ output: 130, expense: 0 })
+        expect(await outputTax(tooLate)).toMatchObject({ output: 0, expense: 130 })
+      } finally {
+        await owner.store.update({
+          where: { id: ctx.storeA.id },
+          data: { timezone: store.timezone }
+        })
+      }
+    })
+
+    it('fails visibly, never into the output VAT, when the account of the non-recoverable VAT is not mapped; a return inside the window does not need it', async () => {
+      const late = await sold()
+      await setDelivered(late.id, new Date(Date.now() - 150 * DAY))
+      const lateReturn = await received(late, { quantity: 1, receivedAt: new Date() })
+      const early = await sold()
+      const earlyReturn = await received(early, { quantity: 1, receivedAt: new Date() })
+      const mapping = await owner.accountRoleMapping.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, role: AccountRole.VAT_NON_RECOVERABLE }
+      })
+      await owner.accountRoleMapping.delete({
+        where: {
+          organizationId_role: { organizationId: mapping.organizationId, role: mapping.role }
+        }
+      })
+      try {
+        expect(
+          await post(FinanceSourceType.RETURN, lateReturn, FinanceEventKind.RETURN_RESTOCK)
+        ).toMatchObject({
+          outcome: FinancePostingOutcome.FAILED,
+          reason: FinancePostingFailureReason.ROLE_NOT_MAPPED
+        })
+        expect(
+          (await post(FinanceSourceType.RETURN, earlyReturn, FinanceEventKind.RETURN_RESTOCK))
+            .outcome
+        ).toBe(FinancePostingOutcome.POSTED)
+      } finally {
+        await owner.accountRoleMapping.create({
+          data: {
+            organizationId: mapping.organizationId,
+            role: mapping.role,
+            accountId: mapping.accountId
+          }
+        })
+      }
+      expect(
+        (await post(FinanceSourceType.RETURN, lateReturn, FinanceEventKind.RETURN_RESTOCK)).outcome
+      ).toBe(FinancePostingOutcome.POSTED)
+    })
   })
 
   describe('E8: an order put back as a whole', () => {

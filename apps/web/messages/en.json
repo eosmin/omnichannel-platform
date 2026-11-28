@@ -6779,7 +6779,12 @@
           "cod_differences": "Cash on delivery differences",
           "opening_equity": "Opening equity",
           "rounding": "Rounding",
-          "uncategorized_expense": "Uncategorized expense"
+          "uncategorized_expense": "Uncategorized expense",
+          "vat_pending_document": "VAT pending a tax document",
+          "accrued_commissions_undocumented": "Commissions accrued without a document",
+          "income_tax_prepayment": "Income tax prepayment",
+          "vat_card_advance": "VAT advance held by the card gateway",
+          "vat_non_recoverable": "VAT that can no longer be recovered"
         }
       },
       "payments": {
