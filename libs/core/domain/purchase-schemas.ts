@@ -2,7 +2,12 @@ import { z } from 'zod'
 
 import { FinanceLimits } from './finance-constants'
 import { isIsoDate } from './ledger-days'
-import { PURCHASE_ANNEX_EXCLUSIONS, PURCHASE_ORIGINS, PurchaseLimits } from './purchase-constants'
+import {
+  PURCHASE_ANNEX_EXCLUSIONS,
+  PURCHASE_ORIGINS,
+  PURCHASE_RECTIFICATION_REASONS,
+  PurchaseLimits
+} from './purchase-constants'
 import { lowercasedUuidSchema, singleLineText } from './validation'
 
 // The bodies of the purchase routes (TDD_18 §2.7, §12), in the shared lib: the api validates with them and the web checks what each
@@ -109,9 +114,17 @@ export const purchaseFiscalDocumentSchema = z.strictObject({
 export type PurchaseFiscalDocumentBody = z.infer<typeof purchaseFiscalDocumentSchema>
 
 // Completing a receipt: the data of its document, or the mark that the annex leaves it out (and why). Never both
+// Once an exported annex held the receipt, the change is a rectification: a reason of a closed list, for who holds the fiscal permission of every store
+const rectificationSchema = z.strictObject({ reason: z.enum(PURCHASE_RECTIFICATION_REASONS) })
 export const completeReceiptDocumentSchema = z.union([
-  z.strictObject({ fiscalDocument: purchaseFiscalDocumentSchema }),
-  z.strictObject({ annexExclusion: z.enum(PURCHASE_ANNEX_EXCLUSIONS) })
+  z.strictObject({
+    fiscalDocument: purchaseFiscalDocumentSchema,
+    rectification: rectificationSchema.optional()
+  }),
+  z.strictObject({
+    annexExclusion: z.enum(PURCHASE_ANNEX_EXCLUSIONS),
+    rectification: rectificationSchema.optional()
+  })
 ])
 
 // What arrives: the lines of the order it takes in and how many units of each. The cost and the tax are the order's, never the client's

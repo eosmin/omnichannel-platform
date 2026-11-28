@@ -44,6 +44,20 @@ export const PURCHASE_ORIGINS = Object.values(PurchaseOrigins) as [
   ...PurchaseOrigin[]
 ]
 
+// Why a person rectifies the document of a receipt that an exported annex already held (a closed list: no free text, which could carry
+// personal data into the audit row). Rectifying changes what was declared, so the month is exported again
+export const PurchaseRectificationReasons = {
+  DATA_ENTRY_ERROR: 'data_entry_error',
+  SUPPLIER_CORRECTION: 'supplier_correction',
+  ACCOUNTANT_INSTRUCTION: 'accountant_instruction'
+} as const
+export type PurchaseRectificationReason =
+  (typeof PurchaseRectificationReasons)[keyof typeof PurchaseRectificationReasons]
+export const PURCHASE_RECTIFICATION_REASONS = Object.values(PurchaseRectificationReasons) as [
+  PurchaseRectificationReason,
+  ...PurchaseRectificationReason[]
+]
+
 // Why a receipt is left out of the annex of purchases on purpose (marked by a person, audited): the document of the purchase is not one the
 // annex declares. A purchase to a person with no document goes by the invoice of an excluded subject (its own annex), and a purchase that
 // does not count as a cost or an expense for the income tax has no place in the columns of the annex
@@ -135,5 +149,8 @@ export const PurchaseConflicts = {
   // The supplier's document of a receipt is already on another receipt of the organization (the same electronic document twice would be declared twice)
   GENERATION_CODE_IN_USE: 'generation_code_in_use',
   // A receipt with a document to declare cannot also be marked as left out of the annex
-  ANNEX_EXCLUSION_WITH_DOCUMENT: 'annex_exclusion_with_document'
+  ANNEX_EXCLUSION_WITH_DOCUMENT: 'annex_exclusion_with_document',
+  // The document of a receipt that an exported annex already held is not changed without a rectification (a person with the fiscal
+  // permission, a reason, an audit row): what was declared is not rewritten quietly
+  DOCUMENT_EXPORTED: 'purchase_document_exported'
 } as const

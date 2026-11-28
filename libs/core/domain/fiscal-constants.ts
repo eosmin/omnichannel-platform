@@ -85,7 +85,19 @@ export const FiscalAnnexRefusals = {
 export const FiscalAnnexNotices = {
   NO_DOCUMENT_NO_CREDIT: 'no_document_no_credit',
   LEFT_OUT: 'left_out',
-  LEFT_OUT_WITH_DOCUMENT: 'left_out_with_document'
+  LEFT_OUT_WITH_DOCUMENT: 'left_out_with_document',
+  // The month was exported before: how many of its receipts changed, came in or went out of the file since the last export (the accountant
+  // re-files the month, or knows why the figures moved)
+  RE_EXPORT: 're_export',
+  CHANGED_SINCE_EXPORT: 'changed_since_export',
+  ADDED_SINCE_EXPORT: 'added_since_export',
+  REMOVED_SINCE_EXPORT: 'removed_since_export'
+} as const
+
+// The lock that makes the constancia of an export and the check of a change to a document of a purchase take turns (a change that passes
+// the check cannot slip in between the read of an export and the write of its constancia)
+export const FiscalAnnexLocks = {
+  constancy: (organizationId: string): string => `${organizationId}:fiscal_annex_constancy`
 } as const
 
 export const FiscalAnnexHeaders = {
@@ -521,6 +533,9 @@ export const FiscalConflictReasons = {
   // A month whose annex cannot be made without guessing (a document lacks a seal or a figure the file needs): the file is refused, the
   // provider's code of the cause goes in the metadata
   ANNEX_REFUSED: 'annex_refused',
+  // A document of the month was written while the file was being made: the file is not handed over (it would not match the books), the
+  // person asks for it again
+  ANNEX_SOURCE_CHANGED: 'annex_source_changed',
   // Another invalidation of the same document is being sent: one at a time
   VOID_IN_PROGRESS: 'void_in_progress',
   // A sale document with credit notes that are not voided: the notes go first

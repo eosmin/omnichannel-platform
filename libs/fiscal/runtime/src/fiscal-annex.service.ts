@@ -41,6 +41,17 @@ export type { FiscalAnnexFile } from '@platform/fiscal/sdk'
 // (their ids and the instant each was last written), so the audit row can say later whether a document changed after the file was taken
 export interface FiscalAnnexResult extends FiscalAnnexFile {
   readonly sourcesSha256?: string
+  // The same digests receipt by receipt (the constancia of an export keeps them: ids and digests, never a row)
+  readonly sourceDigests?: readonly FiscalAnnexSourceDigest[]
+}
+
+export interface FiscalAnnexSourceDigest {
+  readonly receiptId: string
+  readonly sha256: string
+  // Whether the receipt went into the file (false: left out on purpose, or with no document and no credit)
+  readonly included: boolean
+  // When its document was last written (an ISO instant), or '-' when it has none: the export checks it again under its lock
+  readonly documentStamp: string
 }
 
 // The organizations making an annex in this process: one at a time each
@@ -120,7 +131,12 @@ export class FiscalAnnexService {
         : exporter.build(annexId, period, documents)
       if (file === null) throw resourceNotFound('fiscal annex')
       if (read === null) return file
-      return { ...file, notices: read.notices, sourcesSha256: read.sourcesSha256 }
+      return {
+        ...file,
+        notices: read.notices,
+        sourcesSha256: read.sourcesSha256,
+        sourceDigests: read.sourceDigests
+      }
     } catch (error) {
       if (error instanceof FiscalAnnexError) {
         throw resourceConflict('the annex cannot be made from the documents of the month', {
@@ -216,6 +232,7 @@ export class FiscalAnnexService {
     purchases: FiscalAnnexPurchase[]
     notices: Record<string, number>
     sourcesSha256: string
+    sourceDigests: FiscalAnnexSourceDigest[]
   }> {
     const from = new Date(Date.UTC(period.year, period.month - 1, 1))
     const until = new Date(Date.UTC(period.year, period.month, 1))
@@ -229,6 +246,7 @@ export class FiscalAnnexService {
     }
     const purchases: FiscalAnnexPurchase[] = []
     const sources: string[] = []
+    const sourceDigests: FiscalAnnexSourceDigest[] = []
     const missing: string[] = []
     const inconsistent: string[] = []
     const notices: Record<string, number> = {}
@@ -283,17 +301,23 @@ export class FiscalAnnexService {
         const doc = row.document
         // The digest covers every receipt of the month with what decides its place in the file (the document and when it was written, the
         // mark, the money, the supplier), the ones left out too, so any change after a file was taken makes another digest
-        sources.push(
-          [
-            row.id,
-            doc?.updatedAt.toISOString() ?? '-',
-            doc?.annexExclusion ?? '-',
-            row.subtotalCents,
-            row.taxCents,
-            row.supplier.name,
-            row.supplier.taxId ?? '-'
-          ].join('|')
-        )
+        const source = [
+          row.id,
+          doc?.updatedAt.toISOString() ?? '-',
+          doc?.annexExclusion ?? '-',
+          row.subtotalCents,
+          row.taxCents,
+          row.supplier.name,
+          row.supplier.taxId ?? '-'
+        ].join('|')
+        sources.push(source)
+        const digest: FiscalAnnexSourceDigest = {
+          receiptId: row.id,
+          sha256: createHash('sha256').update(source).digest('hex'),
+          included: false,
+          documentStamp: doc?.updatedAt.toISOString() ?? '-'
+        }
+        sourceDigests.push(digest)
         if (doc?.annexExclusion != null) {
           count(FiscalAnnexNotices.LEFT_OUT)
           if (row.supplierDocumentNumber !== null) count(FiscalAnnexNotices.LEFT_OUT_WITH_DOCUMENT)
@@ -318,6 +342,7 @@ export class FiscalAnnexService {
           continue
         }
         const day = (date: Date): string => date.toISOString().slice(0, 10)
+        sourceDigests[sourceDigests.length - 1] = { ...digest, included: true }
         purchases.push({
           receiptId: row.id,
           receivedOn: day(row.receivedOn),
@@ -363,7 +388,8 @@ export class FiscalAnnexService {
     return {
       purchases,
       notices,
-      sourcesSha256: createHash('sha256').update(sources.join('\n')).digest('hex')
+      sourcesSha256: createHash('sha256').update(sources.join('\n')).digest('hex'),
+      sourceDigests
     }
   }
 
