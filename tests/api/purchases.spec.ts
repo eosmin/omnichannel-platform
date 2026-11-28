@@ -10,6 +10,7 @@ import {
   AccountType,
   FinanceConflicts,
   FiscalAnnexHeaders,
+  FiscalAnnexLocks,
   FiscalAnnexNotices,
   FiscalAnnexRefusals,
   FiscalConflictReasons,
@@ -1390,6 +1391,50 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       }
       // Asked again, the file is made from what the books say now
       expect((await taken(2025, 12)).status).toBe(OK)
+    })
+
+    it('makes the change of a declared document wait for the lock that an export holds', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const original = doc({ issuedOn: '2025-10-03' })
+      const received = await receive(order.id, {
+        receivedOn: '2025-10-10',
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: original,
+        lines: order.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity }))
+      })
+      const [bill] = (received.body as OrderBody).receipts
+      const scope = FiscalAnnexLocks.constancy(ctx.orgA.id)
+      let release: () => void = () => undefined
+      let locked: () => void = () => undefined
+      const holding = new Promise<void>(resolve => {
+        release = resolve
+      })
+      const taken = new Promise<void>(resolve => {
+        locked = resolve
+      })
+      // Another transaction stands for an export between its read and the write of its constancia: it holds the lock of the organization
+      // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+      const other = owner.$transaction(async tx => {
+        await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${scope}, 0))) AS lock`
+        locked()
+        await holding
+      })
+      await taken
+      let finished = false
+      const change = Promise.resolve(
+        asAdminA()
+          .put(ApiRoutes.purchaseOrders.receiptDocument(order.id, bill?.id ?? ''))
+          .send({ fiscalDocument: { ...original, costType: '3' } })
+      ).then(answer => {
+        finished = true
+        return answer
+      })
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      expect(finished).toBe(false)
+      release()
+      await other
+      expect((await change).status).toBe(OK)
     })
 
     it('does not let anyone change or remove the constancia, and the worker only reads it', async () => {
