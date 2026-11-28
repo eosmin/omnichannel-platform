@@ -6,6 +6,7 @@ import {
   FiscalDocumentStatus,
   FiscalDeliveryPending,
   FiscalDeliveryRoute,
+  FiscalDeliverySubject,
   FiscalDeliveryStatus,
   FiscalEnvironment,
   FiscalEvidenceKind,
@@ -13,7 +14,7 @@ import {
   FiscalIssueOn,
   type FiscalReceiverPatchBody,
   FiscalVoidKind,
-  type HandOverFiscalDeliveryBody,
+  type HandOverFiscalDeliveryInput,
   type PutFiscalIssuerBody,
   type VoidFiscalDocumentBody
 } from '@platform/core/domain'
@@ -404,6 +405,8 @@ export async function confirmFiscalIssuerChange(
 // exist (the two of the document and, once it is voided, the two of its invalidation). `pending`: no delivery row yet (it runs when the document is accepted; the daily check publishes it again if lost).
 const deliverySchema = z.object({
   documentId: z.string(),
+  // An api that is not updated yet answers with no subject: the delivery is the document's
+  subject: z.enum(FiscalDeliverySubject).default(FiscalDeliverySubject.DOCUMENT),
   state: z.enum([FiscalDeliveryPending, ...Object.values(FiscalDeliveryStatus)]),
   route: z.enum(FiscalDeliveryRoute).nullable(),
   reason: z.string().nullable(),
@@ -414,17 +417,18 @@ const deliverySchema = z.object({
 export type FiscalDeliveryView = z.output<typeof deliverySchema>
 const deliveryEnvelopeSchema = z.object({ data: deliverySchema })
 
+// `subject`: the files of the document (the default) or those of its invalidation
 export async function fetchFiscalDelivery(
   client: ApiClient,
   storeId: string,
   id: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  subject: FiscalDeliverySubject = FiscalDeliverySubject.DOCUMENT
 ): Promise<FiscalDeliveryView> {
-  const answer = await client.request(ApiRoutes.fiscal.documents.delivery(encodeURIComponent(id)), {
-    schema: deliveryEnvelopeSchema,
-    storeId,
-    signal
-  })
+  const answer = await client.request(
+    `${ApiRoutes.fiscal.documents.delivery(encodeURIComponent(id))}?subject=${subject}`,
+    { schema: deliveryEnvelopeSchema, storeId, signal }
+  )
   return answer.data
 }
 
@@ -434,7 +438,7 @@ export async function handOverFiscalDelivery(
   client: ApiClient,
   storeId: string,
   id: string,
-  body: HandOverFiscalDeliveryBody
+  body: HandOverFiscalDeliveryInput
 ): Promise<FiscalDeliveryView> {
   const answer = await client.request(ApiRoutes.fiscal.documents.delivery(encodeURIComponent(id)), {
     method: 'POST',

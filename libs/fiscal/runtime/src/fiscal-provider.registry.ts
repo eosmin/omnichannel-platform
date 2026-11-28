@@ -119,6 +119,13 @@ export class FiscalProviderRegistry {
     return this.byId.get(id)
   }
 
+  // The providers that draw the invalidation of a document: the only ones that owe its receiver files for it
+  idsDrawingInvalidations(): string[] {
+    return [...this.byId.values()]
+      .filter(provider => provider.representVoid !== undefined)
+      .map(provider => provider.id)
+  }
+
   list(): {
     id: string
     countryCode: string

@@ -13,6 +13,7 @@ import {
   PrismaService
 } from '@platform/core/database'
 import {
+  FiscalDeliverySubject,
   FiscalIndexNames,
   FiscalIssueOn,
   FiscalLimits,
@@ -262,17 +263,19 @@ export class FiscalReconciler {
       return 'queued'
     }
     if (item.kind === FiscalSweepKind.DELIVERY_MISSING) {
-      // The event of the acceptance again: the delivery of its files is idempotent (one row for each document, the first writer wins)
+      // The event of the acceptance, or of the void, again: the delivery of its files is idempotent (one row for each document and subject, the
+      // first writer wins)
       if (item.storeId === undefined) return 'declined'
       const { storeId } = item
       await this.unit(organizationId, () =>
         this.prisma.transaction(tx => {
-          this.events.publish(tx, Events.FISCAL_DOCUMENT_ACCEPTED, {
-            organizationId,
-            storeId,
-            documentId: item.id,
-            orderId: item.orderId
-          })
+          this.events.publish(
+            tx,
+            item.subject === FiscalDeliverySubject.VOID
+              ? Events.FISCAL_DOCUMENT_VOIDED
+              : Events.FISCAL_DOCUMENT_ACCEPTED,
+            { organizationId, storeId, documentId: item.id, orderId: item.orderId }
+          )
           return Promise.resolve()
         })
       )

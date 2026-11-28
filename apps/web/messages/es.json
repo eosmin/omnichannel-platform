@@ -8577,16 +8577,31 @@
           "no_channel": "El cliente no tiene una conversación que acepte los archivos ni correo.",
           "files_unavailable": "No se pudieron leer los archivos para enviarlos.",
           "too_large": "Los archivos pesan más de lo que cabe en un correo.",
-          "customer_erased": "El cliente fue borrado: no queda a quién entregarlos."
+          "customer_erased": "El cliente fue borrado: no queda a quién entregarlos.",
+          "void_event_unavailable": "No hay un evento de invalidación propio que entregar: la autoridad ya tenía el documento invalidado, o se invalidó antes de guardar el evento."
         },
         "means": {
           "download": "archivos descargados",
-          "paper": "copia en papel"
+          "paper": "copia en papel",
+          "answer": "respuesta de la autoridad"
         },
         "howTo": "Descarga los dos archivos de arriba y entrégalos al cliente, o imprime la representación gráfica si el cliente la pide en papel. Luego regístralo aquí: así se cierra la entrega pendiente.",
         "handed": {
           "download": "Entregué los archivos",
-          "paper": "Entregué una copia en papel"
+          "paper": "Entregué una copia en papel",
+          "answer": "Entregué la respuesta de la autoridad"
+        },
+        "void": {
+          "title": "Entrega de la invalidación al cliente",
+          "description": "Al cliente se le entrega el evento de invalidación, con su firma y el sello de la autoridad, y su representación gráfica. El sistema los envía por la conversación o por correo cuando puede.",
+          "state": {
+            "pending": "El sistema todavía no ha entregado los archivos de la invalidación.",
+            "channel": "Enviados por la conversación del cliente.",
+            "email": "Enviados por correo.",
+            "manual": "Entregados a mano ({means}) el {date}.",
+            "none": "El sistema no pudo enviar los archivos de la invalidación. Siguen pendientes de entregar al cliente."
+          },
+          "howTo": "Descarga los dos archivos de la invalidación y entrégalos al cliente, o imprime la representación gráfica si la pide en papel. Si no hay archivos propios, descarga la respuesta a la anulación (trae el código y el sello de la autoridad) y entrégala tal como está. Luego regístralo aquí."
         }
       },
       "evidence": {
@@ -8778,6 +8793,7 @@
     }
   },
   "fiscalDelivery": {
-    "text": "Adjuntamos los archivos del documento tributario de tu pedido {order} de {store}: el documento tributario electrónico (DTE) en formato JSON y su representación gráfica en PDF."
+    "text": "Adjuntamos los archivos del documento tributario de tu pedido {order} de {store}: el documento tributario electrónico (DTE) en formato JSON y su representación gráfica en PDF.",
+    "voidText": "El documento tributario de tu pedido {order} de {store} fue invalidado. Adjuntamos los archivos del evento de invalidación: el evento en formato JSON, con su firma y el sello de recepción de la autoridad, y su representación gráfica en PDF."
   }
 }

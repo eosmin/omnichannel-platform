@@ -6,6 +6,7 @@ import {
   FinancePostingKey,
   FiscalContingencyStatus,
   FiscalDocumentKind,
+  FiscalDeliverySubject,
   FiscalDocumentStatus,
   FiscalEntryMismatchField,
   FiscalEvidenceKind,
@@ -18,6 +19,7 @@ import {
   ShipmentKind
 } from '@platform/core/domain'
 
+import { FiscalProviderRegistry } from './fiscal-provider.registry'
 import { SHIPMENT_STATES_THAT_BACK_GOODS } from './fiscal-rules'
 
 const MINUTE_MS = 60_000
@@ -37,6 +39,8 @@ export interface FiscalFinding {
   status?: FiscalDocumentStatus
   // DELIVERY_MISSING: the store of the document, which the event that is published again names
   storeId?: string
+  // DELIVERY_MISSING: which delivery is missing, the files of the document or those of its invalidation (the event that is published again)
+  subject?: FiscalDeliverySubject
   // ENTRY_MISMATCH: what differs
   fields?: FiscalEntryMismatchField[]
 }
@@ -78,7 +82,8 @@ export interface FiscalSweepOptions {
 export class FiscalSweepService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly jobContext: JobContext
+    private readonly jobContext: JobContext,
+    private readonly providers: FiscalProviderRegistry
   ) {}
 
   async find(
@@ -236,7 +241,9 @@ export class FiscalSweepService {
 
   // An accepted document whose files were made (a provider that draws none has no such file and owes nothing) and that has no delivery row an
   // hour after it was accepted: the event of its acceptance was lost (the api was down, the bridge dropped it). The worker publishes it again;
-  // the delivery is safe to repeat, so a document found twice is one delivery.
+  // the delivery is safe to repeat, so a document found twice is one delivery. The same for a voided document of a provider that draws the
+  // invalidation, with no delivery of it an hour after it was voided: the event of the void was lost, or the document was voided before the event
+  // was kept (its delivery is then recorded as not sent, with the reason, and a person hands over the answer of the authority).
   private async deliveriesMissing(
     organizationId: string,
     now: Date,
@@ -250,20 +257,30 @@ export class FiscalSweepService {
       where: {
         organizationId,
         ...reach,
-        status: FiscalDocumentStatus.ACCEPTED,
-        updatedAt: { lt: before },
-        createdAt: { gte: since },
-        delivery: null,
-        evidence: {
-          some: {
-            fiscalEvidenceKind: {
-              in: [FiscalEvidenceKind.REPRESENTATION, FiscalEvidenceKind.DTE_FILE]
+        OR: [
+          {
+            status: FiscalDocumentStatus.ACCEPTED,
+            updatedAt: { lt: before },
+            createdAt: { gte: since },
+            deliveries: { none: { subject: FiscalDeliverySubject.DOCUMENT } },
+            evidence: {
+              some: {
+                fiscalEvidenceKind: {
+                  in: [FiscalEvidenceKind.REPRESENTATION, FiscalEvidenceKind.DTE_FILE]
+                }
+              }
             }
+          },
+          {
+            status: FiscalDocumentStatus.VOIDED,
+            voidedAt: { lt: before, gte: since },
+            providerId: { in: this.providers.idsDrawingInvalidations() },
+            deliveries: { none: { subject: FiscalDeliverySubject.VOID } }
           }
-        },
+        ],
         ...(cursor === undefined ? {} : { id: { gt: cursor } })
       },
-      select: { id: true, orderId: true, storeId: true },
+      select: { id: true, orderId: true, storeId: true, status: true },
       orderBy: { id: 'asc' },
       take: limit + 1
     })
@@ -271,7 +288,11 @@ export class FiscalSweepService {
       kind: FiscalSweepKind.DELIVERY_MISSING,
       id: row.id,
       orderId: row.orderId,
-      storeId: row.storeId
+      storeId: row.storeId,
+      subject:
+        row.status === String(FiscalDocumentStatus.VOIDED)
+          ? FiscalDeliverySubject.VOID
+          : FiscalDeliverySubject.DOCUMENT
     }))
   }
 

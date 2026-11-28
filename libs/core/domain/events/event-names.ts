@@ -142,6 +142,8 @@ export const Events = {
   // A fiscal document was accepted by the authority: its receiver is owed the files (the rule on delivering the files of a document). Worker and api: ids
   // only, never the receiver's data.
   FISCAL_DOCUMENT_ACCEPTED: 'fiscal.document_accepted',
+  // A fiscal document was voided: its receiver is owed the event of the invalidation. Worker and api: ids only, never the receiver's data.
+  FISCAL_DOCUMENT_VOIDED: 'fiscal.document_voided',
   // The files of an accepted document could not be given to its receiver and a person must (api only): ids and a reason code.
   FISCAL_DELIVERY_NOT_SENT: 'fiscal.delivery_not_sent',
   // A fiscal document was refused by the provider or the authority and a person must fix it (TDD_18 §8.3). Api and worker only:
@@ -322,6 +324,8 @@ export const BridgedEvents = [
   Events.FINANCE_CHAIN_BROKEN,
   // The worker says it when a fiscal document was accepted; the api gives its files to the receiver
   Events.FISCAL_DOCUMENT_ACCEPTED,
+  // The worker says it again when the daily check finds a voided document with no delivery of its invalidation; the api gives the files
+  Events.FISCAL_DOCUMENT_VOIDED,
   // The worker says it when a fiscal document was refused or ran out of attempts; the api tells whoever can act on it
   Events.FISCAL_DOCUMENT_REJECTED,
   Events.FISCAL_DOCUMENT_STUCK,

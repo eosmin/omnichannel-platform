@@ -3,8 +3,13 @@ import { OnEvent } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
 import { EventContext, InEventOrganization } from '@platform/core/database'
+import { FiscalDeliverySubject } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
-import { Events, type FiscalDocumentAcceptedPayload } from '@platform/core/events'
+import {
+  Events,
+  type FiscalDocumentAcceptedPayload,
+  type FiscalDocumentVoidedPayload
+} from '@platform/core/events'
 
 import { FiscalDeliveryService } from './fiscal-delivery.service'
 
@@ -13,8 +18,9 @@ import { FiscalDeliveryService } from './fiscal-delivery.service'
 export const FISCAL_DELIVERY_ATTEMPTS = 3
 export const FISCAL_DELIVERY_RETRY_MS = 1000
 
-// An accepted document owes its files to the receiver (the rule on delivering the files of a document). The worker says it when it accepts one, the api
-// when it does: both reach this listener (the event is bridged). A failure here never reaches the document: it is decided and kept.
+// An accepted document owes its files to the receiver, and a voided one the files of its invalidation (the rule on delivering them). The worker
+// says it when it accepts or voids one, the api when it does: both reach this listener (the events are bridged). A failure here never reaches
+// the document: it is decided and kept.
 @Injectable()
 export class FiscalDeliveryListener {
   constructor(
@@ -28,10 +34,24 @@ export class FiscalDeliveryListener {
   @OnEvent(Events.FISCAL_DOCUMENT_ACCEPTED)
   @InEventOrganization()
   async onAccepted(payload: FiscalDocumentAcceptedPayload): Promise<void> {
+    await this.deliver(payload, FiscalDeliverySubject.DOCUMENT)
+  }
+
+  @OnEvent(Events.FISCAL_DOCUMENT_VOIDED)
+  @InEventOrganization()
+  async onVoided(payload: FiscalDocumentVoidedPayload): Promise<void> {
+    await this.deliver(payload, FiscalDeliverySubject.VOID)
+  }
+
+  private async deliver(
+    payload: FiscalDocumentAcceptedPayload | FiscalDocumentVoidedPayload,
+    subject: FiscalDeliverySubject
+  ): Promise<void> {
     const input = {
       organizationId: payload.organizationId,
       storeId: payload.storeId,
-      documentId: payload.documentId
+      documentId: payload.documentId,
+      subject
     }
     for (let attempt = 1; attempt <= FISCAL_DELIVERY_ATTEMPTS; attempt++) {
       try {
@@ -39,7 +59,7 @@ export class FiscalDeliveryListener {
         return
       } catch (error) {
         this.logger.warn(
-          { documentId: payload.documentId, attempt, err: errorName(error) },
+          { documentId: payload.documentId, subject, attempt, err: errorName(error) },
           'the files of a fiscal document were not delivered'
         )
         if (attempt < FISCAL_DELIVERY_ATTEMPTS) await wait(FISCAL_DELIVERY_RETRY_MS * attempt)
@@ -50,7 +70,7 @@ export class FiscalDeliveryListener {
       await this.delivery.recordFailure(input)
     } catch (error) {
       this.logger.error(
-        { documentId: payload.documentId, err: errorName(error) },
+        { documentId: payload.documentId, subject, err: errorName(error) },
         'the failure to deliver the files of a fiscal document could not be recorded'
       )
     }

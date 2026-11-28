@@ -14,10 +14,12 @@ import {
   ConversationStatus,
   DeliveryStatus,
   FISCAL_DELIVERY_EMAIL_MAX_BYTES,
+  FiscalDeliveryFileKinds,
+  FiscalDeliveryOwedStatus,
   FiscalDeliveryReason,
   FiscalDeliveryRoute,
   FiscalDeliveryStatus,
-  FiscalDocumentStatus,
+  FiscalDeliverySubject,
   FiscalEvidenceKind,
   FiscalResourceTypes,
   MediaStatus,
@@ -43,9 +45,11 @@ import { PluginRegistry } from '@platform/plugins/runtime'
 import { channelFileLimits } from '../messages/channel-file-limits'
 import { OrderMessagesService } from '../order-messages/order-messages.service'
 
-// The two files a receiver is given with an accepted document, in the order they go
-const FILE_KINDS = [FiscalEvidenceKind.REPRESENTATION, FiscalEvidenceKind.DTE_FILE] as const
-type FileKind = (typeof FILE_KINDS)[number]
+// The key of the job of the email of each: the one of the document keeps the form it always had
+const emailJobId = (subject: FiscalDeliverySubject, documentId: string): string =>
+  subject === FiscalDeliverySubject.VOID
+    ? `fiscal-delivery-void-${documentId}`
+    : `fiscal-delivery-${documentId}`
 
 // How long an email job that failed for good is kept (it holds the address and the files)
 const EMAIL_FAILED_JOB_KEEP_SECONDS = 24 * 60 * 60
@@ -65,11 +69,13 @@ export interface DeliverFiscalDocumentInput {
   organizationId: string
   storeId: string
   documentId: string
+  // Which delivery: the files of the document, or those of its invalidation
+  subject: FiscalDeliverySubject
 }
 
 // A file of the evidence of the document, as the row says it
 interface EvidenceFile {
-  kind: FileKind
+  kind: FiscalEvidenceKind
   key: string
   filename: string
   contentType: string
@@ -122,7 +128,7 @@ export class FiscalDeliveryService {
   }
 
   async deliver(input: DeliverFiscalDocumentInput): Promise<FiscalDeliveryOutcome> {
-    const { organizationId, documentId } = input
+    const { organizationId, documentId, subject } = input
     const read = await this.inOrganization(organizationId, () => this.readOwed(input))
     if (read === 'skipped') return FiscalDeliveryOutcome.SKIPPED
     if (read === 'delivered') return FiscalDeliveryOutcome.DUPLICATE
@@ -133,17 +139,30 @@ export class FiscalDeliveryService {
     // The files are made now when they are not there yet (a receiver is owed them with the document: waiting for a person to ask for them
     // is what the rule forbids). Both or none: a provider that draws no representation owes nothing of this kind.
     const made = await Promise.all(
-      FILE_KINDS.map(kind => this.evidence.keep(organizationId, documentId, kind))
+      FiscalDeliveryFileKinds[subject].map(kind =>
+        this.evidence.keep(organizationId, documentId, kind)
+      )
     )
     if (made.every(file => file === null)) {
       // A provider that draws no files owes none. One that does, and made none, owes them: a person is told, never a silent skip
-      if (this.providers.find(receiver.providerId)?.represent === undefined) {
-        return FiscalDeliveryOutcome.SKIPPED
-      }
-      return this.recordNotSent(input, receiver, FiscalDeliveryReason.FILES_UNAVAILABLE)
+      const provider = this.providers.find(receiver.providerId)
+      const draws =
+        subject === FiscalDeliverySubject.VOID
+          ? provider?.representVoid !== undefined
+          : provider?.represent !== undefined
+      if (!draws) return FiscalDeliveryOutcome.SKIPPED
+      // An invalidation with no event of ours (the authority already held it, or it was voided before the event was kept) or whose answer has
+      // no seal has no file to give and none is made: the person is told, and hands over the answer of the authority
+      return this.recordNotSent(
+        input,
+        receiver,
+        subject === FiscalDeliverySubject.VOID
+          ? FiscalDeliveryReason.VOID_EVENT_UNAVAILABLE
+          : FiscalDeliveryReason.FILES_UNAVAILABLE
+      )
     }
     const files = await this.inOrganization(organizationId, () =>
-      this.filesOf(input.storeId, documentId)
+      this.filesOf(input.storeId, documentId, subject)
     )
     if (files === null) {
       return this.recordNotSent(input, receiver, FiscalDeliveryReason.FILES_UNAVAILABLE)
@@ -174,12 +193,12 @@ export class FiscalDeliveryService {
   // ---------------------------------------------------------------------------------------------------------------------
   // Reading
 
-  // What the delivery needs of the document and its order, or why nothing is owed: the document is not accepted any more (voided: the
-  // invalidation is its own event), or it was delivered already
+  // What the delivery needs of the document and its order, or why nothing is owed: the document is not in the state that owes it (accepted for
+  // its files, voided for those of its invalidation), or it was delivered already
   private async readOwed(
     input: DeliverFiscalDocumentInput
   ): Promise<Receiver | 'skipped' | 'delivered'> {
-    const { organizationId, documentId } = input
+    const { organizationId, documentId, subject } = input
     const document = await this.prisma.client.fiscalDocument.findFirst({
       where: { id: documentId, organizationId },
       select: {
@@ -187,7 +206,7 @@ export class FiscalDeliveryService {
         storeId: true,
         orderId: true,
         providerId: true,
-        delivery: { select: { id: true } },
+        deliveries: { where: { subject }, select: { id: true } },
         order: {
           select: {
             orderNumber: true,
@@ -203,11 +222,11 @@ export class FiscalDeliveryService {
     if (
       document === null ||
       document.storeId !== input.storeId ||
-      document.status !== String(FiscalDocumentStatus.ACCEPTED)
+      document.status !== String(FiscalDeliveryOwedStatus[subject])
     ) {
       return 'skipped'
     }
-    if (document.delivery !== null) return 'delivered'
+    if (document.deliveries.length > 0) return 'delivered'
     const { order } = document
     return {
       orderId: document.orderId,
@@ -223,9 +242,14 @@ export class FiscalDeliveryService {
 
   // Both files as rows of evidence that can be given: a file the scan found infected or could not scan is never given. One still waiting for
   // its scan is given: the platform made it from the row of the document, and the delivery cannot wait for a queue
-  private async filesOf(storeId: string, documentId: string): Promise<EvidenceFile[] | null> {
+  private async filesOf(
+    storeId: string,
+    documentId: string,
+    subject: FiscalDeliverySubject
+  ): Promise<EvidenceFile[] | null> {
+    const kinds = FiscalDeliveryFileKinds[subject]
     const rows = await this.prisma.client.media.findMany({
-      where: { storeId, fiscalDocumentId: documentId, fiscalEvidenceKind: { in: [...FILE_KINDS] } },
+      where: { storeId, fiscalDocumentId: documentId, fiscalEvidenceKind: { in: [...kinds] } },
       select: {
         fiscalEvidenceKind: true,
         key: true,
@@ -236,7 +260,7 @@ export class FiscalDeliveryService {
       }
     })
     const files: EvidenceFile[] = []
-    for (const kind of FILE_KINDS) {
+    for (const kind of kinds) {
       const row = rows.find(candidate => candidate.fiscalEvidenceKind === String(kind))
       if (
         row === undefined ||
@@ -451,10 +475,13 @@ export class FiscalDeliveryService {
         data: {
           storeName: receiver.storeName,
           orderNumber: receiver.orderNumber,
-          text: createTranslator(locale, 'fiscalDelivery')('text', {
-            order: receiver.orderNumber,
-            store: receiver.storeName
-          })
+          text: createTranslator(locale, 'fiscalDelivery')(
+            input.subject === FiscalDeliverySubject.VOID ? 'voidText' : 'text',
+            {
+              order: receiver.orderNumber,
+              store: receiver.storeName
+            }
+          )
         },
         attachments,
         tags: { storeId, template: EmailTemplates.ORDER_MESSAGE }
@@ -464,7 +491,7 @@ export class FiscalDeliveryService {
         // kept an hour after it is sent: the id above only guards a repeat while the job exists, and a try repeated after a failed write must not send twice
         removeOnComplete: { age: 60 * 60 },
         removeOnFail: { age: EMAIL_FAILED_JOB_KEEP_SECONDS },
-        jobId: `fiscal-delivery-${documentId}`
+        jobId: emailJobId(input.subject, documentId)
       }
     )
     const claimed = await this.inOrganization(organizationId, () =>
@@ -521,12 +548,12 @@ export class FiscalDeliveryService {
       storeId,
       resourceType: FiscalResourceTypes.DOCUMENT,
       resourceId: documentId,
-      metadata: { reason }
+      metadata: { reason, subject: input.subject }
     })
     return FiscalDeliveryOutcome.NOT_SENT
   }
 
-  // The first writer of a document wins (the unique key of the document): false when it was delivered already
+  // The first writer of a document and a subject wins (their unique key): false when it was delivered already
   private async claim(
     tx: PrismaTransaction,
     input: DeliverFiscalDocumentInput,
@@ -540,6 +567,7 @@ export class FiscalDeliveryService {
           organizationId: input.organizationId,
           storeId: input.storeId,
           documentId: input.documentId,
+          subject: input.subject,
           orderId: receiver.orderId,
           status:
             route === FiscalDeliveryRoute.NONE
@@ -603,7 +631,7 @@ export class FiscalDeliveryService {
       storeId: input.storeId,
       resourceType: FiscalResourceTypes.DOCUMENT,
       resourceId: input.documentId,
-      metadata: { route }
+      metadata: { route, subject: input.subject }
     })
   }
 

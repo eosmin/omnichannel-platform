@@ -1,4 +1,5 @@
 import {
+  FiscalDeliverySubject,
   FiscalDocumentStatus,
   FiscalEvidenceKind,
   FiscalHandMeans,
@@ -457,6 +458,7 @@ describe('the refusals of the evidence and of the issuer change', () => {
 describe('the delivery of the files of a document', () => {
   const delivery = {
     documentId: 'd1',
+    subject: 'document',
     state: 'not_sent',
     route: 'none',
     reason: 'no_channel',
@@ -470,8 +472,23 @@ describe('the delivery of the files of a document', () => {
     const view = await fetchFiscalDelivery(client, 's1', 'd 1')
     expect(view.files).toEqual(['representation', 'dte_file'])
     const { url, headers } = callOf(fetchImpl)
-    expect(url).toContain('/fiscal/documents/d%201/delivery')
+    expect(url).toContain('/fiscal/documents/d%201/delivery?subject=document')
     expect(headers.get('x-store-id')).toBe('s1')
+  })
+
+  it('reads the delivery of the invalidation under its own subject', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, { data: { ...delivery, subject: 'void', files: ['void_response'] } })
+    )
+    const view = await fetchFiscalDelivery(
+      client,
+      's1',
+      'd1',
+      undefined,
+      FiscalDeliverySubject.VOID
+    )
+    expect(view).toMatchObject({ subject: 'void', files: ['void_response'] })
+    expect(callOf(fetchImpl).url).toContain('/fiscal/documents/d1/delivery?subject=void')
   })
 
   it('records the hand delivery with the means and nothing else', async () => {
@@ -492,6 +509,23 @@ describe('the delivery of the files of a document', () => {
     expect(url).toContain('/fiscal/documents/d1/delivery')
     expect(init.method).toBe('POST')
     expect(JSON.parse(init.body as string)).toEqual({ means: 'paper' })
+  })
+
+  it('records the hand delivery of an invalidation with its subject and the answer of the authority', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, {
+        data: { ...delivery, subject: 'void', state: 'sent', route: 'manual', means: 'answer' }
+      })
+    )
+    const view = await handOverFiscalDelivery(client, 's1', 'd1', {
+      means: FiscalHandMeans.ANSWER,
+      subject: FiscalDeliverySubject.VOID
+    })
+    expect(view).toMatchObject({ subject: 'void', means: 'answer' })
+    expect(JSON.parse(callOf(fetchImpl).init.body as string)).toEqual({
+      means: 'answer',
+      subject: 'void'
+    })
   })
 
   it('refuses an answer with a route or a file kind it does not know', async () => {

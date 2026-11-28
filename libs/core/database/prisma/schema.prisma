@@ -3306,7 +3306,8 @@ model FiscalDelivery {
   id             String    @id @default(uuid())
   organizationId String    @map("organization_id")
   storeId        String    @map("store_id")
-  documentId     String    @unique @map("document_id")
+  documentId     String    @map("document_id")
+  subject        String    @default("document") // FiscalDeliverySubject: the files of the document, or those of its invalidation; one delivery of each
   orderId        String    @map("order_id")
   status         String // FiscalDeliveryStatus
   route          String // FiscalDeliveryRoute
@@ -3320,6 +3321,7 @@ model FiscalDelivery {
   store        Store          @relation(fields: [storeId], references: [id], onDelete: Restrict)
   document     FiscalDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
 
+  @@unique([documentId, subject])
   @@index([organizationId, storeId, createdAt(sort: Desc)])
   @@map("fiscal_deliveries")
 }
@@ -3390,7 +3392,7 @@ model FiscalDocument {
   replaces     FiscalDocument?    @relation("FiscalReplacement", fields: [replacesDocumentId], references: [id], onDelete: NoAction)
   replacedBy   FiscalDocument[]   @relation("FiscalReplacement")
   evidence     Media[]            @relation("FiscalEvidence")
-  delivery     FiscalDelivery?
+  deliveries   FiscalDelivery[]
 
   // At most one live sale document per order, one live credit note per return and one per order that came back with no return row: the
   // partial unique indexes of the migration say it (Prisma cannot), a voided document leaves room for the one that replaces it, and a

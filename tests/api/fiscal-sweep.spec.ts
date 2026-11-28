@@ -13,6 +13,7 @@ import {
   FinanceSourceType,
   FiscalDeliveryRoute,
   FiscalDeliveryStatus,
+  FiscalDeliverySubject,
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEntryMismatchField,
@@ -36,6 +37,7 @@ import {
   type FiscalFindingsPage,
   FiscalContingencyService,
   FiscalDocumentsService,
+  FiscalProviderRegistry,
   FiscalSweepService
 } from '@platform/fiscal/runtime'
 import { SIMULATOR_PROVIDER_ID } from '@platform/fiscal/simulator'
@@ -504,6 +506,76 @@ describe('The check of the fiscal documents', () => {
         }
       })
       expect(await idsOf(FiscalSweepKind.DELIVERY_MISSING)).not.toContain(sale.documentId)
+    })
+  })
+
+  describe('a voided document whose invalidation was never delivered', () => {
+    // The document voided an hour or more ago: the guard of a decided document lets nothing change, so the fixture is written with the triggers
+    // of the table off for the statement, as the builders do
+    async function voidedSale(
+      hoursAgo: number
+    ): Promise<Awaited<ReturnType<typeof documentedSale>>> {
+      const sale = await documentedSale()
+      await documents.submit(ctx.orgA.id, sale.documentId)
+      const at = new Date(Date.now() - hoursAgo * HOUR_MS)
+      // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+      await owner.$transaction(async tx => {
+        await tx.$executeRawUnsafe('ALTER TABLE fiscal_documents DISABLE TRIGGER USER')
+        await tx.$executeRaw`UPDATE fiscal_documents SET status = 'voided', void_reason = 'r', voided_by = 'u', voided_at = ${at}, updated_at = ${at} WHERE id = ${sale.documentId}`
+        await tx.$executeRawUnsafe('ALTER TABLE fiscal_documents ENABLE TRIGGER USER')
+      })
+      return sale
+    }
+    // The provider the issuer names draws the invalidation (the simulator draws none): only a provider that does owes the files
+    const drawing = (): jest.SpyInstance =>
+      jest
+        .spyOn(app.get(FiscalProviderRegistry), 'idsDrawingInvalidations')
+        .mockReturnValue([SIMULATOR_PROVIDER_ID])
+    afterEach(() => jest.restoreAllMocks())
+
+    it('is found an hour after it was voided, only for a provider that draws the invalidation, and its event is published again', async () => {
+      const sale = await voidedSale(2)
+      // A provider that draws no invalidation owes none
+      expect(await idsOf(FiscalSweepKind.DELIVERY_MISSING)).not.toContain(sale.documentId)
+      drawing()
+      const found = (await sweep.find(ctx.orgA.id, FiscalSweepKind.DELIVERY_MISSING)).data.find(
+        item => item.id === sale.documentId
+      )
+      expect(found).toMatchObject({ subject: FiscalDeliverySubject.VOID, storeId: sale.storeId })
+
+      const heard: string[] = []
+      const listener = (payload: { documentId: string }): void => {
+        heard.push(payload.documentId)
+      }
+      emitter.on(Events.FISCAL_DOCUMENT_VOIDED, listener)
+      try {
+        await reconciler().reconciler.reconcile(ctx.orgA.id)
+        expect(heard).toContain(sale.documentId)
+      } finally {
+        emitter.off(Events.FISCAL_DOCUMENT_VOIDED, listener)
+      }
+    })
+
+    it('is not found while it is young, or once the delivery of its invalidation has a row (the one of the document does not count)', async () => {
+      drawing()
+      const young = await voidedSale(0)
+      expect(await idsOf(FiscalSweepKind.DELIVERY_MISSING)).not.toContain(young.documentId)
+      const old = await voidedSale(2)
+      expect(await idsOf(FiscalSweepKind.DELIVERY_MISSING)).toContain(old.documentId)
+      const row = {
+        organizationId: ctx.orgA.id,
+        storeId: old.storeId,
+        documentId: old.documentId,
+        orderId: old.id,
+        status: FiscalDeliveryStatus.SENT,
+        route: FiscalDeliveryRoute.EMAIL
+      }
+      await owner.fiscalDelivery.create({
+        data: { ...row, subject: FiscalDeliverySubject.DOCUMENT }
+      })
+      expect(await idsOf(FiscalSweepKind.DELIVERY_MISSING)).toContain(old.documentId)
+      await owner.fiscalDelivery.create({ data: { ...row, subject: FiscalDeliverySubject.VOID } })
+      expect(await idsOf(FiscalSweepKind.DELIVERY_MISSING)).not.toContain(old.documentId)
     })
   })
 

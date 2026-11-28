@@ -5,6 +5,7 @@ import {
   FiscalDeliveryReason,
   FiscalDeliveryRoute,
   FiscalDeliveryStatus,
+  FiscalDeliverySubject,
   FiscalDocumentStatus,
   FiscalEvidenceKind,
   MediaStatus,
@@ -36,7 +37,13 @@ jest.mock('@platform/core/messaging', () => ({
 const ORG = 'org-1'
 const STORE = 'store-1'
 const DOCUMENT = 'doc-1'
-const INPUT = { organizationId: ORG, storeId: STORE, documentId: DOCUMENT }
+const INPUT = {
+  organizationId: ORG,
+  storeId: STORE,
+  documentId: DOCUMENT,
+  subject: FiscalDeliverySubject.DOCUMENT
+}
+const VOID_INPUT = { ...INPUT, subject: FiscalDeliverySubject.VOID }
 
 interface Options {
   status?: string
@@ -50,6 +57,8 @@ interface Options {
   mediaStatus?: string
   bucketHas?: boolean
   noRepresent?: boolean
+  // A provider that draws the document but not its invalidation
+  noRepresentVoid?: boolean
   failSecondCopy?: boolean
   // The transaction of the channel throws; `rowWritten`: its commit had happened (the rows of the files exist)
   txFails?: boolean
@@ -97,8 +106,8 @@ function build(options: Options = {}) {
             storeId: STORE,
             orderId: 'order-1',
             providerId: 'provider-1',
-            delivery:
-              options.delivered === true || created.length > 0 ? { id: 'delivery-1' } : null,
+            deliveries:
+              options.delivered === true || created.length > 0 ? [{ id: 'delivery-1' }] : [],
             order: {
               orderNumber: '1001',
               conversationId: 'conversation-1',
@@ -113,7 +122,11 @@ function build(options: Options = {}) {
           })
       },
       media: {
-        findMany: ({ where }: { where: { id?: unknown } }) => {
+        findMany: ({
+          where
+        }: {
+          where: { id?: unknown; fiscalEvidenceKind?: { in: FiscalEvidenceKind[] } }
+        }) => {
           if (where.id !== undefined) {
             return Promise.resolve(
               options.rowWritten === true
@@ -121,9 +134,13 @@ function build(options: Options = {}) {
                 : []
             )
           }
+          const [picture, file] = where.fiscalEvidenceKind?.in ?? [
+            FiscalEvidenceKind.REPRESENTATION,
+            FiscalEvidenceKind.DTE_FILE
+          ]
           return Promise.resolve([
             {
-              fiscalEvidenceKind: FiscalEvidenceKind.REPRESENTATION,
+              fiscalEvidenceKind: picture,
               key: 'k-pdf',
               filename: 'dte.pdf',
               contentType: 'application/pdf',
@@ -131,7 +148,7 @@ function build(options: Options = {}) {
               status: options.mediaStatus ?? MediaStatus.CLEAN
             },
             {
-              fiscalEvidenceKind: FiscalEvidenceKind.DTE_FILE,
+              fiscalEvidenceKind: file,
               key: 'k-json',
               filename: 'dte.json',
               contentType: 'application/json',
@@ -158,15 +175,29 @@ function build(options: Options = {}) {
     } as never,
     {
       keep: (_org: string, _doc: string, kind: FiscalEvidenceKind) => {
-        const index = [FiscalEvidenceKind.REPRESENTATION, FiscalEvidenceKind.DTE_FILE].indexOf(kind)
+        const index = [
+          FiscalEvidenceKind.REPRESENTATION,
+          FiscalEvidenceKind.DTE_FILE,
+          FiscalEvidenceKind.VOID_REPRESENTATION,
+          FiscalEvidenceKind.VOID_DTE_FILE
+        ].indexOf(kind)
+        const side = index % 2
         const made = options.made ?? [
           FiscalEvidenceKind.REPRESENTATION,
           FiscalEvidenceKind.DTE_FILE
         ]
-        return Promise.resolve(made[index] === null ? null : { mediaId: `media-${index}` })
+        return Promise.resolve(made[side] === null ? null : { mediaId: `media-${index}` })
       }
     } as never,
-    { find: () => (options.noRepresent === true ? {} : { represent: () => null }) } as never,
+    {
+      find: () =>
+        options.noRepresent === true
+          ? {}
+          : {
+              represent: () => null,
+              ...(options.noRepresentVoid === true ? {} : { representVoid: () => null })
+            }
+    } as never,
     {
       channelFor: () =>
         Promise.resolve(
@@ -481,6 +512,66 @@ describe('FiscalDeliveryService', () => {
       const { service, created } = build({ delivered: true })
       await service.recordFailure(INPUT)
       expect(created).toEqual([])
+    })
+  })
+
+  describe('the files of an invalidation', () => {
+    const voided = { status: FiscalDocumentStatus.VOIDED }
+
+    it('is owed by a voided document, not by an accepted one, and the files of the document by no voided one', async () => {
+      const accepted = build()
+      expect(await accepted.service.deliver(VOID_INPUT)).toBe(FiscalDeliveryOutcome.SKIPPED)
+      const gone = build(voided)
+      expect(await gone.service.deliver(INPUT)).toBe(FiscalDeliveryOutcome.SKIPPED)
+      expect(accepted.created).toEqual([])
+      expect(gone.created).toEqual([])
+    })
+
+    it('sends the two files of the invalidation by email, with its own text and its own job, and writes its row under the subject', async () => {
+      const { service, created, emails, audit } = build(voided)
+      expect(await service.deliver(VOID_INPUT)).toBe(FiscalDeliveryOutcome.SENT)
+      expect(created).toMatchObject([
+        { subject: FiscalDeliverySubject.VOID, route: FiscalDeliveryRoute.EMAIL }
+      ])
+      expect(emails).toHaveLength(1)
+      expect(emails[0]?.options['jobId']).toBe(`fiscal-delivery-void-${DOCUMENT}`)
+      const text = (emails[0]?.data['data'] as { text: string }).text
+      expect(text).toMatch(/invalid/i)
+      expect(audit[0]).toMatchObject({ metadata: { subject: FiscalDeliverySubject.VOID } })
+    })
+
+    it('answers duplicate for an invalidation that was delivered already', async () => {
+      const { service, emails } = build({ ...voided, delivered: true })
+      expect(await service.deliver(VOID_INPUT)).toBe(FiscalDeliveryOutcome.DUPLICATE)
+      expect(emails).toEqual([])
+    })
+
+    it('records an invalidation with no event of ours as not sent, with its own reason, and tells the people who manage the documents', async () => {
+      const { service, created, published, emails } = build({ ...voided, made: [null, null] })
+      expect(await service.deliver(VOID_INPUT)).toBe(FiscalDeliveryOutcome.NOT_SENT)
+      expect(created).toMatchObject([
+        {
+          subject: FiscalDeliverySubject.VOID,
+          status: FiscalDeliveryStatus.NOT_SENT,
+          reason: FiscalDeliveryReason.VOID_EVENT_UNAVAILABLE
+        }
+      ])
+      expect(published).toHaveLength(1)
+      expect(emails).toEqual([])
+    })
+
+    it('skips a provider that draws the document but not its invalidation', async () => {
+      const { service, created } = build({ ...voided, made: [null, null], noRepresentVoid: true })
+      expect(await service.deliver(VOID_INPUT)).toBe(FiscalDeliveryOutcome.SKIPPED)
+      expect(created).toEqual([])
+    })
+
+    it('records a failure to deliver it under its subject, so the person is told', async () => {
+      const { service, created } = build(voided)
+      await service.recordFailure(VOID_INPUT)
+      expect(created).toMatchObject([
+        { subject: FiscalDeliverySubject.VOID, reason: FiscalDeliveryReason.FILES_UNAVAILABLE }
+      ])
     })
   })
 })

@@ -397,6 +397,14 @@ export interface FiscalDocumentAcceptedPayload {
   orderId: string
 }
 
+// A fiscal document was voided: ids only, never the receiver's data
+export interface FiscalDocumentVoidedPayload {
+  organizationId: string
+  storeId: string
+  documentId: string
+  orderId: string
+}
+
 // The files of an accepted document could not be given to its receiver: ids and a reason code (FiscalDeliveryReason), never the receiver's data
 export interface FiscalDeliveryNotSentPayload {
   organizationId: string
@@ -750,6 +758,7 @@ export interface DomainEventPayloads {
   [Events.FINANCE_POSTING_FAILED]: FinancePostingFailedPayload
   [Events.FINANCE_CHAIN_BROKEN]: FinanceChainBrokenPayload
   [Events.FISCAL_DOCUMENT_ACCEPTED]: FiscalDocumentAcceptedPayload
+  [Events.FISCAL_DOCUMENT_VOIDED]: FiscalDocumentVoidedPayload
   [Events.FISCAL_DELIVERY_NOT_SENT]: FiscalDeliveryNotSentPayload
   [Events.FISCAL_DOCUMENT_REJECTED]: FiscalDocumentRejectedPayload
   [Events.FISCAL_DOCUMENT_STUCK]: FiscalDocumentStuckPayload

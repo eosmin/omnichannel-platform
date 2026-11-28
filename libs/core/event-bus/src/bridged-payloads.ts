@@ -260,6 +260,13 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     documentId: id,
     orderId: id
   }),
+  // A fiscal document was voided: its receiver is owed the event of the invalidation. Ids only
+  [Events.FISCAL_DOCUMENT_VOIDED]: z.object({
+    organizationId: id,
+    storeId: id,
+    documentId: id,
+    orderId: id
+  }),
   // A fiscal document ran out of attempts while it waited for the provider: ids and the count
   [Events.FISCAL_DOCUMENT_STUCK]: z.object({
     organizationId: id,

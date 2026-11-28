@@ -2,7 +2,9 @@ import type { FiscalDeliveryView, FiscalDocumentView } from '@platform/api-clien
 import {
   FiscalConflictReasons,
   FiscalDocumentKind,
+  FiscalDeliveryPending,
   FiscalDeliveryStatus,
+  FiscalDeliverySubject,
   FiscalDocumentStatus,
   FiscalEvidenceKind,
   FiscalHandMeans,
@@ -135,14 +137,36 @@ export const fiscalEvidenceKindsOf = (
     : []
 }
 
+// Whether the panel shows the delivery of an invalidation: the system has recorded something about it, or it made files for it. A voided
+// document of a provider that draws no invalidation has neither and owes no delivery, so no section would say "pending" for ever.
+export const hasInvalidationToDeliver = (delivery: FiscalDeliveryView): boolean =>
+  delivery.state !== FiscalDeliveryPending ||
+  delivery.files.some(
+    kind =>
+      kind === FiscalEvidenceKind.VOID_REPRESENTATION || kind === FiscalEvidenceKind.VOID_DTE_FILE
+  )
+
 // What the panel offers to record as handed over while the files are still owed (the system did not give them: no row yet, or a row that says it
 // could not): the files need both of them, the paper the representation alone. Nothing once the system or a person gave them.
 export const handOverMeansOf = (
   delivery: FiscalDeliveryView,
-  accepted: boolean
+  owed: boolean
 ): readonly FiscalHandMeans[] => {
-  if (!accepted || delivery.state === FiscalDeliveryStatus.SENT) return []
+  if (!owed || delivery.state === FiscalDeliveryStatus.SENT) return []
   const has = (kind: FiscalEvidenceKind): boolean => delivery.files.includes(kind)
+  // The files of an invalidation are its own two kinds; the answer of the authority is handed over only when there is no event of ours to give
+  // (neither of the two files exists), and no file is made for it
+  if (delivery.subject === FiscalDeliverySubject.VOID) {
+    const picture = has(FiscalEvidenceKind.VOID_REPRESENTATION)
+    const file = has(FiscalEvidenceKind.VOID_DTE_FILE)
+    return [
+      ...(picture && file ? [FiscalHandMeans.DOWNLOAD] : []),
+      ...(picture ? [FiscalHandMeans.PAPER] : []),
+      ...(!picture && !file && has(FiscalEvidenceKind.VOID_RESPONSE)
+        ? [FiscalHandMeans.ANSWER]
+        : [])
+    ]
+  }
   return [
     ...(has(FiscalEvidenceKind.REPRESENTATION) && has(FiscalEvidenceKind.DTE_FILE)
       ? [FiscalHandMeans.DOWNLOAD]

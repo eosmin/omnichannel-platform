@@ -271,7 +271,9 @@ export async function purgeRemissionNotes(owner: OwnerClient, prefix: string): P
     await tx.$executeRawUnsafe('ALTER TABLE media ENABLE TRIGGER trg_media_fiscal_evidence_keeps')
     // The delivery of the files to the receiver restricts the deletion of its document: it goes first (a provider that draws no files, like
     // the simulator, leaves none, and one that does would)
+    await tx.$executeRawUnsafe('ALTER TABLE fiscal_deliveries DISABLE TRIGGER USER')
     await tx.fiscalDelivery.deleteMany({ where: { documentId: { in: ids } } })
+    await tx.$executeRawUnsafe('ALTER TABLE fiscal_deliveries ENABLE TRIGGER USER')
     await tx.fiscalDocument.deleteMany({ where: { id: { in: ids } } })
     await tx.$executeRawUnsafe('ALTER TABLE fiscal_documents ENABLE TRIGGER USER')
   })
@@ -324,7 +326,9 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       'journal_lines',
       'journal_entries',
       'fiscal_periods',
-      'ledger_accounts'
+      'ledger_accounts',
+      // A delivery is never deleted by the app; the suite removes its own
+      'fiscal_deliveries'
     ]
     for (const table of guarded)
       await tx.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`)

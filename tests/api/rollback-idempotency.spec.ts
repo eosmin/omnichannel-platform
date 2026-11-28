@@ -230,4 +230,66 @@ describe('Rollbacks that are safe to run twice', () => {
       }
     })
   })
+
+  // The rollback of the subject of a delivery: with only deliveries of documents, the first run takes the guard, the function, the checks and the
+  // column away and puts the key of the document back; the second finds it done. With a delivery of an invalidation it FAILS and changes nothing.
+  describe('20270219100000_fiscal_delivery_void_subject.rollback.sql', () => {
+    const sql = body('20270219100000_fiscal_delivery_void_subject.rollback.sql')
+    const count = async (query: string): Promise<number> =>
+      (await client.query(query)).rowCount ?? 0
+    const hasTrigger = (): Promise<number> =>
+      count(
+        `SELECT 1 FROM pg_trigger WHERE tgname = 'trg_fiscal_delivery_guard' AND NOT tgisinternal`
+      )
+    const hasFunction = (): Promise<number> =>
+      count(`SELECT 1 FROM pg_proc WHERE proname = 'fiscal_delivery_guard'`)
+    const hasIndex = (name: string): Promise<number> =>
+      count(
+        `SELECT 1 FROM pg_indexes WHERE tablename = 'fiscal_deliveries' AND indexname = '${name}'`
+      )
+    const insert = (id: string, document: string, subject: string): Promise<unknown> =>
+      client.query(
+        `INSERT INTO fiscal_deliveries (id, organization_id, store_id, document_id, order_id, subject, status, route, reason)
+         VALUES ($1, 'o', 's', $2, 'od', $3, 'not_sent', 'none', 'no_channel')`,
+        [id, document, subject]
+      )
+
+    it('takes the guard, the function and the subject away, keeps the rows, and runs a second time on the result', async () => {
+      await client.query('BEGIN')
+      try {
+        await client.query('SET LOCAL session_replication_role = replica')
+        await insert('rb-s1', 'rb-sd1', 'document')
+        expect(await hasTrigger()).toBe(1)
+        expect(await hasFunction()).toBe(1)
+        expect(await hasIndex('fiscal_deliveries_document_id_subject_key')).toBe(1)
+        await client.query(sql)
+        expect(await hasColumn('fiscal_deliveries', 'subject')).toBe(false)
+        expect(await hasTrigger()).toBe(0)
+        expect(await hasFunction()).toBe(0)
+        expect(await hasIndex('fiscal_deliveries_document_id_subject_key')).toBe(0)
+        expect(await hasIndex('fiscal_deliveries_document_id_key')).toBe(1)
+        expect(await count(`SELECT 1 FROM fiscal_deliveries WHERE id = 'rb-s1'`)).toBe(1)
+        await client.query(sql)
+        expect(await hasIndex('fiscal_deliveries_document_id_key')).toBe(1)
+      } finally {
+        await client.query('ROLLBACK')
+      }
+    })
+
+    it('fails, and changes nothing, while the delivery of an invalidation exists', async () => {
+      await client.query('BEGIN')
+      try {
+        await client.query('SET LOCAL session_replication_role = replica')
+        await insert('rb-s2', 'rb-sd2', 'document')
+        await insert('rb-s3', 'rb-sd2', 'void')
+        await client.query('SAVEPOINT rollback_try')
+        await expect(client.query(sql)).rejects.toThrow(/delivery of an invalidation/)
+        await client.query('ROLLBACK TO SAVEPOINT rollback_try')
+        expect(await hasColumn('fiscal_deliveries', 'subject')).toBe(true)
+        expect(await hasTrigger()).toBe(1)
+      } finally {
+        await client.query('ROLLBACK')
+      }
+    })
+  })
 })

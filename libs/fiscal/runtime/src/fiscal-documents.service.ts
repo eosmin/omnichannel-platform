@@ -2661,6 +2661,14 @@ export class FiscalDocumentsService {
             outcome.response === undefined ? undefined : this.safeResponse(outcome.response)
         }
       })
+      // The receiver is owed the event of the invalidation (the rule on delivering it): the event leaves with the commit of the void, so a crash
+      // after it never loses it. Ids only. The one that delivers makes the files itself if the evidence is not there yet
+      this.events.publish(tx, Events.FISCAL_DOCUMENT_VOIDED, {
+        organizationId,
+        storeId: locked.storeId,
+        documentId: id,
+        orderId: locked.orderId
+      })
     })
     this.audit.log({
       action: AuditAction.FISCAL_DOCUMENT_VOIDED,

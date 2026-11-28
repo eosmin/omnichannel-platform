@@ -4,6 +4,7 @@ import {
   FiscalDeliveryPending,
   FiscalDeliveryRoute,
   FiscalDeliveryStatus,
+  FiscalDeliverySubject,
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEvidenceKind,
@@ -19,6 +20,7 @@ import {
   fiscalAttentionOf,
   fiscalEvidenceKindsOf,
   handOverMeansOf,
+  hasInvalidationToDeliver,
   isIssuerChangedInFlight,
   replacedIdsOf
 } from './document-rules'
@@ -134,6 +136,71 @@ describe('what a person may do with a fiscal document', () => {
     ).toEqual([...base, FiscalEvidenceKind.DTE_FILE, FiscalEvidenceKind.REPRESENTATION])
   })
 
+  it('shows the delivery of an invalidation only when the system recorded something or made files for it', () => {
+    const view = (over: Partial<FiscalDeliveryView>): FiscalDeliveryView => ({
+      documentId: 'd',
+      subject: FiscalDeliverySubject.VOID,
+      state: FiscalDeliveryPending,
+      route: null,
+      reason: null,
+      means: null,
+      handedOverAt: null,
+      files: [FiscalEvidenceKind.VOID_RESPONSE],
+      ...over
+    })
+    // A provider that draws no invalidation: nothing was recorded and no file was made, so nothing is owed or shown
+    expect(hasInvalidationToDeliver(view({}))).toBe(false)
+    expect(hasInvalidationToDeliver(view({ files: [FiscalEvidenceKind.VOID_DTE_FILE] }))).toBe(true)
+    expect(
+      hasInvalidationToDeliver(view({ files: [FiscalEvidenceKind.VOID_REPRESENTATION] }))
+    ).toBe(true)
+    expect(
+      hasInvalidationToDeliver(
+        view({ state: FiscalDeliveryStatus.NOT_SENT, route: FiscalDeliveryRoute.NONE })
+      )
+    ).toBe(true)
+  })
+
+  it('offers the invalidation its own means: the two files, the picture on paper, and the answer of the authority only when there is no file of ours', () => {
+    const view = (files: FiscalEvidenceKind[], over: Partial<FiscalDeliveryView> = {}) => ({
+      documentId: 'd',
+      subject: FiscalDeliverySubject.VOID,
+      state: FiscalDeliveryStatus.NOT_SENT,
+      route: FiscalDeliveryRoute.NONE,
+      reason: 'void_event_unavailable',
+      means: null,
+      handedOverAt: null,
+      files,
+      ...over
+    })
+    const voidFiles = [FiscalEvidenceKind.VOID_REPRESENTATION, FiscalEvidenceKind.VOID_DTE_FILE]
+    expect(handOverMeansOf(view(voidFiles), true)).toEqual([
+      FiscalHandMeans.DOWNLOAD,
+      FiscalHandMeans.PAPER
+    ])
+    expect(handOverMeansOf(view([FiscalEvidenceKind.VOID_REPRESENTATION]), true)).toEqual([
+      FiscalHandMeans.PAPER
+    ])
+    // No event of ours: the answer of the authority, as it is, and nothing is offered for a file that was never made
+    expect(handOverMeansOf(view([FiscalEvidenceKind.VOID_RESPONSE]), true)).toEqual([
+      FiscalHandMeans.ANSWER
+    ])
+    // With files of our own the answer is not what the customer is owed; the files of the document are not those of the invalidation
+    expect(
+      handOverMeansOf(view([...voidFiles, FiscalEvidenceKind.VOID_RESPONSE]), true)
+    ).not.toContain(FiscalHandMeans.ANSWER)
+    expect(
+      handOverMeansOf(view([FiscalEvidenceKind.REPRESENTATION, FiscalEvidenceKind.DTE_FILE]), true)
+    ).toEqual([])
+    expect(handOverMeansOf(view([FiscalEvidenceKind.VOID_RESPONSE]), false)).toEqual([])
+    expect(
+      handOverMeansOf(
+        view([FiscalEvidenceKind.VOID_RESPONSE], { state: FiscalDeliveryStatus.SENT }),
+        true
+      )
+    ).toEqual([])
+  })
+
   it('offers a voided document the files of its invalidation only when the api says they exist, and never to a document that is not voided', () => {
     const voided = { status: FiscalDocumentStatus.VOIDED }
     const base = [
@@ -163,6 +230,7 @@ describe('what a person may do with a fiscal document', () => {
   it('offers the hand delivery only while the files are owed and exist: the files need both, the paper the picture alone', () => {
     const view = (over: Partial<FiscalDeliveryView>): FiscalDeliveryView => ({
       documentId: 'd',
+      subject: FiscalDeliverySubject.DOCUMENT,
       state: FiscalDeliveryStatus.NOT_SENT,
       route: FiscalDeliveryRoute.NONE,
       reason: 'no_channel',
