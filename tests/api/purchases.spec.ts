@@ -1421,16 +1421,20 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         expect(await privileges(table, DatabaseRoles.APP, 'INSERT')).toBe(true)
         expect(await privileges(table, DatabaseRoles.WORKER, 'INSERT')).toBe(false)
       }
-      // The owner of the tables is refused by the triggers
+      // The owner of the tables is refused by the triggers (the rows are the ones this test's export wrote, named by id)
+      const written = await owner.fiscalAnnexExport.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, annexId: ANNEX, year: 2026, month: 10 },
+        include: { items: true }
+      })
+      const itemId = written.items[0]?.id ?? ''
       await expect(
         owner.$executeRawUnsafe(
-          `UPDATE fiscal_annex_exports SET row_count = 99 WHERE annex_id = '${ANNEX}'`
+          'UPDATE fiscal_annex_exports SET row_count = 99 WHERE id = $1',
+          written.id
         )
       ).rejects.toThrow(/FISCAL_ANNEX_EXPORT_IMMUTABLE/u)
       await expect(
-        owner.$executeRawUnsafe(
-          `DELETE FROM fiscal_annex_export_items WHERE organization_id = '${ctx.orgA.id}'`
-        )
+        owner.$executeRawUnsafe('DELETE FROM fiscal_annex_export_items WHERE id = $1', itemId)
       ).rejects.toThrow(/FISCAL_ANNEX_EXPORT_IMMUTABLE/u)
     })
   })
