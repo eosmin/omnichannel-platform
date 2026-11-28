@@ -9,7 +9,7 @@ import {
   SvProviderDataKeys
 } from './sv-constants'
 import { codeOf, recordOf, textOf } from './sv-http'
-import { classifyFailure, SvTransientCodes, type SvFailure } from './sv-responses'
+import { classifyFailure, SvDuplicateCodes, SvTransientCodes, type SvFailure } from './sv-responses'
 
 // The lots of the documents of a contingency (Manual Tecnológico V2.0 4.2.2 and 4.3.2). Pure: what is sent, how the answers are read and how the
 // verdicts of a lot are matched to its documents. Nothing here reaches the authority.
@@ -158,8 +158,12 @@ export function classifyBatchConsult(
       continue
     }
     const reason = codeOf(entry['codigoMsg'])
-    // A fault of the moment is not a verdict on the document (as for a document sent alone: it does not start the time to correct it)
-    if (reason === null || SvTransientCodes.has(Number.parseInt(reason, 10))) continue
+    // A fault of the moment is not a verdict on the document (as for a document sent alone: it does not start the time to correct it), and
+    // neither is "already there" (code 4): a lot sent again whose first send the authority had taken refuses its documents for that, and
+    // refusing them here would have a person make them again under another generation code (the sale declared twice). As for a document sent
+    // alone, the document is no verdict: it stays held, the lot says it lacks one, and a person sees it
+    const number = reason === null ? Number.NaN : Number.parseInt(reason, 10)
+    if (reason === null || SvTransientCodes.has(number) || SvDuplicateCodes.has(number)) continue
     verdicts.push({
       index,
       outcome: FiscalSubmitOutcome.REJECTED,

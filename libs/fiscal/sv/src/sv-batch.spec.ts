@@ -221,6 +221,17 @@ describe('the answer to the consultation of a lot', () => {
     expect(answer.verdicts.map(v => v.index)).toEqual([2])
   })
 
+  it('gives no verdict to a document refused as "already there" (code 4): it was taken by an earlier send, and refusing it would have it declared twice', () => {
+    const answer = classifyBatchConsult(
+      200,
+      { procesados: [entry(0)], rechazados: [refused(1, '004'), refused(2, '004')] },
+      documents
+    )
+    expect(answer).toMatchObject({ kind: 'done' })
+    if (answer.kind !== 'done') return
+    expect(answer.verdicts.map(v => v.index)).toEqual([0])
+  })
+
   it('reads a bad token and a fault of the server as such', () => {
     expect(classifyBatchConsult(401, {}, documents).kind).toBe('token')
     expect(classifyBatchConsult(502, {}, documents).kind).toBe('transient')
