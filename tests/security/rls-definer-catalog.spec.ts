@@ -68,6 +68,8 @@ const DEFINER_FUNCTIONS: Readonly<Record<string, readonly string[] | typeof TRIG
   fiscal_reseal_document: [WORKER],
   // Swaps the sealed event of one voided document by compare-and-swap, through the door of the guard (D13b-2b-1)
   fiscal_reseal_void_event: [WORKER],
+  // Swaps the sealed seller of one purchase from an excluded subject by compare-and-swap, through the door of its guard (D20b)
+  fiscal_reseal_excluded_subject: [WORKER],
   fiscal_reseal_contingency: [WORKER],
   // the masked receiver of a fiscal document (Step 7.3-S11b-2): writes the three masked columns, through the door of the guard, the worker only
   fiscal_mask_document: [WORKER]

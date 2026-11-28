@@ -69,7 +69,11 @@ function originFits(type: string, origin: string): boolean {
 }
 
 // Columns R, S and T: a cost goes with a sector and a cost type of the table; an expense with any sector and its three types
-function classificationProblems(input: FiscalPurchaseDocumentInput): string[] {
+export function classificationProblems(input: {
+  readonly expenseClass: string
+  readonly sector: string
+  readonly costType: string
+}): string[] {
   const { COST, EXPENSE, SECTORS, SECTOR_INDUSTRY } = SvPurchaseClassification
   if (input.expenseClass !== COST && input.expenseClass !== EXPENSE) {
     return [PurchaseDocumentProblems.CLASSIFICATION_INVALID]

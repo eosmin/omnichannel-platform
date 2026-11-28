@@ -35,7 +35,8 @@ describe('FiscalResealService (what the database run cannot show)', () => {
         customerFiscalData: { findMany, updateMany },
         fiscalDocument: empty,
         fiscalIssuer: empty,
-        fiscalContingency: empty
+        fiscalContingency: empty,
+        excludedSubjectPurchase: empty
       },
       updateMany,
       findMany
@@ -130,6 +131,7 @@ describe('FiscalResealService (what the database run cannot show)', () => {
         fiscalDocument: documents,
         fiscalIssuer: empty,
         fiscalContingency: empty,
+        excludedSubjectPurchase: empty,
         $queryRaw: queryRaw
       }
     }
@@ -194,6 +196,7 @@ describe('FiscalResealService (what the database run cannot show)', () => {
         fiscalDocument: documents,
         fiscalIssuer: empty,
         fiscalContingency: empty,
+        excludedSubjectPurchase: empty,
         $queryRaw: queryRaw
       }
     }
@@ -247,7 +250,8 @@ describe('FiscalResealService (what the database run cannot show)', () => {
         customerFiscalData,
         fiscalDocument: empty,
         fiscalIssuer: empty,
-        fiscalContingency: empty
+        fiscalContingency: empty,
+        excludedSubjectPurchase: empty
       }
     }
     const service = new FiscalResealService(prisma as never, cipher, audit as never, logger)

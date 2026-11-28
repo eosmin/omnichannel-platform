@@ -629,6 +629,22 @@ export interface FiscalPurchaseDocumentInput {
   readonly costType: string
 }
 
+// A purchase from an excluded subject as a person writes it (D20b): the seller's document, the day, what was paid and the VAT withheld, and the
+// classification of the cost or expense. The codes are the provider's catalogs; the provider says what is wrong in them.
+export interface FiscalExcludedSubjectPurchaseInput {
+  readonly purchasedOn: string
+  readonly sellerDocumentType: string
+  readonly sellerDocumentNumber: string
+  readonly documentSeries: string | null
+  readonly generationCode: string | null
+  readonly amountCents: number
+  readonly vatWithheldCents: number
+  readonly operationType: string
+  readonly expenseClass: string
+  readonly sector: string
+  readonly costType: string
+}
+
 export interface FiscalAnnexExporter {
   // The ids of the annexes it makes
   readonly ids: readonly string[]
@@ -668,6 +684,8 @@ export interface FiscalDocumentProvider {
   // Pure, optional: what is wrong in the supplier's document of a purchase, as codes of the provider (an empty list when it is right). Core calls
   // it when a person writes the document of a receipt. A provider without it accepts any value within core's limits.
   validatePurchaseDocument?(input: FiscalPurchaseDocumentInput): readonly string[]
+  // Pure, optional: the same for a purchase from an excluded subject (D20b), as codes of core's `ExcludedSubjectProblems`.
+  validateExcludedSubjectPurchase?(input: FiscalExcludedSubjectPurchaseInput): readonly string[]
   // Pure, required when the manifest declares `sequence.perDocumentType`: the id of the type `build` will pick for this sale. It must
   // answer exactly what `build` puts in `BuiltDocument.documentType` for the same kind and receiver (the contract suite checks it).
   resolveDocumentType?(input: FiscalTypeInput): string

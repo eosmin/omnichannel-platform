@@ -16,6 +16,7 @@ import type {
   FiscalProviderManifest,
   FiscalRepresentation,
   FiscalReceiver,
+  FiscalExcludedSubjectPurchaseInput,
   FiscalPurchaseDocumentInput,
   FiscalReceiverProblem,
   FiscalTypeInput,
@@ -48,6 +49,7 @@ import {
   SvTimeouts,
   SvUserAgent
 } from './sv-constants'
+import { excludedSubjectPurchaseProblems } from './sv-excluded-subject'
 import type { SvFetch } from './sv-http'
 import { voidDeadlineOf } from './sv-invalidation'
 import { issuerProblems, receiverProblems } from './sv-parties'
@@ -236,6 +238,10 @@ export class SvProvider implements FiscalDocumentProvider {
 
   validatePurchaseDocument(input: FiscalPurchaseDocumentInput): readonly string[] {
     return purchaseDocumentProblems(input)
+  }
+
+  validateExcludedSubjectPurchase(input: FiscalExcludedSubjectPurchaseInput): readonly string[] {
+    return excludedSubjectPurchaseProblems(input)
   }
 
   resolveDocumentType(input: FiscalTypeInput): string {
