@@ -78,7 +78,18 @@ export class FiscalProviderRegistry {
               Number.isFinite(mode.technicalReportAfterDays) && mode.technicalReportAfterDays > 0
             )) ||
           !Number.isInteger(mode.maxDocumentsPerEvent) ||
-          mode.maxDocumentsPerEvent < 1)
+          mode.maxDocumentsPerEvent < 1 ||
+          // Lots (D16): the provider can send and ask about them, the sizes are whole numbers, and the lots the authority takes hold the
+          // most documents one event lists (otherwise a contingency could keep documents that no lot could carry)
+          (mode.batch !== undefined &&
+            (provider.submitBatch === undefined ||
+              provider.consultBatch === undefined ||
+              !Number.isInteger(mode.batch.maxDocumentsPerBatch) ||
+              mode.batch.maxDocumentsPerBatch < 1 ||
+              !Number.isInteger(mode.batch.maxBatchesPerContingency) ||
+              mode.batch.maxBatchesPerContingency < 1 ||
+              Math.ceil(mode.maxDocumentsPerEvent / mode.batch.maxDocumentsPerBatch) >
+                mode.batch.maxBatchesPerContingency)))
       ) {
         throw new Error(`the contingency mode of the fiscal provider ${provider.id} is not valid`)
       }

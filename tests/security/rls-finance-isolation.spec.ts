@@ -61,6 +61,7 @@ const PHASE_4_TABLES = [
   'fiscal_sequences',
   'fiscal_documents',
   'fiscal_contingencies',
+  'fiscal_contingency_batches',
   'fiscal_deliveries',
   'fiscal_annex_exports',
   'fiscal_annex_export_items'

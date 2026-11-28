@@ -1,4 +1,6 @@
 import {
+  FiscalBatchConsultState,
+  FiscalBatchSendOutcome,
   FiscalContingencyReportOutcome,
   FiscalDeferOutcome,
   FiscalDocumentKind,
@@ -78,10 +80,15 @@ interface Script {
   voidAnswer?: { voided: boolean; reason?: string }
   report?: FiscalContingencyReportOutcome
   submitThrows?: (id: string) => boolean
+  // The authority takes the documents of a contingency in lots of two (D16): the lot (from 1) whose send throws
+  batch?: { throwsOnLot?: number }
 }
 
-function provider(script: Script = {}): FiscalDocumentProvider & { sent: string[] } {
+function provider(
+  script: Script = {}
+): FiscalDocumentProvider & { sent: string[]; lots: string[][] } {
   const sent: string[] = []
+  const lots: string[][] = []
   const base: FiscalDocumentProvider = {
     id: 'scripted',
     countryCode: 'XX',
@@ -97,7 +104,10 @@ function provider(script: Script = {}): FiscalDocumentProvider & { sent: string[
               authorityDownReason: '1',
               transmitWithinHours: 72,
               maxDocumentsPerEvent: 100,
-              requiresResponsible: false
+              requiresResponsible: false,
+              ...(script.batch === undefined
+                ? {}
+                : { batch: { maxDocumentsPerBatch: 2, maxBatchesPerContingency: 10 } })
             }
           }
         : {})
@@ -138,11 +148,39 @@ function provider(script: Script = {}): FiscalDocumentProvider & { sent: string[
                     receivedAt: '2026-11-17T10:00:00.000Z'
                   }
                 : { outcome: FiscalContingencyReportOutcome.UNAVAILABLE as const }
-            )
+            ),
+          ...(script.batch === undefined
+            ? {}
+            : {
+                submitBatch: (request: {
+                  documents: readonly { payload: Record<string, unknown> }[]
+                }) => {
+                  lots.push(request.documents.map(doc => String(doc.payload['id'])))
+                  if (script.batch?.throwsOnLot === lots.length) {
+                    return Promise.reject(new TypeError('boom with a secret 1234567'))
+                  }
+                  return Promise.resolve({
+                    outcome: FiscalBatchSendOutcome.RECEIVED as const,
+                    batchCode: `LOT-${String(lots.length)}`
+                  })
+                },
+                consultBatch: (
+                  _code: string,
+                  request: { documents: readonly { payload: Record<string, unknown> }[] }
+                ) =>
+                  Promise.resolve({
+                    state: FiscalBatchConsultState.DONE as const,
+                    verdicts: request.documents.map((doc, index) => ({
+                      index,
+                      outcome: FiscalSubmitOutcome.ACCEPTED as const,
+                      externalNumber: `EXT-${String(doc.payload['id'])}`
+                    }))
+                  })
+              })
         }
       : {})
   }
-  return Object.assign(base, { sent })
+  return Object.assign(base, { sent, lots })
 }
 
 const sale = (n: number, tags: string[] = ['a'], bucket: string | null = 'B'): ConformanceStep => ({
@@ -381,6 +419,45 @@ describe('a document of a lot that breaks', () => {
       report.steps.find(step => step.id === 'D2' && step.outcome === ConformanceOutcome.ERROR)?.code
     ).toBe('error:TypeError')
     // The message of the error, which carried a value, is nowhere
+    expect(JSON.stringify(report)).not.toContain('1234567')
+  })
+})
+
+describe('the documents of a contingency sent in lots (D16)', () => {
+  const event = {
+    eventId: 'e1',
+    reason: '1',
+    motive: null,
+    startedAt: '2026-11-17T08:00:00.000Z',
+    endedAt: '2026-11-17T09:00:00.000Z',
+    responsible: null
+  }
+  const steps: ConformanceStep[] = [1, 2, 3].map(n => ({
+    kind: 'deferred_sale' as const,
+    id: `D${n}`,
+    tags: ['d'],
+    input: input(n)
+  }))
+  const plan: ConformanceStep[] = [
+    ...steps,
+    { kind: 'contingency', id: 'C1', tags: ['c'], documents: ['D1', 'D2', 'D3'], event }
+  ]
+  const noWait = { wait: () => Promise.resolve() }
+
+  it('goes in lots of what the authority takes, never one by one, and counts each document with its verdict', async () => {
+    const p = provider({ contingency: true, batch: {} })
+    const report = await runConformance(plan, options(p, noWait))
+    // 3 documents, 2 a lot: 2 and 1
+    expect(p.lots).toEqual([['doc-1', 'doc-2'], ['doc-3']])
+    expect(p.sent).toEqual([])
+    expect(report.contingencies).toMatchObject({ reported: 1, deferred: 3, deferredAccepted: 3 })
+  })
+
+  it('does not stop at a lot the provider breaks on: its documents have no verdict, the next lot goes, and the error is not in the report', async () => {
+    const p = provider({ contingency: true, batch: { throwsOnLot: 1 } })
+    const report = await runConformance(plan, options(p, noWait))
+    expect(p.lots).toEqual([['doc-1', 'doc-2'], ['doc-3']])
+    expect(report.contingencies).toMatchObject({ reported: 1, deferred: 3, deferredAccepted: 1 })
     expect(JSON.stringify(report)).not.toContain('1234567')
   })
 })

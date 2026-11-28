@@ -10,6 +10,7 @@ import {
 } from '@platform/core/http'
 
 import { FiscalAnnexService } from './fiscal-annex.service'
+import { FiscalBatchService } from './fiscal-batch.service'
 import { FiscalContingencyService } from './fiscal-contingency.service'
 import { FiscalCustomerDataService } from './fiscal-customer-data.service'
 import { FiscalDocumentsService } from './fiscal-documents.service'
@@ -40,6 +41,7 @@ import { officialFiscalProviders } from './official-providers'
     },
     FiscalProviderRegistry,
     FiscalAnnexService,
+    FiscalBatchService,
     FiscalContingencyService,
     FiscalIssuerService,
     FiscalEvidenceService,
@@ -52,6 +54,7 @@ import { officialFiscalProviders } from './official-providers'
   ],
   exports: [
     FiscalAnnexService,
+    FiscalBatchService,
     FiscalContingencyService,
     FiscalDocumentsService,
     FiscalEvidenceService,

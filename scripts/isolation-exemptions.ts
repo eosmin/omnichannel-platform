@@ -13,6 +13,11 @@ import type { IsolationExemption } from './lib/isolation'
 // stores, even of the same organization). The plan lists which PR removes which line (Step 4.8, "Left by PR B1").
 
 export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> = {
+  FiscalContingencyBatch: {
+    step: '4B.7',
+    reason:
+      'The lots of a reported contingency (D16) have no route of a person in this step (the worker writes them; the route that gives one up comes with the PR that builds it), so the checks of the resources, which go through a route, cannot run. Its isolation is the block "the lots of a contingency of an organization" of tests/security/tenant-isolation.spec.ts, the policy of the table (tests/security/rls-finance-isolation.spec.ts and tests/api/fiscal-batch-guard.spec.ts, the two roles that write it) and the guard of the table'
+  },
   PluginIdempotencyKey: {
     step: '7.3',
     reason:

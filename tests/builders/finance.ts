@@ -298,6 +298,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       OR EXISTS (SELECT 1 FROM fiscal_issuers WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_sequences WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_contingencies WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM fiscal_contingency_batches WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_chain_incidents WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_book_layouts WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_book_snapshots WHERE organization_id = ANY(${organizationIds}))
@@ -312,6 +313,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       'finance_book_snapshots',
       'finance_book_layouts',
       'fiscal_documents',
+      'fiscal_contingency_batches',
       'fiscal_contingencies',
       'fiscal_sequences',
       'reconciliation_matches',
@@ -349,6 +351,8 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     // The delivery of a document's files names the document: it goes first
     await tx.fiscalDelivery.deleteMany({ where })
     await tx.fiscalDocument.deleteMany({ where })
+    // A lot is named by its documents and names its contingency: it goes between them
+    await tx.fiscalContingencyBatch.deleteMany({ where })
     // A contingency is named by its documents: it goes after them
     await tx.fiscalContingency.deleteMany({ where })
     await tx.fiscalSequence.deleteMany({ where })

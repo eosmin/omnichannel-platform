@@ -38,6 +38,7 @@ model Organization {
   fiscalIssuer                 FiscalIssuer?
   fiscalSequences              FiscalSequence[]
   fiscalContingencies          FiscalContingency[]
+  fiscalContingencyBatches     FiscalContingencyBatch[]
   fiscalDocuments              FiscalDocument[]
   fiscalDeliveries             FiscalDelivery[]
   fiscalAnnexExports           FiscalAnnexExport[]
@@ -3468,22 +3469,24 @@ model FiscalDocument {
   voidEventEncrypted    Bytes?    @map("void_event_encrypted") // the event of the invalidation as the issuer signed it (the content and its signature), sealed with the credentials key; written by the statement that voids the document, never by a retry, and null when the authority answered by a consultation (the event is not ours to give)
   issuedAt              DateTime? @map("issued_at")
   contingencyId         String?   @map("contingency_id") // set when the document was made in contingency (the deferred model); fixed for ever once it is
+  batchId               String?   @map("batch_id") // the lot of its contingency the document was sent in (D16); written while it is held, fixed for ever once it is accepted or voided
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  store        Store              @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  contingency  FiscalContingency? @relation(fields: [contingencyId], references: [id], onDelete: Restrict)
-  order        Order              @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  entry        JournalEntry?      @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
-  orderReturn  OrderReturn?       @relation(fields: [returnId], references: [id], onDelete: Restrict)
-  shipment     Shipment?          @relation(fields: [storeId, shipmentId], references: [storeId, id], onDelete: Restrict)
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  store        Store                   @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  contingency  FiscalContingency?      @relation(fields: [contingencyId], references: [id], onDelete: Restrict)
+  batch        FiscalContingencyBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  order        Order                   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  entry        JournalEntry?           @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  orderReturn  OrderReturn?            @relation(fields: [returnId], references: [id], onDelete: Restrict)
+  shipment     Shipment?               @relation(fields: [storeId, shipmentId], references: [storeId, id], onDelete: Restrict)
   // NoAction (checked when the statement ends), so a statement that removes a document and the ones that name it works in one go
-  parent       FiscalDocument?    @relation("FiscalCreditNotes", fields: [parentDocumentId], references: [id], onDelete: NoAction)
-  creditNotes  FiscalDocument[]   @relation("FiscalCreditNotes")
-  replaces     FiscalDocument?    @relation("FiscalReplacement", fields: [replacesDocumentId], references: [id], onDelete: NoAction)
-  replacedBy   FiscalDocument[]   @relation("FiscalReplacement")
-  evidence     Media[]            @relation("FiscalEvidence")
+  parent       FiscalDocument?         @relation("FiscalCreditNotes", fields: [parentDocumentId], references: [id], onDelete: NoAction)
+  creditNotes  FiscalDocument[]        @relation("FiscalCreditNotes")
+  replaces     FiscalDocument?         @relation("FiscalReplacement", fields: [replacesDocumentId], references: [id], onDelete: NoAction)
+  replacedBy   FiscalDocument[]        @relation("FiscalReplacement")
+  evidence     Media[]                 @relation("FiscalEvidence")
   delivery     FiscalDelivery?
 
   // At most one live sale document per order, one live credit note per return and one per order that came back with no return row: the
@@ -3501,6 +3504,7 @@ model FiscalDocument {
   @@index([organizationId, status])
   @@index([storeId])
   @@index([contingencyId])
+  @@index([batchId])
   @@map("fiscal_documents")
 }
 
@@ -3536,9 +3540,39 @@ model FiscalContingency {
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   documents    FiscalDocument[]
+  batches      FiscalContingencyBatch[]
 
   @@index([organizationId, status])
   @@map("fiscal_contingencies")
+}
+
+// One lot of the documents of a reported contingency (D16): sent whole, answered with a code, and asked about until every document has its verdict
+model FiscalContingencyBatch {
+  id              String    @id @default(uuid())
+  organizationId  String    @map("organization_id")
+  contingencyId   String    @map("contingency_id")
+  sequence        Int // 1, 2, ... in the order the documents were made
+  sendId          String    @unique @map("send_id") // the identifier of the send, the same on every attempt to send this lot
+  batchCode       String?   @map("batch_code") // the code the authority gave the lot; never changes once given
+  status          String    @default("pending") // FiscalBatchStatus
+  documentCount   Int       @map("document_count")
+  sendAttempts    Int       @default(0) @map("send_attempts")
+  consultAttempts Int       @default(0) @map("consult_attempts")
+  sentAt          DateTime? @map("sent_at")
+  consultedAt     DateTime? @map("consulted_at")
+  processedAt     DateTime? @map("processed_at")
+  lastError       String?   @map("last_error") // a code, never data
+  response        Json? // what the authority answered to the send, capped
+  createdAt       DateTime  @default(dbgenerated("(now() AT TIME ZONE 'UTC')")) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contingency  FiscalContingency @relation(fields: [contingencyId], references: [id], onDelete: Restrict)
+  documents    FiscalDocument[]
+
+  @@unique([contingencyId, sequence])
+  @@index([organizationId, status])
+  @@map("fiscal_contingency_batches")
 }

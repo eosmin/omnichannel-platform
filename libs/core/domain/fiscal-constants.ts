@@ -185,6 +185,24 @@ export enum FiscalContingencyReportOutcome {
   UNAVAILABLE = 'unavailable'
 }
 
+// The answer of the authority to the send of a lot (D16), in core's words
+export enum FiscalBatchSendOutcome {
+  // The authority took the lot and gave it a code
+  RECEIVED = 'received',
+  // The authority (or the provider, before sending) refused the lot as a whole
+  REJECTED = 'rejected',
+  UNAVAILABLE = 'unavailable'
+}
+
+// What the authority says of a lot it took, when it is asked about it
+export enum FiscalBatchConsultState {
+  // Not finished: asked again later
+  PENDING = 'pending',
+  // Finished: a verdict for each document it holds
+  DONE = 'done',
+  UNAVAILABLE = 'unavailable'
+}
+
 // What a provider says when it is asked whether its authority answers (D2c): the only thing core reads of a probe
 export enum FiscalAuthorityProbeOutcome {
   // The authority answered a fresh call
@@ -309,6 +327,33 @@ export const FiscalContingencyFailures = {
   PROVIDER_ANSWER_INVALID: 'provider_answer_invalid',
   NO_ANSWER: 'no_answer',
   REJECTED: 'rejected'
+} as const
+
+// A lot of the documents of a reported contingency (D16): made, sent (the authority gave it a code and says it received it), and then every
+// document has its verdict. Moves forward only; the database guard says the same.
+export enum FiscalBatchStatus {
+  PENDING = 'pending',
+  RECEIVED = 'received',
+  PROCESSED = 'processed'
+}
+
+// Why a lot did not go forward on an attempt, in codes (core's own, kept in `last_error`; never data of a document)
+export const FiscalBatchFailures = {
+  PROVIDER_UNAVAILABLE: 'provider_unavailable',
+  PROVIDER_ANSWER_INVALID: 'provider_answer_invalid',
+  ISSUER_CHANGED: 'issuer_changed',
+  CREDENTIALS_UNREADABLE: 'credentials_unreadable',
+  DOCUMENT_UNREADABLE: 'document_unreadable',
+  WINDOW_CLOSED: 'window_closed',
+  LOT_REFUSED: 'lot_refused',
+  NO_VERDICT: 'no_verdict'
+} as const
+
+export const FiscalBatchLimits = {
+  // How soon the lot is asked about again while the authority has not finished it (a lot of the most it takes is done in two to three minutes)
+  CONSULT_DELAY_MS: 60_000,
+  // The answers a lot may wait for, at most: it is asked about until the window to send it closes, so this only bounds a loop that does not end
+  CONSULT_MAX_ATTEMPTS: 4_500
 } as const
 
 // The shape of a code a provider or an authority may give as the reason of a refusal: letters, digits and a few marks, never free text
@@ -494,6 +539,8 @@ export const FiscalRejectionReasons = {
 
 // Why a person's action on a document is refused with a conflict (`details.reason`), for the interface to tell them apart
 export const FiscalConflictReasons = {
+  // A document refused inside a lot of a contingency is made again only once its lot is finished (the lot is asked about with the documents it was sent with)
+  BATCH_NOT_FINISHED: 'batch_not_finished',
   // An annex of the organization is being made: one at a time (the file is made in memory and its construction is not short)
   ANNEX_IN_PROGRESS: 'annex_in_progress',
   // A month whose annex cannot be made without guessing (a document lacks a seal or a figure the file needs): the file is refused, the

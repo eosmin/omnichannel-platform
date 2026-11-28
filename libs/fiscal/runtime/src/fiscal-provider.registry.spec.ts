@@ -198,6 +198,70 @@ describe('the contingency mode of a provider', () => {
   })
 })
 
+describe('the lots of a provider with a contingency mode (D16)', () => {
+  const mode = {
+    reasons: ['down'],
+    authorityDownReason: 'down',
+    transmitWithinHours: 72,
+    maxDocumentsPerEvent: 1000,
+    requiresResponsible: true
+  }
+  const make = (
+    batch: { maxDocumentsPerBatch: number; maxBatchesPerContingency: number } | undefined,
+    methods: { submit: boolean; consult: boolean }
+  ) => {
+    const provider = simulatorProvider()
+    return {
+      ...provider,
+      manifest: {
+        ...provider.manifest,
+        contingencyMode: { ...mode, ...(batch === undefined ? {} : { batch }) }
+      },
+      reportContingency: () => Promise.reject(new Error('unused')),
+      deferDocument: () => Promise.reject(new Error('unused')),
+      ...(methods.submit ? { submitBatch: () => Promise.reject(new Error('unused')) } : {}),
+      ...(methods.consult ? { consultBatch: () => Promise.reject(new Error('unused')) } : {})
+    } as unknown as ReturnType<typeof simulatorProvider>
+  }
+  const both = { submit: true, consult: true }
+  const lots = { maxDocumentsPerBatch: 100, maxBatchesPerContingency: 400 }
+
+  it('is accepted when it can send and ask about lots and the lots carry what one event lists', () => {
+    expect(() => new FiscalProviderRegistry([make(lots, both)])).not.toThrow()
+    // Exactly enough lots: 1000 documents in lots of 100 are 10 lots
+    expect(
+      () =>
+        new FiscalProviderRegistry([
+          make({ maxDocumentsPerBatch: 100, maxBatchesPerContingency: 10 }, both)
+        ])
+    ).not.toThrow()
+    // No lots at all is the way every provider worked before
+    expect(
+      () => new FiscalProviderRegistry([make(undefined, { submit: false, consult: false })])
+    ).not.toThrow()
+  })
+
+  it('is refused without the means to send or ask, with sizes that make no sense, or with lots that cannot carry an event', () => {
+    const invalid = /contingency mode/
+    expect(
+      () => new FiscalProviderRegistry([make(lots, { submit: false, consult: true })])
+    ).toThrow(invalid)
+    expect(
+      () => new FiscalProviderRegistry([make(lots, { submit: true, consult: false })])
+    ).toThrow(invalid)
+    for (const batch of [
+      { maxDocumentsPerBatch: 0, maxBatchesPerContingency: 400 },
+      { maxDocumentsPerBatch: 1.5, maxBatchesPerContingency: 400 },
+      { maxDocumentsPerBatch: 100, maxBatchesPerContingency: 0 },
+      { maxDocumentsPerBatch: 100, maxBatchesPerContingency: 2.5 },
+      // 1000 documents in lots of 100 need 10 lots: 9 cannot carry them
+      { maxDocumentsPerBatch: 100, maxBatchesPerContingency: 9 }
+    ]) {
+      expect(() => new FiscalProviderRegistry([make(batch, both)])).toThrow(invalid)
+    }
+  })
+})
+
 describe('the series a provider numbers by', () => {
   const numbering = (
     sequence: { perDocumentType?: boolean; perEstablishment?: boolean; perPointOfSale?: boolean },

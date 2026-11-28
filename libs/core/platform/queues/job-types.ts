@@ -170,6 +170,11 @@ export interface ReportFiscalContingencyJob extends BaseJob {
   organizationId: string
   contingencyId: string
 }
+// One step of one lot of a reported contingency (D16): the ids only, the worker reads the rows as they are
+export interface ProcessFiscalBatchJob extends BaseJob {
+  organizationId: string
+  batchId: string
+}
 // The probe of one open contingency of an issuer (D2c): the ids only
 export interface ProbeFiscalContingencyJob extends BaseJob {
   organizationId: string
