@@ -1,16 +1,23 @@
+import { FiscalEnvironment } from '@platform/core/domain'
 import type {
   FiscalRepresentation,
   FiscalRepresentationRow,
   FiscalRepresentationSection,
   FiscalRepresentationTable,
-  StoredFiscalDocument
+  StoredFiscalDocument,
+  StoredVoidedDocument
 } from '@platform/fiscal/sdk'
 
 import { DEPARTMENTS } from './catalogs/departments'
 import { IDENTITY_DOCUMENTS } from './catalogs/identity-documents'
 import { MUNICIPALITIES } from './catalogs/municipalities'
 import { UNITS } from './catalogs/units'
-import { SvDocumentTypes, SvProviderDataKeys, SvRepresentation } from './sv-constants'
+import {
+  SvDocumentTypes,
+  SvEnvironmentCodes,
+  SvProviderDataKeys,
+  SvRepresentation
+} from './sv-constants'
 
 // The graphic representation of an accepted document (Normativa de Cumplimiento DTE v2.0, apartado 11.3 and Anexo I 4 and 8). It is made
 // ONLY from the document as it was kept (the payload that was signed and the data written when the authority accepted it), so it is the
@@ -333,5 +340,138 @@ export function representDocument(doc: StoredFiscalDocument): FiscalRepresentati
             filename: `${generationCode}.json`,
             content: { ...payload, firmaElectronica: signed, selloRecibido: seal }
           }
+  }
+}
+
+// The graphic representation of the event of an invalidation (Manual Funcional v2.0, XXII, page 71) and the file of the event as the authority
+// defines it. It is made ONLY from the event as the issuer signed it and the answer of the authority, which holds the seal: a document with no
+// seal of the event, or an event that is not what the schema defines, has none (null), never an incomplete one.
+export function representVoid(doc: StoredVoidedDocument): FiscalRepresentation | null {
+  const event = doc.voidEvent.content
+  const id = event['identificacion']
+  const issuer = event['emisor']
+  const original = event['documento']
+  const reason = event['motivo']
+  if (!isRecord(id) || !isRecord(issuer) || !isRecord(original) || !isRecord(reason)) return null
+  const code = text(id['codigoGeneracion'])
+  const originalCode = text(original['codigoGeneracion'])
+  const signature = text(doc.voidEvent.signature)
+  // The seal is the authority's answer to the event: without it the file is not what the authority holds
+  const seal = text(doc.voidResponse?.['selloRecibido'])
+  if (code === null || originalCode === null || signature === null || seal === null) return null
+
+  const type = text(original['tipoDte'])
+  const kind = text(reason['tipoAnulacion'])
+  const originalIdentity = text(original['tipDocumento'] ?? original['tipoDocumento'])
+  const person = (role: string, key: 'Responsable' | 'Solicita'): FiscalRepresentationSection => {
+    const idType = text(reason[`tipDoc${key}`])
+    return {
+      heading: role,
+      rows: rows([
+        ['Nombre', text(reason[`nombre${key}`])],
+        [
+          'Tipo de documento de identificación',
+          idType === null ? null : (IDENTITY_NAMES.get(idType) ?? idType)
+        ],
+        ['Número de documento de identificación', text(reason[`numDoc${key}`])]
+      ])
+    }
+  }
+  const environment = text(id['ambiente'])
+  return {
+    title: SvRepresentation.VOID_TITLE,
+    name: code,
+    notices:
+      environment === SvEnvironmentCodes[FiscalEnvironment.SANDBOX]
+        ? [SvRepresentation.TEST_NOTICE]
+        : [],
+    sections: [
+      {
+        heading: 'Identificación',
+        rows: [
+          { label: 'Versión', value: text(id['version']) ?? SvRepresentation.EMPTY },
+          { label: 'Código de Generación', value: code },
+          { label: 'Sello de Recepción', value: seal },
+          { label: 'Fecha de Generación', value: text(id['fecEmi']) ?? SvRepresentation.EMPTY },
+          { label: 'Hora de Generación', value: text(id['horEmi']) ?? SvRepresentation.EMPTY }
+        ]
+      },
+      {
+        heading: 'Emisor',
+        rows: rows([
+          ['Nombre (Emisor)', text(issuer['nombre'])],
+          ['NIT', text(issuer['nit'])],
+          ['Código de establecimiento', text(issuer['codEstableMH'])],
+          ['Código de punto de venta', text(issuer['codPuntoVentaMH'])],
+          ['Teléfono', text(issuer['telefono'])],
+          ['Correo electrónico', text(issuer['correo'])]
+        ])
+      },
+      {
+        heading: 'Receptor del documento invalidado',
+        rows: rows([
+          ['Nombre (Receptor)', text(original['nombre'])],
+          [
+            'Tipo de documento de identificación',
+            originalIdentity === null
+              ? null
+              : (IDENTITY_NAMES.get(originalIdentity) ?? originalIdentity)
+          ],
+          ['Número de documento de identificación', text(original['numDocumento'])],
+          ['Teléfono', text(original['telefono'])],
+          ['Correo electrónico', text(original['correo'])]
+        ])
+      },
+      {
+        heading: 'Documento a invalidar',
+        rows: [
+          {
+            label: 'Tipo de Documento',
+            value:
+              type === null
+                ? SvRepresentation.EMPTY
+                : (SvRepresentation.TITLES[type as keyof typeof SvRepresentation.TITLES] ?? type)
+          },
+          { label: 'Código de Generación', value: originalCode },
+          {
+            label: 'Número de Control',
+            value: text(original['numeroControl']) ?? SvRepresentation.EMPTY
+          },
+          {
+            label: 'Sello de Recepción',
+            value: text(original['selloRecibido']) ?? SvRepresentation.EMPTY
+          },
+          {
+            label: 'Fecha de Generación',
+            value: text(original['fecEmi']) ?? SvRepresentation.EMPTY
+          },
+          {
+            label: 'Código de Generación que reemplaza al invalidado',
+            value: text(original['codigoGeneracionR']) ?? SvRepresentation.EMPTY
+          }
+        ]
+      },
+      {
+        heading: 'Motivo de la invalidación',
+        rows: rows([
+          [
+            'Tipo de invalidación',
+            kind === null ? null : (SvRepresentation.VOID_KINDS[Number(kind) as 1 | 2 | 3] ?? kind)
+          ],
+          ['Motivo', text(reason['motivoAnulacion'])]
+        ])
+      },
+      person('Quien realiza el evento', 'Responsable'),
+      person('Quien solicita la invalidación', 'Solicita')
+    ],
+    table: null,
+    totals: [],
+    footnotes: [],
+    // The form of the event has no code to scan
+    qrUrl: null,
+    file: {
+      filename: `${code}.json`,
+      content: { ...event, firmaElectronica: signature, selloRecibido: seal }
+    }
   }
 }

@@ -8617,6 +8617,14 @@
           "representation": {
             "label": "Graphic representation for the customer",
             "hint": "The PDF with the consultation QR code that is given to the customer along with the document file."
+          },
+          "void_dte_file": {
+            "label": "Invalidation event file for the customer",
+            "hint": "The JSON file of the invalidation event with its signature and the seal of the authority, as it is given to the customer."
+          },
+          "void_representation": {
+            "label": "Graphic representation of the invalidation for the customer",
+            "hint": "The PDF of the invalidation event that is given to the customer together with the event file."
           }
         }
       },

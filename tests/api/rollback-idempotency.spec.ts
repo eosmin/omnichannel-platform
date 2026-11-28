@@ -220,4 +220,48 @@ describe('Rollbacks that are safe to run twice', () => {
       await client.query('ROLLBACK')
     }
   })
+  // The rollback of the kinds of evidence of an invalidation: with no file of the new kinds the check goes back to the five kinds and the
+  // second run finds it done; with one, the first run FAILS and nothing changes (the files a receiver was owed are never deleted).
+  describe('20270216100000_fiscal_void_evidence_kinds.rollback.sql', () => {
+    const sql = body('20270216100000_fiscal_void_evidence_kinds.rollback.sql')
+    const checkKinds = async (): Promise<string> =>
+      (
+        await client.query<{ def: string }>(
+          `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'chk_media_fiscal_evidence'`
+        )
+      ).rows[0]?.def ?? ''
+    it('puts the check back to five kinds and runs a second time on the result', async () => {
+      await client.query('BEGIN')
+      try {
+        expect(await checkKinds()).toContain('void_dte_file')
+        await client.query(sql)
+        const after = await checkKinds()
+        expect(after).not.toContain('void_dte_file')
+        expect(after).not.toContain('void_representation')
+        expect(after).toContain('dte_file')
+        await client.query(sql)
+        expect(await checkKinds()).toBe(after)
+      } finally {
+        await client.query('ROLLBACK')
+      }
+    })
+
+    it('fails, and changes nothing, while a file of the new kinds exists', async () => {
+      await client.query('BEGIN')
+      try {
+        await client.query('SET LOCAL session_replication_role = replica')
+        await client.query(
+          `INSERT INTO media (id, store_id, purpose, fiscal_document_id, fiscal_evidence_kind, key, filename, content_type, file_size)
+           VALUES ('rb-m', 's', 'fiscal_evidence', 'rb-doc', 'void_representation', 'rb/void-key', 'f.pdf', 'application/pdf', 1)`
+        )
+        const before = await checkKinds()
+        await client.query('SAVEPOINT rollback_try')
+        await expect(client.query(sql)).rejects.toThrow(/chk_media_fiscal_evidence/)
+        await client.query('ROLLBACK TO SAVEPOINT rollback_try')
+        expect(await checkKinds()).toBe(before)
+      } finally {
+        await client.query('ROLLBACK')
+      }
+    })
+  })
 })

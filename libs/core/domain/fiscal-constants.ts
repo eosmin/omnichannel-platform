@@ -43,7 +43,11 @@ export enum FiscalEvidenceKind {
   RESPONSE = 'response',
   VOID_RESPONSE = 'void_response',
   DTE_FILE = 'dte_file',
-  REPRESENTATION = 'representation'
+  REPRESENTATION = 'representation',
+  // What the receiver is given when the document is voided: the event of the invalidation as the issuer signed it, with the seal of the
+  // authority, and its graphic representation. Made once the document is voided, from the sealed event
+  VOID_DTE_FILE = 'void_dte_file',
+  VOID_REPRESENTATION = 'void_representation'
 }
 
 // How the sale was paid, in core's words, for a provider whose document says it (the provider maps it to its own catalog). Core derives
@@ -462,7 +466,9 @@ export const FiscalEvidenceContentTypes: Readonly<Record<FiscalEvidenceKind, str
   [FiscalEvidenceKind.RESPONSE]: FiscalEvidenceContentType,
   [FiscalEvidenceKind.VOID_RESPONSE]: FiscalEvidenceContentType,
   [FiscalEvidenceKind.DTE_FILE]: FiscalEvidenceContentType,
-  [FiscalEvidenceKind.REPRESENTATION]: 'application/pdf'
+  [FiscalEvidenceKind.REPRESENTATION]: 'application/pdf',
+  [FiscalEvidenceKind.VOID_DTE_FILE]: FiscalEvidenceContentType,
+  [FiscalEvidenceKind.VOID_REPRESENTATION]: 'application/pdf'
 }
 
 // The reasons core itself gives for a rejection (a provider's own are codes of its own, kept as they come)
