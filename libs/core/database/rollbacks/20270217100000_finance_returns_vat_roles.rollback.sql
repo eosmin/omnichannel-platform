@@ -21,7 +21,11 @@ BEGIN
       CONTINUE;
     END IF;
     BEGIN
-      DELETE FROM account_role_mappings WHERE organization_id = rec.organization_id AND account_id = rec.id;
+      -- Only the five roles of this migration: another role that someone pointed at this account is not ours to take away (the account is
+      -- then kept by the foreign key and reported)
+      DELETE FROM account_role_mappings
+      WHERE organization_id = rec.organization_id AND account_id = rec.id
+        AND role IN ('vat_pending_document', 'accrued_commissions_undocumented', 'income_tax_prepayment', 'vat_card_advance', 'vat_non_recoverable');
       DELETE FROM ledger_accounts WHERE organization_id = rec.organization_id AND id = rec.id;
     EXCEPTION WHEN foreign_key_violation OR restrict_violation OR raise_exception THEN
       -- The block undoes both deletes: the account stays mapped. The reason is printed, so a guard that refused for another cause is seen

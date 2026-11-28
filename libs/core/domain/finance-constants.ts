@@ -242,8 +242,8 @@ export const RolesPinnedByHistory: readonly AccountRole[] = [
   AccountRole.ACCRUED_COMMISSIONS_UNDOCUMENTED,
   AccountRole.INCOME_TAX_PREPAYMENT,
   AccountRole.VAT_CARD_ADVANCE,
-  // The VAT report tells a return that came after the window by the account this role maps to: moving it with entries would make a past,
-  // already filed month change (code review of the PR)
+  // Fixed more strictly than the rest: the VAT report tells a return that came after the window by the account this role maps to, so the
+  // role stays on its account as soon as that account has ANY entry, even if its balance is zero (`mapRole`)
   AccountRole.VAT_NON_RECOVERABLE
 ]
 

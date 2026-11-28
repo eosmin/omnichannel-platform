@@ -231,4 +231,27 @@ describe('Migration of the roles of returns and VAT', () => {
       expect(await accountsOf('fr-e')).toEqual(after)
     })
   })
+
+  it('never takes away the mapping of another role that someone pointed at one of its accounts: the account stays and so does the mapping', async () => {
+    await inTransaction(async () => {
+      await chart(client, 'fr-f')
+      await client.query(migrationSql)
+      const row = await client.query<{ id: string }>(
+        `SELECT id FROM ledger_accounts WHERE organization_id = 'fr-f' AND code = '1405'`
+      )
+      await client.query(
+        `INSERT INTO account_role_mappings (organization_id, role, account_id) VALUES ('fr-f', 'rounding', $1)`,
+        [row.rows[0]?.id ?? '']
+      )
+      await client.query('SET LOCAL session_replication_role = origin')
+      await client.query(rollbackSql)
+      const mapped = await client.query<{ role: string }>(
+        `SELECT role FROM account_role_mappings WHERE organization_id = 'fr-f' AND account_id = $1 ORDER BY role`,
+        [row.rows[0]?.id ?? '']
+      )
+      // The rounding is still on it, and the role of the migration too: the account was kept as a whole
+      expect(mapped.rows.map(found => found.role)).toEqual(['income_tax_prepayment', 'rounding'])
+      expect(Object.keys(await accountsOf('fr-f'))).toEqual(['1405'])
+    })
+  })
 })
