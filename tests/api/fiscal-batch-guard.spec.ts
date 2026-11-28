@@ -189,17 +189,6 @@ describe.each([DatabaseRoles.APP, DatabaseRoles.WORKER])(
           await run('UPDATE fiscal_documents SET batch_id = NULL WHERE id = $1', [documentId])
         ).toEqual(refusedWith(/voided fiscal document does not change/))
       })
-
-      it('belongs only to a document made in a contingency', async () => {
-        const held = await lot()
-        const documentId = await document('queued', null)
-        expect(
-          await run('UPDATE fiscal_documents SET batch_id = $1 WHERE id = $2', [
-            held.batchId,
-            documentId
-          ])
-        ).toEqual(refusedWith(/fiscal_documents_batch_id_chk/))
-      })
     })
 
     describe('the lot', () => {

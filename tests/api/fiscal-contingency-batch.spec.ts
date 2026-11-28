@@ -464,6 +464,132 @@ describe('The contingency sent in lots (D16)', () => {
       expect((await row(documentIds[4] as string)).status).toBe(FiscalDocumentStatus.QUEUED)
       expect((await lotRow(third.id)).lastError).toBe('provider_answer_invalid')
     })
+
+    it('takes back a document stranded in flight when its lease is over, and does not finish the lot while a claim is fresh', async () => {
+      const third = (await lotsOf(contingencyId))[2]
+      if (third === undefined) throw new Error('no lot')
+      const stranded = documentIds[4] as string
+      await owner.fiscalDocument.update({
+        where: { id: stranded },
+        data: { status: FiscalDocumentStatus.SUBMITTED, claimToken: 'stranded-claim' }
+      })
+      control.consult = () => ({
+        state: FiscalBatchConsultState.DONE,
+        verdicts: [{ index: 0, outcome: FiscalSubmitOutcome.ACCEPTED, externalNumber: 'EXT-S' }]
+      })
+      // The claim is fresh: another step may be deciding it, so nothing is taken and the lot is not finished
+      await batches.process(ctx.orgA.id, third.id)
+      expect((await row(stranded)).status).toBe(FiscalDocumentStatus.SUBMITTED)
+      expect((await lotRow(third.id)).status).toBe(FiscalBatchStatus.RECEIVED)
+      // Alone it is never sent: the lot is asked instead
+      oneByOne.length = 0
+      await owner.$executeRaw`UPDATE fiscal_documents SET updated_at = now() - interval '1 hour' WHERE id = ${stranded}`
+      await documents.submit(ctx.orgA.id, stranded)
+      expect(oneByOne).toHaveLength(0)
+      // The lease is over: the verdict takes the document over and the lot is finished
+      await batches.process(ctx.orgA.id, third.id)
+      expect(await row(stranded)).toMatchObject({
+        status: FiscalDocumentStatus.ACCEPTED,
+        externalNumber: 'EXT-S'
+      })
+      expect((await lotRow(third.id)).status).toBe(FiscalBatchStatus.PROCESSED)
+    })
+  })
+
+  describe('a refused document, a stranded one and a lot that spends its questions', () => {
+    it('lets a document the authority refused in a finished lot be made again, and sends it alone then', async () => {
+      const made = await reportedWith(2)
+      const [lot] = await lotsOf(made.id)
+      if (lot === undefined) throw new Error('no lot')
+      control.send = { outcome: FiscalBatchSendOutcome.RECEIVED, batchCode: 'CODE-R' }
+      await batches.process(ctx.orgA.id, lot.id)
+      control.consult = () => ({
+        state: FiscalBatchConsultState.DONE,
+        verdicts: [
+          { index: 0, outcome: FiscalSubmitOutcome.ACCEPTED, externalNumber: 'EXT-R0' },
+          { index: 1, outcome: FiscalSubmitOutcome.REJECTED, reason: '802' }
+        ]
+      })
+      await batches.process(ctx.orgA.id, lot.id)
+      expect((await lotRow(lot.id)).status).toBe(FiscalBatchStatus.PROCESSED)
+      const refusedId = made.documentIds[1] as string
+      expect((await row(refusedId)).status).toBe(FiscalDocumentStatus.REJECTED)
+      const retried = await asAdminA().post(ApiRoutes.fiscal.documents.retry(refusedId)).send({})
+      expect(retried.status).toBe(OK)
+      // It leaves the contingency and keeps the lot it was sent in; it goes out as any other document
+      expect(await row(refusedId)).toMatchObject({
+        status: FiscalDocumentStatus.QUEUED,
+        contingencyId: null,
+        batchId: lot.id
+      })
+      oneByOne.length = 0
+      await documents.submit(ctx.orgA.id, refusedId)
+      expect(oneByOne).toHaveLength(1)
+    })
+
+    it('does not let a document refused in a lot that is not finished be made again', async () => {
+      const made = await reportedWith(2)
+      const [lot] = await lotsOf(made.id)
+      if (lot === undefined) throw new Error('no lot')
+      control.send = { outcome: FiscalBatchSendOutcome.RECEIVED, batchCode: 'CODE-N' }
+      await batches.process(ctx.orgA.id, lot.id)
+      // One refused and one with no verdict yet: the lot is not finished
+      control.consult = () => ({
+        state: FiscalBatchConsultState.DONE,
+        verdicts: [{ index: 1, outcome: FiscalSubmitOutcome.REJECTED, reason: '802' }]
+      })
+      await batches.process(ctx.orgA.id, lot.id)
+      expect((await lotRow(lot.id)).status).toBe(FiscalBatchStatus.RECEIVED)
+      const retried = await asAdminA()
+        .post(ApiRoutes.fiscal.documents.retry(made.documentIds[1] as string))
+        .send({})
+      expect(retried.status).toBe(409)
+      expect(
+        (retried.body as { error?: { metadata?: { reason?: string } } }).error?.metadata
+      ).toMatchObject({
+        reason: 'batch_not_finished'
+      })
+      expect((await row(made.documentIds[1] as string)).contingencyId).not.toBeNull()
+    })
+
+    it('does not count a question the authority did not answer, and spends the questions it answers; at the last the lot says so and the nightly check starts again', async () => {
+      const made = await reportedWith(1)
+      const [lot] = await lotsOf(made.id)
+      if (lot === undefined) throw new Error('no lot')
+      control.send = { outcome: FiscalBatchSendOutcome.RECEIVED, batchCode: 'CODE-C' }
+      await batches.process(ctx.orgA.id, lot.id)
+      control.consult = () => ({ state: FiscalBatchConsultState.UNAVAILABLE })
+      await expect(batches.process(ctx.orgA.id, lot.id)).rejects.toThrow(/did not answer/)
+      expect((await lotRow(lot.id)).consultAttempts).toBe(0)
+      let asked = 0
+      control.consult = () => {
+        asked += 1
+        return { state: FiscalBatchConsultState.PENDING }
+      }
+      await batches.process(ctx.orgA.id, lot.id)
+      // A good answer after a bad one: the lot is healthy again, and the question counts
+      expect(await lotRow(lot.id)).toMatchObject({ consultAttempts: 1, lastError: null })
+      await owner.fiscalContingencyBatch.update({
+        where: { id: lot.id },
+        data: { consultAttempts: FiscalBatchLimits.CONSULT_MAX_ATTEMPTS }
+      })
+      asked = 0
+      await batches.process(ctx.orgA.id, lot.id)
+      expect(asked).toBe(0)
+      expect((await lotRow(lot.id)).lastError).toBe('no_verdict')
+      // The nightly check, through a document of the lot, gives it the questions again
+      const before = stepJobs().length
+      // A lot asked about a moment ago has its next question waiting: a stalled document does not ask out of turn
+      await contingencies.askBatch(ctx.orgA.id, lot.id)
+      expect(stepJobs()).toHaveLength(before)
+      await owner.fiscalContingencyBatch.update({
+        where: { id: lot.id },
+        data: { consultedAt: new Date(Date.now() - 3_600_000) }
+      })
+      await contingencies.askBatch(ctx.orgA.id, lot.id)
+      expect((await lotRow(lot.id)).consultAttempts).toBe(0)
+      expect(stepJobs()).toHaveLength(before + 1)
+    })
   })
 
   describe('a contingency whose window to send is over, and one that needs more lots than the authority takes', () => {

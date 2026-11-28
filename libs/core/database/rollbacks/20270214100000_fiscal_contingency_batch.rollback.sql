@@ -1,7 +1,7 @@
 -- Rolls back 20270214100000_fiscal_contingency_batch: drops the lots of a contingency and the column that points at them, and gives the guard the form of 20270213100000.
 -- WHAT IS LOST: the record of every lot sent since the migration (its code, its attempts, what the authority answered). The documents stay with
--- the verdict they already have (accepted or refused); one still held in a lot goes back to being held by its contingency, which is released the way it
--- was before the migration (one job for each document). The authority keeps the lots and their codes. Safe to run twice.
+-- the verdict they already have (accepted or refused); one still held in a lot goes back to being held by its contingency, and NOTHING queues it: after the rollback an operator
+-- asks the release again for each reported contingency (the daily check of stalled documents lists them) inside the window of 72 hours. The authority keeps the lots and their codes. Safe to run twice.
 -- ORDER: roll the code back with this script or after it (the code reads the table and the column).
 BEGIN;
 CREATE OR REPLACE FUNCTION fiscal_document_guard() RETURNS trigger
@@ -86,7 +86,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-ALTER TABLE fiscal_documents DROP CONSTRAINT IF EXISTS fiscal_documents_batch_id_chk;
 ALTER TABLE fiscal_documents DROP CONSTRAINT IF EXISTS fiscal_documents_batch_id_fkey;
 DROP INDEX IF EXISTS fiscal_documents_batch_id_idx;
 ALTER TABLE fiscal_documents DROP COLUMN IF EXISTS batch_id;

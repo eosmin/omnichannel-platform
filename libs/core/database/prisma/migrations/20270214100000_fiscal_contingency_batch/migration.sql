@@ -4,7 +4,8 @@
 --  * `fiscal_contingency_batches`: one row per lot of one contingency, tenant-scoped (organization) and under row-level security, never deleted,
 --    only moving forward (pending, received, processed); the identifier of the send (`send_id`) and the code the authority gave never change.
 --  * `fiscal_documents.batch_id`: the lot a document of a contingency was put in, NULL for every document that exists. It is written while the
---    document is held (QUEUED) and is part of what no longer changes once the document is accepted or voided (the guard below).
+--    document is held (QUEUED) and is part of what no longer changes once the document is accepted or voided (the guard below). A refused
+--    document that is made again leaves its contingency but keeps its lot (the lot is the record of what was sent), so no check ties the two.
 -- Rollback: rollbacks/20270214100000_fiscal_contingency_batch.rollback.sql
 
 CREATE TABLE "fiscal_contingency_batches" (
@@ -87,8 +88,6 @@ SELECT rls_apply_policy('fiscal_contingency_batches', 'organization');
 ALTER TABLE "fiscal_documents" ADD COLUMN "batch_id" TEXT;
 ALTER TABLE "fiscal_documents" ADD CONSTRAINT "fiscal_documents_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "fiscal_contingency_batches"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 CREATE INDEX "fiscal_documents_batch_id_idx" ON "fiscal_documents"("batch_id");
--- Only a document made in a contingency is in a lot
-ALTER TABLE "fiscal_documents" ADD CONSTRAINT "fiscal_documents_batch_id_chk" CHECK ("batch_id" IS NULL OR "contingency_id" IS NOT NULL);
 
 -- The guard of a decided document: the whole function as it stood in 20270213100000, with ONE change: `batch_id` joins the list of what a
 -- voided row may not change. The accepted branch and the re-seal door compare the whole row (minus an explicit list that does not have it), so

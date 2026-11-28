@@ -201,7 +201,13 @@ export class FiscalBatchService {
   // took the event (the seal of the event, not the release of the documents): after it nothing is sent and the lot stays as it is for a person.
   private async send(
     organizationId: string,
-    lot: { id: string; sendId: string; sendAttempts: number; consultAttempts: number },
+    lot: {
+      id: string
+      contingencyId: string
+      sendId: string
+      sendAttempts: number
+      consultAttempts: number
+    },
     windowEndsAt: Date | null,
     submitBatch: SubmitBatch,
     request: FiscalBatchRequest,
@@ -281,8 +287,8 @@ export class FiscalBatchService {
       actor: { system: true },
       organizationId,
       resourceType: FiscalResourceTypes.CONTINGENCY,
-      resourceId: lot.id,
-      metadata: { documents }
+      resourceId: lot.contingencyId,
+      metadata: { batchId: lot.id, documents }
     })
     // The authority answers a lot some minutes after it took it: asked soon, and again until every document has its verdict
     await this.contingencies.enqueueBatchStep(
@@ -296,7 +302,7 @@ export class FiscalBatchService {
 
   private async consult(
     organizationId: string,
-    lot: { id: string; sendAttempts: number; consultAttempts: number },
+    lot: { id: string; contingencyId: string; sendAttempts: number; consultAttempts: number },
     consultBatch: ConsultBatch,
     batchCode: string,
     request: FiscalBatchRequest,
@@ -304,23 +310,18 @@ export class FiscalBatchService {
     held: readonly { id: string; status: string }[],
     built: readonly BuiltDocument[]
   ): Promise<FiscalBatchStepResult> {
-    // The consultations of a lot that never ends are bounded: after the last one the lot says so and stops asking by itself (the nightly check
-    // asks through its documents)
+    // The consultations of a lot that never ends are bounded: after the last one the lot says so and stops asking by itself; the nightly check
+    // (through the documents of the lot, `askBatch`) starts the count again, so a lot is asked about for as long as it is unfinished
     if (lot.consultAttempts >= FiscalBatchLimits.CONSULT_MAX_ATTEMPTS) {
       await this.fail(organizationId, lot.id, FiscalBatchFailures.NO_VERDICT)
       return FiscalBatchStepResult.NOTHING
     }
     const context: ProviderContext = {
       ...parts,
-      idempotencyKey: `${organizationId}:batch:${lot.id}:consult`,
+      // One key for each question: a provider that answers a repeated key with the first answer would never see the lot finish
+      idempotencyKey: `${organizationId}:batch:${lot.id}:consult:${lot.consultAttempts + 1}`,
       attempt: lot.consultAttempts + 1
     }
-    await this.unit(organizationId, () =>
-      this.prisma.client.fiscalContingencyBatch.updateMany({
-        where: { id: lot.id, organizationId, status: FiscalBatchStatus.RECEIVED },
-        data: { consultAttempts: { increment: 1 }, consultedAt: new Date() }
-      })
-    )
     let result
     try {
       result = await withTimeout(
@@ -338,6 +339,14 @@ export class FiscalBatchService {
       await this.fail(organizationId, lot.id, FiscalBatchFailures.PROVIDER_UNAVAILABLE)
       throw new Error('the fiscal provider did not answer about a lot')
     }
+    // Only an answer counts as a question asked (an authority that does not answer is retried by the queue and spends no question), and it
+    // clears the error of an earlier attempt: the lot is healthy now
+    await this.unit(organizationId, () =>
+      this.prisma.client.fiscalContingencyBatch.updateMany({
+        where: { id: lot.id, organizationId, status: FiscalBatchStatus.RECEIVED },
+        data: { consultAttempts: { increment: 1 }, consultedAt: new Date(), lastError: null }
+      })
+    )
     const next = lot.sendAttempts + lot.consultAttempts + 1
     if (result.state === FiscalBatchConsultState.PENDING) {
       await this.contingencies.enqueueBatchStep(
@@ -357,13 +366,23 @@ export class FiscalBatchService {
       const doc = held[verdict.index]
       const document = built[verdict.index]
       if (doc === undefined || document === undefined) continue
-      // A document that is not held any more (decided by an earlier step that did not finish) is skipped
-      if ((doc.status as FiscalDocumentStatus) !== FiscalDocumentStatus.QUEUED) continue
+      // A document that is decided already (by an earlier step that did not finish) is skipped; one held, or in flight with a lease that is
+      // over, takes its verdict (the claim is compared when it is applied)
+      if (
+        (doc.status as FiscalDocumentStatus) !== FiscalDocumentStatus.QUEUED &&
+        (doc.status as FiscalDocumentStatus) !== FiscalDocumentStatus.SUBMITTED
+      ) {
+        continue
+      }
       await this.documents.settleBatchDocument(organizationId, doc.id, lot.id, document, verdict)
     }
     const left = await this.unit(organizationId, () =>
       this.prisma.client.fiscalDocument.count({
-        where: { organizationId, batchId: lot.id, status: FiscalDocumentStatus.QUEUED }
+        where: {
+          organizationId,
+          batchId: lot.id,
+          status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.SUBMITTED] }
+        }
       })
     )
     if (left > 0) {
@@ -389,8 +408,8 @@ export class FiscalBatchService {
         actor: { system: true },
         organizationId,
         resourceType: FiscalResourceTypes.CONTINGENCY,
-        resourceId: lot.id,
-        metadata: { documents: held.length, verdicts: verdicts.length }
+        resourceId: lot.contingencyId,
+        metadata: { batchId: lot.id, documents: held.length, verdicts: verdicts.length }
       })
     }
     return FiscalBatchStepResult.PROCESSED

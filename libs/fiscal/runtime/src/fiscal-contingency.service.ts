@@ -17,6 +17,7 @@ import {
 } from '@platform/core/database'
 import {
   FiscalAuthorityProbeOutcome,
+  FiscalBatchLimits,
   FiscalBatchStatus,
   FiscalContingencyAlertKind,
   FiscalContingencyAttachResult,
@@ -1533,11 +1534,37 @@ export class FiscalContingencyService {
     const lot = await this.unit(organizationId, () =>
       this.prisma.client.fiscalContingencyBatch.findFirst({
         where: { id: batchId, organizationId },
-        select: { status: true, sendAttempts: true, consultAttempts: true }
+        select: {
+          status: true,
+          sendAttempts: true,
+          consultAttempts: true,
+          sentAt: true,
+          consultedAt: true
+        }
       })
     )
     if (lot === null || (lot.status as FiscalBatchStatus) === FiscalBatchStatus.PROCESSED) return
-    await this.enqueueBatchStep(organizationId, batchId, lot.sendAttempts + lot.consultAttempts)
+    // A lot that is being asked about at its own pace has its next question waiting: a document found stalled does not ask out of turn
+    const last = lot.consultedAt ?? lot.sentAt
+    if (
+      (lot.status as FiscalBatchStatus) === FiscalBatchStatus.RECEIVED &&
+      last !== null &&
+      Date.now() - last.getTime() < 2 * FiscalBatchLimits.CONSULT_DELAY_MS
+    ) {
+      return
+    }
+    // A lot that spent every question it may ask starts again: the nightly check is what keeps an unfinished lot from being left for good
+    let consultAttempts = lot.consultAttempts
+    if (consultAttempts >= FiscalBatchLimits.CONSULT_MAX_ATTEMPTS) {
+      await this.unit(organizationId, () =>
+        this.prisma.client.fiscalContingencyBatch.updateMany({
+          where: { id: batchId, organizationId, status: { not: FiscalBatchStatus.PROCESSED } },
+          data: { consultAttempts: 0 }
+        })
+      )
+      consultAttempts = 0
+    }
+    await this.enqueueBatchStep(organizationId, batchId, lot.sendAttempts + consultAttempts)
   }
 
   private async enqueueSubmissions(

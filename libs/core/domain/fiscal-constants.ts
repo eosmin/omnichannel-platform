@@ -521,6 +521,8 @@ export const FiscalRejectionReasons = {
 
 // Why a person's action on a document is refused with a conflict (`details.reason`), for the interface to tell them apart
 export const FiscalConflictReasons = {
+  // A document refused inside a lot of a contingency is made again only once its lot is finished (the lot is asked about with the documents it was sent with)
+  BATCH_NOT_FINISHED: 'batch_not_finished',
   // An annex of the organization is being made: one at a time (the file is made in memory and its construction is not short)
   ANNEX_IN_PROGRESS: 'annex_in_progress',
   // A month whose annex cannot be made without guessing (a document lacks a seal or a figure the file needs): the file is refused, the
