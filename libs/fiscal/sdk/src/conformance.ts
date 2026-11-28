@@ -648,42 +648,47 @@ async function sendInLots(
       }))
     }
     const context = contextOf(`${stepId}:lot${lot}`)
-    const sent = await submitBatch(request, context)
-    if (sent.outcome === FiscalBatchSendOutcome.REJECTED) {
-      for (const item of chunk) {
-        verdicts.set(item.id, { outcome: FiscalSubmitOutcome.REJECTED, reason: sent.reason })
-      }
-      continue
-    }
-    if (sent.outcome !== FiscalBatchSendOutcome.RECEIVED) continue
-    for (let poll = 0; poll < LOT_MAX_POLLS; poll += 1) {
-      const answer = await consultBatch(sent.batchCode, request, context)
-      if (answer.state === FiscalBatchConsultState.DONE) {
-        for (const verdict of answer.verdicts) {
-          const item = chunk[verdict.index]
-          if (item === undefined) continue
-          // The verdict without its place in the lot: the id of the document says whose it is
-          verdicts.set(
-            item.id,
-            verdict.outcome === FiscalSubmitOutcome.ACCEPTED
-              ? {
-                  outcome: verdict.outcome,
-                  externalNumber: verdict.externalNumber,
-                  ...(verdict.providerData === undefined
-                    ? {}
-                    : { providerData: verdict.providerData }),
-                  ...(verdict.response === undefined ? {} : { response: verdict.response })
-                }
-              : {
-                  outcome: verdict.outcome,
-                  reason: verdict.reason,
-                  ...(verdict.response === undefined ? {} : { response: verdict.response })
-                }
-          )
+    // A provider that throws on a lot leaves that lot's documents without a verdict (the caller counts them as unanswered) and the run goes on
+    try {
+      const sent = await submitBatch(request, context)
+      if (sent.outcome === FiscalBatchSendOutcome.REJECTED) {
+        for (const item of chunk) {
+          verdicts.set(item.id, { outcome: FiscalSubmitOutcome.REJECTED, reason: sent.reason })
         }
-        break
+        continue
       }
-      await wait(LOT_POLL_MS)
+      if (sent.outcome !== FiscalBatchSendOutcome.RECEIVED) continue
+      for (let poll = 0; poll < LOT_MAX_POLLS; poll += 1) {
+        const answer = await consultBatch(sent.batchCode, request, context)
+        if (answer.state === FiscalBatchConsultState.DONE) {
+          for (const verdict of answer.verdicts) {
+            const item = chunk[verdict.index]
+            if (item === undefined) continue
+            // The verdict without its place in the lot: the id of the document says whose it is
+            verdicts.set(
+              item.id,
+              verdict.outcome === FiscalSubmitOutcome.ACCEPTED
+                ? {
+                    outcome: verdict.outcome,
+                    externalNumber: verdict.externalNumber,
+                    ...(verdict.providerData === undefined
+                      ? {}
+                      : { providerData: verdict.providerData }),
+                    ...(verdict.response === undefined ? {} : { response: verdict.response })
+                  }
+                : {
+                    outcome: verdict.outcome,
+                    reason: verdict.reason,
+                    ...(verdict.response === undefined ? {} : { response: verdict.response })
+                  }
+            )
+          }
+          break
+        }
+        await wait(LOT_POLL_MS)
+      }
+    } catch {
+      // No verdict for the documents of this lot: the next lot is sent all the same
     }
   }
   return verdicts
