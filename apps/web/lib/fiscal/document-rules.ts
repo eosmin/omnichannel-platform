@@ -105,8 +105,9 @@ export const conflictReasonOf = (value: unknown): string | null =>
 
 // The files of evidence a document has, by its state (the api makes them when the document is accepted or voided: what was built and the
 // authority's answer to the acceptance from then on, its answer to the invalidation once it is voided). The two files of the receiver are
-// made while the document is accepted and never after, so a voided document has them only when `existing` says so (the api lists them);
-// without that list a voided document offers neither, so no button leads to a file that was never made.
+// made while the document is accepted and never after, and the two of the invalidation only when the event of it was kept (a void the
+// authority already held has none), so a voided document has them only when `existing` says so (the api lists them); without that list a
+// voided document offers none, so no button leads to a file that was never made.
 export const fiscalEvidenceKindsOf = (
   document: Pick<FiscalDocumentView, 'status'>,
   existing: readonly FiscalEvidenceKind[] = []
@@ -116,9 +117,12 @@ export const fiscalEvidenceKindsOf = (
       FiscalEvidenceKind.DOCUMENT,
       FiscalEvidenceKind.RESPONSE,
       FiscalEvidenceKind.VOID_RESPONSE,
-      ...[FiscalEvidenceKind.DTE_FILE, FiscalEvidenceKind.REPRESENTATION].filter(kind =>
-        existing.includes(kind)
-      )
+      ...[
+        FiscalEvidenceKind.DTE_FILE,
+        FiscalEvidenceKind.REPRESENTATION,
+        FiscalEvidenceKind.VOID_DTE_FILE,
+        FiscalEvidenceKind.VOID_REPRESENTATION
+      ].filter(kind => existing.includes(kind))
     ]
   }
   return document.status === FiscalDocumentStatus.ACCEPTED
