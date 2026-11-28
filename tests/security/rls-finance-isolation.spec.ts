@@ -21,7 +21,7 @@ import {
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 
 // Row-Level Security, phase 4: the books of an ORGANIZATION (finance and fiscal; TDD_16 section 1). Three layers:
-//  1. the catalog: each of the 30 tables has the policy that rls_apply_policy gives an organization table (predicate on
+//  1. the catalog: each of the 32 tables has the policy that rls_apply_policy gives an organization table (predicate on
 //     organization_id only, never on store_id; the owner policy that lets the SECURITY DEFINER triggers through);
 //  2. the behavior, on a copy of the rows of the real tables that gets the very policy and is enforced alone (the real tables
 //     are not enforced here: this file runs beside the other suites on one database);
@@ -60,7 +60,9 @@ const PHASE_4_TABLES = [
   'fiscal_documents',
   'fiscal_contingencies',
   'fiscal_contingency_batches',
-  'fiscal_deliveries'
+  'fiscal_deliveries',
+  'fiscal_annex_exports',
+  'fiscal_annex_export_items'
 ] as const
 
 // The tables the fixtures fill for both organizations: the behavior cases run on them
@@ -238,7 +240,7 @@ describe('row-level security, the books of an organization (phase 4)', () => {
   })
 
   describe('the catalog', () => {
-    it('gives each of the 30 tables the organization policy and the policy of its owner, and nothing on the store', async () => {
+    it('gives each of the 32 tables the organization policy and the policy of its owner, and nothing on the store', async () => {
       const policies = await db.query<{
         tablename: string
         policyname: string

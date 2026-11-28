@@ -14,8 +14,13 @@ import type { FiscalProviderRegistry } from './fiscal-provider.registry'
 
 // The decorator of the queue comes from a package that is ESM only; the spec injects the queue by hand
 jest.mock('@nestjs/bullmq', () => ({ InjectQueue: () => () => undefined }))
+const EVENT = { identificacion: { codigoGeneracion: 'EVT' } }
 jest.mock('./sealed-open', () => ({
-  openSealed: jest.fn(() => ({ identificacion: { codigoGeneracion: 'ABC' } }))
+  openSealed: jest.fn((_cipher: unknown, _logger: unknown, _sealed: unknown, what: string) =>
+    what === 'void-event'
+      ? { event: EVENT, signature: 'JWS' }
+      : { identificacion: { codigoGeneracion: 'ABC' } }
+  )
 }))
 
 const representation: FiscalRepresentation = {
@@ -47,19 +52,22 @@ const row = {
   voidReason: null,
   voidedAt: null,
   voidResponse: null,
+  voidEventEncrypted: null as Uint8Array | null,
   issuedAt: new Date('2026-11-17T03:30:15.000Z'),
   createdAt: new Date('2026-11-17T03:30:00.000Z')
 }
 
 function build(
   provider: Partial<FiscalDocumentProvider> | undefined,
-  over: { status?: FiscalDocumentStatus; existing?: unknown } = {}
+  over: { status?: FiscalDocumentStatus; existing?: unknown; row?: Record<string, unknown> } = {}
 ) {
   const put = jest.fn().mockResolvedValue(undefined)
   const create = jest.fn().mockResolvedValue({})
   const client = {
     fiscalDocument: {
-      findFirst: jest.fn().mockResolvedValue({ ...row, status: over.status ?? row.status })
+      findFirst: jest
+        .fn()
+        .mockResolvedValue({ ...row, status: over.status ?? row.status, ...over.row })
     },
     media: { findFirst: jest.fn().mockResolvedValue(over.existing ?? null), create }
   }
@@ -182,5 +190,146 @@ describe('the files the receiver is given', () => {
     expect(put).not.toHaveBeenCalled()
     // The file of the document is not the picture: it is still made
     expect(await service.keep('org-1', 'doc-1', FiscalEvidenceKind.DTE_FILE)).not.toBeNull()
+  })
+})
+
+const voidRepresentation: FiscalRepresentation = {
+  ...representation,
+  title: 'Evento de invalidación',
+  name: 'EVT',
+  qrUrl: null,
+  file: {
+    filename: 'EVT.json',
+    content: { ...EVENT, firmaElectronica: 'JWS', selloRecibido: 'S2' }
+  }
+}
+const VOIDED = {
+  status: FiscalDocumentStatus.VOIDED,
+  row: {
+    voidEventEncrypted: new Uint8Array([9]),
+    voidedAt: new Date('2026-11-18T15:00:00.000Z'),
+    voidResponse: { selloRecibido: 'S2' }
+  }
+}
+
+describe('the files the receiver is owed for an invalidation', () => {
+  const VOID_KINDS = [FiscalEvidenceKind.VOID_DTE_FILE, FiscalEvidenceKind.VOID_REPRESENTATION]
+
+  it('hands the provider the event as it was sealed and the answer of the authority, and keeps its file', async () => {
+    const representVoid = jest.fn(() => voidRepresentation)
+    const { service, put, create } = build({ representVoid }, VOIDED)
+    expect(await service.keep('org-1', 'doc-1', FiscalEvidenceKind.VOID_DTE_FILE)).not.toBeNull()
+    expect(representVoid).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voidEvent: { content: EVENT, signature: 'JWS' },
+        voidResponse: { selloRecibido: 'S2' }
+      })
+    )
+    const [key, bytes, type] = put.mock.calls[0] as [string, Buffer, string]
+    expect(key.endsWith('/EVT.json')).toBe(true)
+    expect(type).toBe('application/json')
+    expect(JSON.parse(bytes.toString('utf8'))).toEqual(voidRepresentation.file?.content)
+    expect((create.mock.calls[0] as [{ data: unknown }])[0].data).toMatchObject({
+      filename: 'EVT.json',
+      fiscalEvidenceKind: FiscalEvidenceKind.VOID_DTE_FILE
+    })
+  })
+
+  it('does not need the built document: a payload that cannot be opened never keeps the receiver from the files of the invalidation', async () => {
+    const { service, put } = build(
+      { representVoid: () => voidRepresentation },
+      { ...VOIDED, row: { ...VOIDED.row, builtPayloadEncrypted: null } }
+    )
+    expect(await service.keep('org-1', 'doc-1', FiscalEvidenceKind.VOID_DTE_FILE)).not.toBeNull()
+    expect(put).toHaveBeenCalled()
+  })
+
+  it('keeps the picture of the event as a PDF', async () => {
+    const { service, put, create } = build({ representVoid: () => voidRepresentation }, VOIDED)
+    expect(
+      await service.keep('org-1', 'doc-1', FiscalEvidenceKind.VOID_REPRESENTATION)
+    ).not.toBeNull()
+    const [, bytes, type] = put.mock.calls[0] as [string, Buffer, string]
+    expect(type).toBe('application/pdf')
+    expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+    expect((create.mock.calls[0] as [{ data: unknown }])[0].data).toMatchObject({
+      filename: 'EVT.pdf',
+      contentType: 'application/pdf'
+    })
+  })
+
+  it('exists only once the document is voided', async () => {
+    for (const status of [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.REJECTED]) {
+      const { service, put } = build(
+        { representVoid: () => voidRepresentation },
+        { ...VOIDED, status }
+      )
+      for (const kind of VOID_KINDS) expect(await service.keep('org-1', 'doc-1', kind)).toBeNull()
+      expect(put).not.toHaveBeenCalled()
+    }
+  })
+
+  it('makes nothing when the document holds no event of ours: the file is never invented from the answer', async () => {
+    const representVoid = jest.fn(() => voidRepresentation)
+    const { service, put } = build(
+      { representVoid },
+      { ...VOIDED, row: { ...VOIDED.row, voidEventEncrypted: null } }
+    )
+    for (const kind of VOID_KINDS) expect(await service.keep('org-1', 'doc-1', kind)).toBeNull()
+    expect(representVoid).not.toHaveBeenCalled()
+    expect(put).not.toHaveBeenCalled()
+  })
+
+  it('makes nothing from a provider without them, or when it cannot make a complete one', async () => {
+    for (const provider of [{}, { representVoid: () => null }]) {
+      const { service, put } = build(provider, VOIDED)
+      for (const kind of VOID_KINDS) expect(await service.keep('org-1', 'doc-1', kind)).toBeNull()
+      expect(put).not.toHaveBeenCalled()
+    }
+  })
+
+  it('has no file when the provider keeps none (the picture can still be drawn)', async () => {
+    const { service } = build(
+      { representVoid: () => ({ ...voidRepresentation, file: null }) },
+      VOIDED
+    )
+    expect(await service.keep('org-1', 'doc-1', FiscalEvidenceKind.VOID_DTE_FILE)).toBeNull()
+    expect(
+      await service.keep('org-1', 'doc-1', FiscalEvidenceKind.VOID_REPRESENTATION)
+    ).not.toBeNull()
+  })
+
+  it('never lets a fault of the provider reach the caller, and never logs the event', async () => {
+    const { service, put, logger } = build(
+      {
+        representVoid: () => {
+          throw new Error('boom JWS')
+        }
+      },
+      VOIDED
+    )
+    expect(await service.keep('org-1', 'doc-1', FiscalEvidenceKind.VOID_DTE_FILE)).toBeNull()
+    expect(put).not.toHaveBeenCalled()
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('JWS')
+  })
+
+  it('tells the person, with a reason, that the picture of the event is too large to be drawn', async () => {
+    const huge = {
+      ...voidRepresentation,
+      footnotes: [{ label: 'x', value: 'x'.repeat(FiscalLimits.REPRESENTATION_MAX_TEXT_CHARS + 1) }]
+    }
+    const { service } = build({ representVoid: () => huge }, VOIDED)
+    await expect(
+      service.keep('org-1', 'doc-1', FiscalEvidenceKind.VOID_REPRESENTATION)
+    ).rejects.toMatchObject({
+      metadata: { reason: FiscalConflictReasons.REPRESENTATION_TOO_LARGE }
+    })
+  })
+
+  it('is part of what is kept when the document is decided, and a fault of one never stops the others', async () => {
+    const { service, put } = build({ representVoid: () => voidRepresentation }, VOIDED)
+    await service.keepAll('org-1', 'doc-1')
+    const names = put.mock.calls.map(call => (call as [string])[0].split('/').pop())
+    expect(names).toEqual(expect.arrayContaining(['EVT.json', 'EVT.pdf']))
   })
 })

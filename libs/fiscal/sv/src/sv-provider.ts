@@ -23,6 +23,7 @@ import type {
   IssuerCheck,
   ProviderContext,
   StoredFiscalDocument,
+  StoredVoidedDocument,
   SubmitResult,
   VoidConsultResult,
   VoidResult
@@ -51,7 +52,7 @@ import type { SvFetch } from './sv-http'
 import { voidDeadlineOf } from './sv-invalidation'
 import { issuerProblems, receiverProblems } from './sv-parties'
 import { purchaseDocumentProblems } from './sv-purchase-document'
-import { representDocument } from './sv-representation'
+import { representDocument, representVoid } from './sv-representation'
 import type { SvSigner } from './sv-signer'
 import { isPlausiblePartyTaxId } from './sv-tax-id'
 import {
@@ -295,6 +296,10 @@ export class SvProvider implements FiscalDocumentProvider {
 
   represent(doc: StoredFiscalDocument): FiscalRepresentation | null {
     return representDocument(doc)
+  }
+
+  representVoid(doc: StoredVoidedDocument): FiscalRepresentation | null {
+    return representVoid(doc)
   }
 
   voidDeadline(doc: StoredFiscalDocument): string | null {

@@ -762,6 +762,29 @@ describe('The books of an organization', () => {
       }
     })
 
+    it('fixes the role of the non-recoverable VAT to its account by any entry, even when a reclassification leaves it at zero', async () => {
+      const own = accounts['6113'] ?? ''
+      const other = accounts['6112'] ?? ''
+      const put = (accountId: string) =>
+        asAdminA()
+          .put(ApiRoutes.finance.accountRoles.byRole(AccountRole.VAT_NON_RECOVERABLE))
+          .send({ accountId })
+      // With no entry on the account the role moves, and back
+      expect((await put(other)).status).toBe(OK)
+      expect((await put(own)).status).toBe(OK)
+      // An entry and the entry that empties the account: the balance is zero, the account is still the mark of the late returns
+      await postEntry(entryBody('6113', CASH, 100))
+      await postEntry(entryBody(CASH, '6113', 100))
+      const refused = await put(other)
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorOf(refused).metadata).toMatchObject({
+        conflict: FinanceConflicts.ROLE_HAS_HISTORY,
+        role: AccountRole.VAT_NON_RECOVERABLE,
+        accountId: own
+      })
+      expect((await put(own)).status).toBe(OK)
+    })
+
     it('moves a role that is free of history while its account has entries (HC-119)', async () => {
       await postEntry(entryBody(RENT, CASH, 10))
       const rounding = accounts['6111'] ?? ''

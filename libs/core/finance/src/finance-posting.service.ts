@@ -72,6 +72,7 @@ import {
   openReceivableCents,
   refundLines,
   restockCost,
+  returnKeepsVatRight,
   returnLines,
   type ReturnReversal,
   type ReturnSettlement,
@@ -1200,6 +1201,10 @@ export class FinancePostingService {
       }
     }
     const accounts = await this.accountsOf(tx, input.organizationId)
+    // Each return is judged on its own day against the delivery of the order, both in the time zone of the store: the units that come
+    // back late in a second return lose the right even if the first one kept it
+    const deliveredDay =
+      order.deliveredAt === null ? null : dayInZone(order.deliveredAt, order.store.timezone)
     return {
       kind: 'entry',
       sourceDay: facts.sourceDay,
@@ -1214,6 +1219,7 @@ export class FinancePostingService {
         settlement,
         restockCostCents: cost.costCents,
         costAgainst: recognized ? ReturnCostAgainst.COST_OF_GOODS_SOLD : ReturnCostAgainst.TRANSIT,
+        vatRecoverable: returnKeepsVatRight(deliveredDay, facts.sourceDay),
         storeId: order.storeId
       })
     }

@@ -4,11 +4,13 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
+import { Permissions } from '@platform/core/auth'
 import { type PrismaTransaction, PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   EntryOrigin,
   FinanceSourceType,
+  FiscalAnnexLocks,
   InventoryMovementType,
   InventoryReferenceType,
   JournalEntryType,
@@ -46,6 +48,7 @@ import { financeRefusal, LedgerService } from '@platform/core/finance-ledger'
 import { InventoryService } from '@platform/core/inventory'
 import { FiscalPurchaseDocumentService } from '@platform/fiscal/runtime'
 
+import { storesOf } from '../counts/counts.support'
 import { lockScope } from '../finance/finance.support'
 import type { Actor } from '../tenancy'
 
@@ -400,6 +403,7 @@ export class PurchaseReceivingService {
     body: CompleteReceiptDocumentBody,
     actor: Actor
   ): Promise<OrderView> {
+    let exportedMonths: string[] = []
     const previous = await this.prisma.transaction(async tx => {
       await lockScope(tx, `${organizationId}:purchase:${orderId}`)
       const receipt = await tx.purchaseReceipt.findFirst({
@@ -435,6 +439,34 @@ export class PurchaseReceivingService {
         throw resourceConflict('a line of the receipt is of a store the caller does not see', {
           conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
         })
+      }
+      // What an exported annex held is not rewritten quietly (D4b-2). Only a document that already exists can have been declared: writing the
+      // first document of a receipt (or the first mark) adds to what an export held, and the next export says so (`changed_since_export`).
+      // The check takes the lock that an export holds from its read to its constancia, so an export cannot be written between this check and
+      // the change. A rectification is for who holds the fiscal permission in every store
+      if (receipt.document !== null) {
+        await lockScope(tx, FiscalAnnexLocks.constancy(organizationId))
+        const held = await tx.fiscalAnnexExportItem.findMany({
+          where: { organizationId, receiptId: receipt.id },
+          select: { export: { select: { year: true, month: true } } }
+        })
+        exportedMonths = [
+          ...new Set(
+            held.map(item => `${item.export.year}-${String(item.export.month).padStart(2, '0')}`)
+          )
+        ].sort()
+      }
+      if (exportedMonths.length > 0) {
+        if (body.rectification === undefined) {
+          throw resourceConflict(
+            'the document of a receipt that an exported annex held is not changed without a rectification',
+            {
+              conflict: PurchaseConflicts.DOCUMENT_EXPORTED,
+              months: exportedMonths
+            }
+          )
+        }
+        await this.assertRectifier(tx, organizationId, actor)
       }
       if ('fiscalDocument' in body) {
         await this.checkDocument(
@@ -475,8 +507,11 @@ export class PurchaseReceivingService {
       // What the row said before: the audit keeps it, so a document that was declared and then changed leaves a trace
       return receipt.document
     })
+    const rectified = exportedMonths.length > 0 && body.rectification !== undefined
     this.audit.log({
-      action: AuditAction.PURCHASE_RECEIPT_DOCUMENT_COMPLETED,
+      action: rectified
+        ? AuditAction.PURCHASE_RECEIPT_DOCUMENT_RECTIFIED
+        : AuditAction.PURCHASE_RECEIPT_DOCUMENT_COMPLETED,
       actor: { userId: actor.userId },
       organizationId,
       storeId: actor.storeId,
@@ -484,6 +519,9 @@ export class PurchaseReceivingService {
       resourceId: receiptId,
       metadata: {
         purchaseOrderId: orderId,
+        // A rectification says why and which exported months held the receipt: those months are exported again
+        ...(body.rectification === undefined ? {} : { reason: body.rectification.reason }),
+        ...(rectified ? { months: exportedMonths } : {}),
         // The codes of a document are not personal data: the values it had before and the ones it has now are in the row of the trail
         previous: previous === null ? null : trailOf(previous),
         current:
@@ -495,6 +533,27 @@ export class PurchaseReceivingService {
       userAgent: actor.userAgent
     })
     return this.orders.get(organizationId, orderId, actor)
+  }
+
+  // Rectifying what was declared is more than capturing it: the person holds the fiscal permission of the documents in EVERY store, as the
+  // one who takes the annex out does (a declaration is the organization's)
+  private async assertRectifier(
+    tx: PrismaTransaction,
+    organizationId: string,
+    actor: Actor
+  ): Promise<void> {
+    const [stores, held] = await Promise.all([
+      tx.store.findMany({ where: { organizationId }, select: { id: true } }),
+      storesOf(tx, organizationId, actor.userId, Permissions.FISCAL_MANAGE)
+    ])
+    const reached = new Set(held)
+    if (stores.length === 0 || stores.some(store => !reached.has(store.id))) {
+      throw new PlatformException(
+        ErrorCodes.PERMISSION_DENIED,
+        'a rectification of a declared document is for who manages the fiscal documents of every store',
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
   }
 
   // The rules of the provider on the document, and that its code of generation is on no other receipt of the organization

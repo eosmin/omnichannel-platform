@@ -182,6 +182,31 @@ describe('The hand delivery of the files of a fiscal document (Step 4B.7d)', () 
     expect(one.data.files).toEqual([FiscalEvidenceKind.REPRESENTATION])
   })
 
+  it('lists the two files of an invalidation beside the two of the document, clean ones only (the files of the evidence take the new kinds)', async () => {
+    const documentId = await sale(true)
+    await withFiles(documentId, [
+      FiscalEvidenceKind.VOID_DTE_FILE,
+      FiscalEvidenceKind.DTE_FILE,
+      FiscalEvidenceKind.VOID_REPRESENTATION
+    ])
+    const listed = (await read(documentId)).body as DeliveryBody
+    expect(listed.data.files).toEqual([
+      FiscalEvidenceKind.DTE_FILE,
+      FiscalEvidenceKind.VOID_REPRESENTATION,
+      FiscalEvidenceKind.VOID_DTE_FILE
+    ])
+    await owner.media.updateMany({
+      where: { fiscalDocumentId: documentId, fiscalEvidenceKind: FiscalEvidenceKind.VOID_DTE_FILE },
+      data: { status: MediaStatus.PENDING }
+    })
+    expect(((await read(documentId)).body as DeliveryBody).data.files).toEqual([
+      FiscalEvidenceKind.DTE_FILE,
+      FiscalEvidenceKind.VOID_REPRESENTATION
+    ])
+    // The files of the invalidation never open the hand delivery of the document: it needs both of its own
+    expect((await handOver(documentId, FiscalHandMeans.DOWNLOAD)).status).toBe(CONFLICT)
+  })
+
   it('records a hand delivery for a document with no row, once, and audits it', async () => {
     const documentId = await sale(true)
     await withFiles(documentId, both)

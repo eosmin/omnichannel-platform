@@ -121,6 +121,47 @@ function prorate(cents: number, part: number, whole: number): number {
   return Number(numerator / (2n * BigInt(whole)))
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// The window of the law for a return to lower the output VAT: three months from the delivery of the goods (Ley de IVA, art. 62; the
+// reading of the accountant is in a private file, "criterio del contador"). Days are the 'YYYY-MM-DD' of the store's time zone and the
+// arithmetic is on the text, so no instant, no offset and no daylight saving can move a day over the border.
+
+const DAY = /^(\d{4})-(\d{2})-(\d{2})$/
+export const ReturnVatWindowMonths = 3
+
+function daysInMonth(year: number, month: number): number {
+  // month is 1 to 12; day 0 of the next month is the last of this one (a count of days, not a clock)
+  return new Date(Date.UTC(year, month, 0)).getUTCDate()
+}
+
+// The last day on which a return still lowers the VAT: the day of the delivery three months later, or the last day of that month when it
+// has fewer days (31 January gives 30 April; 30 November gives 28 or 29 February). The border day itself is inside.
+// Null for something that is not a day.
+export function vatWindowEnd(deliveredDay: string): string | null {
+  const parts = DAY.exec(deliveredDay)
+  if (parts === null) return null
+  const year = Number(parts[1])
+  const month = Number(parts[2])
+  const day = Number(parts[3])
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return null
+  const index = month - 1 + ReturnVatWindowMonths
+  const endYear = year + Math.floor(index / 12)
+  const endMonth = (index % 12) + 1
+  const endDay = Math.min(day, daysInMonth(endYear, endMonth))
+  const pad = (n: number, width: number): string => String(n).padStart(width, '0')
+  return `${pad(endYear, 4)}-${pad(endMonth, 2)}-${pad(endDay, 2)}`
+}
+
+// Whether a return of this day still lowers the output VAT. A delivery that has no day (the parcel was never delivered: the law is
+// silent, a question for the accountant written in the plan) keeps the right, as the books did before this rule. A day that is not a
+// day does too: it must never turn a return into an expense by a typo.
+export function returnKeepsVatRight(deliveredDay: string | null, returnDay: string): boolean {
+  if (deliveredDay === null) return true
+  const end = vatWindowEnd(deliveredDay)
+  if (end === null || !DAY.test(returnDay)) return true
+  return returnDay <= end
+}
+
 export interface ReturnReversal {
   netCents: number
   vatCents: number
@@ -296,6 +337,9 @@ export function returnLines(input: {
   restockCostCents: number
   // Before the sale the cost went back from inventory in transit; after it, from the cost of goods sold
   costAgainst: ReturnCostAgainst
+  // Whether the return came inside the window of the law (`returnKeepsVatRight`): the tax goes back from the output VAT; outside it
+  // the tax cannot be recovered and is an expense, the output VAT stays as it was declared
+  vatRecoverable: boolean
   storeId: string
 }): AutoEntry {
   const { reversal, settlement } = input
@@ -310,7 +354,10 @@ export function returnLines(input: {
   const debits = [
     { role: AccountRole.SALES_RETURNS, cents: net },
     { role: AccountRole.SHIPPING_REVENUE, cents: shippingNet },
-    { role: AccountRole.VAT_OUTPUT, cents: vat },
+    {
+      role: input.vatRecoverable ? AccountRole.VAT_OUTPUT : AccountRole.VAT_NON_RECOVERABLE,
+      cents: vat
+    },
     { role: AccountRole.INVENTORY, cents: input.restockCostCents }
   ]
   const credits = [

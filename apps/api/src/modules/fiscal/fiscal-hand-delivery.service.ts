@@ -26,6 +26,12 @@ import { FiscalReachService } from './fiscal-reach.service'
 
 // The files a receiver is given, in the order the delivery lists them
 const DELIVERY_KINDS = [FiscalEvidenceKind.REPRESENTATION, FiscalEvidenceKind.DTE_FILE] as const
+// What the panel is told exists: those, and the two files of the invalidation of a voided document (given by their own delivery, D13b-2b-2 B)
+const LISTED_KINDS = [
+  ...DELIVERY_KINDS,
+  FiscalEvidenceKind.VOID_REPRESENTATION,
+  FiscalEvidenceKind.VOID_DTE_FILE
+] as const
 
 // How the files of a document reached its receiver, for the panel. `pending` is a document with no row (the delivery has not run yet, or the
 // event was lost: the daily check publishes it again). Never an address, never the receiver's data.
@@ -39,7 +45,7 @@ export interface FiscalDeliveryView {
   reason: string | null
   means: FiscalHandMeans | null
   handedOverAt: string | null
-  // Which of the two files of the receiver exist (the evidence made them while the document was accepted)
+  // Which files of the receiver exist: the two of the document (made while it was accepted) and the two of its invalidation (made when it is voided)
   files: FiscalEvidenceKind[]
 }
 
@@ -217,18 +223,19 @@ export class FiscalHandDeliveryService {
   private async kindsOf(
     tx: Pick<PrismaTransaction, 'media'>,
     storeId: string,
-    documentId: string
+    documentId: string,
+    listed: readonly FiscalEvidenceKind[] = DELIVERY_KINDS
   ): Promise<FiscalEvidenceKind[]> {
     const rows = await tx.media.findMany({
       where: {
         storeId,
         fiscalDocumentId: documentId,
-        fiscalEvidenceKind: { in: [...DELIVERY_KINDS] },
+        fiscalEvidenceKind: { in: [...listed] },
         status: MediaStatus.CLEAN
       },
       select: { fiscalEvidenceKind: true }
     })
-    return DELIVERY_KINDS.filter(kind => rows.some(row => row.fiscalEvidenceKind === String(kind)))
+    return listed.filter(kind => rows.some(row => row.fiscalEvidenceKind === String(kind)))
   }
 
   private async viewOf(organizationId: string, documentId: string): Promise<FiscalDeliveryView> {
@@ -250,7 +257,7 @@ export class FiscalHandDeliveryService {
       reason: delivery?.reason ?? null,
       means: (delivery?.handMeans as FiscalHandMeans | null | undefined) ?? null,
       handedOverAt: delivery?.handedOverAt?.toISOString() ?? null,
-      files: await this.kindsOf(this.prisma.client, document.storeId, documentId)
+      files: await this.kindsOf(this.prisma.client, document.storeId, documentId, LISTED_KINDS)
     }
   }
 }

@@ -72,6 +72,22 @@ describe('Rollbacks that are safe to run twice', () => {
       await client.query('ROLLBACK')
     }
   })
+  // The rollback of the roles of returns and VAT deletes only the accounts and mappings its migration wrote, and only those with no entries
+  // (the cases with rows are in `finance-returns-vat-roles-migration.spec.ts`): run twice on the database as it is, it must not fail and must
+  // not take a row of any other account
+  it('20270217100000_finance_returns_vat_roles.rollback.sql runs twice and touches only the rows its migration wrote', async () => {
+    const sql = body('20270217100000_finance_returns_vat_roles.rollback.sql')
+    const others = `SELECT count(*)::int AS n FROM ledger_accounts WHERE NOT (code IN ('1402','1405','1406','2103','6113') AND id = md5(organization_id || ':finance_returns_vat:' || code)::uuid::text)`
+    await client.query('BEGIN')
+    try {
+      const before = (await client.query<{ n: number }>(others)).rows[0]
+      await client.query(sql)
+      await client.query(sql)
+      expect((await client.query<{ n: number }>(others)).rows[0]).toEqual(before)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+  })
   // The rollback of the day of issue drops the column and the index of the month and keeps every row: a document keeps its codes, a mark keeps
   // its reason, and the second run finds nothing to do. Rows are written with the foreign keys off for the transaction, never committed.
   it('20270211100000_purchase_document_issued_on.rollback.sql keeps the documents and the marks, and runs a second time on the result', async () => {
@@ -112,6 +128,40 @@ describe('Rollbacks that are safe to run twice', () => {
           annex_exclusion: 'not_deductible'
         }
       ])
+      await client.query(sql)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+  })
+  // The rollback of the constancia of the exported annexes drops its two append-only tables with rows in them (the triggers refuse a DELETE, never
+  // a DROP) and its function; the second run finds nothing. Rows are written with the foreign keys off for the transaction, never committed.
+  it('20270218100000_fiscal_annex_export_constancy.rollback.sql drops the constancia with its rows, and runs a second time on the result', async () => {
+    const sql = body('20270218100000_fiscal_annex_export_constancy.rollback.sql')
+    const present = async (name: string): Promise<boolean> =>
+      (await client.query<{ found: string | null }>(`SELECT to_regclass($1) AS found`, [name]))
+        .rows[0]?.found != null
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL session_replication_role = replica')
+      await client.query(
+        `INSERT INTO fiscal_annex_exports (id, organization_id, annex_id, year, month, row_count, content_sha256, sources_sha256, exported_by)
+         VALUES ('rb-x1', 'o', 'purchases', 2026, 10, 1, '${'a'.repeat(64)}', '${'b'.repeat(64)}', 'u')`
+      )
+      await client.query(
+        `INSERT INTO fiscal_annex_export_items (id, organization_id, export_id, receipt_id, source_sha256, included)
+         VALUES ('rb-i1', 'o', 'rb-x1', 'r1', '${'c'.repeat(64)}', true)`
+      )
+      expect(await present('fiscal_annex_exports')).toBe(true)
+      await client.query(sql)
+      expect(await present('fiscal_annex_exports')).toBe(false)
+      expect(await present('fiscal_annex_export_items')).toBe(false)
+      expect(
+        (
+          await client.query(
+            `SELECT 1 FROM pg_proc WHERE proname = 'forbid_fiscal_annex_export_change'`
+          )
+        ).rowCount
+      ).toBe(0)
       await client.query(sql)
     } finally {
       await client.query('ROLLBACK')
@@ -234,5 +284,50 @@ describe('Rollbacks that are safe to run twice', () => {
     } finally {
       await client.query('ROLLBACK')
     }
+  })
+
+  // The rollback of the kinds of evidence of an invalidation: with no file of the new kinds the check goes back to the five kinds and the
+  // second run finds it done; with one, the first run FAILS and nothing changes (the files a receiver was owed are never deleted).
+  describe('20270216100000_fiscal_void_evidence_kinds.rollback.sql', () => {
+    const sql = body('20270216100000_fiscal_void_evidence_kinds.rollback.sql')
+    const checkKinds = async (): Promise<string> =>
+      (
+        await client.query<{ def: string }>(
+          `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'chk_media_fiscal_evidence'`
+        )
+      ).rows[0]?.def ?? ''
+    it('puts the check back to five kinds and runs a second time on the result', async () => {
+      await client.query('BEGIN')
+      try {
+        expect(await checkKinds()).toContain('void_dte_file')
+        await client.query(sql)
+        const after = await checkKinds()
+        expect(after).not.toContain('void_dte_file')
+        expect(after).not.toContain('void_representation')
+        expect(after).toContain('dte_file')
+        await client.query(sql)
+        expect(await checkKinds()).toBe(after)
+      } finally {
+        await client.query('ROLLBACK')
+      }
+    })
+
+    it('fails, and changes nothing, while a file of the new kinds exists', async () => {
+      await client.query('BEGIN')
+      try {
+        await client.query('SET LOCAL session_replication_role = replica')
+        await client.query(
+          `INSERT INTO media (id, store_id, purpose, fiscal_document_id, fiscal_evidence_kind, key, filename, content_type, file_size)
+           VALUES ('rb-m', 's', 'fiscal_evidence', 'rb-doc', 'void_representation', 'rb/void-key', 'f.pdf', 'application/pdf', 1)`
+        )
+        const before = await checkKinds()
+        await client.query('SAVEPOINT rollback_try')
+        await expect(client.query(sql)).rejects.toThrow(/chk_media_fiscal_evidence/)
+        await client.query('ROLLBACK TO SAVEPOINT rollback_try')
+        expect(await checkKinds()).toBe(before)
+      } finally {
+        await client.query('ROLLBACK')
+      }
+    })
   })
 })

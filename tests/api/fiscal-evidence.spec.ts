@@ -313,6 +313,55 @@ describe('The evidence and the second thoughts of the fiscal documents (Step 4B.
       ])
     })
 
+    it('makes the files of an invalidation only for a voided document that kept the event, and makes none for another', async () => {
+      const { documentId } = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      const voidKinds = [FiscalEvidenceKind.VOID_DTE_FILE, FiscalEvidenceKind.VOID_REPRESENTATION]
+      // Accepted: the kinds exist for the route (a 404, not a bad request) and there is no file
+      for (const kind of voidKinds)
+        expect((await evidenceUrl(documentId, kind)).status).toBe(NOT_FOUND)
+      const voided = await asAdminA()
+        .post(ApiRoutes.fiscal.documents.void(documentId))
+        .send({ reason: 'wrong customer' })
+      expect(voided.status).toBe(OK)
+      // Voided, but the simulator draws no invalidation (a provider without `representVoid`): nothing is made, and nothing is invented
+      for (const kind of voidKinds)
+        expect((await evidenceUrl(documentId, kind)).status).toBe(NOT_FOUND)
+      expect(
+        (await evidenceOf(documentId)).filter(file =>
+          voidKinds.some(k => k === file.fiscalEvidenceKind)
+        )
+      ).toEqual([])
+      // The database takes a file of each new kind, once
+      for (const kind of voidKinds) {
+        await owner.media.create({
+          data: {
+            storeId: ctx.storeA.id,
+            purpose: MediaPurpose.FISCAL_EVIDENCE,
+            fiscalDocumentId: documentId,
+            fiscalEvidenceKind: kind,
+            key: `${prefix}/${kind}`,
+            filename: `${kind}.bin`,
+            contentType: 'application/octet-stream',
+            fileSize: 2
+          }
+        })
+        await expect(
+          owner.media.create({
+            data: {
+              storeId: ctx.storeA.id,
+              purpose: MediaPurpose.FISCAL_EVIDENCE,
+              fiscalDocumentId: documentId,
+              fiscalEvidenceKind: kind,
+              key: `${prefix}/${kind}-again`,
+              filename: `${kind}.bin`,
+              contentType: 'application/octet-stream',
+              fileSize: 2
+            }
+          })
+        ).rejects.toThrow()
+      }
+    })
+
     it('is kept for ever by the database: no delete, no change of what makes it evidence, no file in another store', async () => {
       const { documentId } = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
       const [file] = await evidenceOf(documentId)
