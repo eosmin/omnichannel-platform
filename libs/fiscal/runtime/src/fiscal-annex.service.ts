@@ -54,9 +54,6 @@ export interface FiscalAnnexSourceDigest {
   readonly documentStamp: string
 }
 
-// The organizations making an annex in this process: one at a time each
-const making = new Set<string>()
-
 const DAY_MS = 24 * 60 * 60 * 1000
 
 // The annexes of the periodic return of the country of the issuer's provider (D4a): the file of a month made from the documents the
@@ -84,23 +81,14 @@ export class FiscalAnnexService {
     })
   }
 
-  // The file of one annex of a month, or a 404 when the issuer's provider has no such annex (or the organization has no issuer)
+  // The file of one annex of a month, or a 404 when the issuer's provider has no such annex (or the organization has no issuer). One export of a
+  // month at a time per organization is the caller's: `FiscalAnnexExportService` holds the lock of the database around this read
   async build(
     organizationId: string,
     annexId: string,
     period: FiscalAnnexPeriod
   ): Promise<FiscalAnnexResult> {
-    if (making.has(organizationId)) {
-      throw resourceConflict('an annex of the organization is being made', {
-        reason: FiscalConflictReasons.ANNEX_IN_PROGRESS
-      })
-    }
-    making.add(organizationId)
-    try {
-      return await this.buildOnce(organizationId, annexId, period)
-    } finally {
-      making.delete(organizationId)
-    }
+    return this.buildOnce(organizationId, annexId, period)
   }
 
   private async buildOnce(

@@ -1430,11 +1430,158 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         finished = true
         return answer
       })
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      expect(finished).toBe(false)
-      release()
-      await other
+      try {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        expect(finished).toBe(false)
+      } finally {
+        // Always let the holder go: a failed expect must not leave the lock taken until the timeout, nor `other` rejected with no handler
+        release()
+        await other
+      }
       expect((await change).status).toBe(OK)
+    })
+
+    it('writes no new constancia for the same file made from the same documents, and writes one when the month moved', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      expect(
+        (
+          await receive(order.id, {
+            receivedOn: '2024-07-10',
+            supplierDocumentNumber: `N-${key()}`,
+            fiscalDocument: doc({ issuedOn: '2024-07-03' }),
+            lines: order.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity }))
+          })
+        ).status
+      ).toBe(CREATED)
+      const where = { organizationId: ctx.orgA.id, annexId: ANNEX, year: 2024, month: 7 }
+      expect((await taken(2024, 7)).status).toBe(OK)
+      const again = await taken(2024, 7)
+      expect(again.status).toBe(OK)
+      expect(again.headers[FiscalAnnexHeaders.NOTICES.toLowerCase()]).toBe(
+        `${FiscalAnnexNotices.RE_EXPORT}=1`
+      )
+      const rows = await owner.fiscalAnnexExport.findMany({ where, include: { items: true } })
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.items).toHaveLength(1)
+      // The audit row of the second export names the constancia that already existed
+      const entries = await waitForAuditEntries(
+        owner,
+        {
+          organizationId: ctx.orgA.id,
+          action: AuditAction.FISCAL_ANNEX_EXPORTED,
+          metadata: { path: ['exportId'], equals: rows[0]?.id ?? '' }
+        },
+        2
+      )
+      expect(entries).toHaveLength(2)
+      // A receipt that came in changes the sources: a new constancia, and the notice says so
+      const late = await placedOrder(seller.id)
+      expect(
+        (
+          await receive(late.id, {
+            receivedOn: '2024-07-12',
+            supplierDocumentNumber: `N-${key()}`,
+            fiscalDocument: doc({ issuedOn: '2024-07-05' }),
+            lines: late.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity }))
+          })
+        ).status
+      ).toBe(CREATED)
+      const moved = await taken(2024, 7)
+      expect(moved.headers[FiscalAnnexHeaders.NOTICES.toLowerCase()]).toContain(
+        `${FiscalAnnexNotices.ADDED_SINCE_EXPORT}=1`
+      )
+      expect(await owner.fiscalAnnexExport.count({ where })).toBe(2)
+    })
+
+    it('answers 409 to an export of a month that another one holds, without touching another month, and lets it through once released', async () => {
+      const scope = FiscalAnnexLocks.exportMonth(ctx.orgA.id, 2024, 8)
+      let release: () => void = () => undefined
+      let locked: () => void = () => undefined
+      const holding = new Promise<void>(resolve => {
+        release = resolve
+      })
+      const got = new Promise<void>(resolve => {
+        locked = resolve
+      })
+      // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+      const other = owner.$transaction(
+        async tx => {
+          await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${scope}, 0))) AS lock`
+          locked()
+          await holding
+        },
+        { timeout: 60_000 }
+      )
+      try {
+        await got
+        const refused = await taken(2024, 8)
+        expect(refused.status).toBe(CONFLICT)
+        expect(errorOf(refused).metadata).toMatchObject({
+          reason: FiscalConflictReasons.ANNEX_IN_PROGRESS
+        })
+        expect((await taken(2024, 9)).status).toBe(OK)
+      } finally {
+        release()
+        await other
+      }
+      expect((await taken(2024, 8)).status).toBe(OK)
+    })
+
+    it('takes the lock of the month before the one of the constancia, and the change of a document never takes the first: no deadlock', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const original = doc({ issuedOn: '2024-10-03' })
+      const received = await receive(order.id, {
+        receivedOn: '2024-10-10',
+        supplierDocumentNumber: `N-${key()}`,
+        fiscalDocument: original,
+        lines: order.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity }))
+      })
+      const [bill] = (received.body as OrderBody).receipts
+      const month = FiscalAnnexLocks.exportMonth(ctx.orgA.id, 2024, 10)
+      const constancy = FiscalAnnexLocks.constancy(ctx.orgA.id)
+      let release: () => void = () => undefined
+      let locked: () => void = () => undefined
+      const holding = new Promise<void>(resolve => {
+        release = resolve
+      })
+      const got = new Promise<void>(resolve => {
+        locked = resolve
+      })
+      // An export between its read and its constancia: it holds the lock of the month and takes the one of the constancia after
+      // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+      const other = owner.$transaction(
+        async tx => {
+          await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${month}, 0))) AS lock`
+          locked()
+          await holding
+          await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${constancy}, 0))) AS lock`
+        },
+        { timeout: 60_000 }
+      )
+      const started = Date.now()
+      try {
+        await got
+        // The change of the document goes through while the month is held: it does not ask for that lock
+        const change = await asAdminA()
+          .put(ApiRoutes.purchaseOrders.receiptDocument(order.id, bill?.id ?? ''))
+          .send({ fiscalDocument: { ...original, costType: '3' } })
+        expect(change.status).toBe(OK)
+      } finally {
+        release()
+        await other
+      }
+      expect(Date.now() - started).toBeLessThan(10_000)
+      // The two at once, for real: both answer, none waits for a timeout
+      const both = await Promise.all([
+        taken(2024, 10),
+        asAdminA()
+          .put(ApiRoutes.purchaseOrders.receiptDocument(order.id, bill?.id ?? ''))
+          .send({ fiscalDocument: { ...original, costType: '4' } })
+      ])
+      expect(both[0].status).toBe(OK)
+      expect([OK, CONFLICT]).toContain(both[1].status)
     })
 
     it('does not let anyone change or remove the constancia, and the worker only reads it', async () => {

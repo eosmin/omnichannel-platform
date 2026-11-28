@@ -96,8 +96,16 @@ export const FiscalAnnexNotices = {
 
 // The lock that makes the constancia of an export and the check of a change to a document of a purchase take turns (a change that passes
 // the check cannot slip in between the read of an export and the write of its constancia)
+//
+// ORDER OF THE LOCKS (no deadlock): an export takes `exportMonth` first and `constancy` after, inside it. The change of a document (the PUT of a
+// receipt) takes `constancy` ONLY and never `exportMonth`: with that order no two units can wait for each other.
 export const FiscalAnnexLocks = {
-  constancy: (organizationId: string): string => `${organizationId}:fiscal_annex_constancy`
+  constancy: (organizationId: string): string => `${organizationId}:fiscal_annex_constancy`,
+  // One export of an annex at a time per organization and month, in every replica (the lock of the database, not a set in a process).
+  // The key has no annex id on purpose: one annex of a month at a time. It is taken with `pg_try_advisory_xact_lock`: who does not get it is
+  // answered with a conflict, never made to wait
+  exportMonth: (organizationId: string, year: number, month: number): string =>
+    `${organizationId}:fiscal_annex_export:${year}-${month}`
 } as const
 
 export const FiscalAnnexHeaders = {
@@ -120,6 +128,12 @@ export const FiscalLimits = {
   // request) because the page of the entry check reads up to ENTRY_SCAN_MAX documents in one unit; a row lock never waits that long
   CONTEXT_MAX_WAIT_MS: 10_000,
   CONTEXT_TIMEOUT_MS: 30_000,
+  // The unit that only HOLDS the lock of an export of a month while the file is made (it reads in its own short units and holds no row lock,
+  // so a long hold costs one idle connection). The file is made from up to MAX_DOCUMENTS documents opened one by one: 2 minutes is far above
+  // that; a hold that expires first fails the export instead of letting a second one in
+  ANNEX_EXPORT_HOLD_MS: 120_000,
+  // The exports of a month one process makes at once (each holds an idle connection and builds up to MAX_DOCUMENTS documents in memory)
+  ANNEX_EXPORT_MAX_CONCURRENT: 4,
   // A file of evidence larger than this is not made (the sealed copy in the row stays, which is what the document is): a provider whose
   // document is this big is a fault to read in the logs
   EVIDENCE_MAX_BYTES: 4 * 1024 * 1024,
