@@ -24,6 +24,7 @@ const SEALED_BY_THE_FISCAL_RESEAL = [
   'FiscalDocument.receiverEncrypted',
   'FiscalDocument.builtPayloadEncrypted',
   'FiscalDocument.voidEventEncrypted',
+  'ExcludedSubjectPurchase.sellerEncrypted',
   'FiscalContingency.responsibleEncrypted'
 ]
 // Bytes columns that hold no value sealed with the platform key (none today)

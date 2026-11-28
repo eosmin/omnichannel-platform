@@ -236,6 +236,42 @@ describe('Rollbacks that are safe to run twice', () => {
       await client.query('ROLLBACK')
     }
   })
+  // The rollback of the purchases from excluded subjects drops both tables and their five functions, with their rows (nothing else refers to
+  // them), and the second run finds nothing. Rows are written with the foreign keys and the triggers off for the transaction, never committed.
+  it('20270215100000_excluded_subject_purchases.rollback.sql drops the tables with their rows, and runs a second time on the result', async () => {
+    const sql = body('20270215100000_excluded_subject_purchases.rollback.sql')
+    const found = async (name: string): Promise<boolean> =>
+      (await client.query<{ found: string | null }>(`SELECT to_regclass($1) AS found`, [name]))
+        .rows[0]?.found !== null
+    const functions = async (): Promise<number> =>
+      (
+        await client.query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM pg_proc WHERE proname IN ('check_excluded_subject_purchase_total', 'check_excluded_subject_purchase_lines_total', 'forbid_excluded_subject_purchase_change', 'guard_excluded_subject_purchase', 'fiscal_reseal_excluded_subject')`
+        )
+      ).rows[0]?.n ?? -1
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL session_replication_role = replica')
+      await client.query(
+        `INSERT INTO excluded_subject_purchases (id, organization_id, client_key, purchased_on, seller_document_type, seller_encrypted, amount_cents, vat_withheld_cents, income_tax_withheld_cents, operation_type, expense_class, sector, cost_type, created_by)
+         VALUES ('rb-esp1', 'o', 'rb-key-1', '2026-11-01', '2', decode('01' || repeat('00', 40), 'hex'), 5000, 0, 500, '1', '2', '2', '1', 'u')`
+      )
+      await client.query(
+        `INSERT INTO excluded_subject_purchase_lines (id, organization_id, purchase_id, line_no, description, kind, amount_cents)
+         VALUES ('rb-espl1', 'o', 'rb-esp1', 1, 'flete', 'service', 5000)`
+      )
+      expect(await found('excluded_subject_purchases')).toBe(true)
+      expect(await functions()).toBe(5)
+      await client.query(sql)
+      expect(await found('excluded_subject_purchases')).toBe(false)
+      expect(await found('excluded_subject_purchase_lines')).toBe(false)
+      expect(await functions()).toBe(0)
+      await client.query(sql)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+  })
+
   // The rollback of the kinds of evidence of an invalidation: with no file of the new kinds the check goes back to the five kinds and the
   // second run finds it done; with one, the first run FAILS and nothing changes (the files a receiver was owed are never deleted).
   describe('20270216100000_fiscal_void_evidence_kinds.rollback.sql', () => {

@@ -12,6 +12,7 @@ import {
   FISCAL_RESEAL_WRITE_FAILED,
   FiscalReseal,
   FiscalResealOutcome,
+  ExcludedSubjectResourceTypes,
   FiscalResourceTypes,
   SealedValueKind
 } from '@platform/core/domain'
@@ -76,7 +77,8 @@ const emptyReport = (enabled: boolean): FiscalResealReport => ({
 // the current key is skipped, so a run that stopped half way, or runs twice, ends in the same state. It runs only while a previous key is held.
 //
 // Covered: the receiver and the built payload of the fiscal documents and the signed event of a voided one (a decided document goes through the
-// function of the migration that the guard recognises; nothing else can change it), the fiscal data of the customers, the credentials of the issuer and the responsible of a
+// function of the migration that the guard recognises; nothing else can change it), the sealed seller of the purchases from an excluded subject
+// (the same way, through its own function), the fiscal data of the customers, the credentials of the issuer and the responsible of a
 // contingency. NOT covered (Step 7.3-S11c): the sealed values outside the fiscal area; the previous key does not serve them.
 @Injectable()
 export class FiscalResealService {
@@ -101,7 +103,8 @@ export class FiscalResealService {
       SealedValueKind.CUSTOMER_DATA,
       SealedValueKind.RESPONSIBLE,
       SealedValueKind.RECEIVER,
-      SealedValueKind.VOID_EVENT
+      SealedValueKind.VOID_EVENT,
+      SealedValueKind.EXCLUDED_SELLER
     ] as const
     for (const kind of kinds) {
       let after: string | undefined
@@ -274,6 +277,15 @@ export class FiscalResealService {
           r.voidEventEncrypted === null ? [] : [{ id: r.id, sealed: r.voidEventEncrypted }]
         )
       }
+      case SealedValueKind.EXCLUDED_SELLER: {
+        const rows = await client.excludedSubjectPurchase.findMany({
+          where: { organizationId, ...cursor },
+          select: { id: true, sellerEncrypted: true },
+          orderBy: { id: 'asc' },
+          take
+        })
+        return rows.map(r => ({ id: r.id, sealed: r.sellerEncrypted }))
+      }
       case SealedValueKind.CUSTOMER_DATA: {
         const rows = await client.customerFiscalData.findMany({
           where: { store: { organizationId }, ...cursor },
@@ -371,6 +383,12 @@ export class FiscalResealService {
           SELECT fiscal_reseal_void_event(${organizationId}, ${row.id}, ${row.sealed}::bytea, ${next}::bytea) AS changed`
         return answer[0]?.changed === true
       }
+      case SealedValueKind.EXCLUDED_SELLER: {
+        // A purchase from an excluded subject is never updated by a table write: the function of the migration swaps this one column
+        const answer = await client.$queryRaw<{ changed: boolean }[]>`
+          SELECT fiscal_reseal_excluded_subject(${organizationId}, ${row.id}, ${row.sealed}::bytea, ${next}::bytea) AS changed`
+        return answer[0]?.changed === true
+      }
       case SealedValueKind.CUSTOMER_DATA:
         return (
           (
@@ -418,6 +436,8 @@ function resourceTypeOf(kind: SealedValueKind): string {
       return FiscalResourceTypes.CUSTOMER_DATA
     case SealedValueKind.ISSUER_CREDENTIALS:
       return FiscalResourceTypes.ISSUER
+    case SealedValueKind.EXCLUDED_SELLER:
+      return ExcludedSubjectResourceTypes.EXCLUDED_SUBJECT_PURCHASE
     default:
       return FiscalResourceTypes.CONTINGENCY
   }

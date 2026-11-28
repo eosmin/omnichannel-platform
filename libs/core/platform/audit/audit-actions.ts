@@ -287,6 +287,7 @@ export const AuditAction = {
   // The document of a receipt that an exported annex held, changed on purpose: the previous and the current values, the reason, the months
   PURCHASE_RECEIPT_DOCUMENT_RECTIFIED: 'purchase_receipt.document_rectified',
   PURCHASE_ORDER_CLOSED: 'purchase_order.closed',
+  EXCLUDED_SUBJECT_PURCHASE_RECORDED: 'excluded_subject_purchase.recorded',
   PURCHASE_ORDER_CANCELLED: 'purchase_order.cancelled',
   SUPPLIER_PAID: 'supplier.paid',
   SUPPLIER_PAYMENT_VOIDED: 'supplier.payment_voided',

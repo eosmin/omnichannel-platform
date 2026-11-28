@@ -60,6 +60,11 @@ export const listPurchaseOrdersQuerySchema = z.strictObject({
   supplierId: lowercasedUuidSchema.optional()
 })
 
+export const listExcludedSubjectPurchasesQuerySchema = z.strictObject({
+  cursor: cursorSchema.optional(),
+  limit
+})
+
 export const payablesQuerySchema = z.strictObject({
   supplierId: lowercasedUuidSchema.optional(),
   // Only the bills past their due day
@@ -84,5 +89,8 @@ export type RecordPaymentBody = z.infer<typeof recordPaymentSchema>
 export type RecordPaymentReturnBody = z.infer<typeof recordPaymentReturnSchema>
 export type VoidPaymentReturnBody = z.infer<typeof voidPaymentReturnSchema>
 export type VoidPaymentBody = z.infer<typeof voidPaymentSchema>
+export type ListExcludedSubjectPurchasesQuery = z.infer<
+  typeof listExcludedSubjectPurchasesQuerySchema
+>
 export type PayablesQuery = z.infer<typeof payablesQuerySchema>
 export type ListPaymentsQuery = z.infer<typeof listPaymentsQuerySchema>

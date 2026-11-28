@@ -689,6 +689,8 @@ export const SealedValueKind = {
   RECEIVER: 'receiver',
   BUILT_PAYLOAD: 'built-payload',
   VOID_EVENT: 'void-event',
+  // The number of the identity document and the name of the seller of a purchase from an excluded subject (D20b)
+  EXCLUDED_SELLER: 'excluded-seller',
   ISSUER_CREDENTIALS: 'issuer-credentials',
   CUSTOMER_DATA: 'customer-data',
   RESPONSIBLE: 'responsible'
