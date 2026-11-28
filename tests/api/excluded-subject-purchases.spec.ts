@@ -204,6 +204,23 @@ describe('Purchases from an excluded subject (D20b)', () => {
       })
     })
 
+    it('refuses the same key with another seller and the rest of the request equal', async () => {
+      const sent = body()
+      const first = await asAdminA().post(ApiRoutes.excludedSubjectPurchases.create).send(sent)
+      expect(first.status).toBe(CREATED)
+      const other = await asAdminA()
+        .post(ApiRoutes.excludedSubjectPurchases.create)
+        .send({ ...sent, seller: { ...SELLER, documentNumber: '987654321' } })
+      expect(other.status).toBe(CONFLICT)
+      expect(errorOf(other).metadata).toMatchObject({
+        conflict: ExcludedSubjectConflicts.KEY_REUSED
+      })
+      const renamed = await asAdminA()
+        .post(ApiRoutes.excludedSubjectPurchases.create)
+        .send({ ...sent, seller: { ...SELLER, name: 'Another Name' } })
+      expect(renamed.status).toBe(CONFLICT)
+    })
+
     it('takes an electronic invoice once per organization, in capitals or not', async () => {
       const code = randomUUID()
       const first = await record({ documentSeries: '2026ABCDEF', generationCode: code })
@@ -273,10 +290,12 @@ describe('Purchases from an excluded subject (D20b)', () => {
           `UPDATE excluded_subject_purchases SET amount_cents = 1 WHERE id = '${made.id}'`
         )
       ).rejects.toThrow(/EXCLUDED_SUBJECT_IMMUTABLE/)
+      const concept = await owner.excludedSubjectPurchaseLine.findFirstOrThrow({
+        where: { purchaseId: made.id },
+        select: { id: true }
+      })
       await expect(
-        owner.$executeRawUnsafe(
-          `DELETE FROM excluded_subject_purchase_lines WHERE purchase_id = '${made.id}'`
-        )
+        owner.$executeRaw`DELETE FROM excluded_subject_purchase_lines WHERE id = ${concept.id}`
       ).rejects.toThrow(/EXCLUDED_SUBJECT_IMMUTABLE/)
       await expect(
         owner.$executeRawUnsafe('TRUNCATE excluded_subject_purchases CASCADE')
@@ -310,6 +329,19 @@ describe('Purchases from an excluded subject (D20b)', () => {
       expect(
         await owner.excludedSubjectPurchaseLine.count({ where: { purchaseId: made.id } })
       ).toBe(1)
+    })
+
+    it('refuses an income tax withheld that the concepts do not give', async () => {
+      await expect(
+        owner.$executeRawUnsafe(
+          `WITH header AS (
+             INSERT INTO excluded_subject_purchases (id, organization_id, client_key, purchased_on, seller_document_type, seller_encrypted, amount_cents, vat_withheld_cents, income_tax_withheld_cents, operation_type, expense_class, sector, cost_type, created_by)
+             VALUES ('${randomUUID()}', '${ctx.orgA.id}', '${key()}', '2026-11-01', '2', decode('01' || repeat('00', 40), 'hex'), 1000, 0, 0, '1', '2', '2', '1', 'suite')
+             RETURNING id, organization_id)
+           INSERT INTO excluded_subject_purchase_lines (id, organization_id, purchase_id, line_no, description, kind, amount_cents)
+           SELECT '${randomUUID()}', organization_id, id, 1, 'service', 'service', 1000 FROM header`
+        )
+      ).rejects.toThrow(/EXCLUDED_SUBJECT_WITHHOLDING/)
     })
 
     it('has no default for the income tax withheld: a row that does not say it is not written', async () => {

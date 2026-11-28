@@ -83,17 +83,25 @@ ALTER TABLE "excluded_subject_purchase_lines" ADD CONSTRAINT "excluded_subject_p
 ALTER TABLE "excluded_subject_purchase_lines" ADD CONSTRAINT "excluded_subject_purchase_lines_organization_id_purchase_id_fkey"
     FOREIGN KEY ("organization_id", "purchase_id") REFERENCES "excluded_subject_purchases"("organization_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- What is paid is the sum of the concepts, checked when the transaction ends (the concepts are written after the header, in one transaction)
+-- What is paid is the sum of the concepts, and the income tax withheld is what the concepts say (ten per cent of the services, half up, in whole
+-- numbers: articles 154 and 156 of the Tax Code, the same rule as `withheldIncomeTaxOf`; a change of the rate is a migration of this function too),
+-- both checked when the transaction ends (the concepts are written after the header, in one transaction). The service computes both; this is the
+-- second wall, so no other path can leave a figure the concepts do not give.
 CREATE FUNCTION check_excluded_subject_purchase_total() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public, pg_temp AS $$
 DECLARE
   total bigint;
+  services bigint;
 BEGIN
-  SELECT COALESCE(SUM(amount_cents), 0) INTO total FROM excluded_subject_purchase_lines
+  SELECT COALESCE(SUM(amount_cents), 0), COALESCE(SUM(amount_cents) FILTER (WHERE kind = 'service'), 0) INTO total, services
+    FROM excluded_subject_purchase_lines
     WHERE purchase_id = NEW.id AND organization_id = NEW.organization_id;
   IF total <> NEW.amount_cents THEN
     RAISE EXCEPTION 'EXCLUDED_SUBJECT_TOTAL: the amount of a purchase is the sum of its concepts';
+  END IF;
+  IF NEW.income_tax_withheld_cents <> (services * 1000 + 5000) / 10000 THEN
+    RAISE EXCEPTION 'EXCLUDED_SUBJECT_WITHHOLDING: the income tax withheld is what the concepts say';
   END IF;
   RETURN NULL;
 END $$;

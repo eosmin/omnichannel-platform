@@ -245,7 +245,13 @@ describe('The re-seal of the fiscal values after a rotation of the key', () => {
     try {
       await raw.query('ALTER TABLE excluded_subject_purchase_lines DISABLE TRIGGER USER')
       await raw.query('ALTER TABLE excluded_subject_purchases DISABLE TRIGGER USER')
-      await raw.query('DELETE FROM excluded_subject_purchase_lines WHERE purchase_id = $1', [id])
+      const lines = await raw.query<{ id: string }>(
+        'SELECT id FROM excluded_subject_purchase_lines WHERE purchase_id = $1',
+        [id]
+      )
+      for (const line of lines.rows) {
+        await raw.query('DELETE FROM excluded_subject_purchase_lines WHERE id = $1', [line.id])
+      }
       await raw.query('DELETE FROM excluded_subject_purchases WHERE id = $1', [id])
       await raw.query('ALTER TABLE excluded_subject_purchases ENABLE TRIGGER USER')
       await raw.query('ALTER TABLE excluded_subject_purchase_lines ENABLE TRIGGER USER')
