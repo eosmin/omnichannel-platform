@@ -3,7 +3,10 @@ import { PinoLogger } from 'nestjs-pino'
 
 import type { PrismaTransaction } from '@platform/core/database'
 import { ErrorCodes, errorName, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import type { FiscalPurchaseDocumentInput } from '@platform/fiscal/sdk'
+import type {
+  FiscalExcludedSubjectPurchaseInput,
+  FiscalPurchaseDocumentInput
+} from '@platform/fiscal/sdk'
 
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
 
@@ -17,6 +20,34 @@ export class FiscalPurchaseDocumentService {
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(FiscalPurchaseDocumentService.name)
+  }
+
+  // The same for a purchase from an excluded subject (D20b): what the provider's manual finds wrong in what was written
+  async excludedSubjectProblems(
+    tx: Pick<PrismaTransaction, 'fiscalIssuer'>,
+    organizationId: string,
+    input: FiscalExcludedSubjectPurchaseInput
+  ): Promise<readonly string[]> {
+    const issuer = await tx.fiscalIssuer.findUnique({
+      where: { organizationId },
+      select: { providerId: true }
+    })
+    if (issuer === null) return []
+    const provider = this.providers.find(issuer.providerId)
+    try {
+      return provider?.validateExcludedSubjectPurchase?.(input) ?? []
+    } catch (error) {
+      // What a provider throws may carry the value: only the name of the error is logged, never its message
+      this.logger.error(
+        { err: errorName(error), providerId: issuer.providerId },
+        'a provider could not check a purchase from an excluded subject'
+      )
+      throw new PlatformException(
+        ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+        'the provider could not check the purchase',
+        HttpStatusCodes.CONFLICT
+      )
+    }
   }
 
   async problems(

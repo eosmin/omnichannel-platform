@@ -293,6 +293,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       OR EXISTS (SELECT 1 FROM finance_transactions WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM suppliers WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM purchase_orders WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM excluded_subject_purchases WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_documents WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_issuers WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_sequences WHERE organization_id = ANY(${organizationIds}))
@@ -321,6 +322,8 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       'supplier_payments',
       'purchase_receipts',
       'purchase_receipt_lines',
+      'excluded_subject_purchases',
+      'excluded_subject_purchase_lines',
       'journal_lines',
       'journal_entries',
       'fiscal_periods',
@@ -350,6 +353,8 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     await tx.fiscalIssuer.deleteMany({ where })
     await tx.supplierPaymentReturn.deleteMany({ where })
     await tx.supplierPayment.deleteMany({ where })
+    await tx.excludedSubjectPurchaseLine.deleteMany({ where })
+    await tx.excludedSubjectPurchase.deleteMany({ where })
     await tx.purchaseReceiptDocument.deleteMany({ where })
     await tx.purchaseReceiptLine.deleteMany({ where })
     await tx.purchaseReceipt.deleteMany({ where })

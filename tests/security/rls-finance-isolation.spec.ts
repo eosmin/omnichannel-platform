@@ -50,6 +50,8 @@ const PHASE_4_TABLES = [
   'purchase_orders',
   'purchase_order_lines',
   'purchase_receipts',
+  'excluded_subject_purchases',
+  'excluded_subject_purchase_lines',
   'purchase_receipt_documents',
   'purchase_receipt_lines',
   'supplier_payments',

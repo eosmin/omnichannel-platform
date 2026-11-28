@@ -285,6 +285,7 @@ export const AuditAction = {
   // The data of the supplier's document of a receipt completed, or the receipt marked as left out of the annex of purchases (D4b)
   PURCHASE_RECEIPT_DOCUMENT_COMPLETED: 'purchase_receipt.document_completed',
   PURCHASE_ORDER_CLOSED: 'purchase_order.closed',
+  EXCLUDED_SUBJECT_PURCHASE_RECORDED: 'excluded_subject_purchase.recorded',
   PURCHASE_ORDER_CANCELLED: 'purchase_order.cancelled',
   SUPPLIER_PAID: 'supplier.paid',
   SUPPLIER_PAYMENT_VOIDED: 'supplier.payment_voided',

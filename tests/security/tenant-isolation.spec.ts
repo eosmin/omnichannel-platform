@@ -2206,6 +2206,55 @@ const resources: IsolationResource[] = [
     },
     ...purchaseRowChecks
   },
+  // A purchase from an excluded subject (D20b): the organization's, with its own routes; no route changes it (the database refuses any change)
+  {
+    name: 'excludedSubjectPurchase',
+    create: async (owner, { storeId }) => {
+      const organizationId = await organizationOfStore(owner, storeId)
+      const id = randomUUID()
+      // One statement, so the check of the total (deferred to the commit) sees the header and its concept together
+      await owner.$executeRaw`
+        WITH header AS (
+          INSERT INTO excluded_subject_purchases (id, organization_id, client_key, purchased_on, seller_document_type, seller_encrypted, amount_cents, vat_withheld_cents, income_tax_withheld_cents, operation_type, expense_class, sector, cost_type, created_by)
+          VALUES (${id}, ${organizationId}, ${`isolation-${id}`}, '2026-11-01'::date, '2', decode('01' || repeat('00', 40), 'hex'), 1000, 0, 100, '1', '2', '2', '1', 'isolation-suite')
+          RETURNING id, organization_id)
+        INSERT INTO excluded_subject_purchase_lines (id, organization_id, purchase_id, line_no, description, kind, amount_cents)
+        SELECT ${randomUUID()}, organization_id, id, 1, 'service', 'service', 1000 FROM header`
+      return { id }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.excludedSubjectPurchases.byId,
+    listPath: ApiRoutes.excludedSubjectPurchases.list,
+    untouched: async (owner, id) =>
+      (await owner.excludedSubjectPurchase.count({
+        where: { id, incomeTaxWithheldCents: 100, amountCents: 1000 }
+      })) === 1,
+    creation: {
+      path: ApiRoutes.excludedSubjectPurchases.create,
+      body: name => ({
+        idempotencyKey: `iso-${randomUUID()}`,
+        purchasedOn: new Date().toISOString().slice(0, 10),
+        seller: { documentType: '2', documentNumber: '012345678', name },
+        operationType: '1',
+        expenseClass: '2',
+        sector: '2',
+        costType: '1',
+        lines: [{ description: 'service', kind: 'service', amountCents: 1000 }]
+      }),
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.excludedSubjectPurchase.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (
+          await owner.excludedSubjectPurchase.findUnique({
+            where: { id },
+            select: { organizationId: true }
+          })
+        )?.organizationId ?? null
+    }
+  },
   {
     name: 'purchaseReceiptLine',
     create: async (owner, { storeId }) => ({

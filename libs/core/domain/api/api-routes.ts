@@ -366,6 +366,12 @@ export const ApiRoutes = {
   supplierPaymentReturns: {
     void: (id: string) => `/supplier-payment-returns/${id}/void`
   },
+  // The purchases from an excluded subject (D20b): the record of what was bought from a seller who is not a taxpayer of the VAT
+  excludedSubjectPurchases: {
+    list: '/excluded-subject-purchases',
+    create: '/excluded-subject-purchases',
+    byId: (id: string) => `/excluded-subject-purchases/${id}`
+  },
   purchaseOrders: {
     list: '/purchase-orders',
     create: '/purchase-orders',
